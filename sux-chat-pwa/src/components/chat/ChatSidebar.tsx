@@ -27,6 +27,7 @@ interface Chat {
   id: string;
   participants?: Profile[];
   created_at?: string;
+  unread_count?: number;
 }
 
 interface ChatSidebarProps {
@@ -394,6 +395,8 @@ const ChatSidebar = ({
               }
               
               const avatarLetter = chatTitle[0]?.toUpperCase() || "?";
+              const unreadCount = chat.unread_count || 0;
+              const hasUnread = unreadCount > 0;
 
               return (
                 <div
@@ -401,6 +404,8 @@ const ChatSidebar = ({
                   className={`group relative p-3 rounded-lg mb-2 flex items-center gap-3 transition-all ${
                     selectedChatId === chat.id
                       ? "bg-gradient-primary shadow-glow"
+                      : hasUnread
+                      ? "bg-primary/10 border border-primary/20 hover:bg-primary/15"
                       : "hover:bg-secondary/50"
                   } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                     isCollapsed ? "justify-center" : ""
@@ -414,23 +419,46 @@ const ChatSidebar = ({
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}
                   >
-                    <Avatar className={isCollapsed ? "w-8 h-8" : "w-8 h-8"}>
-                      <AvatarFallback 
-                        className={
-                          selectedChatId === chat.id 
-                            ? "bg-white text-primary" 
-                            : "bg-gradient-primary text-primary-foreground"
-                        }
-                      >
-                        {avatarLetter}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative">
+                      <Avatar className={isCollapsed ? "w-8 h-8" : "w-8 h-8"}>
+                        <AvatarFallback 
+                          className={
+                            selectedChatId === chat.id 
+                              ? "bg-white text-primary" 
+                              : "bg-gradient-primary text-primary-foreground"
+                          }
+                        >
+                          {avatarLetter}
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Badge с количеством непрочитанных */}
+                      {hasUnread && (
+                        <div className={`absolute -top-1 -right-1 ${
+                          isCollapsed ? "w-4 h-4" : "w-5 h-5"
+                        } bg-destructive rounded-full flex items-center justify-center shadow-lg border-2 border-background`}>
+                          <span className={`text-white font-bold ${
+                            isCollapsed ? "text-[8px]" : "text-[10px]"
+                          }`}>
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {chatTitle}
-                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`font-medium truncate ${
+                            hasUnread ? "font-semibold" : ""
+                          }`}>
+                            {chatTitle}
+                          </p>
+                          {hasUnread && (
+                            <span className="flex-shrink-0 text-xs font-bold text-primary bg-primary/20 px-2 py-0.5 rounded-full">
+                              {unreadCount}
+                            </span>
+                          )}
+                        </div>
                         {isLoading && (
                           <p className="text-xs text-muted-foreground">
                             Загрузка...

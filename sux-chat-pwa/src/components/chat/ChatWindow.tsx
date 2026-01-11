@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { useNotifications } from "@/hooks/use-notifications";
 
 interface Profile {
   id: string;
@@ -25,6 +26,7 @@ interface Message {
   sender_id: string;
   sender?: Profile;
   created_at: string;
+  is_read?: boolean;
 }
 
 interface ChatWindowProps {
@@ -39,9 +41,11 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { showNotification, hasPermission, requestPermission, permission } = useNotifications();
   
   // Рефы для аудио
   const sendSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -76,13 +80,47 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     };
   }, []);
 
+  // Загружаем количество непрочитанных сообщений
+  const fetchUnreadCount = async () => {
+    if (!chatId) return;
+    try {
+      const unreadData = await api.getUnreadCount();
+      const count = unreadData.unread_by_chat[chatId] || 0;
+      setUnreadCount(count);
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
+
+  // Отмечаем чат как прочитанный при открытии
+  useEffect(() => {
+    if (!chatId) return;
+    
+    const markAsRead = async () => {
+      try {
+        await api.markChatAsRead(chatId);
+        setUnreadCount(0);
+        // Обновляем сообщения, чтобы они отображались как прочитанные
+        setMessages(prev => prev.map(msg => ({ ...msg, is_read: true })));
+      } catch (error) {
+        console.error('Error marking chat as read:', error);
+      }
+    };
+    
+    markAsRead();
+  }, [chatId]);
+
   // WebSocket соединение для получения новых сообщений
   useEffect(() => {
     if (!chatId) {
       setMessages([]);
+      setUnreadCount(0);
       return;
     }
 
+    // Загружаем количество непрочитанных
+    fetchUnreadCount();
+    
     // Сначала загружаем существующие сообщения
     fetchMessages();
 
@@ -90,6 +128,8 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     const token = localStorage.getItem("access_token");
     const wsService = new WebSocketService(`${WS_URL}/chat/${chatId}/`, {
       onMessage: (data) => {
+        console.log('[WebSocket] Получено сообщение для чата:', data);
+        
         if (data.type === 'new_message' && data.message) {
           // Добавляем новое сообщение в список
           setMessages(prev => {
@@ -97,18 +137,19 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             if (prev.some(msg => msg.id === data.message.id)) {
               return prev;
             }
+            console.log('[WebSocket] Добавляем новое сообщение:', data.message.id);
             return [...prev, data.message];
           });
         }
       },
       onError: (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WebSocket] Ошибка:', error);
       },
       onOpen: () => {
-        console.log('WebSocket connected for chat:', chatId);
+        console.log('[WebSocket] ✅ ПОДКЛЮЧЕНО для чата:', chatId);
       },
       onClose: () => {
-        console.log('WebSocket disconnected for chat:', chatId);
+        console.log('[WebSocket] ⚠️ ОТКЛЮЧЕНО для чата:', chatId);
       },
     });
 
@@ -205,6 +246,136 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       }
       setSelectedFile(file);
     }
+  };
+
+  // Функция для тестирования уведомлений
+  const testNotification = async () => {
+    console.log('[TEST] ========== ТЕСТ УВЕДОМЛЕНИЯ ==========');
+    console.log('[TEST] Платформа:', navigator.platform);
+    console.log('[TEST] User Agent:', navigator.userAgent);
+    console.log('[TEST] Текущее разрешение (хук):', permission);
+    console.log('[TEST] Notification.permission (прямая проверка):', typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'N/A');
+    console.log('[TEST] Notification API доступен:', 'Notification' in window);
+    console.log('[TEST] Service Worker доступен:', 'serviceWorker' in navigator);
+    
+    // Проверяем базовую поддержку
+    if (!('Notification' in window)) {
+      toast.error('Ваш браузер не поддерживает уведомления');
+      console.error('[TEST] ❌ Браузер не поддерживает Notification API');
+      return;
+    }
+
+    // Проверяем разрешение
+    let currentPermission = Notification.permission;
+    console.log('[TEST] Текущее разрешение:', currentPermission);
+    
+    if (currentPermission !== 'granted') {
+      console.log('[TEST] Разрешение не получено, запрашиваем...');
+      try {
+        const granted = await requestPermission();
+        console.log('[TEST] Результат запроса разрешения:', granted);
+        currentPermission = Notification.permission;
+        console.log('[TEST] Новое разрешение:', currentPermission);
+        
+        if (!granted || currentPermission !== 'granted') {
+          toast.error('Разрешение на уведомления не получено. Проверьте настройки браузера и macOS.');
+          console.error('[TEST] ❌ Не удалось получить разрешение');
+          console.error('[TEST] Инструкция: Системные настройки → Уведомления → [Ваш браузер] → Включить уведомления');
+          return;
+        }
+      } catch (error) {
+        console.error('[TEST] ❌ Ошибка при запросе разрешения:', error);
+        toast.error('Ошибка при запросе разрешения: ' + (error instanceof Error ? error.message : String(error)));
+        return;
+      }
+    }
+
+    console.log('[TEST] ✅ Разрешение получено, пробуем показать уведомление...');
+    const testTime = new Date().toLocaleTimeString();
+    
+    // Пробуем ПРЯМОЙ способ через Notification API (самый простой)
+    console.log('[TEST] Способ 1: Прямой Notification API');
+    try {
+      const directNotification = new Notification('🔔 Тест 1: Прямое уведомление', {
+        body: `Время: ${testTime}\nПрямой способ через Notification API`,
+        icon: '/favicon.ico',
+        tag: `test-direct-${Date.now()}`,
+        requireInteraction: false,
+      });
+      
+      console.log('[TEST] ✅ Прямое уведомление создано:', directNotification);
+      
+      directNotification.onclick = () => {
+        console.log('[TEST] Прямое уведомление кликнуто');
+        directNotification.close();
+      };
+      
+      directNotification.onerror = (error) => {
+        console.error('[TEST] ❌ Ошибка прямого уведомления:', error);
+      };
+      
+      directNotification.onshow = () => {
+        console.log('[TEST] ✅ Прямое уведомление показано!');
+        toast.success('Прямое уведомление показано!');
+      };
+      
+      directNotification.onclose = () => {
+        console.log('[TEST] Прямое уведомление закрыто');
+      };
+      
+    } catch (directError) {
+      console.error('[TEST] ❌ Ошибка прямого уведомления:', directError);
+    }
+    
+    // Пробуем через Service Worker
+    if ('serviceWorker' in navigator) {
+      console.log('[TEST] Способ 2: Через Service Worker');
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        console.log('[TEST] Service Worker ready:', registration);
+        
+        if (registration && 'showNotification' in registration) {
+          await registration.showNotification('🔔 Тест 2: Через Service Worker', {
+            body: `Время: ${testTime}\nЧерез Service Worker`,
+            icon: '/favicon.ico',
+            tag: `test-sw-${Date.now()}`,
+            requireInteraction: false,
+          });
+          console.log('[TEST] ✅ Service Worker уведомление отправлено');
+        } else {
+          console.warn('[TEST] Service Worker не поддерживает showNotification');
+        }
+      } catch (swError) {
+        console.error('[TEST] ❌ Ошибка Service Worker уведомления:', swError);
+      }
+    }
+    
+    // Пробуем через хук
+    console.log('[TEST] Способ 3: Через хук useNotifications');
+    try {
+      await showNotification({
+        title: '🔔 Тест 3: Через хук',
+        body: `Время: ${testTime}\nЧерез хук useNotifications`,
+        icon: '/favicon.ico',
+        tag: `test-hook-${Date.now()}`,
+        data: { 
+          chatId: chatId || 'test',
+          url: '/chat',
+          test: true 
+        },
+        requireInteraction: false,
+      });
+      console.log('[TEST] ✅ Уведомление через хук отправлено');
+    } catch (hookError) {
+      console.error('[TEST] ❌ Ошибка уведомления через хук:', hookError);
+    }
+    
+    console.log('[TEST] ========================================');
+    console.log('[TEST] Если уведомления не появились:');
+    console.log('[TEST] 1. Проверьте настройки macOS: Системные настройки → Уведомления → [Ваш браузер]');
+    console.log('[TEST] 2. Убедитесь, что уведомления включены для браузера');
+    console.log('[TEST] 3. Перезапустите браузер');
+    console.log('[TEST] 4. Проверьте, не включен ли режим "Не беспокоить" в macOS');
   };
 
   const sendMessage = async () => {
@@ -412,6 +583,34 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
         </DialogContent>
       </Dialog>
 
+      {/* Заголовок чата с индикатором непрочитанных */}
+      {chatId && unreadCount > 0 && (
+        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+            <span className="text-sm font-medium text-primary">
+              {unreadCount} {unreadCount === 1 ? 'непрочитанное сообщение' : unreadCount < 5 ? 'непрочитанных сообщения' : 'непрочитанных сообщений'}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              try {
+                await api.markChatAsRead(chatId);
+                setUnreadCount(0);
+                setMessages(prev => prev.map(msg => ({ ...msg, is_read: true })));
+              } catch (error) {
+                console.error('Error marking chat as read:', error);
+              }
+            }}
+            className="text-xs h-7"
+          >
+            Отметить как прочитанное
+          </Button>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col bg-background">
       <ScrollArea className="flex-1 px-4 py-6" ref={scrollRef as any}>
         <div className="max-w-4xl mx-auto space-y-6">
@@ -421,6 +620,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
             const avatarLetter = username.charAt(0).toUpperCase();
+            const isUnread = !isOwn && !message.is_read;
 
             return (
               <div key={message.id} className="space-y-2">
@@ -435,8 +635,9 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 
                 {/* Сообщение */}
                 <div className={cn(
-                  "flex gap-3 group",
-                  isOwn && "flex-row-reverse"
+                  "flex gap-3 group transition-all",
+                  isOwn && "flex-row-reverse",
+                  isUnread && !isOwn && "bg-primary/5 border-l-2 border-primary rounded-r-lg pl-2 -ml-2"
                 )}>
                   {/* Аватар (только для чужих сообщений) */}
                   {!isOwn && (
@@ -478,10 +679,16 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                             "rounded-br-md"
                           )
                         : cn(
-                            "bg-card border border-border/50 shadow-sm",
+                            isUnread 
+                              ? "bg-card border-2 border-primary/40 shadow-md"
+                              : "bg-card border border-border/50 shadow-sm",
                             "rounded-bl-md"
                           )
                     )}>
+                      {/* Индикатор непрочитанного сообщения */}
+                      {isUnread && (
+                        <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-primary rounded-full animate-pulse" />
+                      )}
                       {/* Текст сообщения */}
                       {message.content && (
                         <p className="break-words leading-relaxed whitespace-pre-wrap">
@@ -631,6 +838,18 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             >
               <Paperclip className="w-4 h-4" />
             </Button>
+            
+            {/* Кнопка тестирования уведомлений - скрыта */}
+            {/* <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={testNotification}
+              disabled={uploading}
+              className="h-11 w-11 shrink-0 border-2 border-yellow-500 hover:bg-yellow-500/10"
+              title="Тест уведомлений (для отладки)"
+            >
+              <Bell className="w-4 h-4" />
+            </Button> */}
             
             <div className="flex-1 relative">
               <Input

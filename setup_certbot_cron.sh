@@ -5,7 +5,7 @@
 # ===============================
 
 # Путь к docker-compose.yml
-PROJECT_PATH="/home/sux-chat"
+PROJECT_PATH="/home/hyax"
 LOG_FILE="$PROJECT_PATH/certbot_renew.log"
 
 # Команда, которая будет выполняться cron'ом

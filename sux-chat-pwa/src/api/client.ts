@@ -6,11 +6,17 @@ const API_URL = import.meta.env.VITE_API_URL ||
     ? "http://localhost:8000/api" 
     : "/api");  // Относительный путь для работы через nginx
 
-// WebSocket URL
+// WebSocket URL (deprecated - используем SSE)
 export const WS_URL = import.meta.env.VITE_WS_URL || 
   (import.meta.env.DEV 
     ? "ws://localhost:8000/ws" 
     : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
+
+// SSE URL для получения сообщений в реальном времени
+export const SSE_URL = import.meta.env.VITE_SSE_URL || 
+  (import.meta.env.DEV 
+    ? "http://localhost:8000/api/sse" 
+    : "/api/sse");
 
 interface AuthResponse {
   message: string;
@@ -151,11 +157,11 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
 
 export const api = {
   // ===== AUTH =====
-  register: async (email: string, password: string, username: string): Promise<AuthResponse> => {
+  register: async (username: string, password: string): Promise<AuthResponse> => {
     const res = await fetchWithAuth(`${API_URL}/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, username }),
+      body: JSON.stringify({ username, password }),
     });
 
     if (!res.ok) {
@@ -174,11 +180,11 @@ export const api = {
     return res.json();
   },
 
-  login: async (email: string, password: string): Promise<{ access: string; refresh: string }> => {
+  login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
     const res = await fetchWithAuth(`${API_URL}/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: email, password }),
+      body: JSON.stringify({ username, password }),
     });
 
     if (!res.ok) {

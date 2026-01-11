@@ -49,7 +49,8 @@ export class WebSocketService {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected:', this.url);
+        console.log('[WebSocketService] ✅ WebSocket подключен:', this.url);
+        console.log('[WebSocketService] ReadyState:', this.ws?.readyState);
         this.reconnectAttempts = 0;
         this.options.onOpen?.();
         
@@ -59,26 +60,35 @@ export class WebSocketService {
 
       this.ws.onmessage = (event) => {
         try {
+          console.log('[WebSocketService] Получены сырые данные:', event.data);
           const data: WebSocketMessage = JSON.parse(event.data);
+          console.log('[WebSocketService] Распарсенные данные:', JSON.stringify(data, null, 2));
           
           // Игнорируем pong сообщения
           if (data.type === 'pong') {
+            console.log('[WebSocketService] Получен pong, игнорируем');
             return;
           }
 
+          console.log('[WebSocketService] Вызываем onMessage callback с данными:', data);
           this.options.onMessage?.(data);
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('[WebSocketService] ❌ Ошибка парсинга WebSocket сообщения:', error);
+          console.error('[WebSocketService] Сырые данные:', event.data);
         }
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WebSocketService] ❌ WebSocket error:', error);
+        console.error('[WebSocketService] ReadyState:', this.ws?.readyState);
         this.options.onError?.(error);
       };
 
-      this.ws.onclose = () => {
-        console.log('WebSocket closed');
+      this.ws.onclose = (event) => {
+        console.log('[WebSocketService] ⚠️ WebSocket закрыт');
+        console.log('[WebSocketService] Close code:', event.code);
+        console.log('[WebSocketService] Close reason:', event.reason);
+        console.log('[WebSocketService] Was clean:', event.wasClean);
         this.stopPing();
         this.options.onClose?.();
 

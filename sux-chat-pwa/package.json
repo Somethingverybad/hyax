@@ -6,7 +6,7 @@
   "description": "ХУЯКС мессенджер PWA",
   "scripts": {
     "dev": "vite --port 5173",
-    "build": "vite build",
+    "build": "vite build && node add-sw-handlers.cjs",
     "preview": "vite preview --port 5173",
     "lint": "eslint ."
   },

@@ -72,70 +72,166 @@ const Chat = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Подключаемся к WebSocket для получения уведомлений
+    console.log('[WebSocket] Подключаемся к WebSocket для уведомлений пользователя');
     const token = localStorage.getItem("access_token");
-    let wsService: WebSocketService | null = null;
     
-    try {
-      wsService = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
-        onMessage: (data) => {
-          if (data.type === 'notification' && data.data) {
-            // Показываем уведомление если нужно
-            if (data.data.type === 'new_message' && hasPermission()) {
-              const chatId = data.data.chat_id;
-              setChats(currentChats => {
-                const chat = currentChats.find(c => c.id === chatId);
-                if (chat && chatId !== selectedChatId) {
-                  showNotification({
-                    title: 'Новое сообщение',
-                    body: `Новое сообщение в чате`,
-                    data: { chatId },
-                    tag: `chat-${chatId}`,
-                  });
-                }
-                // Обновляем unread_count для чата без полного refreshChats
-                return currentChats.map(c => 
+    const wsService = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
+      onMessage: (data) => {
+        console.log('[WebSocket] Получено сообщение:', data);
+        
+        // Обрабатываем уведомления о новых сообщениях
+        if (data.type === 'notification' || data.type === 'new_message') {
+          const chatId = data.data?.chat_id || data.data?.chatId || data.chat_id || data.chatId || data.message?.chat;
+          const message = data.message || data.data?.message;
+          const senderUsername = message?.sender?.username || message?.sender_username;
+          const messageContent = message?.content || data.data?.content;
+          
+          if (chatId && hasPermission()) {
+            const shouldShow = chatId !== selectedChatId;
+            const isAppInFocus = document.visibilityState === 'visible';
+            
+            if (shouldShow || !isAppInFocus) {
+              // Обновляем unread_count
+              setChats(prevChats => {
+                const updatedChats = prevChats.map(c => 
                   c.id === chatId 
                     ? { ...c, unread_count: (c.unread_count || 0) + 1 }
                     : c
                 );
+                
+                // Показываем уведомление через Service Worker для фоновых уведомлений
+                if ('serviceWorker' in navigator && document.visibilityState !== 'visible') {
+                  navigator.serviceWorker.ready.then(registration => {
+                    registration.showNotification(
+                      senderUsername ? `💬 ${senderUsername}` : '💬 Новое сообщение',
+                      {
+                        body: messageContent?.substring(0, 100) || 'Новое сообщение',
+                        icon: '/favicon.ico',
+                        badge: '/favicon.ico',
+                        tag: `chat-${chatId}`,
+                        data: {
+                          chatId: chatId,
+                          url: `/chat`,
+                        },
+                        requireInteraction: false,
+                        vibrate: [200, 100, 200],
+                      }
+                    );
+                  }).catch(err => {
+                    console.error('[Notifications] Ошибка показа через SW, используем fallback:', err);
+                    showNotification({
+                      title: senderUsername ? `💬 ${senderUsername}` : '💬 Новое сообщение',
+                      body: messageContent?.substring(0, 100) || 'Новое сообщение',
+                      data: { chatId },
+                      tag: `chat-${chatId}-${Date.now()}`,
+                      requireInteraction: false,
+                    }).catch(error => {
+                      console.error('[WebSocket] Ошибка при показе уведомления:', error);
+                    });
+                  });
+                } else {
+                  showNotification({
+                    title: senderUsername ? `💬 ${senderUsername}` : '💬 Новое сообщение',
+                    body: messageContent?.substring(0, 100) || 'Новое сообщение',
+                    data: { chatId },
+                    tag: `chat-${chatId}-${Date.now()}`,
+                    requireInteraction: false,
+                  }).catch(error => {
+                    console.error('[WebSocket] Ошибка при показе уведомления:', error);
+                  });
+                }
+                
+                return updatedChats;
               });
             }
           }
-        },
-        onError: (error) => {
-          console.error('WebSocket error:', error);
-        },
-        onOpen: () => {
-          console.log('WebSocket connected for user notifications');
-        },
-        onClose: () => {
-          console.log('WebSocket disconnected for user notifications');
-        },
-      });
+        }
+      },
+      onError: (error) => {
+        console.error('[WebSocket] ❌ Ошибка:', error);
+      },
+      onOpen: () => {
+        console.log('[WebSocket] ✅ ПОДКЛЮЧЕНО для уведомлений пользователя:', user.id);
+      },
+      onClose: () => {
+        console.warn('[WebSocket] ⚠️ ОТКЛЮЧЕНО для уведомлений пользователя');
+      },
+    });
 
-      wsService.connect(token || undefined);
-    } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
-    }
-
-    // Периодическое обновление как подстраховка (только если WebSocket не подключен)
-    const intervalId = setInterval(() => {
-      // Проверяем, подключен ли WebSocket
-      if (!wsService || !wsService.isConnected()) {
-        console.log('WebSocket not connected, using polling fallback');
-        refreshChats();
+    wsService.connect(token || undefined);
+    
+    // Обработчик для переподключения при возвращении в приложение
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && wsService) {
+        // Проверяем, что WebSocket подключен
+        const ws = (wsService as any).ws;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          console.log('[WebSocket] Переподключаемся после возвращения в приложение');
+          wsService.connect(token || undefined);
+        }
       }
-    }, 300000); // Обновляем каждые 5 минут как подстраховка, только если WebSocket не работает
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (wsService) {
-        wsService.disconnect();
-      }
-      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      wsService.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, selectedChatId]); // Убираем refreshChats и другие функции из зависимостей
+  }, [user?.id, selectedChatId]);
+
+  // Регистрация Background Sync для периодической проверки сообщений
+  useEffect(() => {
+    if (!user) return;
+    
+    // Регистрируем Background Sync для периодической проверки сообщений
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => {
+        // Регистрируем периодическую синхронизацию (если поддерживается)
+        if ('sync' in registration) {
+          registration.sync.register('check-messages').then(() => {
+            console.log('[Background Sync] ✅ Зарегистрирован для проверки сообщений');
+          }).catch(err => {
+            console.warn('[Background Sync] Ошибка регистрации:', err);
+          });
+        }
+        
+        // Регистрируем Periodic Background Sync (если поддерживается)
+        // @ts-ignore - Periodic Background Sync может быть не в типах
+        if ('periodicSync' in registration) {
+          // @ts-ignore
+          registration.periodicSync.register('check-messages-periodic', {
+            minInterval: 60000, // Минимум 1 минута между проверками
+          }).then(() => {
+            console.log('[Periodic Background Sync] ✅ Зарегистрирован');
+          }).catch((err: any) => {
+            console.warn('[Periodic Background Sync] Ошибка регистрации:', err);
+          });
+        }
+      }).catch(err => {
+        console.warn('[Background Sync] Service Worker не готов:', err);
+      });
+    }
+    
+    // Обработчик сообщений от Service Worker
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'CHECK_MESSAGES') {
+        console.log('[Background Sync] Получен запрос на проверку сообщений');
+        refreshChats();
+      }
+    };
+    
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    }
+    
+    return () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      }
+    };
+  }, [user, refreshChats]);
 
   // Обработчик состояния приложения (visibility change для PWA)
   useEffect(() => {

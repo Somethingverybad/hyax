@@ -3,9 +3,8 @@ import uuid
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
-from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import UntypedToken
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError, ExpiredTokenError
 from jwt import decode as jwt_decode
 from django.conf import settings
 from .models import Message, Chat, Profile, ChatParticipant
@@ -17,6 +16,10 @@ User = get_user_model()
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        # Логирование для отладки
+        print(f"[ChatConsumer] Scope path: {self.scope.get('path', 'N/A')}")
+        print(f"[ChatConsumer] URL route: {self.scope.get('url_route', {})}")
+        
         self.chat_id = self.scope['url_route']['kwargs']['chat_id']
         self.chat_group_name = f'chat_{self.chat_id}'
         self.user = self.scope.get('user', AnonymousUser())
@@ -42,7 +45,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     user_id = decoded_data.get('user_id')
                     if user_id:
                         self.user = await database_sync_to_async(User.objects.get)(id=user_id)
-                except (Token.DoesNotExist, InvalidToken, TokenError, User.DoesNotExist):
+                except (InvalidToken, TokenError, ExpiredTokenError, User.DoesNotExist) as e:
+                    print(f"[ChatConsumer] Ошибка аутентификации: {type(e).__name__}: {e}")
+                    await self.close()
+                    return
+                except Exception as e:
+                    print(f"[ChatConsumer] Неожиданная ошибка при аутентификации: {type(e).__name__}: {e}")
                     await self.close()
                     return
 
@@ -131,6 +139,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 class UserConsumer(AsyncWebsocketConsumer):
     """Consumer для отправки уведомлений конкретному пользователю"""
     async def connect(self):
+        # Логирование для отладки
+        print(f"[UserConsumer] Scope path: {self.scope.get('path', 'N/A')}")
+        print(f"[UserConsumer] URL route: {self.scope.get('url_route', {})}")
+        
         self.user_id = self.scope['url_route']['kwargs']['user_id']
         self.user_group_name = f'user_{self.user_id}'
         self.user = self.scope.get('user', AnonymousUser())
@@ -153,7 +165,12 @@ class UserConsumer(AsyncWebsocketConsumer):
                     user_id = decoded_data.get('user_id')
                     if user_id:
                         self.user = await database_sync_to_async(User.objects.get)(id=user_id)
-                except (Token.DoesNotExist, InvalidToken, TokenError, User.DoesNotExist):
+                except (InvalidToken, TokenError, ExpiredTokenError, User.DoesNotExist) as e:
+                    print(f"[UserConsumer] Ошибка аутентификации: {type(e).__name__}: {e}")
+                    await self.close()
+                    return
+                except Exception as e:
+                    print(f"[UserConsumer] Неожиданная ошибка при аутентификации: {type(e).__name__}: {e}")
                     await self.close()
                     return
 

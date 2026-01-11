@@ -20,6 +20,9 @@ urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('upload/', FileUploadView.as_view(), name='file-upload'),
+    # SSE endpoints для real-time сообщений
+    path('sse/chat/<uuid:chat_id>/', sse_chat_stream_v2, name='sse-chat-stream'),
+    path('sse/user/<uuid:user_id>/', sse_user_stream_v2, name='sse-user-stream'),
     # Роутер ПОСЛЕ кастомных маршрутов
     path('', include(router.urls)),
 ]

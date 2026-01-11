@@ -1,8 +1,13 @@
 import uuid
+import json
+import time
 from django.db import models
+from django.http import StreamingHttpResponse
+from django.views.decorators.http import condition
+from django.views.decorators.cache import never_cache
 
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login
@@ -11,6 +16,11 @@ from .serializers import *
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+from rest_framework_simplejwt.tokens import UntypedToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from jwt import decode as jwt_decode
 
 
 # В views.py
@@ -404,26 +414,219 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)
+
+
+# Кастомная аутентификация для SSE (токен в query параметрах)
+def authenticate_sse_request(request):
+    """Аутентификация для SSE через токен в query параметрах"""
+    token = request.GET.get('token') or request.GET.get('access_token')
+    if not token:
+        return None
+    
+    try:
+        UntypedToken(token)
+        decoded_data = jwt_decode(token, options={"verify_signature": False})
+        user_id = decoded_data.get('user_id')
+        if user_id:
+            return User.objects.get(id=user_id)
+    except (InvalidToken, TokenError, User.DoesNotExist):
+        return None
+    return None
+
+# SSE Views для получения сообщений в реальном времени
+# Используем обычный Django view вместо @api_view, так как DRF не поддерживает text/event-stream
+@never_cache
+def sse_chat_stream_v2(request, chat_id):
+    """SSE endpoint для получения сообщений через Channels"""
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    
+    # Аутентификация через токен в query параметрах
+    user = authenticate_sse_request(request)
+    if not user:
+        response = StreamingHttpResponse(
+            f"data: {json.dumps({'type': 'error', 'message': 'Authentication required'})}\n\n",
+            content_type='text/event-stream'
+        )
+        response.status_code = 401
+        return response
+    
+    request.user = user
+    
+    def event_stream():
+        # Получаем пользователя
+        try:
+            profile = user.profile
+        except Profile.DoesNotExist:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Profile not found'})}\n\n"
+            return
         
+        # Проверяем доступ к чату
+        try:
+            chat = Chat.objects.get(id=chat_id)
+            if not ChatParticipant.objects.filter(chat=chat, user=profile).exists():
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Access denied'})}\n\n"
+                return
+        except Chat.DoesNotExist:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Chat not found'})}\n\n"
+            return
+        
+        # Отслеживаем последнее проверенное сообщение
+        last_message_id = None
+        try:
+            last_message = Message.objects.filter(chat=chat).order_by('-created_at').first()
+            if last_message:
+                last_message_id = last_message.id
+        except:
+            pass
+        
+        try:
+            last_ping = time.time()
+            while True:
+                # Проверяем новые сообщения в БД (polling fallback)
+                try:
+                    if last_message_id:
+                        new_messages = Message.objects.filter(
+                            chat=chat,
+                            id__gt=last_message_id
+                        ).order_by('created_at')[:10]
+                    else:
+                        new_messages = Message.objects.filter(chat=chat).order_by('-created_at')[:1]
+                    
+                    for msg in new_messages:
+                        if last_message_id is None or msg.id > last_message_id:
+                            message_data = MessageSerializer(msg, context={'request': request}).data
+                            yield f"data: {json.dumps({'type': 'new_message', 'message': message_data})}\n\n"
+                            last_message_id = msg.id
+                except Exception as e:
+                    print(f"Error checking messages: {e}")
+                
+                # Отправляем ping каждые 30 секунд
+                if time.time() - last_ping > 30:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                    last_ping = time.time()
+                
+                time.sleep(1)  # Проверяем каждую секунду
+                
+        except Exception as e:
+            print(f"SSE stream error: {e}")
+    
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'  # Отключаем буферизацию в nginx
+    response['Connection'] = 'keep-alive'
+    # Разрешаем CORS для SSE
+    response['Access-Control-Allow-Origin'] = '*'
+    response['Access-Control-Allow-Credentials'] = 'true'
+    return response
+
+
+# Используем обычный Django view вместо @api_view для SSE
+@never_cache
+def sse_user_stream_v2(request, user_id):
+    """SSE endpoint для получения уведомлений через Channels"""
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    
+    # Аутентификация через токен в query параметрах
+    user = authenticate_sse_request(request)
+    if not user:
+        response = StreamingHttpResponse(
+            f"data: {json.dumps({'type': 'error', 'message': 'Authentication required'})}\n\n",
+            content_type='text/event-stream'
+        )
+        response.status_code = 401
+        return response
+    
+    request.user = user
+    
+    def event_stream():
+        # Получаем пользователя
+        try:
+            profile = user.profile
+        except Profile.DoesNotExist:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Profile not found'})}\n\n"
+            return
+        
+        # Проверяем, что user_id совпадает
+        if str(profile.id) != str(user_id):
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Access denied'})}\n\n"
+            return
+        
+        # Получаем чаты пользователя для проверки новых сообщений
+        user_chats = Chat.objects.filter(participants=profile)
+        
+        # Отслеживаем последние проверенные сообщения
+        last_checked = {str(chat.id): None for chat in user_chats}
+        for chat in user_chats:
+            try:
+                last_msg = Message.objects.filter(chat=chat).order_by('-created_at').first()
+                if last_msg:
+                    last_checked[str(chat.id)] = last_msg.id
+            except:
+                pass
+        
+        try:
+            last_ping = time.time()
+            while True:
+                # Проверяем новые сообщения во всех чатах пользователя
+                for chat in user_chats:
+                    try:
+                        last_msg_id = last_checked.get(str(chat.id))
+                        if last_msg_id:
+                            # Используем exclude вместо __ne (не поддерживается для UUIDField)
+                            new_messages = Message.objects.filter(
+                                chat=chat,
+                                id__gt=last_msg_id
+                            ).exclude(sender=profile).order_by('created_at')[:10]  # Только сообщения от других
+                        else:
+                            continue
+                        
+                        for msg in new_messages:
+                            message_data = MessageSerializer(msg, context={'request': request}).data
+                            yield f"data: {json.dumps({'type': 'notification', 'data': {'type': 'new_message', 'chat_id': str(chat.id), 'message': message_data}})}\n\n"
+                            last_checked[str(chat.id)] = msg.id
+                    except Exception as e:
+                        print(f"Error checking chat {chat.id}: {e}")
+                
+                # Отправляем ping каждые 30 секунд
+                if time.time() - last_ping > 30:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                    last_ping = time.time()
+                
+                time.sleep(2)  # Проверяем каждые 2 секунды
+                
+        except Exception as e:
+            print(f"SSE stream error: {e}")
+    
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'  # Отключаем буферизацию в nginx
+    response['Connection'] = 'keep-alive'
+    # Разрешаем CORS для SSE
+    response['Access-Control-Allow-Origin'] = '*'
+    response['Access-Control-Allow-Credentials'] = 'true'
+    return response
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
     try:
-        email = request.data.get('email')
-        password = request.data.get('password')
         username = request.data.get('username')
+        password = request.data.get('password')
 
-        if not all([email, password, username]):
+        if not all([username, password]):
             return Response({'error': 'Все поля обязательны'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if User.objects.filter(username=email).exists():
-            return Response({'error': 'Пользователь с таким email уже существует'}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Пользователь с таким логином уже существует'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Создаем пользователя
-        user = User.objects.create_user(username=email, email=email, password=password)
+        # Создаем пользователя (без email)
+        user = User.objects.create_user(username=username, password=password)
         
         # Создаем профиль и связываем с пользователем
-        Profile.objects.create(user=user, username=username)  # исправлено: user=user
+        Profile.objects.create(user=user, username=username)
         
         return Response({
             'message': 'Пользователь создан',
@@ -436,13 +639,13 @@ def register_user(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
-    email = request.data.get('email')
+    username = request.data.get('username')
     password = request.data.get('password')
-    user = authenticate(username=email, password=password)
+    user = authenticate(username=username, password=password)
     if user:
         login(request, user)
         return Response({'message': 'Успешный вход'})
-    return Response({'error': 'Неверный email или пароль'}, status=400)
+    return Response({'error': 'Неверный логин или пароль'}, status=400)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

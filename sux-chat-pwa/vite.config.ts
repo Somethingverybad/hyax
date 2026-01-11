@@ -18,7 +18,7 @@ export default defineConfig({
         name: 'ХУЯКС Мессенджер',
         short_name: 'ХУЯКС',
         description: 'Современный мессенджер для общения с друзьями',
-        theme_color: '#6366f1',
+        theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'portrait',
@@ -45,8 +45,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3}'],
-        // Настройки для push-уведомлений (для будущего использования)
-        // Для системных уведомлений через Web Notifications API push не требуется
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/, /^\/_/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.beget\.tech\/api\/.*/i,
@@ -73,7 +73,9 @@ export default defineConfig({
               }
             }
           }
-        ]
+        ],
+        // Добавляем кастомный Service Worker код
+        importScripts: ['/sw-custom.js']
       },
       devOptions: {
         enabled: true,
