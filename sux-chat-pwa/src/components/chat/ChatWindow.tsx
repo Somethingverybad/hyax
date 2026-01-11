@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef } from "react";
+import { WebSocketService } from "@/services/websocket";
+import { WS_URL } from "@/api/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +38,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -72,23 +76,46 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     };
   }, []);
 
-  // Основной эффект для загрузки сообщений
+  // WebSocket соединение для получения новых сообщений
   useEffect(() => {
     if (!chatId) {
       setMessages([]);
       return;
     }
 
-    // Сразу загружаем сообщения при смене чата
+    // Сначала загружаем существующие сообщения
     fetchMessages();
 
-    // Устанавливаем интервал для автообновления
-    const intervalId = setInterval(() => {
-      fetchMessages();
-    }, 3000);
+    // Подключаемся к WebSocket для получения новых сообщений в реальном времени
+    const token = localStorage.getItem("access_token");
+    const wsService = new WebSocketService(`${WS_URL}/chat/${chatId}/`, {
+      onMessage: (data) => {
+        if (data.type === 'new_message' && data.message) {
+          // Добавляем новое сообщение в список
+          setMessages(prev => {
+            // Проверяем, нет ли уже такого сообщения
+            if (prev.some(msg => msg.id === data.message.id)) {
+              return prev;
+            }
+            return [...prev, data.message];
+          });
+        }
+      },
+      onError: (error) => {
+        console.error('WebSocket error:', error);
+      },
+      onOpen: () => {
+        console.log('WebSocket connected for chat:', chatId);
+      },
+      onClose: () => {
+        console.log('WebSocket disconnected for chat:', chatId);
+      },
+    });
+
+    wsService.connect(token || undefined);
 
     return () => {
-      clearInterval(intervalId);
+      wsService.disconnect();
     };
   }, [chatId]);
 
@@ -235,8 +262,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
         scrollToBottom();
       }, 50);
 
-      // Обновляем сообщения через небольшой интервал
-      setTimeout(() => fetchMessages(), 500);
+      // WebSocket автоматически обновит сообщения, поэтому не нужно вызывать fetchMessages()
     } catch (error: any) {
       console.error("Error sending message:", error);
       toast.error("Ошибка отправки: " + (error.message || "Неизвестная ошибка"));
@@ -270,6 +296,19 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
     const checkString = fileName || fileUrl || '';
     return imageExtensions.some(ext => checkString.toLowerCase().endsWith(ext));
+  };
+
+  // Функция для нормализации URL изображения (обработка localhost и относительных путей)
+  const normalizeImageUrl = (url: string | null): string => {
+    if (!url) return '';
+    // Если это относительный путь, оставляем как есть
+    if (url.startsWith('/')) return url;
+    // Если это localhost, заменяем на относительный путь
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      const relativePath = url.replace(/^https?:\/\/[^/]+/, '');
+      return relativePath;
+    }
+    return url;
   };
 
   // Функция для сохранения файла локально (для PWA)
@@ -337,7 +376,43 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
+    <>
+      {/* Модальное окно для просмотра изображений */}
+      <Dialog open={!!selectedImageUrl} onOpenChange={(open) => !open && setSelectedImageUrl(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-background/95 backdrop-blur-sm">
+          {selectedImageUrl && (
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img
+                src={selectedImageUrl}
+                alt="Просмотр изображения"
+                className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 bg-background/80 hover:bg-background"
+                onClick={() => setSelectedImageUrl(null)}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute bottom-2 right-2 bg-background/80 hover:bg-background"
+                onClick={() => {
+                  if (selectedImageUrl) {
+                    handleSaveFile(selectedImageUrl, 'image');
+                  }
+                }}
+              >
+                <Download className="w-5 h-5" />
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <div className="flex-1 flex flex-col bg-background">
       <ScrollArea className="flex-1 px-4 py-6" ref={scrollRef as any}>
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message, index) => {
@@ -421,14 +496,14 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                             // Отображение изображения
                             <div className="relative group">
                               <img 
-                                src={message.file_url} 
+                                src={normalizeImageUrl(message.file_url)} 
                                 alt={message.file_name || "Изображение"}
                                 className={cn(
                                   "rounded-lg max-w-full h-auto cursor-pointer",
-                                  "border-2",
+                                  "border-2 transition-transform hover:scale-[1.02]",
                                   isOwn ? "border-primary/30" : "border-border"
                                 )}
-                                onClick={() => window.open(message.file_url || '', '_blank')}
+                                onClick={() => setSelectedImageUrl(normalizeImageUrl(message.file_url))}
                                 onError={() => {
                                   // Если изображение не загрузилось, добавляем в список ошибок
                                   setImageLoadErrors(prev => new Set(prev).add(message.id));
@@ -437,10 +512,11 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSaveFile(message.file_url!, message.file_name || 'image');
+                                  const normalizedUrl = normalizeImageUrl(message.file_url);
+                                  handleSaveFile(normalizedUrl, message.file_name || 'image');
                                 }}
                                 className={cn(
-                                  "absolute top-2 right-2 p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity",
+                                  "absolute top-2 right-2 p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10",
                                   isOwn 
                                     ? "bg-primary/80 text-primary-foreground hover:bg-primary"
                                     : "bg-background/80 text-foreground hover:bg-background"
@@ -460,7 +536,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                             )}>
                               <Paperclip className="w-4 h-4 flex-shrink-0" />
                               <a
-                                href={message.file_url}
+                                href={normalizeImageUrl(message.file_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex-1 text-sm truncate hover:underline"
@@ -470,7 +546,8 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  handleSaveFile(message.file_url!, message.file_name || 'file');
+                                  const normalizedUrl = normalizeImageUrl(message.file_url);
+                                  handleSaveFile(normalizedUrl, message.file_name || 'file');
                                 }}
                                 className="p-1 rounded hover:bg-background/50 transition-colors"
                                 title="Сохранить файл"
@@ -588,7 +665,8 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

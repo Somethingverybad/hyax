@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
-import { api } from "@/api/client";
+import { api, WS_URL } from "@/api/client";
+import { useNotifications } from "@/hooks/use-notifications";
+import { WebSocketService } from "@/services/websocket";
 
 interface ChatType {
   id: string;
@@ -25,6 +27,9 @@ const Chat = () => {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const navigate = useNavigate();
+  const { requestPermission, showNotification, hasPermission, isSupported, permission } = useNotifications();
+  const previousChatsRef = useRef<ChatType[]>([]);
+  const lastNotificationTimeRef = useRef<number>(0);
 
   // Проверка аутентификации и получение профиля
   useEffect(() => {
@@ -32,8 +37,29 @@ const Chat = () => {
       try {
         const profile = await api.getProfile();
         setUser(profile);
+        
+        // Загружаем чаты один раз при инициализации
         const userChats = await api.getChats();
-        setChats(userChats);
+        
+        // Получаем количество непрочитанных для каждого чата
+        let unreadByChat: Record<string, number> = {};
+        try {
+          const unreadData = await api.getUnreadCount();
+          unreadByChat = unreadData.unread_by_chat || {};
+        } catch (error) {
+          console.error('Error getting unread count:', error);
+        }
+
+        // Добавляем unread_count к чатам
+        const chatsWithUnread = userChats.map((chat) => ({
+          ...chat,
+          unread_count: unreadByChat[chat.id] || 0,
+        }));
+        
+        setChats(chatsWithUnread);
+        previousChatsRef.current = chatsWithUnread;
+        
+        // Не запрашиваем разрешение автоматически - пользователь может запросить его через кнопку в сайдбаре
       } catch (error) {
         navigate("/auth");
       }
@@ -42,29 +68,87 @@ const Chat = () => {
     initializeApp();
   }, [navigate]);
 
-  // Автообновление списка чатов
+  // WebSocket соединение для получения уведомлений о новых сообщениях
   useEffect(() => {
     if (!user) return;
 
-    // Сразу загружаем чаты при загрузке компонента
-    refreshChats();
+    // Подключаемся к WebSocket для получения уведомлений
+    const token = localStorage.getItem("access_token");
+    let wsService: WebSocketService | null = null;
+    
+    try {
+      wsService = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
+        onMessage: (data) => {
+          if (data.type === 'notification' && data.data) {
+            // Показываем уведомление если нужно
+            if (data.data.type === 'new_message' && hasPermission()) {
+              const chatId = data.data.chat_id;
+              setChats(currentChats => {
+                const chat = currentChats.find(c => c.id === chatId);
+                if (chat && chatId !== selectedChatId) {
+                  showNotification({
+                    title: 'Новое сообщение',
+                    body: `Новое сообщение в чате`,
+                    data: { chatId },
+                    tag: `chat-${chatId}`,
+                  });
+                }
+                // Обновляем unread_count для чата без полного refreshChats
+                return currentChats.map(c => 
+                  c.id === chatId 
+                    ? { ...c, unread_count: (c.unread_count || 0) + 1 }
+                    : c
+                );
+              });
+            }
+          }
+        },
+        onError: (error) => {
+          console.error('WebSocket error:', error);
+        },
+        onOpen: () => {
+          console.log('WebSocket connected for user notifications');
+        },
+        onClose: () => {
+          console.log('WebSocket disconnected for user notifications');
+        },
+      });
 
-    // Устанавливаем интервал для автообновления чатов
+      wsService.connect(token || undefined);
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+    }
+
+    // Периодическое обновление как подстраховка (только если WebSocket не подключен)
     const intervalId = setInterval(() => {
-      refreshChats();
-    }, 5000); // Обновляем каждые 5 секунд
+      // Проверяем, подключен ли WebSocket
+      if (!wsService || !wsService.isConnected()) {
+        console.log('WebSocket not connected, using polling fallback');
+        refreshChats();
+      }
+    }, 300000); // Обновляем каждые 5 минут как подстраховка, только если WebSocket не работает
 
     return () => {
+      if (wsService) {
+        wsService.disconnect();
+      }
       clearInterval(intervalId);
     };
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, selectedChatId]); // Убираем refreshChats и другие функции из зависимостей
 
   // Обработчик состояния приложения (visibility change для PWA)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // При возвращении видимости обновляем данные
-        refreshChats();
+        // При возвращении видимости обновляем данные (но не слишком часто)
+        const now = Date.now();
+        const lastRefresh = (window as any).__lastChatsRefresh || 0;
+        // Обновляем только если прошло больше 60 секунд с последнего обновления
+        if (now - lastRefresh > 60000) {
+          refreshChats();
+          (window as any).__lastChatsRefresh = now;
+        }
       }
     };
 
@@ -73,26 +157,93 @@ const Chat = () => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Убираем refreshChats из зависимостей
 
-  // Функция обновления списка чатов
-  const refreshChats = async () => {
+  // Функция обновления списка чатов (мемоизирована)
+  const refreshChats = useCallback(async () => {
     if (!user) return;
+    
+    // Защита от слишком частых вызовов
+    const now = Date.now();
+    const lastRefresh = (refreshChats as any).__lastRefresh || 0;
+    if (now - lastRefresh < 5000) { // Минимум 5 секунд между вызовами
+      console.log('Skipping refreshChats - too soon since last refresh');
+      return;
+    }
+    (refreshChats as any).__lastRefresh = now;
     
     try {
       const userChats = await api.getChats();
+      const previousChats = previousChatsRef.current;
+      
+      // Получаем количество непрочитанных для каждого чата
+      let unreadByChat: Record<string, number> = {};
+      try {
+        const unreadData = await api.getUnreadCount();
+        unreadByChat = unreadData.unread_by_chat || {};
+      } catch (error) {
+        console.error('Error getting unread count:', error);
+      }
+
+      // Добавляем unread_count к чатам
+      const chatsWithUnread = userChats.map((chat) => ({
+        ...chat,
+        unread_count: unreadByChat[chat.id] || 0,
+      }));
+
+      // Проверяем наличие новых сообщений для уведомлений
+      if (previousChats.length > 0 && isSupported() && hasPermission()) {
+        chatsWithUnread.forEach(async (chat) => {
+          const previousChat = previousChats.find((c) => c.id === chat.id);
+          const previousUnread = previousChat?.unread_count || 0;
+          const currentUnread = chat.unread_count || 0;
+          
+          // Если количество непрочитанных увеличилось
+          if (currentUnread > previousUnread) {
+            // Показываем уведомление только если чат не выбран или приложение не в фокусе
+            const isAppInFocus = document.visibilityState === 'visible';
+            const isCurrentChat = selectedChatId === chat.id;
+            
+            if (!isAppInFocus || !isCurrentChat) {
+              // Получаем название чата (будет улучшено позже)
+              const chatTitle = `Чат ${chat.id.slice(0, 8)}...`;
+              const newMessagesCount = currentUnread - previousUnread;
+              
+              // Показываем уведомление только если прошло достаточно времени (избегаем спама)
+              const notificationNow = Date.now();
+              if (notificationNow - lastNotificationTimeRef.current > 3000) { // Минимум 3 секунды между уведомлениями
+                await showNotification({
+                  title: `Новое сообщение${newMessagesCount > 1 ? ` (${newMessagesCount})` : ''}`,
+                  body: chatTitle,
+                  data: {
+                    chatId: chat.id,
+                    url: `/chat`,
+                  },
+                  tag: `chat-${chat.id}`,
+                  requireInteraction: false,
+                });
+                lastNotificationTimeRef.current = notificationNow;
+              }
+            }
+          }
+        });
+      }
+
+      previousChatsRef.current = chatsWithUnread;
       
       // Обновляем состояние только если данные изменились
-      if (JSON.stringify(userChats) !== JSON.stringify(chats)) {
-        setChats(userChats);
-        
-        // Логируем обновление для отладки
-        console.log('Chats updated:', userChats.length, 'chats');
-      }
+      setChats(prevChats => {
+        if (JSON.stringify(chatsWithUnread) !== JSON.stringify(prevChats)) {
+          console.log('Chats updated:', chatsWithUnread.length, 'chats');
+          return chatsWithUnread;
+        }
+        return prevChats;
+      });
     } catch (error) {
       console.error('Error refreshing chats:', error);
     }
-  };
+  }, [user, selectedChatId, hasPermission, isSupported, showNotification]);
 
   const handleLogout = async () => {
     try {
@@ -124,10 +275,63 @@ const Chat = () => {
     }
   };
 
+  // Проверяем статус разрешения на уведомления
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      
+      // Слушаем изменения разрешения (если пользователь изменил в настройках браузера)
+      const checkPermission = () => {
+        setNotificationPermission(Notification.permission);
+      };
+      
+      // Проверяем периодически (раз в 5 секунд) для отслеживания изменений
+      const intervalId = setInterval(checkPermission, 5000);
+      
+      return () => clearInterval(intervalId);
+    }
+  }, []);
+
   if (!user) return null;
 
   return (
     <div className="h-screen flex bg-background">
+      {/* Баннер для запроса разрешения на уведомления (только если разрешение не получено) */}
+      {isSupported() && notificationPermission !== 'granted' && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-primary text-primary-foreground p-3 shadow-lg">
+          <div className="container mx-auto flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <p className="text-sm font-medium">
+                {notificationPermission === 'default' 
+                  ? 'Включите уведомления, чтобы не пропустить новые сообщения'
+                  : 'Уведомления заблокированы. Разрешите их в настройках браузера'}
+              </p>
+            </div>
+            {notificationPermission === 'default' && (
+              <button
+                onClick={async () => {
+                  const granted = await requestPermission();
+                  if (granted) {
+                    setNotificationPermission('granted');
+                  }
+                }}
+                className="px-4 py-2 bg-background text-foreground rounded-md text-sm font-medium hover:bg-background/80 transition-colors"
+              >
+                Включить
+              </button>
+            )}
+            <button
+              onClick={() => setNotificationPermission(Notification.permission)}
+              className="text-sm opacity-80 hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+      
       <ChatSidebar
         userId={user.id}
         chats={chats}
@@ -138,6 +342,15 @@ const Chat = () => {
         onToggleCollapse={toggleSidebar}
         onChatDeleted={handleChatDeleted}
         onChatCreated={handleChatCreated}
+        onRequestNotificationPermission={async () => {
+          const granted = await requestPermission();
+          if (granted) {
+            setNotificationPermission('granted');
+          } else {
+            setNotificationPermission(Notification.permission);
+          }
+        }}
+        notificationPermission={notificationPermission}
       />
       
       {/* Показываем ChatWindow только когда сайдбар свернут И выбран чат */}

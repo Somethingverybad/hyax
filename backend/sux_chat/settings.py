@@ -6,7 +6,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # === Безопасность ===
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key")
 DEBUG = os.getenv("DEBUG", "False") == "True"
-ALLOWED_HOSTS = ["sux.cardiokit.beget.tech", "localhost", "127.0.0.1", "95.214.63.151"]
+# Для локальной разработки можно использовать ["*"]
+# Для продакшена укажите конкретные домены/IP
+ALLOWED_HOSTS = [
+    "sux.cardiokit.beget.tech", 
+    "localhost", 
+    "127.0.0.1", 
+    "95.214.63.151",
+    "192.168.0.5",  # Ваш локальный IP-адрес
+    # Или для разработки: ALLOWED_HOSTS = ["*"]
+]
 
 # === Приложения ===
 INSTALLED_APPS = [
@@ -19,6 +28,7 @@ INSTALLED_APPS = [
     # External
     "rest_framework",
     "corsheaders",
+    "channels",
     "chat",
 ]
 
@@ -53,6 +63,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "sux_chat.wsgi.application"
+ASGI_APPLICATION = "sux_chat.asgi.application"
+
+# Channels configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
 
 # === База данных (PostgreSQL в Docker) ===
 DATABASES = {
@@ -95,14 +113,24 @@ SECURE_SSL_REDIRECT = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # === CORS настройки ===
+# Для локальной разработки можно использовать CORS_ALLOW_ALL_ORIGINS = True
+# Для продакшена используйте конкретные домены/IP в CORS_ALLOWED_ORIGINS
+
 CORS_ALLOWED_ORIGINS = [
     "https://sux.cardiokit.beget.tech",
     "http://sux.cardiokit.beget.tech",
-    "http://localhost:5143",
-    "http://95.214.63.151:8080",  # добавьте IP с портом
+    "http://localhost:5143",  # Electron версия
+    "http://localhost:5173",  # PWA версия (dev)
+    "http://localhost:5174",  # PWA версия (preview)
+    "http://95.214.63.151:8080",
+    # Добавьте IP вашего компьютера для доступа из локальной сети:
+    # "http://192.168.0.5",  # Замените на ваш IP
+    # "http://192.168.0.5:80",
 ]
 
-CORS_ALLOW_ALL_ORIGINS = False # для продакшена лучше False
+# ВРЕМЕННО для локальной разработки - разрешить все источники
+# ⚠️ ВНИМАНИЕ: Закомментируйте это в продакшене!
+CORS_ALLOW_ALL_ORIGINS = True  # True для локальной разработки, False для продакшена
 CORS_ALLOW_CREDENTIALS = True
 
 # Разрешенные методы
@@ -131,6 +159,9 @@ CORS_ALLOW_HEADERS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://sux.cardiokit.beget.tech",
     "http://sux.cardiokit.beget.tech",
+    "http://localhost:5143",
+    "http://localhost:5173",
+    "http://localhost:5174",
     "http://95.214.63.151:8080",
 ]
 

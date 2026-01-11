@@ -40,6 +40,17 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by']
         read_only_fields = ['sender', 'created_at', 'file_size']
     
+    def to_representation(self, instance):
+        """Переопределяем для правильной сериализации UUID в строки"""
+        data = super().to_representation(instance)
+        # Преобразуем UUID в строки для JSON сериализации
+        # DRF обычно делает это автоматически, но на всякий случай явно преобразуем
+        if 'chat' in data and data['chat']:
+            data['chat'] = str(data['chat'])
+        if 'id' in data and data['id']:
+            data['id'] = str(data['id'])
+        return data
+    
     def get_is_read(self, obj):
         """Проверяет, прочитано ли сообщение текущим пользователем"""
         request = self.context.get('request')

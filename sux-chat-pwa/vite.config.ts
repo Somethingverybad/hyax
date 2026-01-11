@@ -45,6 +45,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3}'],
+        // Настройки для push-уведомлений (для будущего использования)
+        // Для системных уведомлений через Web Notifications API push не требуется
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.beget\.tech\/api\/.*/i,

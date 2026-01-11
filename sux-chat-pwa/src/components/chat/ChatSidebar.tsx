@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -9,7 +9,9 @@ import {
   LogOut, 
   X,
   ChevronLeft,
-  Menu
+  Menu,
+  Bell,
+  BellOff
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -37,6 +39,8 @@ interface ChatSidebarProps {
   onToggleCollapse: () => void;
   onChatDeleted: (chatId: string) => void;
   onChatCreated: () => void;
+  onRequestNotificationPermission?: () => Promise<boolean>;
+  notificationPermission?: NotificationPermission;
 }
 
 const ChatSidebar = ({ 
@@ -48,7 +52,9 @@ const ChatSidebar = ({
   isCollapsed, 
   onToggleCollapse,
   onChatDeleted,
-  onChatCreated
+  onChatCreated,
+  onRequestNotificationPermission,
+  notificationPermission = 'default'
 }: ChatSidebarProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
@@ -56,12 +62,35 @@ const ChatSidebar = ({
   const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>({});
   const [loadingParticipants, setLoadingParticipants] = useState<{[chatId: string]: boolean}>({});
   const [deletingChats, setDeletingChats] = useState<{[chatId: string]: boolean}>({});
+  const [requestingPermission, setRequestingPermission] = useState(false);
 
+  // Загружаем профиль пользователя один раз при монтировании
   useEffect(() => {
     console.log("ChatSidebar mounted, userId:", userId);
     fetchCurrentUser();
-    loadChatParticipants(chats);
-  }, [userId, chats]);
+  }, [userId]);
+
+  // Загружаем участников чатов только при изменении списка чатов (по ID, не по всему объекту)
+  const chatsIdsRef = useRef<string>('');
+  const loadingParticipantsRef = useRef(false);
+  
+  useEffect(() => {
+    const currentChatsIds = chats.map(c => c.id).sort().join(',');
+    // Загружаем только если список чатов реально изменился и не загружается уже
+    if (currentChatsIds !== chatsIdsRef.current && !loadingParticipantsRef.current) {
+      chatsIdsRef.current = currentChatsIds;
+      if (chats.length > 0) {
+        // Загружаем только тех участников, которых еще нет
+        const chatsToLoad = chats.filter(chat => !chatParticipants[chat.id]);
+        if (chatsToLoad.length > 0) {
+          loadingParticipantsRef.current = true;
+          loadChatParticipants(chatsToLoad).finally(() => {
+            loadingParticipantsRef.current = false;
+          });
+        }
+      }
+    }
+  }, [chats, chatParticipants]);
 
   const fetchCurrentUser = async () => {
     try {
@@ -82,6 +111,10 @@ const ChatSidebar = ({
 
   // Загружаем участников для всех чатов
   const loadChatParticipants = async (chatsArray: Chat[]) => {
+    if (chatsArray.length === 0) {
+      return;
+    }
+    
     const participantsMap: {[chatId: string]: Profile[]} = {};
     const loadingMap: {[chatId: string]: boolean} = {};
     
@@ -103,7 +136,8 @@ const ChatSidebar = ({
       }
     }
     
-    setChatParticipants(participantsMap);
+    // Обновляем только новые участники, сохраняя старые
+    setChatParticipants(prev => ({ ...prev, ...participantsMap }));
     setLoadingParticipants({});
   };
 
@@ -212,6 +246,33 @@ const ChatSidebar = ({
                 <ChevronLeft className="w-4 h-4" />
               )}
             </Button>
+            
+            {/* Кнопка уведомлений (скрываем в свернутом состоянии, показываем только если разрешение не получено) */}
+            {!isCollapsed && onRequestNotificationPermission && notificationPermission !== 'granted' && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={async () => {
+                  setRequestingPermission(true);
+                  try {
+                    await onRequestNotificationPermission();
+                  } catch (error) {
+                    console.error('Ошибка при запросе разрешения на уведомления:', error);
+                  } finally {
+                    setRequestingPermission(false);
+                  }
+                }}
+                disabled={requestingPermission}
+                title={notificationPermission === 'denied' ? 'Уведомления запрещены' : 'Включить уведомления'}
+                className="h-8 w-8"
+              >
+                {notificationPermission === 'denied' ? (
+                  <BellOff className="w-4 h-4" />
+                ) : (
+                  <Bell className="w-4 h-4" />
+                )}
+              </Button>
+            )}
             
             {/* Кнопка выхода (скрываем в свернутом состоянии) */}
             {!isCollapsed && (
@@ -424,9 +485,36 @@ const ChatSidebar = ({
         </div>
       </ScrollArea>
 
-      {/* Кнопка выхода в свернутом состоянии (внизу) */}
+      {/* Кнопки в свернутом состоянии (внизу) */}
       {isCollapsed && (
-        <div className="p-2 border-t border-border">
+        <div className="p-2 border-t border-border space-y-2">
+          {/* Кнопка уведомлений - показываем только если разрешение не получено */}
+          {onRequestNotificationPermission && notificationPermission !== 'granted' && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={async () => {
+                setRequestingPermission(true);
+                try {
+                  await onRequestNotificationPermission();
+                } catch (error) {
+                  console.error('Ошибка при запросе разрешения на уведомления:', error);
+                } finally {
+                  setRequestingPermission(false);
+                }
+              }}
+              disabled={requestingPermission}
+              className="w-full h-10"
+              title={notificationPermission === 'denied' ? 'Уведомления запрещены' : 'Включить уведомления'}
+            >
+              {notificationPermission === 'denied' ? (
+                <BellOff className="w-4 h-4" />
+              ) : (
+                <Bell className="w-4 h-4" />
+              )}
+            </Button>
+          )}
+          {/* Кнопка выхода */}
           <Button 
             variant="ghost" 
             size="icon" 

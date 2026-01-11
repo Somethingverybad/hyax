@@ -369,6 +369,39 @@ class MessageViewSet(viewsets.ModelViewSet):
             file_size=file_size
         )
         
+        # Отправляем сообщение через WebSocket
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            # Сериализуем сообщение для отправки
+            message_data = MessageSerializer(message, context={'request': request}).data
+            
+            # Отправляем в группу чата
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{message.chat.id}',
+                {
+                    'type': 'chat_message',
+                    'message': message_data
+                }
+            )
+            
+            # Отправляем уведомления всем участникам чата (кроме отправителя)
+            chat_participants = ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile)
+            for participant in chat_participants:
+                async_to_sync(channel_layer.group_send)(
+                    f'user_{participant.user.id}',
+                    {
+                        'type': 'notification',
+                        'data': {
+                            'type': 'new_message',
+                            'chat_id': str(message.chat.id),
+                            'message': message_data
+                        }
+                    }
+                )
+        
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)
         
@@ -486,7 +519,9 @@ class FileUploadView(APIView):
             for chunk in file.chunks():
                 destination.write(chunk)
         
-        file_url = request.build_absolute_uri(f'/media/{file_path}')
+        # Используем относительный путь вместо абсолютного URL
+        # Это работает правильно через nginx прокси
+        file_url = f'/media/{file_path}'
         
         return Response({
             "file_url": file_url,

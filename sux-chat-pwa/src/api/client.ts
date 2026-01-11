@@ -1,4 +1,16 @@
-const API_URL = import.meta.env.VITE_API_URL || "https://sux.cardiokit.beget.tech/api";
+// API URL: использует переменную окружения или значение по умолчанию
+// В продакшене (Docker) используем относительный путь, так как PWA и API на одном домене
+// Для локальной разработки: http://localhost:8000/api
+const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.DEV 
+    ? "http://localhost:8000/api" 
+    : "/api");  // Относительный путь для работы через nginx
+
+// WebSocket URL
+export const WS_URL = import.meta.env.VITE_WS_URL || 
+  (import.meta.env.DEV 
+    ? "ws://localhost:8000/ws" 
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
 
 interface AuthResponse {
   message: string;
