@@ -1,5 +1,9 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
+const { URL } = require('url');
 const isDev = !app.isPackaged;
 
 let mainWindow;
@@ -115,6 +119,60 @@ ipcMain.on('start-drag', () => {
   if (mainWindow) {
     mainWindow.moveTop();
     mainWindow.setIgnoreMouseEvents(false);
+  }
+});
+
+// Обработчик сохранения файла
+ipcMain.handle('save-file', async (event, fileUrl, fileName) => {
+  try {
+    // Показываем диалог сохранения файла
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: fileName,
+      title: 'Сохранить файл',
+      buttonLabel: 'Сохранить',
+    });
+
+    if (result.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    const savePath = result.filePath;
+    if (!savePath) {
+      return { success: false, error: 'Путь не выбран' };
+    }
+
+    // Загружаем файл
+    return new Promise((resolve, reject) => {
+      const url = new URL(fileUrl);
+      const protocol = url.protocol === 'https:' ? https : http;
+
+      const file = fs.createWriteStream(savePath);
+      
+      protocol.get(fileUrl, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          // Редирект
+          protocol.get(response.headers.location, (redirectResponse) => {
+            redirectResponse.pipe(file);
+          });
+        } else {
+          response.pipe(file);
+        }
+
+        file.on('finish', () => {
+          file.close();
+          resolve({ success: true, path: savePath });
+        });
+
+        file.on('error', (err) => {
+          fs.unlink(savePath, () => {}); // Удаляем частично загруженный файл
+          reject({ success: false, error: err.message });
+        });
+      }).on('error', (err) => {
+        reject({ success: false, error: err.message });
+      });
+    });
+  } catch (error) {
+    return { success: false, error: error.message };
   }
 });
 

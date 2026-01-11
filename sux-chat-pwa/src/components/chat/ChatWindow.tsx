@@ -272,32 +272,31 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     return imageExtensions.some(ext => checkString.toLowerCase().endsWith(ext));
   };
 
-  // Функция для сохранения файла локально (для Electron)
+  // Функция для сохранения файла локально (для PWA)
   const handleSaveFile = async (fileUrl: string, fileName: string) => {
-    // Проверяем, запущено ли приложение в Electron
-    if (typeof window !== 'undefined' && window.electronAPI?.saveFile) {
-      try {
-        const result = await window.electronAPI.saveFile(fileUrl, fileName);
-        if (result.success) {
-          toast.success('Файл сохранен');
-        } else if (result.canceled) {
-          // Пользователь отменил сохранение - ничего не делаем
-        } else {
-          toast.error('Ошибка сохранения файла: ' + (result.error || 'Неизвестная ошибка'));
-        }
-      } catch (error) {
-        console.error('Error saving file:', error);
-        toast.error('Ошибка сохранения файла');
-      }
-    } else {
-      // Fallback: открываем файл в новой вкладке для сохранения вручную
+    try {
+      // Используем стандартный способ скачивания файлов
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
       const link = document.createElement('a');
-      link.href = fileUrl;
+      link.href = url;
       link.download = fileName;
-      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      
+      // Освобождаем память
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Файл сохранен');
+    } catch (error) {
+      console.error('Error saving file:', error);
+      toast.error('Ошибка сохранения файла');
+      
+      // Fallback: открываем файл в новой вкладке
+      window.open(fileUrl, '_blank');
     }
   };
 

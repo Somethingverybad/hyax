@@ -444,6 +444,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.conf import settings
 import os
 import uuid
 from .models import Profile, Friendship, Chat, ChatParticipant, Message, MessageReadStatus
@@ -474,8 +475,17 @@ class FileUploadView(APIView):
         file_extension = os.path.splitext(file.name)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         
+        # Создаем директорию messages если её нет
+        messages_dir = os.path.join(settings.MEDIA_ROOT, 'messages')
+        os.makedirs(messages_dir, exist_ok=True)
+        
         # Сохраняем файл
-        file_path = default_storage.save(f'messages/{unique_filename}', ContentFile(file.read()))
+        file_path = os.path.join('messages', unique_filename)
+        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        with open(full_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+        
         file_url = request.build_absolute_uri(f'/media/{file_path}')
         
         return Response({

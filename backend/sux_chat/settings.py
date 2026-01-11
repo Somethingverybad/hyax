@@ -84,6 +84,10 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "static"
 
+# === Медиа файлы ===
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 # === Безопасность и HTTPS ===
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
