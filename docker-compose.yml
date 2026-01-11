@@ -1,0 +1,76 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: sux_chat_nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/certs:/etc/letsencrypt
+      - ./nginx/dhparam.pem:/etc/ssl/certs/dhparam.pem
+      - ./backend/static:/app/static:ro
+    networks:
+      - sux_chat_network
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: sux_chat_certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/certs:/etc/letsencrypt
+    entrypoint: ["certbot"]
+    command:
+      [
+        "certonly",
+        "--webroot",
+        "--webroot-path=/var/www/certbot",
+        "--email", "Ancher001@yandex.ru",
+        "--agree-tos",
+        "--no-eff-email",
+        "-d", "sux.cardiokit.beget.tech"
+      ]
+    networks:
+      - sux_chat_network
+
+  api:
+    build: ./backend
+    container_name: sux_chat_api
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn sux_chat.wsgi:application --bind 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app
+      - ./certbot/certs:/etc/letsencrypt:ro
+    env_file:
+      - .env
+    expose:
+      - "8000"
+    depends_on:
+      - db
+    networks:
+      - sux_chat_network
+
+  db:
+    image: postgres:15
+    container_name: sux_chat_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sux_chat_network
+
+networks:
+  sux_chat_network:
+    external: true  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+    name: sux_chat_network  # ← И ЭТУ (опционально, для ясности)
+
+volumes:
+  postgres_data:

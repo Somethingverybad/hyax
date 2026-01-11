@@ -1,0 +1,6 @@
+Django>=5.0
+gunicorn
+psycopg2-binary
+djangorestframework
+django-cors-headers
+djangorestframework-simplejwt

@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 263 90% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 263 90% 65%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 25%;
+    --input: 217 33% 25%;
+    --ring: 263 90% 65%;
+
+    --radius: 0.75rem;
+
+    --gradient-primary: linear-gradient(135deg, hsl(263 90% 65%), hsl(220 90% 65%));
+    --gradient-card: linear-gradient(145deg, hsl(217 33% 19%), hsl(217 33% 15%));
+    
+    --shadow-glow: 0 0 40px hsl(263 90% 65% / 0.3);
+    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-transparent text-foreground; /* Изменено на прозрачный фон */
+  }
+}
+
+/* Закругленные углы для всего приложения */
+html, body, #root {
+  border-radius: 0px; /* Уменьшил радиус для более аккуратного вида */
+  overflow: hidden;
+  background: transparent; /* Прозрачный фон */
+  margin: 0;
+  padding: 0;
+}
+
+/* Основной контейнер приложения */
+.app-container {
+  border-radius: 0px;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  background: hsl(var(--background)); /* Фон только у контейнера */
+}
+
+/* Стили для перетаскивания окна */
+.drag-region {
+  -webkit-app-region: drag;
+  cursor: move;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Унифицированный кастомный скроллбар */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.4) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.4);
+    border-radius: 3px;
+    transition: all 0.2s ease;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.8);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Дополнительные утилиты */
+@layer utilities {
+  .bg-transparent {
+    background: transparent;
+  }
+  
+  .bg-glass {
+    background: hsl(var(--background) / 0.8);
+    backdrop-filter: blur(10px);
+  }
+}
