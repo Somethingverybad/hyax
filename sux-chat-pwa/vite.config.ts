@@ -45,6 +45,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3}'],
+        // Подключаем кастомный Service Worker скрипт
+        // Файл должен быть в public/sw-custom.js и будет скопирован в dist
+        importScripts: ['/sw-custom.js'],
         // Настройки для push-уведомлений (для будущего использования)
         // Для системных уведомлений через Web Notifications API push не требуется
         runtimeCaching: [

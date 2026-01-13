@@ -61,26 +61,33 @@ export const useNotifications = () => {
    * Показывает уведомление
    */
   const showNotification = async (options: NotificationOptions): Promise<void> => {
+    console.log('[useNotifications] showNotification вызван:', { title: options.title, body: options.body });
+    
     if (!('Notification' in window)) {
-      console.warn('Браузер не поддерживает уведомления');
+      console.warn('[useNotifications] Браузер не поддерживает уведомления');
       return;
     }
 
     // Если разрешения нет, пытаемся запросить
     if (Notification.permission !== 'granted') {
+      console.log('[useNotifications] Разрешение не получено, запрашиваем...');
       const granted = await requestPermission();
       if (!granted) {
-        console.warn('Не удалось получить разрешение на уведомления');
+        console.warn('[useNotifications] Не удалось получить разрешение на уведомления');
         return;
       }
     }
+
+    console.log('[useNotifications] Разрешение получено, показываем уведомление');
 
     try {
       // Используем Service Worker для уведомлений, если доступен
       if ('serviceWorker' in navigator) {
         try {
           const registration = await navigator.serviceWorker.ready;
+          console.log('[useNotifications] Service Worker готов:', registration);
           if (registration && 'showNotification' in registration) {
+            console.log('[useNotifications] Показываем через Service Worker');
             await registration.showNotification(options.title, {
               body: options.body,
               icon: options.icon || '/favicon.ico',
@@ -90,21 +97,25 @@ export const useNotifications = () => {
               requireInteraction: options.requireInteraction || false,
               vibrate: [200, 100, 200], // Вибрация на мобильных устройствах
             });
+            console.log('[useNotifications] ✅ Уведомление показано через Service Worker');
             return;
           }
         } catch (swError) {
-          console.log('Service Worker notification failed, using fallback:', swError);
+          console.warn('[useNotifications] Service Worker notification failed, using fallback:', swError);
         }
       }
       
       // Fallback: используем обычные уведомления
       if ('Notification' in window && Notification.permission === 'granted') {
+        console.log('[useNotifications] Показываем через обычный Notification API');
         const notification = new Notification(options.title, {
           body: options.body,
           icon: options.icon || '/favicon.ico',
           tag: options.tag,
           data: options.data,
         });
+        
+        console.log('[useNotifications] ✅ Уведомление создано через Notification API');
         
         // Обработка клика по уведомлению
         notification.onclick = (event) => {
@@ -115,9 +126,12 @@ export const useNotifications = () => {
           }
           notification.close();
         };
+      } else {
+        console.warn('[useNotifications] Не удалось показать уведомление: разрешение не получено');
       }
     } catch (error) {
-      console.error('Ошибка при показе уведомления:', error);
+      console.error('[useNotifications] ❌ Ошибка при показе уведомления:', error);
+      throw error; // Пробрасываем ошибку для обработки в вызывающем коде
     }
   };
 

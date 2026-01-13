@@ -41,6 +41,7 @@ interface ChatSidebarProps {
   onChatCreated: () => void;
   onRequestNotificationPermission?: () => Promise<boolean>;
   notificationPermission?: NotificationPermission;
+  onTestNotification?: () => void;
 }
 
 const ChatSidebar = ({ 
@@ -54,7 +55,8 @@ const ChatSidebar = ({
   onChatDeleted,
   onChatCreated,
   onRequestNotificationPermission,
-  notificationPermission = 'default'
+  notificationPermission = 'default',
+  onTestNotification
 }: ChatSidebarProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
@@ -272,6 +274,34 @@ const ChatSidebar = ({
                   <Bell className="w-4 h-4" />
                 )}
               </Button>
+            )}
+            
+            {/* Кнопка тестового уведомления (показываем только если разрешение получено) */}
+            {!isCollapsed && notificationPermission === 'granted' && onTestNotification && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => {
+                  console.log('[ChatSidebar] Тестовая кнопка нажата, permission:', notificationPermission);
+                  onTestNotification();
+                }}
+                title="Тестовое уведомление"
+                className="h-8 w-8"
+              >
+                <Bell className="w-4 h-4 text-green-500" />
+              </Button>
+            )}
+            
+            {/* Отладочная информация (временно) - показываем всегда для отладки */}
+            {!isCollapsed && (
+              <div className="text-xs text-muted-foreground px-2 py-1 border-t border-border mt-2 pt-2">
+                <div>Permission: {notificationPermission}</div>
+                <div>Has func: {onTestNotification ? 'yes' : 'no'}</div>
+                <div>Is granted: {notificationPermission === 'granted' ? 'yes' : 'no'}</div>
+                {notificationPermission === 'granted' && onTestNotification && (
+                  <div className="text-green-500 mt-1">✅ Кнопка должна быть видна!</div>
+                )}
+              </div>
             )}
             
             {/* Кнопка выхода (скрываем в свернутом состоянии) */}
@@ -514,6 +544,21 @@ const ChatSidebar = ({
               )}
             </Button>
           )}
+          
+          {/* Кнопка тестового уведомления (в мобильном меню) */}
+          {notificationPermission === 'granted' && onTestNotification && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onTestNotification}
+              className="w-full h-10"
+              title="Тестовое уведомление"
+            >
+              <Bell className="w-4 h-4 mr-2 text-green-500" />
+              Тестовое уведомление
+            </Button>
+          )}
+          
           {/* Кнопка выхода */}
           <Button 
             variant="ghost" 
