@@ -12,10 +12,9 @@ services:
       - ./certbot/certs:/etc/letsencrypt:ro
       - ./backend/static:/app/static:ro
       - ./backend/media:/app/media:ro
-    ports:
-      - "80:80"
-      # Раскомментируйте после настройки SSL сертификатов:
-      # - "443:443"
+
+    expose:
+      - "80"
     networks:
       - sux_chat_network
 
