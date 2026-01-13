@@ -175,7 +175,8 @@ export const api = {
   },
 
   login: async (email: string, password: string): Promise<{ access: string; refresh: string }> => {
-    const res = await fetchWithAuth(`${API_URL}/token/`, {
+    // Для login не используем fetchWithAuth, так как токена еще нет
+    const res = await fetch(`${API_URL}/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: email, password }),

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import *
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -66,3 +67,32 @@ class MessageSerializer(serializers.ModelSerializer):
         """Возвращает список пользователей, прочитавших сообщение"""
         read_statuses = obj.read_statuses.select_related('user').all()[:10]  # Ограничиваем для производительности
         return MessageReadStatusSerializer(read_statuses, many=True).data
+
+
+# Кастомный сериализатор для JWT токенов
+# В Django User создается с username=email (см. register_user в views.py)
+# Поэтому для логина нужно использовать email как username
+import logging
+logger = logging.getLogger(__name__)
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        logger.info(f"[JWT] Получены данные для аутентификации: {list(attrs.keys())}")
+        
+        # Если пришло поле 'email', используем его как 'username'
+        # так как в Django User.username = email
+        if 'email' in attrs and 'username' not in attrs:
+            attrs['username'] = attrs.pop('email')
+            logger.info(f"[JWT] Преобразовано email -> username")
+        
+        username = attrs.get('username')
+        logger.info(f"[JWT] Попытка аутентификации с username: {username}")
+        
+        try:
+            # Вызываем родительский validate, который использует username для аутентификации
+            data = super().validate(attrs)
+            logger.info(f"[JWT] Аутентификация успешна для username: {username}")
+            return data
+        except Exception as e:
+            logger.error(f"[JWT] Ошибка аутентификации для username {username}: {str(e)}")
+            raise
