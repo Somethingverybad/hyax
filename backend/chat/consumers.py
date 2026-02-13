@@ -3,13 +3,12 @@ import uuid
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from jwt import decode as jwt_decode
-from django.conf import settings
-from .models import Message, Chat, Profile, ChatParticipant
-from .serializers import MessageSerializer
+from .models import Chat, Profile, ChatParticipant, CallSession, CallParticipant
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -83,8 +82,89 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.send(text_data=json.dumps({
                     'type': 'pong'
                 }))
+                return
+
+            if message_type in {
+                "call_invite",
+                "call_accept",
+                "call_reject",
+                "call_end",
+                "webrtc_offer",
+                "webrtc_answer",
+                "webrtc_ice_candidate",
+            }:
+                await self.handle_call_signal(message_type, text_data_json)
         except json.JSONDecodeError:
             pass
+
+    async def handle_call_signal(self, signal_type, payload):
+        profile_id = await self.get_user_profile_id(self.user)
+        if not profile_id:
+            return
+
+        data = payload.get("data") or {}
+        call_id = data.get("call_id")
+        chat_id = data.get("chat_id") or self.chat_id
+        target_user_id = data.get("to_user_id")
+
+        if signal_type == "call_invite":
+            call_type = data.get("call_type", "audio")
+            session_payload = await self.create_or_get_call_session(
+                chat_id=chat_id,
+                initiator_id=profile_id,
+                target_user_id=target_user_id,
+                call_id=call_id,
+                call_type=call_type,
+            )
+            if not session_payload:
+                return
+            data = {**data, **session_payload}
+            target_user_id = data.get("to_user_id")
+
+            if target_user_id:
+                await self.channel_layer.group_send(
+                    f"user_{target_user_id}",
+                    {
+                        "type": "notification",
+                        "data": {
+                            "type": "incoming_call",
+                            "chat_id": str(chat_id),
+                            "call_id": str(data["call_id"]),
+                            "from_user_id": str(profile_id),
+                            "call_type": data.get("call_type", "audio"),
+                        },
+                    },
+                )
+        else:
+            if not call_id:
+                return
+            is_participant = await self.is_call_participant(call_id, profile_id, chat_id)
+            if not is_participant:
+                return
+
+            if signal_type == "call_accept":
+                await self.update_call_status(call_id, "active", profile_id, mark_joined=True)
+            elif signal_type == "call_reject":
+                await self.update_call_status(call_id, "rejected", profile_id, close_call=True)
+            elif signal_type == "call_end":
+                end_status = data.get("status") or "ended"
+                if end_status not in {"ended", "missed", "failed"}:
+                    end_status = "ended"
+                await self.update_call_status(call_id, end_status, profile_id, close_call=True, mark_left=True)
+
+        await self.channel_layer.group_send(
+            self.chat_group_name,
+            {
+                "type": "call_signal",
+                "signal_type": signal_type,
+                "data": {
+                    **data,
+                    "call_id": str(data.get("call_id")) if data.get("call_id") else None,
+                    "chat_id": str(chat_id),
+                    "from_user_id": str(profile_id),
+                },
+            },
+        )
 
     # Получение сообщения из группы
     async def chat_message(self, event):
@@ -112,6 +192,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(f"Error sending chat message: {e}")
             # Если ошибка при отправке, просто пропускаем
 
+    async def call_signal(self, event):
+        try:
+            await self.send(text_data=json.dumps({
+                "type": "call_signal",
+                "signal_type": event.get("signal_type"),
+                "data": event.get("data", {}),
+            }))
+        except Exception as e:
+            print(f"Error sending call signal: {e}")
+
     @database_sync_to_async
     def check_user_authenticated(self, user):
         """Проверка аутентификации пользователя"""
@@ -126,6 +216,111 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return ChatParticipant.objects.filter(chat=chat, user=profile).exists()
         except (Profile.DoesNotExist, Chat.DoesNotExist):
             return False
+
+    @database_sync_to_async
+    def get_user_profile_id(self, user):
+        try:
+            return str(user.profile.id)
+        except Profile.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def create_or_get_call_session(self, chat_id, initiator_id, target_user_id, call_id=None, call_type="audio"):
+        try:
+            chat = Chat.objects.get(id=chat_id)
+            initiator = Profile.objects.get(id=initiator_id)
+        except (Chat.DoesNotExist, Profile.DoesNotExist):
+            return None
+
+        if call_type not in {"audio", "video"}:
+            call_type = "audio"
+
+        if target_user_id:
+            try:
+                target = Profile.objects.get(id=target_user_id)
+            except Profile.DoesNotExist:
+                return None
+        else:
+            target = ChatParticipant.objects.filter(chat=chat).exclude(user=initiator).values_list("user", flat=True).first()
+            if not target:
+                return None
+            target = Profile.objects.get(id=target)
+
+        initiator_in_chat = ChatParticipant.objects.filter(chat=chat, user=initiator).exists()
+        target_in_chat = ChatParticipant.objects.filter(chat=chat, user=target).exists()
+        if not initiator_in_chat or not target_in_chat:
+            return None
+
+        if call_id:
+            try:
+                call_session = CallSession.objects.get(id=call_id, chat=chat)
+            except CallSession.DoesNotExist:
+                try:
+                    parsed_call_id = uuid.UUID(str(call_id))
+                except (ValueError, TypeError):
+                    return None
+
+                call_session = CallSession.objects.create(
+                    id=parsed_call_id,
+                    chat=chat,
+                    initiator=initiator,
+                    call_type=call_type,
+                    status="ringing",
+                )
+                CallParticipant.objects.get_or_create(call=call_session, user=initiator)
+                CallParticipant.objects.get_or_create(call=call_session, user=target)
+        else:
+            call_session = CallSession.objects.create(
+                chat=chat,
+                initiator=initiator,
+                call_type=call_type,
+                status="ringing",
+            )
+            CallParticipant.objects.get_or_create(call=call_session, user=initiator)
+            CallParticipant.objects.get_or_create(call=call_session, user=target)
+
+        return {
+            "call_id": str(call_session.id),
+            "chat_id": str(chat.id),
+            "to_user_id": str(target.id),
+            "call_type": call_session.call_type,
+        }
+
+    @database_sync_to_async
+    def is_call_participant(self, call_id, profile_id, chat_id):
+        return CallParticipant.objects.filter(
+            call_id=call_id,
+            user_id=profile_id,
+            call__chat_id=chat_id,
+        ).exists()
+
+    @database_sync_to_async
+    def update_call_status(self, call_id, status, user_id, close_call=False, mark_joined=False, mark_left=False):
+        try:
+            call_session = CallSession.objects.get(id=call_id)
+        except CallSession.DoesNotExist:
+            return
+
+        if mark_joined:
+            participant, _ = CallParticipant.objects.get_or_create(call=call_session, user_id=user_id)
+            if participant.joined_at is None:
+                participant.joined_at = timezone.now()
+                participant.save(update_fields=["joined_at"])
+
+        if mark_left:
+            participant = CallParticipant.objects.filter(call=call_session, user_id=user_id).first()
+            if participant and participant.left_at is None:
+                participant.left_at = timezone.now()
+                participant.save(update_fields=["left_at"])
+
+        if status:
+            call_session.status = status
+        if close_call:
+            call_session.ended_at = timezone.now()
+            call_session.ended_by_id = user_id
+        if status == "active" and call_session.started_at is None:
+            call_session.started_at = timezone.now()
+        call_session.save(update_fields=["status", "ended_at", "ended_by", "started_at"])
 
 
 class UserConsumer(AsyncWebsocketConsumer):

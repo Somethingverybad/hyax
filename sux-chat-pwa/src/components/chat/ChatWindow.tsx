@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from "react";
 import { WebSocketService } from "@/services/websocket";
-import { WS_URL } from "@/api/client";
+import { ICE_SERVERS, WS_URL } from "@/api/client";
+import { ICE_SERVERS, WS_URL } from "@/api/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, Mic, User } from "lucide-react";
+import { Send, Paperclip, X, CheckCheck, Download, Phone, PhoneOff, Mic, MicOff, Smile, Mic, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -17,6 +18,7 @@ import VoiceRecorder from "@/components/voice/VoiceRecorder";
 import VoicePlayer from "@/components/voice/VoicePlayer";
 import ProfileView from "@/components/profile/ProfileView";
 import ProfileEdit from "@/components/profile/ProfileEdit";
+import { OneToOneCallService } from "@/services/call-service";
 
 interface Profile {
   id: string;
@@ -53,6 +55,22 @@ interface ChatWindowProps {
   userId: string;
 }
 
+type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
+
+interface IncomingCall {
+  callId: string;
+  fromUserId: string;
+  callType: "audio" | "video";
+}
+
+type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
+
+interface IncomingCall {
+  callId: string;
+  fromUserId: string;
+  callType: "audio" | "video";
+}
+
 const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -70,6 +88,8 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
+  const callServiceRef = useRef<OneToOneCallService | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   
   // Рефы для аудио
   const sendSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -78,7 +98,10 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   // Рефы для отслеживания состояния
   const previousMessagesRef = useRef<Message[]>([]);
   const lastSendTimeRef = useRef<number>(0);
-  const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
+  const [targetParticipant, setTargetParticipant] = useState<Profile | null>(null);
+  const [callState, setCallState] = useState<CallState>("idle");
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
 
   // Обработка появления клавиатуры на мобильных
   useEffect(() => {
@@ -132,6 +155,66 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!chatId) {
+      setTargetParticipant(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadParticipants = async () => {
+      try {
+        const participants = await api.getChatParticipants(chatId);
+        if (cancelled) {
+          return;
+        }
+        const peer = participants.find((participant) => participant.id !== userId) || null;
+        setTargetParticipant(peer);
+      } catch (error) {
+        console.error("Не удалось загрузить участников чата:", error);
+        if (!cancelled) {
+          setTargetParticipant(null);
+        }
+      }
+    };
+
+    loadParticipants();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, userId]);
+
+  useEffect(() => {
+    if (!chatId) {
+      setTargetParticipant(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadParticipants = async () => {
+      try {
+        const participants = await api.getChatParticipants(chatId);
+        if (cancelled) {
+          return;
+        }
+        const peer = participants.find((participant) => participant.id !== userId) || null;
+        setTargetParticipant(peer);
+      } catch (error) {
+        console.error("Не удалось загрузить участников чата:", error);
+        if (!cancelled) {
+          setTargetParticipant(null);
+        }
+      }
+    };
+
+    loadParticipants();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, userId]);
+
   // WebSocket соединение для получения новых сообщений
   useEffect(() => {
     if (!chatId) {
@@ -155,6 +238,16 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             }
             return [...prev, data.message];
           });
+          return;
+        }
+
+        if (data.type === "call_signal" && data.signal_type) {
+          void callServiceRef.current?.handleSignal(data.signal_type, data.data || {});
+          return;
+        }
+
+        if (data.type === "call_signal" && data.signal_type) {
+          void callServiceRef.current?.handleSignal(data.signal_type, data.data || {});
         }
       },
       onError: (error) => {
@@ -168,12 +261,85 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       },
     });
 
+    callServiceRef.current = new OneToOneCallService({
+      wsService,
+      chatId,
+      userId,
+      iceServers: ICE_SERVERS,
+      onStateChange: (state) => {
+        setCallState(state);
+      },
+      onIncomingCall: (call) => {
+        setIncomingCall(call);
+      },
+      onRemoteStream: (stream) => {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = stream;
+          void remoteAudioRef.current.play().catch(() => undefined);
+        }
+      },
+      onCallEnded: (reason) => {
+        setIncomingCall(null);
+        setIsMuted(false);
+        if (reason === "rejected") {
+          toast.info("Звонок отклонен");
+        } else if (reason === "failed") {
+          toast.error("Звонок завершился с ошибкой соединения");
+        }
+      },
+      onError: (message) => {
+        toast.error(message);
+      },
+    });
+
+    callServiceRef.current = new OneToOneCallService({
+      wsService,
+      chatId,
+      userId,
+      iceServers: ICE_SERVERS,
+      onStateChange: (state) => {
+        setCallState(state);
+      },
+      onIncomingCall: (call) => {
+        setIncomingCall(call);
+      },
+      onRemoteStream: (stream) => {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = stream;
+          void remoteAudioRef.current.play().catch(() => undefined);
+        }
+      },
+      onCallEnded: (reason) => {
+        setIncomingCall(null);
+        setIsMuted(false);
+        if (reason === "rejected") {
+          toast.info("Звонок отклонен");
+        } else if (reason === "failed") {
+          toast.error("Звонок завершился с ошибкой соединения");
+        }
+      },
+      onError: (message) => {
+        toast.error(message);
+      },
+    });
+
     wsService.connect(token || undefined);
 
     return () => {
+      callServiceRef.current?.dispose();
+      callServiceRef.current = null;
+      callServiceRef.current?.dispose();
+      callServiceRef.current = null;
       wsService.disconnect();
+      setIncomingCall(null);
+      setCallState("idle");
+      setIsMuted(false);
+      setIncomingCall(null);
+      setCallState("idle");
+      setIsMuted(false);
     };
-  }, [chatId]);
+  }, [chatId, userId]);
+  }, [chatId, userId]);
 
   // Эффект для обработки новых сообщений и звуков
   useEffect(() => {
@@ -408,6 +574,44 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     }
   };
 
+  const startCall = async () => {
+    if (!targetParticipant) {
+      toast.error("Для звонка нужен 1:1 чат");
+      return;
+    }
+    if (!callServiceRef.current) {
+      toast.error("Сервис звонков не готов");
+      return;
+    }
+    await callServiceRef.current.startOutgoingCall(targetParticipant.id);
+  };
+
+  const acceptIncomingCall = async () => {
+    if (!incomingCall || !callServiceRef.current) {
+      return;
+    }
+    await callServiceRef.current.acceptIncomingCall(incomingCall.callId, incomingCall.fromUserId);
+    setIncomingCall(null);
+  };
+
+  const rejectIncomingCall = () => {
+    if (!incomingCall || !callServiceRef.current) {
+      return;
+    }
+    callServiceRef.current.rejectIncomingCall(incomingCall.callId, incomingCall.fromUserId);
+    setIncomingCall(null);
+  };
+
+  const endCall = () => {
+    callServiceRef.current?.endCall("ended", true);
+    setIncomingCall(null);
+  };
+
+  const toggleMute = () => {
+    const muted = callServiceRef.current?.toggleMute() || false;
+    setIsMuted(muted);
+  };
+
   // Функция для форматирования времени
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -550,6 +754,50 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       </Dialog>
 
       <div className="flex-1 flex flex-col bg-background overflow-hidden">
+      <audio ref={remoteAudioRef} autoPlay playsInline />
+      <div className="border-b border-border bg-card/50 px-4 py-3">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+          <div className="text-sm text-muted-foreground">
+            {targetParticipant
+              ? `Звонок с ${targetParticipant.username}`
+              : "Звонки доступны только для 1:1 чатов"}
+          </div>
+          <div className="flex items-center gap-2">
+            {incomingCall && callState === "incoming" ? (
+              <>
+                <Button variant="destructive" size="sm" onClick={rejectIncomingCall}>
+                  <PhoneOff className="w-4 h-4 mr-2" />
+                  Отклонить
+                </Button>
+                <Button size="sm" onClick={acceptIncomingCall}>
+                  <Phone className="w-4 h-4 mr-2" />
+                  Принять
+                </Button>
+              </>
+            ) : null}
+
+            {(callState === "outgoing" || callState === "connecting" || callState === "active") && (
+              <>
+                <Button variant="outline" size="sm" onClick={toggleMute}>
+                  {isMuted ? <MicOff className="w-4 h-4 mr-2" /> : <Mic className="w-4 h-4 mr-2" />}
+                  {isMuted ? "Звук выкл" : "Звук вкл"}
+                </Button>
+                <Button variant="destructive" size="sm" onClick={endCall}>
+                  <PhoneOff className="w-4 h-4 mr-2" />
+                  Завершить
+                </Button>
+              </>
+            )}
+
+            {callState === "idle" && (
+              <Button size="sm" onClick={startCall} disabled={!targetParticipant}>
+                <Phone className="w-4 h-4 mr-2" />
+                Позвонить
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
       {/* Верхняя панель с кнопкой профиля */}
       <div className="border-b border-border bg-card/50 backdrop-blur-sm flex justify-end shrink-0" style={{ 
         paddingTop: 'max(8px, calc(8px + var(--safe-top, 0px)))',
@@ -991,3 +1239,4 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 };
 
 export default ChatWindow;
+

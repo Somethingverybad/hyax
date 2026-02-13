@@ -12,6 +12,27 @@ export const WS_URL = import.meta.env.VITE_WS_URL ||
     ? "ws://localhost:8000/ws" 
     : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
 
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+
+  if (turnUrl && turnUsername && turnCredential) {
+    servers.push({
+      urls: turnUrl,
+      username: turnUsername,
+      credential: turnCredential,
+    });
+  }
+
+  return servers;
+}
+
+export const ICE_SERVERS = buildIceServers();
+
+
+
 interface AuthResponse {
   message: string;
   error?: string;

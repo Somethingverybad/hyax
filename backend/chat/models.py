@@ -98,6 +98,51 @@ class PushToken(models.Model):
         unique_together = ('user', 'device_id')  # Одно устройство на пользователя
 
 
+class CallSession(models.Model):
+    CALL_TYPE_CHOICES = [
+        ("audio", "Audio"),
+        ("video", "Video"),
+    ]
+
+    STATUS_CHOICES = [
+        ("initiated", "Initiated"),
+        ("ringing", "Ringing"),
+        ("active", "Active"),
+        ("rejected", "Rejected"),
+        ("ended", "Ended"),
+        ("missed", "Missed"),
+        ("failed", "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="call_sessions")
+    initiator = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="initiated_call_sessions")
+    call_type = models.CharField(max_length=10, choices=CALL_TYPE_CHOICES, default="audio")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="initiated")
+    created_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(blank=True, null=True)
+    ended_at = models.DateTimeField(blank=True, null=True)
+    ended_by = models.ForeignKey(
+        Profile,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="ended_call_sessions",
+    )
+
+
+class CallParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    call = models.ForeignKey(CallSession, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="call_participations")
+    joined_at = models.DateTimeField(blank=True, null=True)
+    left_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("call", "user")
+
+
+
 # Стикерпаки
 class StickerPack(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -142,3 +187,47 @@ class UserStickerPack(models.Model):
     
     def __str__(self):
         return f"{self.user.username} - {self.pack.name}"
+
+
+class CallSession(models.Model):
+    CALL_TYPE_CHOICES = [
+        ("audio", "Audio"),
+        ("video", "Video"),
+    ]
+
+    STATUS_CHOICES = [
+        ("initiated", "Initiated"),
+        ("ringing", "Ringing"),
+        ("active", "Active"),
+        ("rejected", "Rejected"),
+        ("ended", "Ended"),
+        ("missed", "Missed"),
+        ("failed", "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="call_sessions")
+    initiator = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="initiated_call_sessions")
+    call_type = models.CharField(max_length=10, choices=CALL_TYPE_CHOICES, default="audio")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="initiated")
+    created_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(blank=True, null=True)
+    ended_at = models.DateTimeField(blank=True, null=True)
+    ended_by = models.ForeignKey(
+        Profile,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="ended_call_sessions",
+    )
+
+
+class CallParticipant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    call = models.ForeignKey(CallSession, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="call_participations")
+    joined_at = models.DateTimeField(blank=True, null=True)
+    left_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("call", "user")
