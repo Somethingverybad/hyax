@@ -1,4 +1,5 @@
 import uuid
+import logging
 from django.db import models
 
 from rest_framework.decorators import api_view, permission_classes
@@ -12,12 +13,42 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+logger = logging.getLogger(__name__)
+
 
 # В views.py
 class ProfileViewSet(viewsets.ModelViewSet):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
     permission_classes = [permissions.AllowAny]  # временно
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Получить профиль по ID с логированием"""
+        profile_id = kwargs.get('pk')
+        
+        # Логируем запрос
+        logger.warning(f"🔍 [ProfileViewSet.retrieve] Запрос профиля: pk={profile_id}, user={request.user}, authenticated={request.user.is_authenticated}")
+        
+        # Проверяем на undefined
+        if profile_id in ['undefined', 'null', 'None']:
+            logger.error(f"❌ [ProfileViewSet.retrieve] Получен некорректный ID: '{profile_id}' от пользователя {request.user}")
+            return Response({
+                'error': f'Invalid profile ID: {profile_id}',
+                'detail': 'Profile ID cannot be "undefined", "null" or "None"',
+                'hint': 'Use /api/profiles/current/ or /api/profiles/me/ to get your own profile',
+                'user': str(request.user),
+                'authenticated': request.user.is_authenticated
+            }, status=400)
+        
+        try:
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            data = serializer.data
+            logger.info(f"✅ [ProfileViewSet.retrieve] Профиль найден: id={data.get('id')}, username={data.get('username')}")
+            return Response(data)
+        except Exception as e:
+            logger.error(f"❌ [ProfileViewSet.retrieve] Ошибка получения профиля {profile_id}: {e}")
+            raise
 
     def get_queryset(self):
         queryset = Profile.objects.all()
@@ -27,6 +58,38 @@ class ProfileViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(username__icontains=search_query)
         
         return queryset
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def me(self, request):
+        """Получить профиль текущего пользователя (альтернативный эндпоинт)"""
+        try:
+            logger.warning(f"👤 [ProfileViewSet.me] Запрос от пользователя: {request.user}")
+            profile = request.user.profile
+            serializer = self.get_serializer(profile)
+            data = serializer.data
+            logger.warning(f"✅ [ProfileViewSet.me] Отправка профиля: id={data.get('id')}, username={data.get('username')}")
+            return Response(data)
+        except Profile.DoesNotExist:
+            logger.error(f"❌ [ProfileViewSet.me] Профиль не найден для пользователя: {request.user}")
+            return Response({"error": "Profile not found"}, status=404)
+    
+    @action(detail=False, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    def update_me(self, request):
+        """Обновить профиль текущего пользователя"""
+        try:
+            profile = request.user.profile
+            
+            # Обновляем только разрешенные поля
+            if 'bio' in request.data:
+                profile.bio = request.data['bio']
+            
+            # avatar_url обновляется через AvatarUploadView
+            
+            profile.save()
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data)
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=404)
 
 class FriendshipViewSet(viewsets.ModelViewSet):
     queryset = Friendship.objects.all()
@@ -348,8 +411,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         file_url = request.data.get('file_url')
         file_name = request.data.get('file_name')
         file_size = request.data.get('file_size')
+        sticker_id = request.data.get('sticker_id')
+        voice_url = request.data.get('voice_url')
+        voice_duration = request.data.get('voice_duration')
         
-        if file_url and not request.user.is_authenticated:
+        if (file_url or sticker_id or voice_url) and not request.user.is_authenticated:
             return Response({"error": "User not authenticated"}, status=401)
         
         try:
@@ -361,13 +427,31 @@ class MessageViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Сохраняем с файловыми данными
-        message = serializer.save(
-            sender=profile,
-            file_url=file_url,
-            file_name=file_name,
-            file_size=file_size
-        )
+        # Подготавливаем данные для сохранения
+        save_kwargs = {'sender': profile}
+        
+        if file_url:
+            save_kwargs.update({
+                'file_url': file_url,
+                'file_name': file_name,
+                'file_size': file_size
+            })
+        
+        if sticker_id:
+            try:
+                sticker = Sticker.objects.get(id=sticker_id)
+                save_kwargs['sticker'] = sticker
+            except Sticker.DoesNotExist:
+                return Response({"error": "Sticker not found"}, status=400)
+        
+        if voice_url:
+            save_kwargs.update({
+                'voice_url': voice_url,
+                'voice_duration': voice_duration
+            })
+        
+        # Сохраняем с данными
+        message = serializer.save(**save_kwargs)
         
         # Отправляем сообщение через WebSocket
         from channels.layers import get_channel_layer
@@ -409,21 +493,25 @@ class MessageViewSet(viewsets.ModelViewSet):
 @permission_classes([AllowAny])
 def register_user(request):
     try:
-        email = request.data.get('email')
-        password = request.data.get('password')
         username = request.data.get('username')
+        password = request.data.get('password')
 
-        if not all([email, password, username]):
-            return Response({'error': 'Все поля обязательны'}, status=status.HTTP_400_BAD_REQUEST)
+        if not all([username, password]):
+            return Response({'error': 'Логин и пароль обязательны'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if User.objects.filter(username=email).exists():
-            return Response({'error': 'Пользователь с таким email уже существует'}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Пользователь с таким логином уже существует'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Создаем пользователя
-        user = User.objects.create_user(username=email, email=email, password=password)
+        # Создаем пользователя с username
+        # email оставляем пустым или генерируем фейковый
+        user = User.objects.create_user(
+            username=username, 
+            email=f"{username}@local.fake",  # фейковый email для совместимости
+            password=password
+        )
         
         # Создаем профиль и связываем с пользователем
-        Profile.objects.create(user=user, username=username)  # исправлено: user=user
+        Profile.objects.create(user=user, username=username)
         
         return Response({
             'message': 'Пользователь создан',
@@ -436,13 +524,13 @@ def register_user(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
-    email = request.data.get('email')
+    username = request.data.get('username')
     password = request.data.get('password')
-    user = authenticate(username=email, password=password)
+    user = authenticate(username=username, password=password)
     if user:
         login(request, user)
         return Response({'message': 'Успешный вход'})
-    return Response({'error': 'Неверный email или пароль'}, status=400)
+    return Response({'error': 'Неверный логин или пароль'}, status=400)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -458,12 +546,20 @@ from rest_framework.response import Response
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_current_user_profile(request):
+    """Получить профиль текущего пользователя"""
     try:
+        logger.warning(f"👤 [get_current_user_profile] Запрос от пользователя: {request.user}")
         profile = request.user.profile
         serializer = ProfileSerializer(profile)
-        return Response(serializer.data)
+        data = serializer.data
+        logger.warning(f"✅ [get_current_user_profile] Отправка профиля: id={data.get('id')}, username={data.get('username')}")
+        return Response(data)
     except Profile.DoesNotExist:
+        logger.error(f"❌ [get_current_user_profile] Профиль не найден для пользователя: {request.user}")
         return Response({'error': 'Profile not found'}, status=404)
+    except Exception as e:
+        logger.error(f"❌ [get_current_user_profile] Ошибка: {e}")
+        return Response({'error': str(e)}, status=500)
 
 # views.py
 from rest_framework import viewsets, status
@@ -525,4 +621,329 @@ class FileUploadView(APIView):
             "file_url": file_url,
             "file_name": file.name,
             "file_size": file.size
+        })
+
+
+# ViewSet для стикерпаков
+class StickerPackViewSet(viewsets.ModelViewSet):
+    queryset = StickerPack.objects.all()
+    serializer_class = StickerPackSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def get_queryset(self):
+        """Возвращаем публичные паки и паки текущего пользователя"""
+        try:
+            profile = self.request.user.profile
+            return StickerPack.objects.filter(
+                models.Q(is_public=True) | models.Q(author=profile)
+            ).prefetch_related('stickers').distinct()
+        except Profile.DoesNotExist:
+            return StickerPack.objects.filter(is_public=True).prefetch_related('stickers')
+    
+    def perform_create(self, serializer):
+        """При создании пака автоматически назначаем автора"""
+        try:
+            profile = self.request.user.profile
+            pack = serializer.save(author=profile)
+            # Автоматически сохраняем пак для автора
+            UserStickerPack.objects.get_or_create(user=profile, pack=pack)
+        except Profile.DoesNotExist:
+            raise ValidationError("Profile not found")
+    
+    @action(detail=True, methods=['post'])
+    def save(self, request, pk=None):
+        """Сохранить стикерпак себе"""
+        pack = self.get_object()
+        try:
+            profile = request.user.profile
+            user_pack, created = UserStickerPack.objects.get_or_create(user=profile, pack=pack)
+            if created:
+                return Response({"status": "success", "message": "Sticker pack saved"})
+            else:
+                return Response({"status": "already_saved", "message": "Sticker pack already saved"})
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+    
+    @action(detail=True, methods=['post'])
+    def unsave(self, request, pk=None):
+        """Удалить стикерпак из сохраненных"""
+        pack = self.get_object()
+        try:
+            profile = request.user.profile
+            deleted_count, _ = UserStickerPack.objects.filter(user=profile, pack=pack).delete()
+            if deleted_count > 0:
+                return Response({"status": "success", "message": "Sticker pack removed"})
+            else:
+                return Response({"status": "not_found", "message": "Sticker pack was not saved"})
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+    
+    @action(detail=False, methods=['get'])
+    def my_packs(self, request):
+        """Получить все сохраненные стикерпаки пользователя"""
+        try:
+            profile = request.user.profile
+            user_packs = UserStickerPack.objects.filter(user=profile).select_related('pack__author').prefetch_related('pack__stickers')
+            serializer = UserStickerPackSerializer(user_packs, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+    
+    @action(detail=True, methods=['post'])
+    def share(self, request, pk=None):
+        """Получить код для обмена стикерпаком"""
+        pack = self.get_object()
+        try:
+            profile = request.user.profile
+            # Проверяем, что пользователь либо автор, либо пак публичный
+            if pack.author != profile and not pack.is_public:
+                return Response({"error": "You can only share your own or public packs"}, status=403)
+            
+            # Возвращаем ID пака как код для обмена
+            return Response({"share_code": str(pack.id), "pack_name": pack.name})
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+    
+    @action(detail=False, methods=['post'])
+    def import_pack(self, request):
+        """Импортировать стикерпак по коду (ID)"""
+        share_code = request.data.get('share_code')
+        if not share_code:
+            return Response({"error": "share_code is required"}, status=400)
+        
+        try:
+            profile = request.user.profile
+            
+            # Ищем пак по ID
+            try:
+                pack = StickerPack.objects.get(id=share_code)
+            except StickerPack.DoesNotExist:
+                return Response({"error": "Sticker pack not found"}, status=404)
+            
+            # Проверяем, что пак публичный или пользователь - автор
+            if not pack.is_public and pack.author != profile:
+                return Response({"error": "This sticker pack is private"}, status=403)
+            
+            # Сохраняем пак пользователю
+            user_pack, created = UserStickerPack.objects.get_or_create(user=profile, pack=pack)
+            
+            if created:
+                serializer = StickerPackSerializer(pack, context={'request': request})
+                return Response({
+                    "status": "success",
+                    "message": f"Sticker pack '{pack.name}' added",
+                    "pack": serializer.data
+                })
+            else:
+                return Response({
+                    "status": "already_saved",
+                    "message": "You already have this sticker pack"
+                })
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+
+
+# ViewSet для стикеров
+class StickerViewSet(viewsets.ModelViewSet):
+    queryset = Sticker.objects.all()
+    serializer_class = StickerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Фильтруем стикеры по паку"""
+        queryset = Sticker.objects.select_related('pack__author')
+        pack_id = self.request.query_params.get('pack')
+        if pack_id:
+            queryset = queryset.filter(pack_id=pack_id)
+        return queryset.order_by('order', 'created_at')
+    
+    def perform_create(self, serializer):
+        """При создании стикера проверяем, что пользователь - автор пака"""
+        pack_id = self.request.data.get('pack')
+        if not pack_id:
+            raise ValidationError("Pack ID is required")
+        
+        try:
+            profile = self.request.user.profile
+            pack = StickerPack.objects.get(id=pack_id)
+            
+            if pack.author != profile:
+                raise PermissionError("You can only add stickers to your own packs")
+            
+            serializer.save()
+        except StickerPack.DoesNotExist:
+            raise ValidationError("Sticker pack not found")
+        except Profile.DoesNotExist:
+            raise ValidationError("Profile not found")
+
+
+# Загрузка стикеров
+class StickerUploadView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({"error": "User not authenticated"}, status=401)
+        
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file provided"}, status=400)
+        
+        # Проверяем размер файла (макс. 5MB для стикеров)
+        if file.size > 5 * 1024 * 1024:
+            return Response({"error": "File too large (max 5MB for stickers)"}, status=400)
+        
+        # Проверяем, что это изображение
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+        file_extension = os.path.splitext(file.name)[1].lower()
+        if file_extension not in allowed_extensions:
+            return Response({"error": "Only image files are allowed for stickers"}, status=400)
+        
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        
+        # Генерируем уникальное имя файла
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        
+        # Создаем директорию stickers если её нет
+        stickers_dir = os.path.join(settings.MEDIA_ROOT, 'stickers')
+        os.makedirs(stickers_dir, exist_ok=True)
+        
+        # Сохраняем файл
+        file_path = os.path.join('stickers', unique_filename)
+        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        with open(full_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+        
+        # Используем относительный путь
+        file_url = f'/media/{file_path}'
+        
+        return Response({
+            "file_url": file_url,
+            "file_name": file.name,
+        })
+
+
+# Загрузка голосовых сообщений
+class VoiceUploadView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({"error": "User not authenticated"}, status=401)
+        
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file provided"}, status=400)
+        
+        # Проверяем размер файла (макс. 10MB для голосовых сообщений)
+        if file.size > 10 * 1024 * 1024:
+            return Response({"error": "File too large (max 10MB for voice messages)"}, status=400)
+        
+        # Проверяем, что это аудио файл
+        allowed_extensions = ['.mp3', '.wav', '.ogg', '.webm', '.m4a', '.aac']
+        file_extension = os.path.splitext(file.name)[1].lower()
+        if file_extension not in allowed_extensions:
+            return Response({"error": "Only audio files are allowed for voice messages"}, status=400)
+        
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        
+        # Генерируем уникальное имя файла
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        
+        # Создаем директорию voice если её нет
+        voice_dir = os.path.join(settings.MEDIA_ROOT, 'voice')
+        os.makedirs(voice_dir, exist_ok=True)
+        
+        # Сохраняем файл
+        file_path = os.path.join('voice', unique_filename)
+        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        with open(full_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+        
+        # Используем относительный путь
+        file_url = f'/media/{file_path}'
+        
+        return Response({
+            "file_url": file_url,
+            "file_name": file.name,
+        })
+
+
+# Загрузка аватаров
+class AvatarUploadView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({"error": "User not authenticated"}, status=401)
+        
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file provided"}, status=400)
+        
+        # Проверяем размер файла (макс. 5MB для аватаров)
+        if file.size > 5 * 1024 * 1024:
+            return Response({"error": "File too large (max 5MB for avatars)"}, status=400)
+        
+        # Проверяем, что это изображение
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+        file_extension = os.path.splitext(file.name)[1].lower()
+        if file_extension not in allowed_extensions:
+            return Response({"error": "Only image files are allowed for avatars"}, status=400)
+        
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        
+        # Генерируем уникальное имя файла
+        unique_filename = f"avatar_{profile.id}{file_extension}"
+        
+        # Создаем директорию avatars если её нет
+        avatars_dir = os.path.join(settings.MEDIA_ROOT, 'avatars')
+        os.makedirs(avatars_dir, exist_ok=True)
+        
+        # Удаляем старый аватар если есть
+        if profile.avatar_url:
+            old_avatar_path = profile.avatar_url.replace('/media/', '')
+            old_full_path = os.path.join(settings.MEDIA_ROOT, old_avatar_path)
+            if os.path.exists(old_full_path):
+                try:
+                    os.remove(old_full_path)
+                except:
+                    pass
+        
+        # Сохраняем файл
+        file_path = os.path.join('avatars', unique_filename)
+        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        with open(full_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+        
+        # Используем относительный путь
+        file_url = f'/media/{file_path}'
+        
+        # Обновляем профиль
+        profile.avatar_url = file_url
+        profile.save()
+        
+        return Response({
+            "avatar_url": file_url,
+            "message": "Avatar uploaded successfully"
         })

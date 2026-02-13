@@ -4,17 +4,35 @@ import { WS_URL } from "@/api/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, Mic, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
+import StickerPicker from "@/components/stickers/StickerPicker";
+import StickerPackManager from "@/components/stickers/StickerPackManager";
+import VoiceRecorder from "@/components/voice/VoiceRecorder";
+import VoicePlayer from "@/components/voice/VoicePlayer";
+import ProfileView from "@/components/profile/ProfileView";
+import ProfileEdit from "@/components/profile/ProfileEdit";
 
 interface Profile {
   id: string;
   username: string;
   avatar_url?: string;
+}
+
+interface Sticker {
+  id: string;
+  pack: string;
+  pack_name: string;
+  file_url: string;
+  file_name: string;
+  emoji?: string;
+  order: number;
+  created_at: string;
 }
 
 interface Message {
@@ -24,6 +42,9 @@ interface Message {
   file_name: string | null;
   sender_id: string;
   sender?: Profile;
+  sticker?: Sticker;
+  voice_url?: string;
+  voice_duration?: number;
   created_at: string;
 }
 
@@ -39,9 +60,16 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [showStickerManager, setShowStickerManager] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   
   // Рефы для аудио
   const sendSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -51,6 +79,34 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const previousMessagesRef = useRef<Message[]>([]);
   const lastSendTimeRef = useRef<number>(0);
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
+
+  // Обработка появления клавиатуры на мобильных
+  useEffect(() => {
+    const handleResize = () => {
+      // Если поле ввода в фокусе, прокручиваем к нему
+      if (document.activeElement === messageInputRef.current) {
+        setTimeout(() => {
+          messageInputRef.current?.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+        }, 100);
+      }
+    };
+
+    // Слушаем изменение размера viewport (когда появляется клавиатура)
+    if ('visualViewport' in window) {
+      window.visualViewport?.addEventListener('resize', handleResize);
+    }
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if ('visualViewport' in window) {
+        window.visualViewport?.removeEventListener('resize', handleResize);
+      }
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   // Инициализация аудио
   useEffect(() => {
@@ -167,7 +223,23 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     if (!chatId) return;
     try {
       const data = await api.getMessages(chatId);
-      console.log("Fetched messages:", data);
+      console.log("📥 Fetched messages:", data);
+      console.log("📥 Голосовые сообщения в списке:", data.filter((m: any) => m.voice_url));
+      
+      // Проверяем сообщения на undefined sender.id
+      const messagesWithUndefinedSender = data.filter((m: any) => m.sender && !m.sender.id);
+      if (messagesWithUndefinedSender.length > 0) {
+        console.error("❌ Найдены сообщения с undefined sender.id:", messagesWithUndefinedSender);
+        messagesWithUndefinedSender.forEach((msg: any) => {
+          console.error(`  - Message ID: ${msg.id}, Sender:`, msg.sender);
+        });
+      }
+      
+      // Проверяем сообщения вообще без sender
+      const messagesWithoutSender = data.filter((m: any) => !m.sender);
+      if (messagesWithoutSender.length > 0) {
+        console.error("❌ Найдены сообщения без sender:", messagesWithoutSender);
+      }
       
       // Сравниваем с предыдущими сообщениями
       const previousMessages = previousMessagesRef.current;
@@ -266,6 +338,71 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     } catch (error: any) {
       console.error("Error sending message:", error);
       toast.error("Ошибка отправки: " + (error.message || "Неизвестная ошибка"));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const sendSticker = async (sticker: Sticker) => {
+    if (!chatId) return;
+
+    try {
+      // Воспроизводим звук отправки
+      if (sendSoundRef.current) {
+        sendSoundRef.current.currentTime = 0;
+        sendSoundRef.current.play().catch(error => {
+          console.log("Ошибка воспроизведения звука отправки:", error);
+        });
+      }
+
+      // Запоминаем время отправки
+      lastSendTimeRef.current = Date.now();
+
+      await api.sendMessageWithSticker(chatId, sticker.id);
+      
+      setShowStickerPicker(false);
+
+      // Прокручиваем вниз сразу после отправки
+      setTimeout(() => {
+        scrollToBottom();
+      }, 50);
+    } catch (error: any) {
+      console.error("Error sending sticker:", error);
+      toast.error("Ошибка отправки стикера: " + (error.message || "Неизвестная ошибка"));
+    }
+  };
+
+  const sendVoice = async (audioBlob: Blob, duration: number) => {
+    if (!chatId) return;
+
+    try {
+      setUploading(true);
+
+      // Загружаем голосовое сообщение
+      const uploadResult = await api.uploadVoice(audioBlob);
+
+      // Воспроизводим звук отправки
+      if (sendSoundRef.current) {
+        sendSoundRef.current.currentTime = 0;
+        sendSoundRef.current.play().catch(error => {
+          console.log("Ошибка воспроизведения звука отправки:", error);
+        });
+      }
+
+      // Запоминаем время отправки
+      lastSendTimeRef.current = Date.now();
+
+      await api.sendMessageWithVoice(chatId, uploadResult.file_url, duration);
+
+      setIsRecordingVoice(false);
+
+      // Прокручиваем вниз сразу после отправки
+      setTimeout(() => {
+        scrollToBottom();
+      }, 50);
+    } catch (error: any) {
+      console.error("Error sending voice:", error);
+      toast.error("Ошибка отправки голосового сообщения: " + (error.message || "Неизвестная ошибка"));
     } finally {
       setUploading(false);
     }
@@ -412,9 +549,38 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
         </DialogContent>
       </Dialog>
 
-      <div className="flex-1 flex flex-col bg-background">
-      <ScrollArea className="flex-1 px-4 py-6" ref={scrollRef as any}>
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex-1 flex flex-col bg-background overflow-hidden">
+      {/* Верхняя панель с кнопкой профиля */}
+      <div className="border-b border-border bg-card/50 backdrop-blur-sm flex justify-end shrink-0" style={{ 
+        paddingTop: 'max(8px, calc(8px + var(--safe-top, 0px)))',
+        paddingBottom: '8px',
+        paddingLeft: '8px',
+        paddingRight: '8px'
+      }}>
+        {console.log('🔘 Рендер кнопки профиля', { userId, typeOfUserId: typeof userId, showProfile })}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            console.log('👤 Клик на кнопку профиля', { userId, typeOfUserId: typeof userId, isUndefined: userId === undefined });
+            if (!userId) {
+              toast.error("ID пользователя не определен");
+              console.error('❌ userId is undefined!');
+              return;
+            }
+            setSelectedProfileId(userId);
+            setShowProfile(true);
+            console.log('👤 Состояние обновлено', { selectedProfileId: userId, showProfile: true });
+          }}
+          className="h-9 w-9 rounded-full hover:bg-primary/10 transition-colors"
+          title="Мой профиль"
+        >
+          <User className="w-5 h-5" />
+        </Button>
+      </div>
+      
+      <ScrollArea className="flex-1 px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
+        <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
           {messages.map((message, index) => {
             const isOwn = message.sender?.id === userId;
             const previousMessage = index > 0 ? messages[index - 1] : null;
@@ -440,7 +606,18 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                 )}>
                   {/* Аватар (только для чужих сообщений) */}
                   {!isOwn && (
-                    <Avatar className="w-8 h-8 flex-shrink-0">
+                    <Avatar 
+                      className="w-8 h-8 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                      onClick={() => {
+                        console.log('👤 Клик на аватар', { senderId: message.sender?.id, sender: message.sender });
+                        if (message.sender?.id) {
+                          setSelectedProfileId(message.sender.id);
+                          setShowProfile(true);
+                        } else {
+                          console.error('❌ sender.id is undefined!', message);
+                        }
+                      }}
+                    >
                       {message.sender?.avatar_url ? (
                         <AvatarImage 
                           src={message.sender.avatar_url} 
@@ -456,13 +633,24 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 
                   {/* Контент сообщения */}
                   <div className={cn(
-                    "flex flex-col max-w-[70%]",
+                    "flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[70%]",
                     isOwn ? "items-end" : "items-start"
                   )}>
                     {/* Имя отправителя (только для чужих сообщений) */}
                     {!isOwn && (
                       <div className="flex items-center gap-2 mb-1 ml-1">
-                        <span className="text-xs font-medium text-foreground">
+                        <span 
+                          className="text-xs font-medium text-foreground cursor-pointer hover:text-primary transition-colors"
+                          onClick={() => {
+                            console.log('👤 Клик на имя пользователя', { senderId: message.sender?.id, sender: message.sender });
+                            if (message.sender?.id) {
+                              setSelectedProfileId(message.sender.id);
+                              setShowProfile(true);
+                            } else {
+                              console.error('❌ sender.id is undefined!', message);
+                            }
+                          }}
+                        >
                           {username}
                         </span>
                       </div>
@@ -470,9 +658,10 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 
                     {/* Буббл сообщения */}
                     <div className={cn(
-                      "rounded-2xl px-4 py-2 relative",
+                      "rounded-2xl relative",
                       "transition-all duration-200",
-                      isOwn 
+                      (message.sticker || message.voice_url) ? "p-0 bg-transparent" : "px-4 py-2",
+                      !message.sticker && !message.voice_url && (isOwn 
                         ? cn(
                             "bg-gradient-primary text-primary-foreground shadow-glow",
                             "rounded-br-md"
@@ -480,18 +669,41 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                         : cn(
                             "bg-card border border-border/50 shadow-sm",
                             "rounded-bl-md"
-                          )
+                          ))
                     )}>
+                      {/* Стикер */}
+                      {message.sticker && (
+                        <div className="w-32 h-32 sm:w-40 sm:h-40">
+                          <img
+                            src={message.sticker.file_url}
+                            alt={message.sticker.file_name}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                      )}
+
+                      {/* Голосовое сообщение */}
+                      {message.voice_url && (
+                        <>
+                          {console.log('📩 Отображаем голосовое сообщение:', message.id, message.voice_url)}
+                          <VoicePlayer
+                            voiceUrl={message.voice_url}
+                            duration={message.voice_duration}
+                            isOwn={isOwn}
+                          />
+                        </>
+                      )}
+
                       {/* Текст сообщения */}
-                      {message.content && (
+                      {!message.sticker && !message.voice_url && message.content && (
                         <p className="break-words leading-relaxed whitespace-pre-wrap">
                           {message.content}
                         </p>
                       )}
 
                       {/* Файл */}
-                      {message.file_url && (
-                        <div className={cn("mt-2", isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) && "max-w-[400px]")}>
+                      {!message.sticker && !message.voice_url && message.file_url && (
+                        <div className={cn("mt-2", isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) && "max-w-[280px] sm:max-w-[350px] md:max-w-[400px]")}>
                           {isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) ? (
                             // Отображение изображения
                             <div className="relative group">
@@ -590,16 +802,31 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       </ScrollArea>
 
       {/* Поле ввода */}
-      <div className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
+      <div className="border-t border-border bg-card/50 backdrop-blur-sm" style={{ 
+        paddingTop: '8px',
+        paddingBottom: 'max(8px, calc(8px + var(--safe-bottom, 0px)))',
+        paddingLeft: '8px',
+        paddingRight: '8px'
+      }}>
         <div className="max-w-4xl mx-auto">
+          {/* Voice Recorder */}
+          {isRecordingVoice && (
+            <div className="mb-2">
+              <VoiceRecorder
+                onSend={sendVoice}
+                onCancel={() => setIsRecordingVoice(false)}
+              />
+            </div>
+          )}
+
           {selectedFile && (
-            <div className="mb-3 p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium truncate max-w-[300px]">
+            <div className="mb-2 md:mb-3 p-2 md:p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Paperclip className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm font-medium truncate">
                   {selectedFile.name}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex-shrink-0">
                   ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
                 </span>
               </div>
@@ -615,57 +842,150 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
           )}
           
           <div className="flex gap-2 items-end">
-            <input 
-              ref={fileInputRef} 
-              type="file" 
-              onChange={handleFileSelect} 
-              className="hidden" 
-              accept="*/*"
-            />
-            <Button 
-              variant="outline" 
-              size="icon" 
-              onClick={() => fileInputRef.current?.click()} 
-              disabled={uploading}
-              className="h-11 w-11 shrink-0 border-2"
-            >
-              <Paperclip className="w-4 h-4" />
-            </Button>
+            {!isRecordingVoice && (
+              <>
+                <input 
+                  ref={fileInputRef} 
+                  type="file" 
+                  onChange={handleFileSelect} 
+                  className="hidden" 
+                  accept="*/*"
+                />
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={() => fileInputRef.current?.click()} 
+                  disabled={uploading}
+                  className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </Button>
+
+                <Popover open={showStickerPicker} onOpenChange={setShowStickerPicker}>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      disabled={uploading}
+                      className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
+                    >
+                      <Smile className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0" side="top" align="start">
+                    <StickerPicker
+                      onSelectSticker={(sticker) => sendSticker(sticker)}
+                      onManagePacks={() => {
+                        setShowStickerPicker(false);
+                        setShowStickerManager(true);
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={() => setIsRecordingVoice(true)}
+                  disabled={uploading}
+                  className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
+                >
+                  <Mic className="w-4 h-4" />
+                </Button>
+              </>
+            )}
             
-            <div className="flex-1 relative">
-              <Input
-                placeholder="Введите сообщение..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                disabled={uploading}
-                className="pr-12 bg-background border-2 h-11 resize-none"
-                multiline
-                style={{ minHeight: '44px', maxHeight: '120px' }}
-              />
-            </div>
-            
-            <Button 
-              onClick={sendMessage} 
-              disabled={uploading || (!newMessage.trim() && !selectedFile)} 
-              className="h-11 px-6 bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200 shrink-0"
-              size="lg"
-            >
-              {uploading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+            {!isRecordingVoice && (
+              <>
+                <div className="flex-1 relative">
+                  <Input
+                    ref={messageInputRef}
+                    placeholder="Сообщение..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
+                    onFocus={() => {
+                      console.log('📝 Input focused, scrolling into view');
+                      // Даем время клавиатуре появиться, затем прокручиваем
+                      setTimeout(() => {
+                        messageInputRef.current?.scrollIntoView({ 
+                          behavior: 'smooth', 
+                          block: 'center',
+                          inline: 'nearest'
+                        });
+                      }, 300);
+                    }}
+                    disabled={uploading}
+                    className="pr-12 bg-background border-2 h-10 md:h-11 resize-none text-sm md:text-base"
+                    multiline
+                    style={{ minHeight: '40px', maxHeight: '120px' }}
+                  />
+                </div>
+                
+                <Button 
+                  onClick={sendMessage} 
+                  disabled={uploading || (!newMessage.trim() && !selectedFile)} 
+                  className="h-10 md:h-11 px-4 md:px-6 bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200 shrink-0"
+                  size="lg"
+                >
+                  {uploading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
       </div>
+
+      {/* Менеджер стикерпаков */}
+      <StickerPackManager
+        open={showStickerManager}
+        onOpenChange={setShowStickerManager}
+        onPacksUpdated={() => {
+          // Можно добавить обновление списка стикерпаков если нужно
+        }}
+      />
+
+      {/* Просмотр профиля */}
+      {showProfile && selectedProfileId && (
+        <>
+          {console.log('👁️ Рендер ProfileView', { selectedProfileId, userId, isOwnProfile: selectedProfileId === userId })}
+          <ProfileView
+            profileId={selectedProfileId}
+            onClose={() => {
+              console.log('👁️ Закрытие ProfileView');
+              setShowProfile(false);
+              setSelectedProfileId(null);
+            }}
+            isOwnProfile={selectedProfileId === userId}
+            onEditClick={() => {
+              console.log('✏️ Открытие ProfileEdit');
+              setShowProfile(false);
+              setShowProfileEdit(true);
+            }}
+          />
+        </>
+      )}
+
+      {/* Редактирование профиля */}
+      {showProfileEdit && (
+        <ProfileEdit
+          onClose={() => setShowProfileEdit(false)}
+          onSaved={() => {
+            // Можно обновить данные профиля в чате если нужно
+            fetchMessages();
+          }}
+        />
+      )}
     </>
   );
 };

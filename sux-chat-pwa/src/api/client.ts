@@ -151,11 +151,11 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
 
 export const api = {
   // ===== AUTH =====
-  register: async (email: string, password: string, username: string): Promise<AuthResponse> => {
+  register: async (username: string, password: string): Promise<AuthResponse> => {
     const res = await fetchWithAuth(`${API_URL}/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, username }),
+      body: JSON.stringify({ username, password }),
     });
 
     if (!res.ok) {
@@ -174,12 +174,12 @@ export const api = {
     return res.json();
   },
 
-  login: async (email: string, password: string): Promise<{ access: string; refresh: string }> => {
+  login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
     // Для login не используем fetchWithAuth, так как токена еще нет
     const res = await fetch(`${API_URL}/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: email, password }),
+      body: JSON.stringify({ username, password }),
     });
 
     if (!res.ok) {
@@ -422,6 +422,231 @@ export const api = {
         file_size: fileData.file_size
       }),
     });
+    return res.json();
+  },
+
+  // ===== STICKERS =====
+  uploadSticker: async (file: File): Promise<{
+    file_url: string;
+    file_name: string;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetchWithAuthMultipart(`${API_URL}/stickers/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Sticker upload error:", errorText);
+      throw new Error(`Sticker upload failed: ${res.status} ${res.statusText}`);
+    }
+
+    return res.json();
+  },
+
+  createStickerPack: async (name: string, description?: string, isPublic: boolean = true): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name, description, is_public: isPublic }),
+    });
+    if (!res.ok) throw new Error("Failed to create sticker pack");
+    return res.json();
+  },
+
+  getStickerPacks: async (): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    return res.json();
+  },
+
+  getMyStickerPacks: async (): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/my_packs/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    return res.json();
+  },
+
+  saveStickerPack: async (packId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${packId}/save/`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to save sticker pack");
+  },
+
+  unsaveStickerPack: async (packId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${packId}/unsave/`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to unsave sticker pack");
+  },
+
+  createSticker: async (packId: string, fileUrl: string, fileName: string, emoji?: string, order?: number): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/stickers/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        pack: packId,
+        file_url: fileUrl,
+        file_name: fileName,
+        emoji: emoji || null,
+        order: order || 0,
+      }),
+    });
+    if (!res.ok) throw new Error("Failed to create sticker");
+    return res.json();
+  },
+
+  getStickers: async (packId?: string): Promise<any[]> => {
+    const url = packId 
+      ? `${API_URL}/stickers/?pack=${packId}`
+      : `${API_URL}/stickers/`;
+    const res = await fetchWithAuth(url, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    return res.json();
+  },
+
+  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        chat: chatId,
+        content: content || null,
+        sticker_id: stickerId,
+      }),
+    });
+    return res.json();
+  },
+
+  deleteStickerPack: async (packId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${packId}/`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to delete sticker pack");
+  },
+
+  deleteSticker: async (stickerId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/stickers/${stickerId}/`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to delete sticker");
+  },
+
+  getStickerPackById: async (packId: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${packId}/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to get sticker pack");
+    return res.json();
+  },
+
+  shareStickerPack: async (packId: string): Promise<{ share_code: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${packId}/share/`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to generate share code");
+    return res.json();
+  },
+
+  importStickerPackByCode: async (shareCode: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/import/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ share_code: shareCode }),
+    });
+    if (!res.ok) throw new Error("Failed to import sticker pack");
+    return res.json();
+  },
+
+  // ===== VOICE MESSAGES =====
+  uploadVoice: async (file: Blob): Promise<{
+    file_url: string;
+    file_name: string;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file, 'voice.webm');
+
+    const res = await fetchWithAuthMultipart(`${API_URL}/voice/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Voice upload error:", errorText);
+      throw new Error(`Voice upload failed: ${res.status} ${res.statusText}`);
+    }
+
+    return res.json();
+  },
+
+  sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number, content?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        chat: chatId,
+        content: content || null,
+        voice_url: voiceUrl,
+        voice_duration: duration,
+      }),
+    });
+    return res.json();
+  },
+
+  // ===== PROFILE MANAGEMENT =====
+  // Примечание: основные методы getProfile() и getProfileById() уже определены выше
+  // Здесь только дополнительные методы для управления профилем
+  
+  getMyProfile: async (): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/profiles/me/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to get my profile");
+    return res.json();
+  },
+
+  updateMyProfile: async (bio: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/profiles/update_me/`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify({ bio }),
+    });
+    if (!res.ok) throw new Error("Failed to update profile");
+    return res.json();
+  },
+
+  uploadAvatar: async (file: File): Promise<{ avatar_url: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetchWithAuthMultipart(`${API_URL}/avatar/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Avatar upload error:", errorText);
+      throw new Error(`Avatar upload failed: ${res.status} ${res.statusText}`);
+    }
+
     return res.json();
   },
 };

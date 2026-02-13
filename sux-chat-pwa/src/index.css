@@ -43,6 +43,12 @@ All colors MUST be HSL.
     
     --shadow-glow: 0 0 40px hsl(263 90% 65% / 0.3);
     --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.3);
+    
+    /* Safe area insets для iOS */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
   }
 }
 
@@ -57,20 +63,37 @@ All colors MUST be HSL.
 }
 
 /* Закругленные углы для всего приложения */
-html, body, #root {
-  border-radius: 0px; /* Уменьшил радиус для более аккуратного вида */
-  overflow: hidden;
-  background: transparent; /* Прозрачный фон */
+html {
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+#root {
+  border-radius: 0px;
+  overflow: hidden;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overscroll-behavior: none;
 }
 
 /* Основной контейнер приложения */
 .app-container {
   border-radius: 0px;
   overflow: hidden;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: hsl(var(--background)); /* Фон только у контейнера */
 }
 
@@ -129,5 +152,59 @@ html, body, #root {
   .bg-glass {
     background: hsl(var(--background) / 0.8);
     backdrop-filter: blur(10px);
+  }
+}
+
+/* Адаптивные улучшения для мобильных устройств */
+@media (max-width: 768px) {
+  /* Уменьшение отступов на мобильных */
+  :root {
+    --radius: 0.5rem;
+  }
+  
+  /* Оптимизация тапа на мобильных */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Улучшение читаемости текста на мобильных */
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  /* Используем CSS переменную vh для точной высоты */
+  html, body, #root {
+    height: calc(var(--vh, 1vh) * 100);
+  }
+  
+  /* Убираем bounce эффект на iOS */
+  body {
+    position: fixed;
+    width: 100%;
+    background-color: #0f1419 !important;
+  }
+  
+  /* Убираем pull-to-refresh на мобильных */
+  html {
+    overscroll-behavior: none;
+    background-color: #0f1419 !important;
+  }
+  
+  /* Убираем белый отступ внизу на iOS */
+  #root {
+    background-color: #0f1419 !important;
+  }
+}
+
+/* Поддержка безопасных зон для iPhone X и новее */
+/* Убрано - safe areas применяются к #root в index.html */
+
+/* Оптимизация для темного режима iOS Safari */
+@supports (-webkit-touch-callout: none) {
+  /* Специальные стили для iOS Safari */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }

@@ -11,6 +11,8 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => {
+  console.log('🚀 App компонент загружен');
+  
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -18,7 +20,7 @@ const App = () => {
         <Sonner />
         
         {/* Основной контейнер */}
-        <div className="w-screen h-screen overflow-hidden bg-background relative">
+        <div className="w-full h-full overflow-hidden bg-background relative">
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />

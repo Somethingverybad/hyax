@@ -139,11 +139,11 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
 
 export const api = {
   // ===== AUTH =====
-  register: async (email: string, password: string, username: string): Promise<AuthResponse> => {
+  register: async (username: string, password: string): Promise<AuthResponse> => {
     const res = await fetchWithAuth(`${API_URL}/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, username }),
+      body: JSON.stringify({ username, password }),
     });
 
     if (!res.ok) {
@@ -162,11 +162,11 @@ export const api = {
     return res.json();
   },
 
-  login: async (email: string, password: string): Promise<{ access: string; refresh: string }> => {
+  login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
     const res = await fetchWithAuth(`${API_URL}/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: email, password }),
+      body: JSON.stringify({ username, password }),
     });
 
     if (!res.ok) {

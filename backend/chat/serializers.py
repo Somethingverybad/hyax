@@ -1,11 +1,13 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import *
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'status', 'created_at']
+        fields = ['id', 'username', 'avatar_url', 'status', 'bio', 'created_at']
+        read_only_fields = ['id', 'username', 'created_at']
 
 class FriendshipSerializer(serializers.ModelSerializer):
     class Meta:
@@ -31,14 +33,57 @@ class MessageReadStatusSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'read_at']
 
 # Обновляем MessageSerializer
+class StickerPackSerializer(serializers.ModelSerializer):
+    author = ProfileSerializer(read_only=True)
+    stickers_count = serializers.SerializerMethodField()
+    is_saved = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = StickerPack
+        fields = ['id', 'name', 'description', 'author', 'is_public', 'created_at', 'updated_at', 'stickers_count', 'is_saved']
+        read_only_fields = ['author', 'created_at', 'updated_at']
+    
+    def get_stickers_count(self, obj):
+        return obj.stickers.count()
+    
+    def get_is_saved(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                profile = request.user.profile
+                return UserStickerPack.objects.filter(user=profile, pack=obj).exists()
+            except Profile.DoesNotExist:
+                return False
+        return False
+
+
+class StickerSerializer(serializers.ModelSerializer):
+    pack_name = serializers.CharField(source='pack.name', read_only=True)
+    
+    class Meta:
+        model = Sticker
+        fields = ['id', 'pack', 'pack_name', 'file_url', 'file_name', 'emoji', 'order', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class UserStickerPackSerializer(serializers.ModelSerializer):
+    pack = StickerPackSerializer(read_only=True)
+    
+    class Meta:
+        model = UserStickerPack
+        fields = ['id', 'pack', 'added_at']
+        read_only_fields = ['added_at']
+
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
+    sticker = StickerSerializer(read_only=True)
     
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration']
         read_only_fields = ['sender', 'created_at', 'file_size']
     
     def to_representation(self, instance):
@@ -70,21 +115,12 @@ class MessageSerializer(serializers.ModelSerializer):
 
 
 # Кастомный сериализатор для JWT токенов
-# В Django User создается с username=email (см. register_user в views.py)
-# Поэтому для логина нужно использовать email как username
+# Теперь используется только username для аутентификации
 import logging
 logger = logging.getLogger(__name__)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        logger.info(f"[JWT] Получены данные для аутентификации: {list(attrs.keys())}")
-        
-        # Если пришло поле 'email', используем его как 'username'
-        # так как в Django User.username = email
-        if 'email' in attrs and 'username' not in attrs:
-            attrs['username'] = attrs.pop('email')
-            logger.info(f"[JWT] Преобразовано email -> username")
-        
         username = attrs.get('username')
         logger.info(f"[JWT] Попытка аутентификации с username: {username}")
         

@@ -5,6 +5,10 @@ import ChatWindow from "@/components/chat/ChatWindow";
 import { api, WS_URL } from "@/api/client";
 import { useNotifications } from "@/hooks/use-notifications";
 import { WebSocketService } from "@/services/websocket";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Bell, BellOff } from "lucide-react";
+import { toast } from "sonner";
 
 interface ChatType {
   id: string;
@@ -54,7 +58,18 @@ const Chat = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        console.log('🚀 Инициализация приложения - получение профиля');
         const profile = await api.getProfile();
+        console.log('👤 Профиль получен:', profile);
+        console.log('👤 ID пользователя:', profile?.id, 'Тип:', typeof profile?.id);
+        
+        if (!profile || !profile.id) {
+          console.error('❌ Профиль не содержит ID!', profile);
+          toast.error("Ошибка: не удалось получить ID пользователя");
+          navigate('/login');
+          return;
+        }
+        
         setUser(profile);
         
         // Загружаем чаты один раз при инициализации
@@ -161,10 +176,11 @@ const Chat = () => {
             // Показываем уведомление если нужно
             if (data.data.type === 'new_message' && hasPermission()) {
               const chatId = data.data.chat_id;
-              const messageContent = data.data.content || 'Новое сообщение';
-              const senderName = data.data.sender?.username || 'Кто-то';
+              const message = data.data.message || {};
+              const messageContent = message.content || 'Новое сообщение';
+              const senderName = message.sender?.username || 'Кто-то';
               
-              console.log('[Chat] WebSocket: новое сообщение', { chatId, senderName, hasPermission: hasPermission() });
+              console.log('[Chat] WebSocket: новое сообщение', { chatId, senderName, message, hasPermission: hasPermission() });
               
               setChats(currentChats => {
                 const chat = currentChats.find(c => c.id === chatId);
@@ -199,7 +215,10 @@ const Chat = () => {
                   showNotification({
                     title: notificationTitle,
                     body: notificationBody,
-                    data: { chatId },
+                    data: { 
+                      chatId,
+                      url: '/chat'
+                    },
                     tag: `chat-${chatId}`,
                     icon: chat.participants?.[0]?.avatar_url || '/favicon.ico',
                   }).catch(error => {
@@ -310,6 +329,16 @@ const Chat = () => {
         // Service Worker сообщает о новых сообщениях
         console.log('[Chat] Новые сообщения от Service Worker');
         refreshChats();
+      } else if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+        // Обработка клика по уведомлению от Service Worker
+        console.log('[Chat] Клик по уведомлению от Service Worker:', event.data.data);
+        if (event.data.data && event.data.data.chatId) {
+          setSelectedChatId(event.data.data.chatId);
+          // Разворачиваем сайдбар, если он свернут
+          if (isSidebarCollapsed) {
+            setIsSidebarCollapsed(false);
+          }
+        }
       }
     };
 
@@ -437,7 +466,7 @@ const Chat = () => {
                       : lastMessagePreview || 'Новое сообщение',
                     data: {
                       chatId: chat.id,
-                      url: `/chat`,
+                      url: '/chat'
                     },
                     tag: `chat-${chat.id}`,
                     requireInteraction: false,
@@ -560,43 +589,91 @@ const Chat = () => {
     }
   };
 
-  if (!user) return null;
+  if (!user) {
+    console.log('⏳ User еще не загружен, ждем...');
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto"></div>
+          <p className="text-muted-foreground">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!user.id) {
+    console.error('❌ User загружен, но ID отсутствует!', user);
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center space-y-4">
+          <p className="text-destructive font-semibold">Ошибка: ID пользователя не определен</p>
+          <Button onClick={() => navigate('/login')}>Вернуться к входу</Button>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('📱 Chat страница загружена', { userId: user.id, user });
 
   return (
-    <div className="h-screen flex bg-background">
-      {/* Баннер для запроса разрешения на уведомления (только если разрешение не получено) */}
-      {isSupported() && notificationPermission !== 'granted' && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-primary text-primary-foreground p-3 shadow-lg">
-          <div className="container mx-auto flex items-center justify-between gap-4">
-            <div className="flex-1">
-              <p className="text-sm font-medium">
-                {notificationPermission === 'default' 
-                  ? 'Включите уведомления, чтобы не пропустить новые сообщения'
-                  : 'Уведомления заблокированы. Разрешите их в настройках браузера'}
-              </p>
+    <div className="flex bg-background overflow-hidden w-full h-full">
+      {/* Модальное окно для запроса разрешения на уведомления */}
+      <Dialog open={isSupported() && notificationPermission !== 'granted'} onOpenChange={(open) => {
+        if (!open) {
+          setNotificationPermission(Notification.permission);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center space-y-4">
+            {/* Иконка */}
+            <div className="mx-auto w-16 h-16 md:w-20 md:h-20 bg-gradient-primary rounded-2xl flex items-center justify-center shadow-glow">
+              {notificationPermission === 'denied' ? (
+                <BellOff className="w-8 h-8 md:w-10 md:h-10 text-primary-foreground" />
+              ) : (
+                <Bell className="w-8 h-8 md:w-10 md:h-10 text-primary-foreground" />
+              )}
             </div>
+            
+            <DialogTitle className="text-xl md:text-2xl font-bold">
+              {notificationPermission === 'default' 
+                ? 'Включите уведомления'
+                : 'Уведомления заблокированы'}
+            </DialogTitle>
+            
+            <DialogDescription className="text-sm md:text-base text-muted-foreground">
+              {notificationPermission === 'default' 
+                ? 'Получайте мгновенные уведомления о новых сообщениях, даже когда приложение закрыто'
+                : 'Уведомления заблокированы в настройках браузера. Разрешите их в настройках, чтобы получать уведомления о новых сообщениях'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col gap-3 mt-4">
             {notificationPermission === 'default' && (
-              <button
+              <Button
                 onClick={async () => {
                   const granted = await requestPermission();
                   if (granted) {
                     setNotificationPermission('granted');
                   }
                 }}
-                className="px-4 py-2 bg-background text-foreground rounded-md text-sm font-medium hover:bg-background/80 transition-colors"
+                className="w-full bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all"
+                size="lg"
               >
-                Включить
-              </button>
+                <Bell className="w-4 h-4 mr-2" />
+                Включить уведомления
+              </Button>
             )}
-            <button
+            
+            <Button
               onClick={() => setNotificationPermission(Notification.permission)}
-              className="text-sm opacity-80 hover:opacity-100"
+              variant="ghost"
+              className="w-full"
             >
-              ✕
-            </button>
+              {notificationPermission === 'default' ? 'Может позже' : 'Закрыть'}
+            </Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
       
       <ChatSidebar
         userId={user.id}
@@ -621,13 +698,20 @@ const Chat = () => {
         onTestNotification={handleTestNotification}
       />
       
-      {/* Показываем ChatWindow только когда сайдбар свернут И выбран чат */}
-      {isSidebarCollapsed && selectedChatId && (
+      {/* Показываем ChatWindow только когда сайдбар свернут И выбран чат И пользователь загружен */}
+      {isSidebarCollapsed && selectedChatId && user && user.id ? (
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
         />
-      )}
+      ) : isSidebarCollapsed && selectedChatId && !user ? (
+        <div className="flex-1 flex items-center justify-center bg-background">
+          <div className="text-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto"></div>
+            <p className="text-muted-foreground">Загрузка профиля...</p>
+          </div>
+        </div>
+      ) : null}
       
       {/* Сообщение когда сайдбар развернут */}
       {!isSidebarCollapsed}
@@ -635,15 +719,15 @@ const Chat = () => {
       {/* Сообщение когда сайдбар свернут но чат не выбран */}
       {isSidebarCollapsed && !selectedChatId && (
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
-          <div className="text-center p-8">
-            <div className="w-24 h-24 bg-gradient-primary rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-glow">
-              <span className="text-4xl font-black text-primary-foreground">Х</span>
+          <div className="text-center p-4 md:p-8">
+            <div className="w-16 h-16 md:w-24 md:h-24 bg-gradient-primary rounded-2xl md:rounded-3xl mx-auto mb-4 md:mb-6 flex items-center justify-center shadow-glow">
+              <span className="text-2xl md:text-4xl font-black text-primary-foreground">Х</span>
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">
+            <h2 className="text-xl md:text-2xl font-bold text-foreground mb-2 md:mb-4">
               Выберите чат
             </h2>
-            <p className="text-muted-foreground max-w-md">
-              Нажмите на иконку меню в свернутом сайдбаре чтобы развернуть список чатов и выбрать чат для общения.
+            <p className="text-sm md:text-base text-muted-foreground max-w-md px-4">
+              Нажмите на иконку меню чтобы развернуть список чатов
             </p>
           </div>
         </div>

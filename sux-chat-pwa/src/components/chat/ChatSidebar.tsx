@@ -227,11 +227,16 @@ const ChatSidebar = ({
 
   return (
     <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
-      isCollapsed ? "w-16" : "w-full"
+      isCollapsed ? "w-16" : "w-full md:w-80 lg:w-96"
     }`}>
       {/* Хедер сайдбара */}
-      <div className="p-4 border-b border-border bg-gradient-card">
-        <div className="flex items-center justify-between mb-4">
+      <div className="border-b border-border bg-gradient-card" style={{ 
+        paddingTop: 'max(12px, calc(12px + var(--safe-top, 0px)))',
+        paddingBottom: '12px',
+        paddingLeft: '12px',
+        paddingRight: '12px'
+      }}>
+        <div className="flex items-center justify-between mb-3 md:mb-4">
           {/* Левая часть - кнопки управления */}
           <div className="flex items-center gap-2">
             {/* Кнопка сворачивания/разворачивания */}
@@ -239,7 +244,7 @@ const ChatSidebar = ({
               variant="ghost" 
               size="icon" 
               onClick={onToggleCollapse}
-              className="h-10 w-8"
+              className="h-8 w-8 md:h-10 md:w-8"
               title={isCollapsed ? "Развернуть сайдбар" : "Свернуть сайдбар"}
             >
               {isCollapsed ? (
@@ -517,7 +522,12 @@ const ChatSidebar = ({
 
       {/* Кнопки в свернутом состоянии (внизу) */}
       {isCollapsed && (
-        <div className="p-2 border-t border-border space-y-2">
+        <div className="border-t border-border space-y-2" style={{ 
+          paddingTop: '8px',
+          paddingBottom: 'max(8px, calc(8px + var(--safe-bottom, 0px)))',
+          paddingLeft: '8px',
+          paddingRight: '8px'
+        }}>
           {/* Кнопка уведомлений - показываем только если разрешение не получено */}
           {onRequestNotificationPermission && notificationPermission !== 'granted' && (
             <Button 

@@ -191,11 +191,11 @@ const ChatSidebar = ({
 
   return (
     <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
-      isCollapsed ? "w-16" : "w-full"
+      isCollapsed ? "w-16" : "w-full md:w-80 lg:w-96"
     }`}>
       {/* Хедер сайдбара */}
-      <div className="p-4 border-b border-border bg-gradient-card">
-        <div className="flex items-center justify-between mb-4">
+      <div className="p-3 md:p-4 border-b border-border bg-gradient-card">
+        <div className="flex items-center justify-between mb-3 md:mb-4">
           {/* Левая часть - кнопки управления */}
           <div className="flex items-center gap-2">
             {/* Кнопка сворачивания/разворачивания */}

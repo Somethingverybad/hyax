@@ -131,3 +131,40 @@ html, body, #root {
     backdrop-filter: blur(10px);
   }
 }
+
+/* Адаптивные улучшения для мобильных устройств */
+@media (max-width: 768px) {
+  /* Уменьшение отступов на мобильных */
+  :root {
+    --radius: 0.5rem;
+  }
+  
+  /* Оптимизация тапа на мобильных */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Улучшение читаемости текста на мобильных */
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/* Поддержка безопасных зон для iPhone X и новее */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Оптимизация для темного режима iOS Safari */
+@supports (-webkit-touch-callout: none) {
+  /* Специальные стили для iOS Safari */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

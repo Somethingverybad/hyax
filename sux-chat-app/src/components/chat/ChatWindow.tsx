@@ -339,8 +339,8 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 
   return (
     <div className="flex-1 flex flex-col bg-background">
-      <ScrollArea className="flex-1 px-4 py-6" ref={scrollRef as any}>
-        <div className="max-w-4xl mx-auto space-y-6">
+      <ScrollArea className="flex-1 px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
+        <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
           {messages.map((message, index) => {
             const isOwn = message.sender?.id === userId;
             const previousMessage = index > 0 ? messages[index - 1] : null;
@@ -382,7 +382,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 
                   {/* Контент сообщения */}
                   <div className={cn(
-                    "flex flex-col max-w-[70%]",
+                    "flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[70%]",
                     isOwn ? "items-end" : "items-start"
                   )}>
                     {/* Имя отправителя (только для чужих сообщений) */}
@@ -514,16 +514,16 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       </ScrollArea>
 
       {/* Поле ввода */}
-      <div className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
+      <div className="p-2 md:p-4 border-t border-border bg-card/50 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto">
           {selectedFile && (
-            <div className="mb-3 p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium truncate max-w-[300px]">
+            <div className="mb-2 md:mb-3 p-2 md:p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Paperclip className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm font-medium truncate">
                   {selectedFile.name}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex-shrink-0">
                   ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
                 </span>
               </div>
@@ -551,14 +551,14 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
               size="icon" 
               onClick={() => fileInputRef.current?.click()} 
               disabled={uploading}
-              className="h-11 w-11 shrink-0 border-2"
+              className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
             >
               <Paperclip className="w-4 h-4" />
             </Button>
             
             <div className="flex-1 relative">
               <Input
-                placeholder="Введите сообщение..."
+                placeholder="Сообщение..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => {
@@ -568,16 +568,16 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                   }
                 }}
                 disabled={uploading}
-                className="pr-12 bg-background border-2 h-11 resize-none"
+                className="pr-12 bg-background border-2 h-10 md:h-11 resize-none text-sm md:text-base"
                 multiline
-                style={{ minHeight: '44px', maxHeight: '120px' }}
+                style={{ minHeight: '40px', maxHeight: '120px' }}
               />
             </div>
             
             <Button 
               onClick={sendMessage} 
               disabled={uploading || (!newMessage.trim() && !selectedFile)} 
-              className="h-11 px-6 bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200 shrink-0"
+              className="h-10 md:h-11 px-4 md:px-6 bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200 shrink-0"
               size="lg"
             >
               {uploading ? (

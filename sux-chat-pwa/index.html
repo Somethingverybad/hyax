@@ -2,14 +2,101 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#6366f1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <!-- Theme colors for different browsers and color schemes -->
+    <meta name="theme-color" content="#0f1419" />
+    <meta name="theme-color" content="#0f1419" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    
+    <!-- iOS Safari specific meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ХУЯКС" />
+    
+    <!-- Prevent iOS from styling form elements -->
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- PWA meta -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="description" content="Современный мессенджер для общения с друзьями" />
     <title>ХУЯКС Мессенджер</title>
+    
+    <!-- Prevent zoom on input focus on iOS -->
+    <style>
+      /* Fix viewport height for mobile browsers */
+      :root {
+        --viewport-height: 100vh;
+        --sat: env(safe-area-inset-top);
+        --sar: env(safe-area-inset-right);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+      }
+      
+      /* Use dynamic viewport height if available (better for mobile) */
+      @supports (height: 100dvh) {
+        :root {
+          --viewport-height: 100dvh;
+        }
+      }
+      
+      /* iOS Safari specific height fix */
+      @supports (-webkit-touch-callout: none) {
+        :root {
+          --viewport-height: -webkit-fill-available;
+        }
+      }
+      
+      html {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0f1419;
+      }
+      
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+        position: relative;
+        background: #0f1419;
+        /* Важно: НЕ добавляем padding здесь для safe areas */
+      }
+      
+      #root {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        /* НЕ применяем padding к root - это сдвигает всё */
+        /* Safe areas будут применяться в компонентах */
+        box-sizing: border-box;
+      }
+      
+      /* Prevent pull-to-refresh and bounce on iOS */
+      body {
+        overscroll-behavior-y: contain;
+        -webkit-user-select: none;
+        user-select: none;
+        /* Prevent white background flash */
+        background-color: #0f1419 !important;
+      }
+      
+      /* Allow text selection in inputs and text areas */
+      input, textarea, [contenteditable] {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+    </style>
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <meta property="og:title" content="ХУЯКС Мессенджер" />
     <meta property="og:description" content="Современный мессенджер для общения с друзьями" />
@@ -22,6 +109,62 @@
 
   <body>
     <div id="root"></div>
+    
+    <!-- Fix viewport height on mobile (especially iOS) -->
+    <script>
+      // Set CSS variable for actual viewport height
+      function setVH() {
+        // Получаем реальную высоту окна
+        const windowHeight = window.innerHeight;
+        const vh = windowHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+        document.documentElement.style.setProperty('--viewport-height', `${windowHeight}px`);
+        
+        console.log('📐 Viewport:', {
+          innerHeight: windowHeight,
+          vh: vh,
+          userAgent: navigator.userAgent.includes('iPhone') ? 'iOS' : 'Other'
+        });
+      }
+      
+      // Set on load
+      setVH();
+      
+      // Update on resize (e.g., when address bar appears/disappears on mobile)
+      let resizeTimer;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(setVH, 100);
+      });
+      
+      // Update on orientation change
+      window.addEventListener('orientationchange', () => {
+        setTimeout(setVH, 150);
+      });
+      
+      // iOS specific: update when page becomes visible
+      if ('visualViewport' in window) {
+        window.visualViewport.addEventListener('resize', setVH);
+      }
+      
+      // Prevent zoom on double tap on iOS
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', (event) => {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 300) {
+          event.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, { passive: false });
+      
+      // Force background color on iOS
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.style.backgroundColor = '#0f1419';
+        document.documentElement.style.backgroundColor = '#0f1419';
+        console.log('🎨 Background color set');
+      });
+    </script>
+    
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
