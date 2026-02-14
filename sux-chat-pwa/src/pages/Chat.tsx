@@ -66,7 +66,7 @@ const Chat = () => {
         if (!profile || !profile.id) {
           console.error('❌ Профиль не содержит ID!', profile);
           toast.error("Ошибка: не удалось получить ID пользователя");
-          navigate('/login');
+          navigate('/auth');
           return;
         }
         
@@ -607,7 +607,7 @@ const Chat = () => {
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center space-y-4">
           <p className="text-destructive font-semibold">Ошибка: ID пользователя не определен</p>
-          <Button onClick={() => navigate('/login')}>Вернуться к входу</Button>
+          <Button onClick={() => navigate('/auth')}>Вернуться к входу</Button>
         </div>
       </div>
     );
@@ -616,7 +616,7 @@ const Chat = () => {
   console.log('📱 Chat страница загружена', { userId: user.id, user });
 
   return (
-    <div className="flex bg-background overflow-hidden w-full h-full">
+    <div className="flex bg-background overflow-hidden overflow-x-hidden w-full h-full min-w-0 min-h-0 max-w-[100vw]">
       {/* Модальное окно для запроса разрешения на уведомления */}
       <Dialog open={isSupported() && notificationPermission !== 'granted'} onOpenChange={(open) => {
         if (!open) {
@@ -700,10 +700,12 @@ const Chat = () => {
       
       {/* Показываем ChatWindow только когда сайдбар свернут И выбран чат И пользователь загружен */}
       {isSidebarCollapsed && selectedChatId && user && user.id ? (
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden overflow-x-hidden flex flex-col max-w-full">
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
         />
+        </div>
       ) : isSidebarCollapsed && selectedChatId && !user ? (
         <div className="flex-1 flex items-center justify-center bg-background">
           <div className="text-center space-y-4">

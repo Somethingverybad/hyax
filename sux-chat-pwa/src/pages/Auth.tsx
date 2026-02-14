@@ -46,8 +46,8 @@ const Auth = () => {
   };
 
   return (
-    <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-3 md:p-4 overflow-auto">
-      <Card className="w-full max-w-md p-4 md:p-8 bg-gradient-card shadow-card border-border">
+    <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-3 md:p-4 overflow-auto overflow-x-hidden min-w-0">
+      <Card className="w-full max-w-[min(28rem,calc(100vw-1.5rem))] p-4 md:p-8 bg-gradient-card shadow-card border-border">
         <div className="flex flex-col items-center mb-6 md:mb-8">
           {/* Иконка со стилизованной буквой Х */}
           <div className="relative mb-4 md:mb-6">

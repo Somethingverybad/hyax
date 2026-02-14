@@ -55,7 +55,7 @@ const ProfileView = ({ profileId, onClose, isOwnProfile = false, onEditClick }: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card border-2 border-border rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-card border-2 border-border rounded-2xl shadow-2xl max-w-md w-[calc(100%-2rem)] max-w-[min(28rem,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto">
         {/* Заголовок */}
         <div className="sticky top-0 bg-card border-b border-border p-4 flex items-center justify-between">
           <h2 className="text-xl font-bold">Профиль</h2>

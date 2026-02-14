@@ -339,7 +339,6 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       setIsMuted(false);
     };
   }, [chatId, userId]);
-  }, [chatId, userId]);
 
   // Эффект для обработки новых сообщений и звуков
   useEffect(() => {
@@ -720,7 +719,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     <>
       {/* Модальное окно для просмотра изображений */}
       <Dialog open={!!selectedImageUrl} onOpenChange={(open) => !open && setSelectedImageUrl(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-background/95 backdrop-blur-sm">
+        <DialogContent className="max-w-[min(95vw,600px)] max-h-[95vh] w-[95vw] p-0 bg-background/95 backdrop-blur-sm mx-2">
           {selectedImageUrl && (
             <div className="relative w-full h-full flex items-center justify-center">
               <img
@@ -753,82 +752,68 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
         </DialogContent>
       </Dialog>
 
-      <div className="flex-1 flex flex-col bg-background overflow-hidden">
+      <div className="flex-1 flex flex-col bg-background overflow-hidden min-w-0 min-h-0 max-w-full">
       <audio ref={remoteAudioRef} autoPlay playsInline />
-      <div className="border-b border-border bg-card/50 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-          <div className="text-sm text-muted-foreground">
-            {targetParticipant
-              ? `Звонок с ${targetParticipant.username}`
-              : "Звонки доступны только для 1:1 чатов"}
-          </div>
-          <div className="flex items-center gap-2">
-            {incomingCall && callState === "incoming" ? (
-              <>
-                <Button variant="destructive" size="sm" onClick={rejectIncomingCall}>
-                  <PhoneOff className="w-4 h-4 mr-2" />
-                  Отклонить
-                </Button>
-                <Button size="sm" onClick={acceptIncomingCall}>
-                  <Phone className="w-4 h-4 mr-2" />
-                  Принять
-                </Button>
-              </>
-            ) : null}
-
-            {(callState === "outgoing" || callState === "connecting" || callState === "active") && (
-              <>
-                <Button variant="outline" size="sm" onClick={toggleMute}>
-                  {isMuted ? <MicOff className="w-4 h-4 mr-2" /> : <Mic className="w-4 h-4 mr-2" />}
-                  {isMuted ? "Звук выкл" : "Звук вкл"}
-                </Button>
-                <Button variant="destructive" size="sm" onClick={endCall}>
-                  <PhoneOff className="w-4 h-4 mr-2" />
-                  Завершить
-                </Button>
-              </>
-            )}
-
-            {callState === "idle" && (
-              <Button size="sm" onClick={startCall} disabled={!targetParticipant}>
-                <Phone className="w-4 h-4 mr-2" />
-                Позвонить
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-      {/* Верхняя панель с кнопкой профиля */}
-      <div className="border-b border-border bg-card/50 backdrop-blur-sm flex justify-end shrink-0" style={{ 
+      {/* Верхняя панель: звонок + кнопка профиля */}
+      <div className="border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between gap-2 shrink-0 overflow-hidden px-2 sm:px-4" style={{ 
         paddingTop: 'max(8px, calc(8px + var(--safe-top, 0px)))',
         paddingBottom: '8px',
-        paddingLeft: '8px',
-        paddingRight: '8px'
       }}>
-        {console.log('🔘 Рендер кнопки профиля', { userId, typeOfUserId: typeof userId, showProfile })}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            console.log('👤 Клик на кнопку профиля', { userId, typeOfUserId: typeof userId, isUndefined: userId === undefined });
-            if (!userId) {
-              toast.error("ID пользователя не определен");
-              console.error('❌ userId is undefined!');
-              return;
-            }
-            setSelectedProfileId(userId);
-            setShowProfile(true);
-            console.log('👤 Состояние обновлено', { selectedProfileId: userId, showProfile: true });
-          }}
-          className="h-9 w-9 rounded-full hover:bg-primary/10 transition-colors"
-          title="Мой профиль"
-        >
-          <User className="w-5 h-5" />
-        </Button>
+        <div className="text-sm text-muted-foreground min-w-0 flex-1 truncate pr-2" title={targetParticipant ? `Звонок с ${targetParticipant.username}` : undefined}>
+          {targetParticipant
+            ? `Звонок с ${targetParticipant.username}`
+            : "Звонки доступны только для 1:1 чатов"}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {incomingCall && callState === "incoming" ? (
+            <>
+              <Button variant="destructive" size="icon" onClick={rejectIncomingCall} className="h-9 w-9" title="Отклонить">
+                <PhoneOff className="w-5 h-5" />
+              </Button>
+              <Button size="icon" onClick={acceptIncomingCall} className="h-9 w-9" title="Принять">
+                <Phone className="w-5 h-5" />
+              </Button>
+            </>
+          ) : null}
+
+          {(callState === "outgoing" || callState === "connecting" || callState === "active") && (
+            <>
+              <Button variant="outline" size="icon" onClick={toggleMute} className="h-9 w-9" title={isMuted ? "Звук выкл" : "Звук вкл"}>
+                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </Button>
+              <Button variant="destructive" size="icon" onClick={endCall} className="h-9 w-9" title="Завершить">
+                <PhoneOff className="w-5 h-5" />
+              </Button>
+            </>
+          )}
+
+          {callState === "idle" && (
+            <Button size="icon" onClick={startCall} disabled={!targetParticipant} className="h-9 w-9" title="Позвонить">
+              <Phone className="w-5 h-5" />
+            </Button>
+          )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              if (!userId) {
+                toast.error("ID пользователя не определен");
+                return;
+              }
+              setSelectedProfileId(userId);
+              setShowProfile(true);
+            }}
+            className="h-9 w-9 rounded-full hover:bg-primary/10 transition-colors"
+            title="Мой профиль"
+          >
+            <User className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
       
-      <ScrollArea className="flex-1 px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
-        <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+      <ScrollArea className="flex-1 min-h-0 px-3 md:px-4 py-4 md:py-6 overflow-x-hidden" ref={scrollRef as any}>
+        <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 min-w-0">
           {messages.map((message, index) => {
             const isOwn = message.sender?.id === userId;
             const previousMessage = index > 0 ? messages[index - 1] : null;
@@ -880,10 +865,10 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                   )}
 
                   {/* Контент сообщения */}
-                  <div className={cn(
-                    "flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[70%]",
-                    isOwn ? "items-end" : "items-start"
-                  )}>
+                    <div className={cn(
+                      "flex flex-col min-w-0 max-w-[85%] sm:max-w-[75%] md:max-w-[70%]",
+                      isOwn ? "items-end" : "items-start"
+                    )}>
                     {/* Имя отправителя (только для чужих сообщений) */}
                     {!isOwn && (
                       <div className="flex items-center gap-2 mb-1 ml-1">
@@ -921,7 +906,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                     )}>
                       {/* Стикер */}
                       {message.sticker && (
-                        <div className="w-32 h-32 sm:w-40 sm:h-40">
+                        <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 max-w-[min(10rem,45vw)]">
                           <img
                             src={message.sticker.file_url}
                             alt={message.sticker.file_name}
@@ -944,14 +929,14 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
 
                       {/* Текст сообщения */}
                       {!message.sticker && !message.voice_url && message.content && (
-                        <p className="break-words leading-relaxed whitespace-pre-wrap">
+                        <p className="break-words leading-relaxed whitespace-pre-wrap max-w-full overflow-hidden">
                           {message.content}
                         </p>
                       )}
 
                       {/* Файл */}
                       {!message.sticker && !message.voice_url && message.file_url && (
-                        <div className={cn("mt-2", isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) && "max-w-[280px] sm:max-w-[350px] md:max-w-[400px]")}>
+                        <div className={cn("mt-2 overflow-hidden", isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) && "max-w-[min(280px,calc(100vw-5rem))] sm:max-w-[350px] md:max-w-[400px]")}>
                           {isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) ? (
                             // Отображение изображения
                             <div className="relative group">
@@ -959,7 +944,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                                 src={normalizeImageUrl(message.file_url)} 
                                 alt={message.file_name || "Изображение"}
                                 className={cn(
-                                  "rounded-lg max-w-full h-auto cursor-pointer",
+                                  "rounded-lg w-full max-w-full h-auto cursor-pointer object-contain",
                                   "border-2 transition-transform hover:scale-[1.02]",
                                   isOwn ? "border-primary/30" : "border-border"
                                 )}
@@ -1050,13 +1035,13 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       </ScrollArea>
 
       {/* Поле ввода */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm" style={{ 
+      <div className="border-t border-border bg-card/50 backdrop-blur-sm shrink-0 overflow-hidden" style={{ 
         paddingTop: '8px',
         paddingBottom: 'max(8px, calc(8px + var(--safe-bottom, 0px)))',
         paddingLeft: '8px',
         paddingRight: '8px'
       }}>
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto w-full min-w-0">
           {/* Voice Recorder */}
           {isRecordingVoice && (
             <div className="mb-2">
@@ -1089,7 +1074,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             </div>
           )}
           
-          <div className="flex gap-2 items-end">
+          <div className="flex gap-2 items-end min-w-0">
             {!isRecordingVoice && (
               <>
                 <input 
@@ -1120,7 +1105,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                       <Smile className="w-4 h-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-80 p-0" side="top" align="start">
+                  <PopoverContent className="w-[min(320px,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] p-0" side="top" align="start">
                     <StickerPicker
                       onSelectSticker={(sticker) => sendSticker(sticker)}
                       onManagePacks={() => {
@@ -1145,7 +1130,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             
             {!isRecordingVoice && (
               <>
-                <div className="flex-1 relative">
+                <div className="flex-1 relative min-w-0">
                   <Input
                     ref={messageInputRef}
                     placeholder="Сообщение..."

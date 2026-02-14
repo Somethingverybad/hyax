@@ -226,8 +226,8 @@ const ChatSidebar = ({
   };
 
   return (
-    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
-      isCollapsed ? "w-16" : "w-full md:w-80 lg:w-96"
+    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 min-w-0 shrink-0 ${
+      isCollapsed ? "w-16" : "w-full max-w-[min(100%,24rem)] md:w-80 lg:w-96"
     }`}>
       {/* Хедер сайдбара */}
       <div className="border-b border-border bg-gradient-card" style={{ 

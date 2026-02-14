@@ -250,7 +250,11 @@ export class OneToOneCallService {
     }
 
     this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
       video: false,
     });
   }
@@ -268,9 +272,10 @@ export class OneToOneCallService {
     this.onRemoteStream?.(this.remoteStream);
 
     this.peerConnection.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => {
-        this.remoteStream?.addTrack(track);
-      });
+      const track = event.track;
+      if (track && track.kind === "audio" && this.remoteStream) {
+        this.remoteStream.addTrack(track);
+      }
       if (this.remoteStream) {
         this.onRemoteStream?.(this.remoteStream);
       }

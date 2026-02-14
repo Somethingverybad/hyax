@@ -20,7 +20,7 @@ const App = () => {
         <Sonner />
         
         {/* Основной контейнер */}
-        <div className="w-full h-full overflow-hidden bg-background relative">
+        <div className="w-full h-full min-w-0 min-h-0 overflow-hidden overflow-x-hidden bg-background relative max-w-[100vw]">
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />

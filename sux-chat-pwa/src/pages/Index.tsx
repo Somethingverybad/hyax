@@ -6,15 +6,15 @@ const Index = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 overflow-hidden">
+    <div className="flex h-full w-full min-w-0 items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 overflow-hidden overflow-x-hidden">
       {/* Кастомный скроллбар контейнер */}
-      <div className="w-full h-full overflow-y-auto scrollbar-custom flex items-center justify-center">
-        <div className="text-center max-w-2xl px-3 md:px-4 py-6 md:py-8 mx-auto">
+      <div className="w-full h-full overflow-y-auto overflow-x-hidden scrollbar-custom flex items-center justify-center min-w-0">
+        <div className="text-center max-w-2xl w-full min-w-0 px-3 md:px-4 py-6 md:py-8 mx-auto box-border">
           <div className="w-20 h-20 md:w-24 md:h-24 bg-gradient-primary rounded-2xl md:rounded-3xl mx-auto mb-6 md:mb-8 flex items-center justify-center shadow-glow animate-pulse">
             <MessageSquare className="w-10 h-10 md:w-12 md:h-12 text-primary-foreground" />
           </div>
           
-          <h1 className="mb-4 md:mb-6 text-3xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          <h1 className="mb-4 md:mb-6 text-2xl sm:text-3xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent break-words">
             ХУЯКС эсемэсэнджер
           </h1>
           

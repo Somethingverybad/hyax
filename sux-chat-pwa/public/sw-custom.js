@@ -7,7 +7,8 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   
   const data = event.notification.data;
-  const targetUrl = data?.url || '/chat';
+  const rawUrl = data?.url;
+  const targetUrl = (typeof rawUrl === 'string' && rawUrl.startsWith('/') && rawUrl !== '/undefined') ? rawUrl : '/chat';
   
   // Открываем/фокусируем окно приложения
   event.waitUntil(
