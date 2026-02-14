@@ -1037,7 +1037,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       {/* Поле ввода */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm shrink-0 overflow-hidden" style={{ 
         paddingTop: '8px',
-        paddingBottom: 'max(8px, calc(8px + var(--safe-bottom, 0px)))',
+        paddingBottom: 'env(safe-area-inset-bottom, 8px)',
         paddingLeft: '8px',
         paddingRight: '8px'
       }}>
