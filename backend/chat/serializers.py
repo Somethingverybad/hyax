@@ -6,7 +6,7 @@ from .models import *
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'status', 'bio', 'created_at']
+        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at']
         read_only_fields = ['id', 'username', 'created_at']
 
 class FriendshipSerializer(serializers.ModelSerializer):

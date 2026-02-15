@@ -113,70 +113,75 @@ const StickerPicker = ({ onSelectSticker, onManagePacks }: StickerPickerProps) =
   }
 
   return (
-    <div className="flex flex-col h-full bg-popover text-popover-foreground">
+    <div className="flex flex-col h-full max-h-[400px] bg-popover text-popover-foreground rounded-lg overflow-hidden">
       {/* Заголовок с кнопкой управления */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-        <h3 className="font-semibold text-foreground">Стикеры</h3>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+        <h3 className="font-semibold text-sm sm:text-base text-foreground">Стикеры</h3>
         <Button
           onClick={onManagePacks}
           variant="ghost"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="h-7 w-7 p-0"
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="w-3 h-3 sm:w-4 sm:h-4" />
         </Button>
       </div>
 
       {/* Tabs для паков */}
-      <Tabs value={selectedPackId || undefined} onValueChange={setSelectedPackId} className="flex-1 flex flex-col">
-        <TabsList className="w-full justify-start overflow-x-auto px-2 py-1 bg-muted">
+      <Tabs value={selectedPackId || undefined} onValueChange={setSelectedPackId} className="flex-1 flex flex-col min-h-0">
+        <ScrollArea className="shrink-0 border-b border-border">
+          <TabsList className="w-full justify-start h-auto px-2 py-1.5 bg-muted flex-nowrap">
+            {myPacks.map((userPack) => (
+              <TabsTrigger 
+                key={userPack.pack.id} 
+                value={userPack.pack.id}
+                className="text-xs px-2 py-1 whitespace-nowrap data-[state=active]:bg-background data-[state=active]:text-foreground"
+              >
+                {userPack.pack.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </ScrollArea>
+
+        <div className="flex-1 min-h-0 overflow-hidden">
           {myPacks.map((userPack) => (
-            <TabsTrigger 
+            <TabsContent 
               key={userPack.pack.id} 
               value={userPack.pack.id}
-              className="text-xs px-3 data-[state=active]:bg-background data-[state=active]:text-foreground"
+              className="h-full mt-0 data-[state=inactive]:hidden"
             >
-              {userPack.pack.name}
-            </TabsTrigger>
+              <ScrollArea className="h-full bg-background/50">
+                {stickers.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground text-xs sm:text-sm px-4 text-center">
+                    В этом паке пока нет стикеров
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 sm:gap-2 p-2">
+                    {stickers.map((sticker) => (
+                      <button
+                        key={sticker.id}
+                        onClick={() => handleStickerClick(sticker)}
+                        className={cn(
+                          "aspect-square rounded-lg overflow-hidden",
+                          "border-2 border-border hover:border-primary active:border-primary",
+                          "transition-all hover:scale-105 active:scale-95",
+                          "bg-muted/30 hover:bg-muted/50"
+                        )}
+                      >
+                        <img
+                          src={sticker.file_url}
+                          alt={sticker.file_name}
+                          className="w-full h-full object-contain p-0.5 sm:p-1"
+                          loading="lazy"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </TabsContent>
           ))}
-        </TabsList>
-
-        {myPacks.map((userPack) => (
-          <TabsContent 
-            key={userPack.pack.id} 
-            value={userPack.pack.id}
-            className="flex-1 mt-0"
-          >
-            <ScrollArea className="h-64 bg-background/50">
-              {stickers.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  В этом паке пока нет стикеров
-                </div>
-              ) : (
-                <div className="grid grid-cols-4 gap-2 p-2">
-                  {stickers.map((sticker) => (
-                    <button
-                      key={sticker.id}
-                      onClick={() => handleStickerClick(sticker)}
-                      className={cn(
-                        "aspect-square rounded-lg overflow-hidden",
-                        "border-2 border-border hover:border-primary",
-                        "transition-all hover:scale-105 active:scale-95",
-                        "bg-muted/30 hover:bg-muted/50"
-                      )}
-                    >
-                      <img
-                        src={sticker.file_url}
-                        alt={sticker.file_name}
-                        className="w-full h-full object-contain"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-        ))}
+        </div>
       </Tabs>
     </div>
   );

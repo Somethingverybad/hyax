@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { WebSocketService } from "@/services/websocket";
 import { ICE_SERVERS, WS_URL } from "@/api/client";
-import { ICE_SERVERS, WS_URL } from "@/api/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, CheckCheck, Download, Phone, PhoneOff, Mic, MicOff, Smile, Mic, User } from "lucide-react";
+import { Send, Paperclip, X, CheckCheck, Download, Phone, PhoneOff, Mic, MicOff, Smile, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -53,25 +52,13 @@ interface Message {
 interface ChatWindowProps {
   chatId: string | null;
   userId: string;
+  globalCallService: OneToOneCallService | null;
+  onCallEnded?: () => void;
 }
 
 type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
 
-interface IncomingCall {
-  callId: string;
-  fromUserId: string;
-  callType: "audio" | "video";
-}
-
-type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
-
-interface IncomingCall {
-  callId: string;
-  fromUserId: string;
-  callType: "audio" | "video";
-}
-
-const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, globalCallService, onCallEnded }: ChatWindowProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -100,7 +87,6 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   const lastSendTimeRef = useRef<number>(0);
   const [targetParticipant, setTargetParticipant] = useState<Profile | null>(null);
   const [callState, setCallState] = useState<CallState>("idle");
-  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [isMuted, setIsMuted] = useState(false);
 
   // Обработка появления клавиатуры на мобильных
@@ -135,7 +121,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   useEffect(() => {
     sendSoundRef.current = new Audio('/sounds/send.mp3');
     receiveSoundRef.current = new Audio('/sounds/receive.mp3');
-    
+
     if (sendSoundRef.current) {
       sendSoundRef.current.volume = 0.3;
     }
@@ -215,7 +201,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     };
   }, [chatId, userId]);
 
-  // WebSocket соединение для получения новых сообщений
+  // WebSocket соединение для получения новых сообщений (БЕЗ звонков!)
   useEffect(() => {
     if (!chatId) {
       setMessages([]);
@@ -225,9 +211,9 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
     // Сначала загружаем существующие сообщения
     fetchMessages();
 
-    // Подключаемся к WebSocket для получения новых сообщений в реальном времени
+    // Подключаемся к WebSocket ТОЛЬКО для сообщений (звонки через глобальный канал)
     const token = localStorage.getItem("access_token");
-    const wsService = new WebSocketService(`${WS_URL}/chat/${chatId}/`, {
+    const chatWsService = new WebSocketService(`${WS_URL}/chat/${chatId}/`, {
       onMessage: (data) => {
         if (data.type === 'new_message' && data.message) {
           // Добавляем новое сообщение в список
@@ -238,107 +224,84 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             }
             return [...prev, data.message];
           });
-          return;
         }
-
-        if (data.type === "call_signal" && data.signal_type) {
-          void callServiceRef.current?.handleSignal(data.signal_type, data.data || {});
-          return;
-        }
-
-        if (data.type === "call_signal" && data.signal_type) {
-          void callServiceRef.current?.handleSignal(data.signal_type, data.data || {});
-        }
+        // Больше НЕ обрабатываем call_signal здесь - это делает глобальный WebSocket!
       },
       onError: (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[ChatWindow] WebSocket error:', error);
       },
       onOpen: () => {
-        console.log('WebSocket connected for chat:', chatId);
+        console.log(`[ChatWindow] WebSocket connected for chat: ${chatId}`);
       },
       onClose: () => {
-        console.log('WebSocket disconnected for chat:', chatId);
+        console.log(`[ChatWindow] WebSocket disconnected for chat: ${chatId}`);
       },
     });
 
-    callServiceRef.current = new OneToOneCallService({
-      wsService,
-      chatId,
-      userId,
-      iceServers: ICE_SERVERS,
-      onStateChange: (state) => {
-        setCallState(state);
-      },
-      onIncomingCall: (call) => {
-        setIncomingCall(call);
-      },
-      onRemoteStream: (stream) => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = stream;
-          void remoteAudioRef.current.play().catch(() => undefined);
-        }
-      },
-      onCallEnded: (reason) => {
-        setIncomingCall(null);
-        setIsMuted(false);
-        if (reason === "rejected") {
-          toast.info("Звонок отклонен");
-        } else if (reason === "failed") {
-          toast.error("Звонок завершился с ошибкой соединения");
-        }
-      },
-      onError: (message) => {
-        toast.error(message);
-      },
-    });
-
-    callServiceRef.current = new OneToOneCallService({
-      wsService,
-      chatId,
-      userId,
-      iceServers: ICE_SERVERS,
-      onStateChange: (state) => {
-        setCallState(state);
-      },
-      onIncomingCall: (call) => {
-        setIncomingCall(call);
-      },
-      onRemoteStream: (stream) => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = stream;
-          void remoteAudioRef.current.play().catch(() => undefined);
-        }
-      },
-      onCallEnded: (reason) => {
-        setIncomingCall(null);
-        setIsMuted(false);
-        if (reason === "rejected") {
-          toast.info("Звонок отклонен");
-        } else if (reason === "failed") {
-          toast.error("Звонок завершился с ошибкой соединения");
-        }
-      },
-      onError: (message) => {
-        toast.error(message);
-      },
-    });
-
-    wsService.connect(token || undefined);
+    chatWsService.connect(token || undefined);
 
     return () => {
-      callServiceRef.current?.dispose();
-      callServiceRef.current = null;
-      callServiceRef.current?.dispose();
-      callServiceRef.current = null;
-      wsService.disconnect();
-      setIncomingCall(null);
-      setCallState("idle");
+      console.log('[ChatWindow] Cleanup: отключение WebSocket для чата');
+      chatWsService.disconnect();
+    };
+  }, [chatId]);
+  
+  // Используем глобальный Call Service (onIncomingCall нужен всегда, targetParticipant — только для исходящих)
+  useEffect(() => {
+    if (!globalCallService || !chatId) {
+      console.log('[ChatWindow] Глобальный Call Service не готов:', {
+        hasService: !!globalCallService,
+        chatId
+      });
+      return;
+    }
+    
+    console.log(`📞 [ChatWindow] Подключение к глобальному Call Service для чата ${chatId}`);
+    
+    // Используем глобальный Call Service
+    callServiceRef.current = globalCallService;
+    
+    // Обновляем chatId для звонков
+    if (callServiceRef.current && 'updateChatId' in callServiceRef.current) {
+      (callServiceRef.current as any).updateChatId(chatId);
+    }
+    
+    // Перенастраиваем callbacks для текущего чата
+    callServiceRef.current.onStateChange = (state) => {
+      setCallState(state);
+    };
+    
+    // onIncomingCall обрабатывается в Chat.tsx (попап всегда виден, в любом экране)
+    
+    callServiceRef.current.onRemoteStream = (stream) => {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = stream;
+        void remoteAudioRef.current.play().catch(() => undefined);
+      }
+    };
+    
+    callServiceRef.current.onCallEnded = (reason) => {
+      onCallEnded?.();
       setIsMuted(false);
-      setIncomingCall(null);
+      if (reason === "rejected") {
+        toast.info("Звонок отклонен");
+      } else if (reason === "failed") {
+        toast.error("Звонок завершился с ошибкой соединения");
+      }
+    };
+    
+    callServiceRef.current.onError = (message) => {
+      toast.error(message);
+    };
+    
+    return () => {
+      console.log('[ChatWindow] Cleanup Call Service callbacks');
+      // НЕ сбрасываем incomingCall — он глобальный, не привязан к чату
+      // НЕ dispose глобальный Call Service!
       setCallState("idle");
       setIsMuted(false);
     };
-  }, [chatId, userId]);
+  }, [globalCallService, chatId, onCallEnded]);
 
   // Эффект для обработки новых сообщений и звуков
   useEffect(() => {
@@ -574,36 +537,30 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   };
 
   const startCall = async () => {
+    console.log('📞 [startCall] Нажата кнопка звонка');
+    console.log('📞 [startCall] targetParticipant:', targetParticipant);
+    console.log('📞 [startCall] callServiceRef.current:', callServiceRef.current);
+    console.log('📞 [startCall] globalCallService:', globalCallService);
+    console.log('📞 [startCall] chatId:', chatId);
+    
     if (!targetParticipant) {
+      console.error('❌ [startCall] Нет собеседника для звонка');
       toast.error("Для звонка нужен 1:1 чат");
       return;
     }
     if (!callServiceRef.current) {
+      console.error('❌ [startCall] Сервис звонков не готов');
       toast.error("Сервис звонков не готов");
       return;
     }
+    
+    console.log(`📞 [startCall] Начинаем звонок пользователю ${targetParticipant.id}`);
     await callServiceRef.current.startOutgoingCall(targetParticipant.id);
-  };
-
-  const acceptIncomingCall = async () => {
-    if (!incomingCall || !callServiceRef.current) {
-      return;
-    }
-    await callServiceRef.current.acceptIncomingCall(incomingCall.callId, incomingCall.fromUserId);
-    setIncomingCall(null);
-  };
-
-  const rejectIncomingCall = () => {
-    if (!incomingCall || !callServiceRef.current) {
-      return;
-    }
-    callServiceRef.current.rejectIncomingCall(incomingCall.callId, incomingCall.fromUserId);
-    setIncomingCall(null);
   };
 
   const endCall = () => {
     callServiceRef.current?.endCall("ended", true);
-    setIncomingCall(null);
+    onCallEnded?.();
   };
 
   const toggleMute = () => {
@@ -765,17 +722,6 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             : "Звонки доступны только для 1:1 чатов"}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {incomingCall && callState === "incoming" ? (
-            <>
-              <Button variant="destructive" size="icon" onClick={rejectIncomingCall} className="h-9 w-9" title="Отклонить">
-                <PhoneOff className="w-5 h-5" />
-              </Button>
-              <Button size="icon" onClick={acceptIncomingCall} className="h-9 w-9" title="Принять">
-                <Phone className="w-5 h-5" />
-              </Button>
-            </>
-          ) : null}
-
           {(callState === "outgoing" || callState === "connecting" || callState === "active") && (
             <>
               <Button variant="outline" size="icon" onClick={toggleMute} className="h-9 w-9" title={isMuted ? "Звук выкл" : "Звук вкл"}>
@@ -1219,6 +1165,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
           }}
         />
       )}
+
     </>
   );
 };

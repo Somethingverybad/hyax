@@ -1,14 +1,17 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import { api, WS_URL } from "@/api/client";
 import { useNotifications } from "@/hooks/use-notifications";
 import { WebSocketService } from "@/services/websocket";
+import { OneToOneCallService, type IncomingCall } from "@/services/call-service";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, Phone, PhoneOff, PhoneIncoming } from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface ChatType {
   id: string;
@@ -31,10 +34,23 @@ const Chat = () => {
   const [chats, setChats] = useState<ChatType[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const setIncomingCallRef = useRef(setIncomingCall);
+  setIncomingCallRef.current = setIncomingCall;
+  const clearIncomingCall = useCallback(() => {
+    setIncomingCallRef.current(null);
+  }, []);
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
   const navigate = useNavigate();
   const { requestPermission, showNotification, hasPermission, isSupported, permission } = useNotifications();
   const previousChatsRef = useRef<ChatType[]>([]);
   const lastNotificationTimeRef = useRef<number>(0);
+  const selectedChatIdRef = useRef<string | null>(null);
+  selectedChatIdRef.current = selectedChatId;
+
+  // Глобальный WebSocket и Call Service для звонков
+  const userWsServiceRef = useRef<WebSocketService | null>(null);
+  const globalCallServiceRef = useRef<OneToOneCallService | null>(null);
 
   // Функция для получения названия чата из участников
   const getChatTitle = (chat: ChatType): string => {
@@ -159,10 +175,12 @@ const Chat = () => {
   const wsServiceRef = useRef<WebSocketService | null>(null);
   
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.id) return;
 
-    // Подключаемся к WebSocket для получения уведомлений
+    // Подключаемся к WebSocket для получения уведомлений И звонков
     const token = localStorage.getItem("access_token");
+    
+    console.log(`📞 [Chat] Инициализация глобального WebSocket для пользователя ${user.id}`);
     
     try {
       // Если WebSocket уже существует, переподключаем его
@@ -170,8 +188,33 @@ const Chat = () => {
         wsServiceRef.current.disconnect();
       }
       
-      wsServiceRef.current = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
+      // Создаем персональный WebSocket канал
+      userWsServiceRef.current = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
         onMessage: (data) => {
+          // Обработка входящих звонков через глобальный Call Service
+          if (data.type === 'notification' && data.data?.type === 'incoming_call') {
+            console.log('📞 [Chat] Получено уведомление о входящем звонке:', data.data);
+            
+            // Передаем в Call Service через callback
+            globalCallServiceRef.current?.notifyIncomingCall({
+              callId: data.data.call_id,
+              chatId: data.data.chat_id || "",
+              fromUserId: data.data.from_user_id,
+              fromUsername: data.data.from_username || "Неизвестный",
+              fromUserAvatar: data.data.from_user_avatar,
+              callType: data.data.call_type || "audio",
+            });
+            return;
+          }
+          
+          // Обработка call_signal для звонков
+          if (data.type === 'call_signal' && data.signal_type) {
+            console.log('📞 [Chat] Получен call_signal:', data.signal_type, data.data);
+            // Передаем в глобальный Call Service
+            void globalCallServiceRef.current?.handleSignal(data.signal_type, data.data || {});
+            return;
+          }
+          
           if (data.type === 'notification' && data.data) {
             // Показываем уведомление если нужно
             if (data.data.type === 'new_message' && hasPermission()) {
@@ -185,7 +228,7 @@ const Chat = () => {
               setChats(currentChats => {
                 const chat = currentChats.find(c => c.id === chatId);
                 const isAppVisible = document.visibilityState === 'visible';
-                const isCurrentChat = chatId === selectedChatId;
+                const isCurrentChat = chatId === selectedChatIdRef.current;
                 
                 // Показываем уведомление если:
                 // 1. Чат не выбран (даже если приложение в фокусе)
@@ -254,10 +297,54 @@ const Chat = () => {
         },
       });
 
-      wsServiceRef.current.connect(token || undefined);
+      userWsServiceRef.current.connect(token || undefined);
+      wsServiceRef.current = userWsServiceRef.current;
+      
+      // Создаем глобальный Call Service который работает всегда
+      console.log('📞 [Chat] Создание глобального Call Service');
+      
+      const ICE_SERVERS = [
+        { urls: "stun:stun.l.google.com:19302" },
+      ];
+      
+      globalCallServiceRef.current = new OneToOneCallService({
+        wsService: userWsServiceRef.current,
+        chatId: "", // Будет обновляться при звонках
+        userId: user.id,
+        iceServers: ICE_SERVERS,
+        onStateChange: (state) => {
+          console.log(`📞 [Chat] Глобальное состояние звонка:`, state);
+        },
+        onIncomingCall: (call) => {
+          console.log(`📞 [Chat] Глобальный входящий звонок:`, call);
+          setIncomingCall(call);
+        },
+        onRemoteStream: (stream) => {
+          console.log(`📞 [Chat] Глобальный удаленный поток получен`);
+        },
+        onCallEnded: (reason) => {
+          console.log(`📞 [Chat] Глобальный звонок завершен:`, reason);
+          setIncomingCallRef.current(null);
+        },
+        onError: (message) => {
+          console.error(`📞 [Chat] Глобальная ошибка звонка:`, message);
+          toast.error(message);
+        },
+      });
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
     }
+    
+    return () => {
+      console.log('📞 [Chat] Cleanup: отключение глобального WebSocket и Call Service');
+      if (userWsServiceRef.current) {
+        userWsServiceRef.current.disconnect();
+        userWsServiceRef.current = null;
+      }
+      if (globalCallServiceRef.current) {
+        globalCallServiceRef.current = null;
+      }
+    };
 
     // Периодическое обновление как подстраховка для iOS (когда приложение в фоне)
     // На iOS WebSocket разрывается в фоне, поэтому используем polling
@@ -278,7 +365,7 @@ const Chat = () => {
       clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, selectedChatId]); // Убираем refreshChats и другие функции из зависимостей
+  }, [user?.id]); // Без selectedChatId — WebSocket глобальный, не должен переподключаться при смене чата
 
   // Обработчик состояния приложения (visibility change для PWA)
   useEffect(() => {
@@ -359,6 +446,53 @@ const Chat = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Убираем refreshChats из зависимостей
+
+  // Рингтон при входящем звонке (работает всегда, в любом экране)
+  useEffect(() => {
+    if (!ringtoneRef.current) return;
+    if (incomingCall) {
+      ringtoneRef.current.src = "/sounds/roundabout.ogg";
+      ringtoneRef.current.volume = 0.5;
+      ringtoneRef.current.loop = true;
+      ringtoneRef.current.currentTime = 0;
+      ringtoneRef.current.play().catch(() => {});
+    } else {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+  }, [incomingCall]);
+
+  // Лог для отладки: проверяем, что incomingCall есть при рендере
+  useEffect(() => {
+    if (incomingCall) {
+      console.log('📞 [Chat] incomingCall в state, показываем попап:', incomingCall.fromUsername);
+    }
+  }, [incomingCall]);
+
+  const acceptIncomingCall = async () => {
+    if (!incomingCall || !globalCallServiceRef.current) return;
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+    // await — дождаться отправки call_accept до смены UI
+    await globalCallServiceRef.current.acceptIncomingCall(incomingCall.callId, incomingCall.fromUserId);
+    if (incomingCall.chatId) {
+      setSelectedChatId(incomingCall.chatId);
+      setIsSidebarCollapsed(true);
+    }
+    clearIncomingCall();
+  };
+
+  const rejectIncomingCall = () => {
+    if (!incomingCall || !globalCallServiceRef.current) return;
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+    globalCallServiceRef.current.rejectIncomingCall(incomingCall.callId, incomingCall.fromUserId);
+    clearIncomingCall();
+  };
 
   // Функция обновления списка чатов (мемоизирована)
   const refreshChats = useCallback(async () => {
@@ -704,6 +838,8 @@ const Chat = () => {
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
+          globalCallService={globalCallServiceRef.current}
+          onCallEnded={clearIncomingCall}
         />
         </div>
       ) : isSidebarCollapsed && selectedChatId && !user ? (
@@ -733,6 +869,56 @@ const Chat = () => {
             </p>
           </div>
         </div>
+      )}
+
+      {/* Рингтон для входящих звонков */}
+      <audio ref={ringtoneRef} className="hidden" />
+
+      {/* Входящий звонок — рендерим через Portal в body, чтобы всегда был поверх всего */}
+      {incomingCall && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md">
+          <div className="bg-gradient-to-b from-card to-card/90 border-2 border-primary/50 rounded-3xl shadow-2xl max-w-sm w-[90vw] p-6 animate-in zoom-in-95 slide-in-from-bottom-4">
+            <div className="flex justify-center mb-6">
+              <div className="relative">
+                <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" style={{ animationDuration: '1.5s' }} />
+                <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.3s' }} />
+                <div className="relative z-10">
+                  <Avatar className="w-24 h-24 border-4 border-primary shadow-glow">
+                    {incomingCall.fromUserAvatar ? (
+                      <AvatarImage src={incomingCall.fromUserAvatar} alt={incomingCall.fromUsername} />
+                    ) : (
+                      <AvatarFallback className="bg-gradient-primary text-white text-3xl">
+                        {incomingCall.fromUsername?.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                  <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-lg animate-bounce">
+                    <PhoneIncoming className="w-5 h-5 text-white" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-bold mb-1">{incomingCall.fromUsername}</h3>
+              <p className="text-sm text-muted-foreground animate-pulse">Входящий звонок...</p>
+            </div>
+            <div className="flex gap-4 justify-center">
+              <button onClick={rejectIncomingCall} className="group flex flex-col items-center gap-2 transition-all hover:scale-105 active:scale-95">
+                <div className="w-16 h-16 rounded-full bg-destructive hover:bg-destructive/90 flex items-center justify-center shadow-lg transition-colors">
+                  <PhoneOff className="w-7 h-7 text-white" />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground group-hover:text-destructive transition-colors">Отклонить</span>
+              </button>
+              <button onClick={acceptIncomingCall} className="group flex flex-col items-center gap-2 transition-all hover:scale-105 active:scale-95">
+                <div className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center shadow-glow animate-pulse">
+                  <Phone className="w-7 h-7 text-white" />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground group-hover:text-green-500 transition-colors">Принять</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

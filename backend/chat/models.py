@@ -10,6 +10,7 @@ class Profile(models.Model):
     username = models.CharField(max_length=150, unique=True)
     avatar_url = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, default="online")  # Статус онлайн/оффлайн
+    call_status = models.CharField(max_length=20, default="idle")  # idle, calling, in_call
     bio = models.TextField(blank=True, null=True, max_length=500)  # Пользовательский статус/описание
     created_at = models.DateTimeField(default=timezone.now)
 

@@ -304,137 +304,147 @@ const StickerPackManager = ({ open, onOpenChange, onPacksUpdated }: StickerPackM
     }
   };
 
+  const [viewMode, setViewMode] = useState<"list" | "pack">("list");
+
+  const handleBackToList = () => {
+    setViewMode("list");
+    setSelectedPack(null);
+    setStickers([]);
+  };
+
+  const handleSelectPack = (pack: StickerPack) => {
+    setSelectedPack(pack);
+    setViewMode("pack");
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-        <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle>Управление стикерами</DialogTitle>
-          <DialogDescription>
-            Создавайте свои стикерпаки и добавляйте публичные
+      <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[85vh] sm:max-h-[90vh] p-0 flex flex-col">
+        <DialogHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 shrink-0">
+          <DialogTitle className="text-base sm:text-lg">
+            {viewMode === "pack" && selectedPack ? selectedPack.name : "Управление стикерами"}
+          </DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
+            {viewMode === "pack" && selectedPack 
+              ? `${selectedPack.stickers_count} стикеров`
+              : "Создавайте свои стикерпаки и добавляйте публичные"
+            }
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col md:flex-row gap-4 px-6 pb-6 overflow-hidden">
-          {/* Левая панель - список паков */}
-          <div className="w-full md:w-1/3 flex flex-col">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "my" | "public" | "import")} className="w-full">
-              <TabsList className="w-full grid grid-cols-3">
-                <TabsTrigger value="my">Мои</TabsTrigger>
-                <TabsTrigger value="public">Публичные</TabsTrigger>
-                <TabsTrigger value="import">Импорт</TabsTrigger>
-              </TabsList>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {viewMode === "list" ? (
+            /* Список паков */
+            <div className="flex-1 flex flex-col px-3 sm:px-6 pb-4 sm:pb-6 overflow-hidden">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "my" | "public" | "import")} className="w-full flex-1 flex flex-col">
+                <TabsList className="w-full grid grid-cols-3 bg-muted shrink-0">
+                  <TabsTrigger value="my" className="text-xs sm:text-sm">Мои</TabsTrigger>
+                  <TabsTrigger value="public" className="text-xs sm:text-sm">Публичные</TabsTrigger>
+                  <TabsTrigger value="import" className="text-xs sm:text-sm">Импорт</TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="my" className="mt-2">
-                <Button
-                  onClick={() => setShowCreatePack(true)}
-                  className="w-full mb-2"
-                  size="sm"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Создать стикерпак
-                </Button>
+                <TabsContent value="my" className="mt-2 flex-1 flex flex-col overflow-hidden">
+                  <Button
+                    onClick={() => setShowCreatePack(true)}
+                    className="w-full mb-2 h-9"
+                    size="sm"
+                  >
+                    <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                    <span className="text-xs sm:text-sm">Создать стикерпак</span>
+                  </Button>
 
-                <ScrollArea className="h-64 md:h-96">
-                  <div className="space-y-2">
-                    {myPacks.map((userPack) => (
-                      <div
-                        key={userPack.pack.id}
-                        className={cn(
-                          "p-3 rounded-lg border-2 cursor-pointer transition-all",
-                          selectedPack?.id === userPack.pack.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
-                        )}
-                        onClick={() => setSelectedPack(userPack.pack)}
-                      >
-                        <div className="flex-1 min-w-0 mb-2">
-                          <h4 className="font-medium truncate">{userPack.pack.name}</h4>
-                          <p className="text-xs text-muted-foreground">
-                            {userPack.pack.stickers_count} стикеров
-                          </p>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 flex-1 text-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSharePack(userPack.pack.id, userPack.pack.name);
-                            }}
-                          >
-                            <Share2 className="w-3 h-3 mr-1" />
-                            Поделиться
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeletePack(userPack.pack.id);
-                            }}
-                          >
-                            <Trash2 className="w-3 h-3 text-destructive" />
-                          </Button>
-                        </div>
+                  <ScrollArea className="flex-1">
+                    <div className="space-y-2 pb-2">
+                      {myPacks.map((userPack) => (
+                        <div
+                          key={userPack.pack.id}
+                          className="p-2 sm:p-3 rounded-lg border-2 border-border hover:border-primary/50 cursor-pointer transition-all"
+                          onClick={() => handleSelectPack(userPack.pack)}
+                        >
+                          <div className="flex-1 min-w-0 mb-2">
+                            <h4 className="font-medium text-sm sm:text-base truncate">{userPack.pack.name}</h4>
+                            <p className="text-xs text-muted-foreground">
+                              {userPack.pack.stickers_count} стикеров
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 flex-1 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSharePack(userPack.pack.id, userPack.pack.name);
+                              }}
+                            >
+                              <Share2 className="w-3 h-3 mr-1" />
+                              <span className="hidden sm:inline">Поделиться</span>
+                              <span className="sm:hidden">Код</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeletePack(userPack.pack.id);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3 text-destructive" />
+                            </Button>
+                          </div>
                       </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-
-              <TabsContent value="public" className="mt-2">
-                <ScrollArea className="h-72 md:h-[26rem]">
-                  <div className="space-y-2">
-                    {publicPacks.map((pack) => (
-                      <div
-                        key={pack.id}
-                        className={cn(
-                          "p-3 rounded-lg border-2 cursor-pointer transition-all",
-                          selectedPack?.id === pack.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
-                        )}
-                        onClick={() => setSelectedPack(pack)}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-medium">{pack.name}</h4>
-                          <Button
-                            variant={pack.is_saved ? "default" : "outline"}
-                            size="sm"
-                            className="h-7"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSavePack(pack);
-                            }}
-                          >
-                            {pack.is_saved ? (
-                              <>
-                                <Check className="w-3 h-3 mr-1" />
-                                Сохранен
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="w-3 h-3 mr-1" />
-                                Добавить
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground mb-1">
-                          Автор: {pack.author.username}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {pack.stickers_count} стикеров
-                        </p>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
+                    </ScrollArea>
+                  </TabsContent>
 
-              <TabsContent value="import" className="mt-2">
+                  <TabsContent value="public" className="mt-2 flex-1 flex flex-col overflow-hidden">
+                    <ScrollArea className="flex-1">
+                      <div className="space-y-2 pb-2">
+                        {publicPacks.map((pack) => (
+                          <div
+                            key={pack.id}
+                            className="p-2 sm:p-3 rounded-lg border-2 border-border hover:border-primary/50 cursor-pointer transition-all"
+                            onClick={() => handleSelectPack(pack)}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-medium text-sm sm:text-base truncate flex-1 pr-2">{pack.name}</h4>
+                              <Button
+                                variant={pack.is_saved ? "default" : "outline"}
+                                size="sm"
+                                className="h-7 shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSavePack(pack);
+                                }}
+                              >
+                                {pack.is_saved ? (
+                                  <>
+                                    <Check className="w-3 h-3 mr-1" />
+                                    <span className="text-xs">Сохранен</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    <span className="text-xs">Добавить</span>
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-1">
+                              Автор: {pack.author.username}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {pack.stickers_count} стикеров
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+
+                  <TabsContent value="import" className="mt-2 flex-1">
                 <div className="space-y-4 p-4">
                   <div>
                     <h4 className="font-medium mb-2">Импорт стикерпака</h4>
@@ -480,23 +490,24 @@ const StickerPackManager = ({ open, onOpenChange, onPacksUpdated }: StickerPackM
                     </ol>
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Правая панель - стикеры выбранного пака */}
-          <div className="flex-1 border-l pl-4 flex flex-col">
-            {selectedPack ? (
-              <>
-                <div className="mb-4">
-                  <h3 className="font-semibold text-lg">{selectedPack.name}</h3>
-                  {selectedPack.description && (
-                    <p className="text-sm text-muted-foreground">{selectedPack.description}</p>
-                  )}
-                </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : (
+              /* Просмотр стикеров пака */
+              <div className="flex-1 flex flex-col px-3 sm:px-6 pb-4 sm:pb-6 overflow-hidden">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBackToList}
+                  className="self-start mb-3 -ml-2"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  <span className="text-xs sm:text-sm">Назад</span>
+                </Button>
 
                 {activeTab === "my" && (
-                  <div className="mb-4">
+                  <div className="mb-3">
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
@@ -508,44 +519,45 @@ const StickerPackManager = ({ open, onOpenChange, onPacksUpdated }: StickerPackM
                       onClick={() => document.getElementById("sticker-upload")?.click()}
                       disabled={uploading}
                       size="sm"
-                      className="w-full"
+                      className="w-full h-9"
                     >
                       {uploading ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                       ) : (
-                        <Upload className="w-4 h-4 mr-2" />
+                        <Upload className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
                       )}
-                      Загрузить стикер
+                      <span className="text-xs sm:text-sm">Загрузить стикер</span>
                     </Button>
                   </div>
                 )}
 
                 <ScrollArea className="flex-1">
                   {stickers.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                       В этом паке пока нет стикеров
                     </div>
                   ) : (
-                    <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 pb-2">
                       {stickers.map((sticker) => (
                         <div
                           key={sticker.id}
-                          className="relative aspect-square rounded-lg overflow-hidden border-2 border-border group"
+                          className="relative aspect-square rounded-lg overflow-hidden border-2 border-border group bg-secondary/30"
                         >
                           <img
                             src={sticker.file_url}
                             alt={sticker.file_name}
-                            className="w-full h-full object-contain bg-secondary/50"
+                            className="w-full h-full object-contain p-1"
+                            loading="lazy"
                           />
                           {activeTab === "my" && (
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity flex items-center justify-center">
                               <Button
                                 variant="destructive"
                                 size="icon"
-                                className="h-8 w-8"
+                                className="h-7 w-7 sm:h-8 sm:w-8"
                                 onClick={() => handleDeleteSticker(sticker.id)}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                             </div>
                           )}
@@ -554,14 +566,9 @@ const StickerPackManager = ({ open, onOpenChange, onPacksUpdated }: StickerPackM
                     </div>
                   )}
                 </ScrollArea>
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Выберите стикерпак
               </div>
             )}
           </div>
-        </div>
 
         {/* Диалог создания нового пака */}
         <Dialog open={showCreatePack} onOpenChange={setShowCreatePack}>
