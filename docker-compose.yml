@@ -49,7 +49,7 @@ services:
         "--email", "Ancher001@yandex.ru",
         "--agree-tos",
         "--no-eff-email",
-        "-d", "sux.cardiokit.beget.tech"
+        "-d", "huyax.e-tree.su"
       ]
     networks:
       - sux_chat_network
@@ -82,7 +82,7 @@ services:
     command: >
       -n
       --fingerprint
-      --realm=${TURN_REALM:-sux.cardiokit.beget.tech}
+      --realm=${TURN_REALM:-huyax.e-tree.su}
       --lt-cred-mech
       --user=${TURN_USERNAME:-turnuser}:${TURN_PASSWORD:-turnpassword}
       --listening-port=3478

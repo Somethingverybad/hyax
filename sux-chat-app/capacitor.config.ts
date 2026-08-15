@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     iosScheme: 'https',
     allowNavigation: [
-      'sux.cardiokit.beget.tech',
+      'huyax.e-tree.su',
       'localhost',
       '127.0.0.1'
     ]

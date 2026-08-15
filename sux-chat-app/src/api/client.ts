@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "https://sux.cardiokit.beget.tech/api";
+const API_URL = import.meta.env.VITE_API_URL || "https://huyax.e-tree.su/api";
 
 interface AuthResponse {
   message: string;

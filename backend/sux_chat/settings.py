@@ -9,7 +9,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 # Для локальной разработки можно использовать ["*"]
 # Для продакшена укажите конкретные домены/IP
 ALLOWED_HOSTS = [
-    "sux.cardiokit.beget.tech", 
+    "huyax.e-tree.su", 
     "localhost", 
     "127.0.0.1", 
     "95.214.63.151",
@@ -117,8 +117,8 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Для продакшена используйте конкретные домены/IP в CORS_ALLOWED_ORIGINS
 
 CORS_ALLOWED_ORIGINS = [
-    "https://sux.cardiokit.beget.tech",
-    "http://sux.cardiokit.beget.tech",
+    "https://huyax.e-tree.su",
+    "http://huyax.e-tree.su",
     "http://localhost:5143",  # Electron версия
     "http://localhost:5173",  # PWA версия (dev)
     "http://localhost:5174",  # PWA версия (preview)
@@ -157,8 +157,8 @@ CORS_ALLOW_HEADERS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://sux.cardiokit.beget.tech",
-    "http://sux.cardiokit.beget.tech",
+    "https://huyax.e-tree.su",
+    "http://huyax.e-tree.su",
     "http://localhost:5143",
     "http://localhost:5173",
     "http://localhost:5174",
