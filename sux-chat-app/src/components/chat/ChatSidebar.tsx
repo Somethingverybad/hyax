@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,7 +32,11 @@ interface Chat {
 interface ChatSidebarProps {
   userId: string;
   chats: Chat[];
-  onSelectChat: (chatId: string) => void;
+  /** title — вычисленное имя собеседника: список чатов его не содержит,
+   *  участники грузятся отдельно, поэтому знает о нём только сайдбар. */
+  onSelectChat: (chatId: string, title?: string) => void;
+  /** Перезагрузка списка — вызывается жестом «потянуть вниз». */
+  onRefresh?: () => Promise<unknown> | void;
   selectedChatId: string | null;
   onLogout: () => void;
   isCollapsed: boolean;
@@ -42,7 +48,8 @@ interface ChatSidebarProps {
 const ChatSidebar = ({ 
   userId, 
   chats,
-  onSelectChat, 
+  onSelectChat,
+  onRefresh, 
   selectedChatId, 
   onLogout, 
   isCollapsed, 
@@ -50,6 +57,8 @@ const ChatSidebar = ({
   onChatDeleted,
   onChatCreated
 }: ChatSidebarProps) => {
+  const listRef = useRef<HTMLDivElement>(null);
+  const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
@@ -167,8 +176,8 @@ const ChatSidebar = ({
   };
 
   // Обработчик выбора чата - сворачиваем сайдбар
-  const handleSelectChat = (chatId: string) => {
-    onSelectChat(chatId);
+  const handleSelectChat = (chatId: string, title?: string) => {
+    onSelectChat(chatId, title);
     if (!isCollapsed) {
       setTimeout(() => onToggleCollapse(), 300);
     }
@@ -190,11 +199,13 @@ const ChatSidebar = ({
   };
 
   return (
-    <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
+    <div
+      ref={listRef}
+      className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
       isCollapsed ? "w-16" : "w-full md:w-80 lg:w-96"
     }`}>
       {/* Хедер сайдбара */}
-      <div className="p-3 md:p-4 border-b border-border bg-gradient-card">
+      <div className="p-3 md:p-4 pad-safe-top border-b border-border bg-gradient-card">
         <div className="flex items-center justify-between mb-3 md:mb-4">
           {/* Левая часть - кнопки управления */}
           <div className="flex items-center gap-2">
@@ -309,9 +320,23 @@ const ChatSidebar = ({
         )}
       </div>
 
+      {/* Индикатор жеста «потянуть вниз»: следует за пальцем, страницу не двигает */}
+      <div
+        className="flex items-center justify-center overflow-hidden shrink-0"
+        style={{
+          height: pull,
+          transition: refreshing || pull === 0 ? "height 200ms ease-out" : "none",
+        }}
+      >
+        <RefreshCw
+          className={`w-4 h-4 text-primary ${refreshing ? "animate-spin" : ""}`}
+          style={{ opacity: Math.min(pull / 60, 1) }}
+        />
+      </div>
+
       {/* Список чатов */}
       <ScrollArea className="flex-1">
-        <div className="p-2">
+        <div>
           {chats.length > 0 ? (
             chats.map((chat) => {
               console.log("Rendering chat:", chat);
@@ -337,49 +362,50 @@ const ChatSidebar = ({
               return (
                 <div
                   key={chat.id}
-                  className={`group relative p-3 rounded-lg mb-2 flex items-center gap-3 transition-all ${
-                    selectedChatId === chat.id
-                      ? "bg-gradient-primary shadow-glow"
-                      : "hover:bg-secondary/50"
+                  className={`group relative px-4 py-3 flex items-center gap-3 border-b border-border/60 transition-colors ${
+                    selectedChatId === chat.id ? "bg-secondary" : "active:bg-secondary/60"
                   } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                     isCollapsed ? "justify-center" : ""
                   }`}
                 >
                   <button
-                    onClick={() => handleSelectChat(chat.id)}
+                    onClick={() => handleSelectChat(chat.id, chatTitle)}
                     className={`flex items-center gap-3 text-left ${
                       isCollapsed ? "flex-col justify-center w-full" : "flex-1"
                     }`}
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}
                   >
-                    <Avatar className={isCollapsed ? "w-8 h-8" : "w-8 h-8"}>
-                      <AvatarFallback 
-                        className={
-                          selectedChatId === chat.id 
-                            ? "bg-white text-primary" 
-                            : "bg-gradient-primary text-primary-foreground"
-                        }
-                      >
-                        {avatarLetter}
-                      </AvatarFallback>
-                    </Avatar>
+                    {/* Квадрат вместо круга — супрематизм строится на прямых углах */}
+                    <div className="w-12 h-12 shrink-0 flex items-center justify-center bg-primary text-primary-foreground text-lg font-bold">
+                      {avatarLetter}
+                    </div>
                     
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {chatTitle}
-                        </p>
-                        {isLoading && (
-                          <p className="text-xs text-muted-foreground">
-                            Загрузка...
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="font-semibold truncate">{chatTitle}</p>
+                          {chat.updated_at && (
+                            <span className="text-[11px] text-muted-foreground shrink-0">
+                              {new Date(chat.updated_at).toLocaleTimeString("ru-RU", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <p className="text-sm text-muted-foreground truncate">
+                            {isLoading
+                              ? "Загрузка…"
+                              : chat.last_message || "Сообщений пока нет"}
                           </p>
-                        )}
-                        {!isLoading && displayParticipants.length === 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            Нет участников
-                          </p>
-                        )}
+                          {!!chat.unread_count && chat.unread_count > 0 && (
+                            <span className="shrink-0 min-w-[20px] h-5 px-1.5 bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">
+                              {chat.unread_count > 99 ? "99+" : chat.unread_count}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </button>

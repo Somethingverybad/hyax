@@ -36,17 +36,32 @@ const Auth = () => {
 
       if (data.error) throw new Error(data.error);
 
+      // Регистрация возвращает только id созданного пользователя, без токенов —
+      // поэтому сразу входим теми же данными. Иначе переход на /chat случался,
+      // но экран не находил токен и возвращал обратно на форму.
+      if (!isLogin) {
+        await api.login(username, password);
+      }
+
       toast.success("Ого! Заработало");
       navigate("/chat");
     } catch (error: any) {
-      toast.error(error.message || "Произошла ошибка");
+      // Сервер отвечает подробностями в теле — показываем их, а не «Login failed 401».
+      let text = error?.message || "Произошла ошибка";
+      try {
+        const body = JSON.parse(error?.fullResponse || "{}");
+        text = body.detail || body.error || Object.values(body)?.[0] || text;
+      } catch {
+        // тело не JSON — оставляем исходное сообщение
+      }
+      toast.error(String(text));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-3 md:p-4">
+    <div className="min-h-screen overflow-y-auto flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-3 md:p-4">
       <Card className="w-full max-w-md p-4 md:p-8 bg-gradient-card shadow-card border-border">
         <div className="flex flex-col items-center mb-6 md:mb-8">
           {/* Иконка со стилизованной буквой Х */}

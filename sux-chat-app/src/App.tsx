@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -113,12 +114,16 @@ const App = () => {
         {/* Основной контейнер с закругленными углами */}
         <div className="w-screen h-screen overflow-hidden bg-background relative">
           
-          {/* Область для перетаскивания окна с CSS свойством */}
-          <div 
-            ref={dragRegionRef}
-            className="fixed top-0 left-0 right-0 h-8 drag-region z-40"
-            title="Перетащите для перемещения окна"
-          ></div>
+          {/* Полоса перетаскивания окна нужна только Electron-версии. На
+              телефоне она невидимо перекрывала верхние 32px и съедала нажатия
+              по шапке, поэтому в нативной обёртке её не рендерим. */}
+          {!Capacitor.isNativePlatform() && (
+            <div
+              ref={dragRegionRef}
+              className="fixed top-0 left-0 right-0 h-8 drag-region z-40"
+              title="Перетащите для перемещения окна"
+            ></div>
+          )}
           
           {/* Кнопки с исключением из перетаскивания */}
 

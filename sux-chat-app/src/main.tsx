@@ -3,3 +3,32 @@ import App from "./App.tsx";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+// Высота приложения. CSS-переменную читают .h-screen/.min-h-screen (см.
+// index.css). Берём её из visualViewport, а не из dvh: при открытии клавиатуры
+// dvh обновляется с задержкой, и поле ввода заметно отставало от клавиатуры.
+function syncAppHeight() {
+  const vv = window.visualViewport;
+  const visible = vv ? vv.height : window.innerHeight;
+  // Вырезы теперь отводят сами экраны (см. .pad-safe-* в index.css), поэтому
+  // приложению достаётся вся видимая область без вычитаний.
+  const h = Math.max(visible, 200);
+  document.documentElement.style.setProperty("--app-height", `${Math.round(h)}px`);
+}
+
+syncAppHeight();
+window.visualViewport?.addEventListener("resize", syncAppHeight);
+window.visualViewport?.addEventListener("scroll", syncAppHeight);
+window.addEventListener("resize", syncAppHeight);
+
+// При фокусе на поле браузер сам не всегда доводит его до видимой зоны —
+// особенно когда высота меняется вместе с клавиатурой. Досматриваем вручную.
+document.addEventListener(
+  "focusin",
+  (e) => {
+    const el = e.target as HTMLElement;
+    if (!el || !el.matches?.("input, textarea")) return;
+    setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 250);
+  },
+  true,
+);

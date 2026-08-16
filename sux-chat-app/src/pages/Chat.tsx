@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
@@ -23,9 +24,13 @@ interface ProfileType {
 }
 
 const Chat = () => {
+  const isMobile = useIsMobile();
   const [user, setUser] = useState<ProfileType | null>(null);
   const [chats, setChats] = useState<ChatType[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  // Имя собеседника для шапки: приходит из сайдбара, он единственный, кто его
+  // вычисляет — участники грузятся отдельно от списка чатов.
+  const [selectedChatTitle, setSelectedChatTitle] = useState<string>("Чат");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const navigate = useNavigate();
 
@@ -243,6 +248,39 @@ const Chat = () => {
   };
 
   if (!user) return null;
+
+  // На телефоне два экрана вместо двух колонок: список чатов и переписка.
+  // Показываем что-то одно — так же, как в привычных мессенджерах.
+  if (isMobile) {
+    return (
+      <div className="h-screen flex bg-background">
+        {selectedChatId ? (
+          <ChatWindow
+            chatId={selectedChatId}
+            userId={user.id}
+            onBack={() => setSelectedChatId(null)}
+            title={selectedChatTitle}
+          />
+        ) : (
+          <ChatSidebar
+            userId={user.id}
+            chats={chats}
+            onSelectChat={(id, title) => {
+              setSelectedChatId(id);
+              if (title) setSelectedChatTitle(title);
+            }}
+            onRefresh={refreshChats}
+            selectedChatId={selectedChatId}
+            onLogout={handleLogout}
+            isCollapsed={false}
+            onToggleCollapse={toggleSidebar}
+            onChatDeleted={handleChatDeleted}
+            onChatCreated={handleChatCreated}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex bg-background">

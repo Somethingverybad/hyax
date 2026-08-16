@@ -6,43 +6,57 @@
 All colors MUST be HSL.
 */
 
+/* Супрематизм: чёрный фон, алый акцент, белый текст. Три цвета и прямые углы —
+   без градиентов, свечения и стеклянных поверхностей. Оттенки серого нужны
+   только чтобы отделить поверхности друг от друга. */
 @layer base {
   :root {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 6%;
+    --foreground: 0 0% 98%;
 
-    --card: 217 33% 17%;
-    --card-foreground: 210 40% 98%;
+    /* Поверхности: строки списка, шапки, панель ввода. */
+    --card: 0 0% 11%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 217 33% 17%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 263 90% 65%;
+    /* Алый Малевича — тёплый и плотный, не малиновый. */
+    --primary: 4 85% 50%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 62%;
 
-    --accent: 263 90% 65%;
+    --accent: 4 85% 50%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 4 85% 42%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 33% 25%;
-    --input: 217 33% 25%;
-    --ring: 263 90% 65%;
+    /* Зелёный — второй акцент, только для состояний: «в сети», доставлено,
+       успех. Так он не спорит с красным, который отвечает за действия. */
+    --success: 145 70% 42%;
+    --success-foreground: 0 0% 100%;
 
-    --radius: 0.75rem;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 4 85% 50%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(263 90% 65%), hsl(220 90% 65%));
-    --gradient-card: linear-gradient(145deg, hsl(217 33% 19%), hsl(217 33% 15%));
-    
-    --shadow-glow: 0 0 40px hsl(263 90% 65% / 0.3);
-    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.3);
+    /* Прямой угол — основа стиля. Радиус нулевой, а не уменьшенный:
+       компоненты берут его отсюда, поэтому скругления исчезнут везде разом. */
+    --radius: 0rem;
+
+    /* Градиенты оставлены переменными ради совместимости с разметкой, но
+       сведены к плоскому цвету: в супрематизме плоскость важнее объёма. */
+    --gradient-primary: hsl(4 85% 50%);
+    --gradient-card: hsl(0 0% 11%);
+
+    --shadow-glow: none;
+    --shadow-card: none;
   }
 }
 
@@ -52,7 +66,9 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-transparent text-foreground; /* Изменено на прозрачный фон */
+    /* Фон обязателен: в отступах под вырезами (см. safe-area ниже) при
+       прозрачном body проступали белые полосы сверху и снизу. */
+    @apply bg-background text-foreground;
   }
 }
 
@@ -60,9 +76,11 @@ All colors MUST be HSL.
 html, body, #root {
   border-radius: 0px; /* Уменьшил радиус для более аккуратного вида */
   overflow: hidden;
-  background: transparent; /* Прозрачный фон */
+  /* Раньше здесь был transparent, и это правило перебивало фон body.
+     В нативной обёртке в отступах под вырезами проступали белые полосы
+     сверху и снизу — фон должен быть непрозрачным. */
+  background: hsl(var(--background));
   margin: 0;
-  padding: 0;
 }
 
 /* Основной контейнер приложения */
@@ -151,13 +169,58 @@ html, body, #root {
   }
 }
 
-/* Поддержка безопасных зон для iPhone X и новее */
+/* Поддержка безопасных зон для iPhone X и новее.
+   Сверху отступа не было, поэтому шапка уезжала под статус-бар и чёлку. */
 @supports (padding: max(0px)) {
   body {
+    /* Только боковые вырезы (альбомная ориентация). Сверху и снизу отступов
+       нет намеренно: приложение занимает экран целиком, а под статус-бар и
+       home-индикатор подкладываются сами шапки и панель ввода — так их фон
+       продолжается до края, как в нативных приложениях. Иначе сверху висела
+       чёрная полоса, и экран выглядел страницей в рамке. */
     padding-left: max(0px, env(safe-area-inset-left));
     padding-right: max(0px, env(safe-area-inset-right));
-    padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
+}
+
+/* Шапка заходит под статус-бар, панель ввода — под home-индикатор. */
+.pad-safe-top {
+  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px)) !important;
+}
+
+.pad-safe-bottom {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* В нативной обёртке WebView занимает весь экран, включая зоны под вырезами.
+   Отступы выше съедают часть высоты, а h-screen (100vh) их не учитывает —
+   страница получалась выше экрана и вылезала за границы.
+
+   Переопределяем на уровне утилит, а не в каждом компоненте: полноэкранных
+   контейнеров в приложении шесть, и любой новый унаследует правильное
+   поведение автоматически. */
+:root {
+  --app-height: calc(
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+}
+
+body {
+  height: 100dvh;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.h-screen {
+  height: var(--app-height) !important;
+}
+
+.min-h-screen {
+  min-height: var(--app-height) !important;
+}
+
+.max-h-screen {
+  max-height: var(--app-height) !important;
 }
 
 /* Оптимизация для темного режима iOS Safari */
@@ -167,4 +230,28 @@ html, body, #root {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+
+/* Поле ввода не должно оставаться под клавиатурой: высота экрана теперь
+   следует за visualViewport, и на коротких экранах карточка входа перестаёт
+   помещаться целиком. Прокручиваем сфокусированное поле в видимую часть. */
+input:focus,
+textarea:focus {
+  scroll-margin-bottom: 96px;
+  scroll-margin-top: 96px;
+}
+
+
+/* Прямой угол — основа супрематизма. Часть скруглений задана в разметке
+   утилитами напрямую (rounded-2xl, rounded-full и подобные), переменная
+   --radius на них не влияет. Гасим их здесь, чтобы не править по месту
+   и чтобы новые компоненты не приносили закругления обратно. */
+[class*="rounded"] {
+  border-radius: 0 !important;
+}
+
+/* Плоскость вместо объёма: тени и свечение стилю противоречат. */
+[class*="shadow"] {
+  box-shadow: none !important;
 }

@@ -39,8 +39,16 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
 
   let res = await fetch(input, authInit);
 
+  // Эндпоинты авторизации обновлять нечем и незачем: 401 там означает
+  // «неверные данные», а не «протух токен». Без этой проверки обёртка лезла
+  // обновлять несуществующий refresh и подменяла ответ сервера своей ошибкой —
+  // пользователь видел «no refresh token» вместо «неверный логин или пароль».
+  const url = typeof input === "string" ? input : (input as Request).url;
+  const isAuthEndpoint = /\/(token|auth\/register)\/?$/.test(url)
+    || url.includes("/token/refresh");
+
   // Если access token устарел — пробуем обновить
-  if (res.status === 401) {
+  if (res.status === 401 && !isAuthEndpoint) {
     const refreshToken = localStorage.getItem("refresh_token");
     if (!refreshToken) throw new Error("Unauthorized: no refresh token");
 
@@ -411,4 +419,41 @@ export const api = {
     });
     return res.json();
   },
+
+  // ===== СТИКЕРЫ =====
+  // Перенесено из веб-версии: бэкенд стикеры поддерживает давно, в мобильном
+  // приложении их просто не было.
+  getMyStickerPacks: async (): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/my_packs/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to load sticker packs");
+    return res.json();
+  },
+
+  getStickers: async (packId?: string): Promise<any[]> => {
+    const url = packId ? `${API_URL}/stickers/?pack=${packId}` : `${API_URL}/stickers/`;
+    const res = await fetchWithAuth(url, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to load stickers");
+    return res.json();
+  },
+
+  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        chat: chatId,
+        content: content || null,
+        sticker_id: stickerId,
+      }),
+    });
+    if (!res.ok) throw new Error("Failed to send sticker");
+    return res.json();
+  },
+
 };

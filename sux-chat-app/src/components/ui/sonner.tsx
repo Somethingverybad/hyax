@@ -10,6 +10,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // Тосты всплывают снизу и перекрывали поле ввода сообщений. Поднимаем
+      // их над ним: высота строки ввода плюс отступ под home-индикатором.
+      position="bottom-center"
+      offset="calc(5.5rem + env(safe-area-inset-bottom, 0px))"
       toastOptions={{
         classNames: {
           toast:

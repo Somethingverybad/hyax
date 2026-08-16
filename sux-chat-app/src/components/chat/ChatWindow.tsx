@@ -2,7 +2,9 @@ import { useEffect, useState, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile } from "lucide-react";
+import { useSwipeBack } from "@/hooks/use-swipe-back";
+import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api } from "@/api/client";
@@ -19,6 +21,8 @@ interface Message {
   content: string | null;
   file_url: string | null;
   file_name: string | null;
+  /** Приходит с бэкенда, если сообщение — стикер. */
+  sticker?: { id: string; file_url: string; emoji?: string } | null;
   sender_id: string;
   sender?: Profile;
   created_at: string;
@@ -27,9 +31,18 @@ interface Message {
 interface ChatWindowProps {
   chatId: string | null;
   userId: string;
+  /** На телефоне переписка занимает весь экран, и вернуться к списку можно
+   *  только отсюда — на десктопе список виден всегда, поэтому кнопки нет. */
+  onBack?: () => void;
+  title?: string;
 }
 
-const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
+  // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
+  // на телефоне привычнее свайп, как в нативных приложениях.
+  useSwipeBack(onBack);
+  // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
+  const [stickersOpen, setStickersOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -338,7 +351,12 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
+    <div className="flex-1 flex flex-col bg-background min-w-0">
+      {onBack && (
+        <div className="shrink-0 flex items-center px-4 py-2.5 pad-safe-top border-b border-border bg-card">
+          <span className="font-medium truncate">{title || "Чат"}</span>
+        </div>
+      )}
       <ScrollArea className="flex-1 px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
         <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
           {messages.map((message, index) => {
@@ -408,6 +426,17 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                             "rounded-bl-md"
                           )
                     )}>
+                      {/* Стикер: показываем картинкой без фона пузыря — так же,
+                          как это выглядит в мессенджерах. */}
+                      {message.sticker?.file_url && (
+                        <img
+                          src={message.sticker.file_url}
+                          alt={message.sticker.emoji || "Стикер"}
+                          className="w-32 h-32 object-contain"
+                          loading="lazy"
+                        />
+                      )}
+
                       {/* Текст сообщения */}
                       {message.content && (
                         <p className="break-words leading-relaxed whitespace-pre-wrap">
@@ -496,7 +525,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
                       {/* Статусы доставки/прочтения */}
                       {isOwn && (
                         <div className="flex items-center">
-                          <CheckCheck className="w-3 h-3 text-muted-foreground" />
+                          <CheckCheck className="w-3 h-3 text-success" />
                         </div>
                       )}
                     </div>
@@ -514,7 +543,7 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
       </ScrollArea>
 
       {/* Поле ввода */}
-      <div className="p-2 md:p-4 border-t border-border bg-card/50 backdrop-blur-sm">
+      <div className="p-2 md:p-4 pad-safe-bottom border-t border-border bg-card">
         <div className="max-w-4xl mx-auto">
           {selectedFile && (
             <div className="mb-2 md:mb-3 p-2 md:p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
@@ -538,6 +567,22 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
             </div>
           )}
           
+          {stickersOpen && (
+            <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
+              <StickerPicker
+                onSelect={async (sticker) => {
+                  setStickersOpen(false);
+                  try {
+                    await api.sendMessageWithSticker(chatId!, sticker.id);
+                    await fetchMessages();
+                  } catch {
+                    toast.error("Не удалось отправить стикер");
+                  }
+                }}
+              />
+            </div>
+          )}
+
           <div className="flex gap-2 items-end">
             <input 
               ref={fileInputRef} 
@@ -554,6 +599,16 @@ const ChatWindow = ({ chatId, userId }: ChatWindowProps) => {
               className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
             >
               <Paperclip className="w-4 h-4" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setStickersOpen((v) => !v)}
+              className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
+              aria-label="Стикеры"
+            >
+              <Smile className="w-4 h-4" />
             </Button>
             
             <div className="flex-1 relative">

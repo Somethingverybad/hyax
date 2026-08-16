@@ -17,6 +17,12 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: true
     },
+    Keyboard: {
+      // Не даём WebView менять размер самому: он делает это с задержкой и
+      // анимацией, из-за чего поле ввода догоняло клавиатуру примерно через
+      // секунду. Высоту считаем из visualViewport — он меняется сразу.
+      resize: 'none' as any,
+    },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"]
     },
