@@ -104,7 +104,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         """Возвращаем только чаты текущего пользователя"""
         try:
             profile = self.request.user.profile
-            return Chat.objects.filter(participants=profile)
+            # prefetch обязателен: сериализатор теперь отдаёт участников, и без
+            # него на каждый чат уходил бы отдельный запрос к базе — ровно та
+            # проблема, которую мы убираем с клиента.
+            return (
+                Chat.objects
+                .filter(participants=profile)
+                .prefetch_related('participants')
+            )
         except Profile.DoesNotExist:
             return Chat.objects.none()
 

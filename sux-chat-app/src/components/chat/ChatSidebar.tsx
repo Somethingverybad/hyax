@@ -46,6 +46,27 @@ interface ChatSidebarProps {
   onChatCreated: () => void;
 }
 
+// Кеш участников переживает перезапуск приложения: имена в списке чатов
+// появляются сразу, без ожидания сети. Ключ отдельный от токенов, чтобы
+// чистка сессии его не задевала.
+const PARTICIPANTS_CACHE_KEY = "chat_participants_cache";
+
+function readParticipantsCache(): {[chatId: string]: any[]} {
+  try {
+    return JSON.parse(localStorage.getItem(PARTICIPANTS_CACHE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeParticipantsCache(map: {[chatId: string]: any[]}) {
+  try {
+    localStorage.setItem(PARTICIPANTS_CACHE_KEY, JSON.stringify(map));
+  } catch {
+    // Переполнено или недоступно — не критично, просто не кешируем.
+  }
+}
+
 const ChatSidebar = ({ 
   userId, 
   chats,
@@ -91,31 +112,48 @@ const ChatSidebar = ({
     }
   };
 
-  // Загружаем участников для всех чатов
+  // Загружаем участников для всех чатов.
+  //
+  // Участники приходят отдельным запросом на каждый чат, поэтому до их ответа
+  // в списке вместо имени показывался идентификатор — при каждом открытии
+  // приложения. Кешируем их локально: список рисуется мгновенно из кеша, а
+  // сеть только обновляет данные в фоне.
   const loadChatParticipants = async (chatsArray: Chat[]) => {
-    const participantsMap: {[chatId: string]: Profile[]} = {};
+    const cached = readParticipantsCache();
+    const participantsMap: {[chatId: string]: Profile[]} = { ...cached };
     const loadingMap: {[chatId: string]: boolean} = {};
-    
+
+    // Показываем кеш сразу и помечаем загрузкой только то, чего в нём нет —
+    // иначе известные чаты моргали бы надписью «Загрузка».
+    if (Object.keys(cached).length > 0) {
+      setChatParticipants(cached);
+    }
     chatsArray.forEach(chat => {
-      loadingMap[chat.id] = true;
+      if (!cached[chat.id]) loadingMap[chat.id] = true;
     });
     setLoadingParticipants(loadingMap);
-    
+
     for (const chat of chatsArray) {
+      // Сервер отдаёт участников прямо в списке чатов — отдельный запрос нужен
+      // только старым версиям бэкенда, где этого поля ещё нет.
+      const inline = (chat as any).participants;
+      if (Array.isArray(inline)) {
+        participantsMap[chat.id] = inline;
+        continue;
+      }
       try {
-        console.log(`Loading participants for chat ${chat.id}...`);
         const participants = await api.getChatParticipants(chat.id);
-        console.log(`Participants for ${chat.id}:`, participants);
-        
         participantsMap[chat.id] = Array.isArray(participants) ? participants : [];
       } catch (error) {
         console.error(`Error loading participants for chat ${chat.id}:`, error);
-        participantsMap[chat.id] = [];
+        // Ошибку сети кешем не перетираем: старые имена лучше пустоты.
+        participantsMap[chat.id] = participantsMap[chat.id] || [];
       }
     }
-    
+
     setChatParticipants(participantsMap);
     setLoadingParticipants({});
+    writeParticipantsCache(participantsMap);
   };
 
   const searchUsers = async (query: string) => {

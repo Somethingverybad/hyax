@@ -15,9 +15,14 @@ class FriendshipSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'friend', 'status', 'created_at']
 
 class ChatSerializer(serializers.ModelSerializer):
+    # Участники отдаются вместе со списком чатов. Раньше клиент запрашивал их
+    # отдельно на каждый чат: на экран из десяти чатов уходило одиннадцать
+    # запросов, и до их ответа вместо имени показывался идентификатор.
+    participants = ProfileSerializer(many=True, read_only=True)
+
     class Meta:
         model = Chat
-        fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'created_at', 'updated_at', 'participants']
 
 class ChatParticipantSerializer(serializers.ModelSerializer):
     class Meta:
