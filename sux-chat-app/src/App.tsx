@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import ProfilePage from "./pages/Profile";
 import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -143,6 +144,7 @@ const App = () => {
               />
               <Route path="/auth" element={<Auth />} />
               <Route path="/chat" element={<Chat />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

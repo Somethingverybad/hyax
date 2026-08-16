@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import BottomNav from "@/components/BottomNav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
@@ -253,7 +254,7 @@ const Chat = () => {
   // Показываем что-то одно — так же, как в привычных мессенджерах.
   if (isMobile) {
     return (
-      <div className="h-screen flex bg-background">
+      <div className="h-screen flex flex-col bg-background">
         {selectedChatId ? (
           <ChatWindow
             chatId={selectedChatId}
@@ -262,6 +263,7 @@ const Chat = () => {
             title={selectedChatTitle}
           />
         ) : (
+          <>
           <ChatSidebar
             userId={user.id}
             chats={chats}
@@ -277,6 +279,8 @@ const Chat = () => {
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
+          <BottomNav />
+          </>
         )}
       </div>
     );

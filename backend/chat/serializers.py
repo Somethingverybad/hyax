@@ -7,7 +7,18 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at']
-        read_only_fields = ['id', 'username', 'created_at']
+        # username редактируем: это отображаемое имя (никнейм), логин остаётся
+        # в User.username и не меняется. Уникальность проверяет DRF по unique
+        # на поле модели.
+        read_only_fields = ['id', 'created_at']
+
+    def validate_username(self, value):
+        value = (value or "").strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("Никнейм короче 2 символов")
+        if len(value) > 50:
+            raise serializers.ValidationError("Никнейм длиннее 50 символов")
+        return value
 
 class FriendshipSerializer(serializers.ModelSerializer):
     class Meta:

@@ -20,7 +20,28 @@ logger = logging.getLogger(__name__)
 class ProfileViewSet(viewsets.ModelViewSet):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
-    permission_classes = [permissions.AllowAny]  # временно
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _own_profile_or_403(self, request, instance):
+        """Менять и удалять можно только свой профиль. Раньше стоял AllowAny
+        без проверки владельца — PATCH чужого профиля проходил у любого."""
+        profile = getattr(request.user, 'profile', None)
+        return profile is not None and profile.id == instance.id
+
+    def update(self, request, *args, **kwargs):
+        if not self._own_profile_or_403(request, self.get_object()):
+            return Response({"error": "Можно менять только свой профиль"}, status=403)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not self._own_profile_or_403(request, self.get_object()):
+            return Response({"error": "Можно менять только свой профиль"}, status=403)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not self._own_profile_or_403(request, self.get_object()):
+            return Response({"error": "Можно удалить только свой профиль"}, status=403)
+        return super().destroy(request, *args, **kwargs)
     
     def retrieve(self, request, *args, **kwargs):
         """Получить профиль по ID с логированием"""

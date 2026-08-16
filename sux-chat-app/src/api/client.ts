@@ -1,5 +1,17 @@
 const API_URL = import.meta.env.VITE_API_URL || "https://huyax.e-tree.su/api";
 
+// Сервер отдаёт пути к медиа относительными (/media/...). В вебе они
+// резолвятся от домена сайта, а в приложении WebView живёт на
+// capacitor://localhost — и картинка искалась бы внутри бандла. Достраиваем
+// до абсолютного URL от хоста API.
+const MEDIA_ORIGIN = API_URL.replace(/\/api\/?$/, "");
+
+export function mediaUrl(path?: string | null): string {
+  if (!path) return "";
+  if (/^(https?:|blob:|data:)/.test(path)) return path;
+  return `${MEDIA_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 interface AuthResponse {
   message: string;
   error?: string;
@@ -487,6 +499,36 @@ export const api = {
       body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order }),
     });
     if (!res.ok) throw new Error("Не удалось добавить стикер");
+    return res.json();
+  },
+
+
+  // ===== ПРОФИЛЬ =====
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string }): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      let msg = "Не удалось сохранить профиль";
+      try {
+        const body = await res.json();
+        msg = body.username?.[0] || body.bio?.[0] || body.error || msg;
+      } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  uploadAvatar: async (file: File): Promise<{ avatar_url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchWithAuthMultipart(`${API_URL}/avatar/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error("Не удалось загрузить аватар");
     return res.json();
   },
 

@@ -7,7 +7,7 @@ import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { api } from "@/api/client";
+import { api, mediaUrl } from "@/api/client";
 import { cn } from "@/lib/utils";
 
 interface Profile {
@@ -425,7 +425,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                           как это выглядит в мессенджерах. */}
                       {message.sticker?.file_url && (
                         <img
-                          src={message.sticker.file_url}
+                          src={mediaUrl(message.sticker.file_url)}
                           alt={message.sticker.emoji || "Стикер"}
                           className="w-32 h-32 object-contain"
                           loading="lazy"
@@ -446,14 +446,14 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                             // Отображение изображения
                             <div className="relative group">
                               <img 
-                                src={message.file_url} 
+                                src={mediaUrl(message.file_url)} 
                                 alt={message.file_name || "Изображение"}
                                 className={cn(
                                   "rounded-lg max-w-full h-auto cursor-pointer",
                                   "border-2",
                                   isOwn ? "border-primary/30" : "border-border"
                                 )}
-                                onClick={() => window.open(message.file_url || '', '_blank')}
+                                onClick={() => window.open(mediaUrl(message.file_url), '_blank')}
                                 onError={() => {
                                   // Если изображение не загрузилось, добавляем в список ошибок
                                   setImageLoadErrors(prev => new Set(prev).add(message.id));
@@ -462,7 +462,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSaveFile(message.file_url!, message.file_name || 'image');
+                                  handleSaveFile(mediaUrl(message.file_url), message.file_name || 'image');
                                 }}
                                 className={cn(
                                   "absolute top-2 right-2 p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity",
@@ -485,7 +485,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                             )}>
                               <Paperclip className="w-4 h-4 flex-shrink-0" />
                               <a
-                                href={message.file_url}
+                                href={mediaUrl(message.file_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex-1 text-sm truncate hover:underline"
@@ -495,7 +495,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  handleSaveFile(message.file_url!, message.file_name || 'file');
+                                  handleSaveFile(mediaUrl(message.file_url), message.file_name || 'file');
                                 }}
                                 className="p-1 rounded hover:bg-background/50 transition-colors"
                                 title="Сохранить файл"

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/api/client";
+import { api, mediaUrl } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
@@ -243,7 +243,7 @@ const StickerPicker = ({ onSelect }: StickerPickerProps) => {
                 className="aspect-square rounded-lg p-1 active:scale-90 transition-transform"
               >
                 <img
-                  src={s.file_url}
+                  src={mediaUrl(s.file_url)}
                   alt={s.emoji || ""}
                   className="w-full h-full object-contain"
                   loading="lazy"
