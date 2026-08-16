@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
@@ -130,7 +130,17 @@ const App = () => {
           
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Index />} />
+              {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
+                  Токен есть → в чат, нет → на вход. */}
+              <Route
+                path="/"
+                element={
+                  <Navigate
+                    to={localStorage.getItem("access_token") ? "/chat" : "/auth"}
+                    replace
+                  />
+                }
+              />
               <Route path="/auth" element={<Auth />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="*" element={<NotFound />} />

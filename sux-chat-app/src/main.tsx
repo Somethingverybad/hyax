@@ -32,3 +32,23 @@ document.addEventListener(
   },
   true,
 );
+
+// Клавиатура: двигаем интерфейс синхронно с ней. События приходят до начала
+// анимации и несут её высоту и длительность, поэтому панель ввода едет вместе
+// с клавиатурой, а не догоняет её рывком после ресайза WebView.
+import { Keyboard } from "@capacitor/keyboard";
+import { Capacitor as Cap } from "@capacitor/core";
+
+if (Cap.isNativePlatform()) {
+  const root = document.documentElement;
+
+  Keyboard.addListener("keyboardWillShow", (info) => {
+    root.style.setProperty("--kb-duration", "250ms");
+    root.style.setProperty("--kb-height", `${Math.round(info.keyboardHeight)}px`);
+  });
+
+  Keyboard.addListener("keyboardWillHide", () => {
+    root.style.setProperty("--kb-duration", "250ms");
+    root.style.setProperty("--kb-height", "0px");
+  });
+}

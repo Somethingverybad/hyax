@@ -15,15 +15,32 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Пока токен есть, форму не показываем: иначе она успевала мелькнуть до
+  // того, как проверка сессии уведёт в чат, и вход выглядел не бесшовным.
+  const [checking, setChecking] = useState(!!localStorage.getItem("access_token"));
+
   useEffect(() => {
+    if (!checking) return;
     const checkAuth = async () => {
       try {
         const profile = await api.getProfile();
-        if (profile?.id) navigate("/chat");
-      } catch {}
+        if (profile?.id) {
+          navigate("/chat", { replace: true });
+          return;
+        }
+      } catch {
+        // Сессия недействительна — чистим и показываем форму.
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+      }
+      setChecking(false);
     };
     checkAuth();
-  }, [navigate]);
+  }, [checking, navigate]);
+
+  if (checking) {
+    return <div className="min-h-screen bg-background" />;
+  }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -357,7 +357,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
           <span className="font-medium truncate">{title || "Чат"}</span>
         </div>
       )}
-      <ScrollArea className="flex-1 px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
+      <ScrollArea className="flex-1 chat-scroll px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
         <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
           {messages.map((message, index) => {
             const isOwn = message.sender?.id === userId;
@@ -414,17 +414,12 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
 
                     {/* Буббл сообщения */}
                     <div className={cn(
-                      "rounded-2xl px-4 py-2 relative",
-                      "transition-all duration-200",
-                      isOwn 
-                        ? cn(
-                            "bg-gradient-primary text-primary-foreground shadow-glow",
-                            "rounded-br-md"
-                          )
-                        : cn(
-                            "bg-card border border-border/50 shadow-sm",
-                            "rounded-bl-md"
-                          )
+                      "px-4 py-2 relative",
+                      // Свои сообщения алые, входящие зелёные — два цвета
+                      // палитры работают как разметка разговора, без подписей.
+                      isOwn
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-success text-success-foreground"
                     )}>
                       {/* Стикер: показываем картинкой без фона пузыря — так же,
                           как это выглядит в мессенджерах. */}

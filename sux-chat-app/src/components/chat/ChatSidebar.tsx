@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -57,6 +58,7 @@ const ChatSidebar = ({
   onChatDeleted,
   onChatCreated
 }: ChatSidebarProps) => {
+  const isMobileLayout = useIsMobile();
   const listRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
   const [searchQuery, setSearchQuery] = useState("");
@@ -209,20 +211,19 @@ const ChatSidebar = ({
         <div className="flex items-center justify-between mb-3 md:mb-4">
           {/* Левая часть - кнопки управления */}
           <div className="flex items-center gap-2">
-            {/* Кнопка сворачивания/разворачивания */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={onToggleCollapse}
-              className="h-10 w-8"
-              title={isCollapsed ? "Развернуть сайдбар" : "Свернуть сайдбар"}
-            >
-              {isCollapsed ? (
-                <Menu className="w-4 h-4" />
-              ) : (
-                <ChevronLeft className="w-4 h-4" />
-              )}
-            </Button>
+            {/* Сворачивание сайдбара — только для десктопа: на телефоне
+                свёрнутого состояния нет, и кнопка ничего не делала. */}
+            {!isMobileLayout && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                className="h-10 w-8"
+                title={isCollapsed ? "Развернуть сайдбар" : "Свернуть сайдбар"}
+              >
+                {isCollapsed ? <Menu className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              </Button>
+            )}
             
             {/* Кнопка выхода (скрываем в свернутом состоянии) */}
             {!isCollapsed && (

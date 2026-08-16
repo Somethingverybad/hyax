@@ -456,4 +456,38 @@ export const api = {
     return res.json();
   },
 
+
+  // Создание наборов прямо в приложении: сначала файл уходит на сервер и
+  // возвращает ссылку, затем стикер привязывается к набору.
+  uploadSticker: async (file: File): Promise<{ file_url: string; file_name: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchWithAuthMultipart(`${API_URL}/stickers/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error("Не удалось загрузить файл стикера");
+    return res.json();
+  },
+
+  createStickerPack: async (name: string, description?: string, isPublic = true): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ name, description, is_public: isPublic }),
+    });
+    if (!res.ok) throw new Error("Не удалось создать набор");
+    return res.json();
+  },
+
+  createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/stickers/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order }),
+    });
+    if (!res.ok) throw new Error("Не удалось добавить стикер");
+    return res.json();
+  },
+
 };
