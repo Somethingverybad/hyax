@@ -281,3 +281,21 @@ textarea:focus {
 .chat-scroll {
   padding-bottom: var(--kb-height);
 }
+
+
+/* Вход нового экрана при смене маршрута. Композитные свойства — переход
+   плавный и не трогает раскладку. */
+@keyframes route-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.route-transition {
+  animation: route-in 160ms ease-out;
+}

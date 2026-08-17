@@ -4,7 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
@@ -29,6 +29,19 @@ const closeWindow = () => {
   if (window.electronAPI) {
     window.electronAPI.closeWindow();
   }
+};
+
+// Переход между экранами: лёгкий фейд со сдвигом. Ключ по пути
+// перемонтирует обёртку, и CSS-анимация входа (см. index.css) запускается
+// заново. Только opacity и transform — их считает композитор, раскладка не
+// пересчитывается, поэтому переход не дёргается даже на слабых устройствах.
+const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="route-transition h-full">
+      <Routes location={location}>{children}</Routes>
+    </div>
+  );
 };
 
 const App = () => {
@@ -130,7 +143,7 @@ const App = () => {
 
           
           <BrowserRouter>
-            <Routes>
+            <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
                   Токен есть → в чат, нет → на вход. */}
               <Route
@@ -146,7 +159,7 @@ const App = () => {
               <Route path="/chat" element={<Chat />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFound />} />
-            </Routes>
+            </AnimatedRoutes>
           </BrowserRouter>
         </div>
       </TooltipProvider>

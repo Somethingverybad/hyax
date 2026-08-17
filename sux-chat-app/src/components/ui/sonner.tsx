@@ -13,6 +13,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       // Тосты всплывают снизу и перекрывали поле ввода сообщений. Поднимаем
       // их над ним: высота строки ввода плюс отступ под home-индикатором.
       position="bottom-center"
+      // 2с вместо стандартных 4: подтверждения читаются мгновенно, а висящий
+      // тост перекрывает интерфейс.
+      duration={2000}
       offset="calc(5.5rem + env(safe-area-inset-bottom, 0px))"
       toastOptions={{
         classNames: {

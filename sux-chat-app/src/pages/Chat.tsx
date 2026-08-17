@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
@@ -26,8 +27,8 @@ interface ProfileType {
 
 const Chat = () => {
   const isMobile = useIsMobile();
-  const [user, setUser] = useState<ProfileType | null>(null);
-  const [chats, setChats] = useState<ChatType[]>([]);
+  const [user, setUser] = useState<ProfileType | null>(() => readCache<ProfileType>("user"));
+  const [chats, setChats] = useState<ChatType[]>(() => readCache<ChatType[]>("chats") || []);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   // Имя собеседника для шапки: приходит из сайдбара, он единственный, кто его
   // вычисляет — участники грузятся отдельно от списка чатов.
@@ -41,8 +42,10 @@ const Chat = () => {
       try {
         const profile = await api.getProfile();
         setUser(profile);
+        writeCache("user", profile);
         const userChats = await api.getChats();
         setChats(userChats);
+        writeCache("chats", userChats);
         
         // 🔔 Инициализация push-уведомлений после успешной аутентификации
         if (Capacitor.isNativePlatform()) {
@@ -204,6 +207,7 @@ const Chat = () => {
       // Обновляем состояние только если данные изменились
       if (JSON.stringify(userChats) !== JSON.stringify(chats)) {
         setChats(userChats);
+        writeCache("chats", userChats);
         
         // Логируем обновление для отладки
         console.log('Chats updated:', userChats.length, 'chats');
@@ -214,6 +218,7 @@ const Chat = () => {
   };
 
   const handleLogout = async () => {
+    clearSessionCache();
     try {
       // 🔔 Удаляем listeners при выходе
       if (Capacitor.isNativePlatform()) {
@@ -264,6 +269,9 @@ const Chat = () => {
           />
         ) : (
           <>
+          {/* Обёртка растягивает список на всю высоту — иначе бар прилипал
+              к последней строке, а под ним оставалась пустота. */}
+          <div className="flex-1 min-h-0 flex">
           <ChatSidebar
             userId={user.id}
             chats={chats}
@@ -279,6 +287,7 @@ const Chat = () => {
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
+          </div>
           <BottomNav />
           </>
         )}

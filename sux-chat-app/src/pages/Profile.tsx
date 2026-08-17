@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl } from "@/api/client";
+import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { Camera, LogOut } from "lucide-react";
@@ -21,9 +22,11 @@ interface Profile {
  */
 const ProfilePage = () => {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [username, setUsername] = useState("");
-  const [bio, setBio] = useState("");
+  // Стартуем из кеша сессии — экран рисуется сразу, сеть обновит фоном.
+  const cached = readCache<Profile>("user");
+  const [profile, setProfile] = useState<Profile | null>(cached);
+  const [username, setUsername] = useState(cached?.username || "");
+  const [bio, setBio] = useState(cached?.bio || "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -35,6 +38,7 @@ const ProfilePage = () => {
         setProfile(p);
         setUsername(p.username || "");
         setBio(p.bio || "");
+        writeCache("user", p);
       } catch {
         navigate("/auth", { replace: true });
       }
@@ -50,6 +54,7 @@ const ProfilePage = () => {
         bio: bio.trim(),
       });
       setProfile(updated);
+      writeCache("user", updated);
       toast.success("Сохранено");
     } catch (e: any) {
       toast.error(e?.message || "Не удалось сохранить");
@@ -74,6 +79,7 @@ const ProfilePage = () => {
   };
 
   const logout = async () => {
+    clearSessionCache();
     await api.logout();
     navigate("/auth", { replace: true });
   };
