@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.huyaks.messenger',
-  appName: 'ХУЯКС',
+  appName: 'hyax',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
@@ -34,7 +34,6 @@ const config: CapacitorConfig = {
     },
   },
   ios: {
-    scheme: 'ХУЯКС',
     scrollEnabled: true,
     // 🔧 ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ ДЛЯ ПОЛНОГО ЭКРАНА
   },
