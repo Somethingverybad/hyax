@@ -498,6 +498,30 @@ class MessageViewSet(viewsets.ModelViewSet):
                     'message': message_data
                 }
             )
+
+        # Пуш остальным участникам. Уходит в фоновом потоке и не задерживает
+        # ответ; падение отправки не должно ронять создание сообщения.
+        try:
+            from .fcm import notify_profiles
+            recipients = message.chat.participants.exclude(id=profile.id)
+            preview = (message.content or "").strip()
+            if not preview:
+                if message.sticker_id:
+                    preview = "Стикер"
+                elif getattr(message, "voice_url", None):
+                    preview = "Голосовое сообщение"
+                elif getattr(message, "file_url", None):
+                    preview = "Файл"
+                else:
+                    preview = "Новое сообщение"
+            notify_profiles(
+                recipients,
+                title=profile.username,
+                body=preview[:150],
+                extra={"chat_id": str(message.chat.id)},
+            )
+        except Exception:
+            logger.exception("push: не удалось поставить отправку")
             
             # Отправляем уведомления всем участникам чата (кроме отправителя)
             chat_participants = ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile)
@@ -975,3 +999,25 @@ class AvatarUploadView(APIView):
             "avatar_url": file_url,
             "message": "Avatar uploaded successfully"
         })
+
+
+class PushRegisterView(APIView):
+    """Регистрация APNs-токена устройства. Профиль берётся из сессии — чужое
+    устройство привязать нельзя. Токен уникален: при переустановке приложения
+    другим пользователем привязка переезжает."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        token = (request.data.get("token") or "").strip()
+        platform = (request.data.get("platform") or "ios").lower()
+        if not token:
+            return Response({"error": "token обязателен"}, status=400)
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        device, created = PushDevice.objects.update_or_create(
+            token=token,
+            defaults={"profile": profile, "platform": platform, "is_active": True},
+        )
+        return Response({"ok": True, "created": created})

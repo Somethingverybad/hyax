@@ -30,6 +30,10 @@
 	<string>Микрофон нужен для записи голосовых сообщений.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Доступ к фото нужен, чтобы прикреплять снимки к сообщениям.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

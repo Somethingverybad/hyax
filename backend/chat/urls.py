@@ -26,6 +26,7 @@ urlpatterns = [
     path('stickers/upload/', StickerUploadView.as_view(), name='sticker-upload'),
     path('voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('avatar/upload/', AvatarUploadView.as_view(), name='avatar-upload'),
+    path('push/register/', PushRegisterView.as_view(), name='push-register'),
     path('sticker-packs/import/', StickerPackViewSet.as_view({'post': 'import_pack'}), name='sticker-pack-import'),
     # Роутер ПОСЛЕ кастомных маршрутов
     path('', include(router.urls)),

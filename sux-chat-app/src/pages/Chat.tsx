@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import { api } from "@/api/client";
-import { PushNotifications, Token, ActionPerformed, PushNotificationSchema } from '@capacitor/push-notifications';
+import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 
@@ -60,105 +60,42 @@ const Chat = () => {
   }, [navigate]);
 
   // 🔔 Функция инициализации push-уведомлений
-  const initPushNotifications = async (userId: string) => {
+  // Firebase, а не @capacitor/push-notifications: тот на iOS отдаёт сырой
+  // APNs-токен, который FCM отправить не может. Firebase SDK сам меняет его
+  // на FCM-овский — бэкенд работает с iOS и будущим Android одинаково.
+  const initPushNotifications = async (_userId: string) => {
     try {
-      console.log('Initializing push notifications...');
-      
-      // Запрашиваем разрешение на iOS
-      let permission = await PushNotifications.requestPermissions();
-      
-      if (permission.receive === 'granted') {
-        console.log('Push permission granted');
-        
-        // Регистрируем для получения push-токена
-        await PushNotifications.register();
-        
-        // Настройка обработчиков
-        setupPushHandlers(userId);
-        
-        console.log('Push notifications initialized successfully');
-      } else {
-        console.log('Push notifications permission denied');
+      let permission = await FirebaseMessaging.checkPermissions();
+      if (permission.receive === 'prompt' || permission.receive === 'prompt-with-rationale') {
+        permission = await FirebaseMessaging.requestPermissions();
       }
+      if (permission.receive !== 'granted') return;
+
+      // Токен ротируется — слушаем и перерегистрируем.
+      await FirebaseMessaging.addListener('tokenReceived', (e) => {
+        if (e?.token) sendPushTokenToServer(e.token);
+      });
+
+      // По тапу на пуш открываем чат из data.chat_id.
+      await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
+        const chatId = (e?.notification?.data as any)?.chat_id;
+        if (chatId) setSelectedChatId(String(chatId));
+      });
+
+      const { token } = await FirebaseMessaging.getToken();
+      await sendPushTokenToServer(token);
     } catch (error) {
       console.error('Error initializing push notifications:', error);
     }
   };
 
-  // 🔔 Настройка обработчиков push-уведомлений
-  const setupPushHandlers = (userId: string) => {
-    // Срабатывает когда приложение получает push-токен
-    PushNotifications.addListener('registration', (token: Token) => {
-      console.log('Push registration success, token:', token.value);
-      
-      // Отправляем токен на ваш сервер
-      sendPushTokenToServer(userId, token.value);
-    });
-
-    // Срабатывает при ошибке регистрации
-    PushNotifications.addListener('registrationError', (error: any) => {
-      console.error('Push registration error:', error);
-    });
-
-    // 🔔 Срабатывает когда приложение получает уведомление в FOREGROUND
-    // ❌ УБРАНО: Не показываем toast, только логируем
-    PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-      console.log('Push received in foreground:', notification);
-      
-      // Обновляем список чатов при получении уведомления
-      handleNewMessageNotification(notification);
-    });
-
-    // 🔔 Срабатывает когда пользователь ТАПАЕТ по уведомлению (приложение в BACKGROUND/CLOSED)
-    PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
-      console.log('Push action performed (user tapped notification):', action);
-      
-      const data = action.notification.data;
-      
-      // Обрабатываем переход к конкретному чату при тапе на уведомление
-      if (data?.chatId) {
-        handleNotificationTap(data.chatId);
-      }
-    });
-  };
-
   // 🔔 Функция отправки push-токена на сервер
-  const sendPushTokenToServer = async (userId: string, token: string) => {
+  const sendPushTokenToServer = async (token: string) => {
     try {
-      await api.registerPushToken({
-        userId: userId,
-        token: token,
-        platform: Capacitor.getPlatform(),
-        deviceId: `device_${userId}_${Date.now()}`
-      });
-      
-      console.log('Push token successfully sent to server');
-      
+      await api.registerPushToken(token, Capacitor.getPlatform());
     } catch (error) {
       console.error('Error sending push token to server:', error);
     }
-  };
-
-  // 🔔 Обработка нового сообщения из push-уведомления
-  const handleNewMessageNotification = (notification: PushNotificationSchema) => {
-    const { data } = notification;
-    
-    // ❌ УБРАНО: Не показываем toast уведомления
-    
-    // Всегда обновляем список чатов при новом сообщении
-    refreshChats();
-  };
-
-  // 🔔 Обработка тапа по уведомлению
-  const handleNotificationTap = (chatId: string) => {
-    console.log('Opening chat from notification:', chatId);
-    
-    // Сворачиваем сайдбар и выбираем чат
-    setIsSidebarCollapsed(true);
-    setSelectedChatId(chatId);
-    
-    // Обновляем данные чата
-    refreshChats();
   };
 
   // 🔔 Автообновление списка чатов
@@ -222,7 +159,7 @@ const Chat = () => {
     try {
       // 🔔 Удаляем listeners при выходе
       if (Capacitor.isNativePlatform()) {
-        PushNotifications.removeAllListeners();
+        FirebaseMessaging.removeAllListeners();
       }
       
       await api.logout();

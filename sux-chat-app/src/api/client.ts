@@ -532,4 +532,16 @@ export const api = {
     return res.json();
   },
 
+
+  // Регистрация FCM-токена устройства. Профиль берётся из сессии на сервере.
+  registerPushToken: async (token: string, platform: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/push/register/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ token, platform }),
+    });
+    if (!res.ok) throw new Error("Не удалось зарегистрировать устройство");
+    return res.json();
+  },
+
 };
