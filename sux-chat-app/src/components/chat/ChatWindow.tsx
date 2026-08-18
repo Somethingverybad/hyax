@@ -25,7 +25,30 @@ interface Message {
   sender_id: string;
   sender?: Profile;
   created_at: string;
+  /** Клиентские поля оптимистичной отправки: pending — сервер ещё не
+   *  подтвердил (одна галочка), _key — стабильный ключ рендера, чтобы
+   *  подмена временного сообщения настоящим не перемонтировала DOM,
+   *  _dims — размеры картинки, замеренные до вставки пузыря: место
+   *  резервируется сразу, и лента не дёргается при декодировании. */
+  pending?: boolean;
+  _key?: string;
+  _dims?: { w: number; h: number } | null;
 }
+
+/** Габариты картинки из локального файла — читаются мгновенно, без сети. */
+const imageDims = (url: string) =>
+  new Promise<{ w: number; h: number } | null>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+
+/** Вписывает натуральный размер в бокс превью (240×192), не увеличивая. */
+const previewSize = (dims: { w: number; h: number }) => {
+  const scale = Math.min(240 / dims.w, 192 / dims.h, 1);
+  return { width: Math.round(dims.w * scale), height: Math.round(dims.h * scale) };
+};
 
 interface ChatWindowProps {
   chatId: string | null;
@@ -157,16 +180,21 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   const fetchMessages = async () => {
     if (!chatId) return;
     try {
-      const data = await api.getMessages(chatId);
-      console.log("Fetched messages:", data);
-      
-      // Сравниваем с предыдущими сообщениями
-      const previousMessages = previousMessagesRef.current;
-      
-      // Обновляем состояние только если сообщения изменились
-      if (JSON.stringify(data) !== JSON.stringify(previousMessages)) {
-        setMessages(data);
-      }
+      const data: Message[] = await api.getMessages(chatId);
+
+      setMessages(prev => {
+        // Серверный список не знает про клиентские поля: переносим ключ
+        // рендера и размеры с уже подтверждённых сообщений, а ещё не
+        // подтверждённые дописываем в конец — иначе опрос стирал бы пузырь
+        // до ответа сервера.
+        const meta = new Map(prev.filter(m => m._key).map(m => [m.id, m]));
+        const withMeta = data.map(d => {
+          const local = meta.get(d.id);
+          return local ? { ...d, _key: local._key, _dims: local._dims } : d;
+        });
+        const merged = [...withMeta, ...prev.filter(m => m.pending)];
+        return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
+      });
     } catch {
       console.log("Не удалось загрузить сообщения (автообновление)");
     }
@@ -201,77 +229,83 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   const sendMessage = async () => {
     if (!chatId || (!newMessage.trim() && !selectedFile)) return;
 
-    setUploading(true);
+    const text = newMessage.trim();
+    const file = selectedFile;
+
+    // Пузырь появляется мгновенно, поле очищается сразу — сеть догоняет
+    // в фоне. Для картинки заранее замеряем размеры из локального файла,
+    // чтобы пузырь сразу занял своё место и лента не дёргалась.
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const localUrl =
+      file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+    const dims = localUrl ? await imageDims(localUrl) : null;
+
+    const optimistic: Message = {
+      id: tempId,
+      content: text || null,
+      file_url: localUrl,
+      file_name: file?.name ?? null,
+      sender_id: userId,
+      sender: { id: userId } as Profile,
+      created_at: new Date().toISOString(),
+      pending: true,
+      _key: tempId,
+      _dims: dims,
+    };
+
+    setNewMessage("");
+    setSelectedFile(null);
+    setMessages(prev => [...prev, optimistic]);
+    lastSendTimeRef.current = Date.now();
+    setTimeout(() => scrollToBottom(), 50);
+
+    if (sendSoundRef.current) {
+      sendSoundRef.current.currentTime = 0;
+      sendSoundRef.current.play().catch(() => {});
+    }
 
     try {
-      let fileUrl: string | null = null;
-      let fileName: string | null = null;
-      let fileSize: number | null = null;
-
-      if (selectedFile) {
-        try {
-          // Загружаем файл на сервер
-          const uploadResult = await api.uploadFile(selectedFile);
-          fileUrl = uploadResult.file_url;
-          fileName = uploadResult.file_name;
-          fileSize = uploadResult.file_size;
-          // Файл уже у нас в руках — рисовать его будем из него же,
-          // не скачивая собственную картинку с сервера обратно.
-          if (fileUrl && selectedFile.type.startsWith("image/")) {
-            localImagesRef.current.set(fileUrl, URL.createObjectURL(selectedFile));
-          }
-        } catch (error: any) {
-          console.error("Error uploading file:", error);
-          toast.error("Ошибка загрузки файла: " + (error.message || "Неизвестная ошибка"));
-          setUploading(false);
-          return;
+      let sent: Message;
+      if (file) {
+        const uploadResult = await api.uploadFile(file);
+        // Свою картинку рисуем из локального файла и после подтверждения —
+        // сервер нужен только собеседнику.
+        if (localUrl && uploadResult.file_url) {
+          localImagesRef.current.set(uploadResult.file_url, localUrl);
         }
-      }
-
-      // Воспроизводим звук отправки
-      if (sendSoundRef.current) {
-        sendSoundRef.current.currentTime = 0;
-        sendSoundRef.current.play().catch(error => {
-          console.log("Ошибка воспроизведения звука отправки:", error);
-        });
-      }
-
-      // Запоминаем время отправки
-      lastSendTimeRef.current = Date.now();
-
-      // Отправляем сообщение с файлом или без
-      if (fileUrl && fileName && fileSize) {
-        await api.sendMessageWithFile(chatId, {
-          file_url: fileUrl,
-          file_name: fileName,
-          file_size: fileSize
-        }, newMessage.trim() || undefined);
+        sent = await api.sendMessageWithFile(chatId, {
+          file_url: uploadResult.file_url,
+          file_name: uploadResult.file_name,
+          file_size: uploadResult.file_size,
+        }, text || undefined);
       } else {
-        await api.sendMessage(chatId, newMessage.trim() || null);
+        sent = await api.sendMessage(chatId, text || null);
       }
-      
-      setNewMessage("");
-      setSelectedFile(null);
 
-      // Прокручиваем вниз сразу после отправки
-      setTimeout(() => {
-        scrollToBottom();
-      }, 50);
-
-      // Обновляем сообщения через небольшой интервал
-      setTimeout(() => fetchMessages(), 500);
+      // Подменяем временное сообщение настоящим, сохранив ключ рендера и
+      // размеры — DOM не перемонтируется, картинка не мигает.
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims } : m
+        )
+      );
     } catch (error: any) {
       console.error("Error sending message:", error);
       toast.error("Ошибка отправки: " + (error.message || "Неизвестная ошибка"));
-    } finally {
-      setUploading(false);
+      // Возвращаем черновик, чтобы можно было отправить повторно.
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setNewMessage(text);
+      setSelectedFile(file);
+      if (localUrl) URL.revokeObjectURL(localUrl);
     }
   };
 
   // Отправленное с этого устройства берём из локального файла, остальное —
   // с сервера.
-  const resolveImageUrl = (fileUrl: string) =>
-    localImagesRef.current.get(fileUrl) ?? mediaUrl(fileUrl);
+  const resolveImageUrl = (fileUrl: string) => {
+    if (fileUrl.startsWith("blob:")) return fileUrl; // ещё не отправленное
+    return localImagesRef.current.get(fileUrl) ?? mediaUrl(fileUrl);
+  };
 
   // Объектные URL живут до конца сессии страницы — освобождаем при уходе
   // из чата, чтобы память не копилась от фотографий.
@@ -405,7 +439,10 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
             const username = message.sender?.username || "Неизвестный";
 
             return (
-              <div key={message.id} className="space-y-2">
+              <div
+                key={message._key ?? message.id}
+                className={cn("space-y-2", message._key && "msg-in")}
+              >
                 {/* Разделитель с датой */}
                 {showDate && (
                   <div className="flex justify-center">
@@ -484,6 +521,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                               alt={message.file_name || "Изображение"}
                               loading="lazy"
                               className="max-h-48 max-w-[min(240px,100%)] w-auto object-contain cursor-pointer block"
+                              style={message._dims ? previewSize(message._dims) : undefined}
                               onClick={() =>
                                 setViewer({
                                   url: resolveImageUrl(message.file_url),
@@ -536,10 +574,14 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                         {formatTime(message.created_at)}
                       </span>
                       
-                      {/* Статусы доставки/прочтения */}
+                      {/* Статусы: одна галочка — отправляется, две — на сервере. */}
                       {isOwn && (
                         <div className="flex items-center">
-                          <CheckCheck className="w-3 h-3 text-success" />
+                          {message.pending ? (
+                            <Check className="w-3 h-3 text-muted-foreground" />
+                          ) : (
+                            <CheckCheck className="w-3 h-3 text-success" />
+                          )}
                         </div>
                       )}
                     </div>
