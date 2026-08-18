@@ -128,10 +128,20 @@ class ChatViewSet(viewsets.ModelViewSet):
             # prefetch обязателен: сериализатор теперь отдаёт участников, и без
             # него на каждый чат уходил бы отдельный запрос к базе — ровно та
             # проблема, которую мы убираем с клиента.
+            from django.db.models import OuterRef, Subquery
+            last = Message.objects.filter(chat=OuterRef('pk')).order_by('-created_at')
             return (
                 Chat.objects
                 .filter(participants=profile)
                 .prefetch_related('participants')
+                .annotate(
+                    last_text_a=Subquery(last.values('content')[:1]),
+                    last_sender_id_a=Subquery(last.values('sender_id')[:1]),
+                    last_sticker_a=Subquery(last.values('sticker_id')[:1]),
+                    last_voice_a=Subquery(last.values('voice_url')[:1]),
+                    last_file_a=Subquery(last.values('file_url')[:1]),
+                )
+                .order_by('-updated_at')
             )
         except Profile.DoesNotExist:
             return Chat.objects.none()

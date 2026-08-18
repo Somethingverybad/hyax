@@ -14,7 +14,7 @@ interface ChatType {
   id: string;
   created_at: string;
   updated_at: string;
-  last_message?: string;
+  last_message?: { text: string; sender_id: string } | null;
   unread_count?: number;
 }
 

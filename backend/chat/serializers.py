@@ -30,10 +30,29 @@ class ChatSerializer(serializers.ModelSerializer):
     # отдельно на каждый чат: на экран из десяти чатов уходило одиннадцать
     # запросов, и до их ответа вместо имени показывался идентификатор.
     participants = ProfileSerializer(many=True, read_only=True)
+    # Последнее сообщение для превью в списке. Данные приходят аннотациями из
+    # get_queryset (Subquery) — метод ничего не дёргает из базы, N+1 нет.
+    last_message = serializers.SerializerMethodField()
 
     class Meta:
         model = Chat
-        fields = ['id', 'created_at', 'updated_at', 'participants']
+        fields = ['id', 'created_at', 'updated_at', 'participants', 'last_message']
+
+    def get_last_message(self, obj):
+        sender_id = getattr(obj, 'last_sender_id_a', None)
+        if sender_id is None:
+            return None
+        text = (getattr(obj, 'last_text_a', '') or '').strip()
+        if not text:
+            if getattr(obj, 'last_sticker_a', None):
+                text = 'Стикер'
+            elif getattr(obj, 'last_voice_a', None):
+                text = 'Голосовое сообщение'
+            elif getattr(obj, 'last_file_a', None):
+                text = 'Файл'
+            else:
+                text = 'Сообщение'
+        return {'text': text[:120], 'sender_id': str(sender_id)}
 
 class ChatParticipantSerializer(serializers.ModelSerializer):
     class Meta:

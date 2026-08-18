@@ -52,8 +52,11 @@ All colors MUST be HSL.
 
     /* Градиенты оставлены переменными ради совместимости с разметкой, но
        сведены к плоскому цвету: в супрематизме плоскость важнее объёма. */
-    --gradient-primary: hsl(4 85% 50%);
-    --gradient-card: hsl(0 0% 11%);
+    /* Утилиты bg-gradient-* подставляют это в background-image, а плоский
+       цвет там невалиден — кнопки молча теряли фон. «Градиент» из двух
+       одинаковых стопов выглядит плоско, но валиден. */
+    --gradient-primary: linear-gradient(0deg, hsl(4 85% 50%), hsl(4 85% 50%));
+    --gradient-card: linear-gradient(0deg, hsl(0 0% 11%), hsl(0 0% 11%));
 
     --shadow-glow: none;
     --shadow-card: none;

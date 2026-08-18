@@ -437,7 +437,9 @@ const ChatSidebar = ({
                           <p className="text-sm text-muted-foreground truncate">
                             {isLoading
                               ? "Загрузка…"
-                              : chat.last_message || "Сообщений пока нет"}
+                              : (chat as any).last_message
+                                ? `${(chat as any).last_message.sender_id === currentUser?.id ? "Вы: " : ""}${(chat as any).last_message.text}`
+                                : "Сообщений пока нет"}
                           </p>
                           {!!chat.unread_count && chat.unread_count > 0 && (
                             <span className="shrink-0 min-w-[20px] h-5 px-1.5 bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">

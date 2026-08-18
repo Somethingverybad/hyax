@@ -102,14 +102,14 @@ const Auth = () => {
   return (
     <div
       className="min-h-screen overflow-y-auto flex items-start justify-center bg-background p-3 md:p-4"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8vh)" }}
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2vh)" }}
     >
       <Card className="w-full max-w-md p-4 md:p-8 bg-transparent border-0">
-        <div className="flex flex-col items-center mb-6 md:mb-8">
+        <div className="flex flex-col items-center mb-4 md:mb-6">
           <img
             src={logo}
             alt="ХУЯКС"
-            className="w-28 h-28 md:w-32 md:h-32 mb-4 md:mb-6 select-none pointer-events-none"
+            className="w-20 h-20 md:w-24 md:h-24 mb-3 select-none pointer-events-none"
             draggable={false}
           />
 
