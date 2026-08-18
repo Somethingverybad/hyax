@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Zap, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import logo from "@/assets/logo.png";
 import { api } from "@/api/client";
 
 const Auth = () => {
@@ -99,28 +100,19 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen overflow-y-auto flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-3 md:p-4">
-      <Card className="w-full max-w-md p-4 md:p-8 bg-gradient-card shadow-card border-border">
+    <div
+      className="min-h-screen overflow-y-auto flex items-start justify-center bg-background p-3 md:p-4"
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8vh)" }}
+    >
+      <Card className="w-full max-w-md p-4 md:p-8 bg-transparent border-0">
         <div className="flex flex-col items-center mb-6 md:mb-8">
-          {/* Иконка со стилизованной буквой Х */}
-          <div className="relative mb-4 md:mb-6">
-            <div className="w-20 h-20 md:w-24 md:h-24 bg-gradient-primary rounded-2xl md:rounded-3xl flex items-center justify-center shadow-glow">
-              {/* Стилизованная буква Х */}
-              <div className="relative">
-                <span className="text-5xl md:text-7xl font-black text-primary-foreground select-none">
-                  Х
-                </span>
-                {/* Эффект свечения */}
-                <div className="absolute inset-0 text-5xl md:text-7xl font-black text-primary-foreground/30 blur-sm">
-                  Х
-                </div>
-              </div>
-            </div>
-            <div className="absolute -top-1 -right-1 md:-top-2 md:-right-2 w-6 h-6 md:w-8 md:h-8 bg-accent rounded-full flex items-center justify-center shadow-md">
-              <Zap className="w-3 h-3 md:w-4 md:h-4 text-accent-foreground" />
-            </div>
-          </div>
-          
+          <img
+            src={logo}
+            alt="ХУЯКС"
+            className="w-28 h-28 md:w-32 md:h-32 mb-4 md:mb-6 select-none pointer-events-none"
+            draggable={false}
+          />
+
           {/* Стилизованное название с эффектом */}
           <div className="text-center mb-2 md:mb-3">
             <div className="relative">
