@@ -1,12 +1,11 @@
 import { useEffect, useState, useRef } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import Identicon from "@/components/Identicon";
 import { api, mediaUrl } from "@/api/client";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +42,8 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   useSwipeBack(onBack);
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
   const [stickersOpen, setStickersOpen] = useState(false);
+  // Открытая на весь экран картинка: { url, name }.
+  const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -51,6 +52,10 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Свои картинки показываем из локального файла: сервер их и так получил от
+  // нас, скачивать обратно — лишний трафик и «пустой» пузырь на время загрузки.
+  // Ключ — file_url, который сервер выдал при аплоаде.
+  const localImagesRef = useRef<Map<string, string>>(new Map());
   
   // Рефы для аудио
   const sendSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -210,6 +215,11 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
           fileUrl = uploadResult.file_url;
           fileName = uploadResult.file_name;
           fileSize = uploadResult.file_size;
+          // Файл уже у нас в руках — рисовать его будем из него же,
+          // не скачивая собственную картинку с сервера обратно.
+          if (fileUrl && selectedFile.type.startsWith("image/")) {
+            localImagesRef.current.set(fileUrl, URL.createObjectURL(selectedFile));
+          }
         } catch (error: any) {
           console.error("Error uploading file:", error);
           toast.error("Ошибка загрузки файла: " + (error.message || "Неизвестная ошибка"));
@@ -257,6 +267,21 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
       setUploading(false);
     }
   };
+
+  // Отправленное с этого устройства берём из локального файла, остальное —
+  // с сервера.
+  const resolveImageUrl = (fileUrl: string) =>
+    localImagesRef.current.get(fileUrl) ?? mediaUrl(fileUrl);
+
+  // Объектные URL живут до конца сессии страницы — освобождаем при уходе
+  // из чата, чтобы память не копилась от фотографий.
+  useEffect(() => {
+    const map = localImagesRef.current;
+    return () => {
+      map.forEach((url) => URL.revokeObjectURL(url));
+      map.clear();
+    };
+  }, []);
 
   // Функция для форматирования времени
   const formatTime = (dateString: string) => {
@@ -351,20 +376,33 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background min-w-0">
+    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
       {onBack && (
         <div className="shrink-0 flex items-center px-4 py-2.5 pad-safe-top border-b border-border bg-card">
           <span className="font-medium truncate">{title || "Чат"}</span>
         </div>
       )}
-      <ScrollArea className="flex-1 chat-scroll px-3 md:px-4 py-4 md:py-6" ref={scrollRef as any}>
+      {/* Нативный overflow-скролл вместо Radix ScrollArea: min-h-0 позволяет
+          ленте ужиматься меньше содержимого (иначе большие сообщения выталкивают
+          поле ввода за экран), а scrollTop работает напрямую. */}
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain chat-scroll px-3 md:px-4 py-4 md:py-6"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
           {messages.map((message, index) => {
             const isOwn = message.sender?.id === userId;
+            const hasImage =
+              !!message.file_url &&
+              isImageFile(message.file_name, message.file_url) &&
+              !imageLoadErrors.has(message.id);
+            // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
+            // которая раздувала сообщение на пол-экрана.
+            const imageOnly = hasImage && !message.content && !message.sticker?.file_url;
             const previousMessage = index > 0 ? messages[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
-            const avatarLetter = username.charAt(0).toUpperCase();
 
             return (
               <div key={message.id} className="space-y-2">
@@ -384,18 +422,11 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                 )}>
                   {/* Аватар (только для чужих сообщений) */}
                   {!isOwn && (
-                    <Avatar className="w-8 h-8 flex-shrink-0">
-                      {message.sender?.avatar_url ? (
-                        <AvatarImage 
-                          src={message.sender.avatar_url} 
-                          alt={username}
-                        />
-                      ) : (
-                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs">
-                          {avatarLetter}
-                        </AvatarFallback>
-                      )}
-                    </Avatar>
+                    <Identicon
+                      id={message.sender?.id || "?"}
+                      avatarUrl={message.sender?.avatar_url}
+                      className="w-8 h-8"
+                    />
                   )}
 
                   {/* Контент сообщения */}
@@ -414,12 +445,14 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
 
                     {/* Буббл сообщения */}
                     <div className={cn(
-                      "px-4 py-2 relative",
+                      "relative",
+                      !imageOnly && "px-4 py-2",
                       // Свои сообщения алые, входящие зелёные — два цвета
                       // палитры работают как разметка разговора, без подписей.
-                      isOwn
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-success text-success-foreground"
+                      !imageOnly &&
+                        (isOwn
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-success text-success-foreground")
                     )}>
                       {/* Стикер: показываем картинкой без фона пузыря — так же,
                           как это выглядит в мессенджерах. */}
@@ -441,40 +474,26 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
 
                       {/* Файл */}
                       {message.file_url && (
-                        <div className={cn("mt-2", isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) && "max-w-[400px]")}>
-                          {isImageFile(message.file_name, message.file_url) && !imageLoadErrors.has(message.id) ? (
-                            // Отображение изображения
-                            <div className="relative group">
-                              <img 
-                                src={mediaUrl(message.file_url)} 
-                                alt={message.file_name || "Изображение"}
-                                className={cn(
-                                  "rounded-lg max-w-full h-auto cursor-pointer",
-                                  "border-2",
-                                  isOwn ? "border-primary/30" : "border-border"
-                                )}
-                                onClick={() => window.open(mediaUrl(message.file_url), '_blank')}
-                                onError={() => {
-                                  // Если изображение не загрузилось, добавляем в список ошибок
-                                  setImageLoadErrors(prev => new Set(prev).add(message.id));
-                                }}
-                              />
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSaveFile(mediaUrl(message.file_url), message.file_name || 'image');
-                                }}
-                                className={cn(
-                                  "absolute top-2 right-2 p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity",
-                                  isOwn 
-                                    ? "bg-primary/80 text-primary-foreground hover:bg-primary"
-                                    : "bg-background/80 text-foreground hover:bg-background"
-                                )}
-                                title="Сохранить изображение"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            </div>
+                        <div className={cn(!imageOnly && "mt-2")}>
+                          {hasImage ? (
+                            // Компактное превью: полноразмерная картинка ломала
+                            // прокрутку ленты. Тап — встроенный просмотрщик,
+                            // скачивание там, в меню «⋯».
+                            <img
+                              src={resolveImageUrl(message.file_url)}
+                              alt={message.file_name || "Изображение"}
+                              loading="lazy"
+                              className="max-h-48 max-w-[min(240px,100%)] w-auto object-contain cursor-pointer block"
+                              onClick={() =>
+                                setViewer({
+                                  url: resolveImageUrl(message.file_url),
+                                  name: message.file_name || "image",
+                                })
+                              }
+                              onError={() => {
+                                setImageLoadErrors(prev => new Set(prev).add(message.id));
+                              }}
+                            />
                           ) : (
                             // Отображение обычного файла
                             <div className={cn(
@@ -535,7 +554,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
           {/* Невидимый элемент для прокрутки вниз */}
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Поле ввода */}
       <div className="p-2 md:p-4 pad-safe-bottom border-t border-border bg-card">
@@ -639,6 +658,86 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
           </div>
         </div>
       </div>
+
+      {viewer && (
+        <ImageViewer
+          item={viewer}
+          onClose={() => setViewer(null)}
+          onSave={() => handleSaveFile(viewer.url, viewer.name)}
+        />
+      )}
+    </div>
+  );
+};
+
+
+/**
+ * Встроенный просмотр изображения, как в мессенджерах: во весь экран поверх
+ * чата, закрытие крестиком или тапом по фону, скачивание — в меню «⋯».
+ * Раньше тап открывал картинку в браузере — из приложения это выглядит
+ * как выброс наружу.
+ */
+const ImageViewer = ({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: { url: string; name: string };
+  onClose: () => void;
+  onSave: () => void;
+}) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black flex items-center justify-center"
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+      onClick={onClose}
+    >
+      {/* Шапка: закрыть и меню */}
+      <div
+        className="absolute inset-x-0 flex items-center justify-between px-3"
+        style={{ top: "calc(env(safe-area-inset-top) + 0.5rem)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button type="button" onClick={onClose} className="p-2 text-white" aria-label="Закрыть">
+          <X className="w-6 h-6" />
+        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className="p-2 text-white"
+            aria-label="Меню"
+          >
+            <MoreVertical className="w-6 h-6" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-card border border-border min-w-[160px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onSave();
+                }}
+                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-left active:bg-secondary"
+              >
+                <Download className="w-4 h-4" />
+                Скачать
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <img
+        src={item.url}
+        alt=""
+        className="max-h-full max-w-full object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
     </div>
   );
 };

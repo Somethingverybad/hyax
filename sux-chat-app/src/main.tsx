@@ -50,5 +50,9 @@ if (Cap.isNativePlatform()) {
   Keyboard.addListener("keyboardWillHide", () => {
     root.style.setProperty("--kb-duration", "250ms");
     root.style.setProperty("--kb-height", "0px");
+    // UIKit могла сдвинуть contentOffset WebView, показывая поле над
+    // клавиатурой; сама она его не восстанавливает — возвращаем страницу
+    // на место, иначе интерфейс остаётся съехавшим вниз.
+    window.scrollTo(0, 0);
   });
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Identicon from "@/components/Identicon";
 import { RefreshCw } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -280,17 +281,11 @@ const ChatSidebar = ({
           {/* Центральная часть - информация о пользователе (скрываем в свернутом состоянии) */}
           {!isCollapsed && (
             <div className="flex items-center gap-3 flex-1 justify-center">
-              {/* Стилизованная буква Х */}
-              <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow relative flex-shrink-0">
-                <div className="relative">
-                  <span className="text-lg font-black text-primary-foreground select-none">
-                    Х
-                  </span>
-                  <div className="absolute inset-0 text-lg font-black text-primary-foreground/30 blur-sm">
-                    Х
-                  </div>
-                </div>
-              </div>
+              <Identicon
+                id={currentUser?.id || "?"}
+                avatarUrl={currentUser?.avatar_url}
+                className="w-10 h-10"
+              />
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground truncate">
                   {currentUser?.username || "Загрузка..."}
@@ -395,8 +390,6 @@ const ChatSidebar = ({
               } else if (participants.length === 0) {
                 chatTitle = `Чат ${chat.id.slice(0, 8)}...`;
               }
-              
-              const avatarLetter = chatTitle[0]?.toUpperCase() || "?";
 
               return (
                 <div
@@ -415,10 +408,11 @@ const ChatSidebar = ({
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}
                   >
-                    {/* Квадрат вместо круга — супрематизм строится на прямых углах */}
-                    <div className="w-12 h-12 shrink-0 flex items-center justify-center bg-primary text-primary-foreground text-lg font-bold">
-                      {avatarLetter}
-                    </div>
+                    <Identicon
+                      id={displayParticipants[0]?.id || chat.id}
+                      avatarUrl={displayParticipants[0]?.avatar_url}
+                      className="w-12 h-12"
+                    />
                     
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
