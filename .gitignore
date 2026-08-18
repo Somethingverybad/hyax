@@ -5,3 +5,7 @@ sux-chat-app/ios-old/
 
 # Ключи Firebase и прочие секреты (не коммитить!)
 secrets/
+
+# Firebase-конфиг iOS: нужен сборке локально, но репа публичная —
+# наружу не выкладываем. Реквизиты описаны в secrets/README.md
+sux-chat-app/ios/App/App/GoogleService-Info.plist
