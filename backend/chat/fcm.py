@@ -81,19 +81,18 @@ def _deliver(tokens, title: str, body: str, data: dict):
             logger.warning("FCM %s…: %s", tokens[idx][:12], code)
 
     if dead:
-        from .models import PushDevice
+        from .models import PushToken
 
-        PushDevice.objects.filter(token__in=dead).update(is_active=False)
-        logger.info("FCM: деактивировано устройств: %d", len(dead))
+        PushToken.objects.filter(token__in=dead).delete()
+        logger.info("FCM: удалено мёртвых токенов: %d", len(dead))
 
 
 def notify_profiles(profiles, title: str, body: str, extra: dict | None = None):
     """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне."""
-    from .models import PushDevice
+    from .models import PushToken
 
     tokens = list(
-        PushDevice.objects.filter(profile__in=profiles, is_active=True)
-        .values_list("token", flat=True)
+        PushToken.objects.filter(user__in=profiles).values_list("token", flat=True)
     )
     if not tokens:
         return

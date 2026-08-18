@@ -1016,8 +1016,8 @@ class PushRegisterView(APIView):
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
-        device, created = PushDevice.objects.update_or_create(
+        device, created = PushToken.objects.update_or_create(
             token=token,
-            defaults={"profile": profile, "platform": platform, "is_active": True},
+            defaults={"user": profile, "platform": platform},
         )
         return Response({"ok": True, "created": created})
