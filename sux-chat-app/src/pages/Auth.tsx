@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Zap } from "lucide-react";
+import { Zap, ArrowLeft } from "lucide-react";
 import { api } from "@/api/client";
 
 const Auth = () => {
@@ -13,6 +13,27 @@ const Auth = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // Двухшаговый вход, как в мессенджерах: сначала логин, потом пароль.
+  // Одно поле на экране — клавиатура ничего не перекрывает, а панели
+  // скользят transform-ом (его считает композитор, перехода без рывков).
+  const [step, setStep] = useState<0 | 1>(0);
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const goToPassword = () => {
+    if (!username.trim()) {
+      toast.error("Введите логин");
+      return;
+    }
+    setStep(1);
+    // Фокус после того, как панель доехала — иначе клавиатура дёрнет анимацию.
+    setTimeout(() => passwordRef.current?.focus(), 260);
+  };
+
+  const goBack = () => {
+    setStep(0);
+    setTimeout(() => usernameRef.current?.focus(), 260);
+  };
   const navigate = useNavigate();
 
   // Пока токен есть, форму не показываем: иначе она успевала мелькнуть до
@@ -125,61 +146,98 @@ const Auth = () => {
           </p>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="username" className="text-sm font-medium">
-              {isLogin ? "Логин" : "Имя пользователя"}
-            </Label>
-            <Input
-              id="username"
-              type="text"
-              placeholder="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoComplete="username"
-              className="bg-secondary/50 border-border focus:border-primary transition-colors"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-sm font-medium">
-              Пароль
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete={isLogin ? "current-password" : "new-password"}
-              className="bg-secondary/50 border-border focus:border-primary transition-colors"
-            />
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full bg-gradient-primary shadow-glow hover:shadow-glow-lg hover:scale-[1.02] transition-all duration-200 font-semibold py-2.5 md:py-3 text-sm md:text-base"
-            disabled={loading}
-          >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Загрузка...
+        <form onSubmit={handleAuth}>
+          {/* Слайдер шагов: две панели в ряд, сдвиг transform-ом. */}
+          <div className="overflow-hidden">
+            <div
+              className="flex transition-transform duration-300 ease-out"
+              style={{ transform: `translateX(-${step * 100}%)` }}
+            >
+              {/* Шаг 1: логин */}
+              <div className="w-full shrink-0 space-y-4 px-0.5">
+                <div className="space-y-2">
+                  <Label htmlFor="username" className="text-sm font-medium">
+                    {isLogin ? "Логин" : "Имя пользователя"}
+                  </Label>
+                  <Input
+                    id="username"
+                    ref={usernameRef}
+                    type="text"
+                    placeholder="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                    tabIndex={step === 0 ? 0 : -1}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        goToPassword();
+                      }
+                    }}
+                    className="bg-secondary/50 border-border focus:border-primary transition-colors"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={goToPassword}
+                  disabled={!username.trim()}
+                  className="w-full bg-gradient-primary font-semibold py-2.5 md:py-3 text-sm md:text-base"
+                >
+                  Далее
+                </Button>
               </div>
-            ) : isLogin ? (
-              "Войти в ХУЯКС"
-            ) : (
-              "Создать аккаунт"
-            )}
-          </Button>
+
+              {/* Шаг 2: пароль */}
+              <div className="w-full shrink-0 space-y-4 px-0.5">
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="font-medium text-foreground">{username || "…"}</span>
+                </button>
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm font-medium">
+                    Пароль
+                  </Label>
+                  <Input
+                    id="password"
+                    ref={passwordRef}
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete={isLogin ? "current-password" : "new-password"}
+                    tabIndex={step === 1 ? 0 : -1}
+                    className="bg-secondary/50 border-border focus:border-primary transition-colors"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-primary font-semibold py-2.5 md:py-3 text-sm md:text-base"
+                  disabled={loading || !password}
+                >
+                  {loading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Загрузка...
+                    </div>
+                  ) : isLogin ? (
+                    "Войти в ХУЯКС"
+                  ) : (
+                    "Создать аккаунт"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
         </form>
 
         <div className="mt-6 text-center">
           <button
             type="button"
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => { setIsLogin(!isLogin); setStep(0); setPassword(""); }}
             className="text-sm text-muted-foreground hover:text-primary transition-colors font-medium"
           >
             {isLogin ? "Нет аккаунта? Зарегистрируйтесь" : "Уже есть аккаунт? Войдите"}
