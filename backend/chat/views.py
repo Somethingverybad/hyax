@@ -481,7 +481,17 @@ class MessageViewSet(viewsets.ModelViewSet):
                 save_kwargs['sticker'] = sticker
             except Sticker.DoesNotExist:
                 return Response({"error": "Sticker not found"}, status=400)
-        
+
+        # Аудио-стикер: звук, который прозвучит у получателя.
+        sound_id = request.data.get('sound_id')
+        if sound_id:
+            try:
+                save_kwargs['sound'] = NotificationSound.objects.get(
+                    id=sound_id, is_active=True
+                )
+            except NotificationSound.DoesNotExist:
+                return Response({"error": "Sound not found"}, status=400)
+
         if voice_url:
             save_kwargs.update({
                 'voice_url': voice_url,
@@ -529,6 +539,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 title=profile.username,
                 body=preview[:150],
                 extra={"chat_id": str(message.chat.id)},
+                sound=message.sound.slug if message.sound_id else None,
             )
         except Exception:
             logger.exception("push: не удалось поставить отправку")
@@ -1009,6 +1020,17 @@ class AvatarUploadView(APIView):
             "avatar_url": file_url,
             "message": "Avatar uploaded successfully"
         })
+
+
+class NotificationSoundListView(APIView):
+    """Каталог активных звуков уведомлений. Клиент сверяет updated_at со
+    скачанным и докачивает недостающие файлы — новые звуки добавляются через
+    админку без пересборки приложений."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        sounds = NotificationSound.objects.filter(is_active=True)
+        return Response(NotificationSoundSerializer(sounds, many=True).data)
 
 
 class PushRegisterView(APIView):

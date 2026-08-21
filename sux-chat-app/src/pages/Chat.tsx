@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import { api } from "@/api/client";
+import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
@@ -50,6 +51,9 @@ const Chat = () => {
         // 🔔 Инициализация push-уведомлений после успешной аутентификации
         if (Capacitor.isNativePlatform()) {
           await initPushNotifications(profile.id);
+          // Аудио-стикеры: докачиваем caf-файлы каталога в Library/Sounds,
+          // чтобы пуш мог сослаться на них по имени. Фоном, без ожидания.
+          syncNotificationSounds();
         }
       } catch (error) {
         navigate("/auth");

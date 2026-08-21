@@ -110,15 +110,29 @@ class UserStickerPackSerializer(serializers.ModelSerializer):
         read_only_fields = ['added_at']
 
 
+class NotificationSoundSerializer(serializers.ModelSerializer):
+    """Каталог звуков уведомлений: url — исходник для проигрывания в
+    приложении, caf_url — файл для докачки в Library/Sounds на iOS."""
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NotificationSound
+        fields = ['id', 'slug', 'name', 'url', 'caf_url', 'updated_at']
+
+    def get_url(self, obj):
+        return obj.file.url if obj.file else ""
+
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
     sticker = StickerSerializer(read_only=True)
-    
+    sound = NotificationSoundSerializer(read_only=True)
+
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'sound']
         read_only_fields = ['sender', 'created_at', 'file_size']
     
     def to_representation(self, instance):

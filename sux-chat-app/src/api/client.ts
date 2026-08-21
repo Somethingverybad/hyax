@@ -33,6 +33,15 @@ interface Chat {
   created_at?: string;
 }
 
+export interface NotificationSoundInfo {
+  id: string;
+  slug: string;
+  name: string;
+  url: string;      // исходник — проигрывается в приложении
+  caf_url: string;  // вариант для APNs, докачивается в Library/Sounds на iOS
+  updated_at: string;
+}
+
 interface UnreadCountResponse {
   total_unread: number;
   unread_by_chat: Record<string, number>;
@@ -319,11 +328,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessage: async (chatId: string, content: string): Promise<any> => {
+  sendMessage: async (chatId: string, content: string, soundId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, content }),
+      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined }),
     });
     return res.json();
   },
@@ -417,7 +426,7 @@ export const api = {
     file_url: string;
     file_name: string;
     file_size: number;
-  }, content?: string): Promise<any> => {
+  }, content?: string, soundId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
@@ -426,9 +435,20 @@ export const api = {
         content: content || null,
         file_url: fileData.file_url,
         file_name: fileData.file_name,
-        file_size: fileData.file_size
+        file_size: fileData.file_size,
+        sound_id: soundId || undefined
       }),
     });
+    return res.json();
+  },
+
+  // ===== ЗВУКИ УВЕДОМЛЕНИЙ (аудио-стикеры) =====
+  getNotificationSounds: async (): Promise<NotificationSoundInfo[]> => {
+    const res = await fetchWithAuth(`${API_URL}/sounds/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) return [];
     return res.json();
   },
 

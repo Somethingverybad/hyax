@@ -66,6 +66,7 @@ class Message(models.Model):
     sticker = models.ForeignKey('Sticker', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Ссылка на стикер
     voice_url = models.TextField(blank=True, null=True)  # URL голосового сообщения
     voice_duration = models.IntegerField(blank=True, null=True)  # Длительность в секундах
+    sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Аудио-стикер: звук пуша у получателя
     
     # Добавляем свойство для удобства
     @property
@@ -145,6 +146,62 @@ class CallParticipant(models.Model):
 
 
 # Стикерпаки
+# Каталог звуков уведомлений («аудио-стикеры»). Файлы живут на сервере,
+# клиенты докачивают их в рантайме (iOS — в Library/Sounds), поэтому новые
+# звуки добавляются через админку без пересборки приложений.
+class NotificationSound(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    slug = models.SlugField(max_length=40, unique=True)  # имя файла: <slug>.caf
+    name = models.CharField(max_length=64)
+    file = models.FileField(upload_to="sounds/")  # исходник (mp3/wav), играет в приложении
+    caf_url = models.TextField(blank=True, default="")  # авто-конверсия для APNs
+    is_active = models.BooleanField(default=True)
+    order = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "slug"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._ensure_caf()
+
+    def _ensure_caf(self):
+        """APNs принимает только caf/wav/aiff из бандла или Library/Sounds —
+        конвертируем исходник ffmpeg-ом. -t 29: дольше 30 с iOS молча
+        подменяет звук системным. Без ffmpeg каталог живёт, пуши откатываются
+        на стандартный звук."""
+        import logging
+        import subprocess
+        from pathlib import Path
+
+        from django.conf import settings
+
+        if not self.file:
+            return
+        src = Path(self.file.path)
+        dst = src.parent / f"{self.slug}.caf"
+        if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
+            return
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", str(src), "-t", "29",
+                 "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le", str(dst)],
+                check=True, capture_output=True, timeout=60,
+            )
+            caf_url = f"{settings.MEDIA_URL}sounds/{self.slug}.caf"
+            if self.caf_url != caf_url:
+                NotificationSound.objects.filter(pk=self.pk).update(caf_url=caf_url)
+                self.caf_url = caf_url
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Конвертация звука %s в caf не удалась", self.slug
+            )
+
+
 class StickerPack(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)

@@ -48,28 +48,33 @@ def _firebase_app():
         return _app
 
 
-def _deliver(tokens, title: str, body: str, data: dict):
+def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None):
     """Выполняется в отдельном потоке: пуш не должен задерживать ответ API."""
     app = _firebase_app()
     if app is None:
         return
     from firebase_admin import messaging
 
+    # По умолчанию — тот же receive, что играет в самом приложении при новом
+    # сообщении. Аудио-стикер подменяет его слагом из каталога
+    # NotificationSound: iOS ищет <slug>.caf в бандле и Library/Sounds
+    # (докачивается клиентом), Android — канал snd_<slug>. Если файла или
+    # канала на устройстве нет, обе системы откатываются на стандартный звук.
+    ios_sound = f"{sound}.caf" if sound else "receive.caf"
+    android_sound = sound or "receive"
+    android_channel = f"snd_{sound}" if sound else "messages"
+
     message = messaging.MulticastMessage(
         tokens=tokens,
         notification=messaging.Notification(title=title, body=body),
         data={k: str(v) for k, v in data.items()},
-        # Звук — тот же receive, что играет в самом приложении при новом
-        # сообщении. iOS ищет файл в бандле (receive.caf), Android — в
-        # res/raw через канал "messages"; на сборках без файла обе системы
-        # откатываются на стандартный звук.
         apns=messaging.APNSConfig(
-            payload=messaging.APNSPayload(aps=messaging.Aps(sound="receive.caf"))
+            payload=messaging.APNSPayload(aps=messaging.Aps(sound=ios_sound))
         ),
         android=messaging.AndroidConfig(
             priority="high",
             notification=messaging.AndroidNotification(
-                sound="receive", channel_id="messages"
+                sound=android_sound, channel_id=android_channel
             ),
         ),
     )
@@ -96,7 +101,8 @@ def _deliver(tokens, title: str, body: str, data: dict):
         logger.info("FCM: удалено мёртвых токенов: %d", len(dead))
 
 
-def notify_profiles(profiles, title: str, body: str, extra: dict | None = None):
+def notify_profiles(profiles, title: str, body: str, extra: dict | None = None,
+                    sound: str | None = None):
     """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне."""
     from .models import PushToken
 
@@ -106,5 +112,5 @@ def notify_profiles(profiles, title: str, body: str, extra: dict | None = None):
     if not tokens:
         return
     threading.Thread(
-        target=_deliver, args=(tokens, title, body, extra or {}), daemon=True
+        target=_deliver, args=(tokens, title, body, extra or {}, sound), daemon=True
     ).start()

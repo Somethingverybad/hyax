@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2 } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
-import { api, mediaUrl } from "@/api/client";
+import { api, mediaUrl, NotificationSoundInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 
 interface Profile {
@@ -22,6 +22,8 @@ interface Message {
   file_name: string | null;
   /** Приходит с бэкенда, если сообщение — стикер. */
   sticker?: { id: string; file_url: string; emoji?: string } | null;
+  /** Аудио-стикер: звук, который слышит получатель. */
+  sound?: { id: string; slug: string; name: string; url: string } | null;
   sender_id: string;
   sender?: Profile;
   created_at: string;
@@ -65,6 +67,11 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   useSwipeBack(onBack);
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
   const [stickersOpen, setStickersOpen] = useState(false);
+  // Аудио-стикеры: каталог с сервера, выбранный звук уедет с сообщением
+  // и прозвучит у получателя (в пуше и в открытом приложении).
+  const [sounds, setSounds] = useState<NotificationSoundInfo[]>([]);
+  const [soundsOpen, setSoundsOpen] = useState(false);
+  const [selectedSound, setSelectedSound] = useState<NotificationSoundInfo | null>(null);
   // Открытая на весь экран картинка: { url, name }.
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -113,6 +120,22 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
     };
   }, []);
 
+  // Каталог аудио-стикеров: один запрос на окно чата.
+  useEffect(() => {
+    api.getNotificationSounds().then(setSounds).catch(() => {});
+  }, []);
+
+  // Тап по звуку в панели: прослушать и выбрать (повторный тап — снять).
+  const previewSoundRef = useRef<HTMLAudioElement | null>(null);
+  const pickSound = (s: NotificationSoundInfo) => {
+    previewSoundRef.current?.pause();
+    const audio = new Audio(mediaUrl(s.url));
+    audio.volume = 0.6;
+    previewSoundRef.current = audio;
+    audio.play().catch(() => {});
+    setSelectedSound(prev => (prev?.id === s.id ? null : s));
+  };
+
   // Основной эффект для загрузки сообщений
   useEffect(() => {
     if (!chatId) {
@@ -160,11 +183,21 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
       // Игрорируем звук получения, если сообщение было отправлено недавно
       const timeSinceLastSend = Date.now() - lastSendTimeRef.current;
       
-      if (hasIncomingMessages && receiveSoundRef.current && timeSinceLastSend > 2000) {
-        receiveSoundRef.current.currentTime = 0;
-        receiveSoundRef.current.play().catch(error => {
-          console.log("Ошибка воспроизведения звука получения:", error);
-        });
+      if (hasIncomingMessages && timeSinceLastSend > 2000) {
+        // Аудио-стикер входящего сообщения заменяет стандартный звук.
+        const withSound = newMessages.find(
+          msg => msg.sender?.id !== userId && msg.sound?.url
+        );
+        if (withSound?.sound?.url) {
+          const audio = new Audio(mediaUrl(withSound.sound.url));
+          audio.volume = 0.6;
+          audio.play().catch(() => {});
+        } else if (receiveSoundRef.current) {
+          receiveSoundRef.current.currentTime = 0;
+          receiveSoundRef.current.play().catch(error => {
+            console.log("Ошибка воспроизведения звука получения:", error);
+          });
+        }
       }
 
       // Прокручиваем вниз при любых новых сообщениях
@@ -231,6 +264,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
 
     const text = newMessage.trim();
     const file = selectedFile;
+    const sound = selectedSound;
 
     // Пузырь появляется мгновенно, поле очищается сразу — сеть догоняет
     // в фоне. Для картинки заранее замеряем размеры из локального файла,
@@ -248,6 +282,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
       sender_id: userId,
       sender: { id: userId } as Profile,
       created_at: new Date().toISOString(),
+      sound,
       pending: true,
       _key: tempId,
       _dims: dims,
@@ -255,6 +290,8 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
 
     setNewMessage("");
     setSelectedFile(null);
+    setSelectedSound(null);
+    setSoundsOpen(false);
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(), 50);
@@ -277,9 +314,9 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
           file_url: uploadResult.file_url,
           file_name: uploadResult.file_name,
           file_size: uploadResult.file_size,
-        }, text || undefined);
+        }, text || undefined, sound?.id);
       } else {
-        sent = await api.sendMessage(chatId, text || null);
+        sent = await api.sendMessage(chatId, text || null, sound?.id);
       }
 
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
@@ -296,6 +333,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
       setMessages(prev => prev.filter(m => m.id !== tempId));
       setNewMessage(text);
       setSelectedFile(file);
+      setSelectedSound(sound);
       if (localUrl) URL.revokeObjectURL(localUrl);
     }
   };
@@ -433,7 +471,7 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
               !imageLoadErrors.has(message.id);
             // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
             // которая раздувала сообщение на пол-экрана.
-            const imageOnly = hasImage && !message.content && !message.sticker?.file_url;
+            const imageOnly = hasImage && !message.content && !message.sticker?.file_url && !message.sound;
             const previousMessage = index > 0 ? messages[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
@@ -491,6 +529,14 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
                           ? "bg-primary text-primary-foreground"
                           : "bg-success text-success-foreground")
                     )}>
+                      {/* Аудио-стикер: подпись, какой звук уехал получателю. */}
+                      {message.sound && (
+                        <div className="flex items-center gap-1 text-xs mb-1 opacity-80">
+                          <Music2 className="w-3 h-3" />
+                          {message.sound.name}
+                        </div>
+                      )}
+
                       {/* Стикер: показываем картинкой без фона пузыря — так же,
                           как это выглядит в мессенджерах. */}
                       {message.sticker?.file_url && (
@@ -623,6 +669,34 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
             </div>
           )}
           
+          {soundsOpen && (
+            <div className="mb-2 rounded-xl border border-border bg-card p-2">
+              <div className="flex gap-2 overflow-x-auto">
+                {sounds.length === 0 && (
+                  <span className="text-xs text-muted-foreground px-1 py-2">
+                    Звуков пока нет
+                  </span>
+                )}
+                {sounds.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => pickSound(s)}
+                    className={cn(
+                      "shrink-0 px-3 py-2 text-sm border-2 flex items-center gap-1.5 transition-colors",
+                      selectedSound?.id === s.id
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-secondary"
+                    )}
+                  >
+                    <Music2 className="w-3.5 h-3.5" />
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {stickersOpen && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
@@ -665,6 +739,19 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
               aria-label="Стикеры"
             >
               <Smile className="w-4 h-4" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSoundsOpen((v) => !v)}
+              className={cn(
+                "h-10 w-10 md:h-11 md:w-11 shrink-0 border-2",
+                selectedSound && "border-primary text-primary"
+              )}
+              aria-label="Звук сообщения"
+            >
+              <Music2 className="w-4 h-4" />
             </Button>
             
             <div className="flex-1 relative">
