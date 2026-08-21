@@ -59,10 +59,19 @@ def _deliver(tokens, title: str, body: str, data: dict):
         tokens=tokens,
         notification=messaging.Notification(title=title, body=body),
         data={k: str(v) for k, v in data.items()},
+        # Звук — тот же receive, что играет в самом приложении при новом
+        # сообщении. iOS ищет файл в бандле (receive.caf), Android — в
+        # res/raw через канал "messages"; на сборках без файла обе системы
+        # откатываются на стандартный звук.
         apns=messaging.APNSConfig(
-            payload=messaging.APNSPayload(aps=messaging.Aps(sound="default"))
+            payload=messaging.APNSPayload(aps=messaging.Aps(sound="receive.caf"))
         ),
-        android=messaging.AndroidConfig(priority="high"),
+        android=messaging.AndroidConfig(
+            priority="high",
+            notification=messaging.AndroidNotification(
+                sound="receive", channel_id="messages"
+            ),
+        ),
     )
     try:
         response = messaging.send_each_for_multicast(message)
