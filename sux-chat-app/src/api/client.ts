@@ -517,6 +517,16 @@ export const api = {
     return res.json();
   },
 
+  addChatParticipants: async (chatId: string, participantIds: string[]): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/add_participants/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ participants: participantIds }),
+    });
+    if (!res.ok) throw new Error("Не удалось добавить участников");
+    return res.json();
+  },
+
   sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",

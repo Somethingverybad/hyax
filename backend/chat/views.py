@@ -162,6 +162,45 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+    @action(detail=True, methods=['post'])
+    def add_participants(self, request, pk=None):
+        """Добавить людей в чат.
+
+        Добавлять может только участник — иначе в чужую переписку можно было
+        бы влезть по одному лишь идентификатору. Личная переписка при этом
+        становится группой: втроём это уже не диалог.
+        """
+        chat = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+
+        if not ChatParticipant.objects.filter(chat=chat, user=profile).exists():
+            return Response({"error": "Вы не участник этого чата"}, status=403)
+
+        ids = request.data.get('participants') or []
+        if isinstance(ids, str):
+            ids = [ids]
+        profiles = list(Profile.objects.filter(id__in=ids))
+        if not profiles:
+            return Response({"error": "Некого добавлять"}, status=400)
+
+        added = []
+        for user in profiles:
+            _, created = ChatParticipant.objects.get_or_create(chat=chat, user=user)
+            if created:
+                added.append(user.username)
+
+        if chat.participants.count() > 2 and not chat.is_group:
+            chat.is_group = True
+            if not chat.name:
+                names = list(chat.participants.values_list('username', flat=True)[:3])
+                chat.name = ", ".join(names)[:100]
+            chat.save(update_fields=["is_group", "name"])
+
+        return Response({"added": added, "chat": self.get_serializer(chat).data})
+
     @action(detail=True, methods=['get'])
     def participants(self, request, pk=None):
         """Получить участников конкретного чата"""

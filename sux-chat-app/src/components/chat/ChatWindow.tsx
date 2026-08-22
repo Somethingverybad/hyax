@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useMediaRecorder, type RecordKind } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -102,6 +102,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   // Долгий тап по сообщению открывает меню — так же, как в мессенджерах,
   // где системное выделение текста только мешает.
   const [menuMessage, setMenuMessage] = useState<Message | null>(null);
+  // Добавление людей в чат: личная переписка при этом становится группой.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const [addResults, setAddResults] = useState<Profile[]>([]);
+  const [adding, setAdding] = useState(false);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -376,6 +381,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     longPressRef.current = null;
   };
 
+  const searchPeople = async (query: string) => {
+    setAddQuery(query);
+    if (!query.trim()) {
+      setAddResults([]);
+      return;
+    }
+    try {
+      const found = await api.searchUsers(query);
+      setAddResults(Array.isArray(found) ? found : []);
+    } catch {
+      setAddResults([]);
+    }
+  };
+
+  const addParticipant = async (person: Profile) => {
+    if (!chatId || adding) return;
+    setAdding(true);
+    try {
+      await api.addChatParticipants(chatId, [person.id]);
+      toast.success(`${person.username} в чате`);
+      setAddOpen(false);
+      setAddQuery("");
+      setAddResults([]);
+    } catch {
+      toast.error("Не удалось добавить");
+    } finally {
+      setAdding(false);
+    }
+  };
+
   const copyMessage = async (message: Message) => {
     const text = message.content?.trim();
     if (!text) return;
@@ -562,6 +597,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
       {onBack && (
         <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 pad-safe-top border-b border-border bg-card">
           <span className="font-medium truncate flex-1">{title || "Чат"}</span>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="p-2 text-foreground active:text-primary"
+            aria-label="Добавить участников"
+          >
+            <UserPlus className="w-5 h-5" />
+          </button>
           {peer && onCall && (
             <button
               type="button"
@@ -944,6 +987,56 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
         </div>
       </div>
 
+      {addOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/60 flex items-start justify-center pt-24 px-4"
+          onClick={() => setAddOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-card border-2 border-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-border font-semibold">
+              Добавить в чат
+            </div>
+            <input
+              value={addQuery}
+              onChange={(e) => searchPeople(e.target.value)}
+              placeholder="Имя пользователя"
+              className="w-full bg-secondary/50 px-4 py-3 outline-none"
+              autoFocus
+            />
+            <div className="max-h-64 overflow-y-auto">
+              {addResults.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  onClick={() => addParticipant(person)}
+                  disabled={adding}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary"
+                >
+                  <Identicon id={person.id} avatarUrl={person.avatar_url} className="w-9 h-9" />
+                  <span className="flex-1 truncate">{person.username}</span>
+                  <UserPlus className="w-4 h-4 text-muted-foreground" />
+                </button>
+              ))}
+              {addQuery && addResults.length === 0 && (
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  Никого не нашли
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddOpen(false)}
+              className="w-full px-4 py-3 text-muted-foreground border-t border-border active:bg-secondary"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+
       {menuMessage && (
         <div
           className="fixed inset-0 z-[70] bg-black/60 flex items-end"
@@ -1019,6 +1112,18 @@ const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
 
+  // Первый кадр вместо чёрного треугольника: WebKit рисует видео только
+  // после перемотки, поэтому подталкиваем его на первый же кадр.
+  const showFirstFrame = () => {
+    const el = ref.current;
+    if (!el || el.currentTime > 0) return;
+    try {
+      el.currentTime = 0.05;
+    } catch {
+      /* браузер ещё не готов — покажем кадр при воспроизведении */
+    }
+  };
+
   const toggle = () => {
     const el = ref.current;
     if (!el) return;
@@ -1026,6 +1131,9 @@ const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
       el.pause();
       return;
     }
+    // Звук включаем только на время просмотра: до тапа элемент немой,
+    // иначе первый кадр не покажется без разрешения на автовоспроизведение.
+    el.muted = false;
     el.currentTime = 0;
     el.play().catch(() => {});
   };
@@ -1038,7 +1146,10 @@ const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
         ref={ref}
         src={url}
         playsInline
+        muted={!playing}
         preload="metadata"
+        onLoadedMetadata={showFirstFrame}
+        onLoadedData={showFirstFrame}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
