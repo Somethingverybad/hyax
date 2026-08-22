@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Preferences } from "@capacitor/preferences";
 import { api, mediaUrl } from "@/api/client";
+import { voip } from "@/lib/voip";
 
 /**
  * Докачка звуков уведомлений («аудио-стикеров») на устройство.
@@ -30,9 +31,22 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export async function syncNotificationSounds(): Promise<void> {
-  if (Capacitor.getPlatform() !== "ios") return;
+  const platform = Capacitor.getPlatform();
+  if (platform !== "ios" && platform !== "android") return;
   try {
     const sounds = await api.getNotificationSounds();
+
+    if (platform === "android") {
+      // Android: звук уведомления живёт в канале, а не в пуше — файлы
+      // скачивает и раскладывает по каналам нативная часть.
+      await voip.syncSounds(
+        sounds
+          .filter((s) => s.url)
+          .map((s) => ({ slug: s.slug, name: s.name, url: mediaUrl(s.url) }))
+      );
+      return;
+    }
+
     const stored = JSON.parse(
       (await Preferences.get({ key: SYNC_KEY })).value || "{}"
     ) as Record<string, string>;

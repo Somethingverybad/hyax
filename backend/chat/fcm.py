@@ -62,12 +62,11 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
     # канала на устройстве нет, обе системы откатываются на стандартный звук.
     ios_sound = f"{sound}.caf" if sound else "receive.caf"
     android_sound = sound or "receive"
-    # На Android звук живёт в канале, а канал неизменяем — под каждый
-    # аудио-стикер его не создать (файлы скачиваются в рантайме). Поэтому
-    # все сообщения идут в один канал со звуком receive, а сам аудио-стикер
-    # звучит в приложении. Версия в имени: сменить звук у канала нельзя,
-    # только выпустить новый.
-    android_channel = "messages_v2"
+    # На Android звук живёт в канале: обычные сообщения идут в messages_v2,
+    # аудио-стикер — в свой канал snd_<slug>, который клиент заводит после
+    # скачивания файла. Если канала на устройстве ещё нет, система возьмёт
+    # канал по умолчанию — звук будет обычный, но уведомление не потеряется.
+    android_channel = f"snd_{sound}" if sound else "messages_v2"
 
     message = messaging.MulticastMessage(
         tokens=tokens,

@@ -2,11 +2,19 @@ package com.huyax.app;
 
 import android.content.Context;
 import android.media.AudioManager;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.json.JSONObject;
 
 /**
@@ -54,6 +62,57 @@ public class VoipPlugin extends Plugin {
     @PluginMethod
     public void reportConnected(PluginCall call) {
         call.resolve();
+    }
+
+    /**
+     * Синхронизация каталога аудио-стикеров: файл скачивается во внутреннюю
+     * память, под него заводится канал уведомления. Так новые звуки приходят
+     * с сервера без пересборки приложения.
+     */
+    @PluginMethod
+    public void syncSounds(PluginCall call) {
+        JSArray sounds = call.getArray("sounds");
+        if (sounds == null) {
+            call.resolve();
+            return;
+        }
+        final List<JSONObject> items = new ArrayList<>();
+        try {
+            for (Object o : sounds.toList()) {
+                if (o instanceof JSONObject) items.add((JSONObject) o);
+                else if (o instanceof Map) items.add(new JSONObject((Map<?, ?>) o));
+            }
+        } catch (Exception ignored) {}
+
+        new Thread(() -> {
+            File dir = new File(getContext().getFilesDir(), "sounds");
+            if (!dir.exists()) dir.mkdirs();
+            for (JSONObject item : items) {
+                String slug = item.optString("slug");
+                String url = item.optString("url");
+                String name = item.optString("name");
+                if (slug.isEmpty() || url.isEmpty()) continue;
+                File file = new File(dir, slug + ".mp3");
+                if (!file.exists() || file.length() == 0) {
+                    if (!download(url, file)) continue;
+                }
+                MessageChannels.ensureSoundChannel(getContext(), slug, name, file);
+            }
+        }).start();
+        call.resolve();
+    }
+
+    private boolean download(String url, File target) {
+        try (InputStream in = new URL(url).openStream();
+             FileOutputStream out = new FileOutputStream(target)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return true;
+        } catch (Exception e) {
+            target.delete();
+            return false;
+        }
     }
 
     @PluginMethod

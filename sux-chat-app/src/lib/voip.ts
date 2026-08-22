@@ -30,6 +30,8 @@ interface VoipPlugin {
   reportOutgoingCall(o: { callId: string; name: string }): Promise<void>;
   /** Маршрут звука: громкая связь или разговорный динамик. */
   setSpeaker(o: { enabled: boolean }): Promise<void>;
+  /** Android: скачать звуки каталога и завести под них каналы уведомлений. */
+  syncSounds(o: { sounds: { slug: string; name: string; url: string }[] }): Promise<void>;
   reportConnected(o: { callId: string }): Promise<void>;
   endCall(o: { callId: string }): Promise<void>;
   addListener(
@@ -81,6 +83,8 @@ export const voip = {
     quiet(() => plugin.reportOutgoingCall({ callId, name })),
   reportConnected: (callId: string) => quiet(() => plugin.reportConnected({ callId })),
   setSpeaker: (enabled: boolean) => quiet(() => plugin.setSpeaker({ enabled })),
+  syncSounds: (sounds: { slug: string; name: string; url: string }[]) =>
+    quiet(() => plugin.syncSounds({ sounds })),
   endCall: (callId: string) => quiet(() => plugin.endCall({ callId })),
   on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted">(
     event: E,
