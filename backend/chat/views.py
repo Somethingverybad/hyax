@@ -250,6 +250,17 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Группу создаём всегда новую: два разных сообщества могут состоять
+        # из одних и тех же людей, склеивать их по составу нельзя.
+        is_group = bool(request.data.get('is_group')) or len(participant_uuids) > 2
+        if is_group:
+            chat = Chat.objects.create(
+                is_group=True,
+                name=(request.data.get('name') or '').strip()[:100],
+            )
+            chat.participants.set(existing_profiles)
+            return Response(self.get_serializer(chat).data, status=status.HTTP_201_CREATED)
+
         # Ищем существующие чаты с точно такими же участниками
         existing_chats = Chat.objects.annotate(
             participant_count=models.Count('participants'),
@@ -278,6 +289,7 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Создаем новый чат
         chat = Chat.objects.create()
         chat.participants.set(existing_profiles)
+
         print("New chat created with ID:", chat.id)
         
         serializer = self.get_serializer(chat)

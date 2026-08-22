@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Users } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +9,11 @@ interface CallOverlayProps {
   state: CallUiState;
   peer: { id: string; name: string; avatarUrl?: string | null };
   muted: boolean;
-  remoteStream: MediaStream | null;
+  /** Потоки собеседников: в группе их несколько (mesh). */
+  streams: MediaStream[];
+  /** Групповой звонок: вместо аватара — иконка группы. */
+  isGroup?: boolean;
+  participantsCount?: number;
   onAccept?: () => void;
   onReject?: () => void;
   onHangup: () => void;
@@ -38,7 +42,9 @@ const CallOverlay = ({
   state,
   peer,
   muted,
-  remoteStream,
+  streams,
+  isGroup,
+  participantsCount,
   onAccept,
   onReject,
   onHangup,
@@ -46,23 +52,9 @@ const CallOverlay = ({
   speaker,
   onToggleSpeaker,
 }: CallOverlayProps) => {
-  const audioRef = useRef<HTMLAudioElement>(null);
   const [seconds, setSeconds] = useState(0);
 
-  // Автозапуск в WebView иногда отклоняется, если поток пришёл не сразу после
-  // жеста — поэтому повторяем попытку несколько раз.
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el || !remoteStream) return;
-    el.srcObject = remoteStream;
-    let tries = 0;
-    const play = () => {
-      el.play().catch(() => {
-        if (++tries < 10) setTimeout(play, 300);
-      });
-    };
-    play();
-  }, [remoteStream]);
+
 
   // Рингтон на своём экране входящего. На iOS сюда не попадаем — там звонит
   // CallKit; на Android приложение в фоне звонит каналом уведомления.
@@ -96,13 +88,25 @@ const CallOverlay = ({
         paddingBottom: "calc(env(safe-area-inset-bottom) + 3rem)",
       }}
     >
-      <audio ref={audioRef} autoPlay playsInline />
+      {streams.map((stream, i) => (
+        <RemoteAudio key={stream.id || i} stream={stream} />
+      ))}
 
       <div className="flex flex-col items-center gap-4">
-        <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-28 h-28" />
+        {isGroup ? (
+          <div className="w-28 h-28 bg-secondary flex items-center justify-center">
+            <Users className="w-14 h-14 text-primary" />
+          </div>
+        ) : (
+          <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-28 h-28" />
+        )}
         <div className="text-2xl font-bold">{peer.name}</div>
         <div className="text-muted-foreground text-sm">
-          {state === "active" ? fmt(seconds) : STATUS[state]}
+          {state === "active"
+            ? isGroup
+              ? `${fmt(seconds)} · участников: ${(participantsCount ?? 0) + 1}`
+              : fmt(seconds)
+            : STATUS[state]}
         </div>
       </div>
 
@@ -163,6 +167,27 @@ const CallOverlay = ({
       </div>
     </div>
   );
+};
+
+/**
+ * Один поток — один элемент. Автозапуск в WebView иногда отклоняется, если
+ * поток пришёл не сразу после жеста, поэтому повторяем попытку.
+ */
+const RemoteAudio = ({ stream }: { stream: MediaStream }) => {
+  const ref = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.srcObject = stream;
+    let tries = 0;
+    const play = () => {
+      el.play().catch(() => {
+        if (++tries < 10) setTimeout(play, 300);
+      });
+    };
+    play();
+  }, [stream]);
+  return <audio ref={ref} autoPlay playsInline />;
 };
 
 export default CallOverlay;

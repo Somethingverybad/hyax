@@ -35,6 +35,13 @@ interface Chat {
   created_at?: string;
 }
 
+export interface ChatInfo {
+  id: string;
+  name?: string;
+  is_group?: boolean;
+  participants?: Profile[];
+}
+
 export interface NotificationSoundInfo {
   id: string;
   slug: string;
@@ -323,11 +330,14 @@ export const api = {
     return res.json();
   },
 
-  createChat: async (participantIds: string[]): Promise<Chat> => {
+  createChat: async (participantIds: string[], group?: { name: string }): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/chats/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ participants: participantIds }),
+      body: JSON.stringify({
+        participants: participantIds,
+        ...(group ? { is_group: true, name: group.name } : {}),
+      }),
     });
     if (!res.ok) {
       const errorData = await res.json();

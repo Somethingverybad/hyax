@@ -87,7 +87,11 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
         // Правило iOS: на каждый VoIP-пуш — reportNewIncomingCall, без исключений.
         let uuid = UUID(uuidString: callId) ?? UUID()
-        let name = (data["from_username"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "ХУЯКС"
+        // В группе звонит не человек, а сама группа — так и подписываем.
+        let isGroup = (data["group"] as? String) == "1"
+        let caller = (data["from_username"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "ХУЯКС"
+        let groupName = (data["chat_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Группа"
+        let name = isGroup ? "\(groupName) · \(caller)" : caller
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: name)
         update.localizedCallerName = name
@@ -222,6 +226,8 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
             "fromUsername": p["from_username"] as? String ?? "",
             "fromUserAvatar": p["from_user_avatar"] as? String ?? "",
             "callType": p["call_type"] as? String ?? "audio",
+            "group": (p["group"] as? String) == "1",
+            "chatName": p["chat_name"] as? String ?? "",
         ]
     }
 }

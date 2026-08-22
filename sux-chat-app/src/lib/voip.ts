@@ -16,6 +16,9 @@ export interface VoipCallPayload {
   fromUsername: string;
   fromUserAvatar?: string;
   callType: "audio" | "video";
+  /** Групповой звонок и название группы — для экрана вызова. */
+  group?: boolean;
+  chatName?: string;
 }
 
 interface VoipPlugin {

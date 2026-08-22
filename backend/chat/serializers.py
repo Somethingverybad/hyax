@@ -36,7 +36,7 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'created_at', 'updated_at', 'participants', 'last_message']
+        fields = ['id', 'name', 'is_group', 'created_at', 'updated_at', 'participants', 'last_message']
 
     def get_last_message(self, obj):
         sender_id = getattr(obj, 'last_sender_id_a', None)

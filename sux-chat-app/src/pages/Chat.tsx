@@ -9,6 +9,7 @@ import { api } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
+import { GroupCallService, type GroupCallInvite, type GroupCallState } from "@/services/group-call-service";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay from "@/components/call/CallOverlay";
 import { toast } from "sonner";
@@ -19,6 +20,8 @@ import { App } from '@capacitor/app';
 
 interface ChatType {
   id: string;
+  name?: string;
+  is_group?: boolean;
   created_at: string;
   updated_at: string;
   participants?: ProfileType[];
@@ -57,6 +60,16 @@ const Chat = () => {
   const wsRef = useRef<WebSocketService | null>(null);
   const callRef = useRef<OneToOneCallService | null>(null);
   const lastCallIdRef = useRef<string | null>(null);
+  // Групповой звонок ведёт отдельный сервис: там mesh из нескольких
+  // соединений, а не единственный собеседник.
+  const groupCallRef = useRef<GroupCallService | null>(null);
+  const [groupState, setGroupState] = useState<GroupCallState>("idle");
+  const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
+  const [groupStreams, setGroupStreams] = useState<MediaStream[]>([]);
+  const [groupPeers, setGroupPeers] = useState<string[]>([]);
+  // Чаты нужны обработчикам звонка, а те живут вне рендера.
+  const chatsRef = useRef<ChatType[]>([]);
+  chatsRef.current = chats;
   const navigate = useNavigate();
 
   // 🔔 Проверка аутентификации и получение профиля + инициализация уведомлений
@@ -192,6 +205,16 @@ const Chat = () => {
       onMessage: (msg: any) => {
         const svc = callRef.current;
         if (msg?.type === "notification" && msg.data?.type === "incoming_call") {
+          if (msg.data.group === "1" || msg.data.group === true) {
+            groupCallRef.current?.notifyIncoming({
+              callId: msg.data.call_id,
+              chatId: msg.data.chat_id,
+              fromUserId: msg.data.from_user_id,
+              fromUsername: msg.data.from_username,
+              chatName: msg.data.chat_name || "Группа",
+            });
+            return;
+          }
           if (hasCallKit()) return; // iOS: входящий уже показал CallKit по VoIP-пушу
           svc?.notifyIncomingCall({
             callId: msg.data.call_id,
@@ -202,7 +225,12 @@ const Chat = () => {
             callType: msg.data.call_type,
           });
         } else if (msg?.type === "call_signal") {
-          svc?.handleSignal(msg.signal_type, msg.data);
+          const group = groupCallRef.current;
+          const forGroup =
+            msg.signal_type === "call_peers" ||
+            (group?.getCallId() && group.getCallId() === msg.data?.call_id);
+          if (forGroup) group?.handleSignal(msg.signal_type, msg.data);
+          else svc?.handleSignal(msg.signal_type, msg.data);
         } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
           refreshChats();
         }
@@ -259,10 +287,43 @@ const Chat = () => {
       });
       callRef.current = svc;
 
+      groupCallRef.current = new GroupCallService({
+        wsService: ws,
+        userId: user.id,
+        iceServers,
+        onStateChange: (st) => {
+          setGroupState(st);
+          if (st === "active") voip.setSpeaker(true);
+          if (st === "idle") {
+            setGroupInvite(null);
+            setGroupStreams([]);
+            setGroupPeers([]);
+          }
+        },
+        onIncoming: (invite) => setGroupInvite(invite),
+        onStreams: setGroupStreams,
+        onPeers: setGroupPeers,
+        onError: (m) => toast.error(m),
+      });
+
       // Ответ с системного экрана CallKit (в том числе с заблокированного
       // экрана, когда приложение только что запустилось этим звонком).
       const handleAnswered = async (c: VoipCallPayload) => {
         await waitForWs();
+        const chat = chatsRef.current.find((x) => x.id === c.chatId);
+        if (c.group || chat?.is_group) {
+          const group = groupCallRef.current;
+          group?.notifyIncoming({
+            callId: c.callId,
+            chatId: c.chatId,
+            fromUserId: c.fromUserId,
+            fromUsername: c.fromUsername,
+            chatName: c.chatName || chat?.name || "Группа",
+          });
+          await group?.accept();
+          if (c.chatId) setSelectedChatId(c.chatId);
+          return;
+        }
         svc.notifyIncomingCall({
           callId: c.callId,
           chatId: c.chatId,
@@ -321,6 +382,8 @@ const Chat = () => {
       appStatePromise.then((h) => h.remove());
       callRef.current?.dispose();
       callRef.current = null;
+      groupCallRef.current?.dispose();
+      groupCallRef.current = null;
       ws.disconnect();
       wsRef.current = null;
     };
@@ -331,8 +394,13 @@ const Chat = () => {
   const peer = selectedChat?.participants?.find((p) => p.id !== user?.id) || null;
 
   const startCall = async () => {
+    if (!selectedChatId) return;
+    if (selectedChat?.is_group) {
+      await groupCallRef.current?.start(selectedChatId);
+      return;
+    }
     const svc = callRef.current;
-    if (!svc || !peer || !selectedChatId) return;
+    if (!svc || !peer) return;
     if (svc.getState() !== "idle") return;
     svc.updateChatId(selectedChatId);
     setCallPeer({ id: peer.id, name: peer.username, avatarUrl: peer.avatar_url });
@@ -371,12 +439,38 @@ const Chat = () => {
     voip.setSpeaker(next);
   };
 
-  const callUi = callPeer ? (
+  const groupCallUi = groupState !== "idle" ? (
+    <CallOverlay
+      state={groupState === "outgoing" ? "outgoing" : groupState === "incoming" ? "incoming" : "active"}
+      peer={{
+        id: groupInvite?.chatId || selectedChatId || "group",
+        name: groupInvite?.chatName || selectedChat?.name || "Группа",
+      }}
+      isGroup
+      participantsCount={groupPeers.length}
+      muted={muted}
+      streams={groupStreams}
+      onAccept={async () => {
+        await groupCallRef.current?.accept();
+        if (groupInvite?.chatId) setSelectedChatId(groupInvite.chatId);
+      }}
+      onReject={() => groupCallRef.current?.reject()}
+      onHangup={() => groupCallRef.current?.leave()}
+      onToggleMute={() => {
+        const m = groupCallRef.current?.toggleMute();
+        setMuted(!!m);
+      }}
+      speaker={speaker}
+      onToggleSpeaker={toggleSpeaker}
+    />
+  ) : null;
+
+  const callUi = groupCallUi ?? (callPeer ? (
     <CallOverlay
       state={callState}
       peer={callPeer}
       muted={muted}
-      remoteStream={remoteStream}
+      streams={remoteStream ? [remoteStream] : []}
       onAccept={acceptCall}
       onReject={rejectCall}
       onHangup={hangup}
@@ -384,7 +478,7 @@ const Chat = () => {
       speaker={speaker}
       onToggleSpeaker={toggleSpeaker}
     />
-  ) : null;
+  ) : null);
 
   // 🔔 Функция обновления списка чатов
   const refreshChats = async () => {
@@ -454,7 +548,7 @@ const Chat = () => {
           <ChatWindow
             chatId={selectedChatId}
             userId={user.id}
-            peer={peer}
+            peer={peer || (selectedChat?.is_group ? { id: selectedChatId!, username: selectedChat.name || "Группа" } : null)}
             onCall={startCall}
             onBack={() => setSelectedChatId(null)}
             title={selectedChatTitle}
@@ -507,7 +601,7 @@ const Chat = () => {
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
-          peer={peer}
+          peer={peer || (selectedChat?.is_group ? { id: selectedChatId!, username: selectedChat.name || "Группа" } : null)}
           onCall={startCall}
         />
       )}

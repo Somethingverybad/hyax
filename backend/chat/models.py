@@ -38,6 +38,10 @@ class Friendship(models.Model):
 class Chat(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     participants = models.ManyToManyField(Profile, through='ChatParticipant', related_name="chats")
+    # Название есть только у групп; в личной переписке заголовок — имя
+    # собеседника, и хранить его незачем.
+    name = models.CharField(max_length=100, blank=True, default="")
+    is_group = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

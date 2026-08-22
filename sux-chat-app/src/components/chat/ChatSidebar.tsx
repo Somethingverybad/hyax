@@ -13,7 +13,9 @@ import {
   LogOut, 
   X,
   ChevronLeft,
-  Menu
+  Menu,
+  Users,
+  Check
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -27,6 +29,8 @@ interface Profile {
 
 interface Chat {
   id: string;
+  name?: string;
+  is_group?: boolean;
   participants?: Profile[];
   created_at?: string;
 }
@@ -84,6 +88,10 @@ const ChatSidebar = ({
   const listRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
   const [searchQuery, setSearchQuery] = useState("");
+  // Групповой режим диалога «Новый чат»: копим выбранных участников и имя.
+  const [groupMode, setGroupMode] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>({});
@@ -190,6 +198,41 @@ const ChatSidebar = ({
       } else {
         toast.error("Ошибка создания чата");
       }
+    }
+  };
+
+  const toggleGroupMember = (user: Profile) => {
+    setGroupMembers((prev) =>
+      prev.some((m) => m.id === user.id)
+        ? prev.filter((m) => m.id !== user.id)
+        : [...prev, user]
+    );
+  };
+
+  const resetDialog = () => {
+    setGroupMode(false);
+    setGroupName("");
+    setGroupMembers([]);
+    setSearchQuery("");
+    setSearchResults([]);
+  };
+
+  const createGroup = async () => {
+    if (groupMembers.length < 2) {
+      toast.error("Выберите хотя бы двух участников");
+      return;
+    }
+    try {
+      const chat = await api.createChat(
+        groupMembers.map((m) => m.id),
+        { name: groupName.trim() || groupMembers.map((m) => m.username).join(", ") }
+      );
+      toast.success("Группа создана");
+      resetDialog();
+      onChatCreated();
+      handleSelectChat(chat.id, chat.name || "Группа");
+    } catch {
+      toast.error("Не удалось создать группу");
     }
   };
 
@@ -309,9 +352,55 @@ const ChatSidebar = ({
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
-                <DialogTitle>Найти пользователя</DialogTitle>
+                <DialogTitle>{groupMode ? "Новая группа" : "Найти пользователя"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={groupMode ? "outline" : "default"}
+                    className="flex-1"
+                    onClick={() => setGroupMode(false)}
+                  >
+                    Личный чат
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={groupMode ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => setGroupMode(true)}
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    Группа
+                  </Button>
+                </div>
+
+                {groupMode && (
+                  <>
+                    <Input
+                      placeholder="Название группы"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                    {groupMembers.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {groupMembers.map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => toggleGroupMember(m)}
+                            className="px-2 py-1 text-xs bg-primary text-primary-foreground flex items-center gap-1"
+                          >
+                            {m.username}
+                            <X className="w-3 h-3" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
                 <Input
                   placeholder="Введите имя пользователя..."
                   value={searchQuery}
@@ -328,7 +417,7 @@ const ChatSidebar = ({
                         <div
                           key={user.id}
                           className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary cursor-pointer transition-colors"
-                          onClick={() => createChat(user.id)}
+                          onClick={() => (groupMode ? toggleGroupMember(user) : createChat(user.id))}
                         >
                           <div className="flex items-center gap-3">
                             <Avatar>
@@ -338,7 +427,11 @@ const ChatSidebar = ({
                             </Avatar>
                             <span className="font-medium">{user.username}</span>
                           </div>
-                          <UserPlus className="w-4 h-4 text-muted-foreground" />
+                          {groupMode && groupMembers.some((m) => m.id === user.id) ? (
+                            <Check className="w-4 h-4 text-primary" />
+                          ) : (
+                            <UserPlus className="w-4 h-4 text-muted-foreground" />
+                          )}
                         </div>
                       ))
                     ) : (
@@ -348,6 +441,17 @@ const ChatSidebar = ({
                     )}
                   </div>
                 </ScrollArea>
+
+                {groupMode && (
+                  <Button
+                    type="button"
+                    onClick={createGroup}
+                    disabled={groupMembers.length < 2}
+                    className="w-full bg-gradient-primary"
+                  >
+                    Создать группу ({groupMembers.length})
+                  </Button>
+                )}
               </div>
             </DialogContent>
           </Dialog>
@@ -382,9 +486,11 @@ const ChatSidebar = ({
               const displayParticipants = otherParticipants.length > 0 ? otherParticipants : participants;
               
               // Формируем название чата
-              let chatTitle = "Без названия";
+              let chatTitle = chat.is_group ? (chat.name || "Группа") : "Без названия";
               
-              if (displayParticipants.length > 0) {
+              if (chat.is_group) {
+                // название уже задано
+              } else if (displayParticipants.length > 0) {
                 const names = displayParticipants.map(p => p.username).filter(Boolean);
                 chatTitle = names.join(", ") || "Без названия";
               } else if (participants.length === 0) {
@@ -408,11 +514,17 @@ const ChatSidebar = ({
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}
                   >
-                    <Identicon
-                      id={displayParticipants[0]?.id || chat.id}
-                      avatarUrl={displayParticipants[0]?.avatar_url}
-                      className="w-12 h-12"
-                    />
+                    {chat.is_group ? (
+                      <div className="w-12 h-12 shrink-0 bg-secondary flex items-center justify-center">
+                        <Users className="w-6 h-6 text-primary" />
+                      </div>
+                    ) : (
+                      <Identicon
+                        id={displayParticipants[0]?.id || chat.id}
+                        avatarUrl={displayParticipants[0]?.avatar_url}
+                        className="w-12 h-12"
+                      />
+                    )}
                     
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">

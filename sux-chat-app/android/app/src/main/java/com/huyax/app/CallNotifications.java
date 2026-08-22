@@ -56,13 +56,19 @@ final class CallNotifications {
             o.put("fromUsername", d.get("from_username"));
             o.put("fromUserAvatar", d.get("from_user_avatar"));
             o.put("callType", d.get("call_type") == null ? "audio" : d.get("call_type"));
+            o.put("group", "1".equals(d.get("group")));
+            o.put("chatName", d.get("chat_name") == null ? "" : d.get("chat_name"));
         } catch (Exception ignored) {}
         return o;
     }
 
     static void show(Context ctx, JSONObject call) {
         ensureChannel(ctx);
-        String name = call.optString("fromUsername", "ХУЯКС");
+        boolean isGroup = call.optBoolean("group", false);
+        String caller = call.optString("fromUsername", "ХУЯКС");
+        String name = isGroup
+            ? call.optString("chatName", "Группа") + " · " + caller
+            : caller;
         String json = call.toString();
 
         Intent ring = new Intent(ctx, MainActivity.class)
@@ -87,7 +93,7 @@ final class CallNotifications {
         NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(name)
-            .setContentText("Входящий звонок")
+            .setContentText(isGroup ? "Звонок в группе" : "Входящий звонок")
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

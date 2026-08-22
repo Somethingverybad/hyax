@@ -564,6 +564,14 @@ class UserConsumer(AsyncWebsocketConsumer):
         print(f"📞 [UserConsumer.handle_call_signal] {signal_type}")
         print(f"   profile_id={profile_id}, chat_id={chat_id}, target_user_id={target_user_id}")
 
+        # Групповой звонок идёт своей веткой: участников больше двух, связь
+        # mesh — каждый соединяется с каждым напрямую, а сервер лишь сводит
+        # их и рассылает состав. Логика 1:1 с её единственным «собеседником»
+        # тут неприменима.
+        if chat_id and await self.is_group_chat(chat_id):
+            await self.handle_group_call(signal_type, data, profile_id, chat_id, call_id, target_user_id)
+            return
+
         if signal_type == "call_invite":
             call_type = data.get("call_type", "audio")
             session_payload = await self.create_or_get_call_session(
@@ -740,6 +748,203 @@ class UserConsumer(AsyncWebsocketConsumer):
             )
 
     # Получение уведомления из группы
+    # ==================== Групповые звонки ====================
+
+    async def handle_group_call(self, signal_type, data, profile_id, chat_id, call_id, target_user_id):
+        """Mesh-звонок: сервер держит состав участников и рассылает его,
+        медиа идёт между устройствами напрямую."""
+        if signal_type in ("webrtc_offer", "webrtc_answer", "webrtc_ice_candidate"):
+            if not target_user_id:
+                return
+            await self.channel_layer.group_send(
+                f"user_{target_user_id}",
+                {
+                    "type": "call_signal_notification",
+                    "signal_type": signal_type,
+                    "data": {**data, "call_id": str(call_id), "chat_id": str(chat_id),
+                             "from_user_id": str(profile_id)},
+                },
+            )
+            return
+
+        if signal_type == "call_invite":
+            invite = await self.group_invite(chat_id, profile_id, call_id, data.get("call_type", "audio"))
+            if not invite:
+                print("❌ [group] не удалось создать групповой звонок")
+                return
+            payload = {
+                "type": "incoming_call",
+                "call_id": str(call_id),
+                "chat_id": str(chat_id),
+                "from_user_id": str(profile_id),
+                "from_username": invite["from_username"],
+                "from_user_avatar": invite["from_user_avatar"] or "",
+                "call_type": data.get("call_type", "audio"),
+                "group": "1",
+                "chat_name": invite["chat_name"],
+            }
+            for uid in invite["invitees"]:
+                await self.channel_layer.group_send(
+                    f"user_{uid}", {"type": "notification", "data": payload}
+                )
+            await self.push_call_invite(invite["invitees"], payload, invite["chat_name"])
+            # Инициатор — первый в составе; остальные добавятся, когда ответят.
+            await self.broadcast_peers(call_id, chat_id)
+            return
+
+        if signal_type == "call_accept":
+            await self.group_join(call_id, profile_id)
+            await self.broadcast_peers(call_id, chat_id)
+            return
+
+        if signal_type in ("call_reject", "call_end"):
+            remaining = await self.group_leave(call_id, profile_id)
+            # Ушедшему больше ничего не шлём, остальным — обновлённый состав.
+            await self.broadcast_peers(call_id, chat_id, exclude=profile_id)
+            if not remaining:
+                try:
+                    from .fcm import notify_data
+                    invitees = await self.group_invitees(chat_id, profile_id)
+                    await database_sync_to_async(notify_data)(
+                        Profile.objects.filter(id__in=invitees),
+                        {"type": "call_ended", "call_id": str(call_id)},
+                    )
+                except Exception as e:
+                    print(f"❌ [group] отбой не разослан: {e}")
+            return
+
+    async def push_call_invite(self, invitees, payload, chat_name):
+        """Пуши приглашённым: VoIP на iOS, данные на Android, обычный — запасной."""
+        try:
+            from .fcm import notify_profiles, notify_data
+            from .apns_voip import notify_voip
+            profiles = Profile.objects.filter(id__in=invitees)
+            voip_sent = await database_sync_to_async(notify_voip)(profiles, payload)
+            await database_sync_to_async(notify_data)(profiles, payload, platforms=["android"], ttl=30)
+            if not voip_sent:
+                await database_sync_to_async(notify_profiles)(
+                    profiles,
+                    title=chat_name or payload.get("from_username", "ХУЯКС"),
+                    body=f"{payload.get('from_username')} звонит в группе",
+                    extra=payload,
+                    sound="call",
+                    platforms=["ios"],
+                )
+        except Exception as e:
+            print(f"❌ [group] пуш не отправлен: {e}")
+
+    async def broadcast_peers(self, call_id, chat_id, exclude=None):
+        """Рассылает участникам актуальный состав звонка. По нему клиенты
+        сами решают, с кем поднимать соединение (offer делает тот, чей id
+        меньше — иначе оба ринутся навстречу и договорятся впустую)."""
+        peers = await self.group_peers(call_id)
+        for uid in peers:
+            if exclude and str(uid) == str(exclude):
+                continue
+            await self.channel_layer.group_send(
+                f"user_{uid}",
+                {
+                    "type": "call_signal_notification",
+                    "signal_type": "call_peers",
+                    "data": {"call_id": str(call_id), "chat_id": str(chat_id),
+                             "peers": [str(p) for p in peers]},
+                },
+            )
+
+    @database_sync_to_async
+    def is_group_chat(self, chat_id):
+        try:
+            return Chat.objects.filter(id=chat_id, is_group=True).exists()
+        except Exception:
+            return False
+
+    @database_sync_to_async
+    def group_invite(self, chat_id, initiator_id, call_id, call_type):
+        try:
+            chat = Chat.objects.get(id=chat_id, is_group=True)
+            initiator = Profile.objects.get(id=initiator_id)
+        except (Chat.DoesNotExist, Profile.DoesNotExist):
+            return None
+        if not ChatParticipant.objects.filter(chat=chat, user=initiator).exists():
+            return None
+        try:
+            parsed = uuid.UUID(str(call_id))
+        except (ValueError, TypeError):
+            return None
+
+        session, _ = CallSession.objects.get_or_create(
+            id=parsed,
+            defaults={"chat": chat, "initiator": initiator,
+                      "call_type": call_type if call_type in ("audio", "video") else "audio",
+                      "status": "ringing"},
+        )
+        CallParticipant.objects.update_or_create(
+            call=session, user=initiator, defaults={"joined_at": timezone.now(), "left_at": None}
+        )
+        invitees = list(
+            ChatParticipant.objects.filter(chat=chat)
+            .exclude(user=initiator)
+            .values_list("user_id", flat=True)
+        )
+        return {
+            "invitees": [str(i) for i in invitees],
+            "from_username": initiator.username,
+            "from_user_avatar": initiator.avatar_url,
+            "chat_name": chat.name or "Группа",
+        }
+
+    @database_sync_to_async
+    def group_invitees(self, chat_id, exclude_id):
+        return [
+            str(i) for i in ChatParticipant.objects.filter(chat_id=chat_id)
+            .exclude(user_id=exclude_id).values_list("user_id", flat=True)
+        ]
+
+    @database_sync_to_async
+    def group_join(self, call_id, profile_id):
+        try:
+            session = CallSession.objects.get(id=call_id)
+        except (CallSession.DoesNotExist, ValueError):
+            return False
+        if not ChatParticipant.objects.filter(chat=session.chat, user_id=profile_id).exists():
+            return False
+        CallParticipant.objects.update_or_create(
+            call=session, user_id=profile_id,
+            defaults={"joined_at": timezone.now(), "left_at": None},
+        )
+        if session.status != "active":
+            session.status = "active"
+            session.started_at = session.started_at or timezone.now()
+            session.save(update_fields=["status", "started_at"])
+        return True
+
+    @database_sync_to_async
+    def group_leave(self, call_id, profile_id):
+        try:
+            session = CallSession.objects.get(id=call_id)
+        except (CallSession.DoesNotExist, ValueError):
+            return 0
+        CallParticipant.objects.filter(call=session, user_id=profile_id).update(left_at=timezone.now())
+        remaining = CallParticipant.objects.filter(
+            call=session, joined_at__isnull=False, left_at__isnull=True
+        ).count()
+        if remaining == 0:
+            session.status = "ended"
+            session.ended_at = timezone.now()
+            session.save(update_fields=["status", "ended_at"])
+        return remaining
+
+    @database_sync_to_async
+    def group_peers(self, call_id):
+        try:
+            return list(
+                CallParticipant.objects.filter(
+                    call_id=call_id, joined_at__isnull=False, left_at__isnull=True
+                ).values_list("user_id", flat=True)
+            )
+        except Exception:
+            return []
+
     async def notification(self, event):
         # Преобразуем UUID в строки перед сериализацией
         def convert_uuid_to_str(obj):
