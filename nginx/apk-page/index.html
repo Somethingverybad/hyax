@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ХУЯКС — скачать для Android</title>
+<style>
+  :root { --red: #d92419; --bg: #0a0a0a; --fg: #f2f2f2; --muted: #8a8a8a; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card { max-width: 420px; width: 100%; text-align: center; }
+  .logo {
+    width: 96px; height: 96px; margin: 0 auto 24px; position: relative;
+  }
+  .logo .sq { position: absolute; inset: 0; background: var(--red); transform: rotate(-8deg); }
+  .logo .x {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 64px; font-weight: 900; color: var(--bg); transform: rotate(-8deg);
+  }
+  h1 { font-size: 42px; font-weight: 900; letter-spacing: 2px; color: var(--red); }
+  .sub { color: var(--muted); margin: 8px 0 32px; font-size: 14px; }
+  a.btn {
+    display: block; background: var(--red); color: var(--fg); text-decoration: none;
+    font-size: 20px; font-weight: 700; padding: 18px; margin-bottom: 12px;
+  }
+  a.btn:active { filter: brightness(0.85); }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+  .steps { text-align: left; border: 2px solid #222; padding: 16px 16px 16px 36px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+  .steps b { color: var(--fg); font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><div class="sq"></div><div class="x">Х</div></div>
+    <h1>ХУЯКС</h1>
+    <div class="sub">Не очень то и быстрый и ненадёжный месенджер</div>
+    <a class="btn" href="/apk/hyax.apk" download>Скачать для Android</a>
+    <div class="meta" id="meta">APK · сборка от 22.08.2026</div>
+    <ol class="steps">
+      <li>Скачай файл <b>hyax.apk</b></li>
+      <li>Открой его из уведомления или «Загрузок»</li>
+      <li>Разреши установку из <b>неизвестных источников</b>, если Android спросит</li>
+      <li>Готово — регистрируйся и пиши</li>
+    </ol>
+  </div>
+</body>
+</html>
