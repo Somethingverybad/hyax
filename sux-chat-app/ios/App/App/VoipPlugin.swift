@@ -32,6 +32,29 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     private(set) var pendingAnswer: [String: Any]?
     weak var plugin: VoipPlugin?
 
+    /// Дневник звонков в Documents: приложение может подниматься системой без
+    /// нас (VoIP-пуш), и другого способа увидеть, что оно вообще проснулось,
+    /// нет — консоль устройства из командной строки недоступна.
+    static func log(_ line: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let text = "\(stamp) \(line)\n"
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("voip.log")
+        // Дневник ведём вечно, поэтому подрезаем: он нужен для разбора
+        // последнего звонка, а не для истории.
+        if let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
+           size > 64_000 {
+            try? FileManager.default.removeItem(at: url)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(text.utf8))
+            try? handle.close()
+        } else {
+            try? text.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
     private override init() {
         let config = CXProviderConfiguration()
         config.supportsVideo = false
@@ -48,6 +71,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     }
 
     func start() {
+        VoipManager.log("start()")
         guard registry == nil else { return }
         let reg = PKPushRegistry(queue: .main)
         reg.delegate = self
@@ -59,6 +83,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
     func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
         let token = credentials.token.map { String(format: "%02x", $0) }.joined()
+        VoipManager.log("получен PushKit-токен \(token.prefix(14))…")
         voipToken = token
         plugin?.notifyListeners("voipToken", data: ["token": token])
     }
@@ -86,6 +111,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
             }
         }
 
+        VoipManager.log("пуш получен: \(kind), call_id \(callId.prefix(8))…")
         // Правило iOS: на каждый VoIP-пуш — reportNewIncomingCall, без исключений.
         showIncoming(callId: callId, data: data, valid: kind == "incoming_call", completion: completion)
     }
@@ -109,11 +135,22 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
         calls[callId] = CallInfo(uuid: uuid, payload: data)
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
-            if error != nil || !valid {
-                self?.calls.removeValue(forKey: callId)
-                self?.provider.reportCall(with: uuid, endedAt: nil, reason: .failed)
+            guard let self else { return }
+            if let error {
+                // Система отказалась показать вызов (режим «Не беспокоить»,
+                // блокировка номера, лимиты) — показываем свой экран, иначе
+                // пользователь не узнает о звонке вовсе.
+                VoipManager.log("CallKit отказал: \(error.localizedDescription)")
+                self.calls.removeValue(forKey: callId)
+                var js = self.jsPayload(data)
+                js["callId"] = callId
+                self.plugin?.notifyListeners("callIncoming", data: js)
+            } else if !valid {
+                self.calls.removeValue(forKey: callId)
+                self.provider.reportCall(with: uuid, endedAt: nil, reason: .failed)
             } else {
-                self?.armRingTimeout(callId: callId)
+                VoipManager.log("вызов показан системой")
+                self.armRingTimeout(callId: callId)
             }
             completion?()
         }
