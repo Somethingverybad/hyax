@@ -68,7 +68,11 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload,
                       for type: PKPushType, completion: @escaping () -> Void) {
-        let data = payload.dictionaryPayload
+        // dictionaryPayload — [AnyHashable: Any]; нам нужны строковые ключи.
+        var data: [String: Any] = [:]
+        for (k, v) in payload.dictionaryPayload {
+            if let key = k as? String { data[key] = v }
+        }
         let callId = (data["call_id"] as? String) ?? UUID().uuidString
         let kind = (data["type"] as? String) ?? "incoming_call"
 
