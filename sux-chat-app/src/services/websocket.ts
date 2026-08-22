@@ -21,6 +21,7 @@ export class WebSocketService {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
   private isManuallyClosed = false;
+  private tokenSource?: string | (() => Promise<string | undefined>);
 
   constructor(url: string, options: WebSocketOptions = {}) {
     this.url = url;
@@ -31,18 +32,28 @@ export class WebSocketService {
     };
   }
 
-  connect(token?: string): void {
+  /**
+   * token — строка или функция, отдающая свежий токен. Второй вариант нужен
+   * для переподключений: сохранённый токен к тому времени может протухнуть,
+   * и сервер молча закроет соединение.
+   */
+  async connect(token?: string | (() => Promise<string | undefined>)): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
 
     this.isManuallyClosed = false;
+    this.tokenSource = token ?? this.tokenSource;
     let wsUrl = this.url;
-    
-    // Добавляем токен в query параметры, если он есть
-    if (token) {
+
+    const current = typeof this.tokenSource === "function"
+      ? await this.tokenSource()
+      : this.tokenSource;
+    if (this.isManuallyClosed) return;
+
+    if (current) {
       const separator = wsUrl.includes('?') ? '&' : '?';
-      wsUrl = `${wsUrl}${separator}token=${token}`;
+      wsUrl = `${wsUrl}${separator}token=${current}`;
     }
 
     try {
@@ -88,7 +99,7 @@ export class WebSocketService {
           console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.options.maxReconnectAttempts})...`);
           
           this.reconnectTimer = setTimeout(() => {
-            this.connect(token);
+            void this.connect();
           }, this.options.reconnectInterval || 3000);
         }
       };

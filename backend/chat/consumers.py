@@ -4,7 +4,6 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from django.utils import timezone
-from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from jwt import decode as jwt_decode
@@ -41,8 +40,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     user_id = decoded_data.get('user_id')
                     if user_id:
                         self.user = await database_sync_to_async(User.objects.get)(id=user_id)
-                except (Token.DoesNotExist, InvalidToken, TokenError, User.DoesNotExist):
-                    await self.close()
+                except (InvalidToken, TokenError, User.DoesNotExist) as e:
+                    print(f"❌ [WS] токен отклонён: {type(e).__name__}: {e}")
+                    await self.close(code=4001)
                     return
 
         # Проверка аутентификации асинхронно
@@ -481,8 +481,9 @@ class UserConsumer(AsyncWebsocketConsumer):
                         user_id = decoded_data.get('user_id')
                         if user_id:
                             self.user = await database_sync_to_async(User.objects.get)(id=user_id)
-                    except (Token.DoesNotExist, InvalidToken, TokenError, User.DoesNotExist):
-                        await self.close()
+                    except (InvalidToken, TokenError, User.DoesNotExist) as e:
+                        print(f"❌ [WS user] токен отклонён: {type(e).__name__}: {e}")
+                        await self.close(code=4001)
                         return
 
             # Проверка аутентификации асинхронно

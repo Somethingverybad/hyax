@@ -109,6 +109,47 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
   return res;
 }
 
+/**
+ * Токен для WebSocket. Обычные запросы обновляют токен по 401, а сокету
+ * ответить нечем: сервер просто закрывает соединение. Поэтому проверяем
+ * срок жизни заранее и при необходимости обновляем перед подключением —
+ * иначе после протухания сокет не переподключится никогда, и пропадут
+ * realtime-сообщения и звонки.
+ */
+export async function getFreshAccessToken(): Promise<string | undefined> {
+  const token = localStorage.getItem("access_token") || undefined;
+  const refresh = localStorage.getItem("refresh_token");
+  const expiresAt = (t?: string): number => {
+    if (!t) return 0;
+    try {
+      return (JSON.parse(atob(t.split(".")[1]))?.exp || 0) * 1000;
+    } catch {
+      return 0;
+    }
+  };
+
+  // Запас в минуту: подключение не должно стартовать с почти мёртвым токеном.
+  if (token && expiresAt(token) - Date.now() > 60_000) return token;
+  if (!refresh) return token;
+
+  try {
+    const res = await fetch(`${API_URL}/token/refresh/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh }),
+    });
+    if (!res.ok) return token;
+    const data = await res.json();
+    if (data.access) {
+      localStorage.setItem("access_token", data.access);
+      return data.access;
+    }
+  } catch {
+    /* сеть подведёт — пробуем старым токеном */
+  }
+  return token;
+}
+
 function authHeaders() {
   const token = localStorage.getItem("access_token");
   return {

@@ -12,7 +12,7 @@ import { OneToOneCallService, type CallState, type IncomingCall } from "@/servic
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay from "@/components/call/CallOverlay";
 import { toast } from "sonner";
-import { WS_URL } from "@/api/client";
+import { WS_URL, getFreshAccessToken } from "@/api/client";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
@@ -184,7 +184,6 @@ const Chat = () => {
   useEffect(() => {
     if (!user?.id) return;
     let disposed = false;
-    const token = localStorage.getItem("access_token") || undefined;
 
     const ws = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
       maxReconnectAttempts: 20,
@@ -207,12 +206,12 @@ const Chat = () => {
         }
       },
     });
-    ws.connect(token);
+    void ws.connect(getFreshAccessToken);
     wsRef.current = ws;
 
     // iOS рвёт сокет в фоне — при возврате переподключаемся сразу.
     const appStatePromise = App.addListener("appStateChange", ({ isActive }) => {
-      if (isActive && !ws.isConnected()) ws.connect(token);
+      if (isActive && !ws.isConnected()) void ws.connect();
     });
 
     const waitForWs = async () => {
