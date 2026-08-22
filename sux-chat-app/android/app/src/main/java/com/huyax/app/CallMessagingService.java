@@ -16,6 +16,13 @@ import org.json.JSONObject;
 public class CallMessagingService extends FirebaseMessagingService {
 
     @Override
+    public void onCreate() {
+        super.onCreate();
+        // Пуш может поднять процесс без активити — каналы нужны уже сейчас.
+        MessageChannels.ensure(getApplicationContext());
+    }
+
+    @Override
     public void onNewToken(@NonNull String token) {
         super.onNewToken(token);
         FirebaseMessagingPlugin.onNewToken(token);

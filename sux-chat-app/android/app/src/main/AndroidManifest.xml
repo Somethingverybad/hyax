@@ -25,6 +25,10 @@
 
         </activity>
 
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="messages_v2" />
+
         <!-- Звонки: наш FCM-сервис вместо сервиса плагина (Android отдаёт пуш одному),
              full-screen уведомление и кнопка «Отклонить». -->
         <service

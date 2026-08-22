@@ -110,18 +110,6 @@ const Chat = () => {
       }
       if (permission.receive !== 'granted') return;
 
-      // Android 8+: звук уведомления живёт в канале, а не в самом пуше.
-      // Канал создаётся однократно, бэкенд шлёт channel_id="messages".
-      // Файл — android/app/src/main/res/raw/receive.mp3. На iOS вызов не нужен.
-      if (Capacitor.getPlatform() === 'android') {
-        await FirebaseMessaging.createChannel({
-          id: 'messages',
-          name: 'Сообщения',
-          importance: 4,
-          sound: 'receive',
-        });
-      }
-
       // Токен ротируется — слушаем и перерегистрируем.
       await FirebaseMessaging.addListener('tokenReceived', (e) => {
         if (e?.token) sendPushTokenToServer(e.token);
