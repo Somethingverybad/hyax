@@ -6,5 +6,6 @@ import Capacitor
 class CallViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(VoipPlugin())
+        bridge?.registerPluginInstance(NativeCallPlugin())
     }
 }

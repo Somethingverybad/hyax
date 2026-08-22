@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoipPlugin.class);
+        registerPlugin(NativeCallPlugin.class);
         super.onCreate(savedInstanceState);
         MessageChannels.ensure(this);
         handleCallIntent(getIntent());

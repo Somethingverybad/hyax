@@ -27,15 +27,6 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     private var calls: [String: CallInfo] = [:]  // call_id → CallKit call
     private var ringTimers: [String: Timer] = [:]
 
-    /// Желаемый маршрут звука. WebKit перенастраивает сессию по своему
-    /// расписанию и сбрасывает override — поэтому помним выбор и повторяем
-    /// его на каждую смену маршрута, пока идёт разговор.
-    private var desiredSpeaker: Bool?
-    /// Звонки, принятые с заблокированного экрана: CallKit держит их, пока
-    /// приложение не станет активным, иначе iOS усыпит процесс и разговор
-    /// умрёт. Отпускаем при выходе приложения на передний план.
-    private var pendingRelease: [String] = []
-
     private(set) var voipToken: String?
     /// Ответ с экрана блокировки, пока JS ещё не загрузился.
     private(set) var pendingAnswer: [String: Any]?
@@ -54,29 +45,6 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(routeChanged),
-            name: AVAudioSession.routeChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(appBecameActive),
-            name: UIApplication.didBecomeActiveNotification, object: nil)
-    }
-
-    @objc private func routeChanged() {
-        applySpeakerOverride()
-    }
-
-    @objc private func appBecameActive() {
-        // Пользователь открыл приложение — разговор дальше ведёт WebView,
-        // системный звонок больше не нужен (и держал бы микрофон немым).
-        let ids = pendingRelease
-        pendingRelease.removeAll()
-        for id in ids {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.end(callId: id, reason: .answeredElsewhere)
-            }
-        }
-        applySpeakerOverride()
     }
 
     func start() {
@@ -157,23 +125,24 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
     // MARK: - Команды из JS
 
-    /// Исходящий звонок системе не отдаём.
-    ///
-    /// Разговор ведёт WebView, а CallKit забирает аудио-сессию себе — микрофон
-    /// у движка становится немым, и собеседник слышит тишину (в статистике
-    /// WebRTC исходящих пакетов с айфона не было вовсе). Системный экран нужен
-    /// только для входящего вызова на заблокированном экране, поэтому здесь
-    /// ничего не делаем: звук остаётся у движка, как в веб-версии.
-    func reportOutgoing(callId: String, name: String) {}
+    /// Исходящий звонок регистрируем в системе: с нативным движком CallKit
+    /// больше не конфликтует за аудио-сессию, зато звонок попадает в журнал
+    /// вызовов и корректно уживается с телефонией.
+    func reportOutgoing(callId: String, name: String) {
+        let uuid = UUID(uuidString: callId) ?? UUID()
+        calls[callId] = CallInfo(uuid: uuid, payload: ["call_id": callId], answered: true)
+        let action = CXStartCallAction(call: uuid, handle: CXHandle(type: .generic, value: name))
+        callController.request(CXTransaction(action: action)) { [weak self] error in
+            if error != nil { self?.calls.removeValue(forKey: callId) }
+        }
+    }
 
     func reportConnected(callId: String) {
-        // Соединение состоялось — системе сообщать нечего: исходящие вызовы
-        // мы ей не отдаём, а входящий к этому моменту уже отпущен.
+        guard let info = calls[callId] else { return }
+        provider.reportOutgoingCall(with: info.uuid, connectedAt: nil)
     }
 
     func end(callId: String, reason: CXCallEndedReason = .remoteEnded) {
-        desiredSpeaker = nil
-        pendingRelease.removeAll { $0 == callId }
         guard let info = calls.removeValue(forKey: callId) else { return }
         ringTimers[callId]?.invalidate()
         ringTimers.removeValue(forKey: callId)
@@ -205,6 +174,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         }
         calls[callId]?.answered = true
         ringTimers[callId]?.invalidate()
+        NativeCallAudio.shared.beginCall()
         var js = jsPayload(info.payload)
         js["callId"] = callId
         if let plugin {
@@ -213,18 +183,6 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
             pendingAnswer = js
         }
         action.fulfill()
-
-        // Пока CallKit держит сессию, микрофон WebView молчит — поэтому после
-        // ответа системный вызов отпускаем. Но только когда приложение на
-        // переднем плане: если ответили с заблокированного экрана, CallKit —
-        // единственное, что удерживает процесс живым.
-        if UIApplication.shared.applicationState == .active {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.end(callId: callId, reason: .answeredElsewhere)
-            }
-        } else {
-            pendingRelease.append(callId)
-        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
@@ -244,9 +202,13 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        // Система активировала сессию — сразу выводим звук в громкую связь,
-        // иначе WKWebView оставит его в разговорном динамике.
-        try? audioSession.overrideOutputAudioPort(.speaker)
+        // Сессию активирует система, звук включает приложение — этого и ждёт
+        // движок в ручном режиме. Без этого разговор был бы беззвучным.
+        NativeCallAudio.shared.activate(audioSession)
+    }
+
+    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        NativeCallAudio.shared.deactivate(audioSession)
     }
 
     private func configureAudioSession() {
@@ -255,20 +217,8 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         // звонок соединялся, но был беззвучным. Настройку оставляем ему.
     }
 
-    /// Переключение выхода. Категорию и активацию сессии не трогаем: ими
-    /// владеет WebKit, который ведёт сам разговор, — вмешательство глушило
-    /// звук. Меняем только маршрут, и повторяем выбор при каждой смене
-    /// маршрута: WebKit сбрасывает override, когда перенастраивает сессию.
     func setSpeaker(_ enabled: Bool) {
-        desiredSpeaker = enabled
-        applySpeakerOverride()
-    }
-
-    private func applySpeakerOverride() {
-        guard let want = desiredSpeaker else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(want ? .speaker : .none)
-        }
+        NativeCallAudio.shared.setSpeaker(enabled)
     }
 
     private func jsPayload(_ p: [String: Any]) -> [String: Any] {

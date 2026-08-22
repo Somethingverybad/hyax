@@ -10,6 +10,8 @@ import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
 import { GroupCallService, type GroupCallInvite, type GroupCallState } from "@/services/group-call-service";
+import { NativeCallService, NativeGroupCallService } from "@/services/native-call-service";
+import { hasNativeCalls } from "@/lib/nativeCall";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay from "@/components/call/CallOverlay";
 import { toast } from "sonner";
@@ -58,11 +60,11 @@ const Chat = () => {
   // Громкая связь по умолчанию: телефон обычно лежит на столе, а не у уха.
   const [speaker, setSpeaker] = useState(true);
   const wsRef = useRef<WebSocketService | null>(null);
-  const callRef = useRef<OneToOneCallService | null>(null);
+  const callRef = useRef<OneToOneCallService | NativeCallService | null>(null);
   const lastCallIdRef = useRef<string | null>(null);
   // Групповой звонок ведёт отдельный сервис: там mesh из нескольких
   // соединений, а не единственный собеседник.
-  const groupCallRef = useRef<GroupCallService | null>(null);
+  const groupCallRef = useRef<GroupCallService | NativeGroupCallService | null>(null);
   const [groupState, setGroupState] = useState<GroupCallState>("idle");
   const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
   const [groupStreams, setGroupStreams] = useState<MediaStream[]>([]);
@@ -243,7 +245,11 @@ const Chat = () => {
     (async () => {
       const iceServers = await api.getIceServers();
       if (disposed) return;
-      const svc = new OneToOneCallService({
+      // В приложении разговор ведёт нативный движок: в WebView звук не
+      // уживался с CallKit и умирал при блокировке экрана. В браузере
+      // остаётся прежний путь.
+      const CallImpl = hasNativeCalls() ? NativeCallService : OneToOneCallService;
+      const svc = new CallImpl({
         wsService: ws,
         chatId: "",
         userId: user.id,
@@ -275,7 +281,8 @@ const Chat = () => {
       });
       callRef.current = svc;
 
-      groupCallRef.current = new GroupCallService({
+      const GroupImpl = hasNativeCalls() ? NativeGroupCallService : GroupCallService;
+      groupCallRef.current = new GroupImpl({
         wsService: ws,
         userId: user.id,
         iceServers,

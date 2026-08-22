@@ -51,6 +51,8 @@ dependencies {
     // Наш FCM-сервис звонков (CallMessagingService) наследует FirebaseMessagingService:
     // плагин тянет firebase-messaging как implementation, приложению он не виден.
     implementation "com.google.firebase:firebase-messaging:24.1.0"
+    // Нативный WebRTC: разговор в WebView не переживает блокировку экрана
+    implementation "io.github.webrtc-sdk:android:125.6422.07"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

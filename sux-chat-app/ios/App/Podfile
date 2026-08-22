@@ -23,7 +23,10 @@ end
 
 target 'App' do
   capacitor_pods
-  # Add your Pods here
+  # Нативный WebRTC для звонков: медиа-слой в WebView не совместим с CallKit
+  # (двум хозяевам аудио-сессии не ужиться) — поэтому звонки ведёт нативный
+  # движок, а WebView остаётся сигналинг и интерфейс.
+  pod 'WebRTC-SDK', '~> 97.4692'
 end
 
 post_install do |installer|
