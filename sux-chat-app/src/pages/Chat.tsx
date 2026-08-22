@@ -272,13 +272,30 @@ const Chat = () => {
         if (c.fromUsername) setSelectedChatTitle(c.fromUsername);
       };
 
+      const toIncoming = (c: VoipCallPayload) => ({
+        callId: c.callId,
+        chatId: c.chatId,
+        fromUserId: c.fromUserId,
+        fromUsername: c.fromUsername,
+        fromUserAvatar: c.fromUserAvatar,
+        callType: c.callType,
+      });
+
       listeners.push(
         voip.on("voipToken", ({ token: t }: any) => {
           api.registerPushToken(t, "ios_voip").catch(() => {});
         }),
         voip.on("callAnswered", (c: any) => handleAnswered(c)),
+        // Android: звонок пришёл пушем (приложение на экране или открыто
+        // из уведомления поверх блокировки) — показываем свой экран входящего.
+        voip.on("callIncoming", (c: any) => {
+          if (svc.getState() === "idle") svc.notifyIncomingCall(toIncoming(c));
+        }),
         voip.on("callEnded", ({ callId }: any) => {
-          if (svc.getCurrentCallId() === callId) svc.endCall("ended", true);
+          if (svc.getCurrentCallId() !== callId) return;
+          const peerId = callPeer?.id;
+          if (svc.getState() === "incoming" && peerId) svc.rejectIncomingCall(callId, peerId);
+          else svc.endCall("ended", true);
         }),
         voip.on("callMuted", ({ muted: m }: any) => {
           if (svc.isMuted() !== m) svc.toggleMute();
@@ -287,7 +304,10 @@ const Chat = () => {
       );
       await voip.register();
       const pending = await voip.getPendingAnswer();
-      if (pending && !disposed) handleAnswered(pending);
+      if (pending && !disposed) {
+        if (pending.answered) handleAnswered(pending.call);
+        else svc.notifyIncomingCall(toIncoming(pending.call));
+      }
     })();
 
     return () => {

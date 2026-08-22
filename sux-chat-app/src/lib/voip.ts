@@ -21,9 +21,9 @@ export interface VoipCallPayload {
 interface VoipPlugin {
   /** Запросить PushKit-токен; придёт событием voipToken (и при ротации). */
   register(): Promise<void>;
-  /** Если приложение запустили ответом на звонок с экрана блокировки —
-   *  звонок уже принят в CallKit, а JS только загрузился. */
-  getPendingAnswer(): Promise<{ call: VoipCallPayload | null }>;
+  /** Приложение запустили из звонка, пока JS грузился: answered — уже
+   *  принят (CallKit / кнопка «Ответить»), иначе — показать входящий. */
+  getPendingAnswer(): Promise<{ call: VoipCallPayload | null; answered?: boolean }>;
   reportOutgoingCall(o: { callId: string; name: string }): Promise<void>;
   reportConnected(o: { callId: string }): Promise<void>;
   endCall(o: { callId: string }): Promise<void>;
@@ -33,6 +33,11 @@ interface VoipPlugin {
   ): Promise<PluginListenerHandle>;
   addListener(
     event: "callAnswered",
+    cb: (d: VoipCallPayload) => void
+  ): Promise<PluginListenerHandle>;
+  /** Android, приложение на экране: входящий пришёл пушем, экран рисует JS. */
+  addListener(
+    event: "callIncoming",
     cb: (d: VoipCallPayload) => void
   ): Promise<PluginListenerHandle>;
   addListener(
@@ -47,10 +52,12 @@ interface VoipPlugin {
 
 const plugin = registerPlugin<VoipPlugin>("Voip");
 
+/** iOS: входящий показывает система (CallKit), свой экран не нужен. */
 export const hasCallKit = () => Capacitor.getPlatform() === "ios";
+const hasNative = () => Capacitor.isNativePlatform();
 
 async function quiet<T>(fn: () => Promise<T>): Promise<T | undefined> {
-  if (!hasCallKit()) return undefined;
+  if (!hasNative()) return undefined;
   try {
     return await fn();
   } catch (e) {
@@ -61,14 +68,16 @@ async function quiet<T>(fn: () => Promise<T>): Promise<T | undefined> {
 
 export const voip = {
   register: () => quiet(() => plugin.register()),
-  getPendingAnswer: async () =>
-    (await quiet(() => plugin.getPendingAnswer()))?.call ?? null,
+  getPendingAnswer: async () => {
+    const r = await quiet(() => plugin.getPendingAnswer());
+    return r?.call ? { call: r.call, answered: r.answered !== false } : null;
+  },
   reportOutgoingCall: (callId: string, name: string) =>
     quiet(() => plugin.reportOutgoingCall({ callId, name })),
   reportConnected: (callId: string) => quiet(() => plugin.reportConnected({ callId })),
   endCall: (callId: string) => quiet(() => plugin.endCall({ callId })),
-  on: <E extends "voipToken" | "callAnswered" | "callEnded" | "callMuted">(
+  on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted">(
     event: E,
     cb: Parameters<VoipPlugin["addListener"]>[1]
-  ) => (hasCallKit() ? plugin.addListener(event as any, cb as any) : null),
+  ) => (hasNative() ? plugin.addListener(event as any, cb as any) : null),
 };

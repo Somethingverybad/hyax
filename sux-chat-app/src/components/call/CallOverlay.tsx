@@ -52,6 +52,19 @@ const CallOverlay = ({
     }
   }, [remoteStream]);
 
+  // Рингтон на своём экране входящего. На iOS сюда не попадаем — там звонит
+  // CallKit; на Android приложение в фоне звонит каналом уведомления.
+  useEffect(() => {
+    if (state !== "incoming") return;
+    const ring = new Audio("/sounds/call.mp3");
+    ring.loop = true;
+    ring.volume = 0.8;
+    ring.play().catch(() => {});
+    return () => {
+      ring.pause();
+    };
+  }, [state]);
+
   useEffect(() => {
     if (state !== "active") {
       setSeconds(0);

@@ -124,14 +124,19 @@ def notify_profiles(profiles, title: str, body: str, extra: dict | None = None,
     ).start()
 
 
-def _deliver_data(tokens, data: dict):
+def _deliver_data(tokens, data: dict, ttl: int | None = None):
     """Тихий data-пуш: без баннера и звука, только разбудить приложение
-    (iOS content-available, Android high priority)."""
+    (iOS content-available, Android high priority). ttl — секунды жизни:
+    приглашение на звонок не должно «догонять» телефон через минуту."""
     app = _firebase_app()
     if app is None:
         return
+    from datetime import timedelta
     from firebase_admin import messaging
 
+    android_kwargs = {"priority": "high"}
+    if ttl:
+        android_kwargs["ttl"] = timedelta(seconds=ttl)
     message = messaging.MulticastMessage(
         tokens=tokens,
         data={k: str(v) for k, v in data.items()},
@@ -139,7 +144,7 @@ def _deliver_data(tokens, data: dict):
             headers={"apns-push-type": "background", "apns-priority": "5"},
             payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True)),
         ),
-        android=messaging.AndroidConfig(priority="high"),
+        android=messaging.AndroidConfig(**android_kwargs),
     )
     try:
         messaging.send_each_for_multicast(message)
@@ -147,9 +152,10 @@ def _deliver_data(tokens, data: dict):
         logger.exception("FCM data: отправка не удалась")
 
 
-def notify_data(profiles, data: dict):
-    """Тихий пуш данными — например, отбой звонка, чтобы убрать экран вызова."""
-    tokens = _fcm_tokens(profiles)
+def notify_data(profiles, data: dict, platforms=None, ttl: int | None = None):
+    """Тихий пуш данными — отбой звонка (убрать экран вызова) или сам
+    входящий звонок для Android: там экран вызова рисует нативный сервис."""
+    tokens = _fcm_tokens(profiles, platforms)
     if not tokens:
         return
-    threading.Thread(target=_deliver_data, args=(tokens, data), daemon=True).start()
+    threading.Thread(target=_deliver_data, args=(tokens, data, ttl), daemon=True).start()

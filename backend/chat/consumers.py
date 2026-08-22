@@ -160,7 +160,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Пуш: у свёрнутого приложения WebSocket молчит — звоним через
                 # APNs/FCM звуком «Звонок» (до 30 с — лимит Apple на звук пуша).
                 try:
-                    from .fcm import notify_profiles
+                    from .fcm import notify_profiles, notify_data
                     from .apns_voip import notify_voip
                     is_video = data.get("call_type", "audio") == "video"
                     callee = Profile.objects.filter(id=target_user_id)
@@ -177,14 +177,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     # заблокированном экране. Обычный пуш — тем, у кого VoIP-токена
                     # нет (Android, старые сборки), иначе iPhone звонил бы дважды.
                     voip_sent = await database_sync_to_async(notify_voip)(callee, call_payload)
-                    await database_sync_to_async(notify_profiles)(
-                        callee,
-                        title=from_username,
-                        body="Входящий видеозвонок" if is_video else "Входящий звонок",
-                        extra=call_payload,
-                        sound="call",
-                        platforms=["android"] if voip_sent else None,
-                    )
+                    # Android: только данные — нативный сервис рисует полноэкранный
+                    # вызов сам; ttl 30 с, чтобы звонок не «догнал» телефон позже.
+                    await database_sync_to_async(notify_data)(callee, call_payload, platforms=["android"], ttl=30)
+                    if not voip_sent:
+                        await database_sync_to_async(notify_profiles)(
+                            callee,
+                            title=from_username,
+                            body="Входящий видеозвонок" if is_video else "Входящий звонок",
+                            extra=call_payload,
+                            sound="call",
+                            platforms=["ios"],
+                        )
                 except Exception as e:
                     print(f"❌ [call_invite] push не отправлен: {e}")
         else:
@@ -613,7 +617,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 # Пуш: у свёрнутого приложения WebSocket молчит — звоним через
                 # APNs/FCM звуком «Звонок» (до 30 с — лимит Apple на звук пуша).
                 try:
-                    from .fcm import notify_profiles
+                    from .fcm import notify_profiles, notify_data
                     from .apns_voip import notify_voip
                     is_video = data.get("call_type", "audio") == "video"
                     callee = Profile.objects.filter(id=target_user_id)
@@ -630,14 +634,18 @@ class UserConsumer(AsyncWebsocketConsumer):
                     # заблокированном экране. Обычный пуш — тем, у кого VoIP-токена
                     # нет (Android, старые сборки), иначе iPhone звонил бы дважды.
                     voip_sent = await database_sync_to_async(notify_voip)(callee, call_payload)
-                    await database_sync_to_async(notify_profiles)(
-                        callee,
-                        title=from_username,
-                        body="Входящий видеозвонок" if is_video else "Входящий звонок",
-                        extra=call_payload,
-                        sound="call",
-                        platforms=["android"] if voip_sent else None,
-                    )
+                    # Android: только данные — нативный сервис рисует полноэкранный
+                    # вызов сам; ttl 30 с, чтобы звонок не «догнал» телефон позже.
+                    await database_sync_to_async(notify_data)(callee, call_payload, platforms=["android"], ttl=30)
+                    if not voip_sent:
+                        await database_sync_to_async(notify_profiles)(
+                            callee,
+                            title=from_username,
+                            body="Входящий видеозвонок" if is_video else "Входящий звонок",
+                            extra=call_payload,
+                            sound="call",
+                            platforms=["ios"],
+                        )
                 except Exception as e:
                     print(f"❌ [call_invite] push не отправлен: {e}")
         else:
