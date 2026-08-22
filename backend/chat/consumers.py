@@ -156,6 +156,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         },
                     },
                 )
+
+                # Пуш: у свёрнутого приложения WebSocket молчит — звоним через
+                # APNs/FCM звуком «Звонок» (до 30 с — лимит Apple на звук пуша).
+                try:
+                    from .fcm import notify_profiles
+                    is_video = data.get("call_type", "audio") == "video"
+                    await database_sync_to_async(notify_profiles)(
+                        Profile.objects.filter(id=target_user_id),
+                        title=from_username,
+                        body="Входящий видеозвонок" if is_video else "Входящий звонок",
+                        extra={"chat_id": str(chat_id), "call_id": str(data["call_id"]), "type": "incoming_call"},
+                        sound="call",
+                    )
+                except Exception as e:
+                    print(f"❌ [call_invite] push не отправлен: {e}")
         else:
             if not call_id:
                 return
@@ -563,6 +578,21 @@ class UserConsumer(AsyncWebsocketConsumer):
                         },
                     },
                 )
+
+                # Пуш: у свёрнутого приложения WebSocket молчит — звоним через
+                # APNs/FCM звуком «Звонок» (до 30 с — лимит Apple на звук пуша).
+                try:
+                    from .fcm import notify_profiles
+                    is_video = data.get("call_type", "audio") == "video"
+                    await database_sync_to_async(notify_profiles)(
+                        Profile.objects.filter(id=target_user_id),
+                        title=from_username,
+                        body="Входящий видеозвонок" if is_video else "Входящий звонок",
+                        extra={"chat_id": str(chat_id), "call_id": str(data["call_id"]), "type": "incoming_call"},
+                        sound="call",
+                    )
+                except Exception as e:
+                    print(f"❌ [call_invite] push не отправлен: {e}")
         else:
             # Другие сигналы - call_accept, call_reject, webrtc_*
             if not call_id:

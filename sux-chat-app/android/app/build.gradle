@@ -4,7 +4,7 @@ android {
     namespace "com.huyax.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.huyax.app"
+        applicationId "com.hyax.messenger"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
