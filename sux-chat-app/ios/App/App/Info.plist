@@ -27,12 +27,14 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна, чтобы снять и отправить фото в переписке.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Микрофон нужен для записи голосовых сообщений.</string>
+	<string>Микрофон нужен для звонков и голосовых сообщений.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Доступ к фото нужен, чтобы прикреплять снимки к сообщениям.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>voip</string>
+		<string>audio</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

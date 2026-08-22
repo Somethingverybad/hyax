@@ -11,6 +11,9 @@
 		F1B2C3D40001000000000002 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1B2C3D40001000000000001 /* GoogleService-Info.plist */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		B0B0CA110026082200000001 /* VoipPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000002 /* VoipPlugin.swift */; };
+		B0B0CA110026082200000003 /* CallViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000004 /* CallViewController.swift */; };
+		B0B0CA110026082200000005 /* call.caf in Resources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000006 /* call.caf */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		A1C0FFEE2026081800000001 /* receive.caf in Resources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2026081800000002 /* receive.caf */; };
@@ -24,6 +27,9 @@
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B0B0CA110026082200000002 /* VoipPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoipPlugin.swift; sourceTree = "<group>"; };
+		B0B0CA110026082200000004 /* CallViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallViewController.swift; sourceTree = "<group>"; };
+		B0B0CA110026082200000006 /* call.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = call.caf; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1C0FFEE2026081800000002 /* receive.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = receive.caf; sourceTree = "<group>"; };
@@ -79,6 +85,9 @@
 			children = (
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				B0B0CA110026082200000002 /* VoipPlugin.swift */,
+				B0B0CA110026082200000004 /* CallViewController.swift */,
+				B0B0CA110026082200000006 /* call.caf */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				A1C0FFEE2026081800000002 /* receive.caf */,
@@ -167,6 +176,7 @@
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
 				A1C0FFEE2026081800000001 /* receive.caf in Resources */,
+				B0B0CA110026082200000005 /* call.caf in Resources */,
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				F1B2C3D40001000000000002 /* GoogleService-Info.plist in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
@@ -218,6 +228,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				B0B0CA110026082200000001 /* VoipPlugin.swift in Sources */,
+				B0B0CA110026082200000003 /* CallViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

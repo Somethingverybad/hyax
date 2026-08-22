@@ -1033,6 +1033,26 @@ class NotificationSoundListView(APIView):
         return Response(NotificationSoundSerializer(sounds, many=True).data)
 
 
+class IceServersView(APIView):
+    """ICE-конфигурация для WebRTC. TURN-креды берутся из окружения сервера,
+    чтобы не зашивать их в сборки приложений и менять без релиза."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        import os
+        servers = [{"urls": "stun:stun.l.google.com:19302"}]
+        realm = os.getenv("TURN_REALM", "").strip()
+        username = os.getenv("TURN_USERNAME", "").strip()
+        password = os.getenv("TURN_PASSWORD", "").strip()
+        if realm and username and password:
+            servers.append({
+                "urls": [f"turn:{realm}:3478?transport=udp", f"turn:{realm}:3478?transport=tcp"],
+                "username": username,
+                "credential": password,
+            })
+        return Response({"iceServers": servers})
+
+
 class PushRegisterView(APIView):
     """Регистрация APNs-токена устройства. Профиль берётся из сессии — чужое
     устройство привязать нельзя. Токен уникален: при переустановке приложения

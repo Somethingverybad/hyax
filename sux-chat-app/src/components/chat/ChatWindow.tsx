@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2 } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -55,13 +55,16 @@ const previewSize = (dims: { w: number; h: number }) => {
 interface ChatWindowProps {
   chatId: string | null;
   userId: string;
+  /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
+  peer?: { id: string; username: string; avatar_url?: string | null } | null;
+  onCall?: () => void;
   /** На телефоне переписка занимает весь экран, и вернуться к списку можно
    *  только отсюда — на десктопе список виден всегда, поэтому кнопки нет. */
   onBack?: () => void;
   title?: string;
 }
 
-const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -450,8 +453,18 @@ const ChatWindow = ({ chatId, userId, onBack, title }: ChatWindowProps) => {
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
       {onBack && (
-        <div className="shrink-0 flex items-center px-4 py-2.5 pad-safe-top border-b border-border bg-card">
-          <span className="font-medium truncate">{title || "Чат"}</span>
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 pad-safe-top border-b border-border bg-card">
+          <span className="font-medium truncate flex-1">{title || "Чат"}</span>
+          {peer && onCall && (
+            <button
+              type="button"
+              onClick={onCall}
+              className="p-2 -mr-2 text-foreground active:text-primary"
+              aria-label="Позвонить"
+            >
+              <Phone className="w-5 h-5" />
+            </button>
+          )}
         </div>
       )}
       {/* Нативный overflow-скролл вместо Radix ScrollArea: min-h-0 позволяет

@@ -5,6 +5,8 @@ const API_URL = import.meta.env.VITE_API_URL || "https://huyax.e-tree.su/api";
 // capacitor://localhost — и картинка искалась бы внутри бандла. Достраиваем
 // до абсолютного URL от хоста API.
 const MEDIA_ORIGIN = API_URL.replace(/\/api\/?$/, "");
+// WebSocket для сигналинга звонков и уведомлений: тот же хост, что API.
+export const WS_URL = `${MEDIA_ORIGIN.replace(/^http/, "ws")}/ws`;
 
 export function mediaUrl(path?: string | null): string {
   if (!path) return "";
@@ -440,6 +442,23 @@ export const api = {
       }),
     });
     return res.json();
+  },
+
+  // ===== ЗВОНКИ =====
+  // ICE-серверы (STUN + TURN с кредами) приходят с сервера — в сборке ничего
+  // секретного, и TURN можно поменять без релиза.
+  getIceServers: async (): Promise<RTCIceServer[]> => {
+    try {
+      const res = await fetchWithAuth(`${API_URL}/ice-servers/`, {
+        method: "GET",
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      return data.iceServers || [];
+    } catch {
+      return [{ urls: "stun:stun.l.google.com:19302" }];
+    }
   },
 
   // ===== ЗВУКИ УВЕДОМЛЕНИЙ (аудио-стикеры) =====

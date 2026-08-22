@@ -7,7 +7,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // PushKit надо зарегистрировать сразу при запуске: VoIP-пуш может быть
+        // причиной самого запуска, и его нужно принять до загрузки WebView.
+        VoipManager.shared.start()
         return true
     }
 

@@ -101,16 +101,55 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
         logger.info("FCM: удалено мёртвых токенов: %d", len(dead))
 
 
-def notify_profiles(profiles, title: str, body: str, extra: dict | None = None,
-                    sound: str | None = None):
-    """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне."""
+def _fcm_tokens(profiles, platforms=None):
+    """FCM-токены профилей. PushKit-токены (ios_voip) — не FCM, их исключаем."""
     from .models import PushToken
 
-    tokens = list(
-        PushToken.objects.filter(user__in=profiles).values_list("token", flat=True)
-    )
+    qs = PushToken.objects.filter(user__in=profiles).exclude(platform="ios_voip")
+    if platforms:
+        qs = qs.filter(platform__in=platforms)
+    return list(qs.values_list("token", flat=True))
+
+
+def notify_profiles(profiles, title: str, body: str, extra: dict | None = None,
+                    sound: str | None = None, platforms=None):
+    """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне.
+    platforms — ограничить платформы (например, только android, если iOS
+    уже получил VoIP-пуш о звонке)."""
+    tokens = _fcm_tokens(profiles, platforms)
     if not tokens:
         return
     threading.Thread(
         target=_deliver, args=(tokens, title, body, extra or {}, sound), daemon=True
     ).start()
+
+
+def _deliver_data(tokens, data: dict):
+    """Тихий data-пуш: без баннера и звука, только разбудить приложение
+    (iOS content-available, Android high priority)."""
+    app = _firebase_app()
+    if app is None:
+        return
+    from firebase_admin import messaging
+
+    message = messaging.MulticastMessage(
+        tokens=tokens,
+        data={k: str(v) for k, v in data.items()},
+        apns=messaging.APNSConfig(
+            headers={"apns-push-type": "background", "apns-priority": "5"},
+            payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True)),
+        ),
+        android=messaging.AndroidConfig(priority="high"),
+    )
+    try:
+        messaging.send_each_for_multicast(message)
+    except Exception:
+        logger.exception("FCM data: отправка не удалась")
+
+
+def notify_data(profiles, data: dict):
+    """Тихий пуш данными — например, отбой звонка, чтобы убрать экран вызова."""
+    tokens = _fcm_tokens(profiles)
+    if not tokens:
+        return
+    threading.Thread(target=_deliver_data, args=(tokens, data), daemon=True).start()

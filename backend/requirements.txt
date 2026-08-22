@@ -8,3 +8,5 @@ djangorestframework
 django-cors-headers
 djangorestframework-simplejwt
 firebase-admin
+httpx[http2]
+PyJWT

@@ -91,7 +91,7 @@ class PushToken(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="push_tokens")
     token = models.TextField(unique=True)  # Уникальный токен устройства
-    platform = models.CharField(max_length=10, choices=[('ios', 'iOS'), ('android', 'Android')])
+    platform = models.CharField(max_length=10, choices=[('ios', 'iOS'), ('android', 'Android'), ('ios_voip', 'iOS VoIP (PushKit)')])
     device_id = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

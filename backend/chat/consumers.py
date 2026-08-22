@@ -161,13 +161,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # APNs/FCM звуком «Звонок» (до 30 с — лимит Apple на звук пуша).
                 try:
                     from .fcm import notify_profiles
+                    from .apns_voip import notify_voip
                     is_video = data.get("call_type", "audio") == "video"
+                    callee = Profile.objects.filter(id=target_user_id)
+                    call_payload = {
+                        "type": "incoming_call",
+                        "call_id": str(data["call_id"]),
+                        "chat_id": str(chat_id),
+                        "from_user_id": str(profile_id),
+                        "from_username": from_username,
+                        "from_user_avatar": from_user_avatar or "",
+                        "call_type": data.get("call_type", "audio"),
+                    }
+                    # iOS: PushKit будит приложение и показывает CallKit даже на
+                    # заблокированном экране. Обычный пуш — тем, у кого VoIP-токена
+                    # нет (Android, старые сборки), иначе iPhone звонил бы дважды.
+                    voip_sent = await database_sync_to_async(notify_voip)(callee, call_payload)
                     await database_sync_to_async(notify_profiles)(
-                        Profile.objects.filter(id=target_user_id),
+                        callee,
                         title=from_username,
                         body="Входящий видеозвонок" if is_video else "Входящий звонок",
-                        extra={"chat_id": str(chat_id), "call_id": str(data["call_id"]), "type": "incoming_call"},
+                        extra=call_payload,
                         sound="call",
+                        platforms=["android"] if voip_sent else None,
                     )
                 except Exception as e:
                     print(f"❌ [call_invite] push не отправлен: {e}")
@@ -205,6 +221,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 call_session = await database_sync_to_async(CallSession.objects.get)(id=call_id)
                 if call_session.initiator_id:
                     await self.set_profile_call_status(call_session.initiator_id, "idle")
+
+        # Отбой/отклонение: тихим пушем убираем экран вызова у второй стороны —
+        # её WebSocket в фоне может молчать, а CallKit иначе звонит до таймаута.
+        if signal_type in ("call_reject", "call_end") and call_id:
+            try:
+                from .fcm import notify_data
+                _session = await database_sync_to_async(CallSession.objects.get)(id=call_id)
+                _other = target_user_id if str(profile_id) == str(_session.initiator_id) else _session.initiator_id
+                if _other:
+                    await database_sync_to_async(notify_data)(
+                        Profile.objects.filter(id=_other),
+                        {"type": "call_ended", "call_id": str(call_id)},
+                    )
+            except Exception as e:
+                print(f"❌ [{signal_type}] тихий пуш не отправлен: {e}")
 
         # Отправляем call_signal в группу чата (для совместимости)
         await self.channel_layer.group_send(
@@ -583,13 +614,29 @@ class UserConsumer(AsyncWebsocketConsumer):
                 # APNs/FCM звуком «Звонок» (до 30 с — лимит Apple на звук пуша).
                 try:
                     from .fcm import notify_profiles
+                    from .apns_voip import notify_voip
                     is_video = data.get("call_type", "audio") == "video"
+                    callee = Profile.objects.filter(id=target_user_id)
+                    call_payload = {
+                        "type": "incoming_call",
+                        "call_id": str(data["call_id"]),
+                        "chat_id": str(chat_id),
+                        "from_user_id": str(profile_id),
+                        "from_username": from_username,
+                        "from_user_avatar": from_user_avatar or "",
+                        "call_type": data.get("call_type", "audio"),
+                    }
+                    # iOS: PushKit будит приложение и показывает CallKit даже на
+                    # заблокированном экране. Обычный пуш — тем, у кого VoIP-токена
+                    # нет (Android, старые сборки), иначе iPhone звонил бы дважды.
+                    voip_sent = await database_sync_to_async(notify_voip)(callee, call_payload)
                     await database_sync_to_async(notify_profiles)(
-                        Profile.objects.filter(id=target_user_id),
+                        callee,
                         title=from_username,
                         body="Входящий видеозвонок" if is_video else "Входящий звонок",
-                        extra={"chat_id": str(chat_id), "call_id": str(data["call_id"]), "type": "incoming_call"},
+                        extra=call_payload,
                         sound="call",
+                        platforms=["android"] if voip_sent else None,
                     )
                 except Exception as e:
                     print(f"❌ [call_invite] push не отправлен: {e}")
@@ -625,6 +672,21 @@ class UserConsumer(AsyncWebsocketConsumer):
                 call_session = await database_sync_to_async(CallSession.objects.get)(id=call_id)
                 if call_session.initiator_id:
                     await self.set_profile_call_status(call_session.initiator_id, "idle")
+
+        # Отбой/отклонение: тихим пушем убираем экран вызова у второй стороны —
+        # её WebSocket в фоне может молчать, а CallKit иначе звонит до таймаута.
+        if signal_type in ("call_reject", "call_end") and call_id:
+            try:
+                from .fcm import notify_data
+                _session = await database_sync_to_async(CallSession.objects.get)(id=call_id)
+                _other = target_user_id if str(profile_id) == str(_session.initiator_id) else _session.initiator_id
+                if _other:
+                    await database_sync_to_async(notify_data)(
+                        Profile.objects.filter(id=_other),
+                        {"type": "call_ended", "call_id": str(call_id)},
+                    )
+            except Exception as e:
+                print(f"❌ [{signal_type}] тихий пуш не отправлен: {e}")
 
         # Отправляем сигналы в персональные каналы участников
         if signal_type in ["call_accept", "call_reject", "call_end"]:

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -7,6 +7,12 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import { api } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
+import { WebSocketService } from "@/services/websocket";
+import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
+import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
+import CallOverlay from "@/components/call/CallOverlay";
+import { toast } from "sonner";
+import { WS_URL } from "@/api/client";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
@@ -15,6 +21,7 @@ interface ChatType {
   id: string;
   created_at: string;
   updated_at: string;
+  participants?: ProfileType[];
   last_message?: { text: string; sender_id: string } | null;
   unread_count?: number;
 }
@@ -35,6 +42,19 @@ const Chat = () => {
   // вычисляет — участники грузятся отдельно от списка чатов.
   const [selectedChatTitle, setSelectedChatTitle] = useState<string>("Чат");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // ===== Звонки =====
+  // Один WebSocket и один сервис звонков на всё приложение: входящий должен
+  // прийти, какой бы чат ни был открыт. На iOS входящий показывает CallKit
+  // (VoIP-пуш), наш экран — только после ответа; на Android/в вебе всё наше.
+  const [callState, setCallState] = useState<CallState>("idle");
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [callPeer, setCallPeer] = useState<{ id: string; name: string; avatarUrl?: string | null } | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [muted, setMuted] = useState(false);
+  const wsRef = useRef<WebSocketService | null>(null);
+  const callRef = useRef<OneToOneCallService | null>(null);
+  const lastCallIdRef = useRef<string | null>(null);
   const navigate = useNavigate();
 
   // 🔔 Проверка аутентификации и получение профиля + инициализация уведомлений
@@ -98,6 +118,16 @@ const Chat = () => {
         if (chatId) setSelectedChatId(String(chatId));
       });
 
+      // Тихий пуш «отбой»: звонящий отменил вызов, пока наш WebSocket молчал.
+      await FirebaseMessaging.addListener('notificationReceived', (e) => {
+        const d = ((e as any)?.notification?.data as Record<string, string>) || {};
+        if (d.type === 'call_ended' && d.call_id) {
+          voip.endCall(String(d.call_id));
+          const svc = callRef.current;
+          if (svc && svc.getCurrentCallId() === String(d.call_id)) svc.endCall("ended", false);
+        }
+      });
+
       const { token } = await FirebaseMessaging.getToken();
       await sendPushTokenToServer(token);
     } catch (error) {
@@ -149,6 +179,179 @@ const Chat = () => {
       appStateListener.remove();
     };
   }, []);
+
+  // Сигналинг звонков: пользовательский WebSocket + глобальный сервис звонков.
+  useEffect(() => {
+    if (!user?.id) return;
+    let disposed = false;
+    const token = localStorage.getItem("access_token") || undefined;
+
+    const ws = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
+      maxReconnectAttempts: 20,
+      onMessage: (msg: any) => {
+        const svc = callRef.current;
+        if (msg?.type === "notification" && msg.data?.type === "incoming_call") {
+          if (hasCallKit()) return; // iOS: входящий уже показал CallKit по VoIP-пушу
+          svc?.notifyIncomingCall({
+            callId: msg.data.call_id,
+            chatId: msg.data.chat_id,
+            fromUserId: msg.data.from_user_id,
+            fromUsername: msg.data.from_username,
+            fromUserAvatar: msg.data.from_user_avatar,
+            callType: msg.data.call_type,
+          });
+        } else if (msg?.type === "call_signal") {
+          svc?.handleSignal(msg.signal_type, msg.data);
+        } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
+          refreshChats();
+        }
+      },
+    });
+    ws.connect(token);
+    wsRef.current = ws;
+
+    // iOS рвёт сокет в фоне — при возврате переподключаемся сразу.
+    const appStatePromise = App.addListener("appStateChange", ({ isActive }) => {
+      if (isActive && !ws.isConnected()) ws.connect(token);
+    });
+
+    const waitForWs = async () => {
+      for (let i = 0; i < 50 && !ws.isConnected(); i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    };
+
+    const listeners: Array<Promise<{ remove: () => Promise<void> } | null>> = [];
+
+    (async () => {
+      const iceServers = await api.getIceServers();
+      if (disposed) return;
+      const svc = new OneToOneCallService({
+        wsService: ws,
+        chatId: "",
+        userId: user.id,
+        iceServers,
+        onStateChange: (state) => {
+          setCallState(state);
+          const id = svc.getCurrentCallId();
+          if (id) lastCallIdRef.current = id;
+          if (state === "active" && id) voip.reportConnected(id);
+        },
+        onIncomingCall: (c) => {
+          setIncomingCall(c);
+          setCallPeer({ id: c.fromUserId, name: c.fromUsername, avatarUrl: c.fromUserAvatar });
+        },
+        onRemoteStream: (stream) => setRemoteStream(stream),
+        onCallEnded: () => {
+          if (lastCallIdRef.current) voip.endCall(lastCallIdRef.current);
+          lastCallIdRef.current = null;
+          setIncomingCall(null);
+          setRemoteStream(null);
+          setMuted(false);
+          setCallPeer(null);
+        },
+        onError: (message) => toast.error(message),
+      });
+      callRef.current = svc;
+
+      // Ответ с системного экрана CallKit (в том числе с заблокированного
+      // экрана, когда приложение только что запустилось этим звонком).
+      const handleAnswered = async (c: VoipCallPayload) => {
+        await waitForWs();
+        svc.notifyIncomingCall({
+          callId: c.callId,
+          chatId: c.chatId,
+          fromUserId: c.fromUserId,
+          fromUsername: c.fromUsername,
+          fromUserAvatar: c.fromUserAvatar,
+          callType: c.callType,
+        });
+        await svc.acceptIncomingCall(c.callId, c.fromUserId);
+        setIncomingCall(null);
+        if (c.chatId) setSelectedChatId(c.chatId);
+        if (c.fromUsername) setSelectedChatTitle(c.fromUsername);
+      };
+
+      listeners.push(
+        voip.on("voipToken", ({ token: t }: any) => {
+          api.registerPushToken(t, "ios_voip").catch(() => {});
+        }),
+        voip.on("callAnswered", (c: any) => handleAnswered(c)),
+        voip.on("callEnded", ({ callId }: any) => {
+          if (svc.getCurrentCallId() === callId) svc.endCall("ended", true);
+        }),
+        voip.on("callMuted", ({ muted: m }: any) => {
+          if (svc.isMuted() !== m) svc.toggleMute();
+          setMuted(m);
+        })
+      );
+      await voip.register();
+      const pending = await voip.getPendingAnswer();
+      if (pending && !disposed) handleAnswered(pending);
+    })();
+
+    return () => {
+      disposed = true;
+      listeners.forEach((l) => l?.then((h) => h?.remove()));
+      appStatePromise.then((h) => h.remove());
+      callRef.current?.dispose();
+      callRef.current = null;
+      ws.disconnect();
+      wsRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const peer = selectedChat?.participants?.find((p) => p.id !== user?.id) || null;
+
+  const startCall = async () => {
+    const svc = callRef.current;
+    if (!svc || !peer || !selectedChatId) return;
+    if (svc.getState() !== "idle") return;
+    svc.updateChatId(selectedChatId);
+    setCallPeer({ id: peer.id, name: peer.username, avatarUrl: peer.avatar_url });
+    await svc.startOutgoingCall(peer.id);
+    const id = svc.getCurrentCallId();
+    if (id) voip.reportOutgoingCall(id, peer.username);
+    else setCallPeer(null);
+  };
+
+  const acceptCall = async () => {
+    const svc = callRef.current;
+    if (!svc || !incomingCall) return;
+    await svc.acceptIncomingCall(incomingCall.callId, incomingCall.fromUserId);
+    setSelectedChatId(incomingCall.chatId);
+    setSelectedChatTitle(incomingCall.fromUsername);
+    setIncomingCall(null);
+  };
+
+  const rejectCall = () => {
+    const svc = callRef.current;
+    if (!svc || !incomingCall) return;
+    svc.rejectIncomingCall(incomingCall.callId, incomingCall.fromUserId);
+    setIncomingCall(null);
+  };
+
+  const hangup = () => callRef.current?.endCall("ended", true);
+
+  const toggleMute = () => {
+    const m = callRef.current?.toggleMute();
+    setMuted(!!m);
+  };
+
+  const callUi = callPeer ? (
+    <CallOverlay
+      state={callState}
+      peer={callPeer}
+      muted={muted}
+      remoteStream={remoteStream}
+      onAccept={acceptCall}
+      onReject={rejectCall}
+      onHangup={hangup}
+      onToggleMute={toggleMute}
+    />
+  ) : null;
 
   // 🔔 Функция обновления списка чатов
   const refreshChats = async () => {
@@ -213,10 +416,13 @@ const Chat = () => {
   if (isMobile) {
     return (
       <div className="h-screen flex flex-col bg-background">
+        {callUi}
         {selectedChatId ? (
           <ChatWindow
             chatId={selectedChatId}
             userId={user.id}
+            peer={peer}
+            onCall={startCall}
             onBack={() => setSelectedChatId(null)}
             title={selectedChatTitle}
           />
@@ -250,6 +456,7 @@ const Chat = () => {
 
   return (
     <div className="h-screen flex bg-background">
+      {callUi}
       <ChatSidebar
         userId={user.id}
         chats={chats}
@@ -267,6 +474,8 @@ const Chat = () => {
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
+          peer={peer}
+          onCall={startCall}
         />
       )}
       
