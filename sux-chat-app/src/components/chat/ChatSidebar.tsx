@@ -20,6 +20,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api } from "@/api/client";
+import { readCache, writeCache } from "@/lib/session-cache";
 
 interface Profile {
   id: string;
@@ -93,7 +94,11 @@ const ChatSidebar = ({
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
-  const [currentUser, setCurrentUser] = useState<Profile | null>(null);
+  // Профиль берём из кеша сразу: сеть только обновляет его. Иначе при каждом
+  // возврате из чата шапка показывала «Загрузка…», хотя данные уже известны.
+  const [currentUser, setCurrentUser] = useState<Profile | null>(
+    () => readCache<Profile>("user")
+  );
   const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>({});
   const [loadingParticipants, setLoadingParticipants] = useState<{[chatId: string]: boolean}>({});
   const [deletingChats, setDeletingChats] = useState<{[chatId: string]: boolean}>({});
@@ -112,12 +117,15 @@ const ChatSidebar = ({
       
       if (profile && profile.id) {
         setCurrentUser(profile);
+        writeCache("user", profile);
       } else {
         console.warn("No valid user profile found");
       }
     } catch (error: any) {
       console.error("Error fetching current user profile:", error);
-      toast.error("Не удалось загрузить профиль");
+      // Молчим, если профиль уже показан из кеша: ругаться на фоновое
+      // обновление незачем, пользователь видит рабочий экран.
+      if (!currentUser) toast.error("Не удалось загрузить профиль");
     }
   };
 

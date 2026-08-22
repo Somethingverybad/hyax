@@ -237,10 +237,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 if _other:
                     _profiles = Profile.objects.filter(id=_other)
                     _cancel = {"type": "call_ended", "call_id": str(call_id)}
-                    # На iOS отмену несёт тот же VoIP-канал, что и вызов:
-                    # тихий пуш спящее приложение будит ненадёжно, и экран
-                    # звонка висел до таймаута.
-                    await database_sync_to_async(notify_voip)(_profiles, _cancel)
+                    # VoIP-отмена нужна только тому, кому звонили: у него
+                    # звонит система, и снять экран больше нечем. Звонящему
+                    # такой пуш слать нельзя — приложение обязано ответить на
+                    # каждый VoIP-пуш показом вызова, и у отменившего звонок
+                    # выскакивал бы призрачный входящий.
+                    _callee_is_other = str(profile_id) == str(_session.initiator_id)
+                    if _callee_is_other:
+                        await database_sync_to_async(notify_voip)(_profiles, _cancel)
                     await database_sync_to_async(notify_data)(_profiles, _cancel)
             except Exception as e:
                 print(f"❌ [{signal_type}] тихий пуш не отправлен: {e}")
@@ -705,10 +709,14 @@ class UserConsumer(AsyncWebsocketConsumer):
                 if _other:
                     _profiles = Profile.objects.filter(id=_other)
                     _cancel = {"type": "call_ended", "call_id": str(call_id)}
-                    # На iOS отмену несёт тот же VoIP-канал, что и вызов:
-                    # тихий пуш спящее приложение будит ненадёжно, и экран
-                    # звонка висел до таймаута.
-                    await database_sync_to_async(notify_voip)(_profiles, _cancel)
+                    # VoIP-отмена нужна только тому, кому звонили: у него
+                    # звонит система, и снять экран больше нечем. Звонящему
+                    # такой пуш слать нельзя — приложение обязано ответить на
+                    # каждый VoIP-пуш показом вызова, и у отменившего звонок
+                    # выскакивал бы призрачный входящий.
+                    _callee_is_other = str(profile_id) == str(_session.initiator_id)
+                    if _callee_is_other:
+                        await database_sync_to_async(notify_voip)(_profiles, _cancel)
                     await database_sync_to_async(notify_data)(_profiles, _cancel)
             except Exception as e:
                 print(f"❌ [{signal_type}] тихий пуш не отправлен: {e}")
@@ -816,6 +824,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                     invitees = await self.group_invitees(chat_id, profile_id)
                     profiles = Profile.objects.filter(id__in=invitees)
                     cancel = {"type": "call_ended", "call_id": str(call_id)}
+                    # В группе VoIP-пуш получали все приглашённые — им же
+                    # уходит и отмена, чтобы снять системный экран.
                     await database_sync_to_async(notify_voip)(profiles, cancel)
                     await database_sync_to_async(notify_data)(profiles, cancel)
                 except Exception as e:

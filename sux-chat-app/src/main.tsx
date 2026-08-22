@@ -41,14 +41,35 @@ import { Capacitor as Cap } from "@capacitor/core";
 
 if (Cap.isNativePlatform()) {
   const root = document.documentElement;
+  let keyboardHeight = 0;
+
+  /**
+   * Сдвигаем панель ввода только на ту часть клавиатуры, которую экран ещё
+   * не учёл сам. Высота приложения считается по видимой области, и там, где
+   * она сжимается вместе с клавиатурой (Android), панель уже стоит над ней —
+   * дополнительный сдвиг подбрасывал её на середину экрана.
+   */
+  const applyKeyboardOffset = () => {
+    const visible = window.visualViewport?.height ?? window.innerHeight;
+    const alreadyShrunk = Math.max(0, window.innerHeight - visible);
+    const offset = Math.max(0, keyboardHeight - alreadyShrunk);
+    root.style.setProperty("--kb-height", `${Math.round(offset)}px`);
+  };
+
+  window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
 
   Keyboard.addListener("keyboardWillShow", (info) => {
     root.style.setProperty("--kb-duration", "250ms");
-    root.style.setProperty("--kb-height", `${Math.round(info.keyboardHeight)}px`);
+    keyboardHeight = info.keyboardHeight;
+    applyKeyboardOffset();
+    // Экран может ужаться уже после события — пересчитываем следом.
+    setTimeout(applyKeyboardOffset, 120);
+    setTimeout(applyKeyboardOffset, 320);
   });
 
   Keyboard.addListener("keyboardWillHide", () => {
     root.style.setProperty("--kb-duration", "250ms");
+    keyboardHeight = 0;
     root.style.setProperty("--kb-height", "0px");
     // UIKit могла сдвинуть contentOffset WebView, показывая поле над
     // клавиатурой; сама она его не восстанавливает — возвращаем страницу
