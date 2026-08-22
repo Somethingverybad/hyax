@@ -34,7 +34,7 @@ public class VoipPlugin extends Plugin {
     public void getPendingAnswer(PluginCall call) {
         JSObject ret = new JSObject();
         if (pendingCall != null) {
-            ret.put("call", JSObject.fromJSONObject(pendingCall));
+            ret.put("call", toJS(pendingCall));
             ret.put("answered", pendingAnswered);
             pendingCall = null;
         } else {
@@ -63,10 +63,18 @@ public class VoipPlugin extends Plugin {
     /** Из уведомления/активити: пользователь принял (answered) или звонок просто показан. */
     static void deliverCall(JSONObject call, boolean answered) {
         if (instance != null && instance.getBridge() != null) {
-            instance.notifyListeners(answered ? "callAnswered" : "callIncoming", JSObject.fromJSONObject(call), true);
+            instance.notifyListeners(answered ? "callAnswered" : "callIncoming", toJS(call), true);
         } else {
             pendingCall = call;
             pendingAnswered = answered;
+        }
+    }
+
+    private static JSObject toJS(JSONObject o) {
+        try {
+            return JSObject.fromJSONObject(o);
+        } catch (Exception e) {
+            return new JSObject();
         }
     }
 
