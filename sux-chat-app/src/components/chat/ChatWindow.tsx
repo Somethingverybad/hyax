@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
+import { useMediaRecorder, type RecordKind } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -28,6 +28,9 @@ interface Message {
   /** Голосовое сообщение и его длительность в секундах. */
   voice_url?: string | null;
   voice_duration?: number | null;
+  /** Видео-сообщение («треугольник») и его длительность. */
+  video_url?: string | null;
+  video_duration?: number | null;
   sender_id: string;
   sender?: Profile;
   created_at: string;
@@ -82,7 +85,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
-  const { recording, seconds: recSeconds, start: startRec, stop: stopRec } = useVoiceRecorder();
+  const {
+    recording,
+    seconds: recSeconds,
+    stream: recStream,
+    start: startRec,
+    stop: stopRec,
+  } = useMediaRecorder();
+  // Короткий тап по кнопке переключает голос ↔ треугольник, удержание пишет.
+  const [recordKind, setRecordKind] = useState<RecordKind>("audio");
+  const pressStartedAtRef = useRef(0);
   const [cancelArmed, setCancelArmed] = useState(false);
   // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
   // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
@@ -378,14 +390,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
 
   const beginRecording = async (e: React.PointerEvent) => {
     if (uploading) return;
+    pressStartedAtRef.current = Date.now();
     // Забираем указатель себе: иначе движение пальца уходит странице как
     // прокрутка, событие обрывается, и жест отмены не срабатывает.
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     holdStartRef.current = { x: e.clientX, y: e.clientY };
     cancelArmedRef.current = false;
     setCancelArmed(false);
-    const ok = await startRec();
-    if (!ok) toast.error("Нет доступа к микрофону");
+    const ok = await startRec(recordKind);
+    if (!ok) {
+      toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
+    }
   };
 
   const moveRecording = (e: React.PointerEvent) => {
@@ -398,22 +413,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   };
 
   const finishRecording = async (forceCancel = false) => {
-    const cancel = forceCancel || cancelArmedRef.current;
+    // Быстрый тап — это не запись, а переключение режима: держать кнопку
+    // ради смены голоса на видео было бы странно.
+    const wasTap = Date.now() - pressStartedAtRef.current < 300 && !cancelArmedRef.current;
+    const cancel = forceCancel || cancelArmedRef.current || wasTap;
+
     holdStartRef.current = null;
     cancelArmedRef.current = false;
     setCancelArmed(false);
     const result = await stopRec(cancel);
+
+    if (wasTap && !forceCancel) {
+      setRecordKind((k) => (k === "audio" ? "video" : "audio"));
+      return;
+    }
     if (!result || !chatId) return;
 
     setUploading(true);
     try {
-      const uploaded = await api.uploadVoice(result.file);
-      await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
+      if (result.kind === "video") {
+        const uploaded = await api.uploadFile(result.file);
+        await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds);
+      } else {
+        const uploaded = await api.uploadVoice(result.file);
+        await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
+      }
       lastSendTimeRef.current = Date.now();
       await fetchMessages();
       setTimeout(() => scrollToBottom(), 50);
     } catch {
-      toast.error("Не удалось отправить голосовое");
+      toast.error("Не удалось отправить сообщение");
     } finally {
       setUploading(false);
     }
@@ -645,6 +674,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                         />
                       )}
 
+                      {/* Видео-сообщение: треугольник вершиной вверх */}
+                      {message.video_url && (
+                        <VideoNote
+                          url={mediaUrl(message.video_url)}
+                          seconds={message.video_duration || 0}
+                        />
+                      )}
+
                       {/* Голосовое сообщение */}
                       {message.voice_url && (
                         <VoiceBubble
@@ -776,6 +813,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
           )}
           
 
+          {recording && recordKind === "video" && (
+            <div className="mb-2 flex justify-center">
+              <LivePreview stream={recStream} dimmed={cancelArmed} />
+            </div>
+          )}
+
           {recording && (
             <div className={cn(
               "mb-2 flex items-center gap-3 px-3 py-2 border-2",
@@ -787,7 +830,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                 {String(recSeconds % 60).padStart(2, "0")}
               </span>
               <span className="text-xs text-muted-foreground flex-1 truncate">
-                {cancelArmed ? "Отпустите — запись отменится" : "Ведите влево, чтобы отменить"}
+                {cancelArmed
+                  ? "Отпустите — запись отменится"
+                  : recordKind === "video"
+                    ? "Снимаем треугольник · влево для отмены"
+                    : "Ведите влево, чтобы отменить"}
               </span>
               {cancelArmed && <Trash2 className="w-4 h-4 text-primary shrink-0" />}
             </div>
@@ -888,9 +935,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                   "h-10 md:h-11 px-4 md:px-6 shrink-0 flex items-center justify-center transition-colors",
                   recording ? "bg-foreground text-background" : "bg-gradient-primary text-primary-foreground"
                 )}
-                aria-label="Записать голосовое"
+                aria-label={recordKind === "video" ? "Записать видео" : "Записать голосовое"}
               >
-                <Mic className="w-5 h-5" />
+                {recordKind === "video" ? <Video className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>
             )}
           </div>
@@ -944,6 +991,74 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
  * Раньше тап открывал картинку в браузере — из приложения это выглядит
  * как выброс наружу.
  */
+/** Треугольная маска — форма наших видео-сообщений вместо круглых «кружков». */
+const TRIANGLE = "polygon(50% 0%, 100% 100%, 0% 100%)";
+
+/** Живое изображение с камеры во время записи. */
+const LivePreview = ({ stream, dimmed }: { stream: MediaStream | null; dimmed: boolean }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (ref.current && stream) {
+      ref.current.srcObject = stream;
+      ref.current.play().catch(() => {});
+    }
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      muted
+      playsInline
+      className={cn("w-40 h-40 object-cover transition-opacity", dimmed && "opacity-40")}
+      style={{ clipPath: TRIANGLE }}
+    />
+  );
+};
+
+/** Видео-сообщение в переписке: тап — воспроизведение со звуком. */
+const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  const toggle = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (playing) {
+      el.pause();
+      return;
+    }
+    el.currentTime = 0;
+    el.play().catch(() => {});
+  };
+
+  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+
+  return (
+    <div className="relative w-44 h-44" onClick={toggle}>
+      <video
+        ref={ref}
+        src={url}
+        playsInline
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        className="w-full h-full object-cover bg-black"
+        style={{ clipPath: TRIANGLE }}
+      />
+      {!playing && (
+        <span className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
+          <span className="w-11 h-11 flex items-center justify-center bg-black/50">
+            <Play className="w-5 h-5 text-white" />
+          </span>
+        </span>
+      )}
+      <span className="absolute bottom-1 right-1 text-[11px] px-1 bg-black/60 text-white pointer-events-none">
+        {label}
+      </span>
+    </div>
+  );
+};
+
 const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);

@@ -517,6 +517,16 @@ export const api = {
     return res.json();
   },
 
+  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration }),
+    });
+    if (!res.ok) throw new Error("Не удалось отправить видео-сообщение");
+    return res.json();
+  },
+
   // ===== ЗВОНКИ =====
   // ICE-серверы (STUN + TURN с кредами) приходят с сервера — в сборке ничего
   // секретного, и TURN можно поменять без релиза.

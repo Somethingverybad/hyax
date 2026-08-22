@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Камера нужна, чтобы снять и отправить фото в переписке.</string>
+	<string>Камера нужна для видео-сообщений и фото в переписке.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Микрофон нужен для звонков и голосовых сообщений.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
