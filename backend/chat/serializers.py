@@ -46,6 +46,8 @@ class ChatSerializer(serializers.ModelSerializer):
         if not text:
             if getattr(obj, 'last_sticker_a', None):
                 text = 'Стикер'
+            elif getattr(obj, 'last_video_a', None):
+                text = 'Видео-сообщение'
             elif getattr(obj, 'last_voice_a', None):
                 text = 'Голосовое сообщение'
             elif getattr(obj, 'last_file_a', None):
@@ -132,7 +134,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'sound']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound']
         read_only_fields = ['sender', 'created_at', 'file_size']
     
     def to_representation(self, instance):

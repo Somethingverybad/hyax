@@ -139,6 +139,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_sender_id_a=Subquery(last.values('sender_id')[:1]),
                     last_sticker_a=Subquery(last.values('sticker_id')[:1]),
                     last_voice_a=Subquery(last.values('voice_url')[:1]),
+                    last_video_a=Subquery(last.values('video_url')[:1]),
                     last_file_a=Subquery(last.values('file_url')[:1]),
                 )
                 .order_by('-updated_at')
@@ -464,8 +465,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         sticker_id = request.data.get('sticker_id')
         voice_url = request.data.get('voice_url')
         voice_duration = request.data.get('voice_duration')
+        video_url = request.data.get('video_url')
+        video_duration = request.data.get('video_duration')
         
-        if (file_url or sticker_id or voice_url) and not request.user.is_authenticated:
+        if (file_url or sticker_id or voice_url or video_url) and not request.user.is_authenticated:
             return Response({"error": "User not authenticated"}, status=401)
         
         try:
@@ -509,6 +512,12 @@ class MessageViewSet(viewsets.ModelViewSet):
                 'voice_url': voice_url,
                 'voice_duration': voice_duration
             })
+
+        if video_url:
+            save_kwargs.update({
+                'video_url': video_url,
+                'video_duration': video_duration
+            })
         
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)
@@ -540,6 +549,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             if not preview:
                 if message.sticker_id:
                     preview = "Стикер"
+                elif getattr(message, "video_url", None):
+                    preview = "Видео-сообщение"
                 elif getattr(message, "voice_url", None):
                     preview = "Голосовое сообщение"
                 elif getattr(message, "file_url", None):

@@ -84,6 +84,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   // в сторону отменяет — как в мессенджерах.
   const { recording, seconds: recSeconds, start: startRec, stop: stopRec } = useVoiceRecorder();
   const [cancelArmed, setCancelArmed] = useState(false);
+  // Долгий тап по сообщению открывает меню — так же, как в мессенджерах,
+  // где системное выделение текста только мешает.
+  const [menuMessage, setMenuMessage] = useState<Message | null>(null);
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -347,6 +351,28 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     }
   };
 
+  const startLongPress = (message: Message) => {
+    if (longPressRef.current) clearTimeout(longPressRef.current);
+    longPressRef.current = setTimeout(() => setMenuMessage(message), 450);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressRef.current) clearTimeout(longPressRef.current);
+    longPressRef.current = null;
+  };
+
+  const copyMessage = async (message: Message) => {
+    const text = message.content?.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Скопировано");
+    } catch {
+      toast.error("Не удалось скопировать");
+    }
+    setMenuMessage(null);
+  };
+
   const beginRecording = async (e: React.PointerEvent) => {
     if (uploading) return;
     holdStartRef.current = { x: e.clientX, y: e.clientY };
@@ -574,7 +600,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                     )}
 
                     {/* Буббл сообщения */}
-                    <div className={cn(
+                    <div
+                      onPointerDown={() => startLongPress(message)}
+                      onPointerUp={cancelLongPress}
+                      onPointerLeave={cancelLongPress}
+                      onPointerCancel={cancelLongPress}
+                      onContextMenu={(e) => e.preventDefault()}
+                      className={cn(
                       "relative",
                       !imageOnly && "px-4 py-2",
                       // Свои сообщения алые, входящие зелёные — два цвета
@@ -733,33 +765,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
             </div>
           )}
           
-          {soundsOpen && (
-            <div className="mb-2 rounded-xl border border-border bg-card p-2">
-              <div className="flex gap-2 overflow-x-auto">
-                {sounds.length === 0 && (
-                  <span className="text-xs text-muted-foreground px-1 py-2">
-                    Звуков пока нет
-                  </span>
-                )}
-                {sounds.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => pickSound(s)}
-                    className={cn(
-                      "shrink-0 px-3 py-2 text-sm border-2 flex items-center gap-1.5 transition-colors",
-                      selectedSound?.id === s.id
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-secondary"
-                    )}
-                  >
-                    <Music2 className="w-3.5 h-3.5" />
-                    {s.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {recording && (
             <div className={cn(
@@ -880,6 +885,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
           </div>
         </div>
       </div>
+
+      {menuMessage && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/60 flex items-end"
+          onClick={() => setMenuMessage(null)}
+        >
+          <div
+            className="w-full bg-card border-t-2 border-border pb-[env(safe-area-inset-bottom)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menuMessage.content?.trim() && (
+              <button
+                type="button"
+                onClick={() => copyMessage(menuMessage)}
+                className="w-full px-5 py-4 text-left text-base active:bg-secondary"
+              >
+                Копировать текст
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setMenuMessage(null)}
+              className="w-full px-5 py-4 text-left text-base text-muted-foreground active:bg-secondary"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
 
       {viewer && (
         <ImageViewer

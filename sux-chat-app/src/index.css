@@ -279,6 +279,22 @@ textarea:focus {
   will-change: transform;
 }
 
+/* Долгое удержание в приложении — это жест (запись голосового, меню
+   сообщения), а не выделение текста: iOS иначе подсвечивает слова и
+   показывает свою лупу с «Копировать». Ввод остаётся выделяемым. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* Лента ужимается на высоту клавиатуры без анимации: перестановка происходит
    в первом кадре, пока её перекрывает выезжающая клавиатура. */
 .chat-scroll {

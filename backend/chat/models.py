@@ -70,6 +70,10 @@ class Message(models.Model):
     sticker = models.ForeignKey('Sticker', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Ссылка на стикер
     voice_url = models.TextField(blank=True, null=True)  # URL голосового сообщения
     voice_duration = models.IntegerField(blank=True, null=True)  # Длительность в секундах
+    # Видео-сообщение — наш ответ «кружкам»: короткое видео с фронтальной
+    # камеры, которое в переписке показывается треугольником.
+    video_url = models.TextField(blank=True, null=True)
+    video_duration = models.IntegerField(blank=True, null=True)
     sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Аудио-стикер: звук пуша у получателя
     
     # Добавляем свойство для удобства
