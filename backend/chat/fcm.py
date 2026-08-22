@@ -156,6 +156,7 @@ def notify_data(profiles, data: dict, platforms=None, ttl: int | None = None):
     """Тихий пуш данными — отбой звонка (убрать экран вызова) или сам
     входящий звонок для Android: там экран вызова рисует нативный сервис."""
     tokens = _fcm_tokens(profiles, platforms)
+    logger.info("FCM data %s: устройств %d", data.get("type", "?"), len(tokens))
     if not tokens:
         return
     threading.Thread(target=_deliver_data, args=(tokens, data, ttl), daemon=True).start()

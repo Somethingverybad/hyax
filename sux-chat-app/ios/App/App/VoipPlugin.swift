@@ -195,13 +195,24 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        // WebRTC в WKWebView сам подхватит активную сессию.
+        // Система активировала сессию — сразу выводим звук в громкую связь,
+        // иначе WKWebView оставит его в разговорном динамике.
+        try? audioSession.overrideOutputAudioPort(.speaker)
     }
 
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
+        // defaultToSpeaker: без него звук уходит в разговорный динамик, и
+        // кажется, что связи нет, пока не приложишь телефон к уху.
         try? session.setCategory(.playAndRecord, mode: .voiceChat,
-                                 options: [.allowBluetooth, .allowBluetoothA2DP])
+                                 options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+    }
+
+    func setSpeaker(_ enabled: Bool) {
+        let session = AVAudioSession.sharedInstance()
+        configureAudioSession()
+        try? session.setActive(true)
+        try? session.overrideOutputAudioPort(enabled ? .speaker : .none)
     }
 
     private func jsPayload(_ p: [String: Any]) -> [String: Any] {
@@ -224,6 +235,7 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPendingAnswer", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reportOutgoingCall", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reportConnected", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setSpeaker", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endCall", returnType: CAPPluginReturnPromise),
     ]
 
@@ -256,6 +268,11 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func reportConnected(_ call: CAPPluginCall) {
         guard let callId = call.getString("callId") else { call.reject("callId обязателен"); return }
         VoipManager.shared.reportConnected(callId: callId)
+        call.resolve()
+    }
+
+    @objc func setSpeaker(_ call: CAPPluginCall) {
+        VoipManager.shared.setSpeaker(call.getBool("enabled") ?? true)
         call.resolve()
     }
 

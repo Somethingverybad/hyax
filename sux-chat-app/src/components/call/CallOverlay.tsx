@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,8 @@ interface CallOverlayProps {
   onReject?: () => void;
   onHangup: () => void;
   onToggleMute: () => void;
+  speaker: boolean;
+  onToggleSpeaker: () => void;
 }
 
 const STATUS: Record<CallUiState, string> = {
@@ -41,15 +43,25 @@ const CallOverlay = ({
   onReject,
   onHangup,
   onToggleMute,
+  speaker,
+  onToggleSpeaker,
 }: CallOverlayProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [seconds, setSeconds] = useState(0);
 
+  // Автозапуск в WebView иногда отклоняется, если поток пришёл не сразу после
+  // жеста — поэтому повторяем попытку несколько раз.
   useEffect(() => {
-    if (audioRef.current && remoteStream) {
-      audioRef.current.srcObject = remoteStream;
-      audioRef.current.play().catch(() => {});
-    }
+    const el = audioRef.current;
+    if (!el || !remoteStream) return;
+    el.srcObject = remoteStream;
+    let tries = 0;
+    const play = () => {
+      el.play().catch(() => {
+        if (++tries < 10) setTimeout(play, 300);
+      });
+    };
+    play();
   }, [remoteStream]);
 
   // Рингтон на своём экране входящего. На iOS сюда не попадаем — там звонит
@@ -94,7 +106,7 @@ const CallOverlay = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-8">
+      <div className="flex items-center gap-6">
         {state === "incoming" ? (
           <>
             <button
@@ -126,6 +138,17 @@ const CallOverlay = ({
               aria-label={muted ? "Включить микрофон" : "Выключить микрофон"}
             >
               {muted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
+            </button>
+            <button
+              type="button"
+              onClick={onToggleSpeaker}
+              className={cn(
+                "w-16 h-16 border-2 flex items-center justify-center",
+                speaker ? "bg-foreground text-background border-foreground" : "border-border"
+              )}
+              aria-label={speaker ? "Выключить громкую связь" : "Включить громкую связь"}
+            >
+              {speaker ? <Volume2 className="w-7 h-7" /> : <VolumeX className="w-7 h-7" />}
             </button>
             <button
               type="button"

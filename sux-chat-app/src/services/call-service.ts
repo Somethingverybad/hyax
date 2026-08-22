@@ -369,20 +369,15 @@ export class OneToOneCallService {
       iceServers: this.iceServers,
     });
 
-    this.remoteStream = new MediaStream();
-    this.onRemoteStream?.(this.remoteStream);
-
+    // Поток отдаём только с готовой дорожкой и каждый раз новым объектом:
+    // WebKit (iOS) не начинает играть дорожки, добавленные в MediaStream уже
+    // после присвоения в srcObject — раньше туда уходил пустой поток, и
+    // разговор был беззвучным.
     this.peerConnection.ontrack = (event) => {
       console.log('🎵 [CallService] Получен удалённый трек:', event.track.kind);
-      const track = event.track;
-      if (track && track.kind === "audio" && this.remoteStream) {
-        this.remoteStream.addTrack(track);
-        console.log('✅ [CallService] Аудио трек добавлен в remoteStream');
-      }
-      if (this.remoteStream) {
-        this.onRemoteStream?.(this.remoteStream);
-        console.log('✅ [CallService] Вызван onRemoteStream callback');
-      }
+      const tracks = event.streams?.[0]?.getTracks() ?? [event.track];
+      this.remoteStream = new MediaStream(tracks);
+      this.onRemoteStream?.(this.remoteStream);
       this.setState("active");
     };
 

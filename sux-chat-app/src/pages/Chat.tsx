@@ -52,6 +52,8 @@ const Chat = () => {
   const [callPeer, setCallPeer] = useState<{ id: string; name: string; avatarUrl?: string | null } | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [muted, setMuted] = useState(false);
+  // Громкая связь по умолчанию: телефон обычно лежит на столе, а не у уха.
+  const [speaker, setSpeaker] = useState(true);
   const wsRef = useRef<WebSocketService | null>(null);
   const callRef = useRef<OneToOneCallService | null>(null);
   const lastCallIdRef = useRef<string | null>(null);
@@ -234,7 +236,11 @@ const Chat = () => {
           setCallState(state);
           const id = svc.getCurrentCallId();
           if (id) lastCallIdRef.current = id;
-          if (state === "active" && id) voip.reportConnected(id);
+          if (state === "active" && id) {
+            voip.reportConnected(id);
+            voip.setSpeaker(true);
+            setSpeaker(true);
+          }
         },
         onIncomingCall: (c) => {
           setIncomingCall(c);
@@ -359,6 +365,12 @@ const Chat = () => {
     setMuted(!!m);
   };
 
+  const toggleSpeaker = () => {
+    const next = !speaker;
+    setSpeaker(next);
+    voip.setSpeaker(next);
+  };
+
   const callUi = callPeer ? (
     <CallOverlay
       state={callState}
@@ -369,6 +381,8 @@ const Chat = () => {
       onReject={rejectCall}
       onHangup={hangup}
       onToggleMute={toggleMute}
+      speaker={speaker}
+      onToggleSpeaker={toggleSpeaker}
     />
   ) : null;
 

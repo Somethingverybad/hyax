@@ -1,5 +1,7 @@
 package com.huyax.app;
 
+import android.content.Context;
+import android.media.AudioManager;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -55,8 +57,26 @@ public class VoipPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setSpeaker(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", true);
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (am != null) {
+            // MODE_IN_COMMUNICATION включает эхоподавление и правильный
+            // маршрут; без него WebView играет разговор через мультимедиа.
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            am.setSpeakerphoneOn(enabled);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void endCall(PluginCall call) {
         CallNotifications.cancel(getContext());
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (am != null) {
+            am.setSpeakerphoneOn(false);
+            am.setMode(AudioManager.MODE_NORMAL);
+        }
         call.resolve();
     }
 
