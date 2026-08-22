@@ -205,18 +205,16 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     }
 
     private func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        // defaultToSpeaker: без него звук уходит в разговорный динамик, и
-        // кажется, что связи нет, пока не приложишь телефон к уху.
-        try? session.setCategory(.playAndRecord, mode: .voiceChat,
-                                 options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+        // Раньше здесь ставилась категория playAndRecord/voiceChat. Это
+        // конфликтовало с сессией WebKit, который ведёт сам разговор:
+        // звонок соединялся, но был беззвучным. Настройку оставляем ему.
     }
 
+    /// Переключение выхода. Категорию и активацию сессии не трогаем: ими
+    /// владеет WebKit, который ведёт сам разговор, — вмешательство глушило
+    /// звук. Меняем только маршрут.
     func setSpeaker(_ enabled: Bool) {
-        let session = AVAudioSession.sharedInstance()
-        configureAudioSession()
-        try? session.setActive(true)
-        try? session.overrideOutputAudioPort(enabled ? .speaker : .none)
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none)
     }
 
     private func jsPayload(_ p: [String: Any]) -> [String: Any] {
