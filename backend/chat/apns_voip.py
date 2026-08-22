@@ -104,6 +104,7 @@ def _deliver(tokens, payload):
                 logger.exception("APNs VoIP: запрос не удался")
                 continue
             if status == 200:
+                logger.info("APNs VoIP %s…: доставлен", token[:12])
                 continue
             if status == 410 or reason in ("BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"):
                 dead.append(token)
@@ -125,6 +126,7 @@ def notify_voip(profiles, payload: dict) -> int:
     tokens = list(
         PushToken.objects.filter(user__in=profiles, platform="ios_voip").values_list("token", flat=True)
     )
+    logger.info("APNs VoIP %s: устройств %d", payload.get("type", "?"), len(tokens))
     if tokens:
         threading.Thread(target=_deliver, args=(tokens, payload), daemon=True).start()
     return len(tokens)

@@ -87,9 +87,14 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         }
 
         // Правило iOS: на каждый VoIP-пуш — reportNewIncomingCall, без исключений.
+        showIncoming(callId: callId, data: data, valid: kind == "incoming_call", completion: completion)
+    }
+
+    private func showIncoming(callId: String, data: [String: Any],
+                              valid: Bool = true, completion: (() -> Void)? = nil) {
         let uuid = UUID(uuidString: callId) ?? UUID()
         // В группе звонит не человек, а сама группа — так и подписываем.
-        let isGroup = (data["group"] as? String) == "1"
+        let isGroup = (data["group"] as? String) == "1" || (data["group"] as? Bool) == true
         let caller = (data["from_username"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "ХУЯКС"
         let groupName = (data["chat_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Группа"
         let name = isGroup ? "\(groupName) · \(caller)" : caller
@@ -104,13 +109,13 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
         calls[callId] = CallInfo(uuid: uuid, payload: data)
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
-            if error != nil || kind != "incoming_call" {
+            if error != nil || !valid {
                 self?.calls.removeValue(forKey: callId)
                 self?.provider.reportCall(with: uuid, endedAt: nil, reason: .failed)
             } else {
                 self?.armRingTimeout(callId: callId)
             }
-            completion()
+            completion?()
         }
     }
 
@@ -128,6 +133,17 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     /// Исходящий звонок регистрируем в системе: с нативным движком CallKit
     /// больше не конфликтует за аудио-сессию, зато звонок попадает в журнал
     /// вызовов и корректно уживается с телефонией.
+    /// Показать входящий звонок по данным из приложения.
+    ///
+    /// Обычно вызов приносит VoIP-пуш, но он может задержаться или не дойти
+    /// (сеть, режимы энергосбережения). Когда приложение живо, сигнал о
+    /// звонке приходит и по вебсокету — показываем экран сразу, а повторный
+    /// пуш с тем же идентификатором ничего не продублирует.
+    func reportIncoming(callId: String, payload: [String: Any]) {
+        guard calls[callId] == nil else { return }
+        showIncoming(callId: callId, data: payload)
+    }
+
     func reportOutgoing(callId: String, name: String) {
         let uuid = UUID(uuidString: callId) ?? UUID()
         calls[callId] = CallInfo(uuid: uuid, payload: ["call_id": callId], answered: true)
@@ -241,6 +257,7 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "register", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPendingAnswer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reportIncomingCall", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reportOutgoingCall", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reportConnected", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setSpeaker", returnType: CAPPluginReturnPromise),
@@ -265,6 +282,23 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
         } else {
             call.resolve(["call": NSNull()])
         }
+    }
+
+    @objc func reportIncomingCall(_ call: CAPPluginCall) {
+        guard let callId = call.getString("callId") else { call.reject("callId обязателен"); return }
+        var payload: [String: Any] = [
+            "chat_id": call.getString("chatId") ?? "",
+            "from_user_id": call.getString("fromUserId") ?? "",
+            "from_username": call.getString("fromUsername") ?? "",
+            "from_user_avatar": call.getString("fromUserAvatar") ?? "",
+            "call_type": call.getString("callType") ?? "audio",
+        ]
+        if call.getBool("group") == true {
+            payload["group"] = "1"
+            payload["chat_name"] = call.getString("chatName") ?? "Группа"
+        }
+        VoipManager.shared.reportIncoming(callId: callId, payload: payload)
+        call.resolve()
     }
 
     @objc func reportOutgoingCall(_ call: CAPPluginCall) {

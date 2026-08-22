@@ -205,7 +205,19 @@ const Chat = () => {
             });
             return;
           }
-          if (hasCallKit()) return; // iOS: входящий уже показал CallKit по VoIP-пушу
+          if (hasCallKit()) {
+            // iOS: экран вызова рисует система. Пуш мог не дойти — просим
+            // показать вызов и по сигналу из сокета, дубли отсекаются по id.
+            voip.reportIncomingCall({
+              callId: msg.data.call_id,
+              chatId: msg.data.chat_id,
+              fromUserId: msg.data.from_user_id,
+              fromUsername: msg.data.from_username,
+              fromUserAvatar: msg.data.from_user_avatar,
+              callType: msg.data.call_type || "audio",
+            });
+            return;
+          }
           svc?.notifyIncomingCall({
             callId: msg.data.call_id,
             chatId: msg.data.chat_id,

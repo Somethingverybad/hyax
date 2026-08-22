@@ -27,6 +27,8 @@ interface VoipPlugin {
   /** Приложение запустили из звонка, пока JS грузился: answered — уже
    *  принят (CallKit / кнопка «Ответить»), иначе — показать входящий. */
   getPendingAnswer(): Promise<{ call: VoipCallPayload | null; answered?: boolean }>;
+  /** Показать входящий по сигналу из приложения, не дожидаясь VoIP-пуша. */
+  reportIncomingCall(o: VoipCallPayload): Promise<void>;
   reportOutgoingCall(o: { callId: string; name: string }): Promise<void>;
   /** Маршрут звука: громкая связь или разговорный динамик. */
   setSpeaker(o: { enabled: boolean }): Promise<void>;
@@ -79,6 +81,7 @@ export const voip = {
     const r = await quiet(() => plugin.getPendingAnswer());
     return r?.call ? { call: r.call, answered: r.answered !== false } : null;
   },
+  reportIncomingCall: (call: VoipCallPayload) => quiet(() => plugin.reportIncomingCall(call)),
   reportOutgoingCall: (callId: string, name: string) =>
     quiet(() => plugin.reportOutgoingCall({ callId, name })),
   reportConnected: (callId: string) => quiet(() => plugin.reportConnected({ callId })),
