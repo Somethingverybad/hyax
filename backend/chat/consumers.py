@@ -231,13 +231,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if signal_type in ("call_reject", "call_end") and call_id:
             try:
                 from .fcm import notify_data
+                from .apns_voip import notify_voip
                 _session = await database_sync_to_async(CallSession.objects.get)(id=call_id)
                 _other = target_user_id if str(profile_id) == str(_session.initiator_id) else _session.initiator_id
                 if _other:
-                    await database_sync_to_async(notify_data)(
-                        Profile.objects.filter(id=_other),
-                        {"type": "call_ended", "call_id": str(call_id)},
-                    )
+                    _profiles = Profile.objects.filter(id=_other)
+                    _cancel = {"type": "call_ended", "call_id": str(call_id)}
+                    # На iOS отмену несёт тот же VoIP-канал, что и вызов:
+                    # тихий пуш спящее приложение будит ненадёжно, и экран
+                    # звонка висел до таймаута.
+                    await database_sync_to_async(notify_voip)(_profiles, _cancel)
+                    await database_sync_to_async(notify_data)(_profiles, _cancel)
             except Exception as e:
                 print(f"❌ [{signal_type}] тихий пуш не отправлен: {e}")
 
@@ -695,13 +699,17 @@ class UserConsumer(AsyncWebsocketConsumer):
         if signal_type in ("call_reject", "call_end") and call_id:
             try:
                 from .fcm import notify_data
+                from .apns_voip import notify_voip
                 _session = await database_sync_to_async(CallSession.objects.get)(id=call_id)
                 _other = target_user_id if str(profile_id) == str(_session.initiator_id) else _session.initiator_id
                 if _other:
-                    await database_sync_to_async(notify_data)(
-                        Profile.objects.filter(id=_other),
-                        {"type": "call_ended", "call_id": str(call_id)},
-                    )
+                    _profiles = Profile.objects.filter(id=_other)
+                    _cancel = {"type": "call_ended", "call_id": str(call_id)}
+                    # На iOS отмену несёт тот же VoIP-канал, что и вызов:
+                    # тихий пуш спящее приложение будит ненадёжно, и экран
+                    # звонка висел до таймаута.
+                    await database_sync_to_async(notify_voip)(_profiles, _cancel)
+                    await database_sync_to_async(notify_data)(_profiles, _cancel)
             except Exception as e:
                 print(f"❌ [{signal_type}] тихий пуш не отправлен: {e}")
 
@@ -804,11 +812,12 @@ class UserConsumer(AsyncWebsocketConsumer):
             if not remaining:
                 try:
                     from .fcm import notify_data
+                    from .apns_voip import notify_voip
                     invitees = await self.group_invitees(chat_id, profile_id)
-                    await database_sync_to_async(notify_data)(
-                        Profile.objects.filter(id__in=invitees),
-                        {"type": "call_ended", "call_id": str(call_id)},
-                    )
+                    profiles = Profile.objects.filter(id__in=invitees)
+                    cancel = {"type": "call_ended", "call_id": str(call_id)}
+                    await database_sync_to_async(notify_voip)(profiles, cancel)
+                    await database_sync_to_async(notify_data)(profiles, cancel)
                 except Exception as e:
                     print(f"❌ [group] отбой не разослан: {e}")
             return
