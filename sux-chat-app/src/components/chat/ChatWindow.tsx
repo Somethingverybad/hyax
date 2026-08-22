@@ -84,6 +84,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   // в сторону отменяет — как в мессенджерах.
   const { recording, seconds: recSeconds, start: startRec, stop: stopRec } = useVoiceRecorder();
   const [cancelArmed, setCancelArmed] = useState(false);
+  // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
+  // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
+  const cancelArmedRef = useRef(false);
   // Долгий тап по сообщению открывает меню — так же, как в мессенджерах,
   // где системное выделение текста только мешает.
   const [menuMessage, setMenuMessage] = useState<Message | null>(null);
@@ -375,7 +378,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
 
   const beginRecording = async (e: React.PointerEvent) => {
     if (uploading) return;
+    // Забираем указатель себе: иначе движение пальца уходит странице как
+    // прокрутка, событие обрывается, и жест отмены не срабатывает.
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     holdStartRef.current = { x: e.clientX, y: e.clientY };
+    cancelArmedRef.current = false;
     setCancelArmed(false);
     const ok = await startRec();
     if (!ok) toast.error("Нет доступа к микрофону");
@@ -383,14 +390,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
 
   const moveRecording = (e: React.PointerEvent) => {
     const from = holdStartRef.current;
-    if (!from || !recording) return;
+    if (!from) return;
     // Увод влево или вверх — жест отмены, как в мессенджерах.
-    setCancelArmed(from.x - e.clientX > 70 || from.y - e.clientY > 70);
+    const armed = from.x - e.clientX > 70 || from.y - e.clientY > 70;
+    cancelArmedRef.current = armed;
+    setCancelArmed(armed);
   };
 
-  const finishRecording = async () => {
-    const cancel = cancelArmed;
+  const finishRecording = async (forceCancel = false) => {
+    const cancel = forceCancel || cancelArmedRef.current;
     holdStartRef.current = null;
+    cancelArmedRef.current = false;
     setCancelArmed(false);
     const result = await stopRec(cancel);
     if (!result || !chatId) return;
@@ -870,9 +880,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                 type="button"
                 onPointerDown={beginRecording}
                 onPointerMove={moveRecording}
-                onPointerUp={finishRecording}
-                onPointerCancel={() => finishRecording()}
+                onPointerUp={() => finishRecording()}
+                onPointerCancel={() => finishRecording(true)}
                 disabled={uploading}
+                style={{ touchAction: "none" }}
                 className={cn(
                   "h-10 md:h-11 px-4 md:px-6 shrink-0 flex items-center justify-center transition-colors",
                   recording ? "bg-foreground text-background" : "bg-gradient-primary text-primary-foreground"
