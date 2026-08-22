@@ -548,7 +548,7 @@ const ChatSidebar = ({
                           )}
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <p className="text-sm text-muted-foreground truncate">
+                          <p className="text-sm text-muted-foreground truncate flex-1 min-w-0">
                             {isLoading
                               ? "Загрузка…"
                               : (chat as any).last_message

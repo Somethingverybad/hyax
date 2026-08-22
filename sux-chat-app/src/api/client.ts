@@ -495,6 +495,28 @@ export const api = {
     return res.json();
   },
 
+  // ===== ГОЛОСОВЫЕ СООБЩЕНИЯ =====
+  uploadVoice: async (file: File): Promise<{ file_url: string; file_name: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchWithAuthMultipart(`${API_URL}/voice/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Voice upload failed: ${res.status}`);
+    return res.json();
+  },
+
+  sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration }),
+    });
+    if (!res.ok) throw new Error("Не удалось отправить голосовое");
+    return res.json();
+  },
+
   // ===== ЗВОНКИ =====
   // ICE-серверы (STUN + TURN с кредами) приходят с сервера — в сборке ничего
   // секретного, и TURN можно поменять без релиза.

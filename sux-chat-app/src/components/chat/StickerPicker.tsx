@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api, mediaUrl } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Music2, Play, Square, Check } from "lucide-react";
+import type { NotificationSoundInfo } from "@/api/client";
 
 interface Sticker {
   id: string;
@@ -24,6 +25,11 @@ interface UserStickerPack {
 
 interface StickerPickerProps {
   onSelect: (sticker: Sticker) => void;
+  /** Аудио-стикеры живут в этой же панели: отдельная кнопка рядом со
+   *  стикерами дробила один и тот же сценарий «отправить что-то забавное». */
+  sounds?: NotificationSoundInfo[];
+  selectedSoundId?: string | null;
+  onSelectSound?: (sound: NotificationSoundInfo | null) => void;
 }
 
 /**
@@ -33,7 +39,34 @@ interface StickerPickerProps {
  * (создание, импорт, удаление) осталось в вебе — на маленьком экране это
  * отдельный сценарий, который мешал бы основному.
  */
-const StickerPicker = ({ onSelect }: StickerPickerProps) => {
+const StickerPicker = ({
+  onSelect,
+  sounds = [],
+  selectedSoundId = null,
+  onSelectSound,
+}: StickerPickerProps) => {
+  const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
+  // Прослушивание — отдельной кнопкой: раньше звук играл на каждый тап,
+  // включая снятие выбора, и панель превращалась в какофонию.
+  const previewRef = useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+
+  const preview = (sound: NotificationSoundInfo) => {
+    previewRef.current?.pause();
+    if (playingId === sound.id) {
+      setPlayingId(null);
+      return;
+    }
+    const audio = new Audio(mediaUrl(sound.url));
+    audio.volume = 0.7;
+    audio.onended = () => setPlayingId(null);
+    previewRef.current = audio;
+    setPlayingId(sound.id);
+    audio.play().catch(() => setPlayingId(null));
+  };
+
+  useEffect(() => () => previewRef.current?.pause(), []);
+
   const [packs, setPacks] = useState<UserStickerPack[]>([]);
   const [activePackId, setActivePackId] = useState<string | null>(null);
   const [stickers, setStickers] = useState<Sticker[]>([]);
@@ -114,10 +147,81 @@ const StickerPicker = ({ onSelect }: StickerPickerProps) => {
     })();
   }, [activePackId]);
 
+  const tabs = (
+    <div className="flex gap-2 px-3 pt-2 shrink-0">
+      <button
+        type="button"
+        onClick={() => setTab("stickers")}
+        className={cn(
+          "flex-1 py-1.5 text-xs font-semibold",
+          tab === "stickers" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
+        )}
+      >
+        Стикеры
+      </button>
+      <button
+        type="button"
+        onClick={() => setTab("sounds")}
+        className={cn(
+          "flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1.5",
+          tab === "sounds" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
+        )}
+      >
+        <Music2 className="w-3.5 h-3.5" />
+        Звуки
+      </button>
+    </div>
+  );
+
+  const soundsTab = (
+    <div className="h-64 flex flex-col">
+      {tabs}
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {sounds.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
+        )}
+        {sounds.map((sound) => {
+          const chosen = selectedSoundId === sound.id;
+          return (
+            <div
+              key={sound.id}
+              className={cn(
+                "flex items-center gap-2 px-2 py-2 border-2",
+                chosen ? "border-primary bg-primary/10" : "border-transparent bg-secondary/40",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => preview(sound)}
+                className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary"
+                aria-label={playingId === sound.id ? "Остановить" : "Прослушать"}
+              >
+                {playingId === sound.id ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectSound?.(chosen ? null : sound)}
+                className="flex-1 text-left text-sm truncate"
+              >
+                {sound.name}
+              </button>
+              {chosen && <Check className="w-4 h-4 text-primary shrink-0" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  if (tab === "sounds") return soundsTab;
+
   if (loading) {
     return (
-      <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
-        Загрузка стикеров…
+      <div className="h-64 flex flex-col">
+        {tabs}
+        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+          Загрузка стикеров…
+        </div>
       </div>
     );
   }
@@ -152,6 +256,7 @@ const StickerPicker = ({ onSelect }: StickerPickerProps) => {
   if (packs.length === 0) {
     return (
       <div className="h-64 flex flex-col">
+        {tabs}
         {creating ? createForm : null}
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="text-sm text-muted-foreground">Наборов пока нет</p>
@@ -171,6 +276,7 @@ const StickerPicker = ({ onSelect }: StickerPickerProps) => {
 
   return (
     <div className="h-64 flex flex-col">
+      {tabs}
       {creating && createForm}
 
       {/* Полоса наборов */}

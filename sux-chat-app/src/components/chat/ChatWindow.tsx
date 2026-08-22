@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
+import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -24,6 +25,9 @@ interface Message {
   sticker?: { id: string; file_url: string; emoji?: string } | null;
   /** Аудио-стикер: звук, который слышит получатель. */
   sound?: { id: string; slug: string; name: string; url: string } | null;
+  /** Голосовое сообщение и его длительность в секундах. */
+  voice_url?: string | null;
+  voice_duration?: number | null;
   sender_id: string;
   sender?: Profile;
   created_at: string;
@@ -73,10 +77,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   // Аудио-стикеры: каталог с сервера, выбранный звук уедет с сообщением
   // и прозвучит у получателя (в пуше и в открытом приложении).
   const [sounds, setSounds] = useState<NotificationSoundInfo[]>([]);
-  const [soundsOpen, setSoundsOpen] = useState(false);
   const [selectedSound, setSelectedSound] = useState<NotificationSoundInfo | null>(null);
   // Открытая на весь экран картинка: { url, name }.
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
+  // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
+  // в сторону отменяет — как в мессенджерах.
+  const { recording, seconds: recSeconds, start: startRec, stop: stopRec } = useVoiceRecorder();
+  const [cancelArmed, setCancelArmed] = useState(false);
+  const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -128,16 +136,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     api.getNotificationSounds().then(setSounds).catch(() => {});
   }, []);
 
-  // Тап по звуку в панели: прослушать и выбрать (повторный тап — снять).
-  const previewSoundRef = useRef<HTMLAudioElement | null>(null);
-  const pickSound = (s: NotificationSoundInfo) => {
-    previewSoundRef.current?.pause();
-    const audio = new Audio(mediaUrl(s.url));
-    audio.volume = 0.6;
-    previewSoundRef.current = audio;
-    audio.play().catch(() => {});
-    setSelectedSound(prev => (prev?.id === s.id ? null : s));
-  };
+  // Высоту пересчитываем на каждое изменение текста: сначала сбрасываем,
+  // иначе поле умеет только расти и не сжимается после отправки.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 104)}px`;
+  }, [newMessage]);
 
   // Основной эффект для загрузки сообщений
   useEffect(() => {
@@ -294,7 +301,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     setNewMessage("");
     setSelectedFile(null);
     setSelectedSound(null);
-    setSoundsOpen(false);
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(), 50);
@@ -338,6 +344,42 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
       setSelectedFile(file);
       setSelectedSound(sound);
       if (localUrl) URL.revokeObjectURL(localUrl);
+    }
+  };
+
+  const beginRecording = async (e: React.PointerEvent) => {
+    if (uploading) return;
+    holdStartRef.current = { x: e.clientX, y: e.clientY };
+    setCancelArmed(false);
+    const ok = await startRec();
+    if (!ok) toast.error("Нет доступа к микрофону");
+  };
+
+  const moveRecording = (e: React.PointerEvent) => {
+    const from = holdStartRef.current;
+    if (!from || !recording) return;
+    // Увод влево или вверх — жест отмены, как в мессенджерах.
+    setCancelArmed(from.x - e.clientX > 70 || from.y - e.clientY > 70);
+  };
+
+  const finishRecording = async () => {
+    const cancel = cancelArmed;
+    holdStartRef.current = null;
+    setCancelArmed(false);
+    const result = await stopRec(cancel);
+    if (!result || !chatId) return;
+
+    setUploading(true);
+    try {
+      const uploaded = await api.uploadVoice(result.file);
+      await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
+      lastSendTimeRef.current = Date.now();
+      await fetchMessages();
+      setTimeout(() => scrollToBottom(), 50);
+    } catch {
+      toast.error("Не удалось отправить голосовое");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -519,7 +561,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
 
                   {/* Контент сообщения */}
                   <div className={cn(
-                    "flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[70%]",
+                    "flex flex-col max-w-[76%] sm:max-w-[70%] md:max-w-[65%]",
                     isOwn ? "items-end" : "items-start"
                   )}>
                     {/* Имя отправителя (только для чужих сообщений) */}
@@ -558,6 +600,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                           alt={message.sticker.emoji || "Стикер"}
                           className="w-32 h-32 object-contain"
                           loading="lazy"
+                        />
+                      )}
+
+                      {/* Голосовое сообщение */}
+                      {message.voice_url && (
+                        <VoiceBubble
+                          url={mediaUrl(message.voice_url)}
+                          seconds={message.voice_duration || 0}
+                          own={isOwn}
                         />
                       )}
 
@@ -710,6 +761,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
             </div>
           )}
 
+          {recording && (
+            <div className={cn(
+              "mb-2 flex items-center gap-3 px-3 py-2 border-2",
+              cancelArmed ? "border-primary bg-primary/10" : "border-border bg-secondary/40"
+            )}>
+              <span className="w-2.5 h-2.5 bg-primary animate-pulse shrink-0" />
+              <span className="font-mono text-sm">
+                {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
+                {String(recSeconds % 60).padStart(2, "0")}
+              </span>
+              <span className="text-xs text-muted-foreground flex-1 truncate">
+                {cancelArmed ? "Отпустите — запись отменится" : "Ведите влево, чтобы отменить"}
+              </span>
+              {cancelArmed && <Trash2 className="w-4 h-4 text-primary shrink-0" />}
+            </div>
+          )}
+
           {stickersOpen && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
@@ -722,6 +790,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                     toast.error("Не удалось отправить стикер");
                   }
                 }}
+                sounds={sounds}
+                selectedSoundId={selectedSound?.id ?? null}
+                onSelectSound={(sound) => setSelectedSound(sound)}
               />
             </div>
           )}
@@ -754,49 +825,58 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
               <Smile className="w-4 h-4" />
             </Button>
 
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setSoundsOpen((v) => !v)}
-              className={cn(
-                "h-10 w-10 md:h-11 md:w-11 shrink-0 border-2",
-                selectedSound && "border-primary text-primary"
-              )}
-              aria-label="Звук сообщения"
-            >
-              <Music2 className="w-4 h-4" />
-            </Button>
-            
             <div className="flex-1 relative">
-              <Input
+              {/* Поле растёт под текст до четырёх строк: раньше это был
+                  однострочный input (проп multiline ничего не делал), и
+                  длинное сообщение набиралось вслепую. */}
+              <textarea
+                ref={textareaRef}
                 placeholder="Сообщение..."
                 value={newMessage}
+                rows={1}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => {
+                onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
                   }
                 }}
                 disabled={uploading}
-                className="pr-12 bg-background border-2 h-10 md:h-11 resize-none text-sm md:text-base"
-                multiline
-                style={{ minHeight: '40px', maxHeight: '120px' }}
+                className="w-full resize-none overflow-y-auto bg-background border-2 border-border px-3 py-2 text-sm md:text-base leading-6 focus:outline-none focus:border-primary"
+                style={{ maxHeight: "6.5rem" }}
               />
             </div>
             
-            <Button 
-              onClick={sendMessage} 
-              disabled={uploading || (!newMessage.trim() && !selectedFile)} 
-              className="h-10 md:h-11 px-4 md:px-6 bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200 shrink-0"
-              size="lg"
-            >
-              {uploading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+            {newMessage.trim() || selectedFile ? (
+              <Button
+                onClick={sendMessage}
+                disabled={uploading}
+                className="h-10 md:h-11 px-4 md:px-6 bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200 shrink-0"
+                size="lg"
+              >
+                {uploading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+            ) : (
+              <button
+                type="button"
+                onPointerDown={beginRecording}
+                onPointerMove={moveRecording}
+                onPointerUp={finishRecording}
+                onPointerCancel={() => finishRecording()}
+                disabled={uploading}
+                className={cn(
+                  "h-10 md:h-11 px-4 md:px-6 shrink-0 flex items-center justify-center transition-colors",
+                  recording ? "bg-foreground text-background" : "bg-gradient-primary text-primary-foreground"
+                )}
+                aria-label="Записать голосовое"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -819,6 +899,47 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
  * Раньше тап открывал картинку в браузере — из приложения это выглядит
  * как выброс наружу.
  */
+const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => () => audioRef.current?.pause(), []);
+
+  const toggle = () => {
+    if (!audioRef.current) {
+      const audio = new Audio(url);
+      audio.onended = () => setPlaying(false);
+      audio.onpause = () => setPlaying(false);
+      audioRef.current = audio;
+    }
+    const audio = audioRef.current;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+      return;
+    }
+    audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+  };
+
+  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+
+  return (
+    <button type="button" onClick={toggle} className="flex items-center gap-2 py-1 min-w-[9rem]">
+      <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20">
+        {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+      </span>
+      {/* Дорожка декоративная: разбирать файл ради настоящей формы волны
+          дорого, а пользы в переписке от неё немного. */}
+      <span className="flex-1 flex items-end gap-[3px] h-6">
+        {Array.from({ length: 16 }).map((_, i) => (
+          <span key={i} className="flex-1 bg-current opacity-60" style={{ height: `${8 + ((i * 37) % 16)}px` }} />
+        ))}
+      </span>
+      <span className="text-xs opacity-80 shrink-0">{label}</span>
+    </button>
+  );
+};
+
 const ImageViewer = ({
   item,
   onClose,
