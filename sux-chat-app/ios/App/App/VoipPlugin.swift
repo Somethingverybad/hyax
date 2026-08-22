@@ -124,19 +124,18 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
     // MARK: - Команды из JS
 
-    func reportOutgoing(callId: String, name: String) {
-        let uuid = UUID(uuidString: callId) ?? UUID()
-        calls[callId] = CallInfo(uuid: uuid, payload: ["call_id": callId], answered: true)
-        let handle = CXHandle(type: .generic, value: name)
-        let action = CXStartCallAction(call: uuid, handle: handle)
-        callController.request(CXTransaction(action: action)) { [weak self] error in
-            if error != nil { self?.calls.removeValue(forKey: callId) }
-        }
-    }
+    /// Исходящий звонок системе не отдаём.
+    ///
+    /// Разговор ведёт WebView, а CallKit забирает аудио-сессию себе — микрофон
+    /// у движка становится немым, и собеседник слышит тишину (в статистике
+    /// WebRTC исходящих пакетов с айфона не было вовсе). Системный экран нужен
+    /// только для входящего вызова на заблокированном экране, поэтому здесь
+    /// ничего не делаем: звук остаётся у движка, как в веб-версии.
+    func reportOutgoing(callId: String, name: String) {}
 
     func reportConnected(callId: String) {
-        guard let info = calls[callId] else { return }
-        provider.reportOutgoingCall(with: info.uuid, connectedAt: nil)
+        // Соединение состоялось — системе сообщать нечего: исходящие вызовы
+        // мы ей не отдаём, а входящий к этому моменту уже отпущен.
     }
 
     func end(callId: String, reason: CXCallEndedReason = .remoteEnded) {
@@ -171,7 +170,6 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         }
         calls[callId]?.answered = true
         ringTimers[callId]?.invalidate()
-        configureAudioSession()
         var js = jsPayload(info.payload)
         js["callId"] = callId
         if let plugin {
@@ -180,6 +178,14 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
             pendingAnswer = js
         }
         action.fulfill()
+
+        // Ответили — отпускаем системный вызов и возвращаем звук движку:
+        // дальше разговор ведёт приложение со своим экраном. Пока CallKit
+        // держит сессию, микрофон WebView молчит.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, let info = self.calls[callId] else { return }
+            self.provider.reportCall(with: info.uuid, endedAt: nil, reason: .answeredElsewhere)
+        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
