@@ -19,7 +19,8 @@
     "cap:ios": "npm run build && npx cap sync ios",
     "cap:open:ios": "npx cap open ios",
     "cap:run:ios": "npx cap run ios",
-    "cap:build:ios": "npm run build && npx cap sync ios && npx cap open ios"
+    "cap:build:ios": "npm run build && npx cap sync ios && npx cap open ios",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@capacitor-community/http": "^1.4.1",
@@ -114,16 +115,16 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.huyaks.messenger",
+    "appId": "com.hyax.messenger",
     "productName": "ХУЯКС",
     "directories": {
       "output": "release"
     },
+    "asar": true,
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "node_modules/express/**/*",
-      "node_modules/serve-static/**/*"
+      "!node_modules/**/*"
     ],
     "extraMetadata": {
       "main": "electron/main.cjs"
@@ -136,7 +137,11 @@
       ],
       "icon": "assets/icon.icns",
       "darkModeSupport": true,
-      "asar": false
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Микрофон нужен для звонков и голосовых сообщений.",
+        "NSCameraUsageDescription": "Камера нужна для видеозвонков."
+      }
     },
     "dmg": {
       "contents": [
@@ -151,6 +156,19 @@
           "path": "/Applications"
         }
       ]
-    }
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Network"
+    },
+    "afterPack": "electron/afterPack.cjs"
   }
 }

@@ -1,182 +1,106 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+// Десктопная обёртка hyax. Та же веб-сборка (dist/), что и в мобильном
+// приложении, в окне Electron. API и WebSocket ходят на боевой сервер по
+// абсолютным URL, поэтому никакого локального бэкенда здесь нет.
+const { app, BrowserWindow, ipcMain, dialog, protocol, net, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const https = require('https');
-const http = require('http');
-const { URL } = require('url');
-const isDev = !app.isPackaged;
+const { pathToFileURL } = require('url');
 
-let mainWindow;
+// HYAX_FORCE_PROD=1 — прогнать продакшен-режим (app://, dist/) dev-бинарником
+// Electron; HYAX_DEBUG_PORT — порт DevTools-протокола для проверки без GUI.
+// Упакованное приложение флаги командной строки не принимает.
+const isDev = !app.isPackaged && !process.env.HYAX_FORCE_PROD;
+if (process.env.HYAX_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.HYAX_DEBUG_PORT);
+}
+const DEV_URL = 'http://localhost:5143';
+const DIST = path.join(__dirname, '../dist');
+
+// Собственная схема app:// вместо file:// и локального http-сервера:
+// это «безопасный контекст» (getUserMedia для звонков работает), у приложения
+// стабильный origin для localStorage, и не нужно занимать порт.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+]);
+
+function serveDist() {
+  protocol.handle('app', (request) => {
+    const { pathname } = new URL(request.url);
+    let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
+    let full = path.join(DIST, rel);
+    // SPA: любой маршрут без файла на диске — это index.html.
+    if (!rel || !fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+      full = path.join(DIST, 'index.html');
+    }
+    return net.fetch(pathToFileURL(full).toString());
+  });
+}
+
+let mainWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 500,
-    height: 700,
-    minWidth: 450,
+    width: 1100,
+    height: 760,
+    minWidth: 420,
     minHeight: 600,
-    maxWidth: 550,
-    maxHeight: 800,
     show: false,
-    frame: false,
-    titleBarStyle: 'hidden',
-    transparent: true,
-    roundedCorners: true,
+    backgroundColor: '#0a0a0a',
+    title: 'ХУЯКС',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: isDev, // Отключаем webSecurity только в dev режиме
     },
   });
 
-  // ВСЕГДА используем localhost:5143 для API запросов
-  if (isDev) {
-    // Development: подключаемся к dev серверу
-    mainWindow.loadURL('http://localhost:5143');
-  } else {
-    // Production: запускаем встроенный сервер на порту 5143
-    startProductionServer();
-    mainWindow.loadURL('http://localhost:5143');
-  }
+  mainWindow.loadURL(isDev ? DEV_URL : 'app://hyax/');
+  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.on('closed', () => { mainWindow = null; });
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.show();
+  // Внешние ссылки — в системный браузер, а не в новое окно приложения.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
   });
 
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
+  if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
-// Функция для запуска сервера в production
-function startProductionServer() {
-  if (isDev) return; // Только для production
-  
-  const express = require('express');
-  const path = require('path');
-
-  const appExpress = express();
-  const distPath = path.join(__dirname, '../dist');
-
-  // Обслуживаем статические файлы
-  appExpress.use(express.static(distPath));
-
-  // Обработчик для всех GET запросов (SPA routing)
-  appExpress.get(/^((?!\.).)*$/, (req, res) => {
-    // Пропускаем API запросы
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).send('Not found');
-    }
-    
-    // Все остальные запросы отправляем на index.html
-    res.sendFile(path.join(distPath, 'index.html'), (err) => {
-      if (err) {
-        console.error('Error sending index.html:', err);
-        res.status(500).send('Error loading application');
-      }
-    });
+// Микрофон/камера для звонков и уведомления — разрешаем без лишних вопросов
+// от Chromium (системный запрос macOS всё равно покажется один раз).
+function allowMediaPermissions() {
+  const allowed = new Set(['media', 'notifications', 'clipboard-read', 'clipboard-sanitized-write']);
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(allowed.has(permission));
   });
-
-  // Запускаем сервер на порту 5143
-  const server = appExpress.listen(5143, () => {
-    console.log('Production server running on http://localhost:5143');
-  }).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log('Port 5143 busy, trying 5144...');
-      appExpress.listen(5144, () => {
-        console.log('Production server running on http://localhost:5144');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.loadURL('http://localhost:5144');
-        }
-      });
-    } else {
-      console.error('Server error:', err);
-    }
-  });
-
-  // Обработка graceful shutdown
-  process.on('SIGTERM', () => {
-    server.close(() => {
-      console.log('Server stopped');
-    });
-  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 }
 
-// Обработчики для управления окном
-ipcMain.on('minimize-window', () => {
-  if (mainWindow) {
-    mainWindow.minimize();
-  }
-});
-
-ipcMain.on('close-window', () => {
-  if (mainWindow) {
-    mainWindow.close();
-  }
-});
-
-ipcMain.on('start-drag', () => {
-  if (mainWindow) {
-    mainWindow.moveTop();
-    mainWindow.setIgnoreMouseEvents(false);
-  }
-});
-
-// Обработчик сохранения файла
-ipcMain.handle('save-file', async (event, fileUrl, fileName) => {
+// Сохранение вложений через системный диалог (preload: electronAPI.saveFile).
+ipcMain.handle('save-file', async (_event, fileUrl, fileName) => {
   try {
-    // Показываем диалог сохранения файла
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: fileName,
       title: 'Сохранить файл',
       buttonLabel: 'Сохранить',
     });
-
-    if (result.canceled) {
-      return { success: false, canceled: true };
-    }
-
-    const savePath = result.filePath;
-    if (!savePath) {
-      return { success: false, error: 'Путь не выбран' };
-    }
-
-    // Загружаем файл
-    return new Promise((resolve, reject) => {
-      const url = new URL(fileUrl);
-      const protocol = url.protocol === 'https:' ? https : http;
-
-      const file = fs.createWriteStream(savePath);
-      
-      protocol.get(fileUrl, (response) => {
-        if (response.statusCode === 301 || response.statusCode === 302) {
-          // Редирект
-          protocol.get(response.headers.location, (redirectResponse) => {
-            redirectResponse.pipe(file);
-          });
-        } else {
-          response.pipe(file);
-        }
-
-        file.on('finish', () => {
-          file.close();
-          resolve({ success: true, path: savePath });
-        });
-
-        file.on('error', (err) => {
-          fs.unlink(savePath, () => {}); // Удаляем частично загруженный файл
-          reject({ success: false, error: err.message });
-        });
-      }).on('error', (err) => {
-        reject({ success: false, error: err.message });
-      });
-    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    const response = await net.fetch(fileUrl);
+    if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+    fs.writeFileSync(result.filePath, Buffer.from(await response.arrayBuffer()));
+    return { success: true, path: result.filePath };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
+ipcMain.on('minimize-window', () => mainWindow?.minimize());
+ipcMain.on('close-window', () => mainWindow?.close());
+
 app.whenReady().then(() => {
+  if (!isDev) serveDist();
+  allowMediaPermissions();
   createWindow();
 
   app.on('activate', () => {
