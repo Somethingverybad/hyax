@@ -7,6 +7,7 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import { api } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
+import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
 import { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
 import { GroupCallService, type GroupCallInvite, type GroupCallState } from "@/services/group-call-service";
@@ -71,6 +72,10 @@ const Chat = () => {
   const [groupPeers, setGroupPeers] = useState<string[]>([]);
   // Чаты нужны обработчикам звонка, а те живут вне рендера.
   const chatsRef = useRef<ChatType[]>([]);
+  // Активный чат для обработчика сокета: он живёт в эффекте с deps
+  // [user?.id] и иначе видел бы устаревший selectedChatId.
+  const selectedChatIdRef = useRef<string | null>(null);
+  selectedChatIdRef.current = selectedChatId;
   chatsRef.current = chats;
   const navigate = useNavigate();
 
@@ -91,6 +96,9 @@ const Chat = () => {
           // Аудио-стикеры: докачиваем caf-файлы каталога в Library/Sounds,
           // чтобы пуш мог сослаться на них по имени. Фоном, без ожидания.
           syncNotificationSounds();
+        } else {
+          // Веб/десктоп: разрешение на системные баннеры (self-guard внутри).
+          ensureNotifyPermission();
         }
       } catch (error) {
         navigate("/auth");
@@ -235,6 +243,26 @@ const Chat = () => {
           else svc?.handleSignal(msg.signal_type, msg.data);
         } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
           refreshChats();
+          // Системный баннер для веб/десктопа. На мобильных — нативный пуш.
+          const m = msg?.data?.message ?? msg?.message;
+          const chatId = msg?.data?.chat_id ?? m?.chat;
+          const senderId = m?.sender?.id;
+          const active = document.visibilityState === "visible" &&
+            chatId && String(chatId) === selectedChatIdRef.current;
+          if (m && senderId && senderId !== user.id && !active) {
+            const preview =
+              (m.content || "").trim() ||
+              (m.sticker ? "Стикер" :
+               m.video_url ? "Видео-сообщение" :
+               m.voice_url ? "Голосовое сообщение" :
+               m.file_url ? "Файл" : "Новое сообщение");
+            showDesktopNotification({
+              title: m.sender?.username || "Новое сообщение",
+              body: preview.slice(0, 150),
+              tag: chatId ? String(chatId) : undefined,
+              onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
+            });
+          }
         }
       },
     });

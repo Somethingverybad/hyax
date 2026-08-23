@@ -605,10 +605,13 @@ class MessageViewSet(viewsets.ModelViewSet):
             )
         except Exception:
             logger.exception("push: не удалось поставить отправку")
-            
-            # Отправляем уведомления всем участникам чата (кроме отправителя)
-            chat_participants = ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile)
-            for participant in chat_participants:
+
+        # WebSocket-уведомление в персональные каналы участников. Нужно веб- и
+        # десктоп-клиентам: они не получают FCM-пуш, а по этому сообщению
+        # обновляют список чатов и показывают системный баннер. Шлём всегда,
+        # а не только при сбое пуша — иначе десктоп «молчит».
+        if channel_layer:
+            for participant in ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile):
                 async_to_sync(channel_layer.group_send)(
                     f'user_{participant.user.id}',
                     {
@@ -616,8 +619,8 @@ class MessageViewSet(viewsets.ModelViewSet):
                         'data': {
                             'type': 'new_message',
                             'chat_id': str(message.chat.id),
-                            'message': message_data
-                        }
+                            'message': message_data,
+                        },
                     }
                 )
         
