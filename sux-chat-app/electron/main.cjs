@@ -15,6 +15,9 @@ if (process.env.HYAX_DEBUG_PORT) {
 }
 const DEV_URL = 'http://localhost:5143';
 const DIST = path.join(__dirname, '../dist');
+// На macOS и Windows иконку окна даёт сам бандл (.icns/.ico), на Linux её
+// нужно указать явно — иначе в панели задач висит стандартный Electron.
+const LINUX_ICON = path.join(__dirname, '../assets/icons/512x512.png');
 
 // Собственная схема app:// вместо file:// и локального http-сервера:
 // это «безопасный контекст» (getUserMedia для звонков работает), у приложения
@@ -47,6 +50,7 @@ function createWindow() {
     show: false,
     backgroundColor: '#0a0a0a',
     title: 'ХУЯКС',
+    ...(process.platform === 'linux' ? { icon: LINUX_ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -100,15 +104,31 @@ ipcMain.handle('save-file', async (_event, fileUrl, fileName) => {
 ipcMain.on('minimize-window', () => mainWindow?.minimize());
 ipcMain.on('close-window', () => mainWindow?.close());
 
-app.whenReady().then(() => {
-  if (!isDev) serveDist();
-  allowMediaPermissions();
-  createWindow();
+function focusMainWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Второй запуск (двойной клик по ярлыку, автозапуск) поднимает уже открытое
+// окно вместо второй копии приложения с тем же localStorage и сокетом.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', focusMainWindow);
+
+  app.whenReady().then(() => {
+    if (!isDev) serveDist();
+    allowMediaPermissions();
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      else focusMainWindow();
+    });
   });
-});
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

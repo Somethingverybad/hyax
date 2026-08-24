@@ -10,6 +10,10 @@ import { Capacitor } from "@capacitor/core";
 
 let permissionAsked = false;
 
+// Логотип в баннере. Без него Linux (libnotify) рисует уведомления с пустой
+// иконкой, а не с приложением: иконку окна оболочка сюда не подставляет.
+const NOTIFY_ICON = "/notification-icon.png";
+
 function available(): boolean {
   return (
     !Capacitor.isNativePlatform() &&
@@ -38,7 +42,11 @@ export function showDesktopNotification(opts: {
 }): void {
   if (!available() || Notification.permission !== "granted") return;
   try {
-    const n = new Notification(opts.title, { body: opts.body, tag: opts.tag });
+    const n = new Notification(opts.title, {
+      body: opts.body,
+      tag: opts.tag,
+      icon: NOTIFY_ICON,
+    });
     n.onclick = () => {
       try {
         window.focus();

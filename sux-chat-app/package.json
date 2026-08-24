@@ -5,6 +5,8 @@
   "type": "module",
   "main": "electron/main.cjs",
   "description": "ХУЯКС эсемэсэнджер",
+  "author": "Somethingverybad <Ancher001@yandex.ru>",
+  "homepage": "https://github.com/Somethingverybad/hyax",
   "scripts": {
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
     "dev:react": "vite --port 5143",
@@ -20,7 +22,10 @@
     "cap:open:ios": "npx cap open ios",
     "cap:run:ios": "npx cap run ios",
     "cap:build:ios": "npm run build && npx cap sync ios && npx cap open ios",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:linux:appimage": "npm run build && electron-builder --linux AppImage",
+    "dist:linux:deb": "npm run build && electron-builder --linux deb"
   },
   "dependencies": {
     "@capacitor-community/http": "^1.4.1",
@@ -124,6 +129,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "assets/icons/**/*",
       "!node_modules/**/*"
     ],
     "extraMetadata": {
@@ -165,9 +171,55 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "category": "Network"
+      "icon": "assets/icons",
+      "executableName": "hyax",
+      "artifactName": "hyax-${version}-${arch}.${ext}",
+      "category": "Network;InstantMessaging;Chat",
+      "maintainer": "Somethingverybad <Ancher001@yandex.ru>",
+      "synopsis": "ХУЯКС эсемэсэнджер",
+      "description": "Десктопный клиент мессенджера ХУЯКС: чаты, голосовые и видео-сообщения, звонки.",
+      "desktop": {
+        "entry": {
+          "Name": "ХУЯКС",
+          "Comment": "ХУЯКС эсемэсэнджер",
+          "Keywords": "chat;messenger;хуякс;hyax;",
+          "StartupWMClass": "hyax-messenger",
+          "StartupNotify": "true"
+        }
+      }
+    },
+    "deb": {
+      "packageName": "hyax",
+      "priority": "optional",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libsecret-1-0"
+      ]
     },
     "afterPack": "electron/afterPack.cjs"
   }
