@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# docker-compose v1 в новых системах не ставится — там плагин «docker compose».
+# Берём то, что есть, иначе скрипт молча ничего не перезапустит.
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="docker-compose"
+else
+    echo "❌ Не найден ни «docker compose», ни «docker-compose»"
+    exit 1
+fi
+
 echo "=== Применение голосовых сообщений ==="
 
 # Переходим в директорию проекта
@@ -12,11 +23,11 @@ chmod 777 backend/media/voice
 
 echo ""
 echo "2. Применение миграций..."
-docker-compose exec api python manage.py migrate
+$COMPOSE exec api python manage.py migrate
 
 echo ""
 echo "3. Перезапуск контейнеров..."
-docker-compose restart api pwa
+$COMPOSE restart api pwa
 
 echo ""
 echo "✅ Готово!"

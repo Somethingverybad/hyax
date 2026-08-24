@@ -8,8 +8,20 @@
 PROJECT_PATH="/home/sux-chat"
 LOG_FILE="$PROJECT_PATH/certbot_renew.log"
 
+# У cron нищий PATH, поэтому команду compose раскрываем в абсолютный путь прямо
+# сейчас. docker-compose v1 в новых системах не ставится — там плагин
+# «docker compose», проверяем оба варианта.
+if docker compose version &> /dev/null; then
+    COMPOSE="$(command -v docker) compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="$(command -v docker-compose)"
+else
+    echo "❌ Не найден ни «docker compose», ни «docker-compose»"
+    exit 1
+fi
+
 # Команда, которая будет выполняться cron'ом
-CRON_CMD="cd $PROJECT_PATH && /usr/bin/docker-compose run --rm certbot certbot renew --webroot --webroot-path=/var/www/certbot --quiet && /usr/bin/docker-compose exec nginx nginx -s reload >> $LOG_FILE 2>&1"
+CRON_CMD="cd $PROJECT_PATH && $COMPOSE run --rm certbot certbot renew --webroot --webroot-path=/var/www/certbot --quiet && $COMPOSE exec nginx nginx -s reload >> $LOG_FILE 2>&1"
 
 # Строка для crontab (запуск каждые 12 часов)
 CRON_JOB="0 */12 * * * $CRON_CMD"

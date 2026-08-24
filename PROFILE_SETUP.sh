@@ -1,18 +1,29 @@
 #!/bin/bash
 
+# docker-compose v1 в новых системах не ставится — там плагин «docker compose».
+# Берём то, что есть, иначе скрипт молча ничего не перезапустит.
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="docker-compose"
+else
+    echo "❌ Не найден ни «docker compose», ни «docker-compose»"
+    exit 1
+fi
+
 echo "🔧 Настройка функционала профилей..."
 
 # Применяем миграции
 echo "📦 Применение миграций для профилей..."
-docker-compose exec api python3 manage.py migrate
+$COMPOSE exec api python3 manage.py migrate
 
 # Создаем директорию для аватаров
 echo "📁 Создание директории для аватаров..."
-docker-compose exec api mkdir -p /app/media/avatars
+$COMPOSE exec api mkdir -p /app/media/avatars
 
 # Перезапускаем контейнеры
 echo "🔄 Перезапуск контейнеров..."
-docker-compose restart api pwa
+$COMPOSE restart api pwa
 
 echo "✅ Настройка профилей завершена!"
 echo ""
