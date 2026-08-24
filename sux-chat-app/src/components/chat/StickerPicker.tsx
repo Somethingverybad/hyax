@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, mediaUrl } from "@/api/client";
+import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Plus, Music2, Play, Square, Check } from "lucide-react";
@@ -48,24 +49,22 @@ const StickerPicker = ({
   const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
   // Прослушивание — отдельной кнопкой: раньше звук играл на каждый тап,
   // включая снятие выбора, и панель превращалась в какофонию.
-  const previewRef = useRef<HTMLAudioElement | null>(null);
+  const previewRef = useRef<(() => void) | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
 
   const preview = (sound: NotificationSoundInfo) => {
-    previewRef.current?.pause();
+    previewRef.current?.();
     if (playingId === sound.id) {
       setPlayingId(null);
       return;
     }
-    const audio = new Audio(mediaUrl(sound.url));
-    audio.volume = 0.7;
-    audio.onended = () => setPlayingId(null);
-    previewRef.current = audio;
     setPlayingId(sound.id);
-    audio.play().catch(() => setPlayingId(null));
+    playSfx(mediaUrl(sound.url), { volume: 0.7, onEnded: () => setPlayingId(null) })
+      .then((stop) => { previewRef.current = stop; })
+      .catch(() => setPlayingId(null));
   };
 
-  useEffect(() => () => previewRef.current?.pause(), []);
+  useEffect(() => () => previewRef.current?.(), []);
 
   const [packs, setPacks] = useState<UserStickerPack[]>([]);
   const [activePackId, setActivePackId] = useState<string | null>(null);

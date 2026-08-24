@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { playSfx } from "@/lib/sfx";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Users } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
@@ -60,12 +61,15 @@ const CallOverlay = ({
   // CallKit; на Android приложение в фоне звонит каналом уведомления.
   useEffect(() => {
     if (state !== "incoming") return;
-    const ring = new Audio("/sounds/call.mp3");
-    ring.loop = true;
-    ring.volume = 0.8;
-    ring.play().catch(() => {});
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    playSfx("/sounds/call.mp3", { loop: true, volume: 0.8 }).then((s) => {
+      if (cancelled) s();
+      else stop = s;
+    });
     return () => {
-      ring.pause();
+      cancelled = true;
+      stop?.();
     };
   }, [state]);
 

@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { api, mediaUrl, NotificationSoundInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { playSfx } from "@/lib/sfx";
+import UserProfileModal from "@/components/UserProfileModal";
 
 interface Profile {
   id: string;
@@ -83,6 +85,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   const [selectedSound, setSelectedSound] = useState<NotificationSoundInfo | null>(null);
   // Открытая на весь экран картинка: { url, name }.
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
+  // Просмотр профиля собеседника (тап по имени в шапке, только 1:1).
+  const [profileOpen, setProfileOpen] = useState(false);
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
   const {
@@ -122,38 +126,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   // Ключ — file_url, который сервер выдал при аплоаде.
   const localImagesRef = useRef<Map<string, string>>(new Map());
   
-  // Рефы для аудио
-  const sendSoundRef = useRef<HTMLAudioElement | null>(null);
-  const receiveSoundRef = useRef<HTMLAudioElement | null>(null);
-  
   // Рефы для отслеживания состояния
   const previousMessagesRef = useRef<Message[]>([]);
   const lastSendTimeRef = useRef<number>(0);
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
-
-  // Инициализация аудио
-  useEffect(() => {
-    sendSoundRef.current = new Audio('/sounds/send.mp3');
-    receiveSoundRef.current = new Audio('/sounds/receive.mp3');
-    
-    if (sendSoundRef.current) {
-      sendSoundRef.current.volume = 0.3;
-    }
-    if (receiveSoundRef.current) {
-      receiveSoundRef.current.volume = 0.3;
-    }
-
-    return () => {
-      if (sendSoundRef.current) {
-        sendSoundRef.current.pause();
-        sendSoundRef.current = null;
-      }
-      if (receiveSoundRef.current) {
-        receiveSoundRef.current.pause();
-        receiveSoundRef.current = null;
-      }
-    };
-  }, []);
 
   // Каталог аудио-стикеров: один запрос на окно чата.
   useEffect(() => {
@@ -223,14 +199,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
           msg => msg.sender?.id !== userId && msg.sound?.url
         );
         if (withSound?.sound?.url) {
-          const audio = new Audio(mediaUrl(withSound.sound.url));
-          audio.volume = 0.6;
-          audio.play().catch(() => {});
-        } else if (receiveSoundRef.current) {
-          receiveSoundRef.current.currentTime = 0;
-          receiveSoundRef.current.play().catch(error => {
-            console.log("Ошибка воспроизведения звука получения:", error);
-          });
+          void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
+        } else {
+          void playSfx("/sounds/receive.mp3", { volume: 0.3 });
         }
       }
 
@@ -328,11 +299,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(), 50);
-
-    if (sendSoundRef.current) {
-      sendSoundRef.current.currentTime = 0;
-      sendSoundRef.current.play().catch(() => {});
-    }
+    void playSfx("/sounds/send.mp3", { volume: 0.3 });
 
     try {
       let sent: Message;
@@ -606,7 +573,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
               <ChevronLeft className="w-5 h-5" />
             </button>
           )}
-          <span className="font-medium truncate flex-1">{title || "Чат"}</span>
+          {peer ? (
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="font-medium truncate flex-1 text-left hover:text-primary transition-colors"
+              title="Профиль собеседника"
+            >
+              {title || peer.username || "Чат"}
+            </button>
+          ) : (
+            <span className="font-medium truncate flex-1">{title || "Чат"}</span>
+          )}
           <button
             type="button"
             onClick={() => setAddOpen(true)}
@@ -1074,6 +1052,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
             </button>
           </div>
         </div>
+      )}
+
+      {profileOpen && peer && (
+        <UserProfileModal
+          userId={peer.id}
+          onClose={() => setProfileOpen(false)}
+          onCall={onCall}
+        />
       )}
 
       {viewer && (

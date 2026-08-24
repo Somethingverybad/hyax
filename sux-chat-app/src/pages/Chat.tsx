@@ -8,6 +8,7 @@ import ChatWindow from "@/components/chat/ChatWindow";
 import Identicon from "@/components/Identicon";
 import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
+import { playSfx } from "@/lib/sfx";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
 import { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
@@ -267,9 +268,7 @@ const Chat = () => {
             // системного уведомления сам звук не проигрывает, поэтому вручную.
             try {
               const url = m.sound?.url ? mediaUrl(m.sound.url) : "/sounds/receive.mp3";
-              const audio = new Audio(url);
-              audio.volume = 0.6;
-              void audio.play().catch(() => {});
+              void playSfx(url, { volume: 0.6 });
             } catch { /* без звука не критично */ }
           }
         }
