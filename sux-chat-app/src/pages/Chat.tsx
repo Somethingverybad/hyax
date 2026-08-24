@@ -5,7 +5,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
-import { api } from "@/api/client";
+import Identicon from "@/components/Identicon";
+import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
 import { WebSocketService } from "@/services/websocket";
@@ -262,6 +263,14 @@ const Chat = () => {
               tag: chatId ? String(chatId) : undefined,
               onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
             });
+            // Звук: аудио-стикер сообщения или дефолтный «receive». Баннер
+            // системного уведомления сам звук не проигрывает, поэтому вручную.
+            try {
+              const url = m.sound?.url ? mediaUrl(m.sound.url) : "/sounds/receive.mp3";
+              const audio = new Audio(url);
+              audio.volume = 0.6;
+              void audio.play().catch(() => {});
+            } catch { /* без звука не критично */ }
           }
         }
       },
@@ -605,6 +614,7 @@ const Chat = () => {
             onLogout={handleLogout}
             isCollapsed={false}
             onToggleCollapse={toggleSidebar}
+            onOpenProfile={() => navigate("/profile")}
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
@@ -622,40 +632,36 @@ const Chat = () => {
       <ChatSidebar
         userId={user.id}
         chats={chats}
-        onSelectChat={setSelectedChatId}
+        onSelectChat={(id, title) => {
+          setSelectedChatId(id);
+          if (title) setSelectedChatTitle(title);
+        }}
         selectedChatId={selectedChatId}
         onLogout={handleLogout}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={toggleSidebar}
+        onOpenProfile={() => navigate("/profile")}
         onChatDeleted={handleChatDeleted}
         onChatCreated={handleChatCreated}
       />
-      
-      {/* Показываем ChatWindow только когда сайдбар свернут И выбран чат */}
-      {isSidebarCollapsed && selectedChatId && (
+
+      {selectedChatId ? (
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
           peer={peer || (selectedChat?.is_group ? { id: selectedChatId!, username: selectedChat.name || "Группа" } : null)}
           onCall={startCall}
+          title={selectedChatTitle}
         />
-      )}
-      
-      {/* Сообщение когда сайдбар развернут */}
-      {!isSidebarCollapsed}
-      
-      {/* Сообщение когда сайдбар свернут но чат не выбран */}
-      {isSidebarCollapsed && !selectedChatId && (
+      ) : (
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
           <div className="text-center p-8">
-            <div className="w-24 h-24 bg-gradient-primary rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-glow">
-              <span className="text-4xl font-black text-primary-foreground">Х</span>
+            <div className="w-24 h-24 mx-auto mb-6">
+              <Identicon id="hyax-empty" avatarUrl={null} className="w-24 h-24" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-4">
-              Выберите чат
-            </h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Выберите чат</h2>
             <p className="text-muted-foreground max-w-md">
-              Нажмите на иконку меню в свернутом сайдбаре чтобы развернуть список чатов и выбрать чат для общения.
+              Слева — список чатов. Откройте любой, чтобы начать переписку или позвонить.
             </p>
           </div>
         </div>

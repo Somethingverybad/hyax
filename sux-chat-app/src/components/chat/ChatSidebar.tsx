@@ -46,6 +46,7 @@ interface ChatSidebarProps {
   onRefresh?: () => Promise<unknown> | void;
   selectedChatId: string | null;
   onLogout: () => void;
+  onOpenProfile?: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onChatDeleted: (chatId: string) => void;
@@ -79,7 +80,9 @@ const ChatSidebar = ({
   onSelectChat,
   onRefresh, 
   selectedChatId, 
-  onLogout, 
+  onLogout,
+  onOpenProfile,
+  
   isCollapsed, 
   onToggleCollapse,
   onChatDeleted,
@@ -270,9 +273,6 @@ const ChatSidebar = ({
   // Обработчик выбора чата - сворачиваем сайдбар
   const handleSelectChat = (chatId: string, title?: string) => {
     onSelectChat(chatId, title);
-    if (!isCollapsed) {
-      setTimeout(() => onToggleCollapse(), 300);
-    }
   };
 
   // Получаем участников для конкретного чата
@@ -331,18 +331,24 @@ const ChatSidebar = ({
 
           {/* Центральная часть - информация о пользователе (скрываем в свернутом состоянии) */}
           {!isCollapsed && (
-            <div className="flex items-center gap-3 flex-1 justify-center">
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              disabled={!onOpenProfile}
+              className="flex items-center gap-3 flex-1 justify-center rounded-lg px-2 py-1 hover:bg-secondary/60 transition-colors disabled:hover:bg-transparent"
+              title="Профиль"
+            >
               <Identicon
                 id={currentUser?.id || "?"}
                 avatarUrl={currentUser?.avatar_url}
                 className="w-10 h-10"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 text-left">
                 <p className="text-xs text-muted-foreground truncate">
                   {currentUser?.username || "Загрузка..."}
                 </p>
               </div>
-            </div>
+            </button>
           )}
 
           {/* Правая часть - пустая для баланса */}

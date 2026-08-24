@@ -51,6 +51,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      // Звук уведомлений/аудио-стикеров играем из JS без клика пользователя.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
