@@ -10,6 +10,13 @@ const { pathToFileURL } = require('url');
 // Electron; HYAX_DEBUG_PORT — порт DevTools-протокола для проверки без GUI.
 // Упакованное приложение флаги командной строки не принимает.
 const isDev = !app.isPackaged && !process.env.HYAX_FORCE_PROD;
+
+// Мессенджер должен пищать о сообщении, даже когда окно не в фокусе. Chromium
+// же считает неактивное окно фоновым и душит ему таймеры и рендер — звук
+// уведомления копится и высыпается пачкой, когда снова кликнешь в приложение.
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 if (process.env.HYAX_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.HYAX_DEBUG_PORT);
 }
@@ -57,6 +64,8 @@ function createWindow() {
       contextIsolation: true,
       // Звук уведомлений/аудио-стикеров играем из JS без клика пользователя.
       autoplayPolicy: 'no-user-gesture-required',
+      // Та же история, что и с ключами выше, но для конкретного окна.
+      backgroundThrottling: false,
     },
   });
 
