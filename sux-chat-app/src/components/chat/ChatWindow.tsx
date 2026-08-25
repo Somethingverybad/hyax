@@ -10,6 +10,7 @@ import Identicon from "@/components/Identicon";
 import { api, mediaUrl, NotificationSoundInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
+import { loadWaveform } from "@/lib/waveform";
 import UserProfileModal from "@/components/UserProfileModal";
 
 interface Profile {
@@ -1233,17 +1234,36 @@ const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
   );
 };
 
+const WAVE_BARS = 40;
+// Запасная «дорожка», пока волна грузится или если кодек не декодируется.
+const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
+
 const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..1 по времени воспроизведения
+  const [peaks, setPeaks] = useState<number[] | null>(null);
+
+  // Настоящая форма волны из файла (с кэшем). Ошибку глушим — останется запас.
+  useEffect(() => {
+    let alive = true;
+    loadWaveform(url, WAVE_BARS)
+      .then((p) => alive && setPeaks(p))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [url]);
 
   useEffect(() => () => audioRef.current?.pause(), []);
 
   const toggle = () => {
     if (!audioRef.current) {
       const audio = new Audio(url);
-      audio.onended = () => setPlaying(false);
+      audio.onended = () => { setPlaying(false); setProgress(0); };
       audio.onpause = () => setPlaying(false);
+      audio.ontimeupdate = () => {
+        const d = audio.duration || seconds || 0;
+        if (d > 0) setProgress(Math.min(1, audio.currentTime / d));
+      };
       audioRef.current = audio;
     }
     const audio = audioRef.current;
@@ -1256,17 +1276,26 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
   };
 
   const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const wave = peaks ?? FALLBACK_WAVE;
+  const playedBars = Math.round(progress * wave.length);
 
   return (
-    <button type="button" onClick={toggle} className="flex items-center gap-2 py-1 min-w-[9rem]">
+    <button type="button" onClick={toggle} className="flex items-center gap-2 py-1 min-w-[11rem]">
       <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20">
         {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </span>
-      {/* Дорожка декоративная: разбирать файл ради настоящей формы волны
-          дорого, а пользы в переписке от неё немного. */}
-      <span className="flex-1 flex items-end gap-[3px] h-6">
-        {Array.from({ length: 16 }).map((_, i) => (
-          <span key={i} className="flex-1 bg-current opacity-60" style={{ height: `${8 + ((i * 37) % 16)}px` }} />
+      {/* Настоящая амплитуда: высота столбика = пик громкости интервала;
+          уже проигранная часть ярче. */}
+      <span className="flex-1 flex items-center gap-[2px] h-6">
+        {wave.map((v, i) => (
+          <span
+            key={i}
+            className="flex-1 bg-current rounded-full"
+            style={{
+              height: `${Math.max(3, Math.round(v * 22))}px`,
+              opacity: i < playedBars ? 0.95 : 0.45,
+            }}
+          />
         ))}
       </span>
       <span className="text-xs opacity-80 shrink-0">{label}</span>
