@@ -75,6 +75,9 @@ class Message(models.Model):
     video_url = models.TextField(blank=True, null=True)
     video_duration = models.IntegerField(blank=True, null=True)
     sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Аудио-стикер: звук пуша у получателя
+    # Реплай: на какое сообщение отвечаем. SET_NULL — если оригинал удалят,
+    # ответ остаётся, просто теряет цитату.
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, blank=True, null=True, related_name='replies')
     
     # Добавляем свойство для удобства
     @property

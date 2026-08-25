@@ -546,6 +546,17 @@ class MessageViewSet(viewsets.ModelViewSet):
             except NotificationSound.DoesNotExist:
                 return Response({"error": "Sound not found"}, status=400)
 
+        # Реплай: отвечаем на сообщение. Цитату берём только из того же чата,
+        # чтобы нельзя было процитировать чужую переписку по одному id.
+        reply_to_id = request.data.get('reply_to_id')
+        if reply_to_id:
+            try:
+                save_kwargs['reply_to'] = Message.objects.get(
+                    id=reply_to_id, chat_id=request.data.get('chat')
+                )
+            except Message.DoesNotExist:
+                pass
+
         if voice_url:
             save_kwargs.update({
                 'voice_url': voice_url,

@@ -131,11 +131,36 @@ class MessageSerializer(serializers.ModelSerializer):
     read_by = serializers.SerializerMethodField()
     sticker = StickerSerializer(read_only=True)
     sound = NotificationSoundSerializer(read_only=True)
+    reply_to = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound', 'reply_to']
         read_only_fields = ['sender', 'created_at', 'file_size']
+
+    def get_reply_to(self, obj):
+        """Компактная цитата: id, автор и короткое превью — без рекурсии по
+        всей цепочке ответов."""
+        r = obj.reply_to
+        if not r:
+            return None
+        preview = (r.content or "").strip()
+        if not preview:
+            if r.sticker_id:
+                preview = "Стикер"
+            elif r.video_url:
+                preview = "Видео-сообщение"
+            elif r.voice_url:
+                preview = "Голосовое сообщение"
+            elif r.file_url:
+                preview = "Файл"
+            else:
+                preview = "Сообщение"
+        return {
+            "id": str(r.id),
+            "sender_username": r.sender.username if r.sender else "",
+            "preview": preview[:120],
+        }
     
     def to_representation(self, instance):
         """Переопределяем для правильной сериализации UUID в строки"""

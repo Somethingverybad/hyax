@@ -381,11 +381,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessage: async (chatId: string, content: string, soundId?: string): Promise<any> => {
+  sendMessage: async (chatId: string, content: string, soundId?: string, replyToId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined }),
+      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined, reply_to_id: replyToId || undefined }),
     });
     return res.json();
   },
@@ -479,7 +479,7 @@ export const api = {
     file_url: string;
     file_name: string;
     file_size: number;
-  }, content?: string, soundId?: string): Promise<any> => {
+  }, content?: string, soundId?: string, replyToId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
@@ -489,7 +489,8 @@ export const api = {
         file_url: fileData.file_url,
         file_name: fileData.file_name,
         file_size: fileData.file_size,
-        sound_id: soundId || undefined
+        sound_id: soundId || undefined,
+        reply_to_id: replyToId || undefined
       }),
     });
     return res.json();
@@ -586,7 +587,7 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string): Promise<any> => {
+  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
@@ -594,6 +595,7 @@ export const api = {
         chat: chatId,
         content: content || null,
         sticker_id: stickerId,
+        reply_to_id: replyToId || undefined,
       }),
     });
     if (!res.ok) throw new Error("Failed to send sticker");

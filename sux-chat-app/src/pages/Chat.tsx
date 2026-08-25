@@ -8,6 +8,7 @@ import ChatWindow from "@/components/chat/ChatWindow";
 import Identicon from "@/components/Identicon";
 import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
+import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
 import { WebSocketService } from "@/services/websocket";
@@ -98,6 +99,8 @@ const Chat = () => {
           // Аудио-стикеры: докачиваем caf-файлы каталога в Library/Sounds,
           // чтобы пуш мог сослаться на них по имени. Фоном, без ожидания.
           syncNotificationSounds();
+          // Камера и микрофон — спрашиваем один раз при первом запуске.
+          void requestMediaPermissionsOnce();
         } else {
           // Веб/десктоп: разрешение на системные баннеры (self-guard внутри).
           ensureNotifyPermission();

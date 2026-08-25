@@ -27,6 +27,8 @@ interface Message {
   sticker?: { id: string; file_url: string; emoji?: string } | null;
   /** Аудио-стикер: звук, который слышит получатель. */
   sound?: { id: string; slug: string; name: string; url: string } | null;
+  /** Цитата: на какое сообщение это ответ (компактное превью с сервера). */
+  reply_to?: { id: string; sender_username: string; preview: string } | null;
   /** Голосовое сообщение и его длительность в секундах. */
   voice_url?: string | null;
   voice_duration?: number | null;
@@ -87,6 +89,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
   // Просмотр профиля собеседника (тап по имени в шапке, только 1:1).
   const [profileOpen, setProfileOpen] = useState(false);
+  // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
   const {
@@ -264,12 +268,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     }
   };
 
+  // Короткое превью цитаты для черновика и оптимистичного пузыря.
+  const replyPreviewText = (m: Message): string => {
+    const t = (m.content || "").trim();
+    if (t) return t;
+    if (m.sticker?.file_url) return "Стикер";
+    if (m.video_url) return "Видео-сообщение";
+    if (m.voice_url) return "Голосовое сообщение";
+    if (m.file_url) return "Файл";
+    return "Сообщение";
+  };
+
   const sendMessage = async () => {
     if (!chatId || (!newMessage.trim() && !selectedFile)) return;
 
     const text = newMessage.trim();
     const file = selectedFile;
     const sound = selectedSound;
+    const reply = replyTo;
 
     // Пузырь появляется мгновенно, поле очищается сразу — сеть догоняет
     // в фоне. Для картинки заранее замеряем размеры из локального файла,
@@ -288,6 +304,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
       sender: { id: userId } as Profile,
       created_at: new Date().toISOString(),
       sound,
+      reply_to: reply
+        ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
+        : null,
       pending: true,
       _key: tempId,
       _dims: dims,
@@ -296,6 +315,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
     setNewMessage("");
     setSelectedFile(null);
     setSelectedSound(null);
+    setReplyTo(null);
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(), 50);
@@ -314,9 +334,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
           file_url: uploadResult.file_url,
           file_name: uploadResult.file_name,
           file_size: uploadResult.file_size,
-        }, text || undefined, sound?.id);
+        }, text || undefined, sound?.id, reply?.id);
       } else {
-        sent = await api.sendMessage(chatId, text || null, sound?.id);
+        sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
       }
 
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
@@ -334,6 +354,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
       setNewMessage(text);
       setSelectedFile(file);
       setSelectedSound(sound);
+      setReplyTo(reply);
       if (localUrl) URL.revokeObjectURL(localUrl);
     }
   };
@@ -686,6 +707,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
                           ? "bg-primary text-primary-foreground"
                           : "bg-success text-success-foreground")
                     )}>
+                      {/* Цитируемое сообщение (реплай). */}
+                      {message.reply_to && (
+                        <div
+                          className={cn(
+                            "mb-1 rounded px-2 py-1 border-l-2 text-xs",
+                            isOwn
+                              ? "border-primary-foreground/60 bg-black/10"
+                              : "border-success-foreground/60 bg-black/10"
+                          )}
+                        >
+                          <div className="font-medium truncate opacity-90">
+                            {message.reply_to.sender_username}
+                          </div>
+                          <div className="truncate opacity-75">
+                            {message.reply_to.preview}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Аудио-стикер: подпись, какой звук уехал получателю. */}
                       {message.sound && (
                         <div className="flex items-center gap-1 text-xs mb-1 opacity-80">
@@ -821,6 +861,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
       {/* Поле ввода */}
       <div className="p-2 md:p-4 pad-safe-bottom border-t border-border bg-card">
         <div className="max-w-4xl mx-auto">
+          {replyTo && (
+            <div className="mb-2 flex items-stretch gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary overflow-hidden">
+              <div className="flex-1 min-w-0 px-3 py-2">
+                <div className="text-xs font-medium text-primary truncate">
+                  {replyTo.sender?.username || "Ответ"}
+                </div>
+                <div className="text-sm text-muted-foreground truncate">
+                  {replyPreviewText(replyTo)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyTo(null)}
+                className="px-3 text-muted-foreground hover:text-foreground"
+                aria-label="Отменить ответ"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           {selectedFile && (
             <div className="mb-2 md:mb-3 p-2 md:p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1034,6 +1094,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
             className="w-full bg-card border-t-2 border-border pb-[env(safe-area-inset-bottom)]"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              type="button"
+              onClick={() => { setReplyTo(menuMessage); setMenuMessage(null); }}
+              className="w-full px-5 py-4 text-left text-base active:bg-secondary"
+            >
+              Ответить
+            </button>
             {menuMessage.content?.trim() && (
               <button
                 type="button"
