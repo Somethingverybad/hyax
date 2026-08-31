@@ -36,44 +36,47 @@ document.addEventListener(
 // Клавиатура: двигаем интерфейс синхронно с ней. События приходят до начала
 // анимации и несут её высоту и длительность, поэтому панель ввода едет вместе
 // с клавиатурой, а не догоняет её рывком после ресайза WebView.
-import { Keyboard } from "@capacitor/keyboard";
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Capacitor as Cap } from "@capacitor/core";
 
 if (Cap.isNativePlatform()) {
   const root = document.documentElement;
-  let keyboardHeight = 0;
 
-  /**
-   * Сдвигаем панель ввода только на ту часть клавиатуры, которую экран ещё
-   * не учёл сам. Высота приложения считается по видимой области, и там, где
-   * она сжимается вместе с клавиатурой (Android), панель уже стоит над ней —
-   * дополнительный сдвиг подбрасывал её на середину экрана.
-   */
-  const applyKeyboardOffset = () => {
-    const visible = window.visualViewport?.height ?? window.innerHeight;
-    const alreadyShrunk = Math.max(0, window.innerHeight - visible);
-    const offset = Math.max(0, keyboardHeight - alreadyShrunk);
-    root.style.setProperty("--kb-height", `${Math.round(offset)}px`);
-  };
-
-  window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
-
-  Keyboard.addListener("keyboardWillShow", (info) => {
-    root.style.setProperty("--kb-duration", "250ms");
-    keyboardHeight = info.keyboardHeight;
-    applyKeyboardOffset();
-    // Экран может ужаться уже после события — пересчитываем следом.
-    setTimeout(applyKeyboardOffset, 120);
-    setTimeout(applyKeyboardOffset, 320);
-  });
-
-  Keyboard.addListener("keyboardWillHide", () => {
-    root.style.setProperty("--kb-duration", "250ms");
-    keyboardHeight = 0;
+  if (Cap.getPlatform() === "android") {
+    // Android: пусть WebView нативно сжимается вместе с клавиатурой
+    // (windowSoftInputMode=adjustResize + KeyboardResize.Native). Ручной сдвиг,
+    // как на iOS, здесь только вредил — окно и так поднималось, и интерфейс
+    // «улетал» вверх. --app-height следит за visualViewport (syncAppHeight),
+    // а --kb-height держим нулевым: панель ввода и так оказывается над
+    // клавиатурой на дне сжавшегося WebView.
     root.style.setProperty("--kb-height", "0px");
-    // UIKit могла сдвинуть contentOffset WebView, показывая поле над
-    // клавиатурой; сама она его не восстанавливает — возвращаем страницу
-    // на место, иначе интерфейс остаётся съехавшим вниз.
-    window.scrollTo(0, 0);
-  });
+    Keyboard.setResizeMode({ mode: KeyboardResize.Native }).catch(() => {});
+  } else {
+    // iOS: WebView не ресайзим (resize:'none'), а синхронно двигаем панель
+    // ввода сами — плагин присылает высоту и длительность до анимации.
+    let keyboardHeight = 0;
+    const applyKeyboardOffset = () => {
+      const visible = window.visualViewport?.height ?? window.innerHeight;
+      const alreadyShrunk = Math.max(0, window.innerHeight - visible);
+      const offset = Math.max(0, keyboardHeight - alreadyShrunk);
+      root.style.setProperty("--kb-height", `${Math.round(offset)}px`);
+    };
+
+    window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
+
+    Keyboard.addListener("keyboardWillShow", (info) => {
+      root.style.setProperty("--kb-duration", "250ms");
+      keyboardHeight = info.keyboardHeight;
+      applyKeyboardOffset();
+      setTimeout(applyKeyboardOffset, 120);
+      setTimeout(applyKeyboardOffset, 320);
+    });
+
+    Keyboard.addListener("keyboardWillHide", () => {
+      root.style.setProperty("--kb-duration", "250ms");
+      keyboardHeight = 0;
+      root.style.setProperty("--kb-height", "0px");
+      window.scrollTo(0, 0);
+    });
+  }
 }
