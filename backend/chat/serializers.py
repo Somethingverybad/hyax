@@ -34,9 +34,14 @@ class ChatSerializer(serializers.ModelSerializer):
     # get_queryset (Subquery) — метод ничего не дёргает из базы, N+1 нет.
     last_message = serializers.SerializerMethodField()
 
+    creator = serializers.SerializerMethodField()
+
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'created_at', 'updated_at', 'participants', 'last_message']
+        fields = ['id', 'name', 'is_group', 'avatar_url', 'creator', 'created_at', 'updated_at', 'participants', 'last_message']
+
+    def get_creator(self, obj):
+        return str(obj.creator_id) if obj.creator_id else None
 
     def get_last_message(self, obj):
         sender_id = getattr(obj, 'last_sender_id_a', None)

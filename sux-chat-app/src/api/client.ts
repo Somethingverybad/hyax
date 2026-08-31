@@ -33,12 +33,18 @@ interface Chat {
   id: string;
   participants: Profile[];
   created_at?: string;
+  is_group?: boolean;
+  name?: string;
+  avatar_url?: string | null;
+  creator?: string | null;
 }
 
 export interface ChatInfo {
   id: string;
   name?: string;
   is_group?: boolean;
+  avatar_url?: string | null;
+  creator?: string | null;
   participants?: Profile[];
 }
 
@@ -330,13 +336,13 @@ export const api = {
     return res.json();
   },
 
-  createChat: async (participantIds: string[], group?: { name: string }): Promise<Chat> => {
+  createChat: async (participantIds: string[], group?: { name: string; avatarUrl?: string }): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/chats/`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
         participants: participantIds,
-        ...(group ? { is_group: true, name: group.name } : {}),
+        ...(group ? { is_group: true, name: group.name, avatar_url: group.avatarUrl || undefined } : {}),
       }),
     });
     if (!res.ok) {
@@ -515,6 +521,23 @@ export const api = {
       body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration }),
     });
     if (!res.ok) throw new Error("Не удалось отправить голосовое");
+    return res.json();
+  },
+
+  // Настройки группы (название, аватар) — только для админа-создателя.
+  configureGroup: async (chatId: string, data: { name?: string; avatarUrl?: string }): Promise<ChatInfo> => {
+    const body: Record<string, string> = {};
+    if (data.name !== undefined) body.name = data.name;
+    if (data.avatarUrl !== undefined) body.avatar_url = data.avatarUrl;
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/configure/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Не удалось сохранить группу");
+    }
     return res.json();
   },
 

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { X, Phone } from "lucide-react";
+import { X, Phone, Share2 } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
+import { shareProfile } from "@/lib/share";
+import { toast } from "sonner";
 
 interface UserProfile {
   id: string;
@@ -90,6 +92,19 @@ const UserProfileModal = ({
                 Позвонить
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={async () => {
+                const r = await shareProfile(profile.username);
+                if (r === "copied") toast.success("Профиль скопирован");
+                else if (r === "error") toast.error("Не удалось поделиться");
+              }}
+              className="mt-2 w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-3 font-medium active:opacity-90"
+            >
+              <Share2 className="w-4 h-4" />
+              Поделиться профилем
+            </button>
           </div>
         ) : (
           <div className="py-10 text-center text-sm text-muted-foreground">

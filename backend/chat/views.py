@@ -179,6 +179,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         if not ChatParticipant.objects.filter(chat=chat, user=profile).exists():
             return Response({"error": "Вы не участник этого чата"}, status=403)
 
+        # В существующей группе участников добавляет только админ-создатель.
+        if chat.is_group and chat.creator_id and chat.creator_id != profile.id:
+            return Response({"error": "Добавлять участников может только админ группы"}, status=403)
+
         ids = request.data.get('participants') or []
         if isinstance(ids, str):
             ids = [ids]
@@ -194,12 +198,40 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         if chat.participants.count() > 2 and not chat.is_group:
             chat.is_group = True
+            if not chat.creator_id:
+                chat.creator = profile  # тот, кто собрал группу — админ
             if not chat.name:
                 names = list(chat.participants.values_list('username', flat=True)[:3])
                 chat.name = ", ".join(names)[:100]
-            chat.save(update_fields=["is_group", "name"])
+            chat.save(update_fields=["is_group", "name", "creator"])
 
         return Response({"added": added, "chat": self.get_serializer(chat).data})
+
+    @action(detail=True, methods=['post', 'patch'])
+    def configure(self, request, pk=None):
+        """Настройки группы: название и аватар. Меняет только админ-создатель."""
+        chat = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        if not chat.is_group:
+            return Response({"error": "Это не группа"}, status=400)
+        if chat.creator_id and chat.creator_id != profile.id:
+            return Response({"error": "Настраивать группу может только админ"}, status=403)
+
+        fields = []
+        name = request.data.get('name')
+        if name is not None:
+            chat.name = str(name).strip()[:100]
+            fields.append('name')
+        avatar_url = request.data.get('avatar_url')
+        if avatar_url is not None:
+            chat.avatar_url = avatar_url or None
+            fields.append('avatar_url')
+        if fields:
+            chat.save(update_fields=fields)
+        return Response(self.get_serializer(chat).data)
 
     @action(detail=True, methods=['get'])
     def participants(self, request, pk=None):
@@ -294,11 +326,20 @@ class ChatViewSet(viewsets.ModelViewSet):
         # из одних и тех же людей, склеивать их по составу нельзя.
         is_group = bool(request.data.get('is_group')) or len(participant_uuids) > 2
         if is_group:
+            try:
+                creator_profile = Profile.objects.get(user=request.user)
+            except Profile.DoesNotExist:
+                return Response({'detail': 'Current user profile not found'}, status=status.HTTP_400_BAD_REQUEST)
             chat = Chat.objects.create(
                 is_group=True,
                 name=(request.data.get('name') or '').strip()[:100],
+                avatar_url=(request.data.get('avatar_url') or '') or None,
+                creator=creator_profile,
             )
-            chat.participants.set(existing_profiles)
+            # Создатель — обязательный участник: иначе группа не пройдёт фильтр
+            # participants=profile в его же списке чатов и просто не покажется.
+            members = list(existing_profiles) + [creator_profile]
+            chat.participants.set(members)
             return Response(self.get_serializer(chat).data, status=status.HTTP_201_CREATED)
 
         # Ищем существующие чаты с точно такими же участниками

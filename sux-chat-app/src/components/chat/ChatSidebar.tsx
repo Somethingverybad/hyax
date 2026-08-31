@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { api } from "@/api/client";
+import { api, mediaUrl } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 
 interface Profile {
@@ -529,9 +529,17 @@ const ChatSidebar = ({
                     title={isCollapsed ? chatTitle : undefined}
                   >
                     {chat.is_group ? (
-                      <div className="w-12 h-12 shrink-0 bg-secondary flex items-center justify-center">
-                        <Users className="w-6 h-6 text-primary" />
-                      </div>
+                      (chat as any).avatar_url ? (
+                        <img
+                          src={mediaUrl((chat as any).avatar_url)}
+                          alt=""
+                          className="w-12 h-12 shrink-0 object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 shrink-0 bg-secondary flex items-center justify-center">
+                          <Users className="w-6 h-6 text-primary" />
+                        </div>
+                      )
                     ) : (
                       <Identicon
                         id={displayParticipants[0]?.id || chat.id}

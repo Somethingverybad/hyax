@@ -594,7 +594,9 @@ const Chat = () => {
           <ChatWindow
             chatId={selectedChatId}
             userId={user.id}
-            peer={peer || (selectedChat?.is_group ? { id: selectedChatId!, username: selectedChat.name || "Группа" } : null)}
+            peer={peer}
+            group={selectedChat?.is_group ? selectedChat : null}
+            onGroupUpdated={refreshChats}
             onCall={startCall}
             onBack={() => setSelectedChatId(null)}
             title={selectedChatTitle}
@@ -651,7 +653,9 @@ const Chat = () => {
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
-          peer={peer || (selectedChat?.is_group ? { id: selectedChatId!, username: selectedChat.name || "Группа" } : null)}
+          peer={peer}
+          group={selectedChat?.is_group ? selectedChat : null}
+          onGroupUpdated={refreshChats}
           onCall={startCall}
           title={selectedChatTitle}
         />

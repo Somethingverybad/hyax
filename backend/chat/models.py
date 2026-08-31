@@ -42,6 +42,10 @@ class Chat(models.Model):
     # собеседника, и хранить его незачем.
     name = models.CharField(max_length=100, blank=True, default="")
     is_group = models.BooleanField(default=False)
+    # Аватар группы (URL загруженного файла) и создатель-админ: только он
+    # переименовывает группу, меняет аватар и добавляет участников.
+    avatar_url = models.TextField(blank=True, null=True)
+    creator = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="created_chats")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -4,7 +4,8 @@ import { api, mediaUrl } from "@/api/client";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
-import { Camera, LogOut } from "lucide-react";
+import { shareProfile } from "@/lib/share";
+import { Camera, LogOut, Share2 } from "lucide-react";
 
 interface Profile {
   id: string;
@@ -161,6 +162,20 @@ const ProfilePage = () => {
           className="w-full py-3 bg-primary text-primary-foreground font-semibold disabled:opacity-40"
         >
           {saving ? "Сохраняем…" : "Сохранить"}
+        </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            if (!profile?.username) return;
+            const r = await shareProfile(profile.username);
+            if (r === "copied") toast.success("Профиль скопирован");
+            else if (r === "error") toast.error("Не удалось поделиться");
+          }}
+          className="w-full py-3 flex items-center justify-center gap-2 bg-secondary text-foreground font-medium"
+        >
+          <Share2 className="w-4 h-4" />
+          Поделиться профилем
         </button>
 
         <button

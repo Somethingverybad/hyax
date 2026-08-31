@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
 import { loadWaveform } from "@/lib/waveform";
 import UserProfileModal from "@/components/UserProfileModal";
+import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
+import type { ChatInfo } from "@/api/client";
 
 interface Profile {
   id: string;
@@ -70,13 +72,17 @@ interface ChatWindowProps {
   /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
   peer?: { id: string; username: string; avatar_url?: string | null } | null;
   onCall?: () => void;
+  /** Метаданные группы (если это групповой чат) — для настроек и прав админа. */
+  group?: ChatInfo | null;
+  /** Список чатов нужно обновить после изменения группы. */
+  onGroupUpdated?: () => void;
   /** На телефоне переписка занимает весь экран, и вернуться к списку можно
    *  только отсюда — на десктопе список виден всегда, поэтому кнопки нет. */
   onBack?: () => void;
   title?: string;
 }
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -92,6 +98,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
   const [profileOpen, setProfileOpen] = useState(false);
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  // Настройки группы (клик по названию группы). Заголовок держим локально,
+  // чтобы переименование отражалось сразу.
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [headerTitle, setHeaderTitle] = useState(title || "");
+  useEffect(() => { setHeaderTitle(title || ""); }, [title]);
+  const isGroup = !!group?.is_group;
+  const isGroupAdmin = isGroup && group?.creator === userId;
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
   const {
@@ -583,7 +596,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
 
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
-      {(onBack || title || peer) && (
+      {(onBack || title || peer || isGroup) && (
         <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 pad-safe-top border-b border-border bg-card">
           {onBack && (
             <button
@@ -602,20 +615,31 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
               className="font-medium truncate flex-1 text-left hover:text-primary transition-colors"
               title="Профиль собеседника"
             >
-              {title || peer.username || "Чат"}
+              {headerTitle || peer.username || "Чат"}
+            </button>
+          ) : isGroup ? (
+            <button
+              type="button"
+              onClick={() => setGroupOpen(true)}
+              className="font-medium truncate flex-1 text-left hover:text-primary transition-colors"
+              title="Настройки группы"
+            >
+              {headerTitle || group?.name || "Группа"}
             </button>
           ) : (
-            <span className="font-medium truncate flex-1">{title || "Чат"}</span>
+            <span className="font-medium truncate flex-1">{headerTitle || "Чат"}</span>
           )}
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="p-2 text-foreground active:text-primary"
-            aria-label="Добавить участников"
-          >
-            <UserPlus className="w-5 h-5" />
-          </button>
-          {peer && onCall && (
+          {!isGroup && (
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="p-2 text-foreground active:text-primary"
+              aria-label="Добавить участников"
+            >
+              <UserPlus className="w-5 h-5" />
+            </button>
+          )}
+          {onCall && (peer || isGroup) && (
             <button
               type="button"
               onClick={onCall}
@@ -1120,6 +1144,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall }: ChatWindowP
             </button>
           </div>
         </div>
+      )}
+
+      {groupOpen && group && (
+        <GroupSettingsModal
+          chatId={group.id}
+          isAdmin={isGroupAdmin}
+          initialName={headerTitle || group.name || "Группа"}
+          initialAvatar={group.avatar_url}
+          onClose={() => setGroupOpen(false)}
+          onUpdated={(patch) => {
+            if (patch.name !== undefined) setHeaderTitle(patch.name);
+            onGroupUpdated?.();
+          }}
+        />
       )}
 
       {profileOpen && peer && (
