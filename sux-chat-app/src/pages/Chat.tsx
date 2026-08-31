@@ -437,7 +437,12 @@ const Chat = () => {
   }, [user?.id]);
 
   const selectedChat = chats.find((c) => c.id === selectedChatId);
-  const peer = selectedChat?.participants?.find((p) => p.id !== user?.id) || null;
+  // В группе «собеседника» нет: find(!= me) вернул бы первого участника, и
+  // шапка шла бы по ветке 1:1 (профиль) вместо настроек группы. Поэтому для
+  // групп peer всегда null.
+  const peer = selectedChat?.is_group
+    ? null
+    : selectedChat?.participants?.find((p) => p.id !== user?.id) || null;
 
   const startCall = async () => {
     if (!selectedChatId) return;

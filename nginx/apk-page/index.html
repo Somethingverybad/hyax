@@ -19,7 +19,8 @@
   h1 { font-size: 42px; font-weight: 900; letter-spacing: 2px; color: var(--red); }
   .sub { color: var(--muted); margin: 8px 0 32px; font-size: 14px; }
   .platform { text-align: left; margin-bottom: 20px; }
-  .platform h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; font-weight: 700; }
+  .platform h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; font-weight: 700; }
+  .platform h2 svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
   a.btn {
     display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
     background: var(--red); color: var(--fg); text-decoration: none;
@@ -40,26 +41,26 @@
     <div class="sub">Не очень то и быстрый и ненадёжный месенджер</div>
 
     <div class="platform">
-      <h2>Android</h2>
+      <h2><svg viewBox="0 0 24 24"><path d="M6 9v9a1 1 0 0 0 1 1h1v3a1.5 1.5 0 0 0 3 0v-3h2v3a1.5 1.5 0 0 0 3 0v-3h1a1 1 0 0 0 1-1V9H6zM3.5 9A1.5 1.5 0 0 0 2 10.5v5a1.5 1.5 0 0 0 3 0v-5A1.5 1.5 0 0 0 3.5 9zm17 0a1.5 1.5 0 0 0-1.5 1.5v5a1.5 1.5 0 0 0 3 0v-5A1.5 1.5 0 0 0 20.5 9zM15.5 3.2l1-1a.4.4 0 1 0-.6-.5l-1.1 1.1A6 6 0 0 0 12 2c-1 0-1.9.25-2.7.7L8 1.6a.4.4 0 1 0-.6.5l1 1A5.9 5.9 0 0 0 6 8h12a5.9 5.9 0 0 0-2.5-4.8zM9.5 6a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5zm5 0a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5z"/></svg>Android</h2>
       <a class="btn" href="/apk/hyax.apk" download>Скачать APK <span class="ext">.apk</span></a>
       <div class="note">Разреши установку из неизвестных источников, если Android спросит.</div>
     </div>
 
     <div class="platform">
-      <h2>Windows</h2>
+      <h2><svg viewBox="0 0 24 24"><path d="M3 5.1 10.2 4v7.2H3V5.1zM3 18.9 10.2 20v-7.1H3v6zM11.4 3.85 21 2.5v8.7h-9.6V3.85zM11.4 12.8H21v8.7l-9.6-1.35V12.8z"/></svg>Windows</h2>
       <a class="btn" href="/apk/hyax-windows.exe" download>Скачать установщик <span class="ext">.exe</span></a>
       <div class="note">Без подписи Apple/Microsoft: если SmartScreen предупредит — «Подробнее» → «Всё равно выполнить».</div>
     </div>
 
     <div class="platform">
-      <h2>Linux</h2>
+      <h2><svg viewBox="0 0 24 24"><path d="M12 2c-2.2 0-4 1.8-4 4v3.2c0 .9-.4 1.6-1 2.3-1.4 1.6-2.5 3.3-3.2 5-.3.8.2 1.6 1 1.7.6.1 1.2-.2 1.6-.7-.1.6-.2 1.2-.2 1.8 0 .8.7 1.4 1.6 1.4h8.4c.9 0 1.6-.6 1.6-1.4 0-.6-.1-1.2-.2-1.8.4.5 1 .8 1.6.7.8-.1 1.3-.9 1-1.7-.7-1.7-1.8-3.4-3.2-5-.6-.7-1-1.4-1-2.3V6c0-2.2-1.8-4-4-4zm-1.6 4.4a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8zm3.2 0a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8zM12 9c.7 0 1.3.4 1.6 1-.5.4-1 .6-1.6.6s-1.1-.2-1.6-.6c.3-.6.9-1 1.6-1z"/></svg>Linux</h2>
       <a class="btn" href="/apk/hyax-linux.AppImage" download>Скачать AppImage <span class="ext">.AppImage</span></a>
       <a class="btn alt" href="/apk/hyax-linux.tar.gz" download>Архив tar.gz <span class="ext">.tar.gz</span></a>
       <div class="note">x86_64. AppImage: <b>chmod +x hyax-linux.AppImage</b> и запусти. tar.gz — распакуй и запусти <b>hyax</b>.</div>
     </div>
 
     <div class="platform">
-      <h2>macOS</h2>
+      <h2><svg viewBox="0 0 24 24"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8C2.94 18.38 1.9 15.57 1.9 12.92c0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.45z"/></svg>macOS</h2>
       <a class="btn" href="/apk/hyax-mac.dmg" download>Скачать DMG <span class="ext">.dmg</span></a>
       <div class="note">Apple Silicon. Без подписи Apple: правый клик по приложению → «Открыть».</div>
     </div>
