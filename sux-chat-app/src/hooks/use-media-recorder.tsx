@@ -42,23 +42,38 @@ export function useMediaRecorder() {
     setSeconds(0);
   }, []);
 
+  const acquire = async (kind: RecordKind): Promise<MediaStream> => {
+    const constraints =
+      kind === "video"
+        ? {
+            audio: true,
+            video: {
+              facingMode: "user",
+              width: { ideal: 480 },
+              height: { ideal: 480 },
+              frameRate: { ideal: 24 },
+            },
+          }
+        : { audio: true };
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err: any) {
+      // NotReadableError/AbortError — устройство ещё занято освобождением
+      // предыдущей записи (треки .stop() отпускаются железом асинхронно).
+      // Одна повторная попытка после паузы почти всегда срабатывает; а вот
+      // NotAllowedError — это настоящий отказ в доступе, его пробрасываем.
+      const transient = err?.name === "NotReadableError" || err?.name === "AbortError";
+      if (!transient) throw err;
+      await new Promise((r) => setTimeout(r, 300));
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    }
+  };
+
   const start = useCallback(async (kind: RecordKind = "audio"): Promise<boolean> => {
     if (recorderRef.current) return false;
     kindRef.current = kind;
     try {
-      const media = await navigator.mediaDevices.getUserMedia(
-        kind === "video"
-          ? {
-              audio: true,
-              video: {
-                facingMode: "user",
-                width: { ideal: 480 },
-                height: { ideal: 480 },
-                frameRate: { ideal: 24 },
-              },
-            }
-          : { audio: true }
-      );
+      const media = await acquire(kind);
       const candidates =
         kind === "video"
           ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]

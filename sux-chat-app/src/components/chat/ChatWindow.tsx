@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useMediaRecorder, type RecordKind } from "@/hooks/use-media-recorder";
+import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft } from "lucide-react";
@@ -117,6 +117,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Короткий тап по кнопке переключает голос ↔ треугольник, удержание пишет.
   const [recordKind, setRecordKind] = useState<RecordKind>("audio");
   const pressStartedAtRef = useRef(0);
+  // Жест записи: удержание захватывает устройство, тап только переключает режим.
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startedRef = useRef(false);      // запись реально идёт
+  const startingRef = useRef(false);     // устройство ещё захватывается
+  const stopRequestedRef = useRef(false);// палец отпустили во время захвата
   const [cancelArmed, setCancelArmed] = useState(false);
   // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
   // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
@@ -425,47 +430,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setMenuMessage(null);
   };
 
-  const beginRecording = async (e: React.PointerEvent) => {
-    if (uploading) return;
-    pressStartedAtRef.current = Date.now();
-    // Забираем указатель себе: иначе движение пальца уходит странице как
-    // прокрутка, событие обрывается, и жест отмены не срабатывает.
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    holdStartRef.current = { x: e.clientX, y: e.clientY };
-    cancelArmedRef.current = false;
-    setCancelArmed(false);
-    const ok = await startRec(recordKind);
-    if (!ok) {
-      toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
-    }
-  };
-
-  const moveRecording = (e: React.PointerEvent) => {
-    const from = holdStartRef.current;
-    if (!from) return;
-    // Увод влево или вверх — жест отмены, как в мессенджерах.
-    const armed = from.x - e.clientX > 70 || from.y - e.clientY > 70;
-    cancelArmedRef.current = armed;
-    setCancelArmed(armed);
-  };
-
-  const finishRecording = async (forceCancel = false) => {
-    // Быстрый тап — это не запись, а переключение режима: держать кнопку
-    // ради смены голоса на видео было бы странно.
-    const wasTap = Date.now() - pressStartedAtRef.current < 300 && !cancelArmedRef.current;
-    const cancel = forceCancel || cancelArmedRef.current || wasTap;
-
-    holdStartRef.current = null;
-    cancelArmedRef.current = false;
-    setCancelArmed(false);
-    const result = await stopRec(cancel);
-
-    if (wasTap && !forceCancel) {
-      setRecordKind((k) => (k === "audio" ? "video" : "audio"));
-      return;
-    }
+  // Отправка готовой записи (голос/видео) на сервер.
+  const processRecording = async (result: VoiceRecording | null) => {
     if (!result || !chatId) return;
-
     setUploading(true);
     try {
       if (result.kind === "video") {
@@ -485,6 +452,82 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  // Ключевое: устройство (микрофон/камеру) захватываем ТОЛЬКО когда кнопку
+  // реально удержали дольше порога. Короткий тап переключает режим и к
+  // getUserMedia вообще не обращается — раньше тап каждый раз захватывал и тут
+  // же отпускал устройство, отсюда лаги и случайное «нет доступа».
+  const HOLD_MS = 220;
+  const beginRecording = (e: React.PointerEvent) => {
+    if (uploading) return;
+    pressStartedAtRef.current = Date.now();
+    // Забираем указатель себе: иначе движение пальца уходит странице как
+    // прокрутка, событие обрывается, и жест отмены не срабатывает.
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    holdStartRef.current = { x: e.clientX, y: e.clientY };
+    cancelArmedRef.current = false;
+    setCancelArmed(false);
+    startedRef.current = false;
+    stopRequestedRef.current = false;
+
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = setTimeout(async () => {
+      startingRef.current = true;
+      const ok = await startRec(recordKind);
+      startingRef.current = false;
+      if (!ok) {
+        toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
+        return;
+      }
+      startedRef.current = true;
+      // Палец отпустили ещё во время инициализации устройства — завершаем
+      // запись сразу, как только она стартовала.
+      if (stopRequestedRef.current) {
+        startedRef.current = false;
+        const result = await stopRec(cancelArmedRef.current);
+        await processRecording(result);
+      }
+    }, HOLD_MS);
+  };
+
+  const moveRecording = (e: React.PointerEvent) => {
+    const from = holdStartRef.current;
+    if (!from) return;
+    // Увод влево или вверх — жест отмены, как в мессенджерах.
+    const armed = from.x - e.clientX > 70 || from.y - e.clientY > 70;
+    cancelArmedRef.current = armed;
+    setCancelArmed(armed);
+  };
+
+  const finishRecording = async (forceCancel = false) => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    const cancel = forceCancel || cancelArmedRef.current;
+    holdStartRef.current = null;
+
+    // Устройство ещё захватывается — попросим завершить сразу после старта.
+    if (startingRef.current && !startedRef.current) {
+      stopRequestedRef.current = true;
+      if (forceCancel) cancelArmedRef.current = true;
+      return;
+    }
+
+    // Запись так и не началась → это был тап: переключаем режим (если не отмена).
+    if (!startedRef.current) {
+      cancelArmedRef.current = false;
+      setCancelArmed(false);
+      if (!forceCancel) setRecordKind((k) => (k === "audio" ? "video" : "audio"));
+      return;
+    }
+
+    startedRef.current = false;
+    cancelArmedRef.current = false;
+    setCancelArmed(false);
+    const result = await stopRec(cancel);
+    await processRecording(result);
+  };
+
   // Отправленное с этого устройства берём из локального файла, остальное —
   // с сервера.
   const resolveImageUrl = (fileUrl: string) => {
@@ -499,6 +542,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => {
       map.forEach((url) => URL.revokeObjectURL(url));
       map.clear();
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     };
   }, []);
 
