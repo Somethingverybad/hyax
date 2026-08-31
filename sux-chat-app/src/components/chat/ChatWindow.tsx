@@ -1092,9 +1092,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     type="button"
                     onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
                     disabled={uploading}
-                    className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2 border-border flex items-center justify-center text-foreground active:text-primary"
-                    title={facing === "user" ? "Задняя камера" : "Фронтальная камера"}
+                    className={cn(
+                      "h-10 w-10 md:h-11 md:w-11 shrink-0 border-2 flex items-center justify-center transition-colors",
+                      // Фронтальная активна — кнопка инвертирована; задняя — обычный вид.
+                      facing === "user"
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-transparent text-foreground border-border"
+                    )}
+                    title={facing === "user" ? "Камера: фронтальная (нажми — задняя)" : "Камера: задняя (нажми — фронтальная)"}
                     aria-label="Переключить камеру"
+                    aria-pressed={facing === "user"}
                   >
                     <SwitchCamera className="w-5 h-5" />
                   </button>
