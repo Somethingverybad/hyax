@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -116,6 +116,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   } = useMediaRecorder();
   // Короткий тап по кнопке переключает голос ↔ треугольник, удержание пишет.
   const [recordKind, setRecordKind] = useState<RecordKind>("audio");
+  // Фронтальная/задняя камера для видео-сообщений (выбор до записи: удержание
+  // занимает единственный палец, переключать во время съёмки нечем).
+  const [facing, setFacing] = useState<"user" | "environment">("user");
   const pressStartedAtRef = useRef(0);
   // Жест записи: удержание захватывает устройство, тап только переключает режим.
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -472,7 +475,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     holdTimerRef.current = setTimeout(async () => {
       startingRef.current = true;
-      const ok = await startRec(recordKind);
+      const ok = await startRec(recordKind, facing);
       startingRef.current = false;
       if (!ok) {
         toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
@@ -1083,22 +1086,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 )}
               </Button>
             ) : (
-              <button
-                type="button"
-                onPointerDown={beginRecording}
-                onPointerMove={moveRecording}
-                onPointerUp={() => finishRecording()}
-                onPointerCancel={() => finishRecording(true)}
-                disabled={uploading}
-                style={{ touchAction: "none" }}
-                className={cn(
-                  "h-10 md:h-11 px-4 md:px-6 shrink-0 flex items-center justify-center transition-colors",
-                  recording ? "bg-foreground text-background" : "bg-gradient-primary text-primary-foreground"
+              <>
+                {recordKind === "video" && !recording && (
+                  <button
+                    type="button"
+                    onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
+                    disabled={uploading}
+                    className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2 border-border flex items-center justify-center text-foreground active:text-primary"
+                    title={facing === "user" ? "Задняя камера" : "Фронтальная камера"}
+                    aria-label="Переключить камеру"
+                  >
+                    <SwitchCamera className="w-5 h-5" />
+                  </button>
                 )}
-                aria-label={recordKind === "video" ? "Записать видео" : "Записать голосовое"}
-              >
-                {recordKind === "video" ? <Video className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
+                <button
+                  type="button"
+                  onPointerDown={beginRecording}
+                  onPointerMove={moveRecording}
+                  onPointerUp={() => finishRecording()}
+                  onPointerCancel={() => finishRecording(true)}
+                  disabled={uploading}
+                  style={{ touchAction: "none" }}
+                  className={cn(
+                    "h-10 md:h-11 px-4 md:px-6 shrink-0 flex items-center justify-center transition-colors",
+                    recording ? "bg-foreground text-background" : "bg-gradient-primary text-primary-foreground"
+                  )}
+                  aria-label={recordKind === "video" ? "Записать видео" : "Записать голосовое"}
+                >
+                  {recordKind === "video" ? <Video className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </button>
+              </>
             )}
           </div>
         </div>

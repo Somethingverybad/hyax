@@ -42,13 +42,13 @@ export function useMediaRecorder() {
     setSeconds(0);
   }, []);
 
-  const acquire = async (kind: RecordKind): Promise<MediaStream> => {
+  const acquire = async (kind: RecordKind, facing: "user" | "environment"): Promise<MediaStream> => {
     const constraints =
       kind === "video"
         ? {
             audio: true,
             video: {
-              facingMode: "user",
+              facingMode: facing,
               width: { ideal: 480 },
               height: { ideal: 480 },
               frameRate: { ideal: 24 },
@@ -69,11 +69,11 @@ export function useMediaRecorder() {
     }
   };
 
-  const start = useCallback(async (kind: RecordKind = "audio"): Promise<boolean> => {
+  const start = useCallback(async (kind: RecordKind = "audio", facing: "user" | "environment" = "user"): Promise<boolean> => {
     if (recorderRef.current) return false;
     kindRef.current = kind;
     try {
-      const media = await acquire(kind);
+      const media = await acquire(kind, facing);
       const candidates =
         kind === "video"
           ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
