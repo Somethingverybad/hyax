@@ -1283,6 +1283,83 @@ class MediaSignView(APIView):
         return Response({"url": url})
 
 
+class SoundPackStudioView(APIView):
+    """Создание пака звуков со страницы-студии. Защита — секретный токен в
+    заголовке X-Studio-Token (совпадает с SOUND_STUDIO_TOKEN из .env). Каждый
+    звук перекодируется в mp3 и режется до 30с, чтобы файлы весили меньше;
+    затем модель сама делает .caf для APNs."""
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        import os
+        import subprocess
+        import tempfile
+        import uuid as _uuid
+        from django.core.files import File
+        from django.utils.text import slugify
+
+        token = os.getenv("SOUND_STUDIO_TOKEN", "").strip()
+        if not token:
+            return Response({"error": "Студия не настроена (нет SOUND_STUDIO_TOKEN)"}, status=503)
+        if request.headers.get("X-Studio-Token", "") != token:
+            return Response({"error": "Неверный токен"}, status=403)
+
+        pack_name = (request.data.get("pack_name") or "").strip()
+        if not pack_name:
+            return Response({"error": "Укажите название пака"}, status=400)
+
+        files = request.FILES.getlist("files")
+        names = request.data.getlist("names")
+        if not files:
+            return Response({"error": "Добавьте хотя бы один звук"}, status=400)
+
+        order = (SoundPack.objects.count())
+        pack = SoundPack.objects.create(name=pack_name[:64], order=order)
+
+        def uniq_slug(base):
+            base = slugify(base) or f"snd-{_uuid.uuid4().hex[:8]}"
+            slug = base[:36]
+            i = 1
+            while NotificationSound.objects.filter(slug=slug).exists():
+                slug = f"{base[:32]}-{i}"
+                i += 1
+            return slug
+
+        created, failed = [], []
+        for idx, f in enumerate(files):
+            name = (names[idx] if idx < len(names) else "").strip() or os.path.splitext(f.name)[0]
+            slug = uniq_slug(name)
+            # Исходник во временный файл, затем ffmpeg → mp3 (≤30с, mono, 96k).
+            in_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1] or ".bin")
+            for chunk in f.chunks():
+                in_tmp.write(chunk)
+            in_tmp.close()
+            out_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3"); out_mp3.close()
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", in_tmp.name, "-t", "30",
+                     "-ac", "1", "-c:a", "libmp3lame", "-b:a", "96k", out_mp3.name],
+                    check=True, capture_output=True, timeout=120,
+                )
+                snd = NotificationSound(name=name[:64], slug=slug, pack=pack, order=idx)
+                with open(out_mp3.name, "rb") as mp3f:
+                    snd.file.save(f"{slug}.mp3", File(mp3f), save=True)  # save() → _ensure_caf
+                created.append({"name": snd.name, "slug": snd.slug})
+            except Exception as e:
+                logger.exception("Студия: не удалось обработать %s", f.name)
+                failed.append({"name": name, "error": str(e)[:120]})
+            finally:
+                for pth in (in_tmp.name, out_mp3.name):
+                    try: os.remove(pth)
+                    except Exception: pass
+
+        if not created:
+            pack.delete()
+            return Response({"error": "Ни один звук не обработан", "failed": failed}, status=400)
+        return Response({"pack": pack.name, "created": created, "failed": failed})
+
+
 class NotificationSoundListView(APIView):
     """Каталог активных звуков уведомлений. Клиент сверяет updated_at со
     скачанным и докачивает недостающие файлы — новые звуки добавляются через

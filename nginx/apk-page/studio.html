@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ХУЯКС · Creative Space</title>
+<style>
+  :root{
+    --bg:#0d0d0f; --card:#17171b; --card2:#1e1e24; --line:#2a2a31;
+    --fg:#f2f2f5; --muted:#9a9aa6; --red:#e5352b; --red2:#ff5147;
+    --ok:#37c46b; --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -200px,#1c1216 0,var(--bg) 60%);
+    color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;padding:env(safe-area-inset-top) 16px 40px}
+  .wrap{max-width:720px;margin:0 auto}
+  header{padding:36px 4px 8px;text-align:center}
+  .logo{font-weight:900;letter-spacing:.5px;font-size:30px}
+  .logo b{color:var(--red2)}
+  .sub{color:var(--muted);margin-top:6px;font-size:14px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+    margin:26px 4px 12px;font-weight:700}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .tile{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;
+    display:flex;flex-direction:column;gap:6px;min-height:92px}
+  .tile .ico{font-size:22px}
+  .tile .t{font-weight:700}
+  .tile .d{color:var(--muted);font-size:12.5px}
+  .tile.soon{opacity:.55}
+  .badge{align-self:flex-start;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;
+    background:#2a2a31;color:var(--muted);border-radius:999px;padding:2px 8px;margin-top:auto}
+  .tile.active .badge{background:rgba(55,196,107,.15);color:var(--ok)}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
+  input[type=text],input[type=password]{width:100%;background:var(--card2);border:1px solid var(--line);
+    color:var(--fg);border-radius:12px;padding:12px 14px;font-size:15px;outline:none}
+  input:focus{border-color:var(--red)}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .row .name{flex:1}
+  .file{position:relative;overflow:hidden;flex-shrink:0}
+  .file input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .btn{border:0;border-radius:12px;padding:12px 16px;font-weight:700;font-size:15px;cursor:pointer;
+    background:var(--card2);color:var(--fg);border:1px solid var(--line)}
+  .btn.wide{width:100%}
+  .btn.primary{background:linear-gradient(180deg,var(--red2),var(--red));color:#fff;border:0}
+  .btn.primary:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent}
+  .btn.icon{padding:12px 13px}
+  .filelabel{font-size:12.5px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .filelabel.set{color:var(--fg)}
+  .mt{margin-top:14px}
+  .field{margin-bottom:16px}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:8px}
+  .prog{height:8px;border-radius:6px;background:var(--card2);overflow:hidden;margin-top:14px;display:none}
+  .prog > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red2),var(--red));transition:width .2s}
+  .result{margin-top:16px;display:none;border-radius:12px;padding:14px;font-size:14px}
+  .result.ok{display:block;background:rgba(55,196,107,.1);border:1px solid rgba(55,196,107,.35)}
+  .result.err{display:block;background:rgba(229,53,43,.1);border:1px solid rgba(229,53,43,.4)}
+  .result ul{margin:8px 0 0;padding-left:18px}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:30px}
+  a{color:var(--red2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">ХУ<b>Я</b>КС · Creative Space</div>
+    <div class="sub">Мастерская контента. Пока — паки звуков, дальше больше.</div>
+  </header>
+
+  <h2>Инструменты</h2>
+  <div class="tiles">
+    <div class="tile active">
+      <div class="ico">🔊</div>
+      <div class="t">Пак звуков</div>
+      <div class="d">Загрузить звуки уведомлений</div>
+      <span class="badge">доступно</span>
+    </div>
+    <div class="tile soon">
+      <div class="ico">😍</div>
+      <div class="t">Реакции</div>
+      <div class="d">Свои реакции на сообщения</div>
+      <span class="badge">скоро</span>
+    </div>
+    <div class="tile soon">
+      <div class="ico">🎨</div>
+      <div class="t">Стикеры</div>
+      <div class="d">Наборы стикеров</div>
+      <span class="badge">скоро</span>
+    </div>
+  </div>
+
+  <h2>Новый пак звуков</h2>
+  <div class="card">
+    <div class="field">
+      <label>Ключ доступа</label>
+      <input id="token" type="password" placeholder="секретный токен студии" autocomplete="off">
+      <div class="hint">Спроси токен у администратора. Сохраняется в этом браузере.</div>
+    </div>
+    <div class="field">
+      <label>Название пака</label>
+      <input id="packName" type="text" placeholder="Например: Мемы 2026">
+    </div>
+
+    <label>Звуки</label>
+    <div id="rows"></div>
+    <button class="btn ghost mt" id="addRow" type="button">+ Добавить звук</button>
+
+    <button class="btn primary wide mt" id="submit" type="button">Создать пак</button>
+    <div class="prog" id="prog"><i></i></div>
+    <div class="result" id="result"></div>
+    <div class="hint mt">Каждый звук конвертируется в mp3 и обрезается до 30 секунд. Форматы: mp3, m4a, wav, ogg, caf и др.</div>
+  </div>
+
+  <div class="foot">ХУЯКС Creative Space</div>
+</div>
+
+<script>
+(function(){
+  var API = "/api/sounds/pack/";
+  var tokenEl = document.getElementById("token");
+  var rowsEl = document.getElementById("rows");
+  var result = document.getElementById("result");
+  var prog = document.getElementById("prog");
+  var progBar = prog.querySelector("i");
+
+  try { tokenEl.value = localStorage.getItem("studio_token") || ""; } catch(e){}
+  tokenEl.addEventListener("change", function(){
+    try { localStorage.setItem("studio_token", tokenEl.value.trim()); } catch(e){}
+  });
+
+  function addRow(){
+    var row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      '<input class="name" type="text" placeholder="название звука">' +
+      '<button class="btn icon file" type="button"><span class="filelabel">файл…</span>' +
+        '<input type="file" accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3"></button>' +
+      '<button class="btn icon ghost del" type="button" title="Удалить">✕</button>';
+    var fileInput = row.querySelector('input[type=file]');
+    var fileLabel = row.querySelector('.filelabel');
+    var nameInput = row.querySelector('.name');
+    fileInput.addEventListener("change", function(){
+      if(fileInput.files[0]){
+        fileLabel.textContent = fileInput.files[0].name;
+        fileLabel.classList.add("set");
+        if(!nameInput.value.trim()){
+          nameInput.value = fileInput.files[0].name.replace(/\.[^.]+$/,"");
+        }
+      }
+    });
+    row.querySelector(".del").addEventListener("click", function(){
+      row.remove();
+      if(!rowsEl.children.length) addRow();
+    });
+    rowsEl.appendChild(row);
+  }
+  document.getElementById("addRow").addEventListener("click", addRow);
+  addRow();
+
+  function show(cls, html){
+    result.className = "result " + cls;
+    result.innerHTML = html;
+  }
+
+  document.getElementById("submit").addEventListener("click", function(){
+    var btn = this;
+    var token = tokenEl.value.trim();
+    var packName = document.getElementById("packName").value.trim();
+    result.className = "result";
+    if(!token){ show("err","Введи ключ доступа."); return; }
+    if(!packName){ show("err","Введи название пака."); return; }
+
+    var fd = new FormData();
+    fd.append("pack_name", packName);
+    var count = 0;
+    Array.prototype.forEach.call(rowsEl.children, function(row){
+      var f = row.querySelector('input[type=file]').files[0];
+      if(!f) return;
+      var nm = row.querySelector('.name').value.trim() || f.name.replace(/\.[^.]+$/,"");
+      fd.append("files", f);
+      fd.append("names", nm);
+      count++;
+    });
+    if(!count){ show("err","Добавь хотя бы один звук с файлом."); return; }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", API, true);
+    xhr.setRequestHeader("X-Studio-Token", token);
+    prog.style.display = "block"; progBar.style.width = "0%";
+    btn.disabled = true; btn.textContent = "Загрузка…";
+    xhr.upload.onprogress = function(e){
+      if(e.lengthComputable){
+        var pct = Math.round(e.loaded/e.total*90);
+        progBar.style.width = pct + "%";
+      }
+    };
+    xhr.onload = function(){
+      progBar.style.width = "100%";
+      btn.disabled = false; btn.textContent = "Создать пак";
+      setTimeout(function(){ prog.style.display="none"; }, 600);
+      var data = {};
+      try { data = JSON.parse(xhr.responseText); } catch(e){}
+      if(xhr.status >= 200 && xhr.status < 300){
+        var made = (data.created||[]).map(function(s){return "<li>"+s.name+"</li>";}).join("");
+        var fail = (data.failed||[]).length
+          ? '<div style="margin-top:8px;color:#ff9a95">Не обработаны: '+
+             data.failed.map(function(f){return f.name;}).join(", ")+'</div>' : "";
+        show("ok", "<b>Пак «"+(data.pack||packName)+"» создан.</b> Звуков: "+(data.created||[]).length+
+          "<ul>"+made+"</ul>"+fail+
+          '<div style="margin-top:10px;color:#9a9aa6">Появится в приложении в списке паков.</div>');
+        document.getElementById("packName").value = "";
+        rowsEl.innerHTML = ""; addRow();
+      } else {
+        show("err", (data.error||("Ошибка "+xhr.status)) +
+          ((data.failed&&data.failed.length)? " — "+data.failed.map(function(f){return f.name+": "+f.error;}).join("; "):""));
+      }
+    };
+    xhr.onerror = function(){
+      btn.disabled = false; btn.textContent = "Создать пак";
+      prog.style.display="none";
+      show("err","Сеть недоступна. Попробуй ещё раз.");
+    };
+    xhr.send(fd);
+  });
+})();
+</script>
+</body>
+</html>
