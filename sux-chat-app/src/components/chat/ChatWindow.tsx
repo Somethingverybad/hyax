@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { api, mediaUrl, NotificationSoundInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
 import { loadWaveform } from "@/lib/waveform";
+import { compressImage } from "@/lib/compressImage";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
@@ -150,6 +151,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const scrollRef = useRef<HTMLDivElement>(null);
   const composeRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  // Просим сервер сжать видео (ffmpeg). Фото сжимаем на клиенте, файлы — как есть.
+  const pendingCompressRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Свои картинки показываем из локального файла: сервер их и так получил от
   // нас, скачивать обратно — лишний трафик и «пустой» пузырь на время загрузки.
@@ -168,6 +174,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     api.getNotificationSounds().then(setSounds).catch(() => {});
   }, []);
+
+  // Меню прикрепления закрывается тапом вне области ввода.
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (composeRef.current && !composeRef.current.contains(e.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [attachMenuOpen]);
 
   // Панель стикеров/аудиостикеров закрывается тапом вне области ввода — не
   // нужно отдельно жать кнопку. Кнопка-переключатель внутри composeRef, так
@@ -307,14 +325,28 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }, 100);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePick = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    mode: "photo" | "video" | "file",
+  ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error("Файл слишком большой (макс. 10MB)");
-        return;
-      }
+    e.target.value = ""; // чтобы повторный выбор того же файла сработал
+    if (!file) return;
+    const limit = mode === "video" ? 50 : mode === "file" ? 50 : 25;
+    if (file.size > limit * 1024 * 1024) {
+      toast.error(`Файл слишком большой (макс. ${limit}MB)`);
+      return;
+    }
+    if (mode === "photo") {
+      // Фото сжимаем прямо здесь, до отправки.
+      setSelectedFile(await compressImage(file));
+      pendingCompressRef.current = null;
+    } else if (mode === "video") {
       setSelectedFile(file);
+      pendingCompressRef.current = "video"; // сервер пережмёт ffmpeg-ом
+    } else {
+      setSelectedFile(file);
+      pendingCompressRef.current = null;
     }
   };
 
@@ -447,6 +479,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       _dims: dims,
     };
 
+    const compress = pendingCompressRef.current;
+    pendingCompressRef.current = null;
     setNewMessage("");
     setSelectedFile(null);
     setSelectedSound(null);
@@ -459,7 +493,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       let sent: Message;
       if (file) {
-        const uploadResult = await api.uploadFile(file);
+        const uploadResult = await api.uploadFile(file, compress || undefined);
         // Свою картинку рисуем из локального файла и после подтверждения —
         // сервер нужен только собеседнику.
         if (localUrl && uploadResult.file_url) {
@@ -690,6 +724,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return imageExtensions.some(ext => checkString.toLowerCase().endsWith(ext));
   };
 
+  const isVideoFile = (fileName: string | null, fileUrl: string | null): boolean => {
+    const s = (fileName || fileUrl || '').toLowerCase();
+    return ['.mp4', '.mov', '.m4v', '.webm'].some(ext => s.endsWith(ext));
+  };
+
   // Функция для сохранения файла локально (для Electron)
   const handleSaveFile = async (fileUrl: string, fileName: string) => {
     // Проверяем, запущено ли приложение в Electron
@@ -817,7 +856,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           поле ввода за экран), а scrollTop работает напрямую. */}
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain chat-scroll px-3 md:px-4 py-4 md:py-6"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-4 py-4 md:py-6"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
@@ -1021,10 +1060,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                                 setImageLoadErrors(prev => new Set(prev).add(message.id));
                               }}
                             />
+                          ) : isVideoFile(message.file_name, message.file_url) ? (
+                            // Видео-файл проигрываем прямо в клиенте, а не на сайте.
+                            <video
+                              src={mediaUrl(message.file_url)}
+                              controls
+                              playsInline
+                              preload="metadata"
+                              className="max-h-64 max-w-[min(280px,100%)] w-auto rounded-lg block bg-black"
+                            />
                           ) : (
                             // Отображение обычного файла
                             <div className={cn(
-                              "flex items-center gap-2 p-2 rounded-lg border transition-colors",
+                              "flex items-center gap-2 p-2 rounded-lg border transition-colors max-w-full min-w-0",
                               isOwn
                                 ? "bg-primary/20 border-primary/30 hover:bg-primary/30"
                                 : "bg-muted border-border hover:bg-muted/80"
@@ -1034,7 +1082,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                                 href={mediaUrl(message.file_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex-1 text-sm truncate hover:underline"
+                                className="flex-1 min-w-0 text-sm truncate hover:underline"
                               >
                                 {message.file_name || "Файл"}
                               </a>
@@ -1180,22 +1228,38 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
 
           <div className="flex gap-2 items-end">
-            <input 
-              ref={fileInputRef} 
-              type="file" 
-              onChange={handleFileSelect} 
-              className="hidden" 
-              accept="*/*"
-            />
-            <Button 
-              variant="outline" 
-              size="icon" 
-              onClick={() => fileInputRef.current?.click()} 
-              disabled={uploading}
-              className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-2"
-            >
-              <Paperclip className="w-4 h-4" />
-            </Button>
+            <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handlePick(e, "photo")} />
+            <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => handlePick(e, "video")} />
+            <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handlePick(e, "file")} />
+
+            <div className="relative shrink-0">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setAttachMenuOpen((v) => !v)}
+                disabled={uploading}
+                className="h-10 w-10 md:h-11 md:w-11 border-2"
+                aria-label="Прикрепить"
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+              {attachMenuOpen && (
+                <div className="absolute bottom-full left-0 mb-2 w-40 bg-card border border-border rounded-lg overflow-hidden shadow-lg z-10">
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); photoInputRef.current?.click(); }}>
+                    <ImageIcon className="w-4 h-4 text-primary" /> Фото
+                  </button>
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); videoInputRef.current?.click(); }}>
+                    <Video className="w-4 h-4 text-primary" /> Видео
+                  </button>
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
+                    <FileText className="w-4 h-4 text-primary" /> Файл
+                  </button>
+                </div>
+              )}
+            </div>
 
             <Button
               variant="outline"

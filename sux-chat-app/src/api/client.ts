@@ -461,13 +461,14 @@ export const api = {
     return res.json();
   },
 // ===== FILE UPLOAD =====
-  uploadFile: async (file: File): Promise<{
+  uploadFile: async (file: File, compress?: string): Promise<{
     file_url: string;
     file_name: string;
     file_size: number;
   }> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (compress) formData.append('compress', compress);
 
     const res = await fetchWithAuthMultipart(`${API_URL}/upload/`, {
       method: "POST",

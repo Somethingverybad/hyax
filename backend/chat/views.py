@@ -802,15 +802,54 @@ class FileUploadView(APIView):
         with open(full_path, 'wb+') as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
-        
+
+        out_name = file.name
+        out_size = file.size
+
+        # Сжатие видео на сервере (ffmpeg): клиент присылает compress=video для
+        # вкладки «Видео». Файлы (вкладка «Файл») не трогаем. Фото жмёт клиент.
+        compress = (request.data.get('compress') or '').lower()
+        is_video = file_extension.lower() in ('.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv')
+        if compress == 'video' and is_video:
+            import subprocess
+            transcoded = os.path.join('messages', f"{uuid.uuid4()}.mp4")
+            transcoded_full = os.path.join(settings.MEDIA_ROOT, transcoded)
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", full_path,
+                     "-vf", "scale='-2:min(720,ih)'",
+                     "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+                     "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
+                     transcoded_full],
+                    check=True, timeout=180,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                new_size = os.path.getsize(transcoded_full)
+                # Берём пережатый вариант только если он реально меньше.
+                if new_size > 0 and new_size < out_size:
+                    os.remove(full_path)
+                    file_path = transcoded
+                    out_size = new_size
+                    base = os.path.splitext(file.name)[0]
+                    out_name = f"{base}.mp4"
+                else:
+                    os.remove(transcoded_full)
+            except Exception:
+                # ffmpeg недоступен/упал/таймаут — оставляем оригинал.
+                try:
+                    if os.path.exists(transcoded_full):
+                        os.remove(transcoded_full)
+                except Exception:
+                    pass
+
         # Используем относительный путь вместо абсолютного URL
         # Это работает правильно через nginx прокси
         file_url = f'/media/{file_path}'
-        
+
         return Response({
             "file_url": file_url,
-            "file_name": file.name,
-            "file_size": file.size
+            "file_name": out_name,
+            "file_size": out_size
         })
 
 
