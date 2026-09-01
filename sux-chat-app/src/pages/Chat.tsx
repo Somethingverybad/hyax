@@ -82,6 +82,15 @@ const Chat = () => {
   chatsRef.current = chats;
   const navigate = useNavigate();
 
+  // При открытии чата помечаем его прочитанным на сервере и гасим бейдж.
+  useEffect(() => {
+    if (!selectedChatId) return;
+    api.markChatAsRead(selectedChatId).catch(() => {});
+    setChats((prev) =>
+      prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0 } : c))
+    );
+  }, [selectedChatId]);
+
   // 🔔 Проверка аутентификации и получение профиля + инициализация уведомлений
   useEffect(() => {
     const initializeApp = async () => {
@@ -89,7 +98,7 @@ const Chat = () => {
         const profile = await api.getProfile();
         setUser(profile);
         writeCache("user", profile);
-        const userChats = await api.getChats();
+        const userChats = await mergeUnread(await api.getChats());
         setChats(userChats);
         writeCache("chats", userChats);
         
@@ -133,7 +142,12 @@ const Chat = () => {
       // По тапу на пуш открываем чат из data.chat_id.
       await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
         const chatId = (e?.notification?.data as any)?.chat_id;
-        if (chatId) setSelectedChatId(String(chatId));
+        if (chatId) {
+          setSelectedChatId(String(chatId));
+          // Чат мог быть новым — подтянем список, чтобы заголовок и участники
+          // подхватились, а не остались от предыдущего диалога.
+          refreshChats();
+        }
       });
 
       // Тихий пуш «отбой»: звонящий отменил вызов, пока наш WebSocket молчал.
@@ -444,6 +458,14 @@ const Chat = () => {
     ? null
     : selectedChat?.participants?.find((p) => p.id !== user?.id) || null;
 
+  // Заголовок шапки берём из самого чата, а не из selectedChatTitle: при
+  // открытии из пуша тайтл не передавался и висел от предыдущего диалога.
+  const chatHeaderTitle = selectedChat
+    ? selectedChat.is_group
+      ? selectedChat.name || "Группа"
+      : peer?.username || selectedChatTitle
+    : selectedChatTitle;
+
   const startCall = async () => {
     if (!selectedChatId) return;
     if (selectedChat?.is_group) {
@@ -532,19 +554,28 @@ const Chat = () => {
   ) : null);
 
   // 🔔 Функция обновления списка чатов
+  // getChats счётчик непрочитанного не отдаёт — берём его из отдельного
+  // эндпоинта и подмешиваем. Открытый чат сразу считаем прочитанным.
+  const mergeUnread = async (list: ChatType[]): Promise<ChatType[]> => {
+    try {
+      const u = await api.getUnreadCount();
+      const openId = selectedChatIdRef.current;
+      return list.map((c) => ({
+        ...c,
+        unread_count: c.id === openId ? 0 : (u.unread_by_chat?.[c.id] || 0),
+      }));
+    } catch {
+      return list;
+    }
+  };
+
   const refreshChats = async () => {
     if (!user) return;
-    
     try {
-      const userChats = await api.getChats();
-      
-      // Обновляем состояние только если данные изменились
+      const userChats = await mergeUnread(await api.getChats());
       if (JSON.stringify(userChats) !== JSON.stringify(chats)) {
         setChats(userChats);
         writeCache("chats", userChats);
-        
-        // Логируем обновление для отладки
-        console.log('Chats updated:', userChats.length, 'chats');
       }
     } catch (error) {
       console.error('Error refreshing chats:', error);
@@ -604,7 +635,7 @@ const Chat = () => {
             onGroupUpdated={refreshChats}
             onCall={startCall}
             onBack={() => setSelectedChatId(null)}
-            title={selectedChatTitle}
+            title={chatHeaderTitle}
           />
         ) : (
           <>
@@ -662,7 +693,7 @@ const Chat = () => {
           group={selectedChat?.is_group ? selectedChat : null}
           onGroupUpdated={refreshChats}
           onCall={startCall}
-          title={selectedChatTitle}
+          title={chatHeaderTitle}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
