@@ -1,7 +1,7 @@
 // Десктопная обёртка hyax. Та же веб-сборка (dist/), что и в мобильном
 // приложении, в окне Electron. API и WebSocket ходят на боевой сервер по
 // абсолютным URL, поэтому никакого локального бэкенда здесь нет.
-const { app, BrowserWindow, ipcMain, dialog, protocol, net, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, ipcMain, dialog, protocol, net, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -79,7 +79,54 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  attachContextMenu(mainWindow);
+
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
+}
+
+// Своего контекстного меню Chromium в Electron не показывает: без этого правая
+// кнопка мыши в поле ввода не умеет ни скопировать, ни вставить. На пузырях
+// сообщений меню рисует само приложение (там срабатывает preventDefault), так
+// что сюда доходит только то, для чего нужно системное меню.
+function attachContextMenu(win) {
+  win.webContents.on('context-menu', (_event, params) => {
+    const flags = params.editFlags;
+    const items = [];
+
+    if (params.isEditable) {
+      items.push(
+        { label: 'Отменить', role: 'undo', enabled: flags.canUndo },
+        { label: 'Повторить', role: 'redo', enabled: flags.canRedo },
+        { type: 'separator' },
+        { label: 'Вырезать', role: 'cut', enabled: flags.canCut },
+        { label: 'Копировать', role: 'copy', enabled: flags.canCopy },
+        { label: 'Вставить', role: 'paste', enabled: flags.canPaste },
+        { type: 'separator' },
+        { label: 'Выделить всё', role: 'selectAll' }
+      );
+    } else if (params.selectionText) {
+      items.push({ label: 'Копировать', role: 'copy' });
+    }
+
+    if (params.linkURL) {
+      if (items.length) items.push({ type: 'separator' });
+      items.push({
+        label: 'Копировать ссылку',
+        click: () => clipboard.writeText(params.linkURL),
+      });
+    }
+
+    if (params.mediaType === 'image' && params.srcURL) {
+      if (items.length) items.push({ type: 'separator' });
+      items.push({
+        label: 'Копировать картинку',
+        click: () => win.webContents.copyImageAt(params.x, params.y),
+      });
+    }
+
+    if (!items.length) return;
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
 }
 
 // Микрофон/камера для звонков и уведомления — разрешаем без лишних вопросов

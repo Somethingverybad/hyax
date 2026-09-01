@@ -905,7 +905,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                     {/* Буббл сообщения */}
                     <div
-                      onContextMenu={(e) => e.preventDefault()}
+                      onContextMenu={(e) => {
+                        // На десктопе правая кнопка открывает то же меню, что
+                        // долгое удержание на телефоне.
+                        e.preventDefault();
+                        setMenuMessage(message);
+                      }}
                       onClick={() => {
                         if (justSwipedRef.current) return;
                         if (message.sound?.url) toggleSticker(message.id, message.sound.url);
