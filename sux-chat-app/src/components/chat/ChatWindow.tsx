@@ -659,7 +659,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="font-medium truncate flex-1 text-left hover:text-primary transition-colors"
+              className="font-medium line-clamp-2 leading-tight flex-1 text-left hover:text-primary transition-colors"
               title="Профиль собеседника"
             >
               {headerTitle || peer.username || "Чат"}
@@ -668,13 +668,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <button
               type="button"
               onClick={() => setGroupOpen(true)}
-              className="font-medium truncate flex-1 text-left hover:text-primary transition-colors"
+              className="font-medium line-clamp-2 leading-tight flex-1 text-left hover:text-primary transition-colors"
               title="Настройки группы"
             >
               {headerTitle || group?.name || "Группа"}
             </button>
           ) : (
-            <span className="font-medium truncate flex-1">{headerTitle || "Чат"}</span>
+            <span className="font-medium line-clamp-2 leading-tight flex-1">{headerTitle || "Чат"}</span>
           )}
           {!isGroup && (
             <button
