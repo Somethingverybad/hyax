@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -334,6 +334,63 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       };
       document.addEventListener("pointerdown", handler, true);
     }, 0);
+  };
+
+  // Свайп-ответ: влево на чужих сообщениях, вправо на своих. Тянем строку
+  // за пальцем, за порогом — ставим сообщение в ответ.
+  const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
+  const swipeActiveRef = useRef(false);
+  const justSwipedRef = useRef(false); // подавляет клик после свайпа
+  const SWIPE_TRIGGER = 55;
+  const SWIPE_MAX = 90;
+
+  const msgPointerDown = (e: React.PointerEvent, message: Message) => {
+    swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
+    swipeActiveRef.current = false;
+    startLongPress(message);
+  };
+  const msgPointerMove = (e: React.PointerEvent, message: Message, isOwn: boolean) => {
+    const st = swipeStartRef.current;
+    if (!st || st.id !== message.id) return;
+    const dx = e.clientX - st.x;
+    const dy = e.clientY - st.y;
+    if (!swipeActiveRef.current) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) >= Math.abs(dx)) {
+        // вертикальная прокрутка — жест отменяем
+        swipeStartRef.current = null; cancelLongPress(); return;
+      }
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+        swipeActiveRef.current = true;
+        cancelLongPress();
+        // забираем указатель, чтобы получать move даже при уходе пальца в сторону
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      } else return;
+    }
+    let off = dx;
+    if (isOwn) off = Math.max(0, Math.min(off, SWIPE_MAX));   // свои — вправо
+    else off = Math.min(0, Math.max(off, -SWIPE_MAX));        // чужие — влево
+    setSwipe({ id: message.id, dx: off });
+  };
+  const msgPointerUp = (e: React.PointerEvent, message: Message, isOwn: boolean) => {
+    const st = swipeStartRef.current;
+    cancelLongPress();
+    if (swipeActiveRef.current && st) {
+      const dx = e.clientX - st.x;
+      const triggered = isOwn ? dx > SWIPE_TRIGGER : dx < -SWIPE_TRIGGER;
+      if (triggered) setReplyTo(message);
+      justSwipedRef.current = true;
+      setTimeout(() => { justSwipedRef.current = false; }, 350);
+    }
+    swipeStartRef.current = null;
+    swipeActiveRef.current = false;
+    setSwipe(null);
+  };
+  const msgPointerCancel = () => {
+    cancelLongPress();
+    swipeStartRef.current = null;
+    swipeActiveRef.current = false;
+    setSwipe(null);
   };
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
@@ -786,10 +843,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 )}
 
                 {/* Сообщение */}
-                <div className={cn(
-                  "flex gap-3 group",
-                  isOwn && "flex-row-reverse"
-                )}>
+                <div
+                  className={cn(
+                    "relative flex gap-3 group",
+                    isOwn && "flex-row-reverse"
+                  )}
+                  onPointerDown={(e) => msgPointerDown(e, message)}
+                  onPointerMove={(e) => msgPointerMove(e, message, isOwn)}
+                  onPointerUp={(e) => msgPointerUp(e, message, isOwn)}
+                  onPointerCancel={msgPointerCancel}
+                  style={
+                    swipe?.id === message.id
+                      ? { transform: `translateX(${swipe.dx}px)` }
+                      : { transition: "transform 150ms" }
+                  }
+                >
+                  {/* Иконка ответа при свайпе */}
+                  {swipe?.id === message.id && Math.abs(swipe.dx) > 6 && (
+                    <span
+                      className={cn(
+                        "absolute top-1/2 -translate-y-1/2 text-primary",
+                        isOwn ? "left-0 -ml-7" : "right-0 -mr-7"
+                      )}
+                      style={{ opacity: Math.min(1, Math.abs(swipe.dx) / SWIPE_TRIGGER) }}
+                    >
+                      <Reply className="w-5 h-5" />
+                    </span>
+                  )}
                   {/* Аватар (только для чужих сообщений) */}
                   {!isOwn && (
                     <Identicon
@@ -815,11 +895,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                     {/* Буббл сообщения */}
                     <div
-                      onPointerDown={() => startLongPress(message)}
-                      onPointerUp={cancelLongPress}
-                      onPointerLeave={cancelLongPress}
-                      onPointerCancel={cancelLongPress}
                       onContextMenu={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (justSwipedRef.current) return;
+                        if (message.sound?.url) toggleSticker(message.id, message.sound.url);
+                      }}
                       className={cn(
                       "relative",
                       !bareBubble && "px-4 py-2",
