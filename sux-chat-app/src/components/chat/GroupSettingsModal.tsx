@@ -43,7 +43,7 @@ const GroupSettingsModal = ({
     if (!file) return;
     setSaving(true);
     try {
-      const up = await api.uploadFile(file);
+      const up = await api.uploadFile(file, undefined, undefined, true);
       const updated = await api.configureGroup(chatId, { avatarUrl: up.file_url });
       setAvatar(updated.avatar_url ?? null);
       onUpdated({ avatar_url: updated.avatar_url ?? null });

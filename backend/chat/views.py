@@ -898,7 +898,8 @@ class FileUploadView(APIView):
         # Хранилище: при включённом S3 отправляем итоговый файл в бакет и
         # отдаём его публичный URL, локальную копию удаляем. Иначе — как раньше,
         # раздаём локально через nginx (/media/...).
-        if s3_enabled():
+        local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
+        if s3_enabled() and not local_only:
             try:
                 url = s3_upload(os.path.join(settings.MEDIA_ROOT, file_path), file_path)
                 try:

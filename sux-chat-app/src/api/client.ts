@@ -488,10 +488,12 @@ export const api = {
     file: File,
     compress?: string,
     onProgress?: (percent: number) => void,
+    local?: boolean,
   ): Promise<{ file_url: string; file_name: string; file_size: number }> => {
     const formData = new FormData();
     formData.append('file', file);
     if (compress) formData.append('compress', compress);
+    if (local) formData.append('local', '1');
     if (onProgress) {
       return uploadWithProgress(`${API_URL}/upload/`, formData, onProgress);
     }
