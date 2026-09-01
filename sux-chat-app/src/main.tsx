@@ -43,14 +43,14 @@ if (Cap.isNativePlatform()) {
   const root = document.documentElement;
 
   if (Cap.getPlatform() === "android") {
-    // Android: пусть WebView нативно сжимается вместе с клавиатурой
-    // (windowSoftInputMode=adjustResize + KeyboardResize.Native). Ручной сдвиг,
-    // как на iOS, здесь только вредил — окно и так поднималось, и интерфейс
-    // «улетал» вверх. --app-height следит за visualViewport (syncAppHeight),
-    // а --kb-height держим нулевым: панель ввода и так оказывается над
-    // клавиатурой на дне сжавшегося WebView.
+    // Android: единственный ресайз даёт система (windowSoftInputMode=adjustResize),
+    // а высоту приложения ведёт visualViewport (syncAppHeight). Плагинный
+    // KeyboardResize.Native ДОПОЛНИТЕЛЬНО сжимал WebView поверх системного —
+    // получался двойной сдвиг: интерфейс улетал вверх, а между панелью ввода и
+    // клавиатурой зияла пустота. Поэтому плагин держим пассивным (None), ручной
+    // --kb-height не трогаем: панель ввода и так на дне сжатой visualViewport.
     root.style.setProperty("--kb-height", "0px");
-    Keyboard.setResizeMode({ mode: KeyboardResize.Native }).catch(() => {});
+    Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {});
   } else {
     // iOS: WebView не ресайзим (resize:'none'), а синхронно двигаем панель
     // ввода сами — плагин присылает высоту и длительность до анимации.

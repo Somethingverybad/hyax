@@ -214,6 +214,13 @@ body {
   overflow: hidden;
 }
 
+/* Глобальный запрет горизонтального вылета: длинное название или широкий
+   элемент не должны сдвигать всю раскладку вбок. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 .h-screen {
   height: var(--app-height) !important;
 }

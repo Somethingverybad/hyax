@@ -213,6 +213,22 @@ const Chat = () => {
     };
   }, []);
 
+  // Аппаратная кнопка «назад» (Android): из открытого чата — назад к списку;
+  // на списке — свернуть приложение. Без обработчика системная кнопка ничего
+  // не делала внутри чата.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let handle: { remove: () => void } | undefined;
+    App.addListener('backButton', () => {
+      if (selectedChatIdRef.current) {
+        setSelectedChatId(null);
+      } else {
+        App.minimizeApp();
+      }
+    }).then((h) => { handle = h; });
+    return () => { handle?.remove(); };
+  }, []);
+
   // Сигналинг звонков: пользовательский WebSocket + глобальный сервис звонков.
   useEffect(() => {
     if (!user?.id) return;

@@ -597,7 +597,7 @@ const ChatSidebar = ({
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className="font-semibold truncate">{chatTitle}</p>
+                          <p className="font-semibold truncate min-w-0">{chatTitle}</p>
                           {chat.updated_at && (
                             <span className="text-[11px] text-muted-foreground shrink-0">
                               {new Date(chat.updated_at).toLocaleTimeString("ru-RU", {
