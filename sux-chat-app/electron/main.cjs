@@ -110,6 +110,24 @@ ipcMain.handle('save-file', async (_event, fileUrl, fileName) => {
   }
 });
 
+// Обновление изнутри: скачиваем установщик во временную папку и открываем его
+// (mac — монтирует DMG, win — запускает NSIS-инсталлятор, linux — AppImage).
+ipcMain.handle('install-update', async (_e, url, fileName) => {
+  try {
+    const resp = await net.fetch(url);
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    const tmp = path.join(app.getPath('temp'), fileName || 'hyax-update');
+    fs.writeFileSync(tmp, Buffer.from(await resp.arrayBuffer()));
+    if (process.platform === 'linux') { try { fs.chmodSync(tmp, 0o755); } catch {} }
+    await shell.openPath(tmp);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.on('open-external', (_e, url) => { if (/^https?:/.test(url)) shell.openExternal(url); });
+
 ipcMain.on('minimize-window', () => mainWindow?.minimize());
 ipcMain.on('close-window', () => mainWindow?.close());
 

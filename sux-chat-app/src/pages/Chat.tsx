@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import Identicon from "@/components/Identicon";
+import UpdateBanner from "@/components/UpdateBanner";
 import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { requestMediaPermissionsOnce } from "@/lib/permissions";
@@ -625,6 +626,7 @@ const Chat = () => {
   if (isMobile) {
     return (
       <div className="h-screen flex flex-col bg-background">
+        <UpdateBanner />
         {callUi}
         {selectedChatId ? (
           <ChatWindow
@@ -667,7 +669,9 @@ const Chat = () => {
   }
 
   return (
-    <div className="h-screen flex bg-background">
+    <div className="h-screen flex flex-col bg-background">
+      <UpdateBanner />
+      <div className="flex-1 flex min-h-0">
       {callUi}
       <ChatSidebar
         userId={user.id}
@@ -708,6 +712,7 @@ const Chat = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
