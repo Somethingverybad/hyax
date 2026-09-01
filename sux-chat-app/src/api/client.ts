@@ -224,6 +224,29 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
 }
 
 
+async function uploadWithProgress(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<any> {
+  const token = await getFreshAccessToken();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); }
+      } else reject(new Error(`upload failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("upload error"));
+    xhr.send(formData);
+  });
+}
+
 export const api = {
   // ===== AUTH =====
   register: async (username: string, password: string): Promise<AuthResponse> => {
@@ -461,14 +484,17 @@ export const api = {
     return res.json();
   },
 // ===== FILE UPLOAD =====
-  uploadFile: async (file: File, compress?: string): Promise<{
-    file_url: string;
-    file_name: string;
-    file_size: number;
-  }> => {
+  uploadFile: async (
+    file: File,
+    compress?: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<{ file_url: string; file_name: string; file_size: number }> => {
     const formData = new FormData();
     formData.append('file', file);
     if (compress) formData.append('compress', compress);
+    if (onProgress) {
+      return uploadWithProgress(`${API_URL}/upload/`, formData, onProgress);
+    }
 
     const res = await fetchWithAuthMultipart(`${API_URL}/upload/`, {
       method: "POST",
@@ -488,7 +514,7 @@ export const api = {
     file_url: string;
     file_name: string;
     file_size: number;
-  }, content?: string, soundId?: string, replyToId?: string): Promise<any> => {
+  }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
@@ -499,7 +525,8 @@ export const api = {
         file_name: fileData.file_name,
         file_size: fileData.file_size,
         sound_id: soundId || undefined,
-        reply_to_id: replyToId || undefined
+        reply_to_id: replyToId || undefined,
+        download_only: downloadOnly ? "1" : undefined
       }),
     });
     return res.json();

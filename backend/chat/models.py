@@ -82,6 +82,9 @@ class Message(models.Model):
     # Реплай: на какое сообщение отвечаем. SET_NULL — если оригинал удалят,
     # ответ остаётся, просто теряет цитату.
     reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, blank=True, null=True, related_name='replies')
+    # Вложение отправлено как «Файл» (без обработки): показывать строкой со
+    # скачиванием, а не инлайн-превью — даже если это картинка/видео.
+    download_only = models.BooleanField(default=False)
     
     # Добавляем свойство для удобства
     @property

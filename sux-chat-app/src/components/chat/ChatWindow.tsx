@@ -40,6 +40,8 @@ interface Message {
   /** Видео-сообщение («треугольник») и его длительность. */
   video_url?: string | null;
   video_duration?: number | null;
+  /** Отправлено как «Файл» — показывать строкой со скачиванием, не превью. */
+  download_only?: boolean;
   sender_id: string;
   sender?: Profile;
   created_at: string;
@@ -157,6 +159,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   // Просим сервер сжать видео (ffmpeg). Фото сжимаем на клиенте, файлы — как есть.
   const pendingCompressRef = useRef<string | null>(null);
+  const pendingDownloadOnlyRef = useRef<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Свои картинки показываем из локального файла: сервер их и так получил от
   // нас, скачивать обратно — лишний трафик и «пустой» пузырь на время загрузки.
@@ -342,12 +346,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       // Фото сжимаем прямо здесь, до отправки.
       setSelectedFile(await compressImage(file));
       pendingCompressRef.current = null;
+      pendingDownloadOnlyRef.current = false;
     } else if (mode === "video") {
       setSelectedFile(file);
       pendingCompressRef.current = "video"; // сервер пережмёт ffmpeg-ом
+      pendingDownloadOnlyRef.current = false;
     } else {
+      // «Файл» — без обработки, показываем строкой со скачиванием.
       setSelectedFile(file);
       pendingCompressRef.current = null;
+      pendingDownloadOnlyRef.current = true;
     }
   };
 
@@ -472,6 +480,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       sender: { id: userId } as Profile,
       created_at: new Date().toISOString(),
       sound,
+      download_only: downloadOnly,
       reply_to: reply
         ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
         : null,
@@ -481,7 +490,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     };
 
     const compress = pendingCompressRef.current;
+    const downloadOnly = pendingDownloadOnlyRef.current;
     pendingCompressRef.current = null;
+    pendingDownloadOnlyRef.current = false;
     setNewMessage("");
     setSelectedFile(null);
     setSelectedSound(null);
@@ -494,7 +505,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       let sent: Message;
       if (file) {
-        const uploadResult = await api.uploadFile(file, compress || undefined);
+        const uploadResult = await api.uploadFile(file, compress || undefined, (p) => setUploadProgress(p));
         // Свою картинку рисуем из локального файла и после подтверждения —
         // сервер нужен только собеседнику.
         if (localUrl && uploadResult.file_url) {
@@ -504,7 +515,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           file_url: uploadResult.file_url,
           file_name: uploadResult.file_name,
           file_size: uploadResult.file_size,
-        }, text || undefined, sound?.id, reply?.id);
+        }, text || undefined, sound?.id, reply?.id, downloadOnly);
+        setUploadProgress(null);
       } else {
         sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
       }
@@ -518,6 +530,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       );
     } catch (error: any) {
       console.error("Error sending message:", error);
+      setUploadProgress(null);
       toast.error("Ошибка отправки: " + (error.message || "Неизвестная ошибка"));
       // Возвращаем черновик, чтобы можно было отправить повторно.
       setMessages(prev => prev.filter(m => m.id !== tempId));
@@ -859,6 +872,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const isOwn = message.sender?.id === userId;
             const hasImage =
               !!message.file_url &&
+              !message.download_only &&
               isImageFile(message.file_name, message.file_url) &&
               !imageLoadErrors.has(message.id);
             // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
@@ -1044,7 +1058,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               onOpen={(url, name) => setViewer({ url, name })}
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
-                          ) : isVideoFile(message.file_name, message.file_url) ? (
+                          ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
                             <MessageVideoFile raw={message.file_url} />
                           ) : (
                             <MessageFile
@@ -1112,6 +1126,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+          )}
+          {uploadProgress !== null && (
+            <div className="mb-2 flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                <div className="h-full bg-primary transition-[width] duration-150" style={{ width: `${uploadProgress}%` }} />
+              </div>
+              <span className="text-xs text-muted-foreground tabular-nums w-9 text-right">{uploadProgress}%</span>
             </div>
           )}
           {selectedFile && (

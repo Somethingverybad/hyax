@@ -568,7 +568,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             save_kwargs.update({
                 'file_url': file_url,
                 'file_name': file_name,
-                'file_size': file_size
+                'file_size': file_size,
+                'download_only': str(request.data.get('download_only') or '').lower() in ('1', 'true', 'yes'),
             })
         
         if sticker_id:
