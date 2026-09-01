@@ -606,7 +606,16 @@ class MessageViewSet(viewsets.ModelViewSet):
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
-        
+
+        # Канал: публиковать может только owner/admin.
+        _chat_id = request.data.get('chat')
+        if _chat_id:
+            _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name').first()
+            if _ch and _ch.kind == 'channel':
+                _cp = ChatParticipant.objects.filter(chat=_ch, user=profile).first()
+                if not _cp or _cp.role not in ('owner', 'admin'):
+                    return Response({"error": "Публиковать в канал могут только админы"}, status=403)
+
         # Создаем сообщение
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -701,9 +710,11 @@ class MessageViewSet(viewsets.ModelViewSet):
                     preview = "Файл"
                 else:
                     preview = "Новое сообщение"
+            # У поста канала заголовок пуша — имя канала, а не автора.
+            push_title = message.chat.name if getattr(message.chat, "kind", "") == "channel" else profile.username
             notify_profiles(
                 recipients,
-                title=profile.username,
+                title=push_title,
                 body=preview[:150],
                 extra={"chat_id": str(message.chat.id)},
                 sound=message.sound.slug if message.sound_id else None,
@@ -1636,3 +1647,332 @@ class BotDetailView(APIView):
         if user:
             user.delete()  # каскадом уберёт связанные записи бота
         return Response({"ok": True})
+
+
+# ── Каналы (kind=channel поверх Chat) ─────────────────────────────────────────
+# Вещание «один-ко-многим»: owner/admin публикуют посты (обычные Message),
+# подписчики читают, реагируют и комментируют. Постинг гейтится в
+# MessageViewSet.create по роли. Пуш подписчикам и WS идут там же.
+
+import re as _re
+
+
+def _prof(request):
+    return getattr(request.user, "profile", None)
+
+
+def _role_in(chat, profile):
+    if not profile:
+        return None
+    cp = ChatParticipant.objects.filter(chat=chat, user=profile).first()
+    return cp.role if cp else None
+
+
+def _channel_or_none(pk):
+    return Chat.objects.filter(pk=pk, kind="channel").first()
+
+
+def _valid_username(u):
+    return bool(_re.match(r"^[A-Za-z0-9_]{3,32}$", u or ""))
+
+
+def _post_payload(msg, request):
+    """Пост канала = Message + сводка реакций/просмотров/комментов."""
+    data = MessageSerializer(msg, context={"request": request}).data
+    prof = _prof(request)
+    aggs = list(msg.reactions.values("value").annotate(c=models.Count("id")).order_by("-c"))
+    data["reactions"] = [{"value": a["value"], "count": a["c"]} for a in aggs]
+    data["reactions_total"] = sum(a["c"] for a in aggs)
+    data["my_reaction"] = None
+    if prof:
+        mine = msg.reactions.filter(user=prof).first()
+        data["my_reaction"] = mine.value if mine else None
+    data["comments_count"] = msg.comments.filter(deleted=False).count()
+    data["views_count"] = msg.views.count()
+    return data
+
+
+class ChannelsView(APIView):
+    """GET — мои каналы. POST — создать канал."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        me = _prof(request)
+        chans = Chat.objects.filter(kind="channel", participants=me).order_by("-updated_at")
+        return Response({"channels": [ChannelSerializer(c, context={"request": request}).data for c in chans]})
+
+    def post(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        name = (request.data.get("name") or "").strip()
+        if len(name) < 2:
+            return Response({"error": "Название канала короче 2 символов"}, status=400)
+        username = (request.data.get("username") or "").strip().lstrip("@") or None
+        if username is not None:
+            if not _valid_username(username):
+                return Response({"error": "@username: 3–32 символа, латиница/цифры/подчёркивание"}, status=400)
+            if Chat.objects.filter(username__iexact=username).exists():
+                return Response({"error": "Такой @username уже занят"}, status=400)
+        ch = Chat.objects.create(
+            kind="channel", name=name[:100], username=username,
+            description=(request.data.get("description") or "")[:500],
+            is_public=True,
+            sign_posts=str(request.data.get("sign_posts") or "").lower() in ("1", "true", "yes"),
+            creator=me,
+        )
+        ChatParticipant.objects.create(chat=ch, user=me, role="owner")
+        ch.subscribers_count = 1
+        ch.save(update_fields=["subscribers_count"])
+        return Response({"channel": ChannelSerializer(ch, context={"request": request}).data}, status=201)
+
+
+class ChannelDiscoverView(APIView):
+    """GET ?q= — поиск публичных каналов по названию / @username."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip().lstrip("@")
+        qs = Chat.objects.filter(kind="channel", is_public=True)
+        if q:
+            qs = qs.filter(models.Q(name__icontains=q) | models.Q(username__icontains=q))
+        qs = qs.order_by("-subscribers_count")[:20]
+        return Response({"channels": [ChannelSerializer(c, context={"request": request}).data for c in qs]})
+
+
+class ChannelDetailView(APIView):
+    """GET — инфо + админы. PATCH — правка (owner/admin). DELETE — удалить (owner)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        admins = ChatParticipant.objects.filter(chat=ch, role__in=("owner", "admin")).select_related("user")
+        data = ChannelSerializer(ch, context={"request": request}).data
+        data["admins"] = [
+            {"id": str(a.user_id), "username": a.user.username, "role": a.role} for a in admins
+        ]
+        return Response(data)
+
+    def patch(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        me = _prof(request)
+        if _role_in(ch, me) not in ("owner", "admin"):
+            return Response({"error": "Только админы канала"}, status=403)
+        fields = []
+        if "name" in request.data:
+            nm = (request.data.get("name") or "").strip()
+            if len(nm) < 2:
+                return Response({"error": "Название короче 2 символов"}, status=400)
+            ch.name = nm[:100]; fields.append("name")
+        if "description" in request.data:
+            ch.description = (request.data.get("description") or "")[:500]; fields.append("description")
+        if "avatar_url" in request.data:
+            ch.avatar_url = request.data.get("avatar_url") or None; fields.append("avatar_url")
+        if "sign_posts" in request.data:
+            ch.sign_posts = str(request.data.get("sign_posts")).lower() in ("1", "true", "yes"); fields.append("sign_posts")
+        if "username" in request.data:
+            username = (request.data.get("username") or "").strip().lstrip("@") or None
+            if username is not None:
+                if not _valid_username(username):
+                    return Response({"error": "Некорректный @username"}, status=400)
+                if Chat.objects.filter(username__iexact=username).exclude(pk=ch.pk).exists():
+                    return Response({"error": "@username занят"}, status=400)
+            ch.username = username; fields.append("username")
+        if fields:
+            ch.save(update_fields=fields)
+        return Response(ChannelSerializer(ch, context={"request": request}).data)
+
+    def delete(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        if _role_in(ch, _prof(request)) != "owner":
+            return Response({"error": "Удалить канал может только владелец"}, status=403)
+        ch.delete()
+        return Response({"ok": True})
+
+
+class ChannelSubscribeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        me = _prof(request)
+        cp, created = ChatParticipant.objects.get_or_create(chat=ch, user=me, defaults={"role": "subscriber"})
+        if created:
+            ch.subscribers_count = models.F("subscribers_count") + 1
+            ch.save(update_fields=["subscribers_count"])
+            ch.refresh_from_db(fields=["subscribers_count"])
+        return Response(ChannelSerializer(ch, context={"request": request}).data)
+
+
+class ChannelLeaveView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        me = _prof(request)
+        cp = ChatParticipant.objects.filter(chat=ch, user=me).first()
+        if not cp:
+            return Response({"ok": True})
+        if cp.role == "owner":
+            return Response({"error": "Владелец не может отписаться — удалите канал"}, status=400)
+        cp.delete()
+        if ch.subscribers_count > 0:
+            ch.subscribers_count = models.F("subscribers_count") - 1
+            ch.save(update_fields=["subscribers_count"])
+        return Response({"ok": True})
+
+
+class ChannelAdminsView(APIView):
+    """GET — список админов. POST {user_id, action:add|remove} — только owner."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        admins = ChatParticipant.objects.filter(chat=ch, role__in=("owner", "admin")).select_related("user")
+        return Response({"admins": [
+            {"id": str(a.user_id), "username": a.user.username, "role": a.role, "is_bot": a.user.is_bot} for a in admins
+        ]})
+
+    def post(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        if _role_in(ch, _prof(request)) != "owner":
+            return Response({"error": "Управлять админами может только владелец"}, status=403)
+        target = Profile.objects.filter(id=request.data.get("user_id")).first()
+        if not target:
+            return Response({"error": "Пользователь не найден"}, status=404)
+        action = (request.data.get("action") or "add").lower()
+        cp, created = ChatParticipant.objects.get_or_create(chat=ch, user=target, defaults={"role": "subscriber"})
+        if created:
+            ch.subscribers_count = models.F("subscribers_count") + 1
+            ch.save(update_fields=["subscribers_count"])
+        if cp.role == "owner":
+            return Response({"error": "Нельзя менять роль владельца"}, status=400)
+        cp.role = "admin" if action == "add" else "subscriber"
+        cp.save(update_fields=["role"])
+        return Response({"ok": True, "user_id": str(target.id), "role": cp.role})
+
+
+class ChannelPostsView(APIView):
+    """GET — лента канала (последние посты со сводкой откликов)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        me = _prof(request)
+        if not ch.is_public and _role_in(ch, me) is None:
+            return Response({"error": "Канал приватный"}, status=403)
+        posts = list(
+            Message.objects.filter(chat=ch, deleted_for_all=False)
+            .select_related("sender", "sound")
+            .order_by("-created_at")[:50]
+        )[::-1]
+        return Response({"posts": [_post_payload(m, request) for m in posts]})
+
+
+def _post_or_none(pk):
+    return Message.objects.filter(pk=pk).select_related("chat").first()
+
+
+class PostReactView(APIView):
+    """POST {value, kind?} — поставить/сменить реакцию. DELETE — снять."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        msg = _post_or_none(pk)
+        if not msg:
+            return Response({"error": "Пост не найден"}, status=404)
+        me = _prof(request)
+        if not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
+            return Response({"error": "Подпишитесь, чтобы реагировать"}, status=403)
+        value = (request.data.get("value") or "").strip()
+        if not value:
+            return Response({"error": "Пустая реакция"}, status=400)
+        PostReaction.objects.update_or_create(
+            post=msg, user=me,
+            defaults={"value": value[:64], "kind": (request.data.get("kind") or "emoji")[:10]},
+        )
+        return Response(_post_payload(msg, request))
+
+    def delete(self, request, pk):
+        msg = _post_or_none(pk)
+        if not msg:
+            return Response({"error": "Пост не найден"}, status=404)
+        PostReaction.objects.filter(post=msg, user=_prof(request)).delete()
+        return Response(_post_payload(msg, request))
+
+
+class PostCommentsView(APIView):
+    """GET — комментарии поста. POST {content, parent?} — добавить."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        msg = _post_or_none(pk)
+        if not msg:
+            return Response({"error": "Пост не найден"}, status=404)
+        comments = msg.comments.filter(deleted=False).select_related("author").order_by("created_at")
+        return Response({"comments": PostCommentSerializer(comments, many=True).data})
+
+    def post(self, request, pk):
+        msg = _post_or_none(pk)
+        if not msg:
+            return Response({"error": "Пост не найден"}, status=404)
+        me = _prof(request)
+        if not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
+            return Response({"error": "Подпишитесь, чтобы комментировать"}, status=403)
+        content = (request.data.get("content") or "").strip()
+        if not content:
+            return Response({"error": "Пустой комментарий"}, status=400)
+        parent = None
+        parent_id = request.data.get("parent")
+        if parent_id:
+            parent = PostComment.objects.filter(id=parent_id, post=msg).first()
+        c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content[:2000])
+        return Response(PostCommentSerializer(c).data, status=201)
+
+
+class PostCommentDetailView(APIView):
+    """DELETE — удалить коммент (автор или админ канала)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, pk):
+        c = PostComment.objects.filter(pk=pk).select_related("post", "post__chat").first()
+        if not c:
+            return Response({"error": "Комментарий не найден"}, status=404)
+        me = _prof(request)
+        if c.author_id != (me.id if me else None) and _role_in(c.post.chat, me) not in ("owner", "admin"):
+            return Response({"error": "Нельзя удалить чужой комментарий"}, status=403)
+        c.deleted = True
+        c.save(update_fields=["deleted"])
+        return Response({"ok": True})
+
+
+class PostViewMark(APIView):
+    """POST — отметить просмотр поста (гость публичного канала тоже считается)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        msg = _post_or_none(pk)
+        if not msg:
+            return Response({"error": "Пост не найден"}, status=404)
+        me = _prof(request)
+        is_participant = ChatParticipant.objects.filter(chat=msg.chat, user=me).exists()
+        if not (msg.chat.is_public or is_participant):
+            return Response({"error": "Нет доступа"}, status=403)
+        PostView.objects.get_or_create(post=msg, user=me)
+        return Response({"views_count": msg.views.count()})

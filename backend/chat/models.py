@@ -47,10 +47,20 @@ class Chat(models.Model):
     # собеседника, и хранить его незачем.
     name = models.CharField(max_length=100, blank=True, default="")
     is_group = models.BooleanField(default=False)
+    # Тип чата: direct (личка) · group (группа) · channel (канал-вещание).
+    # is_group оставлен для обратной совместимости, kind — источник истины.
+    kind = models.CharField(max_length=10, default="direct")
     # Аватар группы (URL загруженного файла) и создатель-админ: только он
     # переименовывает группу, меняет аватар и добавляет участников.
     avatar_url = models.TextField(blank=True, null=True)
     creator = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="created_chats")
+    # Поля канала (для kind=channel):
+    username = models.CharField(max_length=32, unique=True, null=True, blank=True)  # публичный @хэндл
+    description = models.TextField(blank=True, default="")
+    is_public = models.BooleanField(default=True)   # в MVP всегда True (в общем поиске)
+    sign_posts = models.BooleanField(default=False)  # показывать автора поста
+    subscribers_count = models.IntegerField(default=0)
+    default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -60,6 +70,10 @@ class ChatParticipant(models.Model):
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE)
     user = models.ForeignKey(Profile, on_delete=models.CASCADE)
     joined_at = models.DateTimeField(default=timezone.now)
+    # Роль: owner · admin · subscriber (каналы) / member (группы, личка).
+    # Постить в канал могут только owner/admin.
+    role = models.CharField(max_length=12, default="member")
+    muted = models.BooleanField(default=False)  # подписчик отключил пуши канала
 
     class Meta:
         unique_together = ("chat", "user")
@@ -335,3 +349,45 @@ class CallParticipant(models.Model):
 
     class Meta:
         unique_together = ("call", "user")
+
+
+class PostReaction(models.Model):
+    """Реакция на пост канала. Одна активная реакция на пользователя
+    (unique post+user). kind обобщён: сейчас emoji, потом custom (реакции из
+    Creative Space) — value хранит символ или id ассета."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey('Message', on_delete=models.CASCADE, related_name="reactions")
+    user = models.ForeignKey('Profile', on_delete=models.CASCADE, related_name="post_reactions")
+    kind = models.CharField(max_length=10, default="emoji")
+    value = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("post", "user")
+
+
+class PostComment(models.Model):
+    """Комментарий к посту канала — прямо на посте (без отдельной группы).
+    parent — ответ на другой комментарий (одноуровневые ветки)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey('Message', on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey('Profile', on_delete=models.CASCADE, related_name="post_comments")
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name="replies")
+    content = models.TextField()
+    deleted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["created_at"]
+
+
+class PostView(models.Model):
+    """Уникальный просмотр поста (unique post+user). Гость публичного канала
+    тоже считается."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey('Message', on_delete=models.CASCADE, related_name="views")
+    user = models.ForeignKey('Profile', on_delete=models.CASCADE, related_name="post_views")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("post", "user")

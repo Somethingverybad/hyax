@@ -38,7 +38,7 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'avatar_url', 'creator', 'created_at', 'updated_at', 'participants', 'last_message']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'participants', 'last_message']
 
     def get_creator(self, obj):
         return str(obj.creator_id) if obj.creator_id else None
@@ -221,3 +221,31 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         except Exception as e:
             logger.error(f"[JWT] Ошибка аутентификации для username {username}: {str(e)}")
             raise
+
+class ChannelSerializer(serializers.ModelSerializer):
+    """Инфо о канале для клиента. my_role — роль текущего пользователя в канале
+    (owner/admin/subscriber) или None, если не подписан."""
+    my_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Chat
+        fields = ['id', 'kind', 'name', 'username', 'description', 'avatar_url',
+                  'is_public', 'sign_posts', 'subscribers_count', 'creator',
+                  'my_role', 'created_at']
+
+    def get_my_role(self, obj):
+        req = self.context.get('request')
+        prof = getattr(getattr(req, 'user', None), 'profile', None) if req else None
+        if not prof:
+            return None
+        cp = ChatParticipant.objects.filter(chat=obj, user=prof).first()
+        return cp.role if cp else None
+
+
+class PostCommentSerializer(serializers.ModelSerializer):
+    author = ProfileSerializer(read_only=True)
+
+    class Meta:
+        model = PostComment
+        fields = ['id', 'post', 'author', 'parent', 'content', 'created_at']
+        read_only_fields = ['id', 'author', 'created_at']
