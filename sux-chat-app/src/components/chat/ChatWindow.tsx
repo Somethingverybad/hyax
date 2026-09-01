@@ -664,7 +664,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       if (result.kind === "video") {
         const uploaded = await api.uploadFile(result.file);
-        await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds);
+        // Фронтальная камера снимается в зеркальном (селфи) виде — помечаем,
+        // чтобы воспроизведение в чате отразилось так же. Сам файл не меняем.
+        await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, facing === "user");
       } else {
         const uploaded = await api.uploadVoice(result.file);
         await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
@@ -1103,6 +1105,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           url={message.video_url}
                           seconds={message.video_duration || 0}
                           own={isOwn}
+                          mirror={message.video_mirror}
                         />
                       )}
 
@@ -1666,7 +1669,7 @@ const MessageFile = ({ raw, name, isOwn, onSave }: {
   );
 };
 
-const VideoNote = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
+const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds: number; own: boolean; mirror?: boolean }) => {
   const src = useMediaUrl(url);
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -1720,7 +1723,14 @@ const VideoNote = ({ url, seconds, own }: { url: string; seconds: number; own: b
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         className="absolute inset-[3px] object-cover bg-black"
-        style={{ clipPath: TRIANGLE, width: "calc(100% - 6px)", height: "calc(100% - 6px)" }}
+        style={{
+          clipPath: TRIANGLE,
+          width: "calc(100% - 6px)",
+          height: "calc(100% - 6px)",
+          // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
+          // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
+          transform: mirror ? "scaleX(-1)" : undefined,
+        }}
       />
       {!playing && (
         <span className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
