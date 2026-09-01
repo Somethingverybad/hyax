@@ -149,6 +149,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Долгий тап по сообщению открывает меню — так же, как в мессенджерах,
   // где системное выделение текста только мешает.
   const [menuMessage, setMenuMessage] = useState<Message | null>(null);
+  // Позиция меню: задана — компактное меню у курсора (десктоп, правый клик);
+  // null — нижняя шторка (телефон, долгое удержание).
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = () => { setMenuMessage(null); setMenuPos(null); };
   // Добавление людей в чат: личная переписка при этом становится группой.
   const [addOpen, setAddOpen] = useState(false);
   const [addQuery, setAddQuery] = useState("");
@@ -460,7 +464,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
   const startDelete = (message: Message, scope: "me" | "all") => {
-    setMenuMessage(null);
+    closeMenu();
     // Если уже есть отложенное удаление — закоммитим его сразу.
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
     if (undoBar) commitDelete(undoBar.id, undoBar.scope);
@@ -478,7 +482,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setUndoBar(null);
   };
   const startEdit = (message: Message) => {
-    setMenuMessage(null);
+    closeMenu();
     setReplyTo(null);
     setEditing(message);
     setNewMessage(message.content || "");
@@ -603,7 +607,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const startLongPress = (message: Message) => {
     if (longPressRef.current) clearTimeout(longPressRef.current);
-    longPressRef.current = setTimeout(() => setMenuMessage(message), 450);
+    longPressRef.current = setTimeout(() => { setMenuPos(null); setMenuMessage(message); }, 450);
   };
 
   const cancelLongPress = () => {
@@ -650,7 +654,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     } catch {
       toast.error("Не удалось скопировать");
     }
-    setMenuMessage(null);
+    closeMenu();
   };
 
   // Отправка готовой записи (голос/видео) на сервер.
@@ -862,6 +866,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     );
   }
 
+  // Пункты меню сообщения — общий список для шторки и компактного меню.
+  const menuItems = menuMessage
+    ? [
+        { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
+        { label: "Копировать текст", show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
+        { label: "Редактировать", show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
+        { label: "Удалить у себя", show: true, onClick: () => startDelete(menuMessage, "me") },
+        { label: "Удалить у всех", show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
+      ].filter((i) => i.show)
+    : [];
+
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
       {(onBack || title || peer || isGroup) && (
@@ -1014,10 +1029,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     {/* Буббл сообщения */}
                     <div
                       onContextMenu={(e) => {
-                        // На десктопе правая кнопка открывает то же меню, что
-                        // долгое удержание на телефоне.
+                        // На десктопе правая кнопка открывает компактное меню
+                        // прямо у курсора (позиция → menuPos).
                         e.preventDefault();
                         setMenuMessage(message);
+                        setMenuPos({ x: e.clientX, y: e.clientY });
                       }}
                       onClick={() => {
                         if (justSwipedRef.current) return;
@@ -1454,59 +1470,64 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
 
-      {menuMessage && (
+      {/* Компактное меню у курсора (десктоп, правый клик) */}
+      {menuMessage && menuPos && (
+        <div
+          className="fixed inset-0 z-[70]"
+          onClick={closeMenu}
+          onContextMenu={(e) => { e.preventDefault(); closeMenu(); }}
+        >
+          <div
+            className="fixed min-w-[180px] bg-card border-2 border-border shadow-xl py-1"
+            style={{
+              left: Math.max(8, Math.min(menuPos.x, window.innerWidth - 198)),
+              top: Math.max(8, Math.min(menuPos.y, window.innerHeight - (menuItems.length * 38 + 16))),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menuItems.map((it, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={it.onClick}
+                className={cn(
+                  "w-full px-4 py-2 text-left text-sm hover:bg-secondary",
+                  it.danger && "text-destructive",
+                )}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Нижняя шторка (телефон, долгое удержание) */}
+      {menuMessage && !menuPos && (
         <div
           className="fixed inset-0 z-[70] bg-black/60 flex items-end"
-          onClick={() => setMenuMessage(null)}
+          onClick={closeMenu}
         >
           <div
             className="w-full bg-card border-t-2 border-border pb-[env(safe-area-inset-bottom)]"
             onClick={(e) => e.stopPropagation()}
           >
+            {menuItems.map((it, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={it.onClick}
+                className={cn(
+                  "w-full px-5 py-4 text-left text-base active:bg-secondary",
+                  it.danger && "text-destructive",
+                )}
+              >
+                {it.label}
+              </button>
+            ))}
             <button
               type="button"
-              onClick={() => { setReplyTo(menuMessage); setMenuMessage(null); }}
-              className="w-full px-5 py-4 text-left text-base active:bg-secondary"
-            >
-              Ответить
-            </button>
-            {menuMessage.content?.trim() && (
-              <button
-                type="button"
-                onClick={() => copyMessage(menuMessage)}
-                className="w-full px-5 py-4 text-left text-base active:bg-secondary"
-              >
-                Копировать текст
-              </button>
-            )}
-            {menuMessage.sender?.id === userId && menuMessage.content?.trim() && (
-              <button
-                type="button"
-                onClick={() => startEdit(menuMessage)}
-                className="w-full px-5 py-4 text-left text-base active:bg-secondary"
-              >
-                Редактировать
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => startDelete(menuMessage, "me")}
-              className="w-full px-5 py-4 text-left text-base active:bg-secondary"
-            >
-              Удалить у себя
-            </button>
-            {menuMessage.sender?.id === userId && (
-              <button
-                type="button"
-                onClick={() => startDelete(menuMessage, "all")}
-                className="w-full px-5 py-4 text-left text-base text-destructive active:bg-secondary"
-              >
-                Удалить у всех
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setMenuMessage(null)}
+              onClick={closeMenu}
               className="w-full px-5 py-4 text-left text-base text-muted-foreground active:bg-secondary"
             >
               Отмена

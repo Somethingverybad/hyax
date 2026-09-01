@@ -15,7 +15,8 @@ import {
   ChevronLeft,
   Menu,
   Users,
-  Check
+  Check,
+  Trash2
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -105,6 +106,11 @@ const ChatSidebar = ({
   const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>({});
   const [loadingParticipants, setLoadingParticipants] = useState<{[chatId: string]: boolean}>({});
   const [deletingChats, setDeletingChats] = useState<{[chatId: string]: boolean}>({});
+  // Удаление чата: десктоп — меню по правому клику у курсора; телефон —
+  // свайп влево открывает красную кнопку.
+  const [chatMenu, setChatMenu] = useState<{ x: number; y: number; chatId: string; title: string } | null>(null);
+  const [swipedChatId, setSwipedChatId] = useState<string | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
 
   useEffect(() => {
     console.log("ChatSidebar mounted, userId:", userId);
@@ -248,8 +254,10 @@ const ChatSidebar = ({
   };
 
   // Функция удаления чата
-  const deleteChat = async (chatId: string, chatTitle: string) => {
-    if (!confirm(`Вы уверены, что хотите удалить чат "${chatTitle}"?`)) {
+  const deleteChat = async (chatId: string, chatTitle: string, skipConfirm = false) => {
+    setChatMenu(null);
+    setSwipedChatId(null);
+    if (!skipConfirm && !confirm(`Вы уверены, что хотите удалить чат "${chatTitle}"?`)) {
       return;
     }
 
@@ -514,14 +522,52 @@ const ChatSidebar = ({
               return (
                 <div
                   key={chat.id}
-                  className={`group relative px-4 py-3 flex items-center gap-3 border-b border-border/60 transition-colors ${
-                    selectedChatId === chat.id ? "bg-secondary" : "active:bg-secondary/60"
-                  } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
-                    isCollapsed ? "justify-center" : ""
-                  }`}
+                  className="relative border-b border-border/60 overflow-hidden"
                 >
+                  {/* Красная кнопка удаления — открывается свайпом влево (телефон) */}
                   <button
-                    onClick={() => handleSelectChat(chat.id, chatTitle)}
+                    type="button"
+                    onClick={() => deleteChat(chat.id, chatTitle, true)}
+                    className="absolute inset-y-0 right-0 w-20 bg-destructive text-white flex items-center justify-center"
+                    tabIndex={swipedChatId === chat.id ? 0 : -1}
+                    aria-label="Удалить чат"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+
+                  {/* Содержимое строки: ездит по свайпу, правый клик → меню */}
+                  <div
+                    className={`group relative px-4 py-3 flex items-center gap-3 transition-transform ${
+                      selectedChatId === chat.id ? "bg-secondary" : "bg-card active:bg-secondary/60"
+                    } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
+                      isCollapsed ? "justify-center" : ""
+                    }`}
+                    style={{ transform: swipedChatId === chat.id ? "translateX(-80px)" : "translateX(0)" }}
+                    onContextMenu={(e) => {
+                      if (isCollapsed) return;
+                      e.preventDefault();
+                      setChatMenu({ x: e.clientX, y: e.clientY, chatId: chat.id, title: chatTitle });
+                    }}
+                    onTouchStart={(e) => {
+                      swipeStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, id: chat.id };
+                    }}
+                    onTouchEnd={(e) => {
+                      const s = swipeStartRef.current;
+                      swipeStartRef.current = null;
+                      if (!s || s.id !== chat.id || isCollapsed) return;
+                      const t = e.changedTouches[0];
+                      const dx = t.clientX - s.x, dy = t.clientY - s.y;
+                      if (Math.abs(dx) > Math.abs(dy) * 1.5) {
+                        if (dx < -45) setSwipedChatId(chat.id);
+                        else if (dx > 25) setSwipedChatId(null);
+                      }
+                    }}
+                  >
+                  <button
+                    onClick={() => {
+                      if (swipedChatId === chat.id) { setSwipedChatId(null); return; }
+                      handleSelectChat(chat.id, chatTitle);
+                    }}
                     className={`flex items-center gap-3 text-left ${
                       isCollapsed ? "flex-col justify-center w-full" : "flex-1"
                     }`}
@@ -579,33 +625,13 @@ const ChatSidebar = ({
                     )}
                   </button>
 
-                  {/* Кнопка удаления чата (скрываем в свернутом состоянии) */}
-                  {!isCollapsed && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteChat(chat.id, chatTitle);
-                      }}
-                      className="h-6 w-6 opacity-0 group-hover:opacity-70 hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
-                      disabled={isDeleting}
-                      title="Удалить чат"
-                    >
-                      {isDeleting ? (
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <X className="h-3 w-3" />
-                      )}
-                    </Button>
-                  )}
-
                   {/* Индикатор загрузки при удалении */}
                   {isDeleting && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg">
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50">
                       <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
+                  </div>
                 </div>
               );
             })
@@ -631,6 +657,33 @@ const ChatSidebar = ({
           >
             <LogOut className="w-4 h-4" />
           </Button>
+        </div>
+      )}
+
+      {/* Меню чата по правому клику (десктоп) */}
+      {chatMenu && (
+        <div
+          className="fixed inset-0 z-[80]"
+          onClick={() => setChatMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setChatMenu(null); }}
+        >
+          <div
+            className="fixed min-w-[170px] bg-card border-2 border-border shadow-xl py-1"
+            style={{
+              left: Math.max(8, Math.min(chatMenu.x, window.innerWidth - 188)),
+              top: Math.max(8, Math.min(chatMenu.y, window.innerHeight - 60)),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => deleteChat(chatMenu.chatId, chatMenu.title)}
+              className="w-full px-4 py-2 text-left text-sm text-destructive hover:bg-secondary flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Удалить чат
+            </button>
+          </div>
         </div>
       )}
     </div>
