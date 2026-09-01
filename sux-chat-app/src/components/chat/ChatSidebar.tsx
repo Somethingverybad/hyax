@@ -16,7 +16,8 @@ import {
   Menu,
   Users,
   Check,
-  Trash2
+  Trash2,
+  Radio
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -42,7 +43,7 @@ interface ChatSidebarProps {
   chats: Chat[];
   /** title — вычисленное имя собеседника: список чатов его не содержит,
    *  участники грузятся отдельно, поэтому знает о нём только сайдбар. */
-  onSelectChat: (chatId: string, title?: string) => void;
+  onSelectChat: (chatId: string, title?: string, kind?: string) => void;
   /** Перезагрузка списка — вызывается жестом «потянуть вниз». */
   onRefresh?: () => Promise<unknown> | void;
   selectedChatId: string | null;
@@ -93,11 +94,19 @@ const ChatSidebar = ({
   const listRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
   const [searchQuery, setSearchQuery] = useState("");
-  // Групповой режим диалога «Новый чат»: копим выбранных участников и имя.
-  const [groupMode, setGroupMode] = useState(false);
+  // Режим диалога «Новый чат»: личный · группа · канал.
+  const [mode, setMode] = useState<"user" | "group" | "channel">("user");
+  const groupMode = mode === "group";
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
+  const [channelResults, setChannelResults] = useState<any[]>([]);
+  // Поля создания канала.
+  const [chName, setChName] = useState("");
+  const [chUsername, setChUsername] = useState("");
+  const [chDesc, setChDesc] = useState("");
+  const [chSign, setChSign] = useState(false);
+  const [chBusy, setChBusy] = useState(false);
   // Профиль берём из кеша сразу: сеть только обновляет его. Иначе при каждом
   // возврате из чата шапка показывала «Загрузка…», хотя данные уже известны.
   const [currentUser, setCurrentUser] = useState<Profile | null>(
@@ -189,10 +198,13 @@ const ChatSidebar = ({
     }
 
     try {
-      console.log("Searching users with query:", query);
-      const results = await api.searchUsers(query);
-      console.log("Search results:", results);
+      // Каналы ищем в той же выдаче, что и пользователей.
+      const [results, chans] = await Promise.all([
+        api.searchUsers(query),
+        api.discoverChannels(query).catch(() => []),
+      ]);
       setSearchResults(Array.isArray(results) ? results : []);
+      setChannelResults(Array.isArray(chans) ? chans : []);
     } catch (error: any) {
       console.error("Error searching users:", error);
     }
@@ -227,11 +239,41 @@ const ChatSidebar = ({
   };
 
   const resetDialog = () => {
-    setGroupMode(false);
+    setMode("user");
     setGroupName("");
     setGroupMembers([]);
     setSearchQuery("");
     setSearchResults([]);
+    setChannelResults([]);
+    setChName(""); setChUsername(""); setChDesc(""); setChSign(false);
+  };
+
+  const createChannel = async () => {
+    const name = chName.trim();
+    if (name.length < 2) { toast.error("Название короче 2 символов"); return; }
+    setChBusy(true);
+    try {
+      const ch = await api.createChannel({
+        name,
+        username: chUsername.trim() || undefined,
+        description: chDesc.trim() || undefined,
+        sign_posts: chSign,
+      });
+      toast.success("Канал создан");
+      resetDialog();
+      onChatCreated();
+      handleSelectChat(ch.id, ch.name, "channel");
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось создать канал");
+    } finally {
+      setChBusy(false);
+    }
+  };
+
+  const openChannelFromSearch = (ch: any) => {
+    // Просто открываем — getChannel работает для любого публичного канала,
+    // подписка происходит уже внутри ленты.
+    handleSelectChat(ch.id, ch.name, "channel");
   };
 
   const createGroup = async () => {
@@ -279,8 +321,8 @@ const ChatSidebar = ({
   };
 
   // Обработчик выбора чата - сворачиваем сайдбар
-  const handleSelectChat = (chatId: string, title?: string) => {
-    onSelectChat(chatId, title);
+  const handleSelectChat = (chatId: string, title?: string, kind?: string) => {
+    onSelectChat(chatId, title, kind);
   };
 
   // Получаем участников для конкретного чата
@@ -374,28 +416,37 @@ const ChatSidebar = ({
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
-                <DialogTitle>{groupMode ? "Новая группа" : "Найти пользователя"}</DialogTitle>
+                <DialogTitle>{mode === "group" ? "Новая группа" : mode === "channel" ? "Новый канал" : "Найти"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={groupMode ? "outline" : "default"}
-                    className="flex-1"
-                    onClick={() => setGroupMode(false)}
-                  >
-                    Личный чат
+                  <Button type="button" variant={mode === "user" ? "default" : "outline"} className="flex-1" onClick={() => setMode("user")}>
+                    Личный
                   </Button>
-                  <Button
-                    type="button"
-                    variant={groupMode ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => setGroupMode(true)}
-                  >
-                    <Users className="w-4 h-4 mr-2" />
+                  <Button type="button" variant={mode === "group" ? "default" : "outline"} className="flex-1" onClick={() => setMode("group")}>
+                    <Users className="w-4 h-4 mr-1.5" />
                     Группа
                   </Button>
+                  <Button type="button" variant={mode === "channel" ? "default" : "outline"} className="flex-1" onClick={() => setMode("channel")}>
+                    <Radio className="w-4 h-4 mr-1.5" />
+                    Канал
+                  </Button>
                 </div>
+
+                {mode === "channel" && (
+                  <div className="space-y-3">
+                    <Input placeholder="Название канала" value={chName} onChange={(e) => setChName(e.target.value)} className="bg-secondary/50" />
+                    <Input placeholder="@username (необязательно)" value={chUsername} onChange={(e) => setChUsername(e.target.value)} className="bg-secondary/50" />
+                    <textarea placeholder="Описание (необязательно)" value={chDesc} onChange={(e) => setChDesc(e.target.value)} rows={3} className="w-full bg-secondary/50 px-3 py-2 outline-none resize-none text-sm" />
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input type="checkbox" checked={chSign} onChange={(e) => setChSign(e.target.checked)} />
+                      Показывать авторов постов
+                    </label>
+                    <Button type="button" onClick={createChannel} disabled={chBusy || chName.trim().length < 2} className="w-full bg-gradient-primary">
+                      Создать канал
+                    </Button>
+                  </div>
+                )}
 
                 {groupMode && (
                   <>
@@ -423,8 +474,10 @@ const ChatSidebar = ({
                   </>
                 )}
 
+                {mode !== "channel" && (
+                <>
                 <Input
-                  placeholder="Введите имя пользователя..."
+                  placeholder={mode === "group" ? "Добавить участника..." : "Имя пользователя или канала..."}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -434,8 +487,7 @@ const ChatSidebar = ({
                 />
                 <ScrollArea className="h-64">
                   <div className="space-y-2">
-                    {searchResults.length > 0 ? (
-                      searchResults.map((user) => (
+                    {searchResults.map((user) => (
                         <div
                           key={user.id}
                           className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary cursor-pointer transition-colors"
@@ -455,14 +507,36 @@ const ChatSidebar = ({
                             <UserPlus className="w-4 h-4 text-muted-foreground" />
                           )}
                         </div>
-                      ))
-                    ) : (
+                    ))}
+                    {/* Каналы в той же выдаче (только в режиме личного) */}
+                    {mode === "user" && channelResults.map((ch) => (
+                      <div
+                        key={ch.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary cursor-pointer transition-colors"
+                        onClick={() => openChannelFromSearch(ch)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-9 h-9 shrink-0 bg-secondary flex items-center justify-center">
+                            <Radio className="w-5 h-5 text-primary" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-medium truncate">{ch.name}</span>
+                            <span className="block text-xs text-muted-foreground truncate">
+                              канал · {ch.subscribers_count ?? 0} подписчиков{ch.username ? ` · @${ch.username}` : ""}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {searchResults.length === 0 && (mode !== "user" || channelResults.length === 0) && (
                       <div className="text-center text-muted-foreground py-8">
-                        {searchQuery ? "Пользователи не найдены" : "Введите имя для поиска"}
+                        {searchQuery ? "Ничего не найдено" : "Введите имя для поиска"}
                       </div>
                     )}
                   </div>
                 </ScrollArea>
+                </>
+                )}
 
                 {groupMode && (
                   <Button
@@ -507,10 +581,13 @@ const ChatSidebar = ({
               const otherParticipants = participants.filter(p => p.id !== currentUser?.id);
               const displayParticipants = otherParticipants.length > 0 ? otherParticipants : participants;
               
+              const isChannel = (chat as any).kind === "channel";
               // Формируем название чата
-              let chatTitle = chat.is_group ? (chat.name || "Группа") : "Без названия";
-              
-              if (chat.is_group) {
+              let chatTitle = isChannel
+                ? ((chat as any).name || "Канал")
+                : chat.is_group ? (chat.name || "Группа") : "Без названия";
+
+              if (isChannel || chat.is_group) {
                 // название уже задано
               } else if (displayParticipants.length > 0) {
                 const names = displayParticipants.map(p => p.username).filter(Boolean);
@@ -566,7 +643,7 @@ const ChatSidebar = ({
                   <button
                     onClick={() => {
                       if (swipedChatId === chat.id) { setSwipedChatId(null); return; }
-                      handleSelectChat(chat.id, chatTitle);
+                      handleSelectChat(chat.id, chatTitle, (chat as any).kind);
                     }}
                     className={`flex items-center gap-3 text-left ${
                       isCollapsed ? "flex-col justify-center w-full" : "flex-1"
@@ -574,7 +651,15 @@ const ChatSidebar = ({
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}
                   >
-                    {chat.is_group ? (
+                    {isChannel ? (
+                      (chat as any).avatar_url ? (
+                        <img src={mediaUrl((chat as any).avatar_url)} alt="" className="w-12 h-12 shrink-0 object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 shrink-0 bg-secondary flex items-center justify-center">
+                          <Radio className="w-6 h-6 text-primary" />
+                        </div>
+                      )
+                    ) : chat.is_group ? (
                       (chat as any).avatar_url ? (
                         <img
                           src={mediaUrl((chat as any).avatar_url)}
@@ -593,11 +678,14 @@ const ChatSidebar = ({
                         className="w-12 h-12"
                       />
                     )}
-                    
+
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className="font-semibold truncate min-w-0">{chatTitle}</p>
+                          <p className="font-semibold truncate min-w-0 flex items-center gap-1.5">
+                            {isChannel && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
+                            <span className="truncate">{chatTitle}</span>
+                          </p>
                           {chat.updated_at && (
                             <span className="text-[11px] text-muted-foreground shrink-0">
                               {new Date(chat.updated_at).toLocaleTimeString("ru-RU", {

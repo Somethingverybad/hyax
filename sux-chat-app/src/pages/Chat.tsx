@@ -5,6 +5,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
+import ChannelView from "@/components/chat/ChannelView";
 import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
 import { api, mediaUrl } from "@/api/client";
@@ -51,6 +52,9 @@ const Chat = () => {
   // Имя собеседника для шапки: приходит из сайдбара, он единственный, кто его
   // вычисляет — участники грузятся отдельно от списка чатов.
   const [selectedChatTitle, setSelectedChatTitle] = useState<string>("Чат");
+  // Подсказка типа выбранного чата: канал из поиска может отсутствовать в
+  // списке chats (пока не подписан), поэтому храним kind отдельно.
+  const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // ===== Звонки =====
@@ -468,6 +472,7 @@ const Chat = () => {
   }, [user?.id]);
 
   const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const isChannelOpen = selectedKind === "channel" || (selectedChat as any)?.kind === "channel";
   // В группе «собеседника» нет: find(!= me) вернул бы первого участника, и
   // шапка шла бы по ветке 1:1 (профиль) вместо настроек группы. Поэтому для
   // групп peer всегда null.
@@ -645,6 +650,14 @@ const Chat = () => {
         <UpdateBanner />
         {callUi}
         {selectedChatId ? (
+          isChannelOpen ? (
+            <ChannelView
+              channelId={selectedChatId}
+              userId={user.id}
+              onBack={() => setSelectedChatId(null)}
+              onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
+            />
+          ) : (
           <ChatWindow
             chatId={selectedChatId}
             userId={user.id}
@@ -655,6 +668,7 @@ const Chat = () => {
             onBack={() => setSelectedChatId(null)}
             title={chatHeaderTitle}
           />
+          )
         ) : (
           <>
           {/* Обёртка растягивает список на всю высоту — иначе бар прилипал
@@ -663,9 +677,10 @@ const Chat = () => {
           <ChatSidebar
             userId={user.id}
             chats={chats}
-            onSelectChat={(id, title) => {
+            onSelectChat={(id, title, kind) => {
               setSelectedChatId(id);
               if (title) setSelectedChatTitle(title);
+              setSelectedKind(kind);
             }}
             onRefresh={refreshChats}
             selectedChatId={selectedChatId}
@@ -692,9 +707,10 @@ const Chat = () => {
       <ChatSidebar
         userId={user.id}
         chats={chats}
-        onSelectChat={(id, title) => {
+        onSelectChat={(id, title, kind) => {
           setSelectedChatId(id);
           if (title) setSelectedChatTitle(title);
+          setSelectedKind(kind);
         }}
         selectedChatId={selectedChatId}
         onLogout={handleLogout}
@@ -706,6 +722,13 @@ const Chat = () => {
       />
 
       {selectedChatId ? (
+        isChannelOpen ? (
+          <ChannelView
+            channelId={selectedChatId}
+            userId={user.id}
+            onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
+          />
+        ) : (
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
@@ -715,6 +738,7 @@ const Chat = () => {
           onCall={startCall}
           title={chatHeaderTitle}
         />
+        )
       ) : (
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
           <div className="text-center p-8">

@@ -403,6 +403,83 @@ export const api = {
     return res.json();
   },
 
+  // ===== CHANNELS =====
+  getMyChannels: async (): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/`, { method: "GET", headers: authHeaders() });
+    const d = await res.json();
+    return d.channels || [];
+  },
+  discoverChannels: async (q: string): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/discover/?q=${encodeURIComponent(q)}`, { method: "GET", headers: authHeaders() });
+    const d = await res.json();
+    return d.channels || [];
+  },
+  createChannel: async (data: { name: string; username?: string; description?: string; sign_posts?: boolean }): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Не удалось создать канал");
+    return d.channel;
+  },
+  getChannel: async (id: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/`, { method: "GET", headers: authHeaders() });
+    return res.json();
+  },
+  updateChannel: async (id: string, data: Record<string, any>): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(data) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Ошибка");
+    return d;
+  },
+  deleteChannel: async (id: string): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/channels/${id}/`, { method: "DELETE", headers: authHeaders() });
+  },
+  subscribeChannel: async (id: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
+    return res.json();
+  },
+  leaveChannel: async (id: string): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/channels/${id}/leave/`, { method: "POST", headers: authHeaders() });
+  },
+  getChannelPosts: async (id: string): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/posts/`, { method: "GET", headers: authHeaders() });
+    const d = await res.json();
+    return d.posts || [];
+  },
+  getChannelAdmins: async (id: string): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/admins/`, { method: "GET", headers: authHeaders() });
+    const d = await res.json();
+    return d.admins || [];
+  },
+  setChannelAdmin: async (id: string, userId: string, action: "add" | "remove"): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/admins/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId, action }) });
+    return res.json();
+  },
+  reactToPost: async (msgId: string, value: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/react/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ value }) });
+    return res.json();
+  },
+  unreactPost: async (msgId: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/react/`, { method: "DELETE", headers: authHeaders() });
+    return res.json();
+  },
+  getPostComments: async (msgId: string): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "GET", headers: authHeaders() });
+    const d = await res.json();
+    return d.comments || [];
+  },
+  addPostComment: async (msgId: string, content: string, parent?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ content, parent }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Ошибка");
+    return d;
+  },
+  deletePostComment: async (commentId: string): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/posts/comments/${commentId}/`, { method: "DELETE", headers: authHeaders() });
+  },
+  markPostView: async (msgId: string): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/posts/${msgId}/view/`, { method: "POST", headers: authHeaders() }).catch(() => {});
+  },
+
   // ===== MESSAGES =====
   getMessages: async (chatId: string): Promise<any[]> => {
     const res = await fetchWithAuth(`${API_URL}/messages/?chat=${chatId}`, {
