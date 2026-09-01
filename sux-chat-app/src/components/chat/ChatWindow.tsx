@@ -94,6 +94,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [selectedSound, setSelectedSound] = useState<NotificationSoundInfo | null>(null);
   // Открытая на весь экран картинка: { url, name }.
   const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
+  // Проигрывание аудио-стикера по тапу; тап в любом месте прерывает.
+  const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
+  const soundStopRef = useRef<(() => void) | null>(null);
   // Просмотр профиля собеседника (тап по имени в шапке, только 1:1).
   const [profileOpen, setProfileOpen] = useState(false);
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
@@ -145,6 +148,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composeRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Свои картинки показываем из локального файла: сервер их и так получил от
@@ -161,6 +165,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     api.getNotificationSounds().then(setSounds).catch(() => {});
   }, []);
+
+  // Панель стикеров/аудиостикеров закрывается тапом вне области ввода — не
+  // нужно отдельно жать кнопку. Кнопка-переключатель внутри composeRef, так
+  // что её тап панель не закроет (сработает её собственный onClick).
+  useEffect(() => {
+    if (!stickersOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (composeRef.current && !composeRef.current.contains(e.target as Node)) {
+        setStickersOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [stickersOpen]);
 
   // Высоту пересчитываем на каждое изменение текста: сначала сбрасываем,
   // иначе поле умеет только расти и не сжимается после отправки.
@@ -288,6 +306,34 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       }
       setSelectedFile(file);
     }
+  };
+
+  const stopSticker = () => {
+    soundStopRef.current?.();
+    soundStopRef.current = null;
+    setPlayingSoundId(null);
+  };
+
+  // Тап по сообщению со звуковым стикером — проиграть; повторный тап или тап
+  // в любом месте экрана — прервать.
+  const toggleSticker = async (msgId: string, url: string) => {
+    if (playingSoundId === msgId) { stopSticker(); return; }
+    stopSticker();
+    setPlayingSoundId(msgId);
+    const stop = await playSfx(mediaUrl(url), {
+      volume: 0.9,
+      onEnded: () => { soundStopRef.current = null; setPlayingSoundId(null); },
+    });
+    soundStopRef.current = stop;
+    // Разовый слушатель вешаем на следующий тик, чтобы стартовый тап его не
+    // сработал; любой следующий тап по экрану обрывает звук.
+    setTimeout(() => {
+      const handler = () => {
+        stopSticker();
+        document.removeEventListener("pointerdown", handler, true);
+      };
+      document.addEventListener("pointerdown", handler, true);
+    }, 0);
   };
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
@@ -546,6 +592,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       map.forEach((url) => URL.revokeObjectURL(url));
       map.clear();
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      soundStopRef.current?.();
     };
   }, []);
 
@@ -802,12 +849,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         </div>
                       )}
 
-                      {/* Аудио-стикер: подпись, какой звук уехал получателю. */}
+                      {/* Аудио-стикер: тап — проиграть, повторный/любой тап — стоп. */}
                       {message.sound && (
-                        <div className="flex items-center gap-1 text-xs mb-1 opacity-80">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggleSticker(message.id, message.sound!.url); }}
+                          className={cn(
+                            "flex items-center gap-1.5 text-xs mb-1 px-2 py-1 rounded-full transition-colors",
+                            playingSoundId === message.id ? "bg-black/25" : "bg-black/10"
+                          )}
+                        >
+                          {playingSoundId === message.id
+                            ? <Pause className="w-3.5 h-3.5" />
+                            : <Play className="w-3.5 h-3.5" />}
                           <Music2 className="w-3 h-3" />
                           {message.sound.name}
-                        </div>
+                        </button>
                       )}
 
                       {/* Стикер: показываем картинкой без фона пузыря — так же,
@@ -936,7 +993,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       </div>
 
       {/* Поле ввода */}
-      <div className="p-2 md:p-4 pad-safe-bottom border-t border-border bg-card">
+      <div ref={composeRef} className="p-2 md:p-4 pad-safe-bottom border-t border-border bg-card">
         <div className="max-w-4xl mx-auto">
           {replyTo && (
             <div className="mb-2 flex items-stretch gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary overflow-hidden">
