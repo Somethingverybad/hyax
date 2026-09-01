@@ -60,7 +60,10 @@ def upload_file(local_path: str, key: str, content_type: str | None = None) -> s
     c = _cfg()
     cl = _client(c)
     ctype = content_type or mimetypes.guess_type(local_path)[0] or "application/octet-stream"
-    extra = {"ACL": "private", "ContentType": ctype}
+    # ACL намеренно не ставим: приватность — это дефолт (бакет не публичный),
+    # а установка ACL требует права PutObjectAcl, которого нет у роли
+    # storage.uploader, и у бакетов с выключенными ACL это даёт AccessDenied.
+    extra = {"ContentType": ctype}
     # Шифрование at-rest, если задан KMS-ключ (Yandex/AWS). Иначе полагаемся на
     # дефолтное шифрование бакета, настроенное в консоли.
     kms = os.getenv("S3_SSE_KMS_KEY_ID", "").strip()
