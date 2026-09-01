@@ -164,10 +164,25 @@ class CallParticipant(models.Model):
 # Каталог звуков уведомлений («аудио-стикеры»). Файлы живут на сервере,
 # клиенты докачивают их в рантайме (iOS — в Library/Sounds), поэтому новые
 # звуки добавляются через админку без пересборки приложений.
+class SoundPack(models.Model):
+    """Пак аудио-стикеров: группирует звуки в пикере (как стикерпак)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=64)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.name
+
+
 class NotificationSound(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     slug = models.SlugField(max_length=40, unique=True)  # имя файла: <slug>.caf
     name = models.CharField(max_length=64)
+    pack = models.ForeignKey(SoundPack, on_delete=models.SET_NULL, blank=True, null=True, related_name="sounds")
     file = models.FileField(upload_to="sounds/")  # исходник (mp3/wav), играет в приложении
     caf_url = models.TextField(blank=True, default="")  # авто-конверсия для APNs
     is_active = models.BooleanField(default=True)

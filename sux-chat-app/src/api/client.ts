@@ -54,6 +54,8 @@ export interface NotificationSoundInfo {
   name: string;
   url: string;      // исходник — проигрывается в приложении
   caf_url: string;  // вариант для APNs, докачивается в Library/Sounds на iOS
+  pack?: string | null;
+  pack_name?: string;
   updated_at: string;
 }
 

@@ -121,13 +121,21 @@ class NotificationSoundSerializer(serializers.ModelSerializer):
     """Каталог звуков уведомлений: url — исходник для проигрывания в
     приложении, caf_url — файл для докачки в Library/Sounds на iOS."""
     url = serializers.SerializerMethodField()
+    pack = serializers.SerializerMethodField()
+    pack_name = serializers.SerializerMethodField()
 
     class Meta:
         model = NotificationSound
-        fields = ['id', 'slug', 'name', 'url', 'caf_url', 'updated_at']
+        fields = ['id', 'slug', 'name', 'url', 'caf_url', 'pack', 'pack_name', 'updated_at']
 
     def get_url(self, obj):
         return obj.file.url if obj.file else ""
+
+    def get_pack(self, obj):
+        return str(obj.pack_id) if obj.pack_id else None
+
+    def get_pack_name(self, obj):
+        return obj.pack.name if obj.pack_id else "Разное"
 
 
 class MessageSerializer(serializers.ModelSerializer):

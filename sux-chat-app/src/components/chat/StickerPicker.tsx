@@ -47,6 +47,7 @@ const StickerPicker = ({
   onSelectSound,
 }: StickerPickerProps) => {
   const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
+  const [activeSoundPack, setActiveSoundPack] = useState<string | null>(null);
   // Прослушивание — отдельной кнопкой: раньше звук играл на каждый тап,
   // включая снятие выбора, и панель превращалась в какофонию.
   const previewRef = useRef<(() => void) | null>(null);
@@ -172,14 +173,40 @@ const StickerPicker = ({
     </div>
   );
 
+  // Паки в порядке появления; в каждом — свои звуки.
+  const soundPackNames = Array.from(new Set(sounds.map((s) => s.pack_name || "Разное")));
+  const currentPack = activeSoundPack && soundPackNames.includes(activeSoundPack)
+    ? activeSoundPack
+    : soundPackNames[0] ?? null;
+  const packSounds = sounds.filter((s) => (s.pack_name || "Разное") === currentPack);
+
   const soundsTab = (
     <div className="h-64 flex flex-col">
       {tabs}
+      {soundPackNames.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto px-2 py-1.5 border-b border-border shrink-0">
+          {soundPackNames.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setActiveSoundPack(name)}
+              className={cn(
+                "shrink-0 px-3 py-1 text-xs whitespace-nowrap border-2",
+                name === currentPack
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-transparent bg-secondary/40 text-muted-foreground",
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sounds.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
         )}
-        {sounds.map((sound) => {
+        {packSounds.map((sound) => {
           const chosen = selectedSoundId === sound.id;
           return (
             <div
