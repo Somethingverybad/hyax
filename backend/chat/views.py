@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login
 from .models import *
 from .serializers import *
+from .s3 import s3_enabled, upload_file as s3_upload
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -842,9 +843,22 @@ class FileUploadView(APIView):
                 except Exception:
                     pass
 
-        # Используем относительный путь вместо абсолютного URL
-        # Это работает правильно через nginx прокси
-        file_url = f'/media/{file_path}'
+        # Хранилище: при включённом S3 отправляем итоговый файл в бакет и
+        # отдаём его публичный URL, локальную копию удаляем. Иначе — как раньше,
+        # раздаём локально через nginx (/media/...).
+        if s3_enabled():
+            try:
+                url = s3_upload(os.path.join(settings.MEDIA_ROOT, file_path), file_path)
+                try:
+                    os.remove(os.path.join(settings.MEDIA_ROOT, file_path))
+                except Exception:
+                    pass
+                file_url = url
+            except Exception:
+                logger.exception("S3: загрузка не удалась, отдаю локально")
+                file_url = f'/media/{file_path}'
+        else:
+            file_url = f'/media/{file_path}'
 
         return Response({
             "file_url": file_url,

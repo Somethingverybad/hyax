@@ -10,3 +10,4 @@ djangorestframework-simplejwt
 firebase-admin
 httpx[http2]
 PyJWT
+boto3
