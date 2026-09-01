@@ -462,6 +462,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const file = selectedFile;
     const sound = selectedSound;
     const reply = replyTo;
+    const compress = pendingCompressRef.current;
+    const downloadOnly = pendingDownloadOnlyRef.current;
+    pendingCompressRef.current = null;
+    pendingDownloadOnlyRef.current = false;
 
     // Пузырь появляется мгновенно, поле очищается сразу — сеть догоняет
     // в фоне. Для картинки заранее замеряем размеры из локального файла,
@@ -489,10 +493,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       _dims: dims,
     };
 
-    const compress = pendingCompressRef.current;
-    const downloadOnly = pendingDownloadOnlyRef.current;
-    pendingCompressRef.current = null;
-    pendingDownloadOnlyRef.current = false;
     setNewMessage("");
     setSelectedFile(null);
     setSelectedSound(null);
