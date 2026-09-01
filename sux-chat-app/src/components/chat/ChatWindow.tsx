@@ -716,6 +716,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
             // которая раздувала сообщение на пол-экрана.
             const imageOnly = hasImage && !message.content && !message.sticker?.file_url && !message.sound;
+            // Видео-«треугольник» без текста/цитаты — тоже без прямоугольного
+            // пузыря: обводку несёт сам треугольник (см. VideoNote).
+            const videoOnly = !!message.video_url && !message.content && !message.sticker?.file_url && !message.sound && !message.reply_to;
+            const bareBubble = imageOnly || videoOnly;
             const previousMessage = index > 0 ? messages[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
@@ -771,10 +775,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       onContextMenu={(e) => e.preventDefault()}
                       className={cn(
                       "relative",
-                      !imageOnly && "px-4 py-2",
+                      !bareBubble && "px-4 py-2",
                       // Свои сообщения алые, входящие зелёные — два цвета
                       // палитры работают как разметка разговора, без подписей.
-                      !imageOnly &&
+                      !bareBubble &&
                         (isOwn
                           ? "bg-primary text-primary-foreground"
                           : "bg-success text-success-foreground")
@@ -822,6 +826,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <VideoNote
                           url={mediaUrl(message.video_url)}
                           seconds={message.video_duration || 0}
+                          own={isOwn}
                         />
                       )}
 
@@ -1278,7 +1283,7 @@ const LivePreview = ({ stream, dimmed }: { stream: MediaStream | null; dimmed: b
 };
 
 /** Видео-сообщение в переписке: тап — воспроизведение со звуком. */
-const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
+const VideoNote = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -1312,6 +1317,13 @@ const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
 
   return (
     <div className="relative w-44 h-44" onClick={toggle}>
+      {/* Цветная подложка-треугольник даёт обводку по краю: свои — алая,
+          входящие — зелёная. Видео вписано внутрь с отступом, и кромка
+          подложки читается как контур треугольника. */}
+      <div
+        className={cn("absolute inset-0", own ? "bg-primary" : "bg-success")}
+        style={{ clipPath: TRIANGLE }}
+      />
       <video
         ref={ref}
         src={url}
@@ -1323,8 +1335,8 @@ const VideoNote = ({ url, seconds }: { url: string; seconds: number }) => {
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
-        className="w-full h-full object-cover bg-black"
-        style={{ clipPath: TRIANGLE }}
+        className="absolute inset-[3px] object-cover bg-black"
+        style={{ clipPath: TRIANGLE, width: "calc(100% - 6px)", height: "calc(100% - 6px)" }}
       />
       {!playing && (
         <span className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
