@@ -13,7 +13,6 @@ import { Minus, X } from "lucide-react";
 import { useRef, useEffect } from "react";
 
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { Capacitor } from '@capacitor/core';
 
 
 const queryClient = new QueryClient();

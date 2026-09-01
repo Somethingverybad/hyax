@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
     "dev:react": "vite --port 5143",
-    "dev:electron": "wait-on http://localhost:5143 && electron electron/main.cjs",
+    "dev:electron": "wait-on http://localhost:5143 && node electron/dev.cjs",
     "build": "vite build",
     "start": "electron electron/main.cjs",
     "lint": "eslint .",
