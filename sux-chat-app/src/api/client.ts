@@ -581,11 +581,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number): Promise<any> => {
+  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number, mirror?: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration }),
+      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration, video_mirror: mirror ? "1" : undefined }),
     });
     if (!res.ok) throw new Error("Не удалось отправить видео-сообщение");
     return res.json();

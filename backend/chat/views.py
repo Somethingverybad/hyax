@@ -609,7 +609,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         if video_url:
             save_kwargs.update({
                 'video_url': video_url,
-                'video_duration': video_duration
+                'video_duration': video_duration,
+                'video_mirror': str(request.data.get('video_mirror') or '').lower() in ('1', 'true', 'yes'),
             })
         
         # Сохраняем с данными
