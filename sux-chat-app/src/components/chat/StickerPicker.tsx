@@ -51,6 +51,8 @@ const StickerPicker = ({
     try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
   });
   const [soundQuery, setSoundQuery] = useState("");
+  // Поиск на экране выбора паков: ищет по всем звукам сразу, без захода внутрь.
+  const [packMenuQuery, setPackMenuQuery] = useState("");
   const enterPack = (name: string) => {
     setSoundView(name); setSoundQuery("");
     try { localStorage.setItem("sound_pack", name); } catch { /* ignore */ }
@@ -189,8 +191,13 @@ const StickerPicker = ({
   const packSounds = inPack
     ? sounds.filter((s) => (s.pack_name || "Разное") === inPack && (!q || s.name.toLowerCase().includes(q)))
     : [];
+  // Глобальный поиск на экране паков.
+  const gq = packMenuQuery.trim().toLowerCase();
+  const globalMatches = gq
+    ? sounds.filter((s) => s.name.toLowerCase().includes(gq))
+    : [];
 
-  const soundRow = (sound: NotificationSoundInfo) => {
+  const soundRow = (sound: NotificationSoundInfo, opts?: { showPack?: boolean }) => {
     const chosen = selectedSoundId === sound.id;
     return (
       <div
@@ -211,9 +218,14 @@ const StickerPicker = ({
         <button
           type="button"
           onClick={() => onSelectSound?.(chosen ? null : sound)}
-          className="flex-1 text-left text-sm truncate"
+          className="flex-1 min-w-0 text-left"
         >
-          {sound.name}
+          <span className="block text-sm truncate">{sound.name}</span>
+          {opts?.showPack && (
+            <span className="block text-[11px] text-muted-foreground truncate">
+              {sound.pack_name || "Разное"}
+            </span>
+          )}
         </button>
         {chosen && <Check className="w-4 h-4 text-primary shrink-0" />}
       </div>
@@ -224,27 +236,45 @@ const StickerPicker = ({
     <div className="h-64 flex flex-col">
       {tabs}
       {!inPack ? (
-        // Меню выбора пака
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {soundPackNames.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
-          )}
-          {soundPackNames.map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => enterPack(name)}
-              className="w-full flex items-center gap-2 px-2 py-3 border-2 border-transparent bg-secondary/40 text-left"
-            >
-              <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary">
-                <Music2 className="w-4 h-4" />
-              </span>
-              <span className="flex-1 truncate text-sm font-medium">{name}</span>
-              <span className="text-xs text-muted-foreground">{packCount(name)}</span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-          ))}
-        </div>
+        // Меню выбора пака + глобальный поиск по звукам
+        <>
+          <div className="px-2 py-1.5 shrink-0">
+            <input
+              value={packMenuQuery}
+              onChange={(e) => setPackMenuQuery(e.target.value)}
+              placeholder="Поиск звука по всем пакам…"
+              className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {gq ? (
+              // Результаты поиска по всем пакам
+              globalMatches.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Ничего не найдено</p>
+              ) : (
+                globalMatches.map((s) => soundRow(s, { showPack: true }))
+              )
+            ) : soundPackNames.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
+            ) : (
+              soundPackNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => enterPack(name)}
+                  className="w-full flex items-center gap-2 px-2 py-3 border-2 border-transparent bg-secondary/40 text-left"
+                >
+                  <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary">
+                    <Music2 className="w-4 h-4" />
+                  </span>
+                  <span className="flex-1 truncate text-sm font-medium">{name}</span>
+                  <span className="text-xs text-muted-foreground">{packCount(name)}</span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </button>
+              ))
+            )}
+          </div>
+        </>
       ) : (
         // Внутри пака: назад + поиск + звуки
         <>
