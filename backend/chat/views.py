@@ -130,7 +130,15 @@ class ChatViewSet(viewsets.ModelViewSet):
             # него на каждый чат уходил бы отдельный запрос к базе — ровно та
             # проблема, которую мы убираем с клиента.
             from django.db.models import OuterRef, Subquery
-            last = Message.objects.filter(chat=OuterRef('pk')).order_by('-created_at')
+            # Превью последнего сообщения не должно показывать удалённые:
+            # ни удалённые у всех, ни спрятанные текущим пользователем «у себя».
+            last = (
+                Message.objects
+                .filter(chat=OuterRef('pk'))
+                .exclude(deleted_for_all=True)
+                .exclude(deleted_for=profile)
+                .order_by('-created_at')
+            )
             return (
                 Chat.objects
                 .filter(participants=profile)
