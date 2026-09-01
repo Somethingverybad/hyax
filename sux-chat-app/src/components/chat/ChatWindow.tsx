@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
+import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
@@ -678,12 +679,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     await processRecording(result);
   };
 
-  // Отправленное с этого устройства берём из локального файла, остальное —
-  // с сервера.
-  const resolveImageUrl = (fileUrl: string) => {
-    if (fileUrl.startsWith("blob:")) return fileUrl; // ещё не отправленное
-    return localImagesRef.current.get(fileUrl) ?? mediaUrl(fileUrl);
-  };
 
   // Объектные URL живут до конца сессии страницы — освобождаем при уходе
   // из чата, чтобы память не копилась от фотографий.
@@ -1015,7 +1010,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Видео-сообщение: треугольник вершиной вверх */}
                       {message.video_url && (
                         <VideoNote
-                          url={mediaUrl(message.video_url)}
+                          url={message.video_url}
                           seconds={message.video_duration || 0}
                           own={isOwn}
                         />
@@ -1041,62 +1036,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {message.file_url && (
                         <div className={cn(!imageOnly && "mt-2")}>
                           {hasImage ? (
-                            // Компактное превью: полноразмерная картинка ломала
-                            // прокрутку ленты. Тап — встроенный просмотрщик,
-                            // скачивание там, в меню «⋯».
-                            <img
-                              src={resolveImageUrl(message.file_url)}
-                              alt={message.file_name || "Изображение"}
-                              loading="lazy"
-                              className="max-h-48 max-w-[min(240px,100%)] w-auto object-contain cursor-pointer block"
-                              style={message._dims ? previewSize(message._dims) : undefined}
-                              onClick={() =>
-                                setViewer({
-                                  url: resolveImageUrl(message.file_url),
-                                  name: message.file_name || "image",
-                                })
-                              }
-                              onError={() => {
-                                setImageLoadErrors(prev => new Set(prev).add(message.id));
-                              }}
+                            <MessageImage
+                              raw={message.file_url}
+                              name={message.file_name}
+                              dims={message._dims}
+                              localMap={localImagesRef.current}
+                              onOpen={(url, name) => setViewer({ url, name })}
+                              onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
                           ) : isVideoFile(message.file_name, message.file_url) ? (
-                            // Видео-файл проигрываем прямо в клиенте, а не на сайте.
-                            <video
-                              src={mediaUrl(message.file_url)}
-                              controls
-                              playsInline
-                              preload="metadata"
-                              className="max-h-64 max-w-[min(280px,100%)] w-auto rounded-lg block bg-black"
-                            />
+                            <MessageVideoFile raw={message.file_url} />
                           ) : (
-                            // Отображение обычного файла
-                            <div className={cn(
-                              "flex items-center gap-2 p-2 rounded-lg border transition-colors max-w-full min-w-0",
-                              isOwn
-                                ? "bg-primary/20 border-primary/30 hover:bg-primary/30"
-                                : "bg-muted border-border hover:bg-muted/80"
-                            )}>
-                              <Paperclip className="w-4 h-4 flex-shrink-0" />
-                              <a
-                                href={mediaUrl(message.file_url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex-1 min-w-0 text-sm truncate hover:underline"
-                              >
-                                {message.file_name || "Файл"}
-                              </a>
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  handleSaveFile(mediaUrl(message.file_url), message.file_name || 'file');
-                                }}
-                                className="p-1 rounded hover:bg-background/50 transition-colors"
-                                title="Сохранить файл"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            </div>
+                            <MessageFile
+                              raw={message.file_url}
+                              name={message.file_name}
+                              isOwn={isOwn}
+                              onSave={handleSaveFile}
+                            />
                           )}
                         </div>
                       )}
@@ -1499,7 +1455,74 @@ const LivePreview = ({ stream, dimmed }: { stream: MediaStream | null; dimmed: b
 };
 
 /** Видео-сообщение в переписке: тап — воспроизведение со звуком. */
+// Картинка сообщения: своя показывается из локального blob мгновенно, чужая —
+// по временной подписанной ссылке (S3) или локально (/media).
+const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
+  raw: string; name: string | null; dims?: { w: number; h: number } | null;
+  localMap: Map<string, string>; onOpen: (url: string, name: string) => void; onError: () => void;
+}) => {
+  const localBlob = raw.startsWith("blob:") ? raw : localMap.get(raw);
+  const signed = useMediaUrl(localBlob ? null : raw);
+  const src = localBlob || signed;
+  if (!src) return <div className="w-40 h-28 bg-black/20 rounded-lg animate-pulse" />;
+  return (
+    <img
+      src={src}
+      alt={name || "Изображение"}
+      loading="lazy"
+      className="max-h-48 max-w-[min(240px,100%)] w-auto object-contain cursor-pointer block"
+      style={dims ? previewSize(dims) : undefined}
+      onClick={() => onOpen(src, name || "image")}
+      onError={onError}
+    />
+  );
+};
+
+const MessageVideoFile = ({ raw }: { raw: string }) => {
+  const src = useMediaUrl(raw);
+  if (!src) return <div className="w-44 h-28 bg-black/20 rounded-lg animate-pulse" />;
+  return (
+    <video
+      src={src}
+      controls
+      playsInline
+      preload="metadata"
+      className="max-h-64 max-w-[min(280px,100%)] w-auto rounded-lg block bg-black"
+    />
+  );
+};
+
+const MessageFile = ({ raw, name, isOwn, onSave }: {
+  raw: string; name: string | null; isOwn: boolean; onSave: (url: string, name: string) => void;
+}) => {
+  const src = useMediaUrl(raw);
+  return (
+    <div className={cn(
+      "flex items-center gap-2 p-2 rounded-lg border transition-colors max-w-full min-w-0",
+      isOwn ? "bg-primary/20 border-primary/30 hover:bg-primary/30" : "bg-muted border-border hover:bg-muted/80",
+    )}>
+      <Paperclip className="w-4 h-4 flex-shrink-0" />
+      <a
+        href={src || "#"}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-1 min-w-0 text-sm truncate hover:underline"
+      >
+        {name || "Файл"}
+      </a>
+      <button
+        onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "file"); }}
+        className="p-1 rounded hover:bg-background/50 transition-colors"
+        title="Сохранить файл"
+      >
+        <Download className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
 const VideoNote = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
+  const src = useMediaUrl(url);
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -1542,7 +1565,7 @@ const VideoNote = ({ url, seconds, own }: { url: string; seconds: number; own: b
       />
       <video
         ref={ref}
-        src={url}
+        src={src}
         playsInline
         muted={!playing}
         preload="metadata"

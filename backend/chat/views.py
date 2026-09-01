@@ -1192,6 +1192,44 @@ class AvatarUploadView(APIView):
         })
 
 
+class MediaSignView(APIView):
+    """Временная подписанная ссылка на приватное вложение в S3. Доступ только
+    участнику чата, в котором это вложение реально фигурирует — украсть ссылку
+    и открывать «когда захочется» нельзя: она протухает, а выдаётся лишь после
+    проверки прав."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Q
+        from .s3 import s3_enabled, presigned_get
+
+        key = (request.query_params.get('key') or '').lstrip('/')
+        if not key or '..' in key:
+            return Response({"error": "bad key"}, status=400)
+        if not s3_enabled():
+            return Response({"error": "S3 disabled"}, status=400)
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+
+        marker = f's3://{key}'
+        msg = Message.objects.filter(
+            Q(file_url=marker) | Q(video_url=marker) | Q(voice_url=marker)
+        ).select_related('chat').first()
+        if not msg:
+            return Response({"error": "not found"}, status=404)
+        if not ChatParticipant.objects.filter(chat=msg.chat, user=profile).exists():
+            return Response({"error": "forbidden"}, status=403)
+
+        try:
+            url = presigned_get(key, 3600)
+        except Exception:
+            logger.exception("presigned_get failed")
+            return Response({"error": "sign failed"}, status=502)
+        return Response({"url": url})
+
+
 class NotificationSoundListView(APIView):
     """Каталог активных звуков уведомлений. Клиент сверяет updated_at со
     скачанным и докачивает недостающие файлы — новые звуки добавляются через

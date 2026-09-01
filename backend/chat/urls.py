@@ -29,6 +29,7 @@ urlpatterns = [
     path('push/register/', PushRegisterView.as_view(), name='push-register'),
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
     path('sounds/', NotificationSoundListView.as_view(), name='notification-sounds'),
+    path('media/sign/', MediaSignView.as_view(), name='media-sign'),
     path('sticker-packs/import/', StickerPackViewSet.as_view({'post': 'import_pack'}), name='sticker-pack-import'),
     # Роутер ПОСЛЕ кастомных маршрутов
     path('', include(router.urls)),

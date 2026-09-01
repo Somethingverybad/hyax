@@ -582,6 +582,18 @@ export const api = {
   },
 
   // ===== ЗВУКИ УВЕДОМЛЕНИЙ (аудио-стикеры) =====
+  // Временная подписанная ссылка на приватное вложение (S3). Маркер s3://key.
+  signMedia: async (marker: string): Promise<string> => {
+    const key = marker.replace(/^s3:\/\//, "");
+    const res = await fetchWithAuth(`${API_URL}/media/sign/?key=${encodeURIComponent(key)}`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("sign failed");
+    const d = await res.json();
+    return d.url as string;
+  },
+
   getNotificationSounds: async (): Promise<NotificationSoundInfo[]> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/`, {
       method: "GET",

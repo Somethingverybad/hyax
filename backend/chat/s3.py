@@ -54,11 +54,30 @@ def public_url(key: str) -> str:
 
 
 def upload_file(local_path: str, key: str, content_type: str | None = None) -> str:
-    """Загружает локальный файл в бакет и возвращает публичный URL."""
+    """Загружает локальный файл в бакет ПРИВАТНО и возвращает маркер s3://key.
+    Прямого публичного URL нет — доступ только по временной подписанной ссылке
+    (см. presigned_get), которую сервер выдаёт после проверки прав."""
     c = _cfg()
     cl = _client(c)
     ctype = content_type or mimetypes.guess_type(local_path)[0] or "application/octet-stream"
-    extra = {"ACL": "public-read", "ContentType": ctype}
+    extra = {"ACL": "private", "ContentType": ctype}
+    # Шифрование at-rest, если задан KMS-ключ (Yandex/AWS). Иначе полагаемся на
+    # дефолтное шифрование бакета, настроенное в консоли.
+    kms = os.getenv("S3_SSE_KMS_KEY_ID", "").strip()
+    if kms:
+        extra["ServerSideEncryption"] = "aws:kms"
+        extra["SSEKMSKeyId"] = kms
     with open(local_path, "rb") as f:
         cl.upload_fileobj(f, c["bucket"], key, ExtraArgs=extra)
-    return public_url(key)
+    return f"s3://{key}"
+
+
+def presigned_get(key: str, expires: int = 3600) -> str:
+    """Временная подписанная ссылка на приватный объект (по умолчанию 1 час)."""
+    c = _cfg()
+    cl = _client(c)
+    return cl.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": c["bucket"], "Key": key},
+        ExpiresIn=expires,
+    )
