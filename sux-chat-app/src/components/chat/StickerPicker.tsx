@@ -3,7 +3,7 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { NotificationSoundInfo } from "@/api/client";
 
 interface Sticker {
@@ -47,7 +47,15 @@ const StickerPicker = ({
   onSelectSound,
 }: StickerPickerProps) => {
   const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
-  const [activeSoundPack, setActiveSoundPack] = useState<string | null>(null);
+  const [soundView, setSoundView] = useState<string | null>(() => {
+    try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
+  });
+  const [soundQuery, setSoundQuery] = useState("");
+  const enterPack = (name: string) => {
+    setSoundView(name); setSoundQuery("");
+    try { localStorage.setItem("sound_pack", name); } catch { /* ignore */ }
+  };
+  const backToPacks = () => { setSoundView(null); setSoundQuery(""); };
   // Прослушивание — отдельной кнопкой: раньше звук играл на каждый тап,
   // включая снятие выбора, и панель превращалась в какофонию.
   const previewRef = useRef<(() => void) | null>(null);
@@ -173,69 +181,95 @@ const StickerPicker = ({
     </div>
   );
 
-  // Паки в порядке появления; в каждом — свои звуки.
+  // Паки аудио-стикеров и их содержимое.
   const soundPackNames = Array.from(new Set(sounds.map((s) => s.pack_name || "Разное")));
-  const currentPack = activeSoundPack && soundPackNames.includes(activeSoundPack)
-    ? activeSoundPack
-    : soundPackNames[0] ?? null;
-  const packSounds = sounds.filter((s) => (s.pack_name || "Разное") === currentPack);
+  const packCount = (name: string) => sounds.filter((s) => (s.pack_name || "Разное") === name).length;
+  const inPack = soundView && soundPackNames.includes(soundView) ? soundView : null;
+  const q = soundQuery.trim().toLowerCase();
+  const packSounds = inPack
+    ? sounds.filter((s) => (s.pack_name || "Разное") === inPack && (!q || s.name.toLowerCase().includes(q)))
+    : [];
+
+  const soundRow = (sound: NotificationSoundInfo) => {
+    const chosen = selectedSoundId === sound.id;
+    return (
+      <div
+        key={sound.id}
+        className={cn(
+          "flex items-center gap-2 px-2 py-2 border-2",
+          chosen ? "border-primary bg-primary/10" : "border-transparent bg-secondary/40",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => preview(sound)}
+          className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary"
+          aria-label={playingId === sound.id ? "Остановить" : "Прослушать"}
+        >
+          {playingId === sound.id ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectSound?.(chosen ? null : sound)}
+          className="flex-1 text-left text-sm truncate"
+        >
+          {sound.name}
+        </button>
+        {chosen && <Check className="w-4 h-4 text-primary shrink-0" />}
+      </div>
+    );
+  };
 
   const soundsTab = (
     <div className="h-64 flex flex-col">
       {tabs}
-      {soundPackNames.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto px-2 py-1.5 border-b border-border shrink-0">
+      {!inPack ? (
+        // Меню выбора пака
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {soundPackNames.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
+          )}
           {soundPackNames.map((name) => (
             <button
               key={name}
               type="button"
-              onClick={() => setActiveSoundPack(name)}
-              className={cn(
-                "shrink-0 px-3 py-1 text-xs whitespace-nowrap border-2",
-                name === currentPack
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-transparent bg-secondary/40 text-muted-foreground",
-              )}
+              onClick={() => enterPack(name)}
+              className="w-full flex items-center gap-2 px-2 py-3 border-2 border-transparent bg-secondary/40 text-left"
             >
-              {name}
+              <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary">
+                <Music2 className="w-4 h-4" />
+              </span>
+              <span className="flex-1 truncate text-sm font-medium">{name}</span>
+              <span className="text-xs text-muted-foreground">{packCount(name)}</span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
           ))}
         </div>
+      ) : (
+        // Внутри пака: назад + поиск + звуки
+        <>
+          <div className="flex items-center gap-1 px-1.5 py-1.5 border-b border-border shrink-0">
+            <button type="button" onClick={backToPacks} className="p-1.5" aria-label="К пакам">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="text-sm font-semibold truncate flex-1">{inPack}</span>
+          </div>
+          <div className="px-2 py-1.5 shrink-0">
+            <input
+              value={soundQuery}
+              onChange={(e) => setSoundQuery(e.target.value)}
+              placeholder="Поиск звука…"
+              className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {packSounds.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Ничего не найдено</p>
+            )}
+            {packSounds.map(soundRow)}
+          </div>
+        </>
       )}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {sounds.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
-        )}
-        {packSounds.map((sound) => {
-          const chosen = selectedSoundId === sound.id;
-          return (
-            <div
-              key={sound.id}
-              className={cn(
-                "flex items-center gap-2 px-2 py-2 border-2",
-                chosen ? "border-primary bg-primary/10" : "border-transparent bg-secondary/40",
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => preview(sound)}
-                className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary"
-                aria-label={playingId === sound.id ? "Остановить" : "Прослушать"}
-              >
-                {playingId === sound.id ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelectSound?.(chosen ? null : sound)}
-                className="flex-1 text-left text-sm truncate"
-              >
-                {sound.name}
-              </button>
-              {chosen && <Check className="w-4 h-4 text-primary shrink-0" />}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 
