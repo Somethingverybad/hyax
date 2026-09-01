@@ -158,6 +158,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   
   // Рефы для отслеживания состояния
   const previousMessagesRef = useRef<Message[]>([]);
+  // Чат, для которого previousMessagesRef уже наполнен: нужен, чтобы отличить
+  // смену чата от прихода новых сообщений.
+  const soundChatRef = useRef<string | null>(null);
   const lastSendTimeRef = useRef<number>(0);
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
 
@@ -212,11 +215,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // Эффект для обработки новых сообщений и звуков
   useEffect(() => {
-    // Пропускаем первоначальную загрузку
-    if (previousMessagesRef.current.length === 0 && messages.length > 0) {
+    // Первая порция сообщений этого чата — не «новые». При переключении между
+    // чатами список меняется целиком, и если в открытом чате сообщений больше,
+    // чем было в предыдущем, разница раньше засчитывалась как входящие и
+    // звучала как уведомление.
+    //
+    // chatId намеренно не в зависимостях: эффект должен сработать не в момент
+    // переключения (сообщения тогда ещё от старого чата), а когда доедет ответ
+    // сервера и messages станут новыми.
+    if (soundChatRef.current !== chatId) {
+      soundChatRef.current = chatId ?? null;
       previousMessagesRef.current = [...messages];
-      // При первоначальной загрузке прокручиваем вниз
-      setTimeout(() => scrollToBottom(), 100);
+      if (messages.length > 0) setTimeout(() => scrollToBottom(), 100);
       return;
     }
 
