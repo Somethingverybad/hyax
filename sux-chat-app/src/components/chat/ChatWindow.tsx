@@ -603,7 +603,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       if (result.kind === "video") {
         const uploaded = await api.uploadFile(result.file);
-        await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, facing === "user");
+        await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds);
       } else {
         const uploaded = await api.uploadVoice(result.file);
         await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
@@ -1029,7 +1029,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           url={message.video_url}
                           seconds={message.video_duration || 0}
                           own={isOwn}
-                          mirror={!!message.video_mirror}
                         />
                       )}
 
@@ -1164,7 +1163,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
           {recording && recordKind === "video" && (
             <div className="mb-2 flex justify-center">
-              <LivePreview stream={recStream} dimmed={cancelArmed} />
+              <LivePreview stream={recStream} dimmed={cancelArmed} facing={facing} />
             </div>
           )}
 
@@ -1460,7 +1459,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 const TRIANGLE = "polygon(50% 0%, 100% 100%, 0% 100%)";
 
 /** Живое изображение с камеры во время записи. */
-const LivePreview = ({ stream, dimmed }: { stream: MediaStream | null; dimmed: boolean }) => {
+const LivePreview = ({ stream, dimmed, facing }: { stream: MediaStream | null; dimmed: boolean; facing: "user" | "environment" }) => {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (ref.current && stream) {
@@ -1474,7 +1473,7 @@ const LivePreview = ({ stream, dimmed }: { stream: MediaStream | null; dimmed: b
       muted
       playsInline
       className={cn("w-40 h-40 object-cover transition-opacity", dimmed && "opacity-40")}
-      style={{ clipPath: TRIANGLE }}
+      style={{ clipPath: TRIANGLE, transform: facing === "user" ? "scaleX(-1)" : undefined }}
     />
   );
 };
@@ -1546,7 +1545,7 @@ const MessageFile = ({ raw, name, isOwn, onSave }: {
   );
 };
 
-const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds: number; own: boolean; mirror?: boolean }) => {
+const VideoNote = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const src = useMediaUrl(url);
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -1600,7 +1599,7 @@ const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds: number
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         className="absolute inset-[3px] object-cover bg-black"
-        style={{ clipPath: TRIANGLE, width: "calc(100% - 6px)", height: "calc(100% - 6px)", transform: mirror ? "scaleX(-1)" : undefined }}
+        style={{ clipPath: TRIANGLE, width: "calc(100% - 6px)", height: "calc(100% - 6px)" }}
       />
       {!playing && (
         <span className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
