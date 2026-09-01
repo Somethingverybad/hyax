@@ -180,6 +180,7 @@ class SoundPack(models.Model):
     name = models.CharField(max_length=64)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
+    creator = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="created_sound_packs")  # владелец: правит/удаляет через студию
 
     class Meta:
         ordering = ["order", "name"]

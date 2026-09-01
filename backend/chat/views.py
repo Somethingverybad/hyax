@@ -1283,81 +1283,211 @@ class MediaSignView(APIView):
         return Response({"url": url})
 
 
+# ── Creative Space: студия паков звуков ──────────────────────────────────────
+# Авторизация — обычный вход приложения (JWT). Пак привязывается к создателю
+# (SoundPack.creator = Profile), править/удалять может только он. Паками
+# пользуются все, но управление — через студию.
+
+def _studio_profile(request):
+    return getattr(request.user, "profile", None)
+
+
+def _uniq_sound_slug(base):
+    import uuid as _uuid
+    from django.utils.text import slugify
+    base = slugify(base) or f"snd-{_uuid.uuid4().hex[:8]}"
+    slug = base[:36]
+    i = 1
+    while NotificationSound.objects.filter(slug=slug).exists():
+        slug = f"{base[:32]}-{i}"
+        i += 1
+    return slug
+
+
+def _transcode_sound(pack, name, uploaded_file, order):
+    """Исходник → mp3 (≤30с, mono, 96k) → NotificationSound (save() делает .caf)."""
+    import os, subprocess, tempfile
+    from django.core.files import File
+    slug = _uniq_sound_slug(name)
+    in_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1] or ".bin")
+    for chunk in uploaded_file.chunks():
+        in_tmp.write(chunk)
+    in_tmp.close()
+    out_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3"); out_mp3.close()
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", in_tmp.name, "-t", "30",
+             "-ac", "1", "-c:a", "libmp3lame", "-b:a", "96k", out_mp3.name],
+            check=True, capture_output=True, timeout=120,
+        )
+        snd = NotificationSound(name=name[:64], slug=slug, pack=pack, order=order)
+        with open(out_mp3.name, "rb") as mp3f:
+            snd.file.save(f"{slug}.mp3", File(mp3f), save=True)
+        return snd
+    finally:
+        for pth in (in_tmp.name, out_mp3.name):
+            try: os.remove(pth)
+            except Exception: pass
+
+
+def _delete_sound_files(sound):
+    import os
+    from django.conf import settings
+    try:
+        if sound.file and os.path.exists(sound.file.path):
+            os.remove(sound.file.path)
+    except Exception: pass
+    try:
+        caf = os.path.join(settings.MEDIA_ROOT, "sounds", f"{sound.slug}.caf")
+        if os.path.exists(caf):
+            os.remove(caf)
+    except Exception: pass
+
+
+def _pack_payload(pack):
+    sounds = NotificationSoundSerializer(pack.sounds.all().order_by("order", "slug"), many=True).data
+    return {"id": str(pack.id), "name": pack.name, "order": pack.order, "sounds": sounds}
+
+
 class SoundPackStudioView(APIView):
-    """Создание пака звуков со страницы-студии. Защита — секретный токен в
-    заголовке X-Studio-Token (совпадает с SOUND_STUDIO_TOKEN из .env). Каждый
-    звук перекодируется в mp3 и режется до 30с, чтобы файлы весили меньше;
-    затем модель сама делает .caf для APNs."""
-    permission_classes = [permissions.AllowAny]
+    """POST — создать пак (нужен вход). Пак привязывается к создателю."""
+    permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         import os
-        import subprocess
-        import tempfile
-        import uuid as _uuid
-        from django.core.files import File
-        from django.utils.text import slugify
-
-        token = os.getenv("SOUND_STUDIO_TOKEN", "").strip()
-        if not token:
-            return Response({"error": "Студия не настроена (нет SOUND_STUDIO_TOKEN)"}, status=503)
-        if request.headers.get("X-Studio-Token", "") != token:
-            return Response({"error": "Неверный токен"}, status=403)
+        profile = _studio_profile(request)
+        if not profile:
+            return Response({"error": "Нет профиля у пользователя"}, status=403)
 
         pack_name = (request.data.get("pack_name") or "").strip()
         if not pack_name:
             return Response({"error": "Укажите название пака"}, status=400)
-
         files = request.FILES.getlist("files")
         names = request.data.getlist("names")
         if not files:
             return Response({"error": "Добавьте хотя бы один звук"}, status=400)
 
-        order = (SoundPack.objects.count())
-        pack = SoundPack.objects.create(name=pack_name[:64], order=order)
-
-        def uniq_slug(base):
-            base = slugify(base) or f"snd-{_uuid.uuid4().hex[:8]}"
-            slug = base[:36]
-            i = 1
-            while NotificationSound.objects.filter(slug=slug).exists():
-                slug = f"{base[:32]}-{i}"
-                i += 1
-            return slug
-
+        pack = SoundPack.objects.create(name=pack_name[:64], order=SoundPack.objects.count(), creator=profile)
         created, failed = [], []
         for idx, f in enumerate(files):
             name = (names[idx] if idx < len(names) else "").strip() or os.path.splitext(f.name)[0]
-            slug = uniq_slug(name)
-            # Исходник во временный файл, затем ffmpeg → mp3 (≤30с, mono, 96k).
-            in_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1] or ".bin")
-            for chunk in f.chunks():
-                in_tmp.write(chunk)
-            in_tmp.close()
-            out_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3"); out_mp3.close()
             try:
-                subprocess.run(
-                    ["ffmpeg", "-y", "-i", in_tmp.name, "-t", "30",
-                     "-ac", "1", "-c:a", "libmp3lame", "-b:a", "96k", out_mp3.name],
-                    check=True, capture_output=True, timeout=120,
-                )
-                snd = NotificationSound(name=name[:64], slug=slug, pack=pack, order=idx)
-                with open(out_mp3.name, "rb") as mp3f:
-                    snd.file.save(f"{slug}.mp3", File(mp3f), save=True)  # save() → _ensure_caf
-                created.append({"name": snd.name, "slug": snd.slug})
+                snd = _transcode_sound(pack, name, f, idx)
+                created.append({"id": str(snd.id), "name": snd.name, "slug": snd.slug})
             except Exception as e:
                 logger.exception("Студия: не удалось обработать %s", f.name)
                 failed.append({"name": name, "error": str(e)[:120]})
-            finally:
-                for pth in (in_tmp.name, out_mp3.name):
-                    try: os.remove(pth)
-                    except Exception: pass
-
         if not created:
             pack.delete()
             return Response({"error": "Ни один звук не обработан", "failed": failed}, status=400)
-        return Response({"pack": pack.name, "created": created, "failed": failed})
+        return Response({"pack": _pack_payload(pack), "created": created, "failed": failed})
+
+
+class MySoundPacksView(APIView):
+    """GET — паки текущего пользователя со звуками (для управления в студии)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        profile = _studio_profile(request)
+        if not profile:
+            return Response({"error": "Нет профиля у пользователя"}, status=403)
+        packs = SoundPack.objects.filter(creator=profile).prefetch_related("sounds").order_by("order", "name")
+        return Response({"packs": [_pack_payload(p) for p in packs]})
+
+
+class SoundPackDetailView(APIView):
+    """PATCH — переименовать пак. DELETE — удалить пак со звуками. Только владелец."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_owned(self, request, pk):
+        profile = _studio_profile(request)
+        pack = SoundPack.objects.filter(pk=pk).first()
+        if not pack:
+            return None, Response({"error": "Пак не найден"}, status=404)
+        if not profile or pack.creator_id != profile.id:
+            return None, Response({"error": "Это не ваш пак"}, status=403)
+        return pack, None
+
+    def patch(self, request, pk):
+        pack, err = self._get_owned(request, pk)
+        if err: return err
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return Response({"error": "Пустое название"}, status=400)
+        pack.name = name[:64]; pack.save(update_fields=["name"])
+        return Response(_pack_payload(pack))
+
+    def delete(self, request, pk):
+        pack, err = self._get_owned(request, pk)
+        if err: return err
+        for snd in pack.sounds.all():
+            _delete_sound_files(snd)
+        pack.sounds.all().delete()
+        pack.delete()
+        return Response({"ok": True})
+
+
+class SoundPackAddSoundsView(APIView):
+    """POST — добавить звуки в существующий пак. Только владелец."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        import os
+        profile = _studio_profile(request)
+        pack = SoundPack.objects.filter(pk=pk).first()
+        if not pack:
+            return Response({"error": "Пак не найден"}, status=404)
+        if not profile or pack.creator_id != profile.id:
+            return Response({"error": "Это не ваш пак"}, status=403)
+        files = request.FILES.getlist("files")
+        names = request.data.getlist("names")
+        if not files:
+            return Response({"error": "Добавьте хотя бы один звук"}, status=400)
+        base_order = (pack.sounds.aggregate(m=models.Max("order"))["m"] or -1) + 1
+        created, failed = [], []
+        for idx, f in enumerate(files):
+            name = (names[idx] if idx < len(names) else "").strip() or os.path.splitext(f.name)[0]
+            try:
+                snd = _transcode_sound(pack, name, f, base_order + idx)
+                created.append({"id": str(snd.id), "name": snd.name, "slug": snd.slug})
+            except Exception as e:
+                logger.exception("Студия: не удалось обработать %s", f.name)
+                failed.append({"name": name, "error": str(e)[:120]})
+        if not created:
+            return Response({"error": "Ни один звук не обработан", "failed": failed}, status=400)
+        return Response({"pack": _pack_payload(pack), "created": created, "failed": failed})
+
+
+class SoundDetailView(APIView):
+    """PATCH — переименовать звук. DELETE — удалить звук. Только владелец пака."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_owned(self, request, pk):
+        profile = _studio_profile(request)
+        snd = NotificationSound.objects.filter(pk=pk).select_related("pack").first()
+        if not snd:
+            return None, Response({"error": "Звук не найден"}, status=404)
+        if not snd.pack or not profile or snd.pack.creator_id != profile.id:
+            return None, Response({"error": "Это не ваш звук"}, status=403)
+        return snd, None
+
+    def patch(self, request, pk):
+        snd, err = self._get_owned(request, pk)
+        if err: return err
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return Response({"error": "Пустое название"}, status=400)
+        snd.name = name[:64]; snd.save(update_fields=["name"])
+        return Response(NotificationSoundSerializer(snd).data)
+
+    def delete(self, request, pk):
+        snd, err = self._get_owned(request, pk)
+        if err: return err
+        _delete_sound_files(snd)
+        snd.delete()
+        return Response({"ok": True})
 
 
 class NotificationSoundListView(APIView):

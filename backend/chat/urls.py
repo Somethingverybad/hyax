@@ -29,7 +29,11 @@ urlpatterns = [
     path('push/register/', PushRegisterView.as_view(), name='push-register'),
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
     path('sounds/', NotificationSoundListView.as_view(), name='notification-sounds'),
+    path('sounds/mine/', MySoundPacksView.as_view(), name='sound-packs-mine'),
     path('sounds/pack/', SoundPackStudioView.as_view(), name='sound-pack-studio'),
+    path('sounds/pack/<uuid:pk>/', SoundPackDetailView.as_view(), name='sound-pack-detail'),
+    path('sounds/pack/<uuid:pk>/sounds/', SoundPackAddSoundsView.as_view(), name='sound-pack-add'),
+    path('sounds/sound/<uuid:pk>/', SoundDetailView.as_view(), name='sound-detail'),
     path('media/sign/', MediaSignView.as_view(), name='media-sign'),
     path('sticker-packs/import/', StickerPackViewSet.as_view({'post': 'import_pack'}), name='sticker-pack-import'),
     # Роутер ПОСЛЕ кастомных маршрутов

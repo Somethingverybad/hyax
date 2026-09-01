@@ -20,8 +20,9 @@
   .logo b{color:var(--red2)}
   .sub{color:var(--muted);margin-top:6px;font-size:14px}
   h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
-    margin:26px 4px 12px;font-weight:700}
+    margin:26px 4px 12px;font-weight:700;display:flex;align-items:center;gap:8px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .card + .card{margin-top:12px}
   .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
   .tile{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;
     display:flex;flex-direction:column;gap:6px;min-height:92px}
@@ -43,9 +44,11 @@
   .btn{border:0;border-radius:12px;padding:12px 16px;font-weight:700;font-size:15px;cursor:pointer;
     background:var(--card2);color:var(--fg);border:1px solid var(--line)}
   .btn.wide{width:100%}
+  .btn.sm{padding:8px 12px;font-size:13.5px}
   .btn.primary{background:linear-gradient(180deg,var(--red2),var(--red));color:#fff;border:0}
   .btn.primary:disabled{opacity:.5;cursor:default}
   .btn.ghost{background:transparent}
+  .btn.danger{color:#ff9a95;border-color:rgba(229,53,43,.4)}
   .btn.icon{padding:12px 13px}
   .filelabel{font-size:12.5px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}
@@ -61,6 +64,17 @@
   .result ul{margin:8px 0 0;padding-left:18px}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:30px}
   a{color:var(--red2)}
+  .who{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .who b{color:var(--fg)}
+  .packhead{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+  .packhead input{flex:1}
+  .sound{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+  .sound input{flex:1}
+  .play{width:38px;height:38px;flex:0 0 38px;border-radius:10px;border:1px solid var(--line);
+    background:var(--card2);color:var(--fg);cursor:pointer;font-size:15px}
+  .muted{color:var(--muted)}
+  [hidden]{display:none!important}
+  .spin{opacity:.6;pointer-events:none}
 </style>
 </head>
 <body>
@@ -73,45 +87,53 @@
   <h2>Инструменты</h2>
   <div class="tiles">
     <div class="tile active">
-      <div class="ico">🔊</div>
-      <div class="t">Пак звуков</div>
-      <div class="d">Загрузить звуки уведомлений</div>
-      <span class="badge">доступно</span>
+      <div class="ico">🔊</div><div class="t">Пак звуков</div>
+      <div class="d">Создание и правка паков</div><span class="badge">доступно</span>
     </div>
     <div class="tile soon">
-      <div class="ico">😍</div>
-      <div class="t">Реакции</div>
-      <div class="d">Свои реакции на сообщения</div>
-      <span class="badge">скоро</span>
+      <div class="ico">😍</div><div class="t">Реакции</div>
+      <div class="d">Свои реакции на сообщения</div><span class="badge">скоро</span>
     </div>
     <div class="tile soon">
-      <div class="ico">🎨</div>
-      <div class="t">Стикеры</div>
-      <div class="d">Наборы стикеров</div>
-      <span class="badge">скоро</span>
+      <div class="ico">🎨</div><div class="t">Стикеры</div>
+      <div class="d">Наборы стикеров</div><span class="badge">скоро</span>
     </div>
   </div>
 
-  <h2>Новый пак звуков</h2>
-  <div class="card">
-    <div class="field">
-      <label>Ключ доступа</label>
-      <input id="token" type="password" placeholder="секретный токен студии" autocomplete="off">
-      <div class="hint">Спроси токен у администратора. Сохраняется в этом браузере.</div>
+  <!-- ВХОД -->
+  <div id="loginBlock" hidden>
+    <h2>Вход</h2>
+    <div class="card">
+      <div class="field"><label>Логин</label><input id="username" type="text" autocomplete="username" placeholder="ваш логин в ХУЯКС"></div>
+      <div class="field" style="margin-bottom:12px"><label>Пароль</label><input id="password" type="password" autocomplete="current-password" placeholder="пароль"></div>
+      <button class="btn primary wide" id="loginBtn" type="button">Войти</button>
+      <div class="result" id="loginResult"></div>
     </div>
-    <div class="field">
-      <label>Название пака</label>
-      <input id="packName" type="text" placeholder="Например: Мемы 2026">
+  </div>
+
+  <!-- РАБОЧАЯ ОБЛАСТЬ -->
+  <div id="studioBlock" hidden>
+    <h2>Аккаунт</h2>
+    <div class="card who">
+      <div>Вы вошли как <b id="whoName">—</b></div>
+      <button class="btn ghost sm" id="logoutBtn" type="button">Выйти</button>
     </div>
 
-    <label>Звуки</label>
-    <div id="rows"></div>
-    <button class="btn ghost mt" id="addRow" type="button">+ Добавить звук</button>
+    <h2>Мои паки</h2>
+    <div id="myPacks"></div>
+    <div class="card muted" id="noPacks" hidden>Пока нет паков. Создайте первый ниже.</div>
 
-    <button class="btn primary wide mt" id="submit" type="button">Создать пак</button>
-    <div class="prog" id="prog"><i></i></div>
-    <div class="result" id="result"></div>
-    <div class="hint mt">Каждый звук конвертируется в mp3 и обрезается до 30 секунд. Форматы: mp3, m4a, wav, ogg, caf и др.</div>
+    <h2>Новый пак</h2>
+    <div class="card">
+      <div class="field"><label>Название пака</label><input id="packName" type="text" placeholder="Например: Мемы 2026"></div>
+      <label>Звуки</label>
+      <div id="rows"></div>
+      <button class="btn ghost mt" id="addRow" type="button">+ Добавить звук</button>
+      <button class="btn primary wide mt" id="submit" type="button">Создать пак</button>
+      <div class="prog" id="prog"><i></i></div>
+      <div class="result" id="result"></div>
+      <div class="hint mt">Каждый звук конвертируется в mp3 и обрезается до 30 секунд. Форматы: mp3, m4a, wav, ogg, caf и др.</div>
+    </div>
   </div>
 
   <div class="foot">ХУЯКС Creative Space</div>
@@ -119,112 +141,228 @@
 
 <script>
 (function(){
-  var API = "/api/sounds/pack/";
-  var tokenEl = document.getElementById("token");
-  var rowsEl = document.getElementById("rows");
-  var result = document.getElementById("result");
-  var prog = document.getElementById("prog");
-  var progBar = prog.querySelector("i");
+  var TOKEN_URL="/api/token/", REFRESH_URL="/api/token/refresh/";
+  var CREATE_URL="/api/sounds/pack/", MINE_URL="/api/sounds/mine/";
+  var loginBlock=el("loginBlock"), studioBlock=el("studioBlock");
+  var access="", refresh="", uname="";
+  try{ access=localStorage.getItem("studio_access")||""; refresh=localStorage.getItem("studio_refresh")||""; uname=localStorage.getItem("studio_uname")||""; }catch(e){}
 
-  try { tokenEl.value = localStorage.getItem("studio_token") || ""; } catch(e){}
-  tokenEl.addEventListener("change", function(){
-    try { localStorage.setItem("studio_token", tokenEl.value.trim()); } catch(e){}
-  });
+  function el(id){return document.getElementById(id);}
+  function saveTokens(){try{localStorage.setItem("studio_access",access);localStorage.setItem("studio_refresh",refresh);localStorage.setItem("studio_uname",uname);}catch(e){}}
+  function clearTokens(){access="";refresh="";uname="";try{localStorage.removeItem("studio_access");localStorage.removeItem("studio_refresh");localStorage.removeItem("studio_uname");}catch(e){}}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 
-  function addRow(){
-    var row = document.createElement("div");
-    row.className = "row";
-    row.innerHTML =
-      '<input class="name" type="text" placeholder="название звука">' +
-      '<button class="btn icon file" type="button"><span class="filelabel">файл…</span>' +
-        '<input type="file" accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3"></button>' +
-      '<button class="btn icon ghost del" type="button" title="Удалить">✕</button>';
-    var fileInput = row.querySelector('input[type=file]');
-    var fileLabel = row.querySelector('.filelabel');
-    var nameInput = row.querySelector('.name');
-    fileInput.addEventListener("change", function(){
-      if(fileInput.files[0]){
-        fileLabel.textContent = fileInput.files[0].name;
-        fileLabel.classList.add("set");
-        if(!nameInput.value.trim()){
-          nameInput.value = fileInput.files[0].name.replace(/\.[^.]+$/,"");
-        }
+  function showAuthState(){
+    if(access){ loginBlock.hidden=true; studioBlock.hidden=false; el("whoName").textContent=uname||"—"; loadMine(); }
+    else { studioBlock.hidden=true; loginBlock.hidden=false; }
+  }
+
+  // fetch с Bearer + авто-refresh один раз при 401
+  function authFetch(url, opts, retry){
+    opts=opts||{}; opts.headers=opts.headers||{};
+    opts.headers["Authorization"]="Bearer "+access;
+    return fetch(url,opts).then(function(r){
+      if(r.status===401 && refresh && !retry){
+        return fetch(REFRESH_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh:refresh})})
+          .then(function(rr){ if(!rr.ok) throw {auth:true}; return rr.json(); })
+          .then(function(d){ access=d.access; saveTokens(); return authFetch(url,opts,true); })
+          .catch(function(){ clearTokens(); showAuthState(); throw {auth:true}; });
       }
+      return r;
     });
-    row.querySelector(".del").addEventListener("click", function(){
-      row.remove();
-      if(!rowsEl.children.length) addRow();
+  }
+  function authJson(url, method, body){
+    return authFetch(url,{method:method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,status:r.status,data:d}; }); });
+  }
+
+  // ── ВХОД ──
+  el("loginBtn").addEventListener("click", function(){
+    var u=el("username").value.trim(), p=el("password").value;
+    var res=el("loginResult"); res.className="result";
+    if(!u||!p){ res.className="result err"; res.textContent="Введите логин и пароль."; return; }
+    this.disabled=true; this.textContent="Вход…"; var btn=this;
+    fetch(TOKEN_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+      .then(function(x){
+        btn.disabled=false; btn.textContent="Войти";
+        if(!x.ok){ res.className="result err"; res.textContent=x.d.detail||"Неверный логин или пароль."; return; }
+        access=x.d.access; refresh=x.d.refresh; uname=u; saveTokens();
+        el("password").value=""; showAuthState();
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Войти"; res.className="result err"; res.textContent="Сеть недоступна."; });
+  });
+  el("logoutBtn").addEventListener("click", function(){ clearTokens(); showAuthState(); });
+
+  // ── МОИ ПАКИ ──
+  function loadMine(){
+    var box=el("myPacks"); box.innerHTML='<div class="card muted">Загрузка…</div>';
+    authJson(MINE_URL,"GET").then(function(x){
+      if(!x.ok){ box.innerHTML='<div class="card err result" style="display:block">Не удалось загрузить: '+esc(x.data.error||x.status)+'</div>'; return; }
+      renderPacks(x.data.packs||[]);
+    }).catch(function(e){ if(!(e&&e.auth)) box.innerHTML='<div class="card muted">Ошибка сети.</div>'; });
+  }
+
+  function renderPacks(packs){
+    var box=el("myPacks"); box.innerHTML="";
+    el("noPacks").hidden = packs.length>0;
+    packs.forEach(function(p){ box.appendChild(packCard(p)); });
+  }
+
+  function packCard(p){
+    var card=document.createElement("div"); card.className="card";
+    var head=document.createElement("div"); head.className="packhead";
+    var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=p.name;
+    var save=document.createElement("button"); save.className="btn sm"; save.textContent="Переименовать";
+    var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить пак";
+    head.appendChild(nameIn); head.appendChild(save); head.appendChild(del);
+    card.appendChild(head);
+
+    save.addEventListener("click", function(){
+      var nm=nameIn.value.trim(); if(!nm) return;
+      card.classList.add("spin");
+      authJson("/api/sounds/pack/"+p.id+"/","PATCH",{name:nm}).then(function(x){
+        card.classList.remove("spin");
+        if(x.ok){ save.textContent="Готово ✓"; setTimeout(function(){save.textContent="Переименовать";},1200); }
+        else alert(x.data.error||"Ошибка");
+      }).catch(function(){card.classList.remove("spin");});
     });
+    del.addEventListener("click", function(){
+      if(!confirm('Удалить пак «'+p.name+'» со всеми звуками?')) return;
+      card.classList.add("spin");
+      authJson("/api/sounds/pack/"+p.id+"/","DELETE").then(function(x){
+        card.classList.remove("spin");
+        if(x.ok) card.remove(); else alert(x.data.error||"Ошибка");
+      }).catch(function(){card.classList.remove("spin");});
+    });
+
+    (p.sounds||[]).forEach(function(s){ card.appendChild(soundRow(p,s)); });
+
+    // добавить звуки в пак
+    var add=document.createElement("div"); add.className="row mt"; add.style.borderTop="1px solid var(--line)"; add.style.paddingTop="12px";
+    var fbtn=document.createElement("button"); fbtn.className="btn sm file"; fbtn.innerHTML='<span>+ Добавить звуки</span><input type="file" multiple accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3">';
+    var fin=fbtn.querySelector("input");
+    fin.addEventListener("change", function(){
+      if(!fin.files.length) return;
+      var fd=new FormData();
+      Array.prototype.forEach.call(fin.files, function(f){
+        fd.append("files", f); fd.append("names", f.name.replace(/\.[^.]+$/,""));
+      });
+      card.classList.add("spin"); fbtn.querySelector("span").textContent="Загрузка…";
+      authUpload("/api/sounds/pack/"+p.id+"/sounds/", fd, null).then(function(x){
+        card.classList.remove("spin");
+        if(x.ok){ // перерисуем этот пак
+          var fresh=x.data.pack; var nc=packCard(fresh); card.replaceWith(nc);
+        } else { fbtn.querySelector("span").textContent="+ Добавить звуки"; alert((x.data&&x.data.error)||"Ошибка"); }
+      }).catch(function(){card.classList.remove("spin");fbtn.querySelector("span").textContent="+ Добавить звуки";});
+    });
+    add.appendChild(fbtn);
+    card.appendChild(add);
+    return card;
+  }
+
+  var current=null;
+  function soundRow(p,s){
+    var row=document.createElement("div"); row.className="sound";
+    var play=document.createElement("button"); play.className="play"; play.textContent="▶";
+    var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=s.name;
+    var save=document.createElement("button"); save.className="btn sm ghost"; save.textContent="✓";
+    var del=document.createElement("button"); del.className="btn sm ghost danger"; del.textContent="✕";
+    row.appendChild(play); row.appendChild(nameIn); row.appendChild(save); row.appendChild(del);
+
+    play.addEventListener("click", function(){
+      if(current){ current.pause(); current=null; }
+      if(s.url){ current=new Audio(s.url); current.play().catch(function(){}); }
+    });
+    save.addEventListener("click", function(){
+      var nm=nameIn.value.trim(); if(!nm) return;
+      row.classList.add("spin");
+      authJson("/api/sounds/sound/"+s.id+"/","PATCH",{name:nm}).then(function(x){
+        row.classList.remove("spin");
+        if(x.ok){ save.textContent="✓✓"; setTimeout(function(){save.textContent="✓";},1000);} else alert(x.data.error||"Ошибка");
+      }).catch(function(){row.classList.remove("spin");});
+    });
+    del.addEventListener("click", function(){
+      if(!confirm('Удалить звук «'+s.name+'»?')) return;
+      row.classList.add("spin");
+      authJson("/api/sounds/sound/"+s.id+"/","DELETE").then(function(x){
+        row.classList.remove("spin");
+        if(x.ok) row.remove(); else alert(x.data.error||"Ошибка");
+      }).catch(function(){row.classList.remove("spin");});
+    });
+    return row;
+  }
+
+  // upload с прогрессом + Bearer + refresh-retry
+  function authUpload(url, fd, onProg, retry){
+    return new Promise(function(resolve,reject){
+      var xhr=new XMLHttpRequest();
+      xhr.open("POST",url,true);
+      xhr.setRequestHeader("Authorization","Bearer "+access);
+      if(onProg) xhr.upload.onprogress=onProg;
+      xhr.onload=function(){
+        var data={}; try{data=JSON.parse(xhr.responseText);}catch(e){}
+        if(xhr.status===401 && refresh && !retry){
+          fetch(REFRESH_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh:refresh})})
+            .then(function(rr){if(!rr.ok)throw 0;return rr.json();})
+            .then(function(d){access=d.access;saveTokens();return authUpload(url,fd,onProg,true);})
+            .then(resolve).catch(function(){clearTokens();showAuthState();reject({auth:true});});
+          return;
+        }
+        resolve({ok:xhr.status>=200&&xhr.status<300,status:xhr.status,data:data});
+      };
+      xhr.onerror=function(){reject(new Error("network"));};
+      xhr.send(fd);
+    });
+  }
+
+  // ── СОЗДАНИЕ НОВОГО ПАКА ──
+  var rowsEl=el("rows"), result=el("result"), prog=el("prog"), progBar=prog.querySelector("i");
+  function addRow(){
+    var row=document.createElement("div"); row.className="row";
+    row.innerHTML='<input class="name" type="text" placeholder="название звука">'+
+      '<button class="btn icon file" type="button"><span class="filelabel">файл…</span>'+
+      '<input type="file" accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3"></button>'+
+      '<button class="btn icon ghost del" type="button" title="Удалить">✕</button>';
+    var fileInput=row.querySelector('input[type=file]'), fileLabel=row.querySelector('.filelabel'), nameInput=row.querySelector('.name');
+    fileInput.addEventListener("change",function(){
+      if(fileInput.files[0]){ fileLabel.textContent=fileInput.files[0].name; fileLabel.classList.add("set");
+        if(!nameInput.value.trim()) nameInput.value=fileInput.files[0].name.replace(/\.[^.]+$/,""); }
+    });
+    row.querySelector(".del").addEventListener("click",function(){ row.remove(); if(!rowsEl.children.length) addRow(); });
     rowsEl.appendChild(row);
   }
-  document.getElementById("addRow").addEventListener("click", addRow);
-  addRow();
+  el("addRow").addEventListener("click",addRow); addRow();
 
-  function show(cls, html){
-    result.className = "result " + cls;
-    result.innerHTML = html;
-  }
-
-  document.getElementById("submit").addEventListener("click", function(){
-    var btn = this;
-    var token = tokenEl.value.trim();
-    var packName = document.getElementById("packName").value.trim();
-    result.className = "result";
-    if(!token){ show("err","Введи ключ доступа."); return; }
-    if(!packName){ show("err","Введи название пака."); return; }
-
-    var fd = new FormData();
-    fd.append("pack_name", packName);
-    var count = 0;
-    Array.prototype.forEach.call(rowsEl.children, function(row){
-      var f = row.querySelector('input[type=file]').files[0];
-      if(!f) return;
-      var nm = row.querySelector('.name').value.trim() || f.name.replace(/\.[^.]+$/,"");
-      fd.append("files", f);
-      fd.append("names", nm);
-      count++;
+  function showRes(cls,html){ result.className="result "+cls; result.innerHTML=html; }
+  el("submit").addEventListener("click", function(){
+    var btn=this, packName=el("packName").value.trim(); result.className="result";
+    if(!packName){ showRes("err","Введи название пака."); return; }
+    var fd=new FormData(); fd.append("pack_name",packName); var count=0;
+    Array.prototype.forEach.call(rowsEl.children,function(row){
+      var f=row.querySelector('input[type=file]').files[0]; if(!f) return;
+      var nm=row.querySelector('.name').value.trim()||f.name.replace(/\.[^.]+$/,"");
+      fd.append("files",f); fd.append("names",nm); count++;
     });
-    if(!count){ show("err","Добавь хотя бы один звук с файлом."); return; }
-
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", API, true);
-    xhr.setRequestHeader("X-Studio-Token", token);
-    prog.style.display = "block"; progBar.style.width = "0%";
-    btn.disabled = true; btn.textContent = "Загрузка…";
-    xhr.upload.onprogress = function(e){
-      if(e.lengthComputable){
-        var pct = Math.round(e.loaded/e.total*90);
-        progBar.style.width = pct + "%";
-      }
-    };
-    xhr.onload = function(){
-      progBar.style.width = "100%";
-      btn.disabled = false; btn.textContent = "Создать пак";
-      setTimeout(function(){ prog.style.display="none"; }, 600);
-      var data = {};
-      try { data = JSON.parse(xhr.responseText); } catch(e){}
-      if(xhr.status >= 200 && xhr.status < 300){
-        var made = (data.created||[]).map(function(s){return "<li>"+s.name+"</li>";}).join("");
-        var fail = (data.failed||[]).length
-          ? '<div style="margin-top:8px;color:#ff9a95">Не обработаны: '+
-             data.failed.map(function(f){return f.name;}).join(", ")+'</div>' : "";
-        show("ok", "<b>Пак «"+(data.pack||packName)+"» создан.</b> Звуков: "+(data.created||[]).length+
-          "<ul>"+made+"</ul>"+fail+
-          '<div style="margin-top:10px;color:#9a9aa6">Появится в приложении в списке паков.</div>');
-        document.getElementById("packName").value = "";
-        rowsEl.innerHTML = ""; addRow();
-      } else {
-        show("err", (data.error||("Ошибка "+xhr.status)) +
-          ((data.failed&&data.failed.length)? " — "+data.failed.map(function(f){return f.name+": "+f.error;}).join("; "):""));
-      }
-    };
-    xhr.onerror = function(){
-      btn.disabled = false; btn.textContent = "Создать пак";
-      prog.style.display="none";
-      show("err","Сеть недоступна. Попробуй ещё раз.");
-    };
-    xhr.send(fd);
+    if(!count){ showRes("err","Добавь хотя бы один звук с файлом."); return; }
+    prog.style.display="block"; progBar.style.width="0%"; btn.disabled=true; btn.textContent="Загрузка…";
+    authUpload(CREATE_URL, fd, function(e){ if(e.lengthComputable) progBar.style.width=Math.round(e.loaded/e.total*90)+"%"; })
+      .then(function(x){
+        progBar.style.width="100%"; btn.disabled=false; btn.textContent="Создать пак";
+        setTimeout(function(){prog.style.display="none";},600);
+        if(x.ok){
+          var made=(x.data.created||[]).map(function(s){return "<li>"+esc(s.name)+"</li>";}).join("");
+          var fail=(x.data.failed||[]).length?'<div style="margin-top:8px;color:#ff9a95">Не обработаны: '+x.data.failed.map(function(f){return esc(f.name);}).join(", ")+'</div>':"";
+          showRes("ok","<b>Пак создан.</b> Звуков: "+(x.data.created||[]).length+"<ul>"+made+"</ul>"+fail);
+          el("packName").value=""; rowsEl.innerHTML=""; addRow(); loadMine();
+        } else {
+          showRes("err",(x.data.error||("Ошибка "+x.status)));
+        }
+      })
+      .catch(function(e){ btn.disabled=false; btn.textContent="Создать пак"; prog.style.display="none"; if(!(e&&e.auth)) showRes("err","Сеть недоступна."); });
   });
+
+  showAuthState();
 })();
 </script>
 </body>
