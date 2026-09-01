@@ -1541,3 +1541,98 @@ class PushRegisterView(APIView):
             defaults={"user": profile, "platform": platform},
         )
         return Response({"ok": True, "created": created})
+
+
+# ── Боты: создание/список/удаление (владелец = текущий пользователь) ──────────
+# Бот — отдельный класс пользователей (Profile.is_bot). Логина по паролю нет,
+# в API ходит по bot_token (см. chat/bot_auth.py). После создания бота его можно
+# добавлять в чаты как обычного пользователя, а сам бот читает и шлёт сообщения
+# теми же эндпоинтами, авторизуясь заголовком «Authorization: Bot <token>».
+
+def _bot_payload(bot, with_token=False):
+    data = {
+        "id": str(bot.id),
+        "username": bot.username,
+        "bio": bot.bio or "",
+        "avatar_url": bot.avatar_url,
+        "is_bot": True,
+        "owner": str(bot.bot_owner_id) if bot.bot_owner_id else None,
+        "created_at": bot.created_at,
+    }
+    if with_token:
+        data["token"] = bot.bot_token
+    return data
+
+
+class BotsView(APIView):
+    """GET — мои боты (с токенами). POST — создать бота."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        me = getattr(request.user, "profile", None)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        bots = Profile.objects.filter(is_bot=True, bot_owner=me).order_by("created_at")
+        return Response({"bots": [_bot_payload(b, with_token=True) for b in bots]})
+
+    def post(self, request):
+        import secrets
+        me = getattr(request.user, "profile", None)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        if getattr(me, "is_bot", False):
+            return Response({"error": "Бот не может создавать ботов"}, status=403)
+
+        username = (request.data.get("username") or "").strip()
+        if len(username) < 2:
+            return Response({"error": "Имя бота короче 2 символов"}, status=400)
+        if User.objects.filter(username=username).exists() or Profile.objects.filter(username=username).exists():
+            return Response({"error": "Имя уже занято"}, status=400)
+
+        token = secrets.token_urlsafe(32)
+        user = User.objects.create(username=username, email=f"{username}@bot.local", is_active=True)
+        user.set_unusable_password()
+        user.save()
+        bot = Profile.objects.create(
+            user=user,
+            username=username,
+            is_bot=True,
+            bot_owner=me,
+            bot_token=token,
+            bio=(request.data.get("bio") or "")[:500],
+            avatar_url=(request.data.get("avatar_url") or None),
+        )
+        return Response({"bot": _bot_payload(bot, with_token=True)}, status=201)
+
+
+class BotDetailView(APIView):
+    """POST — перевыпустить токен. DELETE — удалить бота. Только владелец."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _owned(self, request, pk):
+        me = getattr(request.user, "profile", None)
+        bot = Profile.objects.filter(pk=pk, is_bot=True).select_related("user").first()
+        if not bot:
+            return None, Response({"error": "Бот не найден"}, status=404)
+        if not me or bot.bot_owner_id != me.id:
+            return None, Response({"error": "Это не ваш бот"}, status=403)
+        return bot, None
+
+    def post(self, request, pk):
+        import secrets
+        bot, err = self._owned(request, pk)
+        if err:
+            return err
+        bot.bot_token = secrets.token_urlsafe(32)
+        bot.save(update_fields=["bot_token"])
+        return Response({"id": str(bot.id), "token": bot.bot_token})
+
+    def delete(self, request, pk):
+        bot, err = self._owned(request, pk)
+        if err:
+            return err
+        user = bot.user
+        bot.delete()
+        if user:
+            user.delete()  # каскадом уберёт связанные записи бота
+        return Response({"ok": True})

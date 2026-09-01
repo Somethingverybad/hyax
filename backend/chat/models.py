@@ -13,9 +13,14 @@ class Profile(models.Model):
     call_status = models.CharField(max_length=20, default="idle")  # idle, calling, in_call
     bio = models.TextField(blank=True, null=True, max_length=500)  # Пользовательский статус/описание
     created_at = models.DateTimeField(default=timezone.now)
+    # Боты — отдельный класс пользователей: не логинятся паролем, ходят в API
+    # по bot_token, у каждого есть владелец-создатель.
+    is_bot = models.BooleanField(default=False)
+    bot_owner = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, related_name='bots')
+    bot_token = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     def __str__(self):
-        return self.username
+        return f"🤖 {self.username}" if self.is_bot else self.username
 
 # Друзья
 class Friendship(models.Model):

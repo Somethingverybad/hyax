@@ -6,11 +6,11 @@ from .models import *
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at']
+        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'created_at', 'is_bot']
 
     def validate_username(self, value):
         value = (value or "").strip()
