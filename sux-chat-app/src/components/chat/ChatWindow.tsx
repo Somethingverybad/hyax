@@ -47,6 +47,8 @@ interface Message {
   sender_id: string;
   sender?: Profile;
   created_at: string;
+  /** Сообщение отредактировано. */
+  is_edited?: boolean;
   /** Клиентские поля оптимистичной отправки: pending — сервер ещё не
    *  подтвердил (одна галочка), _key — стабильный ключ рендера, чтобы
    *  подмена временного сообщения настоящим не перемонтировала DOM,
@@ -107,6 +109,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [profileOpen, setProfileOpen] = useState(false);
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  // Редактирование своего текстового сообщения.
+  const [editing, setEditing] = useState<Message | null>(null);
+  // Удаление с отменой (5с): прячем локально, коммитим по таймеру.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [undoBar, setUndoBar] = useState<{ id: string; scope: "me" | "all"; message: Message } | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Настройки группы (клик по названию группы). Заголовок держим локально,
   // чтобы переименование отражалось сразу.
   const [groupOpen, setGroupOpen] = useState(false);
@@ -446,6 +454,37 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setSwipe(null);
   };
 
+  const commitDelete = (id: string, scope: "me" | "all") => {
+    api.removeMessage(id, scope).catch(() => {});
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  };
+  const startDelete = (message: Message, scope: "me" | "all") => {
+    setMenuMessage(null);
+    // Если уже есть отложенное удаление — закоммитим его сразу.
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
+    if (undoBar) commitDelete(undoBar.id, undoBar.scope);
+    setHiddenIds((prev) => new Set(prev).add(message.id));
+    setUndoBar({ id: message.id, scope, message });
+    deleteTimerRef.current = setTimeout(() => {
+      commitDelete(message.id, scope);
+      setUndoBar(null);
+      deleteTimerRef.current = null;
+    }, 5000);
+  };
+  const undoDelete = () => {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
+    if (undoBar) setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+    setUndoBar(null);
+  };
+  const startEdit = (message: Message) => {
+    setMenuMessage(null);
+    setReplyTo(null);
+    setEditing(message);
+    setNewMessage(message.content || "");
+  };
+  const cancelEdit = () => { setEditing(null); setNewMessage(""); };
+
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
     const t = (m.content || "").trim();
@@ -459,6 +498,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const sendMessage = async () => {
     if (!chatId || (!newMessage.trim() && !selectedFile)) return;
+
+    // Режим редактирования: не создаём новое, а меняем текст существующего.
+    if (editing) {
+      const newText = newMessage.trim();
+      const target = editing;
+      if (!newText) { cancelEdit(); return; }
+      setEditing(null);
+      setNewMessage("");
+      try {
+        const upd = await api.editMessage(target.id, newText);
+        setMessages((prev) => prev.map((m) =>
+          m.id === target.id ? { ...m, ...upd, content: newText, is_edited: true, _key: m._key, _dims: m._dims } : m));
+      } catch {
+        toast.error("Не удалось изменить сообщение");
+        setEditing(target); setNewMessage(newText);
+      }
+      return;
+    }
 
     const text = newMessage.trim();
     const file = selectedFile;
@@ -703,6 +760,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       map.forEach((url) => URL.revokeObjectURL(url));
       map.clear();
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
       soundStopRef.current?.();
     };
   }, []);
@@ -870,7 +928,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
-          {messages.map((message, index) => {
+          {messages.filter((m) => !hiddenIds.has(m.id)).map((message, index) => {
             const isOwn = message.sender?.id === userId;
             const hasImage =
               !!message.file_url &&
@@ -1080,7 +1138,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       isOwn ? "flex-row-reverse" : ""
                     )}>
                       <span className="text-xs text-muted-foreground">
-                        {formatTime(message.created_at)}
+                        {message.is_edited ? "изменено · " : ""}{formatTime(message.created_at)}
                       </span>
                       
                       {/* Статусы: одна галочка — отправляется, две — на сервере. */}
@@ -1110,7 +1168,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {/* Поле ввода */}
       <div ref={composeRef} className="p-2 md:p-4 pad-safe-bottom border-t border-border bg-card">
         <div className="max-w-4xl mx-auto">
-          {replyTo && (
+          {editing && (
+            <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-primary">Редактирование</div>
+                <div className="text-sm text-muted-foreground truncate">{editing.content}</div>
+              </div>
+              <button type="button" onClick={cancelEdit} className="px-1 text-muted-foreground hover:text-foreground" aria-label="Отменить">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          {replyTo && !editing && (
             <div className="mb-2 flex items-stretch gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary overflow-hidden">
               <div className="flex-1 min-w-0 px-3 py-2">
                 <div className="text-xs font-medium text-primary truncate">
@@ -1128,6 +1197,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+          )}
+          {undoBar && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
+              <span className="text-sm">Сообщение удалено</span>
+              <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
             </div>
           )}
           {uploadProgress !== null && (
@@ -1402,6 +1477,31 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 className="w-full px-5 py-4 text-left text-base active:bg-secondary"
               >
                 Копировать текст
+              </button>
+            )}
+            {menuMessage.sender?.id === userId && menuMessage.content?.trim() && (
+              <button
+                type="button"
+                onClick={() => startEdit(menuMessage)}
+                className="w-full px-5 py-4 text-left text-base active:bg-secondary"
+              >
+                Редактировать
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => startDelete(menuMessage, "me")}
+              className="w-full px-5 py-4 text-left text-base active:bg-secondary"
+            >
+              Удалить у себя
+            </button>
+            {menuMessage.sender?.id === userId && (
+              <button
+                type="button"
+                onClick={() => startDelete(menuMessage, "all")}
+                className="w-full px-5 py-4 text-left text-base text-destructive active:bg-secondary"
+              >
+                Удалить у всех
               </button>
             )}
             <button

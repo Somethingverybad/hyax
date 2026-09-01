@@ -148,7 +148,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited']
         read_only_fields = ['sender', 'created_at', 'file_size']
 
     def get_reply_to(self, obj):

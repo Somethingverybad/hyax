@@ -581,6 +581,21 @@ export const api = {
     return res.json();
   },
 
+  removeMessage: async (messageId: string, scope: "me" | "all"): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/remove/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ scope }),
+    });
+    if (!res.ok) throw new Error("Не удалось удалить");
+  },
+
+  editMessage: async (messageId: string, content: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/edit/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error("Не удалось изменить");
+    return res.json();
+  },
+
   sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number, mirror?: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",

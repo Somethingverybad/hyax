@@ -405,7 +405,49 @@ class MessageViewSet(viewsets.ModelViewSet):
         chat_id = self.request.query_params.get('chat')
         if chat_id:
             queryset = queryset.filter(chat_id=chat_id)
+        # Скрываем удалённые: у всех — для каждого; «у себя» — для того, кто удалил.
+        queryset = queryset.exclude(deleted_for_all=True)
+        try:
+            queryset = queryset.exclude(deleted_for=self.request.user.profile)
+        except Exception:
+            pass
         return queryset.order_by('created_at')
+
+    @action(detail=True, methods=['post'])
+    def remove(self, request, pk=None):
+        """Удаление: scope=me (спрятать у себя) или scope=all (у всех, только автор)."""
+        msg = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        scope = (request.data.get('scope') or 'me').lower()
+        if scope == 'all':
+            if msg.sender_id != profile.id:
+                return Response({"error": "Удалить у всех может только автор"}, status=403)
+            msg.deleted_for_all = True
+            msg.save(update_fields=['deleted_for_all'])
+        else:
+            msg.deleted_for.add(profile)
+        return Response({"ok": True})
+
+    @action(detail=True, methods=['post'])
+    def edit(self, request, pk=None):
+        """Редактирование текста — только автор, только текстовое сообщение."""
+        msg = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        if msg.sender_id != profile.id:
+            return Response({"error": "Редактировать может только автор"}, status=403)
+        content = (request.data.get('content') or '').strip()
+        if not content:
+            return Response({"error": "Пустой текст"}, status=400)
+        msg.content = content
+        msg.is_edited = True
+        msg.save(update_fields=['content', 'is_edited'])
+        return Response(MessageSerializer(msg, context={'request': request}).data)
 
     def perform_create(self, serializer):
         print("USER:", self.request.user)

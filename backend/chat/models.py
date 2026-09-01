@@ -88,6 +88,10 @@ class Message(models.Model):
     # Видео-заметка снята фронтальной камерой: воспроизводить зеркально,
     # чтобы совпадало с тем, что автор видел в превью (iOS зеркалит превью).
     video_mirror = models.BooleanField(default=False)
+    # Редактирование и удаление.
+    is_edited = models.BooleanField(default=False)
+    deleted_for_all = models.BooleanField(default=False)  # удалено у всех
+    deleted_for = models.ManyToManyField(Profile, blank=True, related_name="hidden_messages")  # удалено «у себя»
     
     # Добавляем свойство для удобства
     @property
