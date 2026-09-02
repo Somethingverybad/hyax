@@ -32,6 +32,9 @@
   .steps { text-align: left; border: 1px solid var(--line); padding: 14px 16px 14px 34px; color: var(--muted); font-size: 13px; line-height: 1.7; margin-top: 12px; }
   .steps b { color: var(--fg); font-weight: 600; }
   .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .version { display: inline-block; border: 1px solid var(--line); padding: 8px 14px; margin: -16px 0 28px; font-size: 14px; color: var(--muted); }
+  .version b { color: var(--fg); font-weight: 700; }
+  .version .ios { display: block; font-size: 12px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -39,6 +42,9 @@
     <div class="logo"><img src="/apk/icon.png" alt="ХУЯКС" onerror="this.style.display='none'"></div>
     <h1>ХУЯКС</h1>
     <div class="sub">Не очень то и быстрый и ненадёжный месенджер</div>
+    <!-- Актуальная версия — из version.json, того же, по которому приложения
+         узнают об обновлении. Сверяется со строкой внизу экрана профиля. -->
+    <div class="version" id="version">Актуальная версия: <b>…</b></div>
 
     <div class="platform">
       <h2><svg viewBox="0 0 24 24"><path d="M6 9v9a1 1 0 0 0 1 1h1v3a1.5 1.5 0 0 0 3 0v-3h2v3a1.5 1.5 0 0 0 3 0v-3h1a1 1 0 0 0 1-1V9H6zM3.5 9A1.5 1.5 0 0 0 2 10.5v5a1.5 1.5 0 0 0 3 0v-5A1.5 1.5 0 0 0 3.5 9zm17 0a1.5 1.5 0 0 0-1.5 1.5v5a1.5 1.5 0 0 0 3 0v-5A1.5 1.5 0 0 0 20.5 9zM15.5 3.2l1-1a.4.4 0 1 0-.6-.5l-1.1 1.1A6 6 0 0 0 12 2c-1 0-1.9.25-2.7.7L8 1.6a.4.4 0 1 0-.6.5l1 1A5.9 5.9 0 0 0 6 8h12a5.9 5.9 0 0 0-2.5-4.8zM9.5 6a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5zm5 0a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5z"/></svg>Android</h2>
@@ -71,5 +77,21 @@
       <li>Регистрируйся и пиши</li>
     </ol>
   </div>
+  <script>
+    fetch("/apk/version.json?t=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (m) {
+        var el = document.getElementById("version");
+        if (!m || !m.version) { el.textContent = "Версия: неизвестна"; return; }
+        var html = "Актуальная версия: <b>" + m.version + "</b>";
+        if (m.build) html += " · сборка <b>" + m.build + "</b>";
+        if (m.ios_version) {
+          html += '<span class="ios">iOS (TestFlight): ' + m.ios_version +
+            (m.ios_build ? " (" + m.ios_build + ")" : "") + "</span>";
+        }
+        el.innerHTML = html;
+      })
+      .catch(function () { document.getElementById("version").textContent = "Версия: неизвестна"; });
+  </script>
 </body>
 </html>

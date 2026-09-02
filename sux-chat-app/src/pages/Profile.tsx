@@ -1,3 +1,6 @@
+import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
+import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl } from "@/api/client";
@@ -88,6 +91,15 @@ const ProfilePage = () => {
   const dirty =
     profile !== null &&
     (username.trim() !== (profile.username || "") || bio.trim() !== (profile.bio || ""));
+
+  // Нативный номер сборки (versionCode / CFBundleVersion): на Android совпадает
+  // с APP_BUILD, на iOS — свой счётчик TestFlight.
+  const [nativeBuild, setNativeBuild] = useState<string | null>(null);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    App.getInfo().then((i) => setNativeBuild(i.build)).catch(() => {});
+  }, []);
+  const platformLabel = Capacitor.getPlatform() === "ios" ? "iOS" : "Android";
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -186,6 +198,14 @@ const ProfilePage = () => {
           <LogOut className="w-4 h-4" />
           Выйти
         </button>
+
+        {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
+            всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
+            его показываем рядом, если он отличается. */}
+        <div className="text-center text-xs text-muted-foreground pb-2 select-text">
+          ХУЯКС {APP_VERSION} · сборка {APP_BUILD}
+          {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
+        </div>
       </div>
 
       <BottomNav />

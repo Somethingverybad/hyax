@@ -12,3 +12,8 @@ declare global {
     electronAPI?: ElectronAPI;
   }
 }
+
+// Номер сборки, подставляется Vite на этапе сборки (см. vite.config.ts).
+declare global {
+  const __APP_BUILD__: string;
+}
