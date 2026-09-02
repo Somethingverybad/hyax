@@ -88,9 +88,12 @@ interface ChatWindowProps {
    *  только отсюда — на десктопе список виден всегда, поэтому кнопки нет. */
   onBack?: () => void;
   title?: string;
+  /** Счётчик входящих по сокету для этого чата: растёт — перечитываем ленту
+   *  сразу, не дожидаясь очередного опроса (см. эффект ниже). */
+  messagePing?: number;
 }
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -187,6 +190,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // смену чата от прихода новых сообщений.
   const soundChatRef = useRef<string | null>(null);
   const lastSendTimeRef = useRef<number>(0);
+  // Свои сообщения, подтверждённые сервером только что: id → время ответа.
+  // Опрос ленты, ушедший ДО отправки, возвращается уже после подтверждения и
+  // этого сообщения ещё не содержит — без такой памяти пузырь исчезал и
+  // появлялся снова только со следующим опросом.
+  const recentlySentRef = useRef<Map<string, number>>(new Map());
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
 
   // Каталог аудио-стикеров: один запрос на окно чата.
@@ -250,6 +258,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     };
   }, [chatId]);
 
+  // Пришло сообщение по сокету — забираем ленту немедленно. Опрос раз в три
+  // секунды остаётся страховкой на случай оборванного сокета, но ждать его
+  // не нужно: именно из-за него сообщение собеседника появлялось в открытой
+  // переписке через пару секунд после отправки.
+  useEffect(() => {
+    if (messagePing) fetchMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagePing]);
+
   // Эффект для обработки новых сообщений и звуков
   useEffect(() => {
     // Первая порция сообщений этого чата — не «новые». При переключении между
@@ -311,17 +328,32 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       const data: Message[] = await api.getMessages(chatId);
 
+      // Память о свежеотправленных живёт полминуты: за это время сообщение
+      // гарантированно окажется в серверном списке, а если не оказалось —
+      // значит его удалили, и держать пузырь больше не нужно.
+      const now = Date.now();
+      for (const [id, at] of recentlySentRef.current) {
+        if (now - at > 30000) recentlySentRef.current.delete(id);
+      }
+
       setMessages(prev => {
         // Серверный список не знает про клиентские поля: переносим ключ
-        // рендера и размеры с уже подтверждённых сообщений, а ещё не
-        // подтверждённые дописываем в конец — иначе опрос стирал бы пузырь
-        // до ответа сервера.
+        // рендера и размеры с уже подтверждённых сообщений.
         const meta = new Map(prev.filter(m => m._key).map(m => [m.id, m]));
         const withMeta = data.map(d => {
           const local = meta.get(d.id);
           return local ? { ...d, _key: local._key, _dims: local._dims } : d;
         });
-        const merged = [...withMeta, ...prev.filter(m => m.pending)];
+        // Чего в ответе сервера нет, но что мы про себя знаем: ещё не
+        // отправленные пузыри и только что подтверждённые сообщения. Второе —
+        // от гонки: опрос мог уйти на сервер раньше отправки и вернуться
+        // позже неё, и такой устаревший ответ стирал уже подтверждённое
+        // сообщение до следующего опроса.
+        const known = new Set(data.map(d => d.id));
+        const localOnly = prev.filter(
+          m => !known.has(m.id) && (m.pending || recentlySentRef.current.has(m.id))
+        );
+        const merged = [...withMeta, ...localOnly];
         return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
       });
     } catch {
@@ -586,6 +618,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
       // размеры — DOM не перемонтируется, картинка не мигает.
+      recentlySentRef.current.set(sent.id, Date.now());
       setMessages(prev =>
         prev.map(m =>
           m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims } : m
@@ -1512,7 +1545,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onClick={closeMenu}
         >
           <div
-            className="w-full bg-card border-t-2 border-border pb-[env(safe-area-inset-bottom)]"
+            className="w-full bg-card border-t-2 border-border pb-[var(--sab)]"
             onClick={(e) => e.stopPropagation()}
           >
             {menuItems.map((it, idx) => (
@@ -1829,15 +1862,15 @@ const ImageViewer = ({
     <div
       className="fixed inset-0 z-50 bg-black flex items-center justify-center"
       style={{
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingTop: "var(--sat)",
+        paddingBottom: "var(--sab)",
       }}
       onClick={onClose}
     >
       {/* Шапка: закрыть и меню */}
       <div
         className="absolute inset-x-0 flex items-center justify-between px-3"
-        style={{ top: "calc(env(safe-area-inset-top) + 0.5rem)" }}
+        style={{ top: "calc(var(--sat) + 0.5rem)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={onClose} className="p-2 text-white" aria-label="Закрыть">

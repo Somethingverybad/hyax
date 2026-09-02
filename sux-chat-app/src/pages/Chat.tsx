@@ -84,6 +84,9 @@ const Chat = () => {
   // [user?.id] и иначе видел бы устаревший selectedChatId.
   const selectedChatIdRef = useRef<string | null>(null);
   selectedChatIdRef.current = selectedChatId;
+  // Растёт на каждое входящее по сокету в открытом чате — ChatWindow по нему
+  // перечитывает ленту сразу, а не через опрос.
+  const [messagePing, setMessagePing] = useState(0);
   chatsRef.current = chats;
   const navigate = useNavigate();
 
@@ -289,6 +292,11 @@ const Chat = () => {
           const senderId = m?.sender?.id;
           const active = document.visibilityState === "visible" &&
             chatId && String(chatId) === selectedChatIdRef.current;
+          // Открытая переписка обновляется сразу, даже если вкладка в фоне:
+          // вернувшись, пользователь увидит сообщение уже на месте.
+          if (chatId && String(chatId) === selectedChatIdRef.current) {
+            setMessagePing((n) => n + 1);
+          }
           if (m && senderId && senderId !== user.id && !active) {
             const preview =
               (m.content || "").trim() ||
@@ -665,6 +673,7 @@ const Chat = () => {
             group={selectedChat?.is_group ? selectedChat : null}
             onGroupUpdated={refreshChats}
             onCall={startCall}
+            messagePing={messagePing}
             onBack={() => setSelectedChatId(null)}
             title={chatHeaderTitle}
           />
@@ -736,6 +745,7 @@ const Chat = () => {
           group={selectedChat?.is_group ? selectedChat : null}
           onGroupUpdated={refreshChats}
           onCall={startCall}
+          messagePing={messagePing}
           title={chatHeaderTitle}
         />
         )
