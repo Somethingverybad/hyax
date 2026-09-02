@@ -61,7 +61,11 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
       fileUrl = m.files?.android;
       fileName = fileUrl?.split("/").pop();
     } else if (platform === "ios") {
-      fileUrl = m.files?.ios; // обычно нет — обновление через App Store/TestFlight
+      // Обновления iOS идут через TestFlight/App Store. Без ссылки для iOS
+      // плашка вела бы на страницу с APK и десктопными установщиками —
+      // на айфоне ей нечего предложить, поэтому не показываем её вовсе.
+      fileUrl = m.files?.ios;
+      if (!fileUrl) return null;
     }
 
     return {
