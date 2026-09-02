@@ -385,7 +385,7 @@ const ChatSidebar = ({
               type="button"
               onClick={onOpenProfile}
               disabled={!onOpenProfile}
-              className="flex items-center gap-3 flex-1 justify-center rounded-lg px-2 py-1 hover:bg-secondary/60 transition-colors disabled:hover:bg-transparent"
+              className="flex items-center gap-3 flex-1 min-w-0 justify-center rounded-lg px-2 py-1 hover:bg-secondary/60 transition-colors disabled:hover:bg-transparent"
               title="Профиль"
             >
               <Identicon
@@ -645,8 +645,11 @@ const ChatSidebar = ({
                       if (swipedChatId === chat.id) { setSwipedChatId(null); return; }
                       handleSelectChat(chat.id, chatTitle, (chat as any).kind);
                     }}
+                    // min-w-0: без него кнопка (flex-элемент) не ужимается ниже
+                    // ширины своего содержимого, и длинное название чата
+                    // выталкивало время отправки за правый край экрана.
                     className={`flex items-center gap-3 text-left ${
-                      isCollapsed ? "flex-col justify-center w-full" : "flex-1"
+                      isCollapsed ? "flex-col justify-center w-full" : "flex-1 min-w-0"
                     }`}
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}

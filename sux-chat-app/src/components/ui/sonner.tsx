@@ -16,7 +16,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       // 2с вместо стандартных 4: подтверждения читаются мгновенно, а висящий
       // тост перекрывает интерфейс.
       duration={2000}
-      offset="calc(5.5rem + env(safe-area-inset-bottom, 0px))"
+      offset="calc(5.5rem + var(--sab))"
       toastOptions={{
         classNames: {
           toast:

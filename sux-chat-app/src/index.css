@@ -172,6 +172,17 @@ html, body, #root {
   }
 }
 
+/* Вырезы экрана. На iOS их приносит env(), на Android WebView всегда отдаёт
+   ноль — там реальные значения присылает MainActivity, переопределяя эти
+   переменные инлайном на <html> (см. publishInsets). Поэтому по всему
+   приложению отступы берутся из переменных, а не из env() напрямую. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
 /* Поддержка безопасных зон для iPhone X и новее.
    Сверху отступа не было, поэтому шапка уезжала под статус-бар и чёлку. */
 @supports (padding: max(0px)) {
@@ -181,18 +192,18 @@ html, body, #root {
        home-индикатор подкладываются сами шапки и панель ввода — так их фон
        продолжается до края, как в нативных приложениях. Иначе сверху висела
        чёрная полоса, и экран выглядел страницей в рамке. */
-    padding-left: max(0px, env(safe-area-inset-left));
-    padding-right: max(0px, env(safe-area-inset-right));
+    padding-left: max(0px, var(--sal));
+    padding-right: max(0px, var(--sar));
   }
 }
 
 /* Шапка заходит под статус-бар, панель ввода — под home-индикатор. */
 .pad-safe-top {
-  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px)) !important;
+  padding-top: calc(0.625rem + var(--sat)) !important;
 }
 
 .pad-safe-bottom {
-  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(0.75rem + var(--sab)) !important;
 }
 
 /* В нативной обёртке WebView занимает весь экран, включая зоны под вырезами.
@@ -204,7 +215,7 @@ html, body, #root {
    поведение автоматически. */
 :root {
   --app-height: calc(
-    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    100dvh - var(--sat) - var(--sab)
   );
 }
 

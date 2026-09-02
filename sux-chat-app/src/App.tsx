@@ -50,10 +50,13 @@ const App = () => {
     if (Capacitor.isNativePlatform()) {
       const initializeStatusBar = async () => {
         try {
-          // Скрываем статус-бар и настраиваем его
+          // Приложение рисуется под статус-баром, а его высоту отводят шапки
+          // (см. --sat в index.css) — фон шапки продолжается до края экрана.
+          // hide() здесь был обманом: система его игнорировала (во флагах окна
+          // FULLSCREEN так и не появлялся), статус-бар оставался на экране, а
+          // отступа под него не было — часы и значки накрывали шапку.
           await StatusBar.setOverlaysWebView({ overlay: true });
           await StatusBar.setStyle({ style: Style.Dark });
-          await StatusBar.hide();
         } catch (error) {
           console.log('StatusBar not available:', error);
         }

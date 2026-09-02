@@ -38,45 +38,58 @@ document.addEventListener(
 // с клавиатурой, а не догоняет её рывком после ресайза WebView.
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Capacitor as Cap } from "@capacitor/core";
+import { screenBelowWebView, watchSafeArea } from "./lib/safeArea";
+
+watchSafeArea();
 
 if (Cap.isNativePlatform()) {
   const root = document.documentElement;
 
   if (Cap.getPlatform() === "android") {
-    // Android: единственный ресайз даёт система (windowSoftInputMode=adjustResize),
-    // а высоту приложения ведёт visualViewport (syncAppHeight). Плагинный
-    // KeyboardResize.Native ДОПОЛНИТЕЛЬНО сжимал WebView поверх системного —
-    // получался двойной сдвиг: интерфейс улетал вверх, а между панелью ввода и
-    // клавиатурой зияла пустота. Поэтому плагин держим пассивным (None), ручной
-    // --kb-height не трогаем: панель ввода и так на дне сжатой visualViewport.
-    root.style.setProperty("--kb-height", "0px");
+    // Плагинный KeyboardResize.Native выключен: он ужимал WebView поверх
+    // системного ресайза, и получался двойной сдвиг — интерфейс улетал вверх, а
+    // между панелью ввода и клавиатурой зияла пустота.
+    //
+    // Системного ресайза здесь тоже нет, хотя в манифесте и стоит
+    // windowSoftInputMode=adjustResize: окно разложено во весь экран
+    // (StatusBar overlay ставит SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN), а под этим
+    // флагом Android под клавиатуру окно не ужимает. Замеряно на месте:
+    // клавиатура открыта, а visualViewport остаётся 762px и панель ввода
+    // оказывается за ней. Поэтому высоту клавиатуры отрабатываем сами — тем же
+    // кодом, что и iOS, ниже.
     Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {});
-  } else {
-    // iOS: WebView не ресайзим (resize:'none'), а синхронно двигаем панель
-    // ввода сами — плагин присылает высоту и длительность до анимации.
-    let keyboardHeight = 0;
-    const applyKeyboardOffset = () => {
-      const visible = window.visualViewport?.height ?? window.innerHeight;
-      const alreadyShrunk = Math.max(0, window.innerHeight - visible);
-      const offset = Math.max(0, keyboardHeight - alreadyShrunk);
-      root.style.setProperty("--kb-height", `${Math.round(offset)}px`);
-    };
-
-    window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
-
-    Keyboard.addListener("keyboardWillShow", (info) => {
-      root.style.setProperty("--kb-duration", "250ms");
-      keyboardHeight = info.keyboardHeight;
-      applyKeyboardOffset();
-      setTimeout(applyKeyboardOffset, 120);
-      setTimeout(applyKeyboardOffset, 320);
-    });
-
-    Keyboard.addListener("keyboardWillHide", () => {
-      root.style.setProperty("--kb-duration", "250ms");
-      keyboardHeight = 0;
-      root.style.setProperty("--kb-height", "0px");
-      window.scrollTo(0, 0);
-    });
   }
+
+  // WebView не ресайзим, а синхронно двигаем панель ввода сами — плагин
+  // присылает высоту клавиатуры до начала её анимации. Если прошивка всё же
+  // ужала viewport сама, alreadyShrunk вычтет уже отработанную часть, и
+  // двойного сдвига не будет.
+  let keyboardHeight = 0;
+  const applyKeyboardOffset = () => {
+    const visible = window.visualViewport?.height ?? window.innerHeight;
+    const alreadyShrunk = Math.max(0, window.innerHeight - visible);
+    // Клавиатуру плагин меряет от низа экрана, а панель ввода живёт в
+    // координатах WebView: на Android под ним остаётся полоса панели
+    // навигации, и без её вычета панель ввода вставала выше клавиатуры,
+    // открывая под собой ленту сообщений.
+    const offset = Math.max(0, keyboardHeight - screenBelowWebView() - alreadyShrunk);
+    root.style.setProperty("--kb-height", `${Math.round(offset)}px`);
+  };
+
+  window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
+
+  Keyboard.addListener("keyboardWillShow", (info) => {
+    root.style.setProperty("--kb-duration", "250ms");
+    keyboardHeight = info.keyboardHeight;
+    applyKeyboardOffset();
+    setTimeout(applyKeyboardOffset, 120);
+    setTimeout(applyKeyboardOffset, 320);
+  });
+
+  Keyboard.addListener("keyboardWillHide", () => {
+    root.style.setProperty("--kb-duration", "250ms");
+    keyboardHeight = 0;
+    root.style.setProperty("--kb-height", "0px");
+    window.scrollTo(0, 0);
+  });
 }

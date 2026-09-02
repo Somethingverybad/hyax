@@ -102,7 +102,7 @@ const Auth = () => {
   return (
     <div
       className="min-h-screen overflow-y-auto flex items-start justify-center bg-background p-3 md:p-4"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2vh)" }}
+      style={{ paddingTop: "calc(var(--sat) + 2vh)" }}
     >
       <Card className="w-full max-w-md p-4 md:p-8 bg-transparent border-0">
         <div className="flex flex-col items-center mb-4 md:mb-6">

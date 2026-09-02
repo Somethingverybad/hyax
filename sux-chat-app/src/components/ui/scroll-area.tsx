@@ -8,7 +8,15 @@ const ScrollArea = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
 >(({ className, children, ...props }, ref) => (
   <ScrollAreaPrimitive.Root ref={ref} className={cn("relative overflow-hidden", className)} {...props}>
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">{children}</ScrollAreaPrimitive.Viewport>
+    {/* Radix кладёт внутрь вьюпорта обёртку с display:table — она растягивается
+        по содержимому, а не по экрану (на телефоне список выходил на 493px при
+        ширине 359). Из-за этого truncate у названий чатов не срабатывал: строке
+        хватало места, и её резал край экрана вместо многоточия. Возвращаем
+        блок — !important нужен, потому что display Radix ставит инлайном.
+        Горизонтальных ScrollArea в приложении нет, ширина для них не нужна. */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] [&>div]:!block">
+      {children}
+    </ScrollAreaPrimitive.Viewport>
     <ScrollBar />
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>

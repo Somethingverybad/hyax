@@ -88,8 +88,8 @@ const CallOverlay = ({
     <div
       className="fixed inset-0 z-[60] bg-background flex flex-col items-center justify-between"
       style={{
-        paddingTop: "calc(env(safe-area-inset-top) + 3rem)",
-        paddingBottom: "calc(env(safe-area-inset-bottom) + 3rem)",
+        paddingTop: "calc(var(--sat) + 3rem)",
+        paddingBottom: "calc(var(--sab) + 3rem)",
       }}
     >
       {streams.map((stream, i) => (
