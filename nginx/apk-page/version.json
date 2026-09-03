@@ -1,9 +1,9 @@
 {
-  "version": "1.0.8",
-  "build": 131,
-  "ios_version": "1.0.8",
-  "ios_build": 115,
-  "notes": "Переход к цитируемому сообщению, меню на десктопе, автообновление",
+  "version": "1.0.9",
+  "build": 135,
+  "ios_version": "1.0.9",
+  "ios_build": 116,
+  "notes": "Чаты открываются мгновенно: кэш и ленивая загрузка ленты",
   "files": {
     "mac": "/apk/hyax-mac.dmg",
     "win": "/apk/hyax-windows.exe",
