@@ -87,6 +87,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   // Вложение к посту: фото (сжимаем на месте), видео (пережмёт сервер) или
   // файл (как есть, строкой со скачиванием).
   const [attachOpen, setAttachOpen] = useState(false);
+  // Обёртка кнопки-скрепки и её меню: тапы внутри неё меню не закрывают.
+  const attachRef = useRef<HTMLDivElement>(null);
   const [attachment, setAttachment] = useState<{ file: File; mode: "photo" | "video" | "file" } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -155,11 +157,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     }
   }, [channelId]);
 
+  // Меню вложений закрывается тапом вне него. Тап по самому пункту меню
+  // игнорируем: на телефоне pointerdown приходит раньше click, и если закрыть
+  // меню уже на pointerdown, React уберёт кнопку до click — выбор файла так и
+  // не откроется (ровно так и было на iOS).
   useEffect(() => {
     if (!attachOpen) return;
-    const onDown = () => setAttachOpen(false);
-    const t = setTimeout(() => document.addEventListener("pointerdown", onDown, { once: true }), 0);
-    return () => { clearTimeout(t); document.removeEventListener("pointerdown", onDown); };
+    const onDown = (e: PointerEvent) => {
+      if (attachRef.current && attachRef.current.contains(e.target as Node)) return;
+      setAttachOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
   }, [attachOpen]);
 
   useEffect(() => {
@@ -396,7 +405,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => pick(e, "video")} />
           <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => pick(e, "file")} />
           <div className="flex items-end gap-2">
-            <div className="relative shrink-0">
+            <div ref={attachRef} className="relative shrink-0">
               <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-10 h-10 flex items-center justify-center border border-border", attachment && "text-primary border-primary")} aria-label="Прикрепить">
                 <Paperclip className="w-5 h-5" />
               </button>
