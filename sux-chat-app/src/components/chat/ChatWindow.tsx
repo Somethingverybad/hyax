@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, MessageImage, MessageVideoFile, MessageFile, VideoNote, isImageFile, isVideoFile, previewSize } from "@/components/chat/media";
+import { readMessages, writeMessages } from "@/lib/messageCache";
 
 interface Profile {
   id: string;
@@ -204,19 +205,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   // Прокрутка к закреплённому: сообщение есть в ленте — едем к нему.
-  const jumpToMessage = (id: string) => {
-    const el = document.getElementById(`msg-${id}`);
-    if (!el) { toast("Сообщение выше загруженной части ленты"); return; }
+  const jumpToMessage = async (id: string) => {
+    let el = document.getElementById(`msg-${id}`);
+    // Цель выше загруженной части — докачиваем страницы (не больше 20).
+    for (let i = 0; !el && i < 20; i++) {
+      const got = await loadOlder();
+      if (!got) break;
+      await new Promise((r) => setTimeout(r, 60));
+      el = document.getElementById(`msg-${id}`);
+    }
+    if (!el) { toast("Сообщение не найдено — возможно, удалено"); return; }
     el.scrollIntoView({ block: "center", behavior: "smooth" });
     el.classList.add("msg-flash");
-    setTimeout(() => el.classList.remove("msg-flash"), 1200);
+    setTimeout(() => el!.classList.remove("msg-flash"), 1200);
   };
 
   const forwardTo = async (m: Message, targetId: string, label: string) => {
     try {
       await api.forwardMessage(m.id, targetId);
       toast.success(label);
-      if (targetId === chatId) fetchMessages();
+      if (targetId === chatId) syncSince();
     } catch (e: any) {
       toast.error(e?.message || "Не удалось переслать");
     }
@@ -266,15 +274,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   
   // Рефы для отслеживания состояния
   const previousMessagesRef = useRef<Message[]>([]);
+  // Ленивая загрузка: сервер отдаёт хвост ленты страницами (см. syncSince /
+  // loadOlder), кэш IndexedDB рисует чат мгновенно. syncedAtRef — серверное
+  // время последней синхронизации, следующий запрос since=… приносит только
+  // новое/изменённое/удалённое.
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const syncedAtRef = useRef<string | null>(null);
+  const loadingOlderRef = useRef(false);
+  // Первая синхронизация после открытия чата ещё не прошла: то, что она
+  // принесёт, — не «новые входящие», а пропущенное, звучать не должно.
+  const primedRef = useRef(false);
+  // Сохранение позиции прокрутки при подгрузке старых сообщений сверху.
+  const scrollAdjustRef = useRef<{ height: number; top: number } | null>(null);
+  // Самое свежее сообщение на прошлом рендере — по нему ищем новые входящие
+  // (длина списка больше не годится: страницы добавляются и сверху).
+  const newestRef = useRef<number>(0);
   // Чат, для которого previousMessagesRef уже наполнен: нужен, чтобы отличить
   // смену чата от прихода новых сообщений.
   const soundChatRef = useRef<string | null>(null);
   const lastSendTimeRef = useRef<number>(0);
-  // Свои сообщения, подтверждённые сервером только что: id → время ответа.
-  // Опрос ленты, ушедший ДО отправки, возвращается уже после подтверждения и
-  // этого сообщения ещё не содержит — без такой памяти пузырь исчезал и
-  // появлялся снова только со следующим опросом.
-  const recentlySentRef = useRef<Map<string, number>>(new Map());
+
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
 
   // Каталог аудио-стикеров: один запрос на окно чата.
@@ -318,24 +338,50 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     el.style.height = `${Math.min(el.scrollHeight, 104)}px`;
   }, [newMessage]);
 
-  // Основной эффект для загрузки сообщений
+  // Открытие чата: сначала кэш (мгновенно), потом синхронизация с сервера —
+  // только то, что изменилось после последней синхронизации. Без кэша —
+  // последние 50 сообщений; старое подгружается при прокрутке вверх.
   useEffect(() => {
     if (!chatId) {
       setMessages([]);
       return;
     }
+    let alive = true;
+    syncedAtRef.current = null;
+    primedRef.current = false;
+    setHasMore(false);
+    setMessages([]);
 
-    // Сразу загружаем сообщения при смене чата
-    fetchMessages();
+    (async () => {
+      const cached = await readMessages(chatId);
+      if (!alive) return;
+      if (cached && cached.messages.length) {
+        syncedAtRef.current = cached.syncedAt;
+        setHasMore(cached.hasMore);
+        setMessages(cached.messages);
+        setTimeout(() => scrollToBottom(), 50);
+        await syncSince(chatId);
+      } else {
+        try {
+          const r = await api.syncMessages(chatId, { limit: 50 });
+          if (!alive) return;
+          syncedAtRef.current = r.now;
+          setHasMore(r.has_more);
+          setMessages(r.messages);
+          void writeMessages(chatId, r.messages, r.now, r.has_more);
+          setTimeout(() => scrollToBottom(), 50);
+        } catch {
+          console.log("Не удалось загрузить сообщения");
+        }
+      }
+      primedRef.current = true;
+    })();
 
-    // Устанавливаем интервал для автообновления
-    const intervalId = setInterval(() => {
-      fetchMessages();
-    }, 3000);
-
-    return () => {
-      clearInterval(intervalId);
-    };
+    // Опрос раз в три секунды — страховка на случай оборванного сокета;
+    // с since=… он почти ничего не стоит.
+    const intervalId = setInterval(() => { syncSince(chatId); }, 3000);
+    return () => { alive = false; clearInterval(intervalId); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
   // Пришло сообщение по сокету — забираем ленту немедленно. Опрос раз в три
@@ -343,102 +389,126 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // не нужно: именно из-за него сообщение собеседника появлялось в открытой
   // переписке через пару секунд после отправки.
   useEffect(() => {
-    if (messagePing) { fetchMessages(); loadPinned(); }
+    if (messagePing) { syncSince(chatId); loadPinned(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messagePing]);
 
-  // Эффект для обработки новых сообщений и звуков
+  // Новые входящие: звук и прокрутка вниз. Сравниваем по времени самого
+  // свежего сообщения на прошлом рендере, а не по длине списка — страницы
+  // теперь добавляются и сверху (loadOlder), и это не «новые».
   useEffect(() => {
-    // Первая порция сообщений этого чата — не «новые». При переключении между
-    // чатами список меняется целиком, и если в открытом чате сообщений больше,
-    // чем было в предыдущем, разница раньше засчитывалась как входящие и
-    // звучала как уведомление.
-    //
-    // chatId намеренно не в зависимостях: эффект должен сработать не в момент
-    // переключения (сообщения тогда ещё от старого чата), а когда доедет ответ
-    // сервера и messages станут новыми.
+    const ts = (m: Message) => Date.parse(m.created_at) || 0;
+    const newest = messages.length ? ts(messages[messages.length - 1]) : 0;
     if (soundChatRef.current !== chatId) {
       soundChatRef.current = chatId ?? null;
-      previousMessagesRef.current = [...messages];
+      newestRef.current = newest;
       if (messages.length > 0) setTimeout(() => scrollToBottom(), 100);
       return;
     }
+    const prevNewest = newestRef.current;
+    const newMessages = messages.filter(m => ts(m) > prevNewest);
+    newestRef.current = Math.max(newest, prevNewest);
+    if (newMessages.length === 0) return;
 
-    // Если сообщений стало больше - значит пришли новые сообщения
-    if (messages.length > previousMessagesRef.current.length) {
-      const newMessages = messages.slice(previousMessagesRef.current.length);
-      
-      // Проверяем, есть ли среди новых сообщений входящие (не от текущего пользователя)
-      const hasIncomingMessages = newMessages.some(msg => 
-        msg.sender?.id !== userId
-      );
-
-      // Проверяем, есть ли среди новых сообщений исходящие (от текущего пользователя)
-      const hasOutgoingMessages = newMessages.some(msg => 
-        msg.sender?.id === userId
-      );
-      
-      // Игрорируем звук получения, если сообщение было отправлено недавно
-      const timeSinceLastSend = Date.now() - lastSendTimeRef.current;
-      
-      if (hasIncomingMessages && timeSinceLastSend > 2000) {
-        // Аудио-стикер входящего сообщения заменяет стандартный звук.
-        const withSound = newMessages.find(
-          msg => msg.sender?.id !== userId && msg.sound?.url
-        );
-        if (withSound?.sound?.url) {
-          void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
-        } else {
-          void playSfx("/sounds/receive.mp3", { volume: 0.3 });
-        }
-      }
-
-      // Прокручиваем вниз при любых новых сообщениях
-      if (newMessages.length > 0) {
-        setTimeout(() => scrollToBottom(), 100);
+    // До первой синхронизации всё пришедшее — пропущенное за время, пока
+    // чат был закрыт, а не входящие «прямо сейчас»: без звука.
+    const hasIncomingMessages = primedRef.current && newMessages.some(msg => msg.sender?.id !== userId);
+    const timeSinceLastSend = Date.now() - lastSendTimeRef.current;
+    if (hasIncomingMessages && timeSinceLastSend > 2000) {
+      // Аудио-стикер входящего сообщения заменяет стандартный звук.
+      const withSound = newMessages.find(msg => msg.sender?.id !== userId && msg.sound?.url);
+      if (withSound?.sound?.url) {
+        void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
+      } else {
+        void playSfx("/sounds/receive.mp3", { volume: 0.3 });
       }
     }
-    
-    // Обновляем предыдущие сообщения
-    previousMessagesRef.current = [...messages];
+    setTimeout(() => scrollToBottom(), 100);
   }, [messages, userId]);
 
-  const fetchMessages = async () => {
-    if (!chatId) return;
-    try {
-      const data: Message[] = await api.getMessages(chatId);
+  // Подгрузили страницу сверху — удерживаем то, что было на экране, на месте:
+  // до перерисовки высоту ленты запомнили в scrollAdjustRef.
+  useLayoutEffect(() => {
+    const a = scrollAdjustRef.current;
+    const el = scrollRef.current;
+    if (!a || !el) return;
+    scrollAdjustRef.current = null;
+    el.scrollTop = a.top + (el.scrollHeight - a.height);
+  }, [messages]);
 
-      // Память о свежеотправленных живёт полминуты: за это время сообщение
-      // гарантированно окажется в серверном списке, а если не оказалось —
-      // значит его удалили, и держать пузырь больше не нужно.
-      const now = Date.now();
-      for (const [id, at] of recentlySentRef.current) {
-        if (now - at > 30000) recentlySentRef.current.delete(id);
+  /** Слить ответ сервера в ленту: обновить по id, убрать удалённые,
+   *  добавить новые. Локальные поля (ключ рендера, размеры, pending) не
+   *  теряем; неподтверждённые пузыри и сообщения, о которых сервер в этом
+   *  ответе не говорил, остаются как есть — поэтому старой гонки «опрос
+   *  ушёл до отправки и стёр подтверждённое» больше нет. */
+  const applyBatch = (
+    incoming: Message[],
+    deleted: string[],
+    mode: "merge" | "prepend" = "merge",
+  ) => {
+    setMessages(prev => {
+      const gone = new Set(deleted);
+      const byId = new Map(prev.filter(m => !gone.has(m.id)).map(m => [m.id, m]));
+      for (const d of incoming) {
+        const local = byId.get(d.id);
+        byId.set(d.id, local ? { ...local, ...d, pending: false } : d);
       }
+      // Сравниваем как даты: сервер и клиент пишут ISO в разных форматах
+      // (+00:00 против Z, микросекунды против миллисекунд), строки не годятся.
+      const merged = [...byId.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+      if (mode === "merge" && JSON.stringify(merged) === JSON.stringify(prev)) return prev;
+      return merged;
+    });
+  };
 
-      setMessages(prev => {
-        // Серверный список не знает про клиентские поля: переносим ключ
-        // рендера и размеры с уже подтверждённых сообщений.
-        const meta = new Map(prev.filter(m => m._key).map(m => [m.id, m]));
-        const withMeta = data.map(d => {
-          const local = meta.get(d.id);
-          return local ? { ...d, _key: local._key, _dims: local._dims } : d;
-        });
-        // Чего в ответе сервера нет, но что мы про себя знаем: ещё не
-        // отправленные пузыри и только что подтверждённые сообщения. Второе —
-        // от гонки: опрос мог уйти на сервер раньше отправки и вернуться
-        // позже неё, и такой устаревший ответ стирал уже подтверждённое
-        // сообщение до следующего опроса.
-        const known = new Set(data.map(d => d.id));
-        const localOnly = prev.filter(
-          m => !known.has(m.id) && (m.pending || recentlySentRef.current.has(m.id))
-        );
-        const merged = [...withMeta, ...localOnly];
-        return JSON.stringify(merged) !== JSON.stringify(prev) ? merged : prev;
-      });
+  /** Приращение с сервера: всё, что менялось после последней синхронизации. */
+  const syncSince = async (id: string | null = chatId) => {
+    if (!id) return;
+    try {
+      const r = await api.syncMessages(id, syncedAtRef.current ? { since: syncedAtRef.current } : { limit: 50 });
+      if (id !== chatId) return; // чат успели переключить
+      syncedAtRef.current = r.now;
+      if (r.messages.length || r.deleted.length) applyBatch(r.messages, r.deleted);
+      setMessages(prev => { void writeMessages(id, prev, r.now, hasMoreRef.current); return prev; });
     } catch {
-      console.log("Не удалось загрузить сообщения (автообновление)");
+      console.log("Не удалось синхронизировать сообщения");
     }
+  };
+  // Для старых вызовов после отправки медиа/стикера.
+  const fetchMessages = syncSince;
+
+  const hasMoreRef = useRef(false);
+  hasMoreRef.current = hasMore;
+
+  /** Страница старее первого загруженного — при прокрутке к верху. */
+  const loadOlder = async (): Promise<boolean> => {
+    const id = chatId;
+    if (!id || loadingOlderRef.current || !hasMoreRef.current) return false;
+    const first = messages.find(m => !m.pending);
+    if (!first) return false;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const r = await api.syncMessages(id, { before: first.created_at, limit: 50 });
+      if (id !== chatId) return false;
+      const el = scrollRef.current;
+      if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      setHasMore(r.has_more);
+      hasMoreRef.current = r.has_more;
+      if (r.messages.length) applyBatch(r.messages, [], "prepend");
+      return r.messages.length > 0;
+    } catch {
+      return false;
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  };
+
+  const onFeedScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop < 160 && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
   };
 
   const scrollToBottom = () => {
@@ -701,12 +771,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       }
 
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
-      // размеры — DOM не перемонтируется, картинка не мигает.
-      recentlySentRef.current.set(sent.id, Date.now());
+      // размеры — DOM не перемонтируется, картинка не мигает. Если
+      // синхронизация уже принесла это сообщение по сокету/опросу — просто
+      // убираем временный пузырь, чтобы не было дубля.
       setMessages(prev =>
-        prev.map(m =>
-          m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims } : m
-        )
+        prev.some(m => m.id === sent.id)
+          ? prev.filter(m => m.id !== tempId)
+          : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims } : m))
       );
     } catch (error: any) {
       console.error("Error sending message:", error);
@@ -1066,10 +1137,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           поле ввода за экран), а scrollTop работает напрямую. */}
       <div
         ref={scrollRef}
+        onScroll={onFeedScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-4 py-4 md:py-6"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+          {hasMore && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => void loadOlder()}
+                disabled={loadingOlder}
+                className="text-xs text-muted-foreground px-3 py-1 bg-muted/50 rounded-full disabled:opacity-60"
+              >
+                {loadingOlder ? "Загружаю…" : "Показать более ранние"}
+              </button>
+            </div>
+          )}
           {messages.filter((m) => !hiddenIds.has(m.id)).map((message, index) => {
             const isOwn = message.sender?.id === userId;
             const hasImage =

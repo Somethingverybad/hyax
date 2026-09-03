@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
+import { clearMessageCache } from "@/lib/messageCache";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
@@ -630,6 +631,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
 
   const handleLogout = async () => {
     clearSessionCache();
+    void clearMessageCache();
     try {
       // 🔔 Удаляем listeners при выходе
       if (Capacitor.isNativePlatform()) {

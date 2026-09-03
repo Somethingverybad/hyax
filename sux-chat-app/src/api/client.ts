@@ -521,6 +521,21 @@ export const api = {
   },
 
   // ===== MESSAGES =====
+  /** Лента постранично и приращениями (см. messageCache.ts). since — всё,
+   *  что менялось после (плюс id удалённых у всех); before — страница старее. */
+  syncMessages: async (
+    chatId: string,
+    opts: { since?: string; before?: string; limit?: number } = {},
+  ): Promise<{ messages: any[]; deleted: string[]; has_more: boolean; now: string }> => {
+    const q = new URLSearchParams({ chat: chatId });
+    if (opts.since) q.set("since", opts.since);
+    if (opts.before) q.set("before", opts.before);
+    if (opts.limit) q.set("limit", String(opts.limit));
+    const res = await fetchWithAuth(`${API_URL}/messages/sync/?${q.toString()}`, { headers: authHeaders() });
+    if (!res.ok) throw new Error(`sync failed: ${res.status}`);
+    return res.json();
+  },
+
   getMessages: async (chatId: string): Promise<any[]> => {
     const res = await fetchWithAuth(`${API_URL}/messages/?chat=${chatId}`, {
       method: "GET",
