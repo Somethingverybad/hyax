@@ -2,12 +2,12 @@ import { useEffect, useState, useRef } from "react";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
-import { api, mediaUrl, NotificationSoundInfo } from "@/api/client";
+import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
 import { loadWaveform } from "@/lib/waveform";
@@ -16,6 +16,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
+import { LivePreview, MessageImage, MessageVideoFile, MessageFile, VideoNote, isImageFile, isVideoFile, previewSize } from "@/components/chat/media";
 
 interface Profile {
   id: string;
@@ -57,6 +58,19 @@ interface Message {
   pending?: boolean;
   _key?: string;
   _dims?: { w: number; h: number } | null;
+  /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
+  forwarded_from?: { id: string; username: string; avatar_url?: string | null } | null;
+  forwarded_title?: string;
+}
+
+/** Чат для выбора при пересылке — минимум полей из списка чатов. */
+interface ChatPick {
+  id: string;
+  name?: string;
+  kind?: string;
+  is_group?: boolean;
+  avatar_url?: string | null;
+  participants?: Profile[];
 }
 
 /** Габариты картинки из локального файла — читаются мгновенно, без сети. */
@@ -68,10 +82,6 @@ const imageDims = (url: string) =>
     img.src = url;
   });
 
-/** Вписывает натуральный размер в бокс превью (240×192), не увеличивая. */
-const previewSize = (dims: { w: number; h: number }) => {
-  const scale = Math.min(240 / dims.w, 192 / dims.h, 1);
-  return { width: Math.round(dims.w * scale), height: Math.round(dims.h * scale) };
 };
 
 interface ChatWindowProps {
@@ -91,9 +101,14 @@ interface ChatWindowProps {
   /** Счётчик входящих по сокету для этого чата: растёт — перечитываем ленту
    *  сразу, не дожидаясь очередного опроса (см. эффект ниже). */
   messagePing?: number;
+  /** «Избранное»: чат без собеседника — без звонка, профиля и добавления людей. */
+  saved?: boolean;
+  /** Список чатов для пересылки и id «Избранного» для пункта «В избранное». */
+  chats?: ChatPick[];
+  savedChatId?: string;
 }
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, saved, chats, savedChatId }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -158,6 +173,73 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const closeMenu = () => { setMenuMessage(null); setMenuPos(null); };
   // Добавление людей в чат: личная переписка при этом становится группой.
   const [addOpen, setAddOpen] = useState(false);
+  // Закреплённое сообщение чата (одно) — полоса под шапкой.
+  const [pinned, setPinned] = useState<PinnedInfo | null>(null);
+  // Сообщение, для которого открыт выбор чата пересылки.
+  const [forwardFor, setForwardFor] = useState<Message | null>(null);
+  const [forwardQuery, setForwardQuery] = useState("");
+
+  const loadPinned = async () => {
+    if (!chatId) return;
+    try {
+      const c = await api.getChat(chatId);
+      setPinned(c.pinned_message || null);
+    } catch {
+      /* закреп не критичен */
+    }
+  };
+  useEffect(() => {
+    setPinned(null);
+    loadPinned();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  const togglePin = async (m: Message, pin: boolean) => {
+    closeMenu();
+    try {
+      const r = await api.pinMessage(m.id, pin);
+      setPinned(r.pinned_message);
+      toast.success(pin ? "Закреплено" : "Откреплено");
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось");
+    }
+  };
+
+  // Прокрутка к закреплённому: сообщение есть в ленте — едем к нему.
+  const jumpToMessage = (id: string) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) { toast("Сообщение выше загруженной части ленты"); return; }
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("msg-flash");
+    setTimeout(() => el.classList.remove("msg-flash"), 1200);
+  };
+
+  const forwardTo = async (m: Message, targetId: string, label: string) => {
+    try {
+      await api.forwardMessage(m.id, targetId);
+      toast.success(label);
+      if (targetId === chatId) fetchMessages();
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось переслать");
+    }
+  };
+
+  const toSaved = async (m: Message) => {
+    closeMenu();
+    let id = savedChatId;
+    if (!id) {
+      try { id = (await api.getSavedChat()).id; } catch { toast.error("Избранное недоступно"); return; }
+    }
+    await forwardTo(m, id, "Добавлено в избранное");
+  };
+
+  /** Название чата для списка пересылки. */
+  const chatLabel = (c: ChatPick) => {
+    if (c.kind === "channel") return c.name || "Канал";
+    if (c.is_group) return c.name || "Группа";
+    const other = c.participants?.find((p) => p.id !== userId);
+    return other?.username || c.name || "Чат";
+  };
   const [addQuery, setAddQuery] = useState("");
   const [addResults, setAddResults] = useState<Profile[]>([]);
   const [adding, setAdding] = useState(false);
@@ -263,7 +345,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // не нужно: именно из-за него сообщение собеседника появлялось в открытой
   // переписке через пару секунд после отправки.
   useEffect(() => {
-    if (messagePing) fetchMessages();
+    if (messagePing) { fetchMessages(); loadPinned(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messagePing]);
 
@@ -823,19 +905,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return currentDate !== previousDate;
   };
 
-  // Функция для проверки, является ли файл изображением
-  const isImageFile = (fileName: string | null, fileUrl: string | null): boolean => {
-    if (!fileName && !fileUrl) return false;
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
-    const checkString = fileName || fileUrl || '';
-    return imageExtensions.some(ext => checkString.toLowerCase().endsWith(ext));
-  };
-
-  const isVideoFile = (fileName: string | null, fileUrl: string | null): boolean => {
-    const s = (fileName || fileUrl || '').toLowerCase();
-    return ['.mp4', '.mov', '.m4v', '.webm'].some(ext => s.endsWith(ext));
-  };
-
   // Функция для сохранения файла локально (для Electron)
   const handleSaveFile = async (fileUrl: string, fileName: string) => {
     // Проверяем, запущено ли приложение в Electron
@@ -905,6 +974,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const menuItems = menuMessage
     ? [
         { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
+        { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardQuery(""); setForwardFor(menuMessage); closeMenu(); } },
+        { label: "В избранное", show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
+        { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
         { label: "Копировать текст", show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
         { label: "Редактировать", show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
         { label: "Удалить у себя", show: true, onClick: () => startDelete(menuMessage, "me") },
@@ -947,7 +1019,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           ) : (
             <span className="font-medium line-clamp-2 leading-tight flex-1">{headerTitle || "Чат"}</span>
           )}
-          {!isGroup && (
+          {!isGroup && !saved && (
             <button
               type="button"
               onClick={() => setAddOpen(true)}
@@ -957,7 +1029,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <UserPlus className="w-5 h-5" />
             </button>
           )}
-          {onCall && (peer || isGroup) && (
+          {onCall && !saved && (peer || isGroup) && (
             <button
               type="button"
               onClick={onCall}
@@ -967,6 +1039,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <Phone className="w-5 h-5" />
             </button>
           )}
+        </div>
+      )}
+      {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
+      {pinned && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card">
+          <Pin className="w-4 h-4 text-primary shrink-0" />
+          <button type="button" onClick={() => jumpToMessage(pinned.id)} className="flex-1 min-w-0 text-left">
+            <span className="block text-[11px] text-primary font-medium leading-tight">Закреплено · {pinned.sender_username}</span>
+            <span className="block text-sm line-clamp-1 break-all">{pinned.preview}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { const m = messages.find((x) => x.id === pinned.id); m ? togglePin(m, false) : api.pinMessage(pinned.id, false).then(() => setPinned(null)).catch(() => toast.error("Не удалось")); }}
+            className="p-1.5 text-muted-foreground"
+            aria-label="Открепить"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
       {/* Нативный overflow-скролл вместо Radix ScrollArea: min-h-0 позволяет
@@ -999,6 +1089,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             return (
               <div
                 key={message._key ?? message.id}
+                id={`msg-${message.id}`}
                 className={cn("space-y-2", message._key && "msg-in")}
               >
                 {/* Разделитель с датой */}
@@ -1085,19 +1176,32 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           : "bg-success text-success-foreground")
                     )}>
                       {/* Цитируемое сообщение (реплай). */}
+                      {/* Пересланное: от кого пришло изначально. */}
+                      {(message.forwarded_title || message.forwarded_from) && (
+                        <div className="mb-1 flex items-center gap-1 text-xs opacity-80 min-w-0">
+                          <Forward className="w-3 h-3 shrink-0" />
+                          <span className="line-clamp-1 break-all">
+                            Переслано от {message.forwarded_from?.username || message.forwarded_title}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Цитата в одну строку через line-clamp, а не truncate:
+                          nowrap делал минимальную ширину пузыря равной всей
+                          длине цитаты, и длинный реплай уезжал за край экрана. */}
                       {message.reply_to && (
                         <div
                           className={cn(
-                            "mb-1 rounded px-2 py-1 border-l-2 text-xs",
+                            "mb-1 rounded px-2 py-1 border-l-2 text-xs min-w-0 max-w-full",
                             isOwn
                               ? "border-primary-foreground/60 bg-black/10"
                               : "border-success-foreground/60 bg-black/10"
                           )}
                         >
-                          <div className="font-medium truncate opacity-90">
+                          <div className="font-medium line-clamp-1 break-all opacity-90">
                             {message.reply_to.sender_username}
                           </div>
-                          <div className="truncate opacity-75">
+                          <div className="line-clamp-1 break-all opacity-75">
                             {message.reply_to.preview}
                           </div>
                         </div>
@@ -1594,6 +1698,55 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         />
       )}
 
+      {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),
+          «Избранное» — первой строкой. */}
+      {forwardFor && (
+        <div className="fixed inset-0 z-[75] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setForwardFor(null)}>
+          <div className="w-full md:max-w-md bg-card border-t-2 md:border-2 border-border max-h-[80%] flex flex-col pb-[var(--sab)]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+              <Forward className="w-4 h-4 text-primary" />
+              <span className="font-semibold flex-1">Переслать</span>
+              <button type="button" onClick={() => setForwardFor(null)} className="p-1" aria-label="Закрыть"><X className="w-5 h-5" /></button>
+            </div>
+            <input
+              value={forwardQuery}
+              onChange={(e) => setForwardQuery(e.target.value)}
+              placeholder="Поиск по чатам"
+              className="mx-4 my-2 px-3 py-2 bg-secondary outline-none text-sm"
+            />
+            <div className="overflow-y-auto">
+              {!saved && savedChatId && (
+                <button type="button" onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, savedChatId, "Добавлено в избранное"); }} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary">
+                  <span className="w-10 h-10 shrink-0 bg-primary flex items-center justify-center"><Bookmark className="w-5 h-5 text-primary-foreground" /></span>
+                  <span className="font-medium">Избранное</span>
+                </button>
+              )}
+              {(chats || [])
+                .filter((c) => c.id !== chatId)
+                .filter((c) => !forwardQuery.trim() || chatLabel(c).toLowerCase().includes(forwardQuery.trim().toLowerCase()))
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, c.id, `Переслано: ${chatLabel(c)}`); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary"
+                  >
+                    {c.kind === "channel" ? (
+                      <span className="w-10 h-10 shrink-0 bg-secondary flex items-center justify-center"><Radio className="w-5 h-5 text-primary" /></span>
+                    ) : c.is_group ? (
+                      <span className="w-10 h-10 shrink-0 bg-secondary flex items-center justify-center"><Users className="w-5 h-5 text-primary" /></span>
+                    ) : (
+                      <Identicon id={c.participants?.find((p) => p.id !== userId)?.id || c.id} avatarUrl={c.participants?.find((p) => p.id !== userId)?.avatar_url} className="w-10 h-10" />
+                    )}
+                    <span className="font-medium truncate">{chatLabel(c)}</span>
+                  </button>
+                ))}
+              {(chats || []).length === 0 && <p className="px-4 py-6 text-sm text-muted-foreground text-center">Чатов нет</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {viewer && (
         <ImageViewer
           item={viewer}
@@ -1605,179 +1758,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   );
 };
 
-
-/**
- * Встроенный просмотр изображения, как в мессенджерах: во весь экран поверх
- * чата, закрытие крестиком или тапом по фону, скачивание — в меню «⋯».
- * Раньше тап открывал картинку в браузере — из приложения это выглядит
- * как выброс наружу.
- */
-/** Треугольная маска — форма наших видео-сообщений вместо круглых «кружков». */
-const TRIANGLE = "polygon(50% 0%, 100% 100%, 0% 100%)";
-
-/** Живое изображение с камеры во время записи. */
-const LivePreview = ({ stream, dimmed, facing }: { stream: MediaStream | null; dimmed: boolean; facing: "user" | "environment" }) => {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (ref.current && stream) {
-      ref.current.srcObject = stream;
-      ref.current.play().catch(() => {});
-    }
-  }, [stream]);
-  return (
-    <video
-      ref={ref}
-      muted
-      playsInline
-      className={cn("w-40 h-40 object-cover transition-opacity", dimmed && "opacity-40")}
-      style={{ clipPath: TRIANGLE, transform: facing === "user" ? "scaleX(-1)" : undefined }}
-    />
-  );
-};
-
-/** Видео-сообщение в переписке: тап — воспроизведение со звуком. */
-// Картинка сообщения: своя показывается из локального blob мгновенно, чужая —
-// по временной подписанной ссылке (S3) или локально (/media).
-const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
-  raw: string; name: string | null; dims?: { w: number; h: number } | null;
-  localMap: Map<string, string>; onOpen: (url: string, name: string) => void; onError: () => void;
-}) => {
-  const localBlob = raw.startsWith("blob:") ? raw : localMap.get(raw);
-  const signed = useMediaUrl(localBlob ? null : raw);
-  const src = localBlob || signed;
-  if (!src) return <div className="w-40 h-28 bg-black/20 rounded-lg animate-pulse" />;
-  return (
-    <img
-      src={src}
-      alt={name || "Изображение"}
-      loading="lazy"
-      className="max-h-48 max-w-[min(240px,100%)] w-auto object-contain cursor-pointer block"
-      style={dims ? previewSize(dims) : undefined}
-      onClick={() => onOpen(src, name || "image")}
-      onError={onError}
-    />
-  );
-};
-
-const MessageVideoFile = ({ raw }: { raw: string }) => {
-  const src = useMediaUrl(raw);
-  if (!src) return <div className="w-44 h-28 bg-black/20 rounded-lg animate-pulse" />;
-  return (
-    <video
-      src={src}
-      controls
-      playsInline
-      preload="metadata"
-      className="max-h-64 max-w-[min(280px,100%)] w-auto rounded-lg block bg-black"
-    />
-  );
-};
-
-const MessageFile = ({ raw, name, isOwn, onSave }: {
-  raw: string; name: string | null; isOwn: boolean; onSave: (url: string, name: string) => void;
-}) => {
-  const src = useMediaUrl(raw);
-  return (
-    <div className={cn(
-      "flex items-center gap-2 p-2 rounded-lg border transition-colors max-w-full min-w-0",
-      isOwn ? "bg-primary/20 border-primary/30 hover:bg-primary/30" : "bg-muted border-border hover:bg-muted/80",
-    )}>
-      <Paperclip className="w-4 h-4 flex-shrink-0" />
-      <a
-        href={src || "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex-1 min-w-0 text-sm truncate hover:underline"
-      >
-        {name || "Файл"}
-      </a>
-      <button
-        onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "file"); }}
-        className="p-1 rounded hover:bg-background/50 transition-colors"
-        title="Сохранить файл"
-      >
-        <Download className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
-
-const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds: number; own: boolean; mirror?: boolean }) => {
-  const src = useMediaUrl(url);
-  const ref = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-
-  // Первый кадр вместо чёрного треугольника: WebKit рисует видео только
-  // после перемотки, поэтому подталкиваем его на первый же кадр.
-  const showFirstFrame = () => {
-    const el = ref.current;
-    if (!el || el.currentTime > 0) return;
-    try {
-      el.currentTime = 0.05;
-    } catch {
-      /* браузер ещё не готов — покажем кадр при воспроизведении */
-    }
-  };
-
-  const toggle = () => {
-    const el = ref.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      return;
-    }
-    // Звук включаем только на время просмотра: до тапа элемент немой,
-    // иначе первый кадр не покажется без разрешения на автовоспроизведение.
-    el.muted = false;
-    el.currentTime = 0;
-    el.play().catch(() => {});
-  };
-
-  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-
-  return (
-    <div className="relative w-44 h-44" onClick={toggle}>
-      {/* Цветная подложка-треугольник даёт обводку по краю: свои — алая,
-          входящие — зелёная. Видео вписано внутрь с отступом, и кромка
-          подложки читается как контур треугольника. */}
-      <div
-        className={cn("absolute inset-0", own ? "bg-primary" : "bg-success")}
-        style={{ clipPath: TRIANGLE }}
-      />
-      <video
-        ref={ref}
-        src={src}
-        playsInline
-        muted={!playing}
-        preload="metadata"
-        onLoadedMetadata={showFirstFrame}
-        onLoadedData={showFirstFrame}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-        className="absolute inset-[3px] object-cover bg-black"
-        style={{
-          clipPath: TRIANGLE,
-          width: "calc(100% - 6px)",
-          height: "calc(100% - 6px)",
-          // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
-          // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
-          transform: mirror ? "scaleX(-1)" : undefined,
-        }}
-      />
-      {!playing && (
-        <span className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
-          <span className="w-11 h-11 flex items-center justify-center bg-black/50">
-            <Play className="w-5 h-5 text-white" />
-          </span>
-        </span>
-      )}
-      <span className="absolute bottom-1 right-1 text-[11px] px-1 bg-black/60 text-white pointer-events-none">
-        {label}
-      </span>
-    </div>
-  );
-};
 
 const WAVE_BARS = 40;
 // Запасная «дорожка», пока волна грузится или если кодек не декодируется.

@@ -44,7 +44,9 @@ interface ProfileType {
   status?: string;
 }
 
-const Chat = () => {
+/** savedMode — вкладка «Избранное»: вместо списка сразу открыт личный чат
+ *  без собеседника (сервер создаёт его при первом обращении). */
+const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<ProfileType | null>(() => readCache<ProfileType>("user"));
   const [chats, setChats] = useState<ChatType[]>(() => readCache<ChatType[]>("chats") || []);
@@ -56,6 +58,15 @@ const Chat = () => {
   // списке chats (пока не подписан), поэтому храним kind отдельно.
   const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  // Чат «Избранное» — узнаём у сервера один раз; в списке chats его нет.
+  const [savedChat, setSavedChat] = useState<ChatType | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.getSavedChat()
+      .then((c) => { if (!alive) return; setSavedChat(c); if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); } })
+      .catch(() => { if (savedMode) toast.error("Не удалось открыть Избранное"); });
+    return () => { alive = false; };
+  }, [savedMode]);
 
   // ===== Звонки =====
   // Один WebSocket и один сервис звонков на всё приложение: входящий должен
@@ -479,18 +490,23 @@ const Chat = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const selectedChat = chats.find((c) => c.id === selectedChatId) || (savedChat?.id === selectedChatId ? savedChat : undefined);
   const isChannelOpen = selectedKind === "channel" || (selectedChat as any)?.kind === "channel";
+  const isSavedOpen = !!selectedChatId && (selectedKind === "saved" || (selectedChat as any)?.kind === "saved");
+  // «Избранное» живёт на своей вкладке — из общего списка его убираем.
+  const listChats = chats.filter((c) => (c as any).kind !== "saved");
   // В группе «собеседника» нет: find(!= me) вернул бы первого участника, и
   // шапка шла бы по ветке 1:1 (профиль) вместо настроек группы. Поэтому для
   // групп peer всегда null.
-  const peer = selectedChat?.is_group
+  const peer = selectedChat?.is_group || isSavedOpen
     ? null
     : selectedChat?.participants?.find((p) => p.id !== user?.id) || null;
 
   // Заголовок шапки берём из самого чата, а не из selectedChatTitle: при
   // открытии из пуша тайтл не передавался и висел от предыдущего диалога.
-  const chatHeaderTitle = selectedChat
+  const chatHeaderTitle = isSavedOpen
+    ? "Избранное"
+    : selectedChat
     ? selectedChat.is_group
       ? selectedChat.name || "Группа"
       : peer?.username || selectedChatTitle
@@ -657,7 +673,28 @@ const Chat = () => {
       <div className="h-screen flex flex-col bg-background">
         <UpdateBanner />
         {callUi}
-        {selectedChatId ? (
+        {savedMode ? (
+          <>
+            <div className="flex-1 min-h-0 flex">
+              {selectedChatId ? (
+                <ChatWindow
+                  chatId={selectedChatId}
+                  userId={user.id}
+                  peer={null}
+                  group={null}
+                  saved
+                  chats={listChats}
+                  savedChatId={savedChat?.id}
+                  messagePing={messagePing}
+                  title="Избранное"
+                />
+              ) : (
+                <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Загрузка…</p>
+              )}
+            </div>
+            <BottomNav />
+          </>
+        ) : selectedChatId ? (
           isChannelOpen ? (
             <ChannelView
               channelId={selectedChatId}
@@ -671,6 +708,9 @@ const Chat = () => {
             userId={user.id}
             peer={peer}
             group={selectedChat?.is_group ? selectedChat : null}
+            saved={isSavedOpen}
+            chats={listChats}
+            savedChatId={savedChat?.id}
             onGroupUpdated={refreshChats}
             onCall={startCall}
             messagePing={messagePing}
@@ -685,7 +725,7 @@ const Chat = () => {
           <div className="flex-1 min-h-0 flex">
           <ChatSidebar
             userId={user.id}
-            chats={chats}
+            chats={listChats}
             onSelectChat={(id, title, kind) => {
               setSelectedChatId(id);
               if (title) setSelectedChatTitle(title);
@@ -715,7 +755,9 @@ const Chat = () => {
       {callUi}
       <ChatSidebar
         userId={user.id}
-        chats={chats}
+        chats={listChats}
+        savedChatId={savedChat?.id}
+        onOpenSaved={() => { if (savedChat) { setSelectedChatId(savedChat.id); setSelectedKind("saved"); } }}
         onSelectChat={(id, title, kind) => {
           setSelectedChatId(id);
           if (title) setSelectedChatTitle(title);
@@ -743,6 +785,9 @@ const Chat = () => {
           userId={user.id}
           peer={peer}
           group={selectedChat?.is_group ? selectedChat : null}
+          saved={isSavedOpen}
+          chats={listChats}
+          savedChatId={savedChat?.id}
           onGroupUpdated={refreshChats}
           onCall={startCall}
           messagePing={messagePing}

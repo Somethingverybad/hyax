@@ -94,6 +94,8 @@ const App = () => {
               />
               <Route path="/auth" element={<Auth />} />
               <Route path="/chat" element={<Chat />} />
+              {/* «Избранное» — та же страница чатов, сразу открытая на личном чате. */}
+              <Route path="/saved" element={<Chat savedMode />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFound />} />
             </AnimatedRoutes>

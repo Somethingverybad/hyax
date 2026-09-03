@@ -17,7 +17,8 @@ import {
   Users,
   Check,
   Trash2,
-  Radio
+  Radio,
+  Bookmark
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -53,6 +54,10 @@ interface ChatSidebarProps {
   onToggleCollapse: () => void;
   onChatDeleted: (chatId: string) => void;
   onChatCreated: () => void;
+  /** «Избранное» на десктопе — строкой над списком (на телефоне у него
+   *  своя вкладка, и пропсы не передаются). */
+  savedChatId?: string;
+  onOpenSaved?: () => void;
 }
 
 // Кеш участников переживает перезапуск приложения: имена в списке чатов
@@ -88,7 +93,9 @@ const ChatSidebar = ({
   isCollapsed, 
   onToggleCollapse,
   onChatDeleted,
-  onChatCreated
+  onChatCreated,
+  savedChatId,
+  onOpenSaved,
 }: ChatSidebarProps) => {
   const isMobileLayout = useIsMobile();
   const listRef = useRef<HTMLDivElement>(null);
@@ -571,6 +578,23 @@ const ChatSidebar = ({
       {/* Список чатов */}
       <ScrollArea className="flex-1">
         <div>
+          {onOpenSaved && !isCollapsed && (
+            <button
+              type="button"
+              onClick={onOpenSaved}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-border/60 ${
+                savedChatId && selectedChatId === savedChatId ? "bg-secondary" : "bg-card hover:bg-secondary/60"
+              }`}
+            >
+              <div className="w-12 h-12 shrink-0 bg-primary flex items-center justify-center">
+                <Bookmark className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">Избранное</p>
+                <p className="text-sm text-muted-foreground truncate">Сообщения для себя</p>
+              </div>
+            </button>
+          )}
           {chats.length > 0 ? (
             chats.map((chat) => {
               console.log("Rendering chat:", chat);

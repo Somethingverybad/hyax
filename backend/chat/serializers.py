@@ -35,13 +35,17 @@ class ChatSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()
 
     creator = serializers.SerializerMethodField()
+    pinned_message = serializers.SerializerMethodField()
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'participants', 'last_message']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'participants', 'last_message', 'pinned_message']
 
     def get_creator(self, obj):
         return str(obj.creator_id) if obj.creator_id else None
+
+    def get_pinned_message(self, obj):
+        return pinned_payload(obj.pinned_message)
 
     def get_last_message(self, obj):
         sender_id = getattr(obj, 'last_sender_id_a', None)
@@ -60,6 +64,33 @@ class ChatSerializer(serializers.ModelSerializer):
             else:
                 text = 'Сообщение'
         return {'text': text[:120], 'sender_id': str(sender_id)}
+
+def message_preview(m):
+    """Короткое описание сообщения для цитат, закрепа и списка чатов."""
+    text = (m.content or "").strip()
+    if text:
+        return text
+    if m.sticker_id:
+        return "Стикер"
+    if m.video_url:
+        return "Видео-сообщение"
+    if m.voice_url:
+        return "Голосовое сообщение"
+    if m.file_url:
+        return m.file_name or "Файл"
+    return "Сообщение"
+
+
+def pinned_payload(m):
+    """Компактный закреп: id, автор и превью — лента подгружает полный текст сама."""
+    if not m or m.deleted_for_all:
+        return None
+    return {
+        "id": str(m.id),
+        "sender_username": m.sender.username if m.sender else "",
+        "preview": message_preview(m)[:120],
+    }
+
 
 class ChatParticipantSerializer(serializers.ModelSerializer):
     class Meta:
@@ -145,11 +176,19 @@ class MessageSerializer(serializers.ModelSerializer):
     sticker = StickerSerializer(read_only=True)
     sound = NotificationSoundSerializer(read_only=True)
     reply_to = serializers.SerializerMethodField()
+    forwarded_from = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited']
-        read_only_fields = ['sender', 'created_at', 'file_size']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title']
+        read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title']
+
+    def get_forwarded_from(self, obj):
+        """От кого переслано: профиль, если он есть, — клиент может открыть его."""
+        f = obj.forwarded_from
+        if not f:
+            return None
+        return {"id": str(f.id), "username": f.username, "avatar_url": f.avatar_url}
 
     def get_reply_to(self, obj):
         """Компактная цитата: id, автор и короткое превью — без рекурсии по

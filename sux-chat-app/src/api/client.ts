@@ -29,14 +29,24 @@ interface Profile {
   user?: any;
 }
 
+/** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
+export interface PinnedInfo {
+  id: string;
+  sender_username: string;
+  preview: string;
+}
+
 interface Chat {
   id: string;
   participants: Profile[];
   created_at?: string;
   is_group?: boolean;
+  /** direct · group · channel · saved («Избранное»). */
+  kind?: string;
   name?: string;
   avatar_url?: string | null;
   creator?: string | null;
+  pinned_message?: PinnedInfo | null;
 }
 
 export interface ChatInfo {
@@ -393,6 +403,36 @@ export const api = {
       }
       throw error;
     }
+  },
+
+  // «Избранное» — личный чат без собеседника; сервер создаёт его при первом
+  // обращении. В общий список чатов не входит, у него своя вкладка.
+  getSavedChat: async (): Promise<Chat> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/saved/`, { headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось открыть Избранное");
+    return res.json();
+  },
+
+  // Закрепить/открепить сообщение в его чате (закреп один на чат).
+  pinMessage: async (messageId: string, pin: boolean): Promise<{ pinned_message: PinnedInfo | null }> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/pin/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ pin }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось закрепить");
+    return res.json();
+  },
+
+  // Переслать сообщение в другой чат (в «Избранное» — тоже сюда).
+  forwardMessage: async (messageId: string, chatId: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/forward/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ chat_id: chatId }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось переслать");
+    return res.json();
   },
 
   getChat: async (chatId: string): Promise<Chat> => {

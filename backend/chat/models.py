@@ -47,7 +47,8 @@ class Chat(models.Model):
     # собеседника, и хранить его незачем.
     name = models.CharField(max_length=100, blank=True, default="")
     is_group = models.BooleanField(default=False)
-    # Тип чата: direct (личка) · group (группа) · channel (канал-вещание).
+    # Тип чата: direct (личка) · group (группа) · channel (канал-вещание) ·
+    # saved («Избранное» — личный чат без собеседника, один на пользователя).
     # is_group оставлен для обратной совместимости, kind — источник истины.
     kind = models.CharField(max_length=10, default="direct")
     # Аватар группы (URL загруженного файла) и создатель-админ: только он
@@ -61,6 +62,9 @@ class Chat(models.Model):
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
     subscribers_count = models.IntegerField(default=0)
     default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Закреплённое сообщение — одно на чат, показывается полосой под шапкой.
+    # SET_NULL: удалили сообщение — открепилось само.
+    pinned_message = models.ForeignKey('Message', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -107,6 +111,11 @@ class Message(models.Model):
     # Видео-заметка снята фронтальной камерой: воспроизводить зеркально,
     # чтобы совпадало с тем, что автор видел в превью (iOS зеркалит превью).
     video_mirror = models.BooleanField(default=False)
+    # Пересылка: от кого пришло сообщение изначально. Заголовок хранится
+    # строкой отдельно — у поста канала без подписи автора «от кого» — это
+    # сам канал, а профиль там ни при чём.
+    forwarded_from = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
+    forwarded_title = models.CharField(max_length=120, blank=True, default="")
     # Редактирование и удаление.
     is_edited = models.BooleanField(default=False)
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех

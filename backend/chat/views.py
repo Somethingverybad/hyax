@@ -151,10 +151,26 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_video_a=Subquery(last.values('video_url')[:1]),
                     last_file_a=Subquery(last.values('file_url')[:1]),
                 )
+                .select_related('pinned_message__sender')
                 .order_by('-updated_at')
             )
         except Profile.DoesNotExist:
             return Chat.objects.none()
+
+    @action(detail=False, methods=['get'])
+    def saved(self, request):
+        """«Избранное»: личный чат без собеседника, один на пользователя.
+        Создаётся при первом обращении. В списке чатов клиент его не показывает —
+        у него своя вкладка."""
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        chat = Chat.objects.filter(kind="saved", creator=profile).first()
+        if not chat:
+            chat = Chat.objects.create(kind="saved", creator=profile, name="Избранное")
+            ChatParticipant.objects.get_or_create(chat=chat, user=profile, defaults={"role": "owner"})
+        return Response(self.get_serializer(chat).data)
 
     @action(detail=True, methods=['post'])
     def leave(self, request, pk=None):
@@ -399,6 +415,86 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import MessageReadStatus
 
+def _notify_new_message(message, profile, request):
+    """Разослать новое сообщение: в сокет чата, пуш остальным участникам и
+    персональные уведомления в сокеты (веб/десктоп без пушей). Общее для
+    обычной отправки и пересылки."""
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+
+    channel_layer = get_channel_layer()
+    message_data = MessageSerializer(message, context={'request': request}).data
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{message.chat.id}',
+            {'type': 'chat_message', 'message': message_data},
+        )
+
+    # Пуш остальным участникам. Уходит в фоновом потоке и не задерживает
+    # ответ; падение отправки не должно ронять создание сообщения.
+    try:
+        from .fcm import notify_profiles
+        recipients = message.chat.participants.exclude(id=profile.id)
+        preview = (message.content or "").strip()
+        if not preview:
+            if message.sticker_id:
+                preview = "Стикер"
+            elif getattr(message, "video_url", None):
+                preview = "Видео-сообщение"
+            elif getattr(message, "voice_url", None):
+                preview = "Голосовое сообщение"
+            elif getattr(message, "file_url", None):
+                preview = "Файл"
+            else:
+                preview = "Новое сообщение"
+        # У поста канала заголовок пуша — имя канала, а не автора.
+        push_title = message.chat.name if getattr(message.chat, "kind", "") == "channel" else profile.username
+        notify_profiles(
+            recipients,
+            title=push_title,
+            body=preview[:150],
+            extra={"chat_id": str(message.chat.id)},
+            sound=message.sound.slug if message.sound_id else None,
+        )
+    except Exception:
+        logger.exception("push: не удалось поставить отправку")
+
+    # WebSocket-уведомление в персональные каналы участников. Нужно веб- и
+    # десктоп-клиентам: они не получают FCM-пуш, а по этому сообщению
+    # обновляют список чатов и показывают системный баннер. Шлём всегда,
+    # а не только при сбое пуша — иначе десктоп «молчит».
+    if channel_layer:
+        for participant in ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile):
+            async_to_sync(channel_layer.group_send)(
+                f'user_{participant.user.id}',
+                {
+                    'type': 'notification',
+                    'data': {
+                        'type': 'new_message',
+                        'chat_id': str(message.chat.id),
+                        'message': message_data,
+                    },
+                }
+            )
+
+
+def _can_see_chat(chat, profile):
+    """Читать чат может участник; публичный канал — любой."""
+    if ChatParticipant.objects.filter(chat=chat, user=profile).exists():
+        return True
+    return chat.kind == "channel" and chat.is_public
+
+
+def _can_post_to(chat, profile):
+    """Писать в чат может участник; в канал — только owner/admin."""
+    cp = ChatParticipant.objects.filter(chat=chat, user=profile).first()
+    if not cp:
+        return False
+    if chat.kind == "channel":
+        return cp.role in ("owner", "admin")
+    return True
+
+
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     queryset = Message.objects.all()
@@ -456,6 +552,78 @@ class MessageViewSet(viewsets.ModelViewSet):
         msg.is_edited = True
         msg.save(update_fields=['content', 'is_edited'])
         return Response(MessageSerializer(msg, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def pin(self, request, pk=None):
+        """Закрепить ({pin: true}) или открепить ({pin: false}) сообщение в его чате.
+        Закреп один на чат. В личке и группе — любой участник, в канале — админы."""
+        msg = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        chat = msg.chat
+        if not _can_post_to(chat, profile):
+            return Response({"error": "Закреплять могут только участники"}, status=403)
+        pin = request.data.get('pin', True)
+        pin = str(pin).lower() not in ('0', 'false', 'no')
+        if pin:
+            chat.pinned_message = msg
+        elif chat.pinned_message_id == msg.id:
+            chat.pinned_message = None
+        chat.save(update_fields=['pinned_message'])
+        from .serializers import pinned_payload
+        return Response({"pinned_message": pinned_payload(chat.pinned_message)})
+
+    @action(detail=True, methods=['post'])
+    def forward(self, request, pk=None):
+        """Переслать сообщение в другой чат ({chat_id}). Копируем содержимое,
+        а не ссылаемся на оригинал: удаление исходника пересланное не трогает.
+        В «Избранное» пересылается так же — это обычный чат с одним участником."""
+        src = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        if not _can_see_chat(src.chat, profile):
+            return Response({"error": "Нет доступа к исходному сообщению"}, status=403)
+        target = Chat.objects.filter(id=request.data.get('chat_id')).first()
+        if not target:
+            return Response({"error": "Чат не найден"}, status=404)
+        if not _can_post_to(target, profile):
+            return Response({"error": "В этот чат нельзя написать"}, status=403)
+
+        # Заголовок «от кого»: цепочку пересылок не наращиваем — сохраняем
+        # первоисточник, как и мессенджеры.
+        origin = src.forwarded_from or src.sender
+        title = src.forwarded_title
+        if not title:
+            if src.chat.kind == "channel" and not (src.chat.sign_posts and src.sender):
+                title = src.chat.name or "Канал"
+                origin = None
+            else:
+                title = origin.username if origin else "Неизвестный"
+
+        message = Message.objects.create(
+            chat=target,
+            sender=profile,
+            content=src.content,
+            file_url=src.file_url,
+            file_name=src.file_name,
+            file_size=src.file_size,
+            sticker=src.sticker,
+            voice_url=src.voice_url,
+            voice_duration=src.voice_duration,
+            video_url=src.video_url,
+            video_duration=src.video_duration,
+            video_mirror=src.video_mirror,
+            download_only=src.download_only,
+            forwarded_from=origin,
+            forwarded_title=title[:120],
+        )
+        Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
+        _notify_new_message(message, profile, request)
+        return Response(MessageSerializer(message, context={'request': request}).data, status=201)
 
     def perform_create(self, serializer):
         print("USER:", self.request.user)
@@ -675,71 +843,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)
         
-        # Отправляем сообщение через WebSocket
-        from channels.layers import get_channel_layer
-        from asgiref.sync import async_to_sync
-        
-        channel_layer = get_channel_layer()
-        if channel_layer:
-            # Сериализуем сообщение для отправки
-            message_data = MessageSerializer(message, context={'request': request}).data
-            
-            # Отправляем в группу чата
-            async_to_sync(channel_layer.group_send)(
-                f'chat_{message.chat.id}',
-                {
-                    'type': 'chat_message',
-                    'message': message_data
-                }
-            )
+        _notify_new_message(message, profile, request)
 
-        # Пуш остальным участникам. Уходит в фоновом потоке и не задерживает
-        # ответ; падение отправки не должно ронять создание сообщения.
-        try:
-            from .fcm import notify_profiles
-            recipients = message.chat.participants.exclude(id=profile.id)
-            preview = (message.content or "").strip()
-            if not preview:
-                if message.sticker_id:
-                    preview = "Стикер"
-                elif getattr(message, "video_url", None):
-                    preview = "Видео-сообщение"
-                elif getattr(message, "voice_url", None):
-                    preview = "Голосовое сообщение"
-                elif getattr(message, "file_url", None):
-                    preview = "Файл"
-                else:
-                    preview = "Новое сообщение"
-            # У поста канала заголовок пуша — имя канала, а не автора.
-            push_title = message.chat.name if getattr(message.chat, "kind", "") == "channel" else profile.username
-            notify_profiles(
-                recipients,
-                title=push_title,
-                body=preview[:150],
-                extra={"chat_id": str(message.chat.id)},
-                sound=message.sound.slug if message.sound_id else None,
-            )
-        except Exception:
-            logger.exception("push: не удалось поставить отправку")
-
-        # WebSocket-уведомление в персональные каналы участников. Нужно веб- и
-        # десктоп-клиентам: они не получают FCM-пуш, а по этому сообщению
-        # обновляют список чатов и показывают системный баннер. Шлём всегда,
-        # а не только при сбое пуша — иначе десктоп «молчит».
-        if channel_layer:
-            for participant in ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile):
-                async_to_sync(channel_layer.group_send)(
-                    f'user_{participant.user.id}',
-                    {
-                        'type': 'notification',
-                        'data': {
-                            'type': 'new_message',
-                            'chat_id': str(message.chat.id),
-                            'message': message_data,
-                        },
-                    }
-                )
-        
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)
         

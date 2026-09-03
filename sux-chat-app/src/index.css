@@ -354,3 +354,12 @@ textarea,
 .route-transition {
   animation: route-in 160ms ease-out;
 }
+
+/* Прыжок к закреплённому сообщению: короткая подсветка, чтобы глаз нашёл его в ленте. */
+.msg-flash {
+  animation: msg-flash 1.2s ease-out;
+}
+@keyframes msg-flash {
+  0%, 40% { background: hsl(var(--primary) / 0.18); }
+  100% { background: transparent; }
+}
