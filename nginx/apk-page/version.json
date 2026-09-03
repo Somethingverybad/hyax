@@ -1,9 +1,9 @@
 {
-  "version": "1.0.4",
-  "build": 120,
-  "ios_version": "1.0.4",
-  "ios_build": 112,
-  "notes": "Каналы, мгновенная отправка сообщений, вёрстка под Android",
+  "version": "1.0.5",
+  "build": 123,
+  "ios_version": "1.0.5",
+  "ios_build": 113,
+  "notes": "Медиа в каналах, Избранное, закреп и пересылка сообщений",
   "files": {
     "mac": "/apk/hyax-mac.dmg",
     "win": "/apk/hyax-windows.exe",
