@@ -530,7 +530,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             if msg.sender_id != profile.id:
                 return Response({"error": "Удалить у всех может только автор"}, status=403)
             msg.deleted_for_all = True
-            msg.save(update_fields=['deleted_for_all'])
+            msg.save(update_fields=['deleted_for_all', 'updated_at'])
         else:
             msg.deleted_for.add(profile)
         return Response({"ok": True})
@@ -550,7 +550,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Пустой текст"}, status=400)
         msg.content = content
         msg.is_edited = True
-        msg.save(update_fields=['content', 'is_edited'])
+        msg.save(update_fields=['content', 'is_edited', 'updated_at'])
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
@@ -624,6 +624,65 @@ class MessageViewSet(viewsets.ModelViewSet):
         Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
         _notify_new_message(message, profile, request)
         return Response(MessageSerializer(message, context={'request': request}).data, status=201)
+
+    @action(detail=False, methods=['get'])
+    def sync(self, request):
+        """Лента постранично и приращениями — для ленивой загрузки и кэша на клиенте.
+
+        chat — обязателен; limit ≤ 200 (по умолчанию 50).
+        before=<ISO> — страница старее: created_at < before, самые новые из них.
+        since=<ISO> — всё, что менялось после: новые, отредактированные и
+        удалённые у всех (их id — в deleted, самих сообщений нет).
+        Ответ: {messages, deleted, has_more, now}; now — серверное время для
+        следующего since, чтобы часы клиента не участвовали.
+        """
+        from django.utils.dateparse import parse_datetime
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        chat_id = request.query_params.get('chat')
+        if not chat_id:
+            return Response({"error": "chat is required"}, status=400)
+        chat = Chat.objects.filter(id=chat_id).first()
+        if not chat or not _can_see_chat(chat, profile):
+            return Response({"error": "Чат не найден"}, status=404)
+        try:
+            limit = max(1, min(int(request.query_params.get('limit') or 50), 200))
+        except ValueError:
+            limit = 50
+        now = timezone.now()
+        base = (
+            Message.objects.filter(chat=chat)
+            .exclude(deleted_for=profile)
+            .select_related('sender', 'sound', 'sticker', 'reply_to__sender', 'forwarded_from')
+            .prefetch_related('read_statuses__user')
+        )
+        ser = lambda qs: MessageSerializer(qs, many=True, context={'request': request}).data
+
+        since = parse_datetime(request.query_params.get('since') or '')
+        if since:
+            changed = list(base.filter(updated_at__gt=since).order_by('created_at'))
+            return Response({
+                "messages": ser([m for m in changed if not m.deleted_for_all]),
+                "deleted": [str(m.id) for m in changed if m.deleted_for_all],
+                "has_more": False,
+                "now": now.isoformat(),
+            })
+
+        live = base.exclude(deleted_for_all=True)
+        before = parse_datetime(request.query_params.get('before') or '')
+        if before:
+            live = live.filter(created_at__lt=before)
+        page = list(live.order_by('-created_at')[:limit + 1])
+        has_more = len(page) > limit
+        page = page[:limit][::-1]
+        return Response({
+            "messages": ser(page),
+            "deleted": [],
+            "has_more": has_more,
+            "now": now.isoformat(),
+        })
 
     def perform_create(self, serializer):
         print("USER:", self.request.user)

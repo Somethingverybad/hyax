@@ -119,6 +119,11 @@ class Message(models.Model):
     # Редактирование и удаление.
     is_edited = models.BooleanField(default=False)
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех
+    # Момент последнего изменения (текст, удаление у всех). По нему клиент
+    # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,
+    # что менялось. auto_now срабатывает на save(); при save(update_fields=…)
+    # поле нужно перечислять явно.
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
     deleted_for = models.ManyToManyField(Profile, blank=True, related_name="hidden_messages")  # удалено «у себя»
     
     # Добавляем свойство для удобства
