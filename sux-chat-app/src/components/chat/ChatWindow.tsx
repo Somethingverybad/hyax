@@ -523,6 +523,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const SWIPE_MAX = 90;
 
   const msgPointerDown = (e: React.PointerEvent, message: Message) => {
+    // Жесты — только для пальца/стилуса. Мышью меню открывает правая кнопка
+    // (onContextMenu); раньше зажатая кнопка через 450 мс запускала «долгое
+    // нажатие» и подменяла меню у курсора нижней шторкой во весь экран.
+    if (e.pointerType === "mouse") return;
     swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
     swipeActiveRef.current = false;
     startLongPress(message);
@@ -1189,8 +1193,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           длине цитаты, и длинный реплай уезжал за край экрана. */}
                       {message.reply_to && (
                         <div
+                          role="button"
+                          title="К цитируемому сообщению"
+                          onClick={(e) => { e.stopPropagation(); jumpToMessage(message.reply_to!.id); }}
                           className={cn(
-                            "mb-1 rounded px-2 py-1 border-l-2 text-xs min-w-0 max-w-full",
+                            "mb-1 rounded px-2 py-1 border-l-2 text-xs min-w-0 max-w-full cursor-pointer active:bg-black/20",
                             isOwn
                               ? "border-primary-foreground/60 bg-black/10"
                               : "border-success-foreground/60 bg-black/10"
