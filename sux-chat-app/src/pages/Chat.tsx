@@ -63,7 +63,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   useEffect(() => {
     let alive = true;
     api.getSavedChat()
-      .then((c) => { if (!alive) return; setSavedChat(c); if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); } })
+      .then((c) => { if (!alive) return; setSavedChat(c as any); if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); } })
       .catch(() => { if (savedMode) toast.error("Не удалось открыть Избранное"); });
     return () => { alive = false; };
   }, [savedMode]);

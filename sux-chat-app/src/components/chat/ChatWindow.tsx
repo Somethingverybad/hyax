@@ -82,8 +82,6 @@ const imageDims = (url: string) =>
     img.src = url;
   });
 
-};
-
 interface ChatWindowProps {
   chatId: string | null;
   userId: string;

@@ -27,13 +27,8 @@ export const isVideoFile = (fileName: string | null | undefined, fileUrl: string
 export const previewSize = (dims: { w: number; h: number }) => {
   const scale = Math.min(240 / dims.w, 192 / dims.h, 1);
   return { width: Math.round(dims.w * scale), height: Math.round(dims.h * scale) };
+};
 
-/**
- * Встроенный просмотр изображения, как в мессенджерах: во весь экран поверх
- * чата, закрытие крестиком или тапом по фону, скачивание — в меню «⋯».
- * Раньше тап открывал картинку в браузере — из приложения это выглядит
- * как выброс наружу.
- */
 /** Треугольная маска — форма наших видео-сообщений вместо круглых «кружков». */
 export const TRIANGLE = "polygon(50% 0%, 100% 100%, 0% 100%)";
 
