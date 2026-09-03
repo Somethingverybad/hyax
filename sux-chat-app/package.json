@@ -1,7 +1,7 @@
 {
   "name": "hyax-messenger",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "ХУЯКС эсемэсэнджер",
@@ -74,6 +74,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
+    "electron-updater": "^6.8.9",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.1.0",
     "firebase": "^11.10.0",
@@ -130,7 +131,23 @@
       "dist/**/*",
       "electron/**/*",
       "assets/icons/**/*",
-      "!node_modules/**/*"
+      "!node_modules/**/*",
+      "node_modules/argparse/**/*",
+      "node_modules/builder-util-runtime/**/*",
+      "node_modules/debug/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/fs-extra/**/*",
+      "node_modules/graceful-fs/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/jsonfile/**/*",
+      "node_modules/lazy-val/**/*",
+      "node_modules/lodash.escaperegexp/**/*",
+      "node_modules/lodash.isequal/**/*",
+      "node_modules/ms/**/*",
+      "node_modules/sax/**/*",
+      "node_modules/semver/**/*",
+      "node_modules/tiny-typed-emitter/**/*",
+      "node_modules/universalify/**/*"
     ],
     "extraMetadata": {
       "main": "electron/main.cjs"
@@ -143,11 +160,16 @@
       ],
       "icon": "assets/icon.icns",
       "darkModeSupport": true,
-      "identity": null,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Микрофон нужен для звонков и голосовых сообщений.",
         "NSCameraUsageDescription": "Камера нужна для видеозвонков."
-      }
+      },
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": false,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist",
+      "artifactName": "hyax-mac.${ext}"
     },
     "dmg": {
       "contents": [
@@ -167,7 +189,8 @@
       "target": [
         "nsis"
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "hyax-windows.${ext}"
     },
     "linux": {
       "target": [
@@ -192,7 +215,7 @@
       ],
       "icon": "assets/icons",
       "executableName": "hyax",
-      "artifactName": "hyax-${version}-${arch}.${ext}",
+      "artifactName": "hyax-linux.${ext}",
       "category": "Network;InstantMessaging;Chat",
       "maintainer": "Somethingverybad <Ancher001@yandex.ru>",
       "synopsis": "ХУЯКС эсемэсэнджер",
@@ -221,6 +244,16 @@
         "libsecret-1-0"
       ]
     },
-    "afterPack": "electron/afterPack.cjs"
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://huyax.e-tree.su/apk/"
+      }
+    ],
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

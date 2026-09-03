@@ -5,6 +5,23 @@ const { app, BrowserWindow, Menu, clipboard, ipcMain, dialog, protocol, net, ses
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const { autoUpdater } = require('electron-updater');
+
+// Журнал main-процесса: ~/Library/Logs/hyax-messenger/main.log (mac),
+// %APPDATA%/hyax-messenger/logs (win), ~/.config/hyax-messenger/logs (linux).
+// Упакованное приложение не пишет в консоль, а падение при старте или ошибку
+// автообновления иначе не увидеть.
+const logFile = (() => {
+  try { app.setAppLogsPath(); return path.join(app.getPath('logs'), 'main.log'); }
+  catch { try { return path.join(app.getPath('userData'), 'main.log'); } catch { return path.join(require('os').tmpdir(), 'hyax-main.log'); } }
+})();
+const logLine = (...parts) => {
+  const line = `${new Date().toISOString()} ${parts.map((x) => (x instanceof Error ? (x.stack || x.message) : typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}\n`;
+  try { if (logFile) { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.appendFileSync(logFile, line); } } catch {}
+};
+process.on('uncaughtException', (e) => { logLine('uncaughtException', e); });
+process.on('unhandledRejection', (e) => { logLine('unhandledRejection', e); });
+logLine('start', { version: app.getVersion(), packaged: app.isPackaged, platform: process.platform, argv: process.argv.slice(1) });
 
 // HYAX_FORCE_PROD=1 — прогнать продакшен-режим (app://, dist/) dev-бинарником
 // Electron; HYAX_DEBUG_PORT — порт DevTools-протокола для проверки без GUI.
@@ -175,6 +192,53 @@ ipcMain.handle('install-update', async (_e, url, fileName) => {
 
 ipcMain.on('open-external', (_e, url) => { if (/^https?:/.test(url)) shell.openExternal(url); });
 
+// ===== Обновление внутри приложения (electron-updater) =====
+// Фид — та же страница загрузок: electron-builder кладёт рядом с установщиками
+// latest.yml / latest-mac.yml / latest-linux.yml с версией и sha512. Windows и
+// Linux (AppImage) обновляются без подписи; на macOS Squirrel применяет
+// обновление только к приложению, подписанному Developer ID — поэтому
+// mac-сборка подписывается (build.mac в package.json), а ad-hoc-версии до 1.0.6
+// получат ошибку и уйдут по старому пути: скачать DMG и открыть.
+//
+// HYAX_UPDATE_URL — подменить фид (локальная проверка обновления).
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.logger = { info: (m) => logLine('updater', m), warn: (m) => logLine('updater warn', m), error: (m) => logLine('updater error', m), debug: () => {} };
+if (process.env.HYAX_UPDATE_URL) {
+  autoUpdater.forceDevUpdateConfig = true;
+  autoUpdater.setFeedURL({ provider: 'generic', url: process.env.HYAX_UPDATE_URL });
+}
+const sendUpdate = (payload) => { try { mainWindow?.webContents.send('update-state', payload); } catch {} };
+autoUpdater.on('update-available', (info) => sendUpdate({
+  state: 'available', version: info.version,
+  notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : '',
+}));
+autoUpdater.on('update-not-available', () => sendUpdate({ state: 'none' }));
+autoUpdater.on('download-progress', (p) => sendUpdate({ state: 'downloading', percent: Math.round(p.percent || 0) }));
+autoUpdater.on('update-downloaded', (info) => sendUpdate({ state: 'downloaded', version: info.version }));
+autoUpdater.on('error', (err) => sendUpdate({ state: 'error', message: String((err && err.message) || err) }));
+
+const updaterEnabled = () => app.isPackaged || !!process.env.HYAX_UPDATE_URL;
+ipcMain.handle('update-check', async () => {
+  if (!updaterEnabled()) return { ok: false, reason: 'dev' };
+  try {
+    const r = await autoUpdater.checkForUpdates();
+    return { ok: true, version: r && r.updateInfo ? r.updateInfo.version : null };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+ipcMain.handle('update-download', async () => {
+  try { await autoUpdater.downloadUpdate(); return { ok: true }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+// Перезапуск с установкой: на Windows тихий NSIS, на mac подмена бандла, на
+// Linux замена AppImage. Откладываем на тик, чтобы ответ IPC успел уйти.
+ipcMain.on('update-apply', () => { setImmediate(() => autoUpdater.quitAndInstall(false, true)); });
+// Плюс проверка раз в час: приложение на десктопе живёт неделями.
+setInterval(() => { if (updaterEnabled()) autoUpdater.checkForUpdates().catch(() => {}); }, 60 * 60 * 1000);
+
+ipcMain.handle('app-version', () => app.getVersion());
 ipcMain.on('minimize-window', () => mainWindow?.minimize());
 ipcMain.on('close-window', () => mainWindow?.close());
 
@@ -187,12 +251,15 @@ function focusMainWindow() {
 
 // Второй запуск (двойной клик по ярлыку, автозапуск) поднимает уже открытое
 // окно вместо второй копии приложения с тем же localStorage и сокетом.
-if (!app.requestSingleInstanceLock()) {
+const gotLock = app.requestSingleInstanceLock();
+logLine('singleInstanceLock', gotLock);
+if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', focusMainWindow);
 
   app.whenReady().then(() => {
+    logLine('ready');
     if (!isDev) serveDist();
     allowMediaPermissions();
     createWindow();
@@ -204,6 +271,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+app.on('will-quit', () => logLine('will-quit'));
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
