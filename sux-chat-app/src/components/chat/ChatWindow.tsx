@@ -631,8 +631,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
   const swipeActiveRef = useRef(false);
   const justSwipedRef = useRef(false); // подавляет клик после свайпа
-  const SWIPE_TRIGGER = 55;
+  const SWIPE_TRIGGER = 45;
   const SWIPE_MAX = 90;
+  const swipeTimeRef = useRef(0);
+
+  // Пока идёт горизонтальный свайп, вертикальную прокрутку у браузера
+  // отбираем: иначе iOS на любой диагонали начинал прокрутку и слал
+  // pointercancel. Слушатель нативный и не-passive — React свои touchmove
+  // вешает passive, и preventDefault там не работает.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onMove = (e: TouchEvent) => { if (swipeActiveRef.current) e.preventDefault(); };
+    el.addEventListener("touchmove", onMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onMove);
+  }, []);
 
   const msgPointerDown = (e: React.PointerEvent, message: Message) => {
     // Жесты — только для пальца/стилуса. Мышью меню открывает правая кнопка
@@ -641,6 +654,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (e.pointerType === "mouse") return;
     swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
     swipeActiveRef.current = false;
+    swipeTimeRef.current = performance.now();
     startLongPress(message);
   };
   const msgPointerMove = (e: React.PointerEvent, message: Message, isOwn: boolean) => {
@@ -649,11 +663,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const dx = e.clientX - st.x;
     const dy = e.clientY - st.y;
     if (!swipeActiveRef.current) {
-      if (Math.abs(dy) > 12 && Math.abs(dy) >= Math.abs(dx)) {
-        // вертикальная прокрутка — жест отменяем
+      // Палец идёт по диагонали и быстро: горизонталью считаем всё до ~50°
+      // от оси, вертикалью — только явный уход вверх/вниз.
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.25) {
         swipeStartRef.current = null; cancelLongPress(); return;
       }
-      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) >= Math.abs(dy) * 0.8) {
         swipeActiveRef.current = true;
         cancelLongPress();
         // забираем указатель, чтобы получать move даже при уходе пальца в сторону
@@ -672,7 +687,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (swipeActiveRef.current && st) {
       const dx = e.clientX - st.x;
       void isOwn;
-      const triggered = Math.abs(dx) > SWIPE_TRIGGER;
+      // Быстрый рывок засчитываем с меньшего пути.
+      const dt = Math.max(1, performance.now() - swipeTimeRef.current);
+      const fast = Math.abs(dx) / dt > 0.5 && Math.abs(dx) > 28;
+      const triggered = Math.abs(dx) > SWIPE_TRIGGER || fast;
       if (triggered) { setReplyTo(message); textareaRef.current?.focus(); }
       justSwipedRef.current = true;
       setTimeout(() => { justSwipedRef.current = false; }, 350);
