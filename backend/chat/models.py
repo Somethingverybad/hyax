@@ -12,6 +12,8 @@ class Profile(models.Model):
     status = models.CharField(max_length=20, default="online")  # Статус онлайн/оффлайн
     call_status = models.CharField(max_length=20, default="idle")  # idle, calling, in_call
     bio = models.TextField(blank=True, null=True, max_length=500)  # Пользовательский статус/описание
+    # Показывать текст сообщения в уведомлении. Выключено — в пуше только «Новое сообщение».
+    push_preview = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
     # Боты — отдельный класс пользователей: не логинятся паролем, ходят в API
     # по bot_token, у каждого есть владелец-создатель.
@@ -62,8 +64,6 @@ class Chat(models.Model):
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
     subscribers_count = models.IntegerField(default=0)
     default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
-    # Показывать текст сообщения в уведомлении. Выключено — в пуше только «Новое сообщение».
-    push_preview = models.BooleanField(default=True)
     # Закреплённое сообщение — одно на чат, показывается полосой под шапкой.
     # SET_NULL: удалили сообщение — открепилось само.
     pinned_message = models.ForeignKey('Message', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
