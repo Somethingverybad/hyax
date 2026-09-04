@@ -8,7 +8,7 @@ import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
-import { Camera, LogOut, Share2, Copy, ChevronRight } from "lucide-react";
+import { Camera, LogOut, Share2, Copy } from "lucide-react";
 
 interface Profile {
   id: string;
@@ -143,6 +143,20 @@ const ProfilePage = () => {
           </div>
         </div>
 
+        <button
+          type="button"
+          onClick={async () => {
+            if (!profile?.username) return;
+            const r = await shareProfile(profile.username);
+            if (r === "copied") toast.success("Профиль скопирован");
+            else if (r === "error") toast.error("Не удалось поделиться");
+          }}
+          className="h-9 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"
+        >
+          <Share2 className="w-4 h-4" />
+          Поделиться профилем
+        </button>
+
         <div className="rounded-lg bg-surface-2 p-4 space-y-3">
           <div className="space-y-1.5">
             <label className="text-small text-subtle">Никнейм</label>
@@ -150,7 +164,7 @@ const ProfilePage = () => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               maxLength={50}
-              className="w-full h-10 rounded-md bg-background border border-border px-3 text-body outline-none focus:border-amber"
+              className="w-full h-10 rounded-md bg-surface-4 border border-transparent px-3 text-body outline-none focus:border-amber"
             />
             <p className="text-caption text-subtle">Имя, которое видят собеседники. Логин для входа не меняется.</p>
           </div>
@@ -162,14 +176,14 @@ const ProfilePage = () => {
               maxLength={500}
               rows={2}
               placeholder="Например: на связи после 18:00"
-              className="w-full rounded-md bg-background border border-border px-3 py-2 text-body outline-none resize-none focus:border-amber"
+              className="w-full rounded-md bg-surface-4 border border-transparent px-3 py-2 text-body outline-none resize-none focus:border-amber"
             />
           </div>
           <button
             type="button"
             onClick={save}
             disabled={saving || !dirty || username.trim().length < 2}
-            className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium disabled:bg-surface-4 disabled:text-subtle"
+            className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-40"
           >
             {saving ? "Сохраняем…" : "Сохранить"}
           </button>
@@ -197,20 +211,6 @@ const ProfilePage = () => {
         </div>
 
         <div className="rounded-lg bg-surface-2 divide-y divide-border">
-          <button
-            type="button"
-            onClick={async () => {
-              if (!profile?.username) return;
-              const r = await shareProfile(profile.username);
-              if (r === "copied") toast.success("Профиль скопирован");
-              else if (r === "error") toast.error("Не удалось поделиться");
-            }}
-            className="w-full h-12 px-4 flex items-center gap-3 text-body active:bg-surface-3"
-          >
-            <Share2 className="w-5 h-5 text-subtle" />
-            <span className="flex-1 text-left">Поделиться профилем</span>
-            <ChevronRight className="w-4 h-4 text-subtle" />
-          </button>
           {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
               вместо текста; сам пуш при этом всё равно зашифрован. */}
           {Capacitor.isNativePlatform() && profile && (

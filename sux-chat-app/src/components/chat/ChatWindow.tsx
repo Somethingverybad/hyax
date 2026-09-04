@@ -1260,7 +1260,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     isOwn ? "items-end" : "items-start"
                   )}>
                     {/* Имя отправителя (только для чужих сообщений) */}
-                    {!isOwn && !peer && (
+                    {!isOwn && (
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-small font-semibold text-foreground">
                           {username}
@@ -1448,7 +1448,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <div ref={composeRef} className="chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0">
         {/* На десктопе композер — панель с обводкой, как в референсе; отступ снизу
             даём панели (pad-safe-bottom перебивает padding контейнера). */}
-        <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-5">
+        <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-2">
           {editing && (
             <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary px-3 py-2">
               <div className="flex-1 min-w-0">
@@ -1672,7 +1672,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   disabled={uploading}
                   style={{ touchAction: "none" }}
                   className={cn(
-                    "h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-colors",
+                    "h-11 w-11 shrink-0 md:ml-3 rounded-md flex items-center justify-center transition-colors",
                     recording ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
                   )}
                   aria-label={recordKind === "video" ? "Записать видео" : "Записать голосовое"}

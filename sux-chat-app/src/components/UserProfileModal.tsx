@@ -10,6 +10,7 @@ interface UserProfile {
   username: string;
   avatar_url?: string | null;
   bio?: string | null;
+  created_at?: string | null;
 }
 
 /**
@@ -48,14 +49,14 @@ const UserProfileModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-stretch md:justify-end"
+      className="fixed inset-0 z-50 bg-black/60 md:bg-black/30 flex items-end md:items-start md:justify-end md:p-4"
       onClick={onClose}
     >
       {/* Телефон — шторка снизу; десктоп — боковая панель во всю высоту, как
           колонка профиля в референсе. Поверхности: панель surface-2, карточки и
           вторичные кнопки surface-4, чтобы читались на панели. */}
       <div
-        className="w-full md:w-[440px] md:h-full md:overflow-y-auto bg-surface-2 rounded-t-[16px] md:rounded-none md:border-l md:border-border p-6 pb-[calc(var(--sab)+24px)] md:pb-6 relative"
+        className="w-full md:w-[400px] md:max-h-full md:overflow-y-auto bg-surface-2 md:bg-surface-1 rounded-t-[16px] md:rounded-lg md:border md:border-border p-6 md:p-5 pb-[calc(var(--sab)+24px)] md:pb-5 relative"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="md:hidden absolute top-2 left-1/2 -translate-x-1/2 w-9 h-1 rounded-full bg-foreground/20" aria-hidden />
@@ -85,7 +86,7 @@ const UserProfileModal = ({
                 <button
                   type="button"
                   onClick={() => { onCall(); onClose(); }}
-                  className="flex-1 h-10 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90"
+                  className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
                 >
                   <Phone className="w-4 h-4" />
                   Позвонить
@@ -98,7 +99,7 @@ const UserProfileModal = ({
                   if (r === "copied") toast.success("Профиль скопирован");
                   else if (r === "error") toast.error("Не удалось поделиться");
                 }}
-                className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90"
+                className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
               >
                 <Share2 className="w-4 h-4" />
                 Поделиться
@@ -119,8 +120,9 @@ const UserProfileModal = ({
               {[
                 ["Имя пользователя", "@" + profile.username],
                 ["ID пользователя", profile.id],
+                ...(profile.created_at ? [["Дата регистрации", new Date(profile.created_at).toLocaleDateString("ru-RU")]] : []),
               ].map(([label, value]) => (
-                <div key={label} className="flex items-center gap-3 h-9">
+                <div key={label} className="flex items-center gap-3 h-9 md:h-8">
                   <span className="text-small text-subtle w-32 shrink-0">{label}</span>
                   <span className="text-small text-muted-foreground flex-1 min-w-0 truncate">{value}</span>
                   <button type="button" onClick={() => copy(value)} className="p-1.5 text-subtle active:text-foreground" aria-label={`Скопировать: ${label}`}>

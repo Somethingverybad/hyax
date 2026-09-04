@@ -101,24 +101,24 @@ const Auth = () => {
 
   return (
     <div
-      className="min-h-screen overflow-y-auto flex items-start justify-center bg-background p-3 md:p-4"
+      className="min-h-screen overflow-y-auto flex items-start justify-center bg-background px-4 py-3"
       style={{ paddingTop: "calc(var(--sat) + 2vh)" }}
     >
-      <Card className="w-full max-w-md p-4 md:p-8 bg-transparent border-0">
+      <Card className="w-full max-w-md p-0 md:p-6 bg-transparent border-0 shadow-none">
         <div className="flex flex-col items-center mb-4 md:mb-6">
           <img
             src={logo}
             alt="ХУЯКС"
-            className="w-20 h-20 md:w-24 md:h-24 mb-3 select-none pointer-events-none"
+            className="w-20 h-20 md:w-24 md:h-24 mb-4 rounded-lg select-none pointer-events-none"
             draggable={false}
           />
 
           <div className="text-center mb-2 md:mb-3">
-            <h1 className="text-[32px] md:text-[40px] font-bold text-foreground leading-none tracking-tight">ХУЯКС</h1>
-            <p className="text-small font-semibold text-subtle mt-2 tracking-wider uppercase">эсемэсэнджер</p>
+            <h1 className="text-[28px] md:text-[32px] font-semibold text-foreground leading-none">ХУЯКС</h1>
+            <p className="text-caption text-subtle mt-1.5 tracking-[0.08em] uppercase">эсемэсэнджер</p>
           </div>
 
-          <p className="text-subtle text-center mt-3 text-small">
+          <p className="text-subtle text-center mt-1.5 mb-2 text-small">
             {isLogin 
               ? "Не очень то и быстрый и ненадежный месенджер" 
               : "ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!"
@@ -136,7 +136,7 @@ const Auth = () => {
               {/* Шаг 1: логин */}
               <div className="w-full shrink-0 space-y-4 px-0.5">
                 <div className="space-y-2">
-                  <Label htmlFor="username" className="text-small text-muted-foreground uppercase tracking-wide">
+                  <Label htmlFor="username" className="text-small font-normal text-subtle">
                     {isLogin ? "Логин" : "Имя пользователя"}
                   </Label>
                   <Input
@@ -154,14 +154,14 @@ const Auth = () => {
                         goToPassword();
                       }
                     }}
-                    className="h-11 bg-surface-2 border-border rounded-md text-body focus:border-amber focus-visible:ring-0 transition-colors"
+                    className="h-12 bg-surface-2 border-transparent rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
                   />
                 </div>
                 <Button
                   type="button"
                   onClick={goToPassword}
                   disabled={!username.trim()}
-                  className="w-full h-11 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body"
+                  className="w-full h-12 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body disabled:opacity-40"
                 >
                   Далее
                 </Button>
@@ -178,7 +178,7 @@ const Auth = () => {
                   <span className="font-medium text-foreground">{username || "…"}</span>
                 </button>
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-small text-muted-foreground uppercase tracking-wide">
+                  <Label htmlFor="password" className="text-small font-normal text-subtle">
                     Пароль
                   </Label>
                   <Input
@@ -190,12 +190,12 @@ const Auth = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete={isLogin ? "current-password" : "new-password"}
                     tabIndex={step === 1 ? 0 : -1}
-                    className="h-11 bg-surface-2 border-border rounded-md text-body focus:border-amber focus-visible:ring-0 transition-colors"
+                    className="h-12 bg-surface-2 border-transparent rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
                   />
                 </div>
                 <Button
                   type="submit"
-                  className="w-full h-11 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body"
+                  className="w-full h-12 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body disabled:opacity-40"
                   disabled={loading || !password}
                 >
                   {loading ? (
@@ -218,9 +218,10 @@ const Auth = () => {
           <button
             type="button"
             onClick={() => { setIsLogin(!isLogin); setStep(0); setPassword(""); }}
-            className="text-sm text-muted-foreground hover:text-primary transition-colors font-medium"
+            className="text-body text-subtle"
           >
-            {isLogin ? "Нет аккаунта? Зарегистрируйтесь" : "Уже есть аккаунт? Войдите"}
+            {isLogin ? "Нет аккаунта? " : "Уже есть аккаунт? "}
+            <span className="text-primary font-semibold">{isLogin ? "Зарегистрируйтесь" : "Войдите"}</span>
           </button>
         </div>
       </Card>

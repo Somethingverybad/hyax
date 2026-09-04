@@ -386,21 +386,25 @@ const ChatSidebar = ({
                   className="w-10 h-10"
                 />
                 <span className="min-w-0">
-                  <span className="block text-h2 md:text-[15px] truncate">{currentUser?.username || "Загрузка…"}</span>
+                  <span className="flex items-center gap-1.5 text-h2 md:text-[15px]">
+                    <span className="truncate">{currentUser?.username || "Загрузка…"}</span>
+                    {!isMobileLayout && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleCollapse?.(); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); onToggleCollapse?.(); } }}
+                        className="shrink-0 text-subtle hover:text-foreground"
+                        title="Свернуть сайдбар"
+                        aria-label="Свернуть сайдбар"
+                      >
+                        <ChevronDownIcon className="w-4 h-4" />
+                      </span>
+                    )}
+                  </span>
                   <span className="block text-small text-online">В сети</span>
                 </span>
               </button>
-              {!isMobileLayout && (
-                <button
-                  type="button"
-                  onClick={onToggleCollapse}
-                  className="-ml-2 p-1 text-subtle hover:text-foreground"
-                  title="Свернуть сайдбар"
-                  aria-label="Свернуть сайдбар"
-                >
-                  <ChevronDownIcon className="w-4 h-4" />
-                </button>
-              )}
               <button
                 type="button"
                 onClick={onOpenProfile}
@@ -651,7 +655,7 @@ const ChatSidebar = ({
                   <button
                     type="button"
                     onClick={() => deleteChat(chat.id, chatTitle, true)}
-                    className="absolute inset-y-0 right-0 w-20 bg-destructive text-white flex items-center justify-center"
+                    className="absolute inset-y-0 right-0 w-20 bg-destructive text-white flex items-center justify-center md:hidden"
                     tabIndex={swipedChatId === chat.id ? 0 : -1}
                     aria-label="Удалить чат"
                   >

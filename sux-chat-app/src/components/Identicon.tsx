@@ -72,7 +72,7 @@ const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) =
   const shape = SHAPES[h % SHAPES.length];
   const color = PALETTE[Math.floor(h / SHAPES.length) % PALETTE.length];
   return (
-    <div className={`${className} ${avatarUrl ? "rounded-md" : "rounded-full"} shrink-0 bg-surface-3 overflow-hidden`} aria-hidden>
+    <div className={`${className} ${avatarUrl ? "rounded-md" : "rounded-full"} shrink-0 bg-surface-4 overflow-hidden`} aria-hidden>
       <svg viewBox="0 0 100 100" className="w-full h-full">
         <ShapeSvg shape={shape} color={color} />
       </svg>

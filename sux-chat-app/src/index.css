@@ -45,7 +45,7 @@ All colors MUST be HSL.
     --destructive-foreground: 0 0% 100%;
 
     /* Входящие пузыри #227A3F; «в сети» #3FB14A — светлее, чтобы читалось точкой. */
-    --success: 140 45% 30%;
+    --success: 140 50% 31%;
     --success-foreground: 0 0% 100%;
     --online: 126 48% 47%;
     /* Янтарный #FFB308: звезда «Избранного» и рамка фокуса. */
@@ -384,15 +384,17 @@ textarea,
 /* Десктоп: колонка переписки чуть темнее сайдбара и шапки, как в референсе. */
 @media (min-width: 768px) {
   .chat-scroll, .chat-compose { background: hsl(240 3% 4.7%); }
+  /* Десктопный референс держит зелёный входящих глуше телефонного. */
+  :root { --success: 140 33% 28%; }
 }
 /* Хвостик своего пузыря: клин наружу у нижнего правого угла. */
 .bubble-own::after {
   content: "";
   position: absolute;
-  right: -6px;
+  right: -5px;
   bottom: 0;
-  width: 14px;
-  height: 10px;
+  width: 11px;
+  height: 8px;
   background: hsl(var(--primary-deep));
   clip-path: polygon(0 0, 0 100%, 100% 100%);
 }
