@@ -8,7 +8,7 @@ import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
-import { Camera, LogOut, Share2 } from "lucide-react";
+import { Camera, LogOut, Share2, Copy, ChevronRight } from "lucide-react";
 
 interface Profile {
   id: string;
@@ -107,9 +107,10 @@ const ProfilePage = () => {
         <span className="text-h1">Профиль</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-        {/* Аватар: квадрат, по тапу — замена */}
-        <div className="flex justify-center">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 flex flex-col">
+        {/* Аватар слева, имя и статус справа — как карточка профиля в референсе.
+            Смена аватара — красный бейдж-камера в углу. */}
+        <div className="flex items-center gap-4">
           <input
             ref={fileRef}
             type="file"
@@ -121,110 +122,130 @@ const ProfilePage = () => {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="relative w-[104px] h-[104px] rounded-lg bg-surface-3 overflow-hidden disabled:opacity-60"
+            className="relative w-[104px] h-[104px] shrink-0 rounded-lg bg-surface-3 disabled:opacity-60"
             aria-label="Сменить аватар"
           >
             {profile?.avatar_url ? (
-              <img
-                src={mediaUrl(profile.avatar_url)}
-                alt=""
-                className="w-full h-full object-cover"
-              />
+              <img src={mediaUrl(profile.avatar_url)} alt="" className="w-full h-full rounded-lg object-cover" />
             ) : (
               <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
                 {(profile?.username || "?")[0]?.toUpperCase()}
               </span>
             )}
-            <span className="absolute bottom-0 inset-x-0 bg-primary text-primary-foreground text-[10px] font-semibold py-1 flex items-center justify-center gap-1">
-              <Camera className="w-3 h-3" />
-              {uploading ? "Загрузка…" : "Сменить"}
+            <span className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center">
+              <Camera className="w-4 h-4" />
             </span>
+          </button>
+          <div className="min-w-0">
+            <p className="text-[24px] leading-tight font-semibold truncate">{profile?.username || "…"}</p>
+            <p className="mt-2 text-body text-subtle truncate">{profile?.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
+            {uploading && <p className="mt-1 text-caption text-subtle">Загрузка…</p>}
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-surface-2 p-4 space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-small text-subtle">Никнейм</label>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              maxLength={50}
+              className="w-full h-10 rounded-md bg-background border border-border px-3 text-body outline-none focus:border-amber"
+            />
+            <p className="text-caption text-subtle">Имя, которое видят собеседники. Логин для входа не меняется.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-small text-subtle">Статус</label>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              maxLength={500}
+              rows={2}
+              placeholder="Например: на связи после 18:00"
+              className="w-full rounded-md bg-background border border-border px-3 py-2 text-body outline-none resize-none focus:border-amber"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || !dirty || username.trim().length < 2}
+            className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium disabled:bg-surface-4 disabled:text-subtle"
+          >
+            {saving ? "Сохраняем…" : "Сохранить"}
           </button>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-small text-muted-foreground uppercase tracking-wide">Никнейм</label>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            maxLength={50}
-            className="w-full h-11 rounded-md bg-surface-2 border border-border px-3.5 text-body outline-none focus:border-amber"
-          />
-          <p className="text-caption text-subtle">
-            Имя, которое видят собеседники. Логин для входа не меняется.
-          </p>
+        <div className="rounded-lg bg-surface-2 p-4">
+          <p className="text-h2 mb-1">Информация</p>
+          {[
+            ["Имя пользователя", profile?.username ? "@" + profile.username : "…"],
+            ["ID пользователя", profile?.id || "…"],
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-center gap-3 h-9">
+              <span className="text-small text-subtle w-32 shrink-0">{label}</span>
+              <span className="text-small text-muted-foreground flex-1 min-w-0 truncate">{value}</span>
+              <button
+                type="button"
+                onClick={async () => { try { await navigator.clipboard.writeText(value); toast.success("Скопировано"); } catch { toast.error("Не удалось скопировать"); } }}
+                className="p-1.5 text-subtle active:text-foreground"
+                aria-label={`Скопировать: ${label}`}
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-small text-muted-foreground uppercase tracking-wide">Статус</label>
-          <textarea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            maxLength={500}
-            rows={3}
-            placeholder="Например: на связи после 18:00"
-            className="w-full rounded-md bg-surface-2 border border-border px-3.5 py-2.5 text-body outline-none resize-none focus:border-amber"
-          />
+        <div className="rounded-lg bg-surface-2 divide-y divide-border">
+          <button
+            type="button"
+            onClick={async () => {
+              if (!profile?.username) return;
+              const r = await shareProfile(profile.username);
+              if (r === "copied") toast.success("Профиль скопирован");
+              else if (r === "error") toast.error("Не удалось поделиться");
+            }}
+            className="w-full h-12 px-4 flex items-center gap-3 text-body active:bg-surface-3"
+          >
+            <Share2 className="w-5 h-5 text-subtle" />
+            <span className="flex-1 text-left">Поделиться профилем</span>
+            <ChevronRight className="w-4 h-4 text-subtle" />
+          </button>
+          {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
+              вместо текста; сам пуш при этом всё равно зашифрован. */}
+          {Capacitor.isNativePlatform() && profile && (
+            <label className="flex items-center justify-between gap-3 h-14 px-4">
+              <span className="min-w-0">
+                <span className="block text-body">Текст в уведомлениях</span>
+                <span className="block text-caption text-subtle truncate">Выключи — в пуше будет только «Новое сообщение»</span>
+              </span>
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                checked={profile.push_preview !== false}
+                onChange={async (e) => {
+                  const v = e.target.checked;
+                  setProfile({ ...profile, push_preview: v });
+                  try { await api.updateProfile(profile.id, { push_preview: v }); }
+                  catch { toast.error("Не удалось сохранить"); setProfile({ ...profile, push_preview: !v }); }
+                }}
+              />
+            </label>
+          )}
+          <button
+            type="button"
+            onClick={logout}
+            className="w-full h-12 px-4 flex items-center gap-3 text-body text-primary active:bg-surface-3"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="flex-1 text-left">Выйти</span>
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || !dirty || username.trim().length < 2}
-          className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold disabled:opacity-40"
-        >
-          {saving ? "Сохраняем…" : "Сохранить"}
-        </button>
-
-        <button
-          type="button"
-          onClick={async () => {
-            if (!profile?.username) return;
-            const r = await shareProfile(profile.username);
-            if (r === "copied") toast.success("Профиль скопирован");
-            else if (r === "error") toast.error("Не удалось поделиться");
-          }}
-          className="w-full h-11 rounded-md flex items-center justify-center gap-2 bg-surface-2 text-foreground font-semibold"
-        >
-          <Share2 className="w-4 h-4" />
-          Поделиться профилем
-        </button>
-
-        {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
-            вместо текста; сам пуш при этом всё равно зашифрован. */}
-        {Capacitor.isNativePlatform() && profile && (
-          <label className="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-1">
-            <span>
-              <span className="block text-h2">Текст в уведомлениях</span>
-              <span className="block text-small text-muted-foreground">Выключи — в пуше будет только «Новое сообщение»</span>
-            </span>
-            <input
-              type="checkbox"
-              className="w-5 h-5 accent-primary"
-              checked={profile.push_preview !== false}
-              onChange={async (e) => {
-                const v = e.target.checked;
-                setProfile({ ...profile, push_preview: v });
-                try { await api.updateProfile(profile.id, { push_preview: v }); }
-                catch { toast.error("Не удалось сохранить"); setProfile({ ...profile, push_preview: !v }); }
-              }}
-            />
-          </label>
-        )}
-
-        <button
-          type="button"
-          onClick={logout}
-          className="w-full h-11 rounded-md flex items-center justify-center gap-2 bg-surface-1 text-primary font-semibold"
-        >
-          <LogOut className="w-4 h-4" />
-          Выйти
-        </button>
 
         {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
             всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
             его показываем рядом, если он отличается. */}
-        <div className="text-center text-caption text-subtle pb-2 select-text">
+        <div className="mt-auto pt-4 text-center text-caption text-subtle select-text">
           ХУЯКС {APP_VERSION} · сборка {APP_BUILD}
           {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
         </div>

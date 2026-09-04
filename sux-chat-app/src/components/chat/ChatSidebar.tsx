@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
 import { RefreshCw } from "lucide-react";
-import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon } from "lucide-react";
+import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -359,8 +359,8 @@ const ChatSidebar = ({
       {/* Шапка: аватар + имя + «В сети», справа шестерёнка и красный «+»
           (открывает диалог нового чата). Ниже — поиск по списку. */}
       <div className="px-4 pt-2 pb-3 pad-safe-top">
-        <div className="flex items-center gap-3 h-14">
-          {!isMobileLayout && (
+        <div className="flex items-center gap-3 h-14 md:h-16">
+          {!isMobileLayout && isCollapsed && (
             <Button
               variant="ghost"
               size="icon"
@@ -386,10 +386,21 @@ const ChatSidebar = ({
                   className="w-10 h-10"
                 />
                 <span className="min-w-0">
-                  <span className="block text-h2 truncate">{currentUser?.username || "Загрузка…"}</span>
+                  <span className="block text-h2 md:text-[15px] truncate">{currentUser?.username || "Загрузка…"}</span>
                   <span className="block text-small text-online">В сети</span>
                 </span>
               </button>
+              {!isMobileLayout && (
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  className="-ml-2 p-1 text-subtle hover:text-foreground"
+                  title="Свернуть сайдбар"
+                  aria-label="Свернуть сайдбар"
+                >
+                  <ChevronDownIcon className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onOpenProfile}
@@ -405,11 +416,11 @@ const ChatSidebar = ({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="w-11 h-11 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:brightness-90"
+                className="w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:brightness-90 hover:brightness-110"
                 aria-label="Новый чат"
                 title="Новый чат"
               >
-                <PlusIcon className="w-6 h-6" />
+                <PlusIcon className="w-6 h-6 md:w-5 md:h-5" />
               </button>
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
@@ -593,7 +604,7 @@ const ChatSidebar = ({
                 <StarIcon className="w-6 h-6 md:w-5 md:h-5 text-amber" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-h2 truncate">Избранное</p>
+                <p className="text-h2 md:text-[15px] truncate">Избранное</p>
                 <p className="text-small text-subtle truncate">Сообщения для себя</p>
               </div>
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
@@ -649,8 +660,8 @@ const ChatSidebar = ({
 
                   {/* Содержимое строки: ездит по свайпу, правый клик → меню */}
                   <div
-                    className={`group relative pl-3 pr-4 py-3 md:py-2 flex items-center gap-3 transition-transform border-l-4 ${
-                      selectedChatId === chat.id ? "bg-surface-3 border-primary" : "bg-background border-transparent active:bg-surface-2"
+                    className={`group relative pl-3 pr-4 py-3 md:py-2.5 md:mr-1 md:rounded-r-lg flex items-center gap-3.5 md:gap-3 transition-transform border-l-4 ${
+                      selectedChatId === chat.id ? "bg-surface-3 border-primary" : "bg-background border-transparent active:bg-surface-2 md:hover:bg-surface-2"
                     } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                       isCollapsed ? "justify-center" : ""
                     }`}
@@ -691,7 +702,7 @@ const ChatSidebar = ({
                   >
                     {isChannel ? (
                       (chat as any).avatar_url ? (
-                        <img src={mediaUrl((chat as any).avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover" />
+                        <img src={mediaUrl((chat as any).avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover" />
                       ) : (
                         <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
                           <Radio className="w-6 h-6 md:w-5 md:h-5 text-primary" />
@@ -702,7 +713,7 @@ const ChatSidebar = ({
                         <img
                           src={mediaUrl((chat as any).avatar_url)}
                           alt=""
-                          className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover"
+                          className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover"
                         />
                       ) : (
                         <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
@@ -713,14 +724,14 @@ const ChatSidebar = ({
                       <Identicon
                         id={displayParticipants[0]?.id || chat.id}
                         avatarUrl={displayParticipants[0]?.avatar_url}
-                        className="w-[46px] h-[46px] md:w-9 md:h-9 !rounded-full"
+                        className="w-[46px] h-[46px] md:w-9 md:h-9"
                       />
                     )}
 
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className="text-h2 truncate min-w-0 flex items-center gap-1.5">
+                          <p className="text-h2 md:text-[15px] truncate min-w-0 flex items-center gap-1.5">
                             {isChannel && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
                             <span className="truncate">{chatTitle}</span>
                           </p>
@@ -737,7 +748,7 @@ const ChatSidebar = ({
                           )}
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <p className="text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
+                          <p className="text-body md:text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
                             {isLoading
                               ? "Загрузка…"
                               : (chat as any).last_message

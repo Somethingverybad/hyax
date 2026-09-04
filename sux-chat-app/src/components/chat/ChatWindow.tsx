@@ -1060,7 +1060,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
       {(onBack || title || peer || isGroup) && (
-        <div className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[72px]">
+        <div className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
           {onBack && (
             <button
               type="button"
@@ -1078,7 +1078,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               className="flex items-center gap-3 flex-1 min-w-0 text-left"
               title="Профиль собеседника"
             >
-              <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11 !rounded-full" />
+              <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11" />
               <span className="min-w-0 flex flex-col">
                 <span className="text-h1 truncate leading-tight">{headerTitle || peer.username || "Чат"}</span>
                 <span className="text-small text-muted-foreground truncate">@{peer.username}</span>
@@ -1092,7 +1092,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               title="Настройки группы"
             >
               {group?.avatar_url ? (
-                <img src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
+                <img src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
               ) : (
                 <span className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center shrink-0"><Users className="w-5 h-5 text-primary" /></span>
               )}
@@ -1250,7 +1250,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <Identicon
                       id={message.sender?.id || "?"}
                       avatarUrl={message.sender?.avatar_url}
-                      className="w-9 h-9 !rounded-full"
+                      className="w-9 h-9"
                     />
                   )}
 
@@ -1445,9 +1445,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       </div>
 
       {/* Поле ввода */}
-      <div ref={composeRef} className="chat-compose px-3 py-2 md:px-7 md:pt-2 md:pb-5 pad-safe-bottom bg-surface-1 md:bg-transparent border-t border-border md:border-t-0">
-        {/* На десктопе композер — панель с обводкой, как в референсе. */}
-        <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3">
+      <div ref={composeRef} className="chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0">
+        {/* На десктопе композер — панель с обводкой, как в референсе; отступ снизу
+            даём панели (pad-safe-bottom перебивает padding контейнера). */}
+        <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-5">
           {editing && (
             <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary px-3 py-2">
               <div className="flex-1 min-w-0">
@@ -1623,7 +1624,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   }
                 }}
                 disabled={uploading}
-                className="w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
+                className="w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 md:bg-background border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
                 style={{ maxHeight: "6.5rem" }}
               />
             </div>

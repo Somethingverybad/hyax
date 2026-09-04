@@ -41,40 +41,42 @@ const UserProfileModal = ({
     };
   }, [userId]);
 
-  const copyName = async () => {
-    try { await navigator.clipboard.writeText("@" + (profile?.username || "")); toast.success("Скопировано"); }
+  const copy = async (value: string) => {
+    try { await navigator.clipboard.writeText(value); toast.success("Скопировано"); }
     catch { toast.error("Не удалось скопировать"); }
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center md:p-4"
+      className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-stretch md:justify-end"
       onClick={onClose}
     >
-      {/* По референсу: аватар 104, имя, ряд кнопок, карточки «О себе» и
-          «Информация». На телефоне — шторка снизу, на десктопе — по центру. */}
+      {/* Телефон — шторка снизу; десктоп — боковая панель во всю высоту, как
+          колонка профиля в референсе. Поверхности: панель surface-2, карточки и
+          вторичные кнопки surface-4, чтобы читались на панели. */}
       <div
-        className="w-full md:max-w-md bg-surface-1 rounded-t-lg md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] md:pb-5 relative"
+        className="w-full md:w-[440px] md:h-full md:overflow-y-auto bg-surface-2 rounded-t-[16px] md:rounded-none md:border-l md:border-border p-6 pb-[calc(var(--sab)+24px)] md:pb-6 relative"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="md:hidden absolute top-2 left-1/2 -translate-x-1/2 w-9 h-1 rounded-full bg-foreground/20" aria-hidden />
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-3 right-3 p-2 text-muted-foreground hover:text-foreground"
+          className="absolute top-4 right-4 p-1.5 text-subtle hover:text-foreground"
           aria-label="Закрыть"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
         {loading ? (
-          <div className="py-10 text-center text-small text-muted-foreground">Загрузка…</div>
+          <div className="py-10 text-center text-small text-subtle">Загрузка…</div>
         ) : profile ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 pr-8">
-              <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg" />
+          <div className="space-y-6">
+            <div className="flex items-center gap-5 pr-8">
+              <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
               <div className="min-w-0">
-                <h2 className="text-[26px] leading-tight font-bold text-foreground break-words">{profile.username}</h2>
-                {!profile.bio && <p className="mt-1 text-small text-muted-foreground">Статус не указан</p>}
+                <h2 className="text-[24px] leading-tight font-semibold text-foreground truncate">{profile.username}</h2>
+                <p className="mt-2 text-body text-subtle truncate">{profile.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
               </div>
             </div>
 
@@ -83,7 +85,7 @@ const UserProfileModal = ({
                 <button
                   type="button"
                   onClick={() => { onCall(); onClose(); }}
-                  className="flex-1 h-11 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
+                  className="flex-1 h-10 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90"
                 >
                   <Phone className="w-4 h-4" />
                   Позвонить
@@ -96,33 +98,40 @@ const UserProfileModal = ({
                   if (r === "copied") toast.success("Профиль скопирован");
                   else if (r === "error") toast.error("Не удалось поделиться");
                 }}
-                className="flex-1 h-11 rounded-md bg-surface-3 text-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
+                className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90"
               >
                 <Share2 className="w-4 h-4" />
                 Поделиться
               </button>
             </div>
 
+            <div className="border-t border-border" />
+
             {profile.bio && (
-              <div className="rounded-lg bg-surface-3 p-4">
-                <p className="text-h2 mb-1">О себе</p>
+              <div className="rounded-lg bg-surface-4 p-4">
+                <p className="text-h2 mb-2">О себе</p>
                 <p className="text-body text-muted-foreground whitespace-pre-wrap break-words">{profile.bio}</p>
               </div>
             )}
 
-            <div className="rounded-lg bg-surface-3 p-4">
+            <div className="rounded-lg bg-surface-4 p-4">
               <p className="text-h2 mb-2">Информация</p>
-              <div className="flex items-center gap-3">
-                <span className="text-small text-muted-foreground w-24 shrink-0">Никнейм</span>
-                <span className="text-body flex-1 min-w-0 truncate">@{profile.username}</span>
-                <button type="button" onClick={copyName} className="p-1.5 text-muted-foreground active:text-foreground" aria-label="Скопировать никнейм">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
+              {[
+                ["Имя пользователя", "@" + profile.username],
+                ["ID пользователя", profile.id],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center gap-3 h-9">
+                  <span className="text-small text-subtle w-32 shrink-0">{label}</span>
+                  <span className="text-small text-muted-foreground flex-1 min-w-0 truncate">{value}</span>
+                  <button type="button" onClick={() => copy(value)} className="p-1.5 text-subtle active:text-foreground" aria-label={`Скопировать: ${label}`}>
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         ) : (
-          <div className="py-10 text-center text-small text-muted-foreground">
+          <div className="py-10 text-center text-small text-subtle">
             Не удалось загрузить профиль
           </div>
         )}

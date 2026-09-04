@@ -22,6 +22,7 @@ All colors MUST be HSL.
     --surface-1: 240 2% 9%;
     --surface-2: 240 2% 10.5%;
     --surface-3: 240 2% 11.5%;
+    --surface-4: 0 0% 16%;
     --card: var(--surface-1);
     --card-foreground: 0 0% 100%;
     --popover: var(--surface-1);
@@ -37,14 +38,14 @@ All colors MUST be HSL.
        активного чата, микрофон. Тёмный #8B1510 — свои пузыри и баннер. */
     --primary: 4 74% 47%;
     --primary-foreground: 0 0% 100%;
-    --primary-deep: 2 75% 31%;
+    --primary-deep: 2 72% 36%;
     --accent: 4 74% 47%;
     --accent-foreground: 0 0% 100%;
     --destructive: 4 74% 47%;
     --destructive-foreground: 0 0% 100%;
 
     /* Входящие пузыри #227A3F; «в сети» #3FB14A — светлее, чтобы читалось точкой. */
-    --success: 140 56% 31%;
+    --success: 140 45% 30%;
     --success-foreground: 0 0% 100%;
     --online: 126 48% 47%;
     /* Янтарный #FFB308: звезда «Избранного» и рамка фокуса. */

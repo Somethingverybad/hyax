@@ -113,24 +113,12 @@ const Auth = () => {
             draggable={false}
           />
 
-          {/* Стилизованное название с эффектом */}
           <div className="text-center mb-2 md:mb-3">
-            <div className="relative">
-              <h1 className="text-4xl md:text-6xl font-black bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent leading-none tracking-tight drop-shadow-sm">
-                ХУЯКС
-              </h1>
-              <div className="absolute inset-0 text-4xl md:text-6xl font-black text-primary/20 blur-sm leading-none tracking-tight">
-                ХУЯКС
-              </div>
-            </div>
-            <p className="text-base md:text-xl font-semibold text-muted-foreground mt-2 md:mt-3 tracking-wider uppercase">
-              эсемэсэнджер
-            </p>
+            <h1 className="text-[32px] md:text-[40px] font-bold text-foreground leading-none tracking-tight">ХУЯКС</h1>
+            <p className="text-small font-semibold text-subtle mt-2 tracking-wider uppercase">эсемэсэнджер</p>
           </div>
 
-          <div className="w-24 md:w-32 h-1 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full mt-3 md:mt-4"></div>
-
-          <p className="text-muted-foreground text-center mt-4 md:mt-6 text-xs md:text-sm">
+          <p className="text-subtle text-center mt-3 text-small">
             {isLogin 
               ? "Не очень то и быстрый и ненадежный месенджер" 
               : "ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!"
@@ -148,7 +136,7 @@ const Auth = () => {
               {/* Шаг 1: логин */}
               <div className="w-full shrink-0 space-y-4 px-0.5">
                 <div className="space-y-2">
-                  <Label htmlFor="username" className="text-sm font-medium">
+                  <Label htmlFor="username" className="text-small text-muted-foreground uppercase tracking-wide">
                     {isLogin ? "Логин" : "Имя пользователя"}
                   </Label>
                   <Input
@@ -166,14 +154,14 @@ const Auth = () => {
                         goToPassword();
                       }
                     }}
-                    className="bg-secondary/50 border-border focus:border-primary transition-colors"
+                    className="h-11 bg-surface-2 border-border rounded-md text-body focus:border-amber focus-visible:ring-0 transition-colors"
                   />
                 </div>
                 <Button
                   type="button"
                   onClick={goToPassword}
                   disabled={!username.trim()}
-                  className="w-full bg-gradient-primary font-semibold py-2.5 md:py-3 text-sm md:text-base"
+                  className="w-full h-11 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body"
                 >
                   Далее
                 </Button>
@@ -190,7 +178,7 @@ const Auth = () => {
                   <span className="font-medium text-foreground">{username || "…"}</span>
                 </button>
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">
+                  <Label htmlFor="password" className="text-small text-muted-foreground uppercase tracking-wide">
                     Пароль
                   </Label>
                   <Input
@@ -202,12 +190,12 @@ const Auth = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete={isLogin ? "current-password" : "new-password"}
                     tabIndex={step === 1 ? 0 : -1}
-                    className="bg-secondary/50 border-border focus:border-primary transition-colors"
+                    className="h-11 bg-surface-2 border-border rounded-md text-body focus:border-amber focus-visible:ring-0 transition-colors"
                   />
                 </div>
                 <Button
                   type="submit"
-                  className="w-full bg-gradient-primary font-semibold py-2.5 md:py-3 text-sm md:text-base"
+                  className="w-full h-11 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body"
                   disabled={loading || !password}
                 >
                   {loading ? (

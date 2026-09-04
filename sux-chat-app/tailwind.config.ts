@@ -28,6 +28,7 @@ export default {
           1: "hsl(var(--surface-1))",
           2: "hsl(var(--surface-2))",
           3: "hsl(var(--surface-3))",
+          4: "hsl(var(--surface-4))",
         },
         online: "hsl(var(--online))",
         amber: "hsl(var(--amber))",
