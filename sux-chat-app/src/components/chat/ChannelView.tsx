@@ -506,7 +506,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           onClose={() => setViewer(null)}
           actions={[
             { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
-              try { const r = await api.addSavedImage(viewer.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки"); }
+              try { const r = await api.addSavedImage(viewer.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки видны всем в твоём профиле" }); }
               catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
             } },
             { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: () => window.open(viewer.url, "_blank") },
