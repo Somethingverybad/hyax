@@ -106,7 +106,7 @@ def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | 
             messaging.send(msg)
         except Exception as e:
             code = getattr(e, "code", "") or type(e).__name__
-            if code in ("UNREGISTERED", "INVALID_ARGUMENT", "registration-token-not-registered"):
+            if code in ("UNREGISTERED", "INVALID_ARGUMENT", "NOT_FOUND", "registration-token-not-registered"):
                 dead.append(token)
             else:
                 logger.warning("FCM(enc) %s…: %s", token[:12], code)
@@ -162,7 +162,7 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
         if resp.success:
             continue
         code = getattr(resp.exception, "code", "") or type(resp.exception).__name__
-        if code in ("UNREGISTERED", "INVALID_ARGUMENT", "registration-token-not-registered"):
+        if code in ("UNREGISTERED", "INVALID_ARGUMENT", "NOT_FOUND", "registration-token-not-registered"):
             dead.append(tokens[idx])
         else:
             logger.warning("FCM %s…: %s", tokens[idx][:12], code)
