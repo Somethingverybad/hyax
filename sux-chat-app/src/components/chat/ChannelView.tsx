@@ -70,6 +70,13 @@ interface ChannelViewProps {
   onDeleted?: () => void;
 }
 
+/** «1 подписчик», «2 подписчика», «5 подписчиков». */
+const pluralSubs = (n: number) => {
+  const m10 = n % 10, m100 = n % 100;
+  const w = m10 === 1 && m100 !== 11 ? "подписчик" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "подписчика" : "подписчиков";
+  return `${n} ${w}`;
+};
+
 const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps) => {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -293,7 +300,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           <span className="min-w-0">
             <span className="block text-h1 truncate">{channel?.name || "Канал"}</span>
             <span className="block text-small text-muted-foreground truncate">
-              {(channel?.subscribers_count ?? 0)} подписчиков{channel?.username ? ` · @${channel.username}` : ""}
+              {pluralSubs(channel?.subscribers_count ?? 0)}{channel?.username ? ` · @${channel.username}` : ""}
             </span>
           </span>
         </button>
@@ -305,7 +312,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       </div>
 
       {/* Лента */}
-      <div ref={feedRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+      <div ref={feedRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 md:px-6 [&>*]:md:max-w-[720px]">
         {loading ? (
           <p className="text-center text-sm text-muted-foreground py-10">Загрузка…</p>
         ) : posts.length === 0 ? (
@@ -314,10 +321,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           </p>
         ) : (
           posts.map((post) => (
-            <div key={post.id} className="bg-surface-1 rounded-lg overflow-hidden">
+            <div key={post.id} className="bg-surface-2 rounded-lg overflow-hidden">
               <div className="px-4 py-3">
                 {channel?.sign_posts && post.sender && (
-                  <p className="text-small text-primary font-semibold mb-1">{post.sender.username}</p>
+                  <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
                 <PostMedia post={post} />
@@ -335,8 +342,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                     type="button"
                     onClick={() => subscribed ? react(post, r.value) : toast.error("Подпишитесь, чтобы реагировать")}
                     className={cn(
-                      "px-2.5 py-1 text-small rounded-full border",
-                      post.my_reaction === r.value ? "border-primary bg-primary/15 text-foreground" : "border-transparent bg-surface-2 text-foreground",
+                      "h-8 px-2.5 text-small rounded-full border inline-flex items-center gap-1",
+                      post.my_reaction === r.value ? "border-primary bg-primary/15 text-foreground" : "border-transparent bg-surface-4 text-foreground",
                     )}
                   >
                     {r.value} {r.count}
@@ -346,7 +353,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   <button
                     type="button"
                     onClick={() => subscribed ? setReactPickFor(reactPickFor === post.id ? null : post.id) : toast.error("Подпишитесь, чтобы реагировать")}
-                    className="px-2.5 py-1 text-small rounded-full bg-surface-2 text-muted-foreground"
+                    className="h-8 px-2.5 text-small rounded-full bg-surface-4 text-muted-foreground inline-flex items-center"
                   >
                     ＋
                   </button>
@@ -363,7 +370,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 <button
                   type="button"
                   onClick={() => setCommentsFor(post)}
-                  className="ml-auto flex items-center gap-1 px-2 py-1 text-small text-muted-foreground"
+                  className="ml-auto h-8 rounded-full bg-surface-4 inline-flex items-center gap-1 px-2.5 text-small text-muted-foreground"
                 >
                   <MessageCircle className="w-4 h-4" />
                   {post.comments_count ?? 0}
