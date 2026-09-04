@@ -1201,6 +1201,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const username = message.sender?.username || "Неизвестный";
             // Серия одного автора идёт плотно (8 px), смена автора или даты — 16 px.
             const sameAuthor = !!previousMessage && !showDate && previousMessage.sender?.id === message.sender?.id;
+            // Хвостик — только у последнего сообщения в серии, как в Telegram.
+            const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+            const lastInGroup = !nextMessage || nextMessage.sender?.id !== message.sender?.id || shouldShowDate(nextMessage, message);
 
             return (
               <div
@@ -1288,8 +1291,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       // index.css), входящие — зелёные, симметричные.
                       !bareBubble &&
                         (isOwn
-                          ? "bg-primary-deep text-white bubble-own"
-                          : "bg-success text-white")
+                          ? cn("bg-primary-deep text-white", lastInGroup && "bubble-own")
+                          : cn("bg-success text-white", lastInGroup && "bubble-in"))
                     )}>
                       {/* Цитируемое сообщение (реплай). */}
                       {/* Пересланное: от кого пришло изначально. */}

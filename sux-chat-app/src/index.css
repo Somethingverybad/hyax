@@ -387,17 +387,23 @@ textarea,
   /* Десктопный референс держит зелёный входящих глуше телефонного. */
   :root { --success: 140 33% 28%; }
 }
-/* Хвостик своего пузыря: клин наружу у нижнего правого угла. */
-.bubble-own::after {
+/* Хвостики пузырей: фигурный клин по SVG-маске, цвет наследуется от пузыря,
+   поэтому одинаково работает для своих (красных) и чужих (зелёных). */
+.bubble-own, .bubble-in { position: relative; }
+.bubble-own { border-bottom-right-radius: 4px; }
+.bubble-in { border-bottom-left-radius: 4px; }
+.bubble-own::after, .bubble-in::after {
   content: "";
   position: absolute;
-  right: -5px;
   bottom: 0;
-  width: 11px;
-  height: 8px;
-  background: hsl(var(--primary-deep));
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  width: 9px;
+  height: 14px;
+  background: inherit;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'><path d='M0 0v14h9c-5-1.5-8-6-9-14z'/></svg>") no-repeat center / 100% 100%;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'><path d='M0 0v14h9c-5-1.5-8-6-9-14z'/></svg>") no-repeat center / 100% 100%;
 }
+.bubble-own::after { right: -8px; }
+.bubble-in::after { left: -8px; transform: scaleX(-1); }
 .chat-row:last-child > .chat-row-divider { display: none; }
 @keyframes msg-flash {
   0%, 40% { background: hsl(var(--primary) / 0.18); }
