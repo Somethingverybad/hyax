@@ -62,6 +62,8 @@ class Chat(models.Model):
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
     subscribers_count = models.IntegerField(default=0)
     default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Показывать текст сообщения в уведомлении. Выключено — в пуше только «Новое сообщение».
+    push_preview = models.BooleanField(default=True)
     # Закреплённое сообщение — одно на чат, показывается полосой под шапкой.
     # SET_NULL: удалили сообщение — открепилось само.
     pinned_message = models.ForeignKey('Message', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
@@ -151,6 +153,11 @@ class PushToken(models.Model):
     token = models.TextField(unique=True)  # Уникальный токен устройства
     platform = models.CharField(max_length=10, choices=[('ios', 'iOS'), ('android', 'Android'), ('ios_voip', 'iOS VoIP (PushKit)')])
     device_id = models.CharField(max_length=255, blank=True, null=True)
+    # Ключ шифрования пушей (32 байта, base64), сгенерирован устройством и
+    # хранится у него в Keychain/Keystore. Пуш с текстом уходит через
+    # Apple/Google зашифрованным этим ключом (AES-256-GCM), расшифровывает уже
+    # само устройство — см. fcm.py. Пусто — старый клиент, пуш открытым текстом.
+    secret = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

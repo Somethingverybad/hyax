@@ -6,7 +6,7 @@ from .models import *
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot']
+        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.

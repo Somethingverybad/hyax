@@ -274,8 +274,6 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
             
-        print("=== CHAT CREATE REQUEST ===")
-        print("Request data:", request.data)
         
         participant_ids = request.data.get('participants', [])
         print("Raw participant_ids:", participant_ids, type(participant_ids))
@@ -455,6 +453,8 @@ def _notify_new_message(message, profile, request):
             body=preview[:150],
             extra={"chat_id": str(message.chat.id)},
             sound=message.sound.slug if message.sound_id else None,
+            # Кому выключено превью — «Новое сообщение» вместо текста.
+            hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
         )
     except Exception:
         logger.exception("push: не удалось поставить отправку")
@@ -699,11 +699,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         serializer.save(sender=profile)
 
     def list(self, request, *args, **kwargs):
-        print("=== MESSAGE LIST REQUEST ===")
-        print("Query params:", request.query_params)
-        response = super().list(request, *args, **kwargs)
-        print("Response data:", response.data)
-        return response
+        # Ленту в логи не печатаем: тексты сообщений в stdout контейнера —
+        # это утечка, а не отладка.
+        return super().list(request, *args, **kwargs)
 
     # Добавляем кастомные эндпоинты для работы с метками прочтения
     @action(detail=True, methods=['post'])
@@ -1711,10 +1709,13 @@ class PushRegisterView(APIView):
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
-        device, created = PushToken.objects.update_or_create(
-            token=token,
-            defaults={"user": profile, "platform": platform},
-        )
+        defaults = {"user": profile, "platform": platform}
+        # Ключ шифрования пушей от устройства (см. fcm.py). Клиент без ключа —
+        # старая версия, ей пуши уходят открытым текстом, как раньше.
+        secret = (request.data.get("secret") or "").strip()
+        if secret:
+            defaults["secret"] = secret[:64]
+        device, created = PushToken.objects.update_or_create(token=token, defaults=defaults)
         return Response({"ok": True, "created": created})
 
 
