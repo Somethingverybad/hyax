@@ -1457,13 +1457,16 @@ class MediaSignView(APIView):
             return Response({"error": "Profile not found"}, status=400)
 
         marker = f's3://{key}'
-        msg = Message.objects.filter(
-            Q(file_url=marker) | Q(video_url=marker) | Q(voice_url=marker)
-        ).select_related('chat').first()
-        if not msg:
-            return Response({"error": "not found"}, status=404)
-        if not ChatParticipant.objects.filter(chat=msg.chat, user=profile).exists():
-            return Response({"error": "forbidden"}, status=403)
+        # Сохранёнки видны в профиле всем (как в референсе) — картинка из них
+        # доступна любому вошедшему, даже если он не в исходном чате.
+        if not SavedImage.objects.filter(file_url=marker).exists():
+            msg = Message.objects.filter(
+                Q(file_url=marker) | Q(video_url=marker) | Q(voice_url=marker)
+            ).select_related('chat').first()
+            if not msg:
+                return Response({"error": "not found"}, status=404)
+            if not _can_see_chat(msg.chat, profile):
+                return Response({"error": "forbidden"}, status=403)
 
         try:
             url = presigned_get(key, 3600)
