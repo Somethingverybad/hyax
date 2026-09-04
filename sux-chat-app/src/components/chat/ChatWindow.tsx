@@ -474,6 +474,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Закрывается — возвращается обратно. Событие шлёт main.tsx из плагина
   // Keyboard до начала системной анимации.
   const kbShiftRef = useRef(0);
+  const kbSwipeRef = useRef<{ y: number; done: boolean } | null>(null);
+  const hideKeyboard = () => {
+    textareaRef.current?.blur();
+    if (Capacitor.isNativePlatform()) import("@capacitor/keyboard").then(({ Keyboard }) => Keyboard.hide()).catch(() => {});
+  };
   useEffect(() => {
     let raf = 0;
     const onKb = (ev: Event) => {
@@ -655,9 +660,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       } else return;
     }
-    let off = dx;
-    if (isOwn) off = Math.max(0, Math.min(off, SWIPE_MAX));   // свои — вправо
-    else off = Math.min(0, Math.max(off, -SWIPE_MAX));        // чужие — влево
+    // Тянуть можно в любую сторону: раньше «неправильное» направление
+    // упиралось в ноль, и жест выглядел как дребезг без результата.
+    void isOwn;
+    const off = Math.max(-SWIPE_MAX, Math.min(dx, SWIPE_MAX));
     setSwipe({ id: message.id, dx: off });
   };
   const msgPointerUp = (e: React.PointerEvent, message: Message, isOwn: boolean) => {
@@ -665,8 +671,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     cancelLongPress();
     if (swipeActiveRef.current && st) {
       const dx = e.clientX - st.x;
-      const triggered = isOwn ? dx > SWIPE_TRIGGER : dx < -SWIPE_TRIGGER;
-      if (triggered) setReplyTo(message);
+      void isOwn;
+      const triggered = Math.abs(dx) > SWIPE_TRIGGER;
+      if (triggered) { setReplyTo(message); textareaRef.current?.focus(); }
       justSwipedRef.current = true;
       setTimeout(() => { justSwipedRef.current = false; }, 350);
     }
@@ -1206,6 +1213,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         ref={scrollRef}
         onScroll={onFeedScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6"
+        onTouchStart={(e) => { kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
+        onTouchMove={(e) => {
+          // Свайп вниз по ленте при открытой клавиатуре прячет её (как в Telegram).
+          const s = kbSwipeRef.current;
+          if (!s || s.done || kbShiftRef.current <= 0) return;
+          if (e.touches[0].clientY - s.y > 50) { s.done = true; hideKeyboard(); }
+        }}
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <div className="max-w-4xl mx-auto space-y-2">
@@ -1269,11 +1283,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   onPointerMove={(e) => msgPointerMove(e, message, isOwn)}
                   onPointerUp={(e) => msgPointerUp(e, message, isOwn)}
                   onPointerCancel={msgPointerCancel}
-                  style={
-                    swipe?.id === message.id
+                  // pan-y: вертикальную прокрутку оставляем браузеру, горизонтальный
+                  // жест — наш. Без этого iOS на первом же миллиметре по вертикали
+                  // забирал жест себе и слал pointercancel — строка дёргалась
+                  // туда-сюда, а до порога ответа дело не доходило.
+                  style={{
+                    touchAction: "pan-y",
+                    ...(swipe?.id === message.id
                       ? { transform: `translateX(${swipe.dx}px)` }
-                      : { transition: "transform 150ms" }
-                  }
+                      : { transition: "transform 150ms" }),
+                  }}
                 >
                   {/* Иконка ответа при свайпе */}
                   {swipe?.id === message.id && Math.abs(swipe.dx) > 6 && (
