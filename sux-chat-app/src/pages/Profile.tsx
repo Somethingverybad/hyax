@@ -190,6 +190,28 @@ const ProfilePage = () => {
           Поделиться профилем
         </button>
 
+        {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
+            вместо текста; сам пуш при этом всё равно зашифрован. */}
+        {Capacitor.isNativePlatform() && profile && (
+          <label className="flex items-center justify-between gap-3 py-3 border-t border-border">
+            <span>
+              <span className="block font-medium">Текст в уведомлениях</span>
+              <span className="block text-xs text-muted-foreground">Выключи — в пуше будет только «Новое сообщение»</span>
+            </span>
+            <input
+              type="checkbox"
+              className="w-5 h-5 accent-primary"
+              checked={profile.push_preview !== false}
+              onChange={async (e) => {
+                const v = e.target.checked;
+                setProfile({ ...profile, push_preview: v });
+                try { await api.updateProfile(profile.id, { push_preview: v }); }
+                catch { toast.error("Не удалось сохранить"); setProfile({ ...profile, push_preview: !v }); }
+              }}
+            />
+          </label>
+        )}
+
         <button
           type="button"
           onClick={logout}

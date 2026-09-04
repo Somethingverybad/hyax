@@ -27,6 +27,8 @@ interface Profile {
   status?: string;
   created_at?: string;
   user?: any;
+  /** Показывать текст сообщения в уведомлениях. */
+  push_preview?: boolean;
 }
 
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
@@ -852,7 +854,7 @@ export const api = {
 
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
@@ -882,11 +884,12 @@ export const api = {
 
 
   // Регистрация FCM-токена устройства. Профиль берётся из сессии на сервере.
-  registerPushToken: async (token: string, platform: string): Promise<any> => {
+  registerPushToken: async (token: string, platform: string, secret?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/push/register/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ token, platform }),
+      // secret — ключ шифрования пушей с устройства (см. lib/pushSecret.ts).
+      body: JSON.stringify({ token, platform, secret: secret || undefined }),
     });
     if (!res.ok) throw new Error("Не удалось зарегистрировать устройство");
     return res.json();

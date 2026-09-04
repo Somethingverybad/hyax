@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { clearMessageCache } from "@/lib/messageCache";
+import { getPushSecret } from "@/lib/pushSecret";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
@@ -190,7 +191,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // 🔔 Функция отправки push-токена на сервер
   const sendPushTokenToServer = async (token: string) => {
     try {
-      await api.registerPushToken(token, Capacitor.getPlatform());
+      await api.registerPushToken(token, Capacitor.getPlatform(), (await getPushSecret()) || undefined);
     } catch (error) {
       console.error('Error sending push token to server:', error);
     }
