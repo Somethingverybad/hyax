@@ -82,12 +82,16 @@ if (Cap.isNativePlatform()) {
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = info.keyboardHeight;
     applyKeyboardOffset();
+    // Лента сообщений подъезжает вверх синхронно с клавиатурой (см. ChatWindow).
+    const shift = Math.max(0, keyboardHeight - screenBelowWebView() - Math.max(0, window.innerHeight - (window.visualViewport?.height ?? window.innerHeight)));
+    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: shift, duration: 250 } }));
     setTimeout(applyKeyboardOffset, 120);
     setTimeout(applyKeyboardOffset, 320);
   });
 
   Keyboard.addListener("keyboardWillHide", () => {
     root.style.setProperty("--kb-duration", "250ms");
+    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: 0, duration: 250 } }));
     keyboardHeight = 0;
     root.style.setProperty("--kb-height", "0px");
     window.scrollTo(0, 0);

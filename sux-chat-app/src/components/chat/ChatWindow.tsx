@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,10 @@ import type { ChatInfo } from "@/api/client";
 import { LivePreview, MessageImage, MessageVideoFile, MessageFile, VideoNote, isImageFile, isVideoFile, previewSize } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer from "@/components/ImageViewer";
+
+/** Телефон/планшет: экранная клавиатура, Enter вставляет перенос строки. */
+const isTouchDevice = () =>
+  Capacitor.isNativePlatform() || (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
 
 interface Profile {
   id: string;
@@ -464,6 +469,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // Клавиатура открывается — лента подъезжает вверх на её высоту с той же
+  // длительностью, как в Telegram: то, на что смотрел, остаётся на виду.
+  // Закрывается — возвращается обратно. Событие шлёт main.tsx из плагина
+  // Keyboard до начала системной анимации.
+  const kbShiftRef = useRef(0);
+  useEffect(() => {
+    let raf = 0;
+    const onKb = (ev: Event) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const { height, duration } = (ev as CustomEvent<{ height: number; duration: number }>).detail;
+      const delta = height - kbShiftRef.current;
+      kbShiftRef.current = height;
+      if (!delta) return;
+      cancelAnimationFrame(raf);
+      const from = el.scrollTop;
+      const start = performance.now();
+      const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+      const step = (now: number) => {
+        const p = Math.min(1, (now - start) / duration);
+        el.scrollTop = from + delta * ease(p);
+        if (p < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    };
+    window.addEventListener("hyax:keyboard", onKb);
+    return () => { window.removeEventListener("hyax:keyboard", onKb); cancelAnimationFrame(raf); };
+  }, []);
+
   /** Приращение с сервера: всё, что менялось после последней синхронизации. */
   const syncSince = async (id: string | null = chatId) => {
     if (!id) return;
@@ -749,6 +783,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setSelectedFile(null);
     setSelectedSound(null);
     setReplyTo(null);
+    // Клавиатуру после отправки не прячем: фокус остаётся в поле.
+    if (isTouchDevice()) requestAnimationFrame(() => textareaRef.current?.focus());
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(true), 50);
@@ -1624,7 +1660,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 rows={1}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // На телефоне Enter — перенос строки (отправка кнопкой), на
+                  // десктопе — отправка, Shift+Enter — перенос.
+                  if (e.key === "Enter" && !e.shiftKey && !isTouchDevice()) {
                     e.preventDefault();
                     sendMessage();
                   }
@@ -1638,6 +1676,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             {newMessage.trim() || selectedFile ? (
               <Button
                 onClick={sendMessage}
+                onPointerDown={(e) => e.preventDefault()}
                 disabled={uploading}
                 className="h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
                 size="icon"
