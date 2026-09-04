@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
 import { RefreshCw } from "lucide-react";
-import { Search as SearchIcon, Star as StarIcon, ChevronRight as ChevronRightIcon, Settings as SettingsIcon, Plus as PlusIcon } from "lucide-react";
+import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -552,13 +552,13 @@ const ChatSidebar = ({
         )}
         </div>
         {!isCollapsed && (
-          <label className="mt-2 flex items-center gap-2 h-11 px-3 rounded-md bg-surface-1 text-muted-foreground focus-within:ring-1 focus-within:ring-amber">
-            <SearchIcon className="w-5 h-5 shrink-0" />
+          <label className="mt-2 flex items-center gap-2 h-11 md:h-9 px-3 rounded-md bg-surface-1 md:bg-transparent md:border md:border-border text-subtle focus-within:ring-1 focus-within:ring-amber md:focus-within:border-amber md:focus-within:ring-0">
+            <SearchIcon className="w-5 h-5 md:w-4 md:h-4 shrink-0" />
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
               placeholder="Поиск чатов"
-              className="flex-1 min-w-0 bg-transparent outline-none text-body text-foreground placeholder:text-muted-foreground"
+              className="flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"
             />
           </label>
         )}
@@ -589,14 +589,14 @@ const ChatSidebar = ({
                 savedChatId && selectedChatId === savedChatId ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
               }`}
             >
-              <div className="w-12 h-12 shrink-0 rounded-md bg-surface-1 flex items-center justify-center">
-                <StarIcon className="w-6 h-6 text-amber" />
+              <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
+                <StarIcon className="w-6 h-6 md:w-5 md:h-5 text-amber" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-h2 truncate">Избранное</p>
-                <p className="text-small text-muted-foreground truncate">Сообщения для себя</p>
+                <p className="text-small text-subtle truncate">Сообщения для себя</p>
               </div>
-              <ChevronRightIcon className="w-5 h-5 text-subtle shrink-0" />
+              <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>
           )}
           {chats.length > 0 ? (
@@ -632,10 +632,10 @@ const ChatSidebar = ({
               return (
                 <div
                   key={chat.id}
-                  className="relative overflow-hidden"
+                  className="chat-row relative overflow-hidden"
                 >
-                  {/* Разделитель от линии контента, не от края экрана. */}
-                  <div className="absolute bottom-0 left-[76px] right-0 h-px bg-border pointer-events-none z-10" />
+                  {/* Разделитель с полями 16 px; после последней строки и на десктопе его нет. */}
+                  <div className="chat-row-divider absolute bottom-0 left-4 right-4 h-px bg-border pointer-events-none z-10 md:hidden" />
                   {/* Красная кнопка удаления — открывается свайпом влево (телефон) */}
                   <button
                     type="button"
@@ -649,7 +649,7 @@ const ChatSidebar = ({
 
                   {/* Содержимое строки: ездит по свайпу, правый клик → меню */}
                   <div
-                    className={`group relative pl-3 pr-4 py-3 flex items-center gap-3 transition-transform border-l-4 ${
+                    className={`group relative pl-3 pr-4 py-3 md:py-2 flex items-center gap-3 transition-transform border-l-4 ${
                       selectedChatId === chat.id ? "bg-surface-3 border-primary" : "bg-background border-transparent active:bg-surface-2"
                     } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                       isCollapsed ? "justify-center" : ""
@@ -691,10 +691,10 @@ const ChatSidebar = ({
                   >
                     {isChannel ? (
                       (chat as any).avatar_url ? (
-                        <img src={mediaUrl((chat as any).avatar_url)} alt="" className="w-12 h-12 shrink-0 rounded-md object-cover" />
+                        <img src={mediaUrl((chat as any).avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover" />
                       ) : (
-                        <div className="w-12 h-12 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
-                          <Radio className="w-6 h-6 text-primary" />
+                        <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
+                          <Radio className="w-6 h-6 md:w-5 md:h-5 text-primary" />
                         </div>
                       )
                     ) : chat.is_group ? (
@@ -702,18 +702,18 @@ const ChatSidebar = ({
                         <img
                           src={mediaUrl((chat as any).avatar_url)}
                           alt=""
-                          className="w-12 h-12 shrink-0 rounded-md object-cover"
+                          className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="w-12 h-12 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
-                          <Users className="w-6 h-6 text-primary" />
+                        <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
+                          <Users className="w-6 h-6 md:w-5 md:h-5 text-primary" />
                         </div>
                       )
                     ) : (
                       <Identicon
                         id={displayParticipants[0]?.id || chat.id}
                         avatarUrl={displayParticipants[0]?.avatar_url}
-                        className="w-12 h-12"
+                        className="w-[46px] h-[46px] md:w-9 md:h-9 !rounded-full"
                       />
                     )}
 
@@ -725,7 +725,10 @@ const ChatSidebar = ({
                             <span className="truncate">{chatTitle}</span>
                           </p>
                           {chat.updated_at && (
-                            <span className="text-caption text-subtle shrink-0">
+                            <span className="text-caption text-subtle shrink-0 inline-flex items-center gap-1">
+                              {(chat as any).last_message?.sender_id === currentUser?.id && (
+                                <CheckCheckIcon className="w-4 h-4 text-primary" />
+                              )}
                               {new Date(chat.updated_at).toLocaleTimeString("ru-RU", {
                                 hour: "2-digit",
                                 minute: "2-digit",
@@ -734,7 +737,7 @@ const ChatSidebar = ({
                           )}
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <p className="text-small text-muted-foreground line-clamp-2 break-words flex-1 min-w-0">
+                          <p className="text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
                             {isLoading
                               ? "Загрузка…"
                               : (chat as any).last_message

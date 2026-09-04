@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Phone, Share2 } from "lucide-react";
+import { X, Phone, Share2, Copy } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { shareProfile } from "@/lib/share";
@@ -41,13 +41,20 @@ const UserProfileModal = ({
     };
   }, [userId]);
 
+  const copyName = async () => {
+    try { await navigator.clipboard.writeText("@" + (profile?.username || "")); toast.success("Скопировано"); }
+    catch { toast.error("Не удалось скопировать"); }
+  };
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center md:p-4"
       onClick={onClose}
     >
+      {/* По референсу: аватар 104, имя, ряд кнопок, карточки «О себе» и
+          «Информация». На телефоне — шторка снизу, на десктопе — по центру. */}
       <div
-        className="w-full max-w-sm bg-card border border-border rounded-2xl p-6 relative"
+        className="w-full md:max-w-md bg-surface-1 rounded-t-lg md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] md:pb-5 relative"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -60,54 +67,62 @@ const UserProfileModal = ({
         </button>
 
         {loading ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">Загрузка…</div>
+          <div className="py-10 text-center text-small text-muted-foreground">Загрузка…</div>
         ) : profile ? (
-          <div className="flex flex-col items-center text-center">
-            <Identicon
-              id={profile.id}
-              avatarUrl={profile.avatar_url}
-              className="w-24 h-24 rounded-2xl mb-4"
-            />
-            <h2 className="text-xl font-bold text-foreground break-words">
-              {profile.username}
-            </h2>
-            {profile.bio ? (
-              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap break-words">
-                {profile.bio}
-              </p>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground/60">Статус не указан</p>
-            )}
+          <div className="space-y-4">
+            <div className="flex items-center gap-4 pr-8">
+              <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg" />
+              <div className="min-w-0">
+                <h2 className="text-[26px] leading-tight font-bold text-foreground break-words">{profile.username}</h2>
+                {!profile.bio && <p className="mt-1 text-small text-muted-foreground">Статус не указан</p>}
+              </div>
+            </div>
 
-            {onCall && (
+            <div className="flex gap-3">
+              {onCall && (
+                <button
+                  type="button"
+                  onClick={() => { onCall(); onClose(); }}
+                  className="flex-1 h-11 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
+                >
+                  <Phone className="w-4 h-4" />
+                  Позвонить
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  onCall();
-                  onClose();
+                onClick={async () => {
+                  const r = await shareProfile(profile.username);
+                  if (r === "copied") toast.success("Профиль скопирован");
+                  else if (r === "error") toast.error("Не удалось поделиться");
                 }}
-                className="mt-6 w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl py-3 font-medium active:opacity-90"
+                className="flex-1 h-11 rounded-md bg-surface-3 text-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
               >
-                <Phone className="w-4 h-4" />
-                Позвонить
+                <Share2 className="w-4 h-4" />
+                Поделиться
               </button>
+            </div>
+
+            {profile.bio && (
+              <div className="rounded-lg bg-surface-3 p-4">
+                <p className="text-h2 mb-1">О себе</p>
+                <p className="text-body text-muted-foreground whitespace-pre-wrap break-words">{profile.bio}</p>
+              </div>
             )}
 
-            <button
-              type="button"
-              onClick={async () => {
-                const r = await shareProfile(profile.username);
-                if (r === "copied") toast.success("Профиль скопирован");
-                else if (r === "error") toast.error("Не удалось поделиться");
-              }}
-              className="mt-2 w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-3 font-medium active:opacity-90"
-            >
-              <Share2 className="w-4 h-4" />
-              Поделиться профилем
-            </button>
+            <div className="rounded-lg bg-surface-3 p-4">
+              <p className="text-h2 mb-2">Информация</p>
+              <div className="flex items-center gap-3">
+                <span className="text-small text-muted-foreground w-24 shrink-0">Никнейм</span>
+                <span className="text-body flex-1 min-w-0 truncate">@{profile.username}</span>
+                <button type="button" onClick={copyName} className="p-1.5 text-muted-foreground active:text-foreground" aria-label="Скопировать никнейм">
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="py-10 text-center text-sm text-muted-foreground">
+          <div className="py-10 text-center text-small text-muted-foreground">
             Не удалось загрузить профиль
           </div>
         )}

@@ -1060,7 +1060,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
       {(onBack || title || peer || isGroup) && (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-2 pad-safe-top border-b border-border bg-background min-h-14">
+        <div className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[72px]">
           {onBack && (
             <button
               type="button"
@@ -1078,8 +1078,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               className="flex items-center gap-3 flex-1 min-w-0 text-left"
               title="Профиль собеседника"
             >
-              <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10" />
-              <span className="text-h1 line-clamp-2 leading-tight min-w-0">{headerTitle || peer.username || "Чат"}</span>
+              <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11 !rounded-full" />
+              <span className="min-w-0 flex flex-col">
+                <span className="text-h1 truncate leading-tight">{headerTitle || peer.username || "Чат"}</span>
+                <span className="text-small text-muted-foreground truncate">@{peer.username}</span>
+              </span>
             </button>
           ) : isGroup ? (
             <button
@@ -1089,16 +1092,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               title="Настройки группы"
             >
               {group?.avatar_url ? (
-                <img src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
+                <img src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
               ) : (
                 <span className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center shrink-0"><Users className="w-5 h-5 text-primary" /></span>
               )}
-              <span className="text-h1 line-clamp-2 leading-tight min-w-0">{headerTitle || group?.name || "Группа"}</span>
+              <span className="min-w-0 flex flex-col">
+                <span className="text-h1 truncate leading-tight">{headerTitle || group?.name || "Группа"}</span>
+                <span className="text-small text-muted-foreground truncate">Группа</span>
+              </span>
             </button>
           ) : (
             <span className="flex items-center gap-3 flex-1 min-w-0">
-              {saved && <span className="w-10 h-10 rounded-md bg-surface-1 flex items-center justify-center shrink-0"><Bookmark className="w-5 h-5 text-amber" /></span>}
-              <span className="text-h1 line-clamp-2 leading-tight">{headerTitle || "Чат"}</span>
+              {saved && <span className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center shrink-0"><Bookmark className="w-5 h-5 text-amber" /></span>}
+              <span className="min-w-0 flex flex-col">
+                <span className="text-h1 truncate leading-tight">{headerTitle || "Чат"}</span>
+                {saved && <span className="text-small text-muted-foreground truncate">Сообщения для себя</span>}
+              </span>
             </span>
           )}
           {!isGroup && !saved && (
@@ -1115,18 +1124,28 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <button
               type="button"
               onClick={onCall}
-              className="p-2 -mr-2 text-foreground active:text-primary"
+              className="p-2 text-foreground active:text-primary"
               aria-label="Позвонить"
             >
               <Phone className="w-5 h-5" />
+            </button>
+          )}
+          {(peer || isGroup) && (
+            <button
+              type="button"
+              onClick={() => (peer ? setProfileOpen(true) : setGroupOpen(true))}
+              className="p-2 -mr-2 text-foreground active:text-primary"
+              aria-label={peer ? "Профиль" : "Настройки группы"}
+            >
+              <MoreVertical className="w-5 h-5" />
             </button>
           )}
         </div>
       )}
       {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
       {pinned && (
-        <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-border bg-background">
-          <Pin className="w-5 h-5 text-primary shrink-0" fill="currentColor" />
+        <div className="shrink-0 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1">
+          <Pin className="w-5 h-5 text-primary shrink-0" />
           <button type="button" onClick={() => jumpToMessage(pinned.id)} className="flex-1 min-w-0 text-left">
             <span className="block text-small text-primary leading-tight">Закреплено · {pinned.sender_username}</span>
             <span className="block text-body line-clamp-1 break-all">{pinned.preview}</span>
@@ -1147,10 +1166,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <div
         ref={scrollRef}
         onScroll={onFeedScroll}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-4 py-4 md:py-6"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+        <div className="max-w-4xl mx-auto space-y-2">
           {hasMore && (
             <div className="flex justify-center">
               <button
@@ -1180,12 +1199,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const previousMessage = index > 0 ? messages[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
+            // Серия одного автора идёт плотно (8 px), смена автора или даты — 16 px.
+            const sameAuthor = !!previousMessage && !showDate && previousMessage.sender?.id === message.sender?.id;
 
             return (
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
-                className={cn("space-y-2", message._key && "msg-in")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", message._key && "msg-in")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (
@@ -1229,18 +1250,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <Identicon
                       id={message.sender?.id || "?"}
                       avatarUrl={message.sender?.avatar_url}
-                      className="w-8 h-8"
+                      className="w-9 h-9 !rounded-full"
                     />
                   )}
 
                   {/* Контент сообщения */}
                   <div className={cn(
-                    "flex flex-col max-w-[76%] sm:max-w-[70%] md:max-w-[65%]",
+                    "flex flex-col max-w-[72%] sm:max-w-[65%] md:max-w-[55%]",
                     isOwn ? "items-end" : "items-start"
                   )}>
                     {/* Имя отправителя (только для чужих сообщений) */}
-                    {!isOwn && (
-                      <div className="flex items-center gap-2 mb-1 ml-1">
+                    {!isOwn && !peer && (
+                      <div className="flex items-center gap-2 mb-1">
                         <span className="text-small font-semibold text-foreground">
                           {username}
                         </span>
@@ -1263,13 +1284,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       className={cn(
                       "relative",
                       !bareBubble && "px-4 py-3 rounded-lg",
-                      // Свои — тёмно-красные, входящие — зелёные: два цвета
-                      // размечают разговор без подписей. Хвостик — срез
-                      // нижнего угла со стороны автора.
+                      // Свои — тёмно-красные с хвостиком наружу (bubble-own в
+                      // index.css), входящие — зелёные, симметричные.
                       !bareBubble &&
                         (isOwn
-                          ? "bg-primary-deep text-white rounded-br-[4px]"
-                          : "bg-success text-white rounded-bl-[4px]")
+                          ? "bg-primary-deep text-white bubble-own"
+                          : "bg-success text-white")
                     )}>
                       {/* Цитируемое сообщение (реплай). */}
                       {/* Пересланное: от кого пришло изначально. */}
@@ -1362,7 +1382,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {isOwn && !bareBubble && (
                             <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption text-white/70 whitespace-nowrap">
                               {message.is_edited ? "изм. " : ""}{formatTime(message.created_at)}
-                              {message.pending ? <Check className="w-3.5 h-3.5" /> : <CheckCheck className="w-3.5 h-3.5 text-primary" />}
+                              {message.pending ? <Check className="w-3.5 h-3.5" /> : <CheckCheck className="w-3.5 h-3.5" />}
                             </span>
                           )}
                         </p>
@@ -1398,7 +1418,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         (картинка, треугольник): внутри им негде. */}
                     {(!isOwn || bareBubble || !message.content) && (
                       <div className={cn(
-                        "flex items-center gap-1.5 mt-1 px-1",
+                        "flex items-center gap-1.5 mt-1",
                         isOwn ? "flex-row-reverse" : ""
                       )}>
                         <span className="text-caption text-subtle">
@@ -1425,8 +1445,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       </div>
 
       {/* Поле ввода */}
-      <div ref={composeRef} className="px-3 py-2 md:px-4 md:py-3 pad-safe-bottom bg-background">
-        <div className="max-w-4xl mx-auto">
+      <div ref={composeRef} className="chat-compose px-3 py-2 md:px-7 md:pt-2 md:pb-5 pad-safe-bottom bg-surface-1 md:bg-transparent border-t border-border md:border-t-0">
+        {/* На десктопе композер — панель с обводкой, как в референсе. */}
+        <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3">
           {editing && (
             <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary px-3 py-2">
               <div className="flex-1 min-w-0">
@@ -1552,7 +1573,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 size="icon"
                 onClick={() => setAttachMenuOpen((v) => !v)}
                 disabled={uploading}
-                className="h-11 w-11 rounded-md bg-surface-2 border border-border text-foreground hover:bg-surface-3"
+                className="h-11 w-11 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
                 aria-label="Прикрепить"
               >
                 <Paperclip className="w-5 h-5" />
@@ -1579,7 +1600,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               variant="outline"
               size="icon"
               onClick={() => setStickersOpen((v) => !v)}
-              className="h-11 w-11 shrink-0 rounded-md bg-surface-2 border border-border text-foreground hover:bg-surface-3"
+              className="h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
               aria-label="Стикеры"
             >
               <Smile className="w-5 h-5" />
@@ -1602,7 +1623,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   }
                 }}
                 disabled={uploading}
-                className="w-full resize-none overflow-y-auto bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
+                className="w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
                 style={{ maxHeight: "6.5rem" }}
               />
             </div>
@@ -1651,7 +1672,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   style={{ touchAction: "none" }}
                   className={cn(
                     "h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-colors",
-                    recording ? "bg-foreground text-background" : "bg-primary text-primary-foreground"
+                    recording ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
                   )}
                   aria-label={recordKind === "video" ? "Записать видео" : "Записать голосовое"}
                 >

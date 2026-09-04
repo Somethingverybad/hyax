@@ -131,7 +131,12 @@ html, body, #root {
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--primary) / 0.4) transparent;
+    scrollbar-color: hsl(var(--foreground) / 0.18) transparent;
+  }
+  /* На тачскринах полосы прокрутки не рисуем вовсе. */
+  @media (pointer: coarse) {
+    * { scrollbar-width: none; }
+    *::-webkit-scrollbar { display: none; }
   }
 
   *::-webkit-scrollbar {
@@ -145,17 +150,17 @@ html, body, #root {
   }
 
   *::-webkit-scrollbar-thumb {
-    background: hsl(var(--primary) / 0.4);
+    background: hsl(var(--foreground) / 0.18);
     border-radius: 3px;
     transition: all 0.2s ease;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--primary) / 0.6);
+    background: hsl(var(--foreground) / 0.3);
   }
 
   *::-webkit-scrollbar-thumb:active {
-    background: hsl(var(--primary) / 0.8);
+    background: hsl(var(--foreground) / 0.4);
   }
 
   *::-webkit-scrollbar-corner {
@@ -179,7 +184,7 @@ html, body, #root {
 @media (max-width: 768px) {
   /* Уменьшение отступов на мобильных */
   :root {
-    --radius: 0.5rem;
+    --radius: 12px;
   }
   
   /* Оптимизация тапа на мобильных */
@@ -375,6 +380,22 @@ textarea,
 .msg-flash {
   animation: msg-flash 1.2s ease-out;
 }
+/* Десктоп: колонка переписки чуть темнее сайдбара и шапки, как в референсе. */
+@media (min-width: 768px) {
+  .chat-scroll, .chat-compose { background: hsl(240 3% 4.7%); }
+}
+/* Хвостик своего пузыря: клин наружу у нижнего правого угла. */
+.bubble-own::after {
+  content: "";
+  position: absolute;
+  right: -6px;
+  bottom: 0;
+  width: 14px;
+  height: 10px;
+  background: hsl(var(--primary-deep));
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+}
+.chat-row:last-child > .chat-row-divider { display: none; }
 @keyframes msg-flash {
   0%, 40% { background: hsl(var(--primary) / 0.18); }
   100% { background: transparent; }

@@ -278,21 +278,21 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       {/* Шапка */}
       <div className="flex items-center gap-3 px-3 pad-safe-top py-2 border-b border-border shrink-0">
         {onBack && (
-          <button type="button" onClick={onBack} className="p-1 -ml-1" aria-label="Назад">
-            <X className="w-6 h-6" />
+          <button type="button" onClick={onBack} className="p-2 -ml-2" aria-label="Назад">
+            <ChevronLeft className="w-6 h-6" />
           </button>
         )}
         <button type="button" onClick={() => setInfoOpen(true)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="w-10 h-10 shrink-0 object-cover" />
+            <img src={avatarUrl} alt="" className="w-10 h-10 shrink-0 rounded-md object-cover" />
           ) : (
-            <span className="w-10 h-10 shrink-0 bg-secondary flex items-center justify-center">
+            <span className="w-10 h-10 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
               <Radio className="w-5 h-5 text-primary" />
             </span>
           )}
           <span className="min-w-0">
-            <span className="block font-semibold truncate">{channel?.name || "Канал"}</span>
-            <span className="block text-xs text-muted-foreground truncate">
+            <span className="block text-h1 truncate">{channel?.name || "Канал"}</span>
+            <span className="block text-small text-muted-foreground truncate">
               {(channel?.subscribers_count ?? 0)} подписчиков{channel?.username ? ` · @${channel.username}` : ""}
             </span>
           </span>
@@ -314,29 +314,29 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           </p>
         ) : (
           posts.map((post) => (
-            <div key={post.id} className="bg-secondary/40 border border-border">
+            <div key={post.id} className="bg-surface-1 rounded-lg overflow-hidden">
               <div className="px-4 py-3">
                 {channel?.sign_posts && post.sender && (
-                  <p className="text-xs text-primary font-medium mb-1">{post.sender.username}</p>
+                  <p className="text-small text-primary font-semibold mb-1">{post.sender.username}</p>
                 )}
-                {post.content && <p className="whitespace-pre-wrap break-words">{post.content}</p>}
+                {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
                 <PostMedia post={post} />
-                <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-4 mt-2 text-caption text-subtle">
                   <span>{fmtTime(post.created_at)}</span>
                   <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{post.views_count ?? 0}</span>
                   {post.sound && <span className="flex items-center gap-1"><Music2 className="w-3.5 h-3.5" />{post.sound.name}</span>}
                 </div>
               </div>
               {/* Реакции + комментарии */}
-              <div className="flex items-center gap-2 px-3 py-2 border-t border-border/60 flex-wrap">
+              <div className="flex items-center gap-2 px-3 py-2 border-t border-border flex-wrap">
                 {(post.reactions || []).map((r) => (
                   <button
                     key={r.value}
                     type="button"
                     onClick={() => subscribed ? react(post, r.value) : toast.error("Подпишитесь, чтобы реагировать")}
                     className={cn(
-                      "px-2 py-1 text-sm border",
-                      post.my_reaction === r.value ? "border-primary bg-primary/10" : "border-border bg-secondary/60",
+                      "px-2.5 py-1 text-small rounded-full border",
+                      post.my_reaction === r.value ? "border-primary bg-primary/15 text-foreground" : "border-transparent bg-surface-2 text-foreground",
                     )}
                   >
                     {r.value} {r.count}
@@ -346,12 +346,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   <button
                     type="button"
                     onClick={() => subscribed ? setReactPickFor(reactPickFor === post.id ? null : post.id) : toast.error("Подпишитесь, чтобы реагировать")}
-                    className="px-2 py-1 text-sm border border-border bg-secondary/60 text-muted-foreground"
+                    className="px-2.5 py-1 text-small rounded-full bg-surface-2 text-muted-foreground"
                   >
                     ＋
                   </button>
                   {reactPickFor === post.id && (
-                    <div className="absolute z-20 bottom-full mb-1 left-0 flex gap-1 bg-card border-2 border-border p-1">
+                    <div className="absolute z-20 bottom-full mb-1 left-0 flex gap-1 bg-surface-1 border border-border rounded-lg p-1">
                       {REACTIONS.map((e) => (
                         <button key={e} type="button" onClick={() => react(post, e)} className="w-9 h-9 text-lg hover:bg-secondary">
                           {e}
@@ -363,7 +363,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 <button
                   type="button"
                   onClick={() => setCommentsFor(post)}
-                  className="ml-auto flex items-center gap-1 px-2 py-1 text-sm text-muted-foreground"
+                  className="ml-auto flex items-center gap-1 px-2 py-1 text-small text-muted-foreground"
                 >
                   <MessageCircle className="w-4 h-4" />
                   {post.comments_count ?? 0}
@@ -376,7 +376,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
 
       {/* Композер (админ) или кнопка подписки */}
       {isAdmin ? (
-        <div className="border-t border-border pad-safe-bottom px-3 py-2 shrink-0">
+        <div className="pad-safe-bottom px-3 py-2 shrink-0">
           {sound && (
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               <Music2 className="w-3.5 h-3.5" /> Звук пуша: <b className="text-foreground">{sound.name}</b>
@@ -406,11 +406,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => pick(e, "file")} />
           <div className="flex items-end gap-2">
             <div ref={attachRef} className="relative shrink-0">
-              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-10 h-10 flex items-center justify-center border border-border", attachment && "text-primary border-primary")} aria-label="Прикрепить">
+              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center", attachment && "text-primary border-primary")} aria-label="Прикрепить">
                 <Paperclip className="w-5 h-5" />
               </button>
               {attachOpen && (
-                <div className="absolute bottom-full left-0 mb-2 w-40 bg-card border border-border z-10">
+                <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}>
                     <ImageIcon className="w-4 h-4 text-primary" /> Фото
                   </button>
@@ -423,7 +423,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 </div>
               )}
             </div>
-            <button type="button" onClick={openSounds} disabled={recording} className={cn("w-10 h-10 shrink-0 flex items-center justify-center border border-border", sound && "text-primary border-primary")} aria-label="Звук пуша">
+            <button type="button" onClick={openSounds} disabled={recording} className={cn("w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center", sound && "text-primary border-primary")} aria-label="Звук пуша">
               <Music2 className="w-5 h-5" />
             </button>
             <textarea
@@ -432,14 +432,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               placeholder={attachment ? "Подпись…" : "Написать в канал…"}
               rows={1}
               disabled={recording}
-              className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-32"
+              className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
             />
             {text.trim() || attachment ? (
               <button
                 type="button"
                 onClick={publish}
                 disabled={sending}
-                className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40"
+                className="w-11 h-11 shrink-0 rounded-md flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40"
                 aria-label="Опубликовать"
               >
                 <Send className="w-5 h-5" />
@@ -447,7 +447,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             ) : (
               <>
                 {recording && (
-                  <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-10 h-10 shrink-0 flex items-center justify-center border border-border" aria-label="Сменить камеру">
+                  <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center" aria-label="Сменить камеру">
                     <SwitchCamera className="w-5 h-5" />
                   </button>
                 )}
@@ -456,7 +456,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   type="button"
                   onClick={toggleNote}
                   disabled={sending || recBusy}
-                  className={cn("w-11 h-11 shrink-0 flex items-center justify-center", recording ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground", "disabled:opacity-40")}
+                  className={cn("w-11 h-11 shrink-0 rounded-md flex items-center justify-center", recording ? "bg-success text-white" : "bg-primary text-primary-foreground", "disabled:opacity-40")}
                   aria-label={recording ? "Опубликовать видео" : "Записать видео-сообщение"}
                 >
                   {recording ? <Send className="w-5 h-5" /> : <Triangle className="w-5 h-5" />}
@@ -465,7 +465,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             )}
           </div>
           {soundOpen && (
-            <div className="mt-2 max-h-48 overflow-y-auto border border-border bg-card">
+            <div className="mt-2 max-h-48 overflow-y-auto rounded-lg bg-surface-1">
               <button type="button" onClick={() => { setSound(null); setSoundOpen(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary border-b border-border/60">
                 Без звука
               </button>
@@ -477,8 +477,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           )}
         </div>
       ) : (
-        <div className="border-t border-border pad-safe-bottom px-3 py-3 shrink-0">
-          <button type="button" onClick={subscribe} className="w-full py-3 bg-primary text-primary-foreground font-semibold">
+        <div className="pad-safe-bottom px-3 py-3 shrink-0">
+          <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
             Подписаться
           </button>
         </div>

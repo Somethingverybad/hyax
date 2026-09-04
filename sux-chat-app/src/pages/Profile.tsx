@@ -103,8 +103,8 @@ const ProfilePage = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <div className="shrink-0 px-4 py-2.5 pad-safe-top border-b border-border bg-card">
-        <span className="font-semibold">Профиль</span>
+      <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center">
+        <span className="text-h1">Профиль</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
@@ -121,7 +121,7 @@ const ProfilePage = () => {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="relative w-28 h-28 bg-secondary overflow-hidden disabled:opacity-60"
+            className="relative w-[104px] h-[104px] rounded-lg bg-surface-3 overflow-hidden disabled:opacity-60"
             aria-label="Сменить аватар"
           >
             {profile?.avatar_url ? (
@@ -143,27 +143,27 @@ const ProfilePage = () => {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground uppercase tracking-wide">Никнейм</label>
+          <label className="text-small text-muted-foreground uppercase tracking-wide">Никнейм</label>
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             maxLength={50}
-            className="w-full bg-secondary px-3 py-2.5 outline-none focus:ring-1 focus:ring-primary"
+            className="w-full h-11 rounded-md bg-surface-2 border border-border px-3.5 text-body outline-none focus:border-amber"
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-caption text-subtle">
             Имя, которое видят собеседники. Логин для входа не меняется.
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground uppercase tracking-wide">Статус</label>
+          <label className="text-small text-muted-foreground uppercase tracking-wide">Статус</label>
           <textarea
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             maxLength={500}
             rows={3}
             placeholder="Например: на связи после 18:00"
-            className="w-full bg-secondary px-3 py-2.5 outline-none resize-none focus:ring-1 focus:ring-primary"
+            className="w-full rounded-md bg-surface-2 border border-border px-3.5 py-2.5 text-body outline-none resize-none focus:border-amber"
           />
         </div>
 
@@ -171,7 +171,7 @@ const ProfilePage = () => {
           type="button"
           onClick={save}
           disabled={saving || !dirty || username.trim().length < 2}
-          className="w-full py-3 bg-primary text-primary-foreground font-semibold disabled:opacity-40"
+          className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold disabled:opacity-40"
         >
           {saving ? "Сохраняем…" : "Сохранить"}
         </button>
@@ -184,7 +184,7 @@ const ProfilePage = () => {
             if (r === "copied") toast.success("Профиль скопирован");
             else if (r === "error") toast.error("Не удалось поделиться");
           }}
-          className="w-full py-3 flex items-center justify-center gap-2 bg-secondary text-foreground font-medium"
+          className="w-full h-11 rounded-md flex items-center justify-center gap-2 bg-surface-2 text-foreground font-semibold"
         >
           <Share2 className="w-4 h-4" />
           Поделиться профилем
@@ -193,10 +193,10 @@ const ProfilePage = () => {
         {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
             вместо текста; сам пуш при этом всё равно зашифрован. */}
         {Capacitor.isNativePlatform() && profile && (
-          <label className="flex items-center justify-between gap-3 py-3 border-t border-border">
+          <label className="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-1">
             <span>
-              <span className="block font-medium">Текст в уведомлениях</span>
-              <span className="block text-xs text-muted-foreground">Выключи — в пуше будет только «Новое сообщение»</span>
+              <span className="block text-h2">Текст в уведомлениях</span>
+              <span className="block text-small text-muted-foreground">Выключи — в пуше будет только «Новое сообщение»</span>
             </span>
             <input
               type="checkbox"
@@ -215,7 +215,7 @@ const ProfilePage = () => {
         <button
           type="button"
           onClick={logout}
-          className="w-full py-3 flex items-center justify-center gap-2 text-destructive font-medium"
+          className="w-full h-11 rounded-md flex items-center justify-center gap-2 bg-surface-1 text-primary font-semibold"
         >
           <LogOut className="w-4 h-4" />
           Выйти
@@ -224,7 +224,7 @@ const ProfilePage = () => {
         {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
             всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
             его показываем рядом, если он отличается. */}
-        <div className="text-center text-xs text-muted-foreground pb-2 select-text">
+        <div className="text-center text-caption text-subtle pb-2 select-text">
           ХУЯКС {APP_VERSION} · сборка {APP_BUILD}
           {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
         </div>

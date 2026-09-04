@@ -27,7 +27,7 @@ const BottomNav = () => {
           className={({ isActive }) =>
             cn(
               "flex-1 flex items-center justify-center h-14 transition-colors active:bg-surface-2",
-              isActive ? "text-primary" : "text-muted-foreground",
+              isActive ? "text-primary" : "text-subtle",
             )
           }
         >
