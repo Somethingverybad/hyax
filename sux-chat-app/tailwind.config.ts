@@ -22,7 +22,16 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          deep: "hsl(var(--primary-deep))",
         },
+        surface: {
+          1: "hsl(var(--surface-1))",
+          2: "hsl(var(--surface-2))",
+          3: "hsl(var(--surface-3))",
+        },
+        online: "hsl(var(--online))",
+        amber: "hsl(var(--amber))",
+        subtle: "hsl(var(--subtle-foreground))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -61,9 +70,13 @@ export default {
         'card': 'var(--shadow-card)',
       },
       borderRadius: {
+        // 12 — пузыри, строки, карточки; 10 — поля, плитки, кнопки; 8 — мелочи.
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "var(--radius-field)",
+        sm: "8px",
+        xl: "var(--radius)",
+        "2xl": "var(--radius)",
+        "3xl": "var(--radius)",
       },
       keyframes: {
         "accordion-down": {
