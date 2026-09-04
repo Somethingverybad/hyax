@@ -50,10 +50,10 @@ const ImageViewer = ({ item, onClose, actions }: { item: ViewerItem; onClose: ()
         onClick={(e) => { e.stopPropagation(); if (actions.length) setMenuOpen((v) => !v); }}
       />
 
+      {menuOpen && <div className="absolute inset-0 bg-black/40" aria-hidden />}
       {menuOpen && (
         <div
-          className="absolute inset-x-0 bottom-0 p-3 pb-[calc(var(--sab)+12px)] md:inset-x-auto md:right-3 md:bottom-auto md:p-0 md:w-64"
-          style={{ top: undefined }}
+          className="absolute inset-x-0 bottom-0 p-4 pb-[calc(var(--sab)+8px)] md:inset-x-auto md:right-3 md:bottom-auto md:top-14 md:p-0 md:w-64"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="rounded-lg bg-surface-1 overflow-hidden divide-y divide-border">

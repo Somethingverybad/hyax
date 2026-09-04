@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Phone, Share2, Copy, ChevronRight } from "lucide-react";
-import SavedGallery, { SavedTile } from "@/components/SavedGallery";
+import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
@@ -125,16 +125,23 @@ const UserProfileModal = ({
             )}
 
             {saved && saved.count > 0 && (
-              <div className="rounded-lg bg-surface-4 p-4">
-                <button type="button" onClick={() => setGalleryOpen(true)} className="w-full flex items-center gap-2 text-left">
-                  <span className="text-h2 flex-1">Сохранёнки</span>
-                  <span className="text-small text-subtle">{saved.count}</span>
-                  <ChevronRight className="w-4 h-4 text-subtle" />
-                </button>
-                <div className="mt-3 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="w-20 h-[98px] shrink-0" onClick={() => setGalleryOpen(true)} />)}
-                </div>
+            <div className="rounded-lg bg-surface-4 p-4">
+              <div className="flex items-center gap-2">
+                <span className="text-h2 flex-1">Сохранёнки</span>
+                <span className="text-small text-subtle">{pluralPhotos(saved.count)}</span>
               </div>
+              {saved.items.length > 0 ? (
+                <div className="mt-3 grid grid-cols-5 gap-1.5">
+                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-white/5" onClick={() => setGalleryOpen(true)} />)}
+                </div>
+              ) : (
+                <p className="mt-2 text-small text-subtle"></p>
+              )}
+              <button type="button" onClick={() => setGalleryOpen(true)} className="mt-3 -mb-4 -mx-4 px-4 h-11 w-[calc(100%+32px)] border-t border-border flex items-center text-body active:bg-surface-3">
+                <span className="flex-1 text-left">Все сохранёнки</span>
+                <ChevronRight className="w-4 h-4 text-subtle" />
+              </button>
+            </div>
             )}
 
             <div className="rounded-lg bg-surface-4 p-4">

@@ -505,7 +505,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           item={viewer}
           onClose={() => setViewer(null)}
           actions={[
-            { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-subtle" />, onClick: async () => {
+            { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
               try { const r = await api.addSavedImage(viewer.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки"); }
               catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
             } },

@@ -5,6 +5,9 @@ import { api, type SavedImage } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import ImageViewer from "@/components/ImageViewer";
 
+/** «1 фото», «12 фото» — слово не склоняется, но пусть будет одной точкой. */
+export const pluralPhotos = (n: number) => `${n} фото`;
+
 /** Плитка сохранёнки: картинка грузится через useMediaUrl (медиа за токеном). */
 export const SavedTile = ({ item, className, onClick }: { item: SavedImage; className?: string; onClick?: () => void }) => {
   const url = useMediaUrl(item.file_url);

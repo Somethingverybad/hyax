@@ -1908,7 +1908,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 setViewer(null);
                 if (m) { setForwardQuery(""); setForwardFor(m); }
               } },
-              { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-subtle" />, onClick: async () => {
+              { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
                 try {
                   const r = await api.addSavedImage(viewer.messageId!);
                   toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки");
