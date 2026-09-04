@@ -1,0 +1,9 @@
+{
+  "name": "ХУЯКС",
+  "short_name": "ХУЯКС",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f10",
+  "theme_color": "#0f0f10",
+  "icons": [{ "src": "/notification-icon.png", "sizes": "256x256", "type": "image/png" }]
+}

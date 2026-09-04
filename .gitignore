@@ -10,3 +10,4 @@ secrets/
 # наружу не выкладываем. Реквизиты описаны в secrets/README.md
 sux-chat-app/ios/App/App/GoogleService-Info.plist
 sux-chat-app/android/app/google-services.json
+web/
