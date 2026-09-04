@@ -9,6 +9,7 @@ const config: CapacitorConfig = {
     iosScheme: 'https',
     allowNavigation: [
       'huyax.e-tree.su',
+      'cdn.huyax.e-tree.su',
       'localhost',
       '127.0.0.1'
     ]

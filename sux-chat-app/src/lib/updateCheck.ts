@@ -6,7 +6,8 @@ import { APP_VERSION } from "./appVersion";
  * сравнивает свою APP_VERSION с версией из манифеста и, если серверная выше,
  * показывает плашку. Ссылку на файл выбираем под платформу.
  */
-const MANIFEST_URL = "https://huyax.e-tree.su/apk/version.json";
+const MANIFEST_URL = "https://cdn.huyax.e-tree.su/apk/version.json";
+const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
 
 export interface UpdateManifest {
   version: string;
@@ -43,7 +44,9 @@ function desktopOs(): "mac" | "win" | "linux" {
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
   try {
-    const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: "no-store" });
+    // Манифест через CDN, при сетевой ошибке — напрямую с сервера.
+    const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(5000) })
+      .catch(() => fetch(`${MANIFEST_URL_DIRECT}?t=${Date.now()}`, { cache: "no-store" }));
     if (!res.ok) return null;
     const m: UpdateManifest = await res.json();
     if (!m?.version || cmp(m.version, APP_VERSION) <= 0) return null;

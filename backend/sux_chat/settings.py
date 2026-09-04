@@ -10,6 +10,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 # Для продакшена укажите конкретные домены/IP
 ALLOWED_HOSTS = [
     "huyax.e-tree.su", 
+    "cdn.huyax.e-tree.su",
     "localhost", 
     "127.0.0.1", 
     "95.214.63.151",
@@ -128,6 +129,7 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 CORS_ALLOWED_ORIGINS = [
     "https://huyax.e-tree.su",
+    "https://cdn.huyax.e-tree.su",
     "http://huyax.e-tree.su",
     "http://localhost:5143",  # Electron версия
     "http://localhost:5173",  # PWA версия (dev)

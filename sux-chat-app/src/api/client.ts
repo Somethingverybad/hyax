@@ -1,17 +1,57 @@
-const API_URL = import.meta.env.VITE_API_URL || "https://huyax.e-tree.su/api";
+// Сервер и его CDN-прокси. HTTP (API, медиа, загрузки) идёт через CDN,
+// чтобы клиенты не стучались на сервер напрямую; WebSocket CDN не проксирует,
+// он всегда идёт на сервер. Если CDN не отвечает (не настроен, лежит,
+// заблокирован) — откатываемся на прямой адрес: и при старте (проба /health),
+// и по сетевой ошибке любого запроса.
+const DIRECT_ORIGIN = "https://huyax.e-tree.su";
+const CDN_ORIGIN = "https://cdn.huyax.e-tree.su";
+const ENV_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/api\/?$/, "");
+
+let apiOrigin = ENV_ORIGIN || CDN_ORIGIN;
+let API_URL = `${apiOrigin}/api`;
+
+export const getApiOrigin = () => apiOrigin;
+export const isCdnActive = () => apiOrigin === CDN_ORIGIN;
+
+function switchToDirect(reason: string) {
+  if (apiOrigin === DIRECT_ORIGIN || ENV_ORIGIN) return;
+  console.warn(`[api] CDN недоступен (${reason}), переключаюсь на прямой адрес`);
+  apiOrigin = DIRECT_ORIGIN;
+  API_URL = `${DIRECT_ORIGIN}/api`;
+}
+
+/** Быстрая проба CDN при старте: 3 секунды на ответ /health, иначе — напрямую. */
+if (!ENV_ORIGIN && typeof window !== "undefined") {
+  fetch(`${CDN_ORIGIN}/health`, { cache: "no-store", signal: AbortSignal.timeout(3000) })
+    .then((r) => { if (!r.ok) switchToDirect(`health ${r.status}`); })
+    .catch((e) => switchToDirect(e?.name || "network"));
+}
+
+/** fetch с откатом: сетевая ошибка на CDN-адресе → повтор того же запроса напрямую. */
+async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const url = typeof input === "string" ? input : (input as Request).url;
+  try {
+    return await fetch(input, init);
+  } catch (e) {
+    // Запрос мог быть собран с CDN-адресом до того, как проба переключила
+    // origin — повторяем напрямую в любом случае, если URL был на CDN.
+    if (!url.startsWith(CDN_ORIGIN)) throw e;
+    switchToDirect((e as Error)?.name || "network");
+    return fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
+  }
+}
+
+// WebSocket для сигналинга звонков и уведомлений — всегда напрямую на сервер.
+export const WS_URL = `${(ENV_ORIGIN || DIRECT_ORIGIN).replace(/^http/, "ws")}/ws`;
 
 // Сервер отдаёт пути к медиа относительными (/media/...). В вебе они
 // резолвятся от домена сайта, а в приложении WebView живёт на
 // capacitor://localhost — и картинка искалась бы внутри бандла. Достраиваем
-// до абсолютного URL от хоста API.
-const MEDIA_ORIGIN = API_URL.replace(/\/api\/?$/, "");
-// WebSocket для сигналинга звонков и уведомлений: тот же хост, что API.
-export const WS_URL = `${MEDIA_ORIGIN.replace(/^http/, "ws")}/ws`;
-
+// до абсолютного URL от текущего хоста API (CDN или прямой).
 export function mediaUrl(path?: string | null): string {
   if (!path) return "";
   if (/^(https?:|blob:|data:)/.test(path)) return path;
-  return `${MEDIA_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+  return `${apiOrigin}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 interface AuthResponse {
@@ -94,7 +134,7 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
     },
   };
 
-  let res = await fetch(input, authInit);
+  let res = await fetchWithFallback(input, authInit);
 
   // Эндпоинты авторизации обновлять нечем и незачем: 401 там означает
   // «неверные данные», а не «протух токен». Без этой проверки обёртка лезла
@@ -110,7 +150,7 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
     if (!refreshToken) throw new Error("Unauthorized: no refresh token");
 
     try {
-      const refreshRes = await fetch(`${API_URL}/token/refresh/`, {
+      const refreshRes = await fetchWithFallback(`${API_URL}/token/refresh/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh: refreshToken }),
@@ -167,7 +207,7 @@ export async function getFreshAccessToken(): Promise<string | undefined> {
   if (!refresh) return token;
 
   try {
-    const res = await fetch(`${API_URL}/token/refresh/`, {
+    const res = await fetchWithFallback(`${API_URL}/token/refresh/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh }),
@@ -203,7 +243,7 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
     },
   };
 
-  let res = await fetch(input, authInit);
+  let res = await fetchWithFallback(input, authInit);
 
   // Если access token устарел — пробуем обновить (та же логика что и в fetchWithAuth)
   if (res.status === 401) {
@@ -211,7 +251,7 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
     if (!refreshToken) throw new Error("Unauthorized: no refresh token");
 
     try {
-      const refreshRes = await fetch(`${API_URL}/token/refresh/`, {
+      const refreshRes = await fetchWithFallback(`${API_URL}/token/refresh/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh: refreshToken }),
