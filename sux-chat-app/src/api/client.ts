@@ -31,6 +31,13 @@ interface Profile {
   push_preview?: boolean;
 }
 
+export interface SavedImage {
+  id: string;
+  file_url: string;
+  file_name: string;
+  created_at: string;
+}
+
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
 export interface PinnedInfo {
   id: string;
@@ -427,6 +434,23 @@ export const api = {
   },
 
   // Переслать сообщение в другой чат (в «Избранное» — тоже сюда).
+  // «Сохранёнки»: картинки из переписки в профиле.
+  listSavedImages: async (profileId?: string, limit?: number): Promise<{ count: number; items: SavedImage[] }> => {
+    const q = new URLSearchParams(); if (profileId) q.set("profile", profileId); if (limit) q.set("limit", String(limit));
+    const res = await fetchWithAuth(`${API_URL}/saved-images/${q.toString() ? "?" + q : ""}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить сохранёнки");
+    return res.json();
+  },
+  addSavedImage: async (messageId: string): Promise<SavedImage & { already?: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/saved-images/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ message_id: messageId }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Не удалось сохранить");
+    return { ...d, already: res.status === 200 };
+  },
+  deleteSavedImage: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/saved-images/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok && res.status !== 404) throw new Error("Не удалось удалить");
+  },
   forwardMessage: async (messageId: string, chatId: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/forward/`, {
       method: "POST",

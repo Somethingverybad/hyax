@@ -288,3 +288,10 @@ class PostCommentSerializer(serializers.ModelSerializer):
         model = PostComment
         fields = ['id', 'post', 'author', 'parent', 'content', 'created_at']
         read_only_fields = ['id', 'author', 'created_at']
+
+
+class SavedImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedImage
+        fields = ['id', 'file_url', 'file_name', 'created_at']
+        read_only_fields = fields

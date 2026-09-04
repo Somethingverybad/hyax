@@ -18,6 +18,7 @@ import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, MessageImage, MessageVideoFile, MessageFile, VideoNote, isImageFile, isVideoFile, previewSize } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
+import ImageViewer from "@/components/ImageViewer";
 
 interface Profile {
   id: string;
@@ -118,7 +119,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [sounds, setSounds] = useState<NotificationSoundInfo[]>([]);
   const [selectedSound, setSelectedSound] = useState<NotificationSoundInfo | null>(null);
   // Открытая на весь экран картинка: { url, name }.
-  const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
+  const [viewer, setViewer] = useState<{ url: string; name: string; messageId?: string } | null>(null);
   // Проигрывание аудио-стикера по тапу; тап в любом месте прерывает.
   const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
   const soundStopRef = useRef<(() => void) | null>(null);
@@ -511,19 +512,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (el.scrollTop < 160 && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
   };
 
-  const scrollToBottom = () => {
+  /** Прокрутка в самый низ: при открытии чата — мгновенно, при отправке — плавно. */
+  const scrollToBottom = (smooth = false) => {
     setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-      
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'smooth',
-          block: 'end'
-        });
-      }
-    }, 100);
+      const el = scrollRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+      else messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "end" });
+    }, smooth ? 30 : 100);
   };
 
   const handlePick = async (
@@ -748,7 +743,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setReplyTo(null);
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
-    setTimeout(() => scrollToBottom(), 50);
+    setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
 
     try {
@@ -1400,7 +1395,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               name={message.file_name}
                               dims={message._dims}
                               localMap={localImagesRef.current}
-                              onOpen={(url, name) => setViewer({ url, name })}
+                              onOpen={(url, name) => setViewer({ url, name, messageId: message.id })}
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
                           ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
@@ -1906,7 +1901,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <ImageViewer
           item={viewer}
           onClose={() => setViewer(null)}
-          onSave={() => handleSaveFile(viewer.url, viewer.name)}
+          actions={[
+            ...(viewer.messageId ? [
+              { label: "Переслать", icon: <Forward className="w-5 h-5 text-subtle" />, onClick: () => {
+                const m = messages.find((x) => x.id === viewer.messageId);
+                setViewer(null);
+                if (m) { setForwardQuery(""); setForwardFor(m); }
+              } },
+              { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-subtle" />, onClick: async () => {
+                try {
+                  const r = await api.addSavedImage(viewer.messageId!);
+                  toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки");
+                } catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+              } },
+            ] : []),
+            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: () => handleSaveFile(viewer.url, viewer.name) },
+          ]}
         />
       )}
     </div>
@@ -1980,71 +1990,6 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
       </span>
       <span className="text-xs opacity-80 shrink-0">{label}</span>
     </button>
-  );
-};
-
-const ImageViewer = ({
-  item,
-  onClose,
-  onSave,
-}: {
-  item: { url: string; name: string };
-  onClose: () => void;
-  onSave: () => void;
-}) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black flex items-center justify-center"
-      style={{
-        paddingTop: "var(--sat)",
-        paddingBottom: "var(--sab)",
-      }}
-      onClick={onClose}
-    >
-      {/* Шапка: закрыть и меню */}
-      <div
-        className="absolute inset-x-0 flex items-center justify-between px-3"
-        style={{ top: "calc(var(--sat) + 0.5rem)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button type="button" onClick={onClose} className="p-2 text-white" aria-label="Закрыть">
-          <X className="w-6 h-6" />
-        </button>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            className="p-2 text-white"
-            aria-label="Меню"
-          >
-            <MoreVertical className="w-6 h-6" />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-card border border-border min-w-[160px]">
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onSave();
-                }}
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-left active:bg-secondary"
-              >
-                <Download className="w-4 h-4" />
-                Скачать
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <img
-        src={item.url}
-        alt=""
-        className="max-h-full max-w-full object-contain"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
   );
 };
 

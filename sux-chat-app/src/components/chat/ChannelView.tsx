@@ -2,12 +2,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
+import ImageViewer from "@/components/ImageViewer";
 import { toast } from "sonner";
-import {
-  X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings,
-  Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon,
-  Video, FileText, SwitchCamera, Triangle,
-} from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
@@ -37,13 +34,13 @@ const fmtTime = (iso: string) =>
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
  *  (download_only — всегда строкой, даже если это картинка). */
-const PostImage = ({ raw }: { raw: string }) => {
+const PostImage = ({ raw, onOpen }: { raw: string; onOpen?: (url: string) => void }) => {
   const url = useMediaUrl(raw);
   if (!url) return <div className="mt-2 h-40 bg-black/20 animate-pulse" />;
-  return <img src={url} alt="" className="mt-2 max-h-80 w-full object-contain bg-black/20" loading="lazy" />;
+  return <img src={url} alt="" className="mt-2 max-h-80 w-full object-contain bg-black/20 rounded-md cursor-zoom-in" loading="lazy" onClick={() => onOpen?.(url)} />;
 };
 
-const PostMedia = ({ post }: { post: Post }) => {
+const PostMedia = ({ post, onOpenImage }: { post: Post; onOpenImage?: (url: string, post: Post) => void }) => {
   if (post.video_url) {
     return (
       <div className="mt-2">
@@ -52,7 +49,7 @@ const PostMedia = ({ post }: { post: Post }) => {
     );
   }
   if (!post.file_url) return null;
-  if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} />;
+  if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageVideoFile raw={post.file_url} /></div>;
   }
@@ -78,6 +75,7 @@ const pluralSubs = (n: number) => {
 };
 
 const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps) => {
+  const [viewer, setViewer] = useState<{ url: string; name: string; messageId: string } | null>(null);
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,7 +325,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
-                <PostMedia post={post} />
+                <PostMedia post={post} onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
                 <div className="flex items-center gap-4 mt-2 text-caption text-subtle">
                   <span>{fmtTime(post.created_at)}</span>
                   <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{post.views_count ?? 0}</span>
@@ -502,6 +500,19 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         />
       )}
 
+      {viewer && (
+        <ImageViewer
+          item={viewer}
+          onClose={() => setViewer(null)}
+          actions={[
+            { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-subtle" />, onClick: async () => {
+              try { const r = await api.addSavedImage(viewer.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки"); }
+              catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+            } },
+            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: () => window.open(viewer.url, "_blank") },
+          ]}
+        />
+      )}
       {commentsFor && (
         <CommentsSheet
           post={commentsFor}

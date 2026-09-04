@@ -412,3 +412,20 @@ class PostView(models.Model):
 
     class Meta:
         unique_together = ("post", "user")
+
+
+class SavedImage(models.Model):
+    """«Сохранёнки»: картинки из переписки, которые пользователь сохранил себе.
+    Видны в профиле (и другим тоже, как в референсе), удалять может только
+    владелец. Храним ссылку на файл, а не на сообщение: удаление сообщения
+    сохранёнку не трогает."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="saved_images")
+    file_url = models.TextField()
+    file_name = models.TextField(blank=True, default="")
+    source_message = models.ForeignKey(Message, on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["owner", "file_url"], name="uniq_saved_image_per_owner")]

@@ -8,7 +8,9 @@ import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
-import { Camera, LogOut, Share2, Copy } from "lucide-react";
+import { Camera, LogOut, Share2, Copy, ChevronRight } from "lucide-react";
+import SavedGallery, { SavedTile } from "@/components/SavedGallery";
+import type { SavedImage } from "@/api/client";
 
 interface Profile {
   id: string;
@@ -99,6 +101,11 @@ const ProfilePage = () => {
     if (!Capacitor.isNativePlatform()) return;
     App.getInfo().then((i) => setNativeBuild(i.build)).catch(() => {});
   }, []);
+  // Сохранёнки: счётчик и пять превью для карточки в профиле.
+  const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const loadSaved = () => api.listSavedImages(undefined, 5).then(setSaved).catch(() => setSaved({ count: 0, items: [] }));
+  useEffect(() => { void loadSaved(); }, []);
   const platformLabel = Capacitor.getPlatform() === "ios" ? "iOS" : "Android";
 
   return (
@@ -210,6 +217,21 @@ const ProfilePage = () => {
           ))}
         </div>
 
+        <div className="rounded-lg bg-surface-2 p-4">
+          <button type="button" onClick={() => setGalleryOpen(true)} className="w-full flex items-center gap-2 text-left">
+            <span className="text-h2 flex-1">Сохранёнки</span>
+            <span className="text-small text-subtle">{saved ? saved.count : "…"}</span>
+            <ChevronRight className="w-4 h-4 text-subtle" />
+          </button>
+          {saved && saved.items.length > 0 ? (
+            <div className="mt-3 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {saved.items.map((it) => <SavedTile key={it.id} item={it} className="w-20 h-[98px] shrink-0" onClick={() => setGalleryOpen(true)} />)}
+            </div>
+          ) : (
+            <p className="mt-2 text-small text-subtle">Открой фото в чате, тапни по нему и выбери «Добавить в сохранёнки».</p>
+          )}
+        </div>
+
         <div className="rounded-lg bg-surface-2 divide-y divide-border">
           {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
               вместо текста; сам пуш при этом всё равно зашифрован. */}
@@ -250,6 +272,10 @@ const ProfilePage = () => {
           {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
         </div>
       </div>
+
+      {galleryOpen && (
+        <SavedGallery own onClose={() => { setGalleryOpen(false); void loadSaved(); }} />
+      )}
 
       <BottomNav />
     </div>

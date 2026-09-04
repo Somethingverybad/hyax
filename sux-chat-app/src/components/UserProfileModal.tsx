@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { X, Phone, Share2, Copy } from "lucide-react";
+import { X, Phone, Share2, Copy, ChevronRight } from "lucide-react";
+import SavedGallery, { SavedTile } from "@/components/SavedGallery";
+import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { shareProfile } from "@/lib/share";
@@ -28,6 +30,13 @@ const UserProfileModal = ({
 }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    api.listSavedImages(userId, 5).then((d) => alive && setSaved(d)).catch(() => alive && setSaved({ count: 0, items: [] }));
+    return () => { alive = false; };
+  }, [userId]);
 
   useEffect(() => {
     let alive = true;
@@ -115,6 +124,19 @@ const UserProfileModal = ({
               </div>
             )}
 
+            {saved && saved.count > 0 && (
+              <div className="rounded-lg bg-surface-4 p-4">
+                <button type="button" onClick={() => setGalleryOpen(true)} className="w-full flex items-center gap-2 text-left">
+                  <span className="text-h2 flex-1">Сохранёнки</span>
+                  <span className="text-small text-subtle">{saved.count}</span>
+                  <ChevronRight className="w-4 h-4 text-subtle" />
+                </button>
+                <div className="mt-3 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="w-20 h-[98px] shrink-0" onClick={() => setGalleryOpen(true)} />)}
+                </div>
+              </div>
+            )}
+
             <div className="rounded-lg bg-surface-4 p-4">
               <p className="text-h2 mb-2">Информация</p>
               {[
@@ -138,6 +160,9 @@ const UserProfileModal = ({
           </div>
         )}
       </div>
+      {galleryOpen && profile && (
+        <SavedGallery profileId={profile.id} own={false} title={`Сохранёнки ${profile.username}`} onClose={() => setGalleryOpen(false)} />
+      )}
     </div>
   );
 };

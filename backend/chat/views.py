@@ -1,3 +1,4 @@
+import re
 import uuid
 import logging
 from django.db import models
@@ -2141,3 +2142,50 @@ class PostViewMark(APIView):
             return Response({"error": "Нет доступа"}, status=403)
         PostView.objects.get_or_create(post=msg, user=me)
         return Response({"views_count": msg.views.count()})
+
+
+
+class SavedImagesView(APIView):
+    """Сохранёнки. GET — свои или чужие (?profile=<id>, ?limit=N); POST
+    {message_id} — сохранить картинку из сообщения (нужен доступ к чату);
+    DELETE /saved-images/<id>/ — удалить свою."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return Response({"error": "Profile not found"}, status=400)
+        owner_id = request.query_params.get('profile') or profile.id
+        qs = SavedImage.objects.filter(owner_id=owner_id)
+        total = qs.count()
+        try:
+            limit = min(int(request.query_params.get('limit', 200)), 500)
+        except ValueError:
+            limit = 200
+        return Response({"count": total, "items": SavedImageSerializer(qs[:limit], many=True).data})
+
+    def post(self, request):
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return Response({"error": "Profile not found"}, status=400)
+        msg = Message.objects.filter(id=request.data.get('message_id')).select_related('chat').first()
+        if not msg or not msg.file_url:
+            return Response({"error": "Сообщение с картинкой не найдено"}, status=404)
+        if not _can_see_chat(msg.chat, profile):
+            return Response({"error": "Нет доступа к сообщению"}, status=403)
+        name = (msg.file_name or msg.file_url or '').lower()
+        if not re.search(r'\.(jpe?g|png|gif|webp|heic|heif|bmp)$', name.split('?')[0]):
+            return Response({"error": "Сохранять можно только картинки"}, status=400)
+        item, created = SavedImage.objects.get_or_create(
+            owner=profile, file_url=msg.file_url,
+            defaults={"file_name": msg.file_name or "", "source_message": msg},
+        )
+        return Response(SavedImageSerializer(item).data, status=201 if created else 200)
+
+    def delete(self, request, pk=None):
+        profile = getattr(request.user, 'profile', None)
+        item = SavedImage.objects.filter(id=pk, owner=profile).first()
+        if not item:
+            return Response({"error": "Не найдено"}, status=404)
+        item.delete()
+        return Response(status=204)
