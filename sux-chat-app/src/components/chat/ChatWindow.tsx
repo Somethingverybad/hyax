@@ -462,6 +462,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     });
   };
 
+  const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   /** Приращение с сервера: всё, что менялось после последней синхронизации. */
   const syncSince = async (id: string | null = chatId) => {
     if (!id) return;
@@ -470,6 +472,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (id !== chatId) return; // чат успели переключить
       syncedAtRef.current = r.now;
       if (r.messages.length || r.deleted.length) applyBatch(r.messages, r.deleted);
+      // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
+      // Иначе бейдж в списке чатов оставался, хотя человек всё видел и ответил.
+      if (r.messages.some((m) => m.sender?.id !== userId) && (typeof document === "undefined" || document.visibilityState === "visible")) {
+        clearTimeout(markReadTimerRef.current);
+        markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 400);
+      }
       setMessages(prev => { void writeMessages(id, prev, r.now, hasMoreRef.current); return prev; });
     } catch {
       console.log("Не удалось синхронизировать сообщения");

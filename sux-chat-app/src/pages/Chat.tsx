@@ -110,6 +110,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     setChats((prev) =>
       prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0 } : c))
     );
+    // И при уходе из чата: всё, что пришло, пока он был открыт, тоже прочитано.
+    return () => { api.markChatAsRead(selectedChatId).catch(() => {}); };
   }, [selectedChatId]);
 
   // 🔔 Проверка аутентификации и получение профиля + инициализация уведомлений

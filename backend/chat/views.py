@@ -414,7 +414,23 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import MessageReadStatus
 
+def _mark_chat_read_for(chat, profile):
+    """Помечает прочитанными все чужие сообщения чата для profile. Вызывается,
+    когда человек сам пишет в чат: раз ответил — значит, видел. Иначе входящие,
+    пришедшие пока чат был открыт, оставались «непрочитанными» и в списке чатов
+    висел бейдж поверх собственного последнего сообщения."""
+    try:
+        unread = Message.objects.filter(chat=chat).exclude(Q(read_statuses__user=profile) | Q(sender=profile))
+        now = timezone.now()
+        MessageReadStatus.objects.bulk_create(
+            [MessageReadStatus(message=m, user=profile, read_at=now) for m in unread], ignore_conflicts=True,
+        )
+    except Exception:
+        logger.exception("mark_chat_read_for failed")
+
+
 def _notify_new_message(message, profile, request):
+    _mark_chat_read_for(message.chat, profile)
     """Разослать новое сообщение: в сокет чата, пуш остальным участникам и
     персональные уведомления в сокеты (веб/десктоп без пушей). Общее для
     обычной отправки и пересылки."""
