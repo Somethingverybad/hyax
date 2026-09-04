@@ -64,6 +64,9 @@ public class CallMessagingService extends FirebaseMessagingService {
     }
 
     private void showEncryptedMessage(Map<String, String> data) {
+        // Приложение на экране — уведомление не нужно: сообщение уже пришло
+        // по сокету и прозвучало само, как и раньше с системными пушами.
+        if (MainActivity.isForeground) return;
         JSONObject p = PushCrypto.decrypt(getApplicationContext(), data.get("e"));
         String title = p != null ? p.optString("title", "ХУЯКС") : "ХУЯКС";
         String body = p != null ? p.optString("body", "Новое сообщение") : "Новое сообщение";
