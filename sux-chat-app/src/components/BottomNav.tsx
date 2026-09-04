@@ -3,9 +3,8 @@ import { MessageSquare, Bookmark, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Нижняя навигация — только на телефоне. Плоские плитки без скруглений,
- * активная вкладка отмечается алой полосой сверху: супрематизм размечает
- * состояние геометрией, а не свечением.
+ * Нижняя навигация — только на телефоне. Три иконки без подписей, активная —
+ * красная: так на референсах, и так экономнее по высоте.
  *
  * Подкладывается под home-индикатор (pad-safe-bottom), чтобы фон доходил
  * до края экрана.
@@ -18,22 +17,22 @@ const ITEMS = [
 
 const BottomNav = () => {
   return (
-    <nav className="shrink-0 flex border-t border-border bg-card pad-safe-bottom">
+    <nav className="shrink-0 flex border-t border-border bg-background pad-safe-bottom">
       {ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
+          aria-label={label}
+          title={label}
           className={({ isActive }) =>
             cn(
-              "flex-1 flex flex-col items-center gap-1 pt-2 pb-1 border-t-2 transition-colors",
-              isActive
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground",
+              "flex-1 flex items-center justify-center h-14 transition-colors active:bg-surface-2",
+              isActive ? "text-primary" : "text-muted-foreground",
             )
           }
         >
-          <Icon className="w-5 h-5" />
-          <span className="text-[11px] font-medium">{label}</span>
+          {/* Без подписей, как на референсе: активная вкладка — красная иконка. */}
+          <Icon className="w-6 h-6" />
         </NavLink>
       ))}
     </nav>

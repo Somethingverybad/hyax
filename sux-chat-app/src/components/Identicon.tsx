@@ -7,12 +7,13 @@ import { mediaUrl } from "@/api/client";
  * и одинакова на всех устройствах — без хранения и синхронизации.
  */
 
+// Плоские цвета фигур — из референсов: красный, зелёный, синий, белый, охра.
 const PALETTE = [
-  "#d92419", // алый
-  "#1d8a4a", // зелёный
+  "#bc1c15", // красный
+  "#299248", // зелёный
   "#f2f2f2", // белый
   "#d97b19", // охра
-  "#2456b8", // синий
+  "#244cb6", // синий
   "#8a8a8a", // серый
 ];
 
@@ -62,7 +63,7 @@ const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) =
       <img
         src={mediaUrl(avatarUrl)}
         alt=""
-        className={`${className} object-cover shrink-0 select-none`}
+        className={`${className} rounded-md object-cover shrink-0 select-none`}
         draggable={false}
       />
     );
@@ -71,7 +72,7 @@ const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) =
   const shape = SHAPES[h % SHAPES.length];
   const color = PALETTE[Math.floor(h / SHAPES.length) % PALETTE.length];
   return (
-    <div className={`${className} shrink-0 bg-secondary`} aria-hidden>
+    <div className={`${className} rounded-md shrink-0 bg-surface-3 overflow-hidden`} aria-hidden>
       <svg viewBox="0 0 100 100" className="w-full h-full">
         <ShapeSvg shape={shape} color={color} />
       </svg>
