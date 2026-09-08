@@ -20,6 +20,7 @@ import type { ChatInfo } from "@/api/client";
 import { LivePreview, MessageImage, MessageVideoFile, MessageFile, VideoNote, isImageFile, isVideoFile, previewSize } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer from "@/components/ImageViewer";
+import StickerView from "@/components/chat/StickerView";
 
 /** Телефон/планшет: экранная клавиатура, Enter вставляет перенос строки. */
 const isTouchDevice = () =>
@@ -1426,12 +1427,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Стикер: показываем картинкой без фона пузыря — так же,
                           как это выглядит в мессенджерах. */}
                       {message.sticker?.file_url && (
-                        <img
-                          src={mediaUrl(message.sticker.file_url)}
-                          alt={message.sticker.emoji || "Стикер"}
-                          className="w-32 h-32 object-contain"
-                          loading="lazy"
-                        />
+                        <StickerView url={message.sticker.file_url} alt={message.sticker.emoji || "Стикер"} className="w-32 h-32 object-contain" />
                       )}
 
                       {/* Видео-сообщение: треугольник вершиной вверх */}

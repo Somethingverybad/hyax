@@ -429,3 +429,21 @@ class SavedImage(models.Model):
     class Meta:
         ordering = ["-created_at"]
         constraints = [models.UniqueConstraint(fields=["owner", "file_url"], name="uniq_saved_image_per_owner")]
+
+
+class MusicTrack(models.Model):
+    """Музыка в Creative Space: общая библиотека, каждый загружает своё,
+    удалить может только владелец. Длительность считает ffprobe при загрузке."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="music_tracks")
+    title = models.CharField(max_length=120)
+    artist = models.CharField(max_length=120, blank=True, default="")
+    file = models.FileField(upload_to="music/")
+    duration = models.IntegerField(default=0)  # секунды
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.artist} — {self.title}" if self.artist else self.title

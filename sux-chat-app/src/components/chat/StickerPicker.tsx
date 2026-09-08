@@ -1,3 +1,4 @@
+import StickerView from "@/components/chat/StickerView";
 import { useEffect, useRef, useState } from "react";
 import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
@@ -438,12 +439,7 @@ const StickerPicker = ({
                 onClick={() => onSelect(s)}
                 className="aspect-square rounded-lg p-1 active:scale-90 transition-transform"
               >
-                <img
-                  src={mediaUrl(s.file_url)}
-                  alt={s.emoji || ""}
-                  className="w-full h-full object-contain"
-                  loading="lazy"
-                />
+                <StickerView url={s.file_url} alt={s.emoji || ""} className="w-full h-full object-contain" />
               </button>
             ))}
           </div>

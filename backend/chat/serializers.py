@@ -295,3 +295,17 @@ class SavedImageSerializer(serializers.ModelSerializer):
         model = SavedImage
         fields = ['id', 'file_url', 'file_name', 'created_at']
         read_only_fields = fields
+
+
+class MusicTrackSerializer(serializers.ModelSerializer):
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    owner_id = serializers.UUIDField(source='owner.id', read_only=True)
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MusicTrack
+        fields = ['id', 'title', 'artist', 'url', 'duration', 'owner_id', 'owner_username', 'created_at']
+        read_only_fields = fields
+
+    def get_url(self, obj):
+        return obj.file.url if obj.file else ''

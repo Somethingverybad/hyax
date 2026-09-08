@@ -1195,6 +1195,26 @@ class StickerPackViewSet(viewsets.ModelViewSet):
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
     
+    def destroy(self, request, *args, **kwargs):
+        pack = self.get_object()
+        if pack.author_id != getattr(getattr(request.user, 'profile', None), 'id', None):
+            return Response({"error": "Удалять может только автор пака"}, status=403)
+        # файлы стикеров с диска
+        for s in pack.stickers.all():
+            try:
+                if s.file_url.startswith('/media/'):
+                    os.remove(os.path.join(settings.MEDIA_ROOT, s.file_url[len('/media/'):]))
+            except Exception:
+                pass
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'])
+    def authored(self, request):
+        """Паки, которые создал я (для студии)."""
+        profile = getattr(request.user, 'profile', None)
+        qs = StickerPack.objects.filter(author=profile).prefetch_related('stickers').order_by('-created_at')
+        return Response(StickerPackSerializer(qs, many=True, context={'request': request}).data)
+
     @action(detail=False, methods=['post'])
     def import_pack(self, request):
         """Импортировать стикерпак по коду (ID)"""
@@ -2207,4 +2227,157 @@ class SavedImagesView(APIView):
         if not item:
             return Response({"error": "Не найдено"}, status=404)
         item.delete()
+        return Response(status=204)
+
+
+
+# ── Импорт стикерпака из Telegram ─────────────────────────────────────────────
+# Ссылка t.me/addstickers/<name> → Bot API getStickerSet (нужен TELEGRAM_BOT_TOKEN
+# в .env) → файлы качаются в фоне в media/stickers: .webp (статика), .tgs
+# (анимация Lottie, gzip) и .webm (видео). Прогресс — в памяти процесса.
+IMPORT_PROGRESS = {}
+
+
+def _tg_pack_name(url):
+    m = re.search(r'(?:addstickers/|addemoji/|set=)([A-Za-z0-9_]+)', url or '')
+    return m.group(1) if m else None
+
+
+def _tg_import_worker(pack_id, token, stickers, profile_id):
+    import requests, os as _os
+    from django.conf import settings as _settings
+    prog = IMPORT_PROGRESS[pack_id]
+    stickers_dir = _os.path.join(_settings.MEDIA_ROOT, 'stickers')
+    _os.makedirs(stickers_dir, exist_ok=True)
+    order = 0
+    for st in stickers:
+        try:
+            f = requests.get(f'https://api.telegram.org/bot{token}/getFile', params={'file_id': st['file_id']}, timeout=30).json()
+            path = f.get('result', {}).get('file_path')
+            if not path:
+                prog['failed'] += 1; continue
+            data = requests.get(f'https://api.telegram.org/file/bot{token}/{path}', timeout=60).content
+            ext = _os.path.splitext(path)[1].lower() or ('.tgs' if st.get('is_animated') else '.webm' if st.get('is_video') else '.webp')
+            name = f'{uuid.uuid4()}{ext}'
+            with open(_os.path.join(stickers_dir, name), 'wb') as out:
+                out.write(data)
+            Sticker.objects.create(pack_id=pack_id, file_url=f'/media/stickers/{name}', file_name=name,
+                                   emoji=(st.get('emoji') or '')[:10], order=order)
+            order += 1
+            prog['done'] += 1
+        except Exception:
+            logger.exception('telegram sticker import failed')
+            prog['failed'] += 1
+    prog['finished'] = True
+
+
+class TelegramStickerImportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        import threading, requests
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return Response({"error": "Profile not found"}, status=400)
+        token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+        if not token:
+            return Response({"error": "На сервере не задан TELEGRAM_BOT_TOKEN"}, status=503)
+        name = _tg_pack_name(request.data.get('url') or request.data.get('name'))
+        if not name:
+            return Response({"error": "Не похоже на ссылку на стикерпак (t.me/addstickers/…)"}, status=400)
+        try:
+            r = requests.get(f'https://api.telegram.org/bot{token}/getStickerSet', params={'name': name}, timeout=30).json()
+        except Exception:
+            return Response({"error": "Telegram не отвечает"}, status=502)
+        if not r.get('ok'):
+            return Response({"error": r.get('description') or "Пак не найден"}, status=404)
+        s = r['result']
+        stickers = [x for x in s.get('stickers', []) if x.get('file_id')][:200]
+        pack = StickerPack.objects.create(name=(s.get('title') or name)[:100], description=f'Импорт из Telegram: {name}',
+                                          author=profile, is_public=True)
+        UserStickerPack.objects.get_or_create(user=profile, pack=pack)
+        IMPORT_PROGRESS[str(pack.id)] = {'total': len(stickers), 'done': 0, 'failed': 0, 'finished': not stickers,
+                                         'animated': sum(1 for x in stickers if x.get('is_animated')),
+                                         'video': sum(1 for x in stickers if x.get('is_video'))}
+        threading.Thread(target=_tg_import_worker, args=(str(pack.id), token, stickers, str(profile.id)), daemon=True).start()
+        return Response({"pack_id": str(pack.id), "name": pack.name, **IMPORT_PROGRESS[str(pack.id)]}, status=202)
+
+    def get(self, request, pk=None):
+        prog = IMPORT_PROGRESS.get(str(pk))
+        if not prog:
+            pack = StickerPack.objects.filter(id=pk).first()
+            if not pack:
+                return Response({"error": "not found"}, status=404)
+            n = pack.stickers.count()
+            return Response({'total': n, 'done': n, 'failed': 0, 'finished': True})
+        return Response(prog)
+
+
+# ── Музыка (Creative Space) ───────────────────────────────────────────────────
+class MusicView(APIView):
+    """GET — общая библиотека (?mine=1 — только мои); POST — загрузить трек
+    (multipart: file, title, artist); DELETE /music/<id>/ — своё."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        profile = getattr(request.user, 'profile', None)
+        qs = MusicTrack.objects.select_related('owner')
+        if request.query_params.get('mine'):
+            qs = qs.filter(owner=profile)
+        return Response({"items": MusicTrackSerializer(qs[:500], many=True).data})
+
+    def post(self, request):
+        import subprocess, tempfile, json as _json
+        from django.core.files import File
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return Response({"error": "Profile not found"}, status=400)
+        f = request.FILES.get('file')
+        if not f:
+            return Response({"error": "Нет файла"}, status=400)
+        if f.size > 40 * 1024 * 1024:
+            return Response({"error": "Файл больше 40 МБ"}, status=400)
+        ext = os.path.splitext(f.name)[1].lower()
+        if ext not in ('.mp3', '.m4a', '.aac', '.ogg', '.oga', '.opus', '.wav', '.flac'):
+            return Response({"error": "Поддерживаются mp3, m4a, aac, ogg, opus, wav, flac"}, status=400)
+        title = (request.data.get('title') or os.path.splitext(f.name)[0])[:120]
+        artist = (request.data.get('artist') or '')[:120]
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        for chunk in f.chunks():
+            tmp.write(chunk)
+        tmp.close()
+        duration = 0
+        try:
+            out = subprocess.run(['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', tmp.name],
+                                 capture_output=True, timeout=60).stdout
+            info = _json.loads(out or b'{}').get('format', {})
+            duration = int(float(info.get('duration', 0)))
+            tags = info.get('tags', {}) or {}
+            if not request.data.get('title') and tags.get('title'):
+                title = tags['title'][:120]
+            if not artist and tags.get('artist'):
+                artist = tags['artist'][:120]
+        except Exception:
+            logger.exception('ffprobe failed')
+        track = MusicTrack(owner=profile, title=title, artist=artist, duration=duration)
+        with open(tmp.name, 'rb') as src:
+            track.file.save(f'{uuid.uuid4()}{ext}', File(src), save=True)
+        try:
+            os.remove(tmp.name)
+        except Exception:
+            pass
+        return Response(MusicTrackSerializer(track).data, status=201)
+
+    def delete(self, request, pk=None):
+        profile = getattr(request.user, 'profile', None)
+        track = MusicTrack.objects.filter(id=pk, owner=profile).first()
+        if not track:
+            return Response({"error": "Не найдено"}, status=404)
+        try:
+            if track.file and os.path.exists(track.file.path):
+                os.remove(track.file.path)
+        except Exception:
+            pass
+        track.delete()
         return Response(status=204)
