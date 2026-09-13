@@ -2238,25 +2238,45 @@ class SavedImagesView(APIView):
 IMPORT_PROGRESS = {}
 
 
+def _tg_session():
+    """Одна keep-alive сессия на весь импорт. До Telegram с сервера доходит
+    только IPv6 через NAT66, и там теряется примерно каждый восьмой SYN:
+    свежее соединение на каждый запрос давало ConnectTimeout по 30 с и
+    дырявые паки (28/34). По одному соединению 16 запросов уходят за секунду;
+    Retry с бэкоффом добивает те SYN, что всё же потерялись."""
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    s = requests.Session()
+    retry = Retry(total=4, connect=4, read=2, backoff_factor=0.5,
+                  status_forcelist=(429, 500, 502, 503, 504), allowed_methods=frozenset(['GET']))
+    s.mount('https://', HTTPAdapter(max_retries=retry, pool_connections=1, pool_maxsize=2))
+    return s
+
+
+TG_TIMEOUT = (10, 60)  # connect, read
+
+
 def _tg_pack_name(url):
     m = re.search(r'(?:addstickers/|addemoji/|set=)([A-Za-z0-9_]+)', url or '')
     return m.group(1) if m else None
 
 
 def _tg_import_worker(pack_id, token, stickers, profile_id):
-    import requests, os as _os
+    import os as _os
     from django.conf import settings as _settings
     prog = IMPORT_PROGRESS[pack_id]
+    http = _tg_session()
     stickers_dir = _os.path.join(_settings.MEDIA_ROOT, 'stickers')
     _os.makedirs(stickers_dir, exist_ok=True)
     order = 0
     for st in stickers:
         try:
-            f = requests.get(f'https://api.telegram.org/bot{token}/getFile', params={'file_id': st['file_id']}, timeout=30).json()
+            f = http.get(f'https://api.telegram.org/bot{token}/getFile', params={'file_id': st['file_id']}, timeout=TG_TIMEOUT).json()
             path = f.get('result', {}).get('file_path')
             if not path:
                 prog['failed'] += 1; continue
-            data = requests.get(f'https://api.telegram.org/file/bot{token}/{path}', timeout=60).content
+            data = http.get(f'https://api.telegram.org/file/bot{token}/{path}', timeout=TG_TIMEOUT).content
             ext = _os.path.splitext(path)[1].lower() or ('.tgs' if st.get('is_animated') else '.webm' if st.get('is_video') else '.webp')
             name = f'{uuid.uuid4()}{ext}'
             with open(_os.path.join(stickers_dir, name), 'wb') as out:
@@ -2275,7 +2295,7 @@ class TelegramStickerImportView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        import threading, requests
+        import threading
         profile = getattr(request.user, 'profile', None)
         if profile is None:
             return Response({"error": "Profile not found"}, status=400)
@@ -2286,7 +2306,7 @@ class TelegramStickerImportView(APIView):
         if not name:
             return Response({"error": "Не похоже на ссылку на стикерпак (t.me/addstickers/…)"}, status=400)
         try:
-            r = requests.get(f'https://api.telegram.org/bot{token}/getStickerSet', params={'name': name}, timeout=30).json()
+            r = _tg_session().get(f'https://api.telegram.org/bot{token}/getStickerSet', params={'name': name}, timeout=TG_TIMEOUT).json()
         except Exception:
             return Response({"error": "Telegram не отвечает"}, status=502)
         if not r.get('ok'):
