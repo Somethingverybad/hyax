@@ -2232,8 +2232,8 @@ class SavedImagesView(APIView):
 
 
 # ── Импорт стикерпака из Telegram ─────────────────────────────────────────────
-# Ссылка t.me/addstickers/<name> → Bot API getStickerSet (нужен TELEGRAM_BOT_TOKEN
-# в .env) → файлы качаются в фоне в media/stickers: .webp (статика), .tgs
+# Ссылка t.me/addstickers/<name> → Bot API getStickerSet (нужен TG_BOT
+# или TELEGRAM_BOT_TOKEN в .env) → файлы качаются в фоне в media/stickers: .webp (статика), .tgs
 # (анимация Lottie, gzip) и .webm (видео). Прогресс — в памяти процесса.
 IMPORT_PROGRESS = {}
 
@@ -2279,9 +2279,9 @@ class TelegramStickerImportView(APIView):
         profile = getattr(request.user, 'profile', None)
         if profile is None:
             return Response({"error": "Profile not found"}, status=400)
-        token = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
+        token = (os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('TG_BOT') or '').strip()
         if not token:
-            return Response({"error": "На сервере не задан TELEGRAM_BOT_TOKEN"}, status=503)
+            return Response({"error": "На сервере не задан токен бота (TG_BOT)"}, status=503)
         name = _tg_pack_name(request.data.get('url') or request.data.get('name'))
         if not name:
             return Response({"error": "Не похоже на ссылку на стикерпак (t.me/addstickers/…)"}, status=400)
