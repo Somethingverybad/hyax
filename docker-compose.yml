@@ -58,6 +58,7 @@ services:
       - coturn
     networks:
       - sux_chat_network
+      - tg_v6  # выход в IPv6: api.telegram.org по IPv4 у провайдера недоступен
 
   coturn:
     image: coturn/coturn:4.6.3
@@ -98,6 +99,17 @@ networks:
   sux_chat_network:
     external: true  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
     name: sux_chat_network  # ← И ЭТУ (опционально, для ясности)
+
+  # IPv6-only выход для api. С хоста Telegram Bot API отвечает только по IPv6
+  # (IPv4-диапазоны 149.154.0.0/16 у провайдера не маршрутизируются), а
+  # sux_chat_network создана без IPv6. Docker ≥27 сам делает NAT66 (ip6tables)
+  # для ULA-подсети, поэтому контейнеру достаточно попасть в эту сеть.
+  tg_v6:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd7a:1e9a:c0de::/64
 
 volumes:
   postgres_data:
