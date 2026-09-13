@@ -59,6 +59,13 @@ services:
     networks:
       - sux_chat_network
       - tg_v6  # выход в IPv6: api.telegram.org по IPv4 у провайдера недоступен
+    # Резолвер отдаёт IPv4-адреса Telegram первыми, а они у провайдера уходят в
+    # чёрную дыру (не reject, а silent drop) — urllib3 доходит до IPv6 только
+    # после полного таймаута на каждом v4-адресе. /etc/hosts приоритетнее DNS,
+    # поэтому прибиваем имя к AAAA; TLS цел, имя хоста то же. Если Telegram
+    # сменит адрес — сверить `dig AAAA api.telegram.org` и поправить здесь.
+    extra_hosts:
+      - "api.telegram.org:2001:67c:4e8:f004::9"
 
   coturn:
     image: coturn/coturn:4.6.3
