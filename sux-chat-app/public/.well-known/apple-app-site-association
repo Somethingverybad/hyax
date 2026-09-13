@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["BTQ69VVHX6.com.hyax.messenger"],
+        "components": [
+          { "/": "/u/*", "comment": "Ссылка «Поделиться профилем» открывается в приложении" }
+        ]
+      }
+    ]
+  }
+}

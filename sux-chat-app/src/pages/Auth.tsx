@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,11 @@ const Auth = () => {
   // Пока токен есть, форму не показываем: иначе она успевала мелькнуть до
   // того, как проверка сессии уведёт в чат, и вход выглядел не бесшовным.
   const [checking, setChecking] = useState(!!localStorage.getItem("access_token"));
+  // Пришли по ссылке на профиль (/u/<ник>) без сессии — после входа
+  // возвращаем туда же, а не в общий список чатов. Только свои пути.
+  const [params] = useSearchParams();
+  const nextRaw = params.get("next") || "";
+  const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/chat";
 
   useEffect(() => {
     if (!checking) return;
@@ -47,7 +52,7 @@ const Auth = () => {
       try {
         const profile = await api.getProfile();
         if (profile?.id) {
-          navigate("/chat", { replace: true });
+          navigate(next, { replace: true });
           return;
         }
       } catch {
@@ -83,7 +88,7 @@ const Auth = () => {
       }
 
       toast.success("Ого! Заработало");
-      navigate("/chat");
+      navigate(next, { replace: true });
     } catch (error: any) {
       // Сервер отвечает подробностями в теле — показываем их, а не «Login failed 401».
       let text = error?.message || "Произошла ошибка";

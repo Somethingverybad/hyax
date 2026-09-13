@@ -75,13 +75,28 @@ class ProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Profile.objects.all()
-        search_query = self.request.query_params.get('search', None)
-        
+        search_query = (self.request.query_params.get('search') or '').strip()
+
+        # Каталога людей нет: подстрочный поиск (icontains) позволял перебирать
+        # всех пользователей по одной букве. Ник совпадает целиком — значит,
+        # его тебе назвали (участник в группу, админ в канал). Знакомятся
+        # по ссылке «Поделиться профилем» (/u/<ник>).
         if search_query:
-            queryset = queryset.filter(username__icontains=search_query)
-        
+            queryset = queryset.filter(username__iexact=search_query.lstrip('@'))
+        elif self.action == 'list':
+            queryset = queryset.none()
+
         return queryset
-    
+
+    @action(detail=False, methods=['get'], url_path=r'by-username/(?P<username>[^/]+)',
+            permission_classes=[permissions.IsAuthenticated])
+    def by_username(self, request, username=None):
+        """Публичная карточка для ссылки /u/<ник>."""
+        profile = Profile.objects.filter(username__iexact=(username or '').strip()).first()
+        if not profile:
+            return Response({"error": "Пользователь не найден"}, status=404)
+        return Response(PublicProfileSerializer(profile).data)
+
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def me(self, request):
         """Получить профиль текущего пользователя (альтернативный эндпоинт)"""

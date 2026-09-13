@@ -24,6 +24,8 @@ interface Post {
   reactions?: { value: string; count: number }[]; reactions_total?: number;
   my_reaction?: string | null; comments_count?: number; views_count?: number;
   sound?: { name: string } | null;
+  /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер). */
+  _pending?: boolean; _progress?: number | null;
 }
 
 const REACTIONS = ["🔥", "❤️", "👍", "😂", "😮", "😢"];
@@ -95,7 +97,17 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   // Обёртка кнопки-скрепки и её меню: тапы внутри неё меню не закрывают.
   const attachRef = useRef<HTMLDivElement>(null);
   const [attachment, setAttachment] = useState<{ file: File; mode: "photo" | "video" | "file" } | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
+  // Пост с вложением встаёт в ленту сразу, из локального blob, с прогрессом
+  // загрузки внутри — раньше до ответа сервера ничего не появлялось.
+  const addPending = (post: Omit<Post, "id" | "created_at">) => {
+    const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setPosts((prev) => [...prev, { ...post, id, created_at: new Date().toISOString(), _pending: true }]);
+    setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
+    return {
+      progress: (p: number | null) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _progress: p } : x))),
+      drop: () => setPosts((prev) => prev.filter((x) => x.id !== id)),
+    };
+  };
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -124,15 +136,20 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       return;
     }
     setRecBusy(true);
+    let temp: ReturnType<typeof addPending> | null = null;
     try {
       const result = await stopRec(false);
       if (!result) return;
       setSending(true);
-      const uploaded = await api.uploadFile(result.file);
-      await api.sendMessageWithVideo(channelId, uploaded.file_url, result.seconds, facing === "user");
+      const mirror = facing === "user";
+      temp = addPending({ video_url: URL.createObjectURL(result.file), video_duration: result.seconds, video_mirror: mirror, _progress: 0 });
+      const uploaded = await api.uploadFile(result.file, undefined, (p) => temp?.progress(p));
+      temp.progress(100);
+      await api.sendMessageWithVideo(channelId, uploaded.file_url, result.seconds, mirror);
       await load();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
+      temp?.drop();
       toast.error("Не удалось опубликовать видео");
     } finally {
       setSending(false);
@@ -200,33 +217,44 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     const body = text.trim();
     if ((!body && !attachment) || sending) return;
     setSending(true);
+    let temp: ReturnType<typeof addPending> | null = null;
     try {
       if (attachment) {
+        const att = attachment;
+        setAttachment(null);
+        setText("");
+        temp = addPending({
+          content: body || undefined,
+          file_url: URL.createObjectURL(att.file),
+          file_name: att.file.name,
+          download_only: att.mode === "file",
+          sound: sound ? { name: sound.name } : null,
+          _progress: 0,
+        });
         const uploaded = await api.uploadFile(
-          attachment.file,
-          attachment.mode === "video" ? "video" : undefined,
-          (p) => setProgress(p),
+          att.file,
+          att.mode === "video" ? "video" : undefined,
+          (p) => temp?.progress(p),
         );
+        temp.progress(100);
         await api.sendMessageWithFile(
           channelId,
           { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size },
           body || undefined,
           sound?.id,
           undefined,
-          attachment.mode === "file",
+          att.mode === "file",
         );
-        setProgress(null);
-        setAttachment(null);
       } else {
         await api.sendMessage(channelId, body, sound?.id);
+        setText("");
       }
-      setText("");
       setSound(null);
       await load();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
+      temp?.drop();
       toast.error("Не удалось опубликовать");
-      setProgress(null);
     } finally {
       setSending(false);
     }
@@ -326,8 +354,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
                 <PostMedia post={post} onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
+                {post._pending && post._progress != null && (
+                  <div className="mt-2 flex items-center gap-2 text-caption text-subtle">
+                    <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
+                      <div className="h-full bg-primary transition-[width] duration-150" style={{ width: `${Math.max(3, post._progress)}%` }} />
+                    </div>
+                    <span className="tabular-nums shrink-0">{post._progress < 100 ? `${post._progress}%` : "публикация…"}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-4 mt-2 text-caption text-subtle">
-                  <span>{fmtTime(post.created_at)}</span>
+                  <span>{post._pending ? "отправка" : fmtTime(post.created_at)}</span>
                   <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{post.views_count ?? 0}</span>
                   {post.sound && <span className="flex items-center gap-1"><Music2 className="w-3.5 h-3.5" />{post.sound.name}</span>}
                 </div>
@@ -392,7 +428,6 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               {attachment.mode === "photo" ? <ImageIcon className="w-3.5 h-3.5" /> : attachment.mode === "video" ? <Video className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
               <span className="truncate flex-1 text-foreground">{attachment.file.name}</span>
-              {progress !== null && <span>{progress}%</span>}
               <button type="button" onClick={() => setAttachment(null)} disabled={sending}><X className="w-3.5 h-3.5" /></button>
             </div>
           )}

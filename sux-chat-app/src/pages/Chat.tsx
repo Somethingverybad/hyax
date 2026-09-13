@@ -4,7 +4,7 @@ import BottomNav from "@/components/BottomNav";
 import { clearMessageCache } from "@/lib/messageCache";
 import { getPushSecret } from "@/lib/pushSecret";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatWindow from "@/components/chat/ChatWindow";
 import ChannelView from "@/components/chat/ChannelView";
@@ -102,6 +102,11 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const [messagePing, setMessagePing] = useState(0);
   chatsRef.current = chats;
   const navigate = useNavigate();
+  // Со страницы профиля по ссылке (/u/<ник>) приходим с уже созданным чатом —
+  // открываем его сразу, не заставляя искать в списке. Состояние навигации
+  // читаем один раз: при следующих перерисовках оно не должно перебивать выбор.
+  const location = useLocation();
+  const openChatFromStateRef = useRef<string | null>((location.state as any)?.chatId || null);
 
   // При открытии чата помечаем его прочитанным на сервере и гасим бейдж.
   useEffect(() => {
@@ -124,6 +129,11 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
         const userChats = await mergeUnread(await api.getChats());
         setChats(userChats);
         writeCache("chats", userChats);
+        if (openChatFromStateRef.current) {
+          setSelectedChatId(openChatFromStateRef.current);
+          openChatFromStateRef.current = null;
+          window.history.replaceState({}, "");
+        }
         
         // 🔔 Инициализация push-уведомлений после успешной аутентификации
         if (Capacitor.isNativePlatform()) {
@@ -730,6 +740,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           <div className="flex-1 min-h-0 flex">
           <ChatSidebar
             userId={user.id}
+            username={user.username}
             chats={listChats}
             onSelectChat={(id, title, kind) => {
               setSelectedChatId(id);

@@ -24,6 +24,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App links: ссылка «Поделиться профилем» открывается в приложении.
+                 autoVerify сверяет подпись с /.well-known/assetlinks.json на домене. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/u/" />
+            </intent-filter>
+
         </activity>
 
         <meta-data

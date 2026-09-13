@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Share2 } from "lucide-react";
+import { shareProfile } from "@/lib/share";
+import { toast as sonnerToast } from "sonner";
 import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -42,6 +44,8 @@ interface Chat {
 
 interface ChatSidebarProps {
   userId: string;
+  /** Свой ник — для кнопки «Поделиться профилем» в диалоге нового чата. */
+  username?: string;
   chats: Chat[];
   /** title — вычисленное имя собеседника: список чатов его не содержит,
    *  участники грузятся отдельно, поэтому знает о нём только сайдбар. */
@@ -84,6 +88,7 @@ function writeParticipantsCache(map: {[chatId: string]: any[]}) {
 
 const ChatSidebar = ({ 
   userId, 
+  username,
   chats,
   onSelectChat,
   onRefresh, 
@@ -208,13 +213,18 @@ const ChatSidebar = ({
     }
 
     try {
-      // Каналы ищем в той же выдаче, что и пользователей.
-      const [results, chans] = await Promise.all([
-        api.searchUsers(query),
-        api.discoverChannels(query).catch(() => []),
-      ]);
+      // Каталога людей нет: в личном режиме ищем только каналы, а знакомятся
+      // по ссылке «Поделиться профилем». В группу участника добавляют по
+      // точному нику — сервер отдаёт только полное совпадение.
+      if (mode === "user") {
+        const chans = await api.discoverChannels(query).catch(() => []);
+        setSearchResults([]);
+        setChannelResults(Array.isArray(chans) ? chans : []);
+        return;
+      }
+      const results = await api.searchUsers(query);
       setSearchResults(Array.isArray(results) ? results : []);
-      setChannelResults(Array.isArray(chans) ? chans : []);
+      setChannelResults([]);
     } catch (error: any) {
       console.error("Error searching users:", error);
     }
@@ -487,10 +497,32 @@ const ChatSidebar = ({
                   </>
                 )}
 
+                {mode === "user" && (
+                  <div className="rounded-lg bg-secondary/50 p-3 space-y-2">
+                    <p className="text-sm">
+                      Поиска по людям нет. Чтобы начать переписку, отправьте человеку ссылку на свой профиль — она откроется у него прямо в ХУЯКСе.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full"
+                      disabled={!username}
+                      onClick={async () => {
+                        if (!username) return;
+                        const r = await shareProfile(username);
+                        if (r === "copied") sonnerToast.success("Ссылка скопирована");
+                        else if (r === "error") sonnerToast.error("Не удалось поделиться");
+                      }}
+                    >
+                      <Share2 className="w-4 h-4 mr-2" /> Поделиться профилем
+                    </Button>
+                  </div>
+                )}
+
                 {mode !== "channel" && (
                 <>
                 <Input
-                  placeholder={mode === "group" ? "Добавить участника..." : "Имя пользователя или канала..."}
+                  placeholder={mode === "group" ? "Точный ник участника" : "Найти канал…"}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -543,7 +575,7 @@ const ChatSidebar = ({
                     ))}
                     {searchResults.length === 0 && (mode !== "user" || channelResults.length === 0) && (
                       <div className="text-center text-muted-foreground py-8">
-                        {searchQuery ? "Ничего не найдено" : "Введите имя для поиска"}
+                        {searchQuery ? "Ничего не найдено" : mode === "group" ? "Введите ник участника целиком" : "Введите название канала"}
                       </div>
                     )}
                   </div>

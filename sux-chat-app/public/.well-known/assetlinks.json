@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.hyax.messenger",
+      "sha256_cert_fingerprints": [
+        "34:2C:87:63:2D:6B:38:9D:F2:8A:C0:D2:3F:CD:11:46:85:A5:5C:CF:84:3E:3A:F5:41:76:A9:18:C4:AD:EE:65"
+      ]
+    }
+  }
+]

@@ -20,6 +20,15 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Никнейм длиннее 50 символов")
         return value
 
+class PublicProfileSerializer(serializers.ModelSerializer):
+    """Карточка по ссылке /u/<ник>: только то, что и так видно в чате.
+    Без call_status, push_preview и прочих приватных настроек."""
+    class Meta:
+        model = Profile
+        fields = ['id', 'username', 'avatar_url', 'bio', 'is_bot']
+        read_only_fields = fields
+
+
 class FriendshipSerializer(serializers.ModelSerializer):
     class Meta:
         model = Friendship

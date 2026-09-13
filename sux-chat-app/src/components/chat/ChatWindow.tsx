@@ -66,6 +66,9 @@ interface Message {
   pending?: boolean;
   _key?: string;
   _dims?: { w: number; h: number } | null;
+  /** Загрузка вложения в процентах, пока pending: рисуется в самом пузыре.
+   *  100 — файл на сервере, ждём ответа (пережатие видео и т.п.). */
+  _progress?: number | null;
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
   forwarded_from?: { id: string; username: string; avatar_url?: string | null } | null;
   forwarded_title?: string;
@@ -272,7 +275,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Просим сервер сжать видео (ffmpeg). Фото сжимаем на клиенте, файлы — как есть.
   const pendingCompressRef = useRef<string | null>(null);
   const pendingDownloadOnlyRef = useRef<boolean>(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // Прогресс загрузки живёт в самом временном сообщении, а не отдельной
+  // полоской над полем ввода: раньше пузырь для видео/файла/голосового
+  // вообще не появлялся до ответа сервера, и казалось, что ничего не ушло.
+  const setProgressFor = (tempId: string, p: number | null) =>
+    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _progress: p } : m)));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Свои картинки показываем из локального файла: сервер их и так получил от
   // нас, скачивать обратно — лишний трафик и «пустой» пузырь на время загрузки.
@@ -783,9 +790,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // в фоне. Для картинки заранее замеряем размеры из локального файла,
     // чтобы пузырь сразу занял своё место и лента не дёргалась.
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const localUrl =
-      file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
-    const dims = localUrl ? await imageDims(localUrl) : null;
+    // Локальный blob для любого вложения: картинка, видео и файл строкой
+    // рисуются сразу из него — без этого пузырь у видео и файлов был пустым.
+    const localUrl = file ? URL.createObjectURL(file) : null;
+    const dims = localUrl && file!.type.startsWith("image/") ? await imageDims(localUrl) : null;
 
     const optimistic: Message = {
       id: tempId,
@@ -803,6 +811,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       pending: true,
       _key: tempId,
       _dims: dims,
+      _progress: file ? 0 : null,
     };
 
     setNewMessage("");
@@ -819,7 +828,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       let sent: Message;
       if (file) {
-        const uploadResult = await api.uploadFile(file, compress || undefined, (p) => setUploadProgress(p));
+        const uploadResult = await api.uploadFile(file, compress || undefined, (p) => setProgressFor(tempId, p));
+        setProgressFor(tempId, 100);
         // Свою картинку рисуем из локального файла и после подтверждения —
         // сервер нужен только собеседнику.
         if (localUrl && uploadResult.file_url) {
@@ -830,7 +840,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           file_name: uploadResult.file_name,
           file_size: uploadResult.file_size,
         }, text || undefined, sound?.id, reply?.id, downloadOnly);
-        setUploadProgress(null);
       } else {
         sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
       }
@@ -842,11 +851,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages(prev =>
         prev.some(m => m.id === sent.id)
           ? prev.filter(m => m.id !== tempId)
-          : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims } : m))
+          : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims, _progress: null } : m))
       );
     } catch (error: any) {
       console.error("Error sending message:", error);
-      setUploadProgress(null);
       toast.error("Ошибка отправки: " + (error.message || "Неизвестная ошибка"));
       // Возвращаем черновик, чтобы можно было отправить повторно.
       setMessages(prev => prev.filter(m => m.id !== tempId));
@@ -914,21 +922,54 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const processRecording = async (result: VoiceRecording | null) => {
     if (!result || !chatId) return;
     setUploading(true);
+    // Пузырь с записью появляется сразу, из локального blob, с прогрессом
+    // загрузки — как у текста и файлов. Раньше до ответа сервера в ленте
+    // ничего не было, и голосовое выглядело неотправленным.
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const localUrl = URL.createObjectURL(result.file);
+    const isVideo = result.kind === "video";
+    const mirror = facing === "user";
+    const optimistic: Message = {
+      id: tempId,
+      content: null,
+      file_url: null,
+      file_name: null,
+      sender_id: userId,
+      sender: { id: userId } as Profile,
+      created_at: new Date().toISOString(),
+      ...(isVideo
+        ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror }
+        : { voice_url: localUrl, voice_duration: result.seconds }),
+      pending: true,
+      _key: tempId,
+      _progress: 0,
+    };
+    setMessages(prev => [...prev, optimistic]);
+    lastSendTimeRef.current = Date.now();
+    setTimeout(() => scrollToBottom(true), 50);
+    void playSfx("/sounds/send.mp3", { volume: 0.3 });
     try {
-      if (result.kind === "video") {
-        const uploaded = await api.uploadFile(result.file);
+      let sent: Message;
+      if (isVideo) {
+        const uploaded = await api.uploadFile(result.file, undefined, (p) => setProgressFor(tempId, p));
+        setProgressFor(tempId, 100);
         // Фронтальная камера снимается в зеркальном (селфи) виде — помечаем,
         // чтобы воспроизведение в чате отразилось так же. Сам файл не меняем.
-        await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, facing === "user");
+        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror);
       } else {
-        const uploaded = await api.uploadVoice(result.file);
-        await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
+        const uploaded = await api.uploadVoice(result.file, (p) => setProgressFor(tempId, p));
+        setProgressFor(tempId, 100);
+        sent = await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
       }
-      lastSendTimeRef.current = Date.now();
-      await fetchMessages();
-      setTimeout(() => scrollToBottom(), 50);
+      setMessages(prev =>
+        prev.some(m => m.id === sent.id)
+          ? prev.filter(m => m.id !== tempId)
+          : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _progress: null } : m))
+      );
     } catch {
       toast.error("Не удалось отправить сообщение");
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      URL.revokeObjectURL(localUrl);
     } finally {
       setUploading(false);
     }
@@ -1487,6 +1528,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                         </div>
                       )}
+                      {/* Загрузка вложения: полоска и проценты прямо в пузыре. */}
+                      {message.pending && message._progress != null && (
+                        <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[96px]", isOwn && !bareBubble ? "text-white/70" : "text-subtle")}>
+                          <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
+                            <div className="h-full bg-current transition-[width] duration-150" style={{ width: `${Math.max(3, message._progress)}%` }} />
+                          </div>
+                          <span className="tabular-nums shrink-0">{message._progress < 100 ? `${message._progress}%` : "отправка…"}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Время и статус снаружи — у чужих и у пузырей без текста
@@ -1559,14 +1609,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
               <span className="text-sm">Сообщение удалено</span>
               <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
-            </div>
-          )}
-          {uploadProgress !== null && (
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-                <div className="h-full bg-primary transition-[width] duration-150" style={{ width: `${uploadProgress}%` }} />
-              </div>
-              <span className="text-xs text-muted-foreground tabular-nums w-9 text-right">{uploadProgress}%</span>
             </div>
           )}
           {selectedFile && (

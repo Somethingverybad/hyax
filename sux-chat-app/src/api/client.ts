@@ -394,6 +394,17 @@ export const api = {
     return res.json();
   },
 
+  /** Публичная карточка по нику — для ссылки «Поделиться профилем» (/u/<ник>). */
+  getProfileByUsername: async (username: string): Promise<Profile & { bio?: string; is_bot?: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/profiles/by-username/${encodeURIComponent(username)}/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (res.status === 404) throw new Error("not_found");
+    if (!res.ok) throw new Error(`Profile failed: ${res.status}`);
+    return res.json();
+  },
+
   getProfileById: async (profileId: string): Promise<Profile> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "GET",
@@ -733,9 +744,10 @@ export const api = {
   },
 
   // ===== ГОЛОСОВЫЕ СООБЩЕНИЯ =====
-  uploadVoice: async (file: File): Promise<{ file_url: string; file_name: string }> => {
+  uploadVoice: async (file: File, onProgress?: (percent: number) => void): Promise<{ file_url: string; file_name: string }> => {
     const formData = new FormData();
     formData.append("file", file);
+    if (onProgress) return uploadWithProgress(`${API_URL}/voice/upload/`, formData, onProgress);
     const res = await fetchWithAuthMultipart(`${API_URL}/voice/upload/`, {
       method: "POST",
       body: formData,

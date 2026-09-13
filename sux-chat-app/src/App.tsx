@@ -4,7 +4,9 @@ import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { App as CapApp } from "@capacitor/app";
+import PublicProfile from "./pages/PublicProfile";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
@@ -41,6 +43,28 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
       <Routes location={location}>{children}</Routes>
     </div>
   );
+};
+
+/** Ссылка https://huyax.e-tree.su/u/<ник>, открытая в установленном
+ *  приложении (universal link / app link): система отдаёт нам URL — ведём на
+ *  тот же путь внутри SPA. Отдельно — «холодный» старт по ссылке, когда
+ *  слушатель ещё не висел. Веб этого не касается: там браузер сам открыл путь. */
+const DeepLinks = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const toPath = (url?: string | null) => {
+      if (!url) return;
+      try {
+        const u = new URL(url);
+        if (u.pathname.startsWith("/u/")) navigate(u.pathname + u.search, { replace: false });
+      } catch { /* не URL — игнорируем */ }
+    };
+    CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
+    const sub = CapApp.addListener("appUrlOpen", (e) => toPath(e.url));
+    return () => { sub.then((h) => h.remove()).catch(() => {}); };
+  }, [navigate]);
+  return null;
 };
 
 const App = () => {
@@ -80,6 +104,7 @@ const App = () => {
 
           
           <BrowserRouter>
+            <DeepLinks />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
                   Токен есть → в чат, нет → на вход. */}
@@ -97,6 +122,8 @@ const App = () => {
               {/* «Избранное» — та же страница чатов, сразу открытая на личном чате. */}
               <Route path="/saved" element={<Chat savedMode />} />
               <Route path="/profile" element={<ProfilePage />} />
+              {/* Карточка по ссылке «Поделиться профилем». */}
+              <Route path="/u/:username" element={<PublicProfile />} />
               <Route path="*" element={<NotFound />} />
             </AnimatedRoutes>
           </BrowserRouter>
