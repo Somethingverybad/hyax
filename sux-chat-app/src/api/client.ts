@@ -285,15 +285,19 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
 }
 
 
+/** Загрузка с прогрессом. Как и fetchWithFallback: если CDN-адрес оборвал
+ *  запрос (сетевая ошибка, 413, 408, 5xx — у CDN свои лимиты на тело и
+ *  время запроса, большой файл с мобильной сети в них не укладывается) —
+ *  тот же запрос повторяется напрямую на сервер, где лимит 50 МБ и сутки. */
 async function uploadWithProgress(
   url: string,
   formData: FormData,
   onProgress?: (percent: number) => void,
 ): Promise<any> {
   const token = await getFreshAccessToken();
-  return new Promise((resolve, reject) => {
+  const attempt = (target: string) => new Promise<any>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
+    xhr.open("POST", target);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -301,12 +305,29 @@ async function uploadWithProgress(
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); }
-      } else reject(new Error(`upload failed: ${xhr.status}`));
+        return;
+      }
+      let detail = "";
+      try { detail = JSON.parse(xhr.responseText)?.error || ""; } catch { /* не JSON */ }
+      const err = new Error(detail || (xhr.status === 413 ? "Файл слишком большой для сервера" : `Загрузка не удалась (${xhr.status})`)) as Error & { status?: number };
+      err.status = xhr.status;
+      reject(err);
     };
-    xhr.onerror = () => reject(new Error("upload error"));
+    xhr.onerror = () => reject(Object.assign(new Error("Сеть оборвала загрузку"), { status: 0 }));
     xhr.send(formData);
   });
+  try {
+    return await attempt(url);
+  } catch (e: any) {
+    const st = e?.status ?? 0;
+    const retryable = st === 0 || st === 413 || st === 408 || st >= 500;
+    if (!url.startsWith(CDN_ORIGIN) || !retryable) throw e;
+    switchToDirect(`upload ${st || "network"}`);
+    onProgress?.(0);
+    return attempt(url.replace(CDN_ORIGIN, DIRECT_ORIGIN));
+  }
 }
+
 
 export const api = {
   // ===== AUTH =====
