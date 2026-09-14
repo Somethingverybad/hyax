@@ -14,6 +14,10 @@ class Profile(models.Model):
     bio = models.TextField(blank=True, null=True, max_length=500)  # Пользовательский статус/описание
     # Показывать текст сообщения в уведомлении. Выключено — в пуше только «Новое сообщение».
     push_preview = models.BooleanField(default=True)
+    # «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников, если у
+    # самого сообщения нет аудио-стикера. Из каталога NotificationSound —
+    # его caf/канал уже есть на устройствах получателей (syncNotificationSounds).
+    notify_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     created_at = models.DateTimeField(default=timezone.now)
     # Боты — отдельный класс пользователей: не логинятся паролем, ходят в API
     # по bot_token, у каждого есть владелец-создатель.

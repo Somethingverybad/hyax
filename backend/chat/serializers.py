@@ -4,9 +4,19 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import *
 
 class ProfileSerializer(serializers.ModelSerializer):
+    # Свой звук уведомлений: читаем вложенным объектом (url для прослушивания),
+    # пишем по id (notify_sound_id: null — сбросить).
+    notify_sound = serializers.SerializerMethodField()
+    notify_sound_id = serializers.PrimaryKeyRelatedField(
+        source='notify_sound', queryset=NotificationSound.objects.filter(is_active=True),
+        allow_null=True, required=False, write_only=True)
+
+    def get_notify_sound(self, obj):
+        return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
+
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview']
+        fields = ['id', 'username', 'avatar_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'notify_sound', 'notify_sound_id']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.

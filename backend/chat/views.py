@@ -484,7 +484,9 @@ def _notify_new_message(message, profile, request):
             title=push_title,
             body=preview[:150],
             extra={"chat_id": str(message.chat.id)},
-            sound=message.sound.slug if message.sound_id else None,
+            # Звук: аудио-стикер сообщения, иначе «мой звук» отправителя.
+            sound=(message.sound.slug if message.sound_id
+                   else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None),
             # Кому выключено превью — «Новое сообщение» вместо текста.
             hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
         )
