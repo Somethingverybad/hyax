@@ -593,7 +593,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const file = e.target.files?.[0];
     e.target.value = ""; // чтобы повторный выбор того же файла сработал
     if (!file) return;
-    const limit = mode === "video" ? 50 : mode === "file" ? 50 : 25;
+    // Единый лимит 50 МБ — столько же принимает сервер (client_max_body_size).
+    // У фото стояло 25: снимок с современного телефона в него не влезал.
+    const limit = 50;
+    void mode;
     if (file.size > limit * 1024 * 1024) {
       toast.error(`Файл слишком большой (макс. ${limit}MB)`);
       return;

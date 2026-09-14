@@ -156,7 +156,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const limit = mode === "photo" ? 25 : 50;
+    const limit = 50; // как на сервере; у фото было 25
     if (file.size > limit * 1024 * 1024) { toast.error(`Файл слишком большой (макс. ${limit}MB)`); return; }
     setAttachment({ file: mode === "photo" ? await compressImage(file) : file, mode });
   };
