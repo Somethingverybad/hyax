@@ -8,7 +8,7 @@ import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Tra
 import { playSfx } from "@/lib/sfx";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, isImageFile, isAudioFile, isVideoFile } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -19,6 +19,7 @@ interface Channel {
 
 interface Post {
   id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null;
+  file_width?: number | null; file_height?: number | null;
   video_url?: string; video_duration?: number | null; video_mirror?: boolean;
   download_only?: boolean; sender?: { id: string; username: string };
   reactions?: { value: string; count: number }[]; reactions_total?: number;
@@ -36,10 +37,21 @@ const fmtTime = (iso: string) =>
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
  *  (download_only — всегда строкой, даже если это картинка). */
-const PostImage = ({ raw, onOpen }: { raw: string; onOpen?: (url: string) => void }) => {
+const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: number } | null; onOpen?: (url: string) => void }) => {
   const url = useMediaUrl(raw);
-  if (!url) return <div className="mt-2 h-40 bg-black/20 animate-pulse" />;
-  return <img src={url} alt="" className="mt-2 max-h-80 w-full object-contain bg-black/20 rounded-md cursor-zoom-in" loading="lazy" onClick={() => onOpen?.(url)} />;
+  const [loaded, setLoaded] = useState(false);
+  // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
+  // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
+  const style = dims ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 320 } : { height: 160 };
+  return (
+    <div className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
+      {!loaded && <MediaSkeleton className="absolute inset-0" />}
+      {url && (
+        <img src={url} alt="" loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen?.(url)}
+          className={cn("w-full h-full object-contain cursor-zoom-in transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
+      )}
+    </div>
+  );
 };
 
 const PostMedia = ({ post, onOpenImage }: { post: Post; onOpenImage?: (url: string, post: Post) => void }) => {
@@ -51,12 +63,12 @@ const PostMedia = ({ post, onOpenImage }: { post: Post; onOpenImage?: (url: stri
     );
   }
   if (!post.file_url) return null;
-  if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} onOpen={(url) => onOpenImage?.(url, post)} />;
+  if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (isAudioFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url) => window.open(url, "_blank")} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageVideoFile raw={post.file_url} /></div>;
+    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} /></div>;
   }
   return (
     <div className="mt-2">
@@ -242,7 +254,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         temp.progress(100);
         await api.sendMessageWithFile(
           channelId,
-          { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size },
+          { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height },
           body || undefined,
           sound?.id,
           undefined,

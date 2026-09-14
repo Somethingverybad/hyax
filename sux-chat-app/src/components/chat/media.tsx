@@ -109,6 +109,22 @@ export const previewSize = (dims: { w: number; h: number }) => {
   return { width: Math.round(dims.w * scale), height: Math.round(dims.h * scale) };
 };
 
+/** Размеры медиа с сервера (ffprobe при загрузке) → {w,h} или null. */
+export const dimsOf = (w?: number | null, h?: number | null) => (w && h ? { w, h } : null);
+
+/** Заглушка на время загрузки медиа: место уже зарезервировано по размерам,
+ *  а внутри — медленно плывущие фигуры в духе супрематизма (квадрат,
+ *  круг, брусок), чтобы пауза читалась как «грузится», а не как дыра. */
+export const MediaSkeleton = ({ className }: { className?: string }) => (
+  <svg className={cn("supra block w-full h-full", className)} viewBox="0 0 200 160" preserveAspectRatio="xMidYMid slice" aria-hidden>
+    <rect width="200" height="160" fill="hsl(var(--surface-3))" />
+    <rect className="supra-square" x="52" y="34" width="70" height="70" fill="hsl(var(--primary))" />
+    <circle className="supra-circle" cx="150" cy="116" r="22" fill="hsl(var(--foreground) / 0.85)" />
+    <rect className="supra-bar" x="20" y="120" width="96" height="9" fill="hsl(var(--foreground) / 0.55)" />
+    <rect className="supra-bar2" x="130" y="28" width="7" height="60" fill="hsl(var(--amber))" />
+  </svg>
+);
+
 /** Треугольная маска — форма наших видео-сообщений вместо круглых «кружков». */
 export const TRIANGLE = "polygon(50% 0%, 100% 100%, 0% 100%)";
 
@@ -142,31 +158,47 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   const localBlob = raw.startsWith("blob:") ? raw : localMap.get(raw);
   const signed = useMediaUrl(localBlob ? null : raw);
   const src = localBlob || signed;
-  if (!src) return <div className="w-40 h-28 bg-black/20 rounded-lg animate-pulse" />;
+  // Своё из blob декодируется мгновенно — без скелетона; чужое ждёт onLoad.
+  const [loaded, setLoaded] = useState(!!localBlob);
+  const size = dims ? previewSize(dims) : { width: 160, height: 112 };
   return (
-    <img
-      src={src}
-      alt={name || "Изображение"}
-      loading="lazy"
-      className="max-h-48 max-w-[min(240px,100%)] w-auto object-contain cursor-pointer block"
-      style={dims ? previewSize(dims) : undefined}
-      onClick={() => onOpen(src, name || "image")}
-      onError={onError}
-    />
+    <div className="relative rounded-lg overflow-hidden max-w-full" style={size}>
+      {!loaded && <MediaSkeleton className="absolute inset-0" />}
+      {src && (
+        <img
+          src={src}
+          alt={name || "Изображение"}
+          loading="lazy"
+          className={cn("w-full h-full object-contain cursor-pointer block transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
+          onLoad={() => setLoaded(true)}
+          onClick={() => onOpen(src, name || "image")}
+          onError={onError}
+        />
+      )}
+    </div>
   );
 };
 
-export const MessageVideoFile = ({ raw }: { raw: string }) => {
+export const MessageVideoFile = ({ raw, dims }: { raw: string; dims?: { w: number; h: number } | null }) => {
   const src = useMediaUrl(raw);
-  if (!src) return <div className="w-44 h-28 bg-black/20 rounded-lg animate-pulse" />;
+  const [ready, setReady] = useState(false);
+  // Бокс под видео по размерам с сервера (в пределах 280×256), чтобы лента не
+  // прыгала, когда плеер узнает размер кадра. Без размеров — как раньше.
+  const size = dims ? (() => { const s = Math.min(280 / dims.w, 256 / dims.h, 1); return { width: Math.round(dims.w * s), height: Math.round(dims.h * s) }; })() : { width: 176, height: 112 };
   return (
-    <video
-      src={src}
-      controls
-      playsInline
-      preload="metadata"
-      className="max-h-64 max-w-[min(280px,100%)] w-auto rounded-lg block bg-black"
-    />
+    <div className="relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
+      {!ready && <MediaSkeleton className="absolute inset-0" />}
+      {src && (
+        <video
+          src={src}
+          controls
+          playsInline
+          preload="metadata"
+          onLoadedData={() => setReady(true)}
+          className={cn("w-full h-full block bg-black transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
+        />
+      )}
+    </div>
   );
 };
 

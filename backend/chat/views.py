@@ -1045,6 +1045,29 @@ from .models import Profile, Friendship, Chat, ChatParticipant, Message, Message
 from .serializers import ProfileSerializer, FriendshipSerializer, ChatSerializer, ChatParticipantSerializer, MessageSerializer, MessageReadStatusSerializer
 
 
+def _probe_dims(path):
+    """Ширина/высота картинки или видео через ffprobe (Pillow в образе нет,
+    ffprobe читает и jpg/png/webp/gif, и mp4/mov/webm). Поворот из тега
+    rotate учитываем — телефонное видео часто «лежит» в контейнере."""
+    import subprocess, json as _json
+    try:
+        out = subprocess.run(['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', path],
+                             capture_output=True, timeout=20).stdout
+        for st in _json.loads(out or b'{}').get('streams', []):
+            w, h = st.get('width'), st.get('height')
+            if st.get('codec_type') == 'video' and w and h:
+                rot = str((st.get('tags') or {}).get('rotate', '0'))
+                for sd in st.get('side_data_list') or []:
+                    if sd.get('rotation') is not None:
+                        rot = str(sd['rotation'])
+                if abs(int(float(rot))) % 180 == 90:
+                    w, h = h, w
+                return int(w), int(h)
+    except Exception:
+        logger.exception('ffprobe dims failed')
+    return None
+
+
 class FileUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     
@@ -1122,6 +1145,10 @@ class FileUploadView(APIView):
         # Хранилище: при включённом S3 отправляем итоговый файл в бакет и
         # отдаём его публичный URL, локальную копию удаляем. Иначе — как раньше,
         # раздаём локально через nginx (/media/...).
+        # Размеры — до отправки в S3, пока файл ещё на диске.
+        dims = None
+        if is_video or file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'):
+            dims = _probe_dims(os.path.join(settings.MEDIA_ROOT, file_path))
         local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
         if s3_enabled() and not local_only:
             try:
@@ -1140,7 +1167,9 @@ class FileUploadView(APIView):
         return Response({
             "file_url": file_url,
             "file_name": out_name,
-            "file_size": out_size
+            "file_size": out_size,
+            "width": dims[0] if dims else None,
+            "height": dims[1] if dims else None
         })
 
 

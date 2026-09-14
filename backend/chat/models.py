@@ -101,6 +101,10 @@ class Message(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     file_size = models.BigIntegerField(blank=True, null=True)  # Добавляем это поле
     sticker = models.ForeignKey('Sticker', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Ссылка на стикер
+    # Размеры картинки/видео, снятые ffprobe при загрузке: клиент резервирует
+    # место под медиа до загрузки, и лента не «схлопывается».
+    file_width = models.IntegerField(blank=True, null=True)
+    file_height = models.IntegerField(blank=True, null=True)
     voice_url = models.TextField(blank=True, null=True)  # URL голосового сообщения
     voice_duration = models.IntegerField(blank=True, null=True)  # Длительность в секундах
     # Расшифровка голосового (faster-whisper, см. chat/transcribe.py): текст и

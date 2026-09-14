@@ -700,7 +700,7 @@ export const api = {
     compress?: string,
     onProgress?: (percent: number) => void,
     local?: boolean,
-  ): Promise<{ file_url: string; file_name: string; file_size: number }> => {
+  ): Promise<{ file_url: string; file_name: string; file_size: number; width?: number | null; height?: number | null }> => {
     const formData = new FormData();
     formData.append('file', file);
     if (compress) formData.append('compress', compress);
@@ -727,6 +727,8 @@ export const api = {
     file_url: string;
     file_name: string;
     file_size: number;
+    width?: number | null;
+    height?: number | null;
   }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
@@ -737,6 +739,8 @@ export const api = {
         file_url: fileData.file_url,
         file_name: fileData.file_name,
         file_size: fileData.file_size,
+        file_width: fileData.width || undefined,
+        file_height: fileData.height || undefined,
         sound_id: soundId || undefined,
         reply_to_id: replyToId || undefined,
         download_only: downloadOnly ? "1" : undefined

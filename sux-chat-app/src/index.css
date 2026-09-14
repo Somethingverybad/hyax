@@ -409,3 +409,13 @@ textarea,
   0%, 40% { background: hsl(var(--primary) / 0.18); }
   100% { background: transparent; }
 }
+
+/* Скелетон медиа (MediaSkeleton): фигуры медленно плывут, как на холсте. */
+.supra-square { transform-origin: 87px 69px; animation: supra-turn 6s ease-in-out infinite; }
+.supra-circle { transform-origin: 150px 116px; animation: supra-breathe 3.2s ease-in-out infinite; }
+.supra-bar { animation: supra-slide 4.5s ease-in-out infinite; }
+.supra-bar2 { transform-origin: 133px 58px; animation: supra-turn 9s linear infinite reverse; }
+@keyframes supra-turn { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg) translate(6px, -4px); } }
+@keyframes supra-breathe { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.18); opacity: .6; } }
+@keyframes supra-slide { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(36px); } }
+@media (prefers-reduced-motion: reduce) { .supra * { animation: none !important; } }

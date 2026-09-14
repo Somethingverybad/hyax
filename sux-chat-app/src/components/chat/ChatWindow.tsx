@@ -17,7 +17,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
-import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, isImageFile, isAudioFile, isVideoFile, previewSize } from "@/components/chat/media";
+import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
@@ -54,6 +54,9 @@ interface Message {
   video_duration?: number | null;
   /** Видео-заметка снята фронталкой — воспроизводить зеркально (как в превью). */
   video_mirror?: boolean;
+  /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
+  file_width?: number | null;
+  file_height?: number | null;
   /** Отправлено как «Файл» — показывать строкой со скачиванием, не превью. */
   download_only?: boolean;
   sender_id: string;
@@ -841,6 +844,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           file_url: uploadResult.file_url,
           file_name: uploadResult.file_name,
           file_size: uploadResult.file_size,
+          width: uploadResult.width ?? dims?.w,
+          height: uploadResult.height ?? dims?.h,
         }, text || undefined, sound?.id, reply?.id, downloadOnly);
       } else {
         sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
@@ -1553,7 +1558,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             <MessageImage
                               raw={message.file_url}
                               name={message.file_name}
-                              dims={message._dims}
+                              dims={message._dims || dimsOf(message.file_width, message.file_height)}
                               localMap={localImagesRef.current}
                               onOpen={(url, name) => setViewer({ url, name, messageId: message.id })}
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
@@ -1561,7 +1566,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           ) : isAudioFile(message.file_name, message.file_url) ? (
                             <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} />
                           ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
-                            <MessageVideoFile raw={message.file_url} />
+                            <MessageVideoFile raw={message.file_url} dims={dimsOf(message.file_width, message.file_height)} />
                           ) : (
                             <MessageFile
                               raw={message.file_url}
