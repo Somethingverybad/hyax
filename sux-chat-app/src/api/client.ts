@@ -756,6 +756,16 @@ export const api = {
     return res.json();
   },
 
+  /** Расшифровка голосового: сервер ставит задачу и отвечает сразу (transcript_status
+   *  pending), готовый текст приезжает через sync по updated_at. */
+  transcribeVoice: async (messageId: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/transcribe/`, {
+      method: "POST", headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Не удалось расшифровать");
+    return res.json();
+  },
+
   sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",

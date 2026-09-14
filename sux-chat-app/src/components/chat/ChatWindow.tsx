@@ -46,6 +46,9 @@ interface Message {
   /** Голосовое сообщение и его длительность в секундах. */
   voice_url?: string | null;
   voice_duration?: number | null;
+  /** Расшифровка голосового (по кнопке «Аа»): текст и состояние с сервера. */
+  voice_transcript?: string | null;
+  transcript_status?: "" | "pending" | "done" | "error";
   /** Видео-сообщение («треугольник») и его длительность. */
   video_url?: string | null;
   video_duration?: number | null;
@@ -919,6 +922,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   // Отправка готовой записи (голос/видео) на сервер.
+  // Расшифровка голосового: ставим pending сразу, сервер вернёт то же; текст
+  // приедет через sync по updated_at (опрос раз в 3 с) — отдельно ждать не надо.
+  const transcribeVoice = async (m: Message) => {
+    setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, transcript_status: "pending" } : x)));
+    try {
+      const upd = await api.transcribeVoice(m.id);
+      setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, ...upd, _key: x._key, _dims: x._dims } : x)));
+    } catch {
+      setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, transcript_status: "error" } : x)));
+      toast.error("Не удалось расшифровать");
+    }
+  };
+
   const processRecording = async (result: VoiceRecording | null) => {
     if (!result || !chatId) return;
     setUploading(true);
@@ -1483,11 +1499,38 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                       {/* Голосовое сообщение */}
                       {message.voice_url && (
-                        <VoiceBubble
-                          url={mediaUrl(message.voice_url)}
-                          seconds={message.voice_duration || 0}
-                          own={isOwn}
-                        />
+                        <div>
+                          <div className="flex items-center gap-1">
+                            <VoiceBubble
+                              url={mediaUrl(message.voice_url)}
+                              seconds={message.voice_duration || 0}
+                              own={isOwn}
+                            />
+                            {/* «Аа» — расшифровать; пока pending крутится, готовый текст ниже. */}
+                            {!message.pending && message.transcript_status !== "done" && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); transcribeVoice(message); }}
+                                disabled={message.transcript_status === "pending"}
+                                className="w-8 h-8 shrink-0 rounded-md bg-black/20 text-xs font-semibold disabled:opacity-50"
+                                title="Расшифровать"
+                              >
+                                {message.transcript_status === "pending" ? "…" : "Аа"}
+                              </button>
+                            )}
+                          </div>
+                          {message.transcript_status === "pending" && (
+                            <p className="mt-1 text-xs opacity-70">Расшифровываю…</p>
+                          )}
+                          {message.transcript_status === "error" && (
+                            <p className="mt-1 text-xs opacity-70">Не удалось расшифровать — попробуй ещё раз.</p>
+                          )}
+                          {message.transcript_status === "done" && message.voice_transcript && (
+                            <p className="mt-1.5 text-body break-words whitespace-pre-wrap opacity-90 border-t border-white/15 pt-1.5">
+                              {message.voice_transcript}
+                            </p>
+                          )}
+                        </div>
                       )}
 
                       {/* Текст сообщения */}
