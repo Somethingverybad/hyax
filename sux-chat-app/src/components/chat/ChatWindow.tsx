@@ -593,14 +593,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const file = e.target.files?.[0];
     e.target.value = ""; // чтобы повторный выбор того же файла сработал
     if (!file) return;
-    // Единый лимит 50 МБ — столько же принимает сервер (client_max_body_size).
-    // У фото стояло 25: снимок с современного телефона в него не влезал.
-    const limit = 50;
-    void mode;
-    if (file.size > limit * 1024 * 1024) {
-      toast.error(`Файл слишком большой (макс. ${limit}MB)`);
-      return;
-    }
+    // Лимита на размер нет — ни здесь, ни на сервере, ни в nginx (0):
+    // фото и видео с телефона отправляются как есть.
     if (mode === "photo") {
       // Фото сжимаем прямо здесь, до отправки.
       setSelectedFile(await compressImage(file));

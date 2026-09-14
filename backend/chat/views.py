@@ -1079,9 +1079,8 @@ class FileUploadView(APIView):
         if not file:
             return Response({"error": "No file provided"}, status=400)
         
-        # Проверяем размер файла (макс. 50MB)
-        if file.size > 50 * 1024 * 1024:
-            return Response({"error": "File too large (max 50MB)"}, status=400)
+        # Лимита на размер вложений нет (по решению владельца): nginx —
+        # client_max_body_size 0, файл пишется на диск чанками.
         
         try:
             profile = request.user.profile
