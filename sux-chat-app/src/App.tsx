@@ -51,19 +51,25 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
  *  слушатель ещё не висел. Веб этого не касается: там браузер сам открыл путь. */
 const DeepLinks = () => {
   const navigate = useNavigate();
+  // navigate из useNavigate меняется при каждой смене пути, а getLaunchUrl()
+  // отдаёт URL запуска всю сессию — эффект с зависимостью от navigate
+  // перечитывал его после каждого перехода и возвращал на /u/… (кнопка
+  // «Написать» «не работала»). Поэтому: navigate через ref, эффект — один раз.
+  const navRef = useRef(navigate);
+  navRef.current = navigate;
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const toPath = (url?: string | null) => {
       if (!url) return;
       try {
         const u = new URL(url);
-        if (u.pathname.startsWith("/u/")) navigate(u.pathname + u.search, { replace: false });
+        if (u.pathname.startsWith("/u/")) navRef.current(u.pathname + u.search);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
     const sub = CapApp.addListener("appUrlOpen", (e) => toPath(e.url));
     return () => { sub.then((h) => h.remove()).catch(() => {}); };
-  }, [navigate]);
+  }, []);
   return null;
 };
 

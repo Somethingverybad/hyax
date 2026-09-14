@@ -132,7 +132,6 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
         if (openChatFromStateRef.current) {
           setSelectedChatId(openChatFromStateRef.current);
           openChatFromStateRef.current = null;
-          window.history.replaceState({}, "");
         }
         
         // 🔔 Инициализация push-уведомлений после успешной аутентификации

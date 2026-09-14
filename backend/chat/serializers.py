@@ -25,7 +25,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     Без call_status, push_preview и прочих приватных настроек."""
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'bio', 'is_bot']
+        fields = ['id', 'username', 'avatar_url', 'bio', 'is_bot', 'created_at']
         read_only_fields = fields
 
 
