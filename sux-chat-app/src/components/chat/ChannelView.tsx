@@ -26,8 +26,9 @@ interface Post {
   reactions?: { value: string; count: number }[]; reactions_total?: number;
   my_reaction?: string | null; comments_count?: number; views_count?: number;
   sound?: { name: string } | null;
-  /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер). */
-  _pending?: boolean; _progress?: number | null;
+  /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер).
+   *  _failed + _retry — не ушло: пост остаётся с «Повторить»/«Удалить», снятое не теряется. */
+  _pending?: boolean; _progress?: number | null; _failed?: boolean; _retry?: () => void;
 }
 
 const REACTIONS = ["🔥", "❤️", "👍", "😂", "😮", "😢"];
@@ -120,9 +121,27 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     setPosts((prev) => [...prev, { ...post, id, created_at: new Date().toISOString(), _pending: true }]);
     setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     return {
+      id,
       progress: (p: number | null) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _progress: p } : x))),
       drop: () => setPosts((prev) => prev.filter((x) => x.id !== id)),
+      fail: (retry: () => void) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _failed: true, _progress: null, _retry: retry } : x))),
+      restart: () => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _failed: false, _progress: 0 } : x))),
     };
+  };
+
+  /** Загрузка + публикация видео-«треугольника»; при ошибке пост остаётся с повтором. */
+  const publishNote = async (temp: ReturnType<typeof addPending>, file: File, seconds: number, mirror: boolean) => {
+    try {
+      temp.restart();
+      const uploaded = await api.uploadFile(file, undefined, (p) => temp.progress(p));
+      temp.progress(100);
+      await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror);
+      await load();
+      setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
+    } catch {
+      toast.error("Не удалось опубликовать видео — нажми «Повторить»");
+      temp.fail(() => void publishNote(temp, file, seconds, mirror));
+    }
   };
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -159,14 +178,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       setSending(true);
       const mirror = facing === "user";
       temp = addPending({ video_url: URL.createObjectURL(result.file), video_duration: result.seconds, video_mirror: mirror, _progress: 0 });
-      const uploaded = await api.uploadFile(result.file, undefined, (p) => temp?.progress(p));
-      temp.progress(100);
-      await api.sendMessageWithVideo(channelId, uploaded.file_url, result.seconds, mirror);
-      await load();
-      setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
+      await publishNote(temp, result.file, result.seconds, mirror);
     } catch {
       temp?.drop();
-      toast.error("Не удалось опубликовать видео");
+      toast.error("Не удалось записать видео");
     } finally {
       setSending(false);
       setRecBusy(false);
@@ -370,7 +385,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
                 <PostMedia post={post} onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
-                {post._pending && post._progress != null && (
+                {post._pending && post._failed && (
+                  <div className="mt-2 flex items-center gap-3 text-caption">
+                    <span className="text-destructive font-medium">Не опубликовано</span>
+                    {post._retry && <button type="button" onClick={post._retry} className="underline text-foreground">Повторить</button>}
+                    <button type="button" onClick={() => setPosts((prev) => prev.filter((x) => x.id !== post.id))} className="underline text-subtle">Удалить</button>
+                  </div>
+                )}
+                {post._pending && !post._failed && post._progress != null && (
                   <div className="mt-2 flex items-center gap-2 text-caption text-subtle">
                     <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
                       <div className="h-full bg-primary transition-[width] duration-150" style={{ width: `${Math.max(3, post._progress)}%` }} />

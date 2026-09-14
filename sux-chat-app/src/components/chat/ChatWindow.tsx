@@ -75,6 +75,11 @@ interface Message {
   /** Загрузка вложения в процентах, пока pending: рисуется в самом пузыре.
    *  100 — файл на сервере, ждём ответа (пережатие видео и т.п.). */
   _progress?: number | null;
+  /** Отправка не удалась: пузырь остаётся с «Повторить»/«Удалить», сама
+   *  запись (голос/кружок) лежит в _rec — раньше пузырь просто исчезал и
+   *  снятое пропадало. */
+  _failed?: boolean;
+  _rec?: VoiceRecording & { mirror: boolean };
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
   forwarded_from?: { id: string; username: string; avatar_url?: string | null } | null;
   forwarded_title?: string;
@@ -941,13 +946,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const processRecording = async (result: VoiceRecording | null) => {
     if (!result || !chatId) return;
-    setUploading(true);
     // Пузырь с записью появляется сразу, из локального blob, с прогрессом
     // загрузки — как у текста и файлов. Раньше до ответа сервера в ленте
     // ничего не было, и голосовое выглядело неотправленным.
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const localUrl = URL.createObjectURL(result.file);
-    const isVideo = result.kind === "video";
     const mirror = facing === "user";
     const optimistic: Message = {
       id: tempId,
@@ -957,17 +960,28 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       sender_id: userId,
       sender: { id: userId } as Profile,
       created_at: new Date().toISOString(),
-      ...(isVideo
+      ...(result.kind === "video"
         ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror }
         : { voice_url: localUrl, voice_duration: result.seconds }),
       pending: true,
       _key: tempId,
       _progress: 0,
+      _rec: { ...result, mirror },
     };
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
+    await sendRecording(tempId, { ...result, mirror });
+  };
+
+  /** Отправка записи из пузыря tempId; повтор после ошибки — та же функция. */
+  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean }) => {
+    if (!chatId) return;
+    setUploading(true);
+    const isVideo = result.kind === "video";
+    const mirror = result.mirror;
+    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: 0 } : m)));
     try {
       let sent: Message;
       if (isVideo) {
@@ -987,12 +1001,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _progress: null } : m))
       );
     } catch {
-      toast.error("Не удалось отправить сообщение");
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-      URL.revokeObjectURL(localUrl);
+      // Пузырь и запись остаются — можно повторить, когда сеть вернётся.
+      toast.error("Не удалось отправить — нажми «Повторить»");
+      setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: true, _progress: null } : m)));
     } finally {
       setUploading(false);
     }
+  };
+
+  const discardFailed = (m: Message) => {
+    setMessages(prev => prev.filter(x => x.id !== m.id));
+    const u = m.video_url || m.voice_url;
+    if (u && u.startsWith("blob:")) URL.revokeObjectURL(u);
   };
 
   // Ключевое: устройство (микрофон/камеру) захватываем ТОЛЬКО когда кнопку
@@ -1577,8 +1597,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                         </div>
                       )}
+                      {/* Не ушло: запись на месте, можно повторить или убрать. */}
+                      {message.pending && message._failed && (
+                        <div className={cn("mt-1.5 flex items-center gap-3 text-caption", isOwn && !bareBubble ? "text-white/80" : "text-subtle")}>
+                          <span className="text-destructive font-medium">Не отправлено</span>
+                          {message._rec && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">Повторить</button>
+                          )}
+                          <button type="button" onClick={(e) => { e.stopPropagation(); discardFailed(message); }} className="underline opacity-80">Удалить</button>
+                        </div>
+                      )}
                       {/* Загрузка вложения: полоска и проценты прямо в пузыре. */}
-                      {message.pending && message._progress != null && (
+                      {message.pending && !message._failed && message._progress != null && (
                         <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[96px]", isOwn && !bareBubble ? "text-white/70" : "text-subtle")}>
                           <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
                             <div className="h-full bg-current transition-[width] duration-150" style={{ width: `${Math.max(3, message._progress)}%` }} />
