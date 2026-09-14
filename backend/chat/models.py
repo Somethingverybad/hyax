@@ -99,6 +99,10 @@ class Message(models.Model):
     sticker = models.ForeignKey('Sticker', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Ссылка на стикер
     voice_url = models.TextField(blank=True, null=True)  # URL голосового сообщения
     voice_duration = models.IntegerField(blank=True, null=True)  # Длительность в секундах
+    # Расшифровка голосового (faster-whisper, см. chat/transcribe.py): текст и
+    # состояние — '', 'pending', 'done', 'error'. По требованию, кнопкой в чате.
+    voice_transcript = models.TextField(blank=True, null=True)
+    transcript_status = models.CharField(max_length=10, blank=True, default='')
     # Видео-сообщение — наш ответ «кружкам»: короткое видео с фронтальной
     # камеры, которое в переписке показывается треугольником.
     video_url = models.TextField(blank=True, null=True)

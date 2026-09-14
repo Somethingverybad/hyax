@@ -11,3 +11,6 @@ secrets/
 sux-chat-app/ios/App/App/GoogleService-Info.plist
 sux-chat-app/android/app/google-services.json
 web/
+
+# веса whisper скачиваются на сервере (chat/transcribe.py)
+backend/whisper-models/

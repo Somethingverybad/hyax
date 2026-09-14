@@ -11,3 +11,5 @@ firebase-admin
 httpx[http2]
 PyJWT
 boto3
+# Расшифровка голосовых локально на CPU (chat/transcribe.py)
+faster-whisper>=1.1.0

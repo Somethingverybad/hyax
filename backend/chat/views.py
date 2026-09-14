@@ -586,6 +586,23 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
+    def transcribe(self, request, pk=None):
+        """Расшифровать голосовое — любой, кто видит чат. Идёт в фоне;
+        готовый текст приезжает через /messages/sync/ (updated_at)."""
+        from .transcribe import transcribe_async
+        msg = self.get_object()
+        profile = getattr(request.user, 'profile', None)
+        if profile is None or not _can_see_chat(msg.chat, profile):
+            return Response({"error": "Нет доступа"}, status=403)
+        if not msg.voice_url:
+            return Response({"error": "Это не голосовое"}, status=400)
+        if msg.transcript_status != 'done' and not (msg.transcript_status == 'pending'):
+            msg.transcript_status = 'pending'
+            msg.save(update_fields=['transcript_status', 'updated_at'])
+            transcribe_async(msg.id)
+        return Response(MessageSerializer(msg, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
     def pin(self, request, pk=None):
         """Закрепить ({pin: true}) или открепить ({pin: false}) сообщение в его чате.
         Закреп один на чат. В личке и группе — любой участник, в канале — админы."""
