@@ -490,12 +490,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       kbShiftRef.current = height;
       if (!delta) return;
       cancelAnimationFrame(raf);
-      const from = el.scrollTop;
+      // Двигаем ПРИРАЩЕНИЯМИ от текущего scrollTop, а не «from + delta·ease»
+      // от запомненной точки: поле ввода в autoFocus, клавиатура поднимается
+      // сразу при входе в чат, и абсолютная формула стартовала с scrollTop=0 —
+      // пока шла её анимация, scrollToBottom() проматывал ленту вниз, а
+      // следующий кадр возвращал её к «0 + высота клавиатуры». Так лента
+      // «периодически» открывалась сверху. С приращениями параллельная
+      // прокрутка вниз остаётся внизу (лишнее срезает clamp браузера).
       const start = performance.now();
       const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+      let applied = 0;
       const step = (now: number) => {
         const p = Math.min(1, (now - start) / duration);
-        el.scrollTop = from + delta * ease(p);
+        const target = delta * ease(p);
+        el.scrollTop += target - applied;
+        applied = target;
         if (p < 1) raf = requestAnimationFrame(step);
       };
       raf = requestAnimationFrame(step);
