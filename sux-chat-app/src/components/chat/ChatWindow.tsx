@@ -17,7 +17,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
-import { LivePreview, MessageImage, MessageVideoFile, MessageFile, VideoNote, isImageFile, isVideoFile, previewSize } from "@/components/chat/media";
+import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, isImageFile, isAudioFile, isVideoFile, previewSize } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
@@ -1516,6 +1516,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               onOpen={(url, name) => setViewer({ url, name, messageId: message.id })}
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
+                          ) : isAudioFile(message.file_name, message.file_url) ? (
+                            <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} />
                           ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
                             <MessageVideoFile raw={message.file_url} />
                           ) : (

@@ -8,7 +8,7 @@ import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Tra
 import { playSfx } from "@/lib/sfx";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageVideoFile, VideoNote, isImageFile, isVideoFile } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, isImageFile, isAudioFile, isVideoFile } from "@/components/chat/media";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -52,6 +52,9 @@ const PostMedia = ({ post, onOpenImage }: { post: Post; onOpenImage?: (url: stri
   }
   if (!post.file_url) return null;
   if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} onOpen={(url) => onOpenImage?.(url, post)} />;
+  if (isAudioFile(post.file_name, post.file_url)) {
+    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url) => window.open(url, "_blank")} /></div>;
+  }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageVideoFile raw={post.file_url} /></div>;
   }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, Download, Play } from "lucide-react";
+import { Paperclip, Download, Play, Pause } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 
@@ -21,6 +21,86 @@ export const isImageFile = (fileName: string | null | undefined, fileUrl: string
 export const isVideoFile = (fileName: string | null | undefined, fileUrl: string | null | undefined): boolean => {
   const s = (fileName || fileUrl || '').toLowerCase();
   return ['.mp4', '.mov', '.m4v', '.webm'].some(ext => s.endsWith(ext));
+};
+
+/** Музыка/аудио как вложение — играет в пузыре, а не качается. */
+export const isAudioFile = (fileName: string | null | undefined, fileUrl: string | null | undefined): boolean => {
+  const s = (fileName || fileUrl || '').toLowerCase().split('?')[0];
+  return ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.oga', '.opus', '.flac', '.weba'].some(ext => s.endsWith(ext));
+};
+
+const fmtClock = (sec: number) => {
+  const s = Math.max(0, Math.floor(sec || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/** Аудиофайл в переписке и в ленте канала: плеер с перемоткой вместо строки
+ *  со скачиванием. Файл, отправленный как «Файл» (download_only), тоже сюда —
+ *  для музыки скачивание вместо воспроизведения сбивало с толку. Скачать
+ *  по-прежнему можно кнопкой справа. */
+export const MessageAudioFile = ({ raw, name, isOwn, onSave }: {
+  raw: string; name: string | null; isOwn: boolean; onSave: (url: string, name: string) => void;
+}) => {
+  const src = useMediaUrl(raw);
+  const ref = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  const title = (name || "Аудио").replace(/\.[^.]+$/, "");
+
+  useEffect(() => () => { ref.current?.pause(); ref.current = null; }, [src]);
+
+  const ensure = () => {
+    if (ref.current || !src) return ref.current;
+    const a = new Audio(src);
+    a.preload = "metadata";
+    a.onloadedmetadata = () => setDur(a.duration || 0);
+    a.ontimeupdate = () => setCur(a.currentTime);
+    a.onended = () => { setPlaying(false); setCur(0); };
+    a.onpause = () => setPlaying(false);
+    a.onplay = () => setPlaying(true);
+    ref.current = a;
+    return a;
+  };
+  const toggle = () => {
+    const a = ensure();
+    if (!a) return;
+    if (playing) a.pause(); else a.play().catch(() => setPlaying(false));
+  };
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = ensure();
+    if (!a || !dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = Math.min(dur, Math.max(0, (e.clientX - r.left) / r.width)) * dur;
+    setCur(a.currentTime);
+  };
+  const frac = dur ? Math.min(1, cur / dur) : 0;
+
+  return (
+    <div className={cn(
+      "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-full",
+      isOwn ? "bg-primary/20 border-primary/30" : "bg-muted border-border",
+    )}>
+      <button type="button" onClick={toggle} disabled={!src} className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center bg-black/20 disabled:opacity-50" aria-label={playing ? "Пауза" : "Играть"}>
+        {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm truncate">{title}</div>
+        <div className="mt-1 h-1.5 rounded-full bg-black/20 cursor-pointer" onClick={seek}>
+          <div className="h-full rounded-full bg-current opacity-80" style={{ width: `${frac * 100}%` }} />
+        </div>
+        <div className="mt-0.5 text-[11px] opacity-70 tabular-nums">{fmtClock(cur)}{dur ? ` / ${fmtClock(dur)}` : ""}</div>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "audio"); }}
+        className="p-1 rounded hover:bg-background/50 transition-colors shrink-0"
+        title="Сохранить файл"
+      >
+        <Download className="w-4 h-4" />
+      </button>
+    </div>
+  );
 };
 
 /** Вписывает натуральный размер в бокс превью (240×192), не увеличивая. */
