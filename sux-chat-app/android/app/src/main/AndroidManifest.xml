@@ -31,6 +31,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/u/" />
+                <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/c/" />
             </intent-filter>
 
         </activity>

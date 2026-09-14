@@ -539,6 +539,13 @@ export const api = {
     if (!res.ok) throw new Error(d.error || "Не удалось создать канал");
     return d.channel;
   },
+  /** Канал по ссылке /c/<handle>: @username или id. */
+  getChannelByHandle: async (handle: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/by-handle/${encodeURIComponent(handle)}/`, { method: "GET", headers: authHeaders() });
+    if (res.status === 404) throw new Error("not_found");
+    if (!res.ok) throw new Error(`Channel failed: ${res.status}`);
+    return res.json();
+  },
   getChannel: async (id: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/`, { method: "GET", headers: authHeaders() });
     return res.json();

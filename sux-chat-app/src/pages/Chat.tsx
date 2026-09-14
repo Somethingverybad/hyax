@@ -106,7 +106,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // открываем его сразу, не заставляя искать в списке. Состояние навигации
   // читаем один раз: при следующих перерисовках оно не должно перебивать выбор.
   const location = useLocation();
-  const openChatFromStateRef = useRef<string | null>((location.state as any)?.chatId || null);
+  const openChatFromStateRef = useRef<{ chatId: string; kind?: string; title?: string } | null>(
+    (location.state as any)?.chatId ? { chatId: (location.state as any).chatId, kind: (location.state as any).kind, title: (location.state as any).title } : null);
 
   // При открытии чата помечаем его прочитанным на сервере и гасим бейдж.
   useEffect(() => {
@@ -130,7 +131,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
         setChats(userChats);
         writeCache("chats", userChats);
         if (openChatFromStateRef.current) {
-          setSelectedChatId(openChatFromStateRef.current);
+          const o = openChatFromStateRef.current;
+          setSelectedChatId(o.chatId);
+          if (o.kind) setSelectedKind(o.kind);
+          if (o.title) setSelectedChatTitle(o.title);
           openChatFromStateRef.current = null;
         }
         

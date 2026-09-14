@@ -4,8 +4,9 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
 import ImageViewer from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2 } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
+import { shareChannel } from "@/lib/share";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
@@ -531,12 +532,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             </div>
           )}
         </div>
-      ) : (
+      ) : !subscribed ? (
+        // Подписчику кнопка не нужна — она стояла и после подписки, потому что
+        // ветка была просто «не админ». Отписка — в инфо-модалке канала.
         <div className="pad-safe-bottom px-3 py-3 shrink-0">
           <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
             Подписаться
           </button>
         </div>
+      ) : (
+        <div className="pad-safe-bottom shrink-0" />
       )}
 
       {infoOpen && channel && (
@@ -736,6 +741,18 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
           <p className="text-sm text-muted-foreground">
             {channel.subscribers_count ?? 0} подписчиков{channel.username ? ` · @${channel.username}` : ""}
           </p>
+          {/* Ссылка на канал — как «Поделиться профилем»: открывается в приложении. */}
+          <button
+            type="button"
+            onClick={async () => {
+              const r = await shareChannel(channel);
+              if (r === "copied") toast.success("Ссылка скопирована");
+              else if (r === "error") toast.error("Не удалось поделиться");
+            }}
+            className="w-full py-2.5 border border-border font-semibold flex items-center justify-center gap-2"
+          >
+            <Share2 className="w-4 h-4" /> Поделиться каналом
+          </button>
 
           {isOwner ? (
             <>

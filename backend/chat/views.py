@@ -2008,6 +2008,27 @@ class ChannelDiscoverView(APIView):
         return Response({"channels": [ChannelSerializer(c, context={"request": request}).data for c in qs]})
 
 
+class ChannelByHandleView(APIView):
+    """GET — канал по ссылке /c/<handle>: @username (без регистра) или uuid.
+    Для «Поделиться каналом» — как /u/<ник> для профилей."""
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request, handle):
+        h = (handle or "").strip().lstrip("@")
+        ch = None
+        try:
+            ch = _channel_or_none(uuid.UUID(h))
+        except (ValueError, AttributeError):
+            pass
+        if not ch:
+            ch = Chat.objects.filter(kind="channel", username__iexact=h).first()
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        admins = ChatParticipant.objects.filter(chat=ch, role__in=("owner", "admin")).select_related("user")
+        data = ChannelSerializer(ch, context={"request": request}).data
+        data["admins"] = [{"id": str(a.user_id), "username": a.user.username, "role": a.role} for a in admins]
+        return Response(data)
+
+
 class ChannelDetailView(APIView):
     """GET — инфо + админы. PATCH — правка (owner/admin). DELETE — удалить (owner)."""
     permission_classes = [permissions.IsAuthenticated]

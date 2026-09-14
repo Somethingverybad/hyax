@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { App as CapApp } from "@capacitor/app";
 import PublicProfile from "./pages/PublicProfile";
+import PublicChannel from "./pages/PublicChannel";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
@@ -63,7 +64,7 @@ const DeepLinks = () => {
       if (!url) return;
       try {
         const u = new URL(url);
-        if (u.pathname.startsWith("/u/")) navRef.current(u.pathname + u.search);
+        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/")) navRef.current(u.pathname + u.search);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
@@ -130,6 +131,8 @@ const App = () => {
               <Route path="/profile" element={<ProfilePage />} />
               {/* Карточка по ссылке «Поделиться профилем». */}
               <Route path="/u/:username" element={<PublicProfile />} />
+              {/* Канал по ссылке «Поделиться каналом». */}
+              <Route path="/c/:handle" element={<PublicChannel />} />
               <Route path="*" element={<NotFound />} />
             </AnimatedRoutes>
           </BrowserRouter>
