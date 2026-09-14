@@ -3,12 +3,13 @@ import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, mediaUrl } from "@/api/client";
+import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
+import { playSfx } from "@/lib/sfx";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
-import { Camera, LogOut, Share2, Copy, ChevronRight } from "lucide-react";
+import { Camera, LogOut, Share2, Copy, ChevronRight, Music2, Play, Square, Check, X } from "lucide-react";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
 
@@ -17,7 +18,58 @@ interface Profile {
   username: string;
   avatar_url?: string | null;
   bio?: string | null;
+  push_preview?: boolean;
+  notify_sound?: NotificationSoundInfo | null;
 }
+
+/** Строка каталога звуков: прослушать и выбрать. */
+const SoundPickRow = ({ sound, selected, onPick }: { sound: NotificationSoundInfo | null; selected: boolean; onPick: () => void }) => {
+  const stopRef = useRef<(() => void) | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const toggle = () => {
+    stopRef.current?.();
+    if (playing || !sound) { setPlaying(false); return; }
+    setPlaying(true);
+    playSfx(mediaUrl(sound.url), { volume: 0.7, onEnded: () => setPlaying(false) })
+      .then((stop) => { stopRef.current = stop; })
+      .catch(() => setPlaying(false));
+  };
+  useEffect(() => () => stopRef.current?.(), []);
+  return (
+    <div className={`flex items-center gap-2 px-3 h-12 border-b border-border/60 ${selected ? "bg-primary/10" : ""}`}>
+      <button type="button" onClick={toggle} disabled={!sound} className="w-8 h-8 shrink-0 flex items-center justify-center rounded-md bg-surface-4 disabled:opacity-30">
+        {playing ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+      </button>
+      <button type="button" onClick={onPick} className="flex-1 min-w-0 text-left">
+        <span className="block text-body truncate">{sound ? sound.name : "Без звука"}</span>
+        {sound?.pack_name && <span className="block text-caption text-subtle truncate">{sound.pack_name}</span>}
+      </button>
+      {selected && <Check className="w-4 h-4 text-primary shrink-0" />}
+    </div>
+  );
+};
+
+/** Шторка выбора «моего звука» — из каталога звуков уведомлений. */
+const SoundPicker = ({ current, onPick, onClose }: { current: string | null; onPick: (s: NotificationSoundInfo | null) => void; onClose: () => void }) => {
+  const [sounds, setSounds] = useState<NotificationSoundInfo[] | null>(null);
+  useEffect(() => { api.getNotificationSounds().then(setSounds).catch(() => setSounds([])); }, []);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center md:justify-center" onClick={onClose}>
+      <div className="w-full md:w-[420px] max-h-[80vh] bg-surface-2 rounded-t-[16px] md:rounded-lg flex flex-col pb-[var(--sab)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-4 h-14 shrink-0">
+          <span className="text-h2 flex-1">Мой звук уведомлений</span>
+          <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label="Закрыть"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="overflow-y-auto">
+          <SoundPickRow sound={null} selected={!current} onPick={() => onPick(null)} />
+          {sounds === null && <p className="px-4 py-6 text-small text-subtle text-center">Загрузка…</p>}
+          {sounds?.map((s) => <SoundPickRow key={s.id} sound={s} selected={current === s.id} onPick={() => onPick(s)} />)}
+          {sounds && sounds.length === 0 && <p className="px-4 py-6 text-small text-subtle text-center">Каталог звуков пуст</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /**
  * Настройки профиля: аватар, никнейм, статус.
@@ -104,6 +156,7 @@ const ProfilePage = () => {
   // Сохранёнки: счётчик и пять превью для карточки в профиле.
   const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
   const loadSaved = () => api.listSavedImages(undefined, 5).then(setSaved).catch(() => setSaved({ count: 0, items: [] }));
   useEffect(() => { void loadSaved(); }, []);
   const platformLabel = Capacitor.getPlatform() === "ios" ? "iOS" : "Android";
@@ -236,6 +289,20 @@ const ProfilePage = () => {
         </div>
 
         <div className="rounded-lg bg-surface-2 divide-y divide-border">
+          {/* «Мой звук»: собеседники получают пуши о моих сообщениях с этим
+              звуком (если у сообщения нет своего аудио-стикера). */}
+          {profile && (
+            <button type="button" onClick={() => setSoundPickerOpen(true)} className="w-full flex items-center gap-3 h-14 px-4 text-left active:bg-surface-3">
+              <Music2 className="w-5 h-5 text-primary shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-body">Мой звук уведомлений</span>
+                <span className="block text-caption text-subtle truncate">
+                  {profile.notify_sound ? `${profile.notify_sound.name} — так звучат мои сообщения у других` : "Обычный — выбери свой, его услышат собеседники"}
+                </span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-subtle shrink-0" />
+            </button>
+          )}
           {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
               вместо текста; сам пуш при этом всё равно зашифрован. */}
           {Capacitor.isNativePlatform() && profile && (
@@ -276,6 +343,20 @@ const ProfilePage = () => {
         </div>
       </div>
 
+      {soundPickerOpen && profile && (
+        <SoundPicker
+          current={profile.notify_sound?.id || null}
+          onClose={() => setSoundPickerOpen(false)}
+          onPick={async (s) => {
+            setSoundPickerOpen(false);
+            const prev = profile.notify_sound || null;
+            const next = { ...profile, notify_sound: s };
+            setProfile(next); writeCache("user", next);
+            try { await api.updateProfile(profile.id, { notify_sound_id: s ? s.id : null }); toast.success(s ? `Теперь твои сообщения звучат как «${s.name}»` : "Обычный звук"); }
+            catch { toast.error("Не удалось сохранить"); const back = { ...profile, notify_sound: prev }; setProfile(back); writeCache("user", back); }
+          }}
+        />
+      )}
       {galleryOpen && (
         <SavedGallery own onClose={() => { setGalleryOpen(false); void loadSaved(); }} />
       )}

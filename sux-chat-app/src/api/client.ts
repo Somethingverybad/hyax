@@ -69,6 +69,8 @@ interface Profile {
   user?: any;
   /** Показывать текст сообщения в уведомлениях. */
   push_preview?: boolean;
+  /** «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников. */
+  notify_sound?: NotificationSoundInfo | null;
 }
 
 export interface SavedImage {
@@ -940,7 +942,7 @@ export const api = {
 
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_sound_id?: string | null }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

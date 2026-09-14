@@ -427,19 +427,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     newestRef.current = Math.max(newest, prevNewest);
     if (newMessages.length === 0) return;
 
-    // До первой синхронизации всё пришедшее — пропущенное за время, пока
-    // чат был закрыт, а не входящие «прямо сейчас»: без звука.
-    const hasIncomingMessages = primedRef.current && newMessages.some(msg => msg.sender?.id !== userId);
-    const timeSinceLastSend = Date.now() - lastSendTimeRef.current;
-    if (hasIncomingMessages && timeSinceLastSend > 2000) {
-      // Аудио-стикер входящего сообщения заменяет стандартный звук.
-      const withSound = newMessages.find(msg => msg.sender?.id !== userId && msg.sound?.url);
-      if (withSound?.sound?.url) {
-        void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
-      } else {
-        void playSfx("/sounds/receive.mp3", { volume: 0.3 });
-      }
-    }
+    // В открытом чате входящее не озвучиваем: человек и так смотрит на
+    // переписку. Звук уведомления — дело пуша (и баннера на десктопе, где
+    // пушей нет — см. Chat.tsx). Аудио-стикер остаётся кнопкой в пузыре.
     setTimeout(() => scrollToBottom(), 100);
   }, [messages, userId]);
 

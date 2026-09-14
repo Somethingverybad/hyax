@@ -334,12 +334,15 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
               tag: chatId ? String(chatId) : undefined,
               onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
             });
-            // Звук: аудио-стикер сообщения или дефолтный «receive». Баннер
-            // системного уведомления сам звук не проигрывает, поэтому вручную.
-            try {
-              const url = m.sound?.url ? mediaUrl(m.sound.url) : "/sounds/receive.mp3";
-              void playSfx(url, { volume: 0.6 });
-            } catch { /* без звука не критично */ }
+            // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
+            // этом же сообщении звенит пуш, дублировать его в приложении не надо.
+            // Порядок: аудио-стикер сообщения → «мой звук» отправителя → receive.
+            if (!Capacitor.isNativePlatform()) {
+              try {
+                const custom = m.sound?.url || m.sender?.notify_sound?.url;
+                void playSfx(custom ? mediaUrl(custom) : "/sounds/receive.mp3", { volume: 0.6 });
+              } catch { /* без звука не критично */ }
+            }
           }
         }
       },
