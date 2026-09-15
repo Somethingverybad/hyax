@@ -414,7 +414,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
 
   const publish = async () => {
     const body = text.trim();
-    if ((!body && !attachments.length) || sending) return;
+    // Пост может быть и одним звуком — без текста и вложений.
+    if ((!body && !attachments.length && !sound) || sending) return;
     setSending(true);
     const list = attachments;
     setAttachments([]);
@@ -736,7 +737,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               disabled={recording}
               className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
             />
-            {text.trim() || attachments.length ? (
+            {text.trim() || attachments.length || sound ? (
               <button
                 type="button"
                 onClick={publish}

@@ -822,7 +822,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   const sendMessage = async () => {
-    if (!chatId || (!newMessage.trim() && !attachments.length)) return;
+    // Звук — самостоятельное сообщение: пузырь с одним аудио-стикером,
+    // который получатель может проиграть. Текст для этого не нужен.
+    if (!chatId || (!newMessage.trim() && !attachments.length && !selectedSound)) return;
 
     // Режим редактирования: не создаём новое, а меняем текст существующего.
     if (editing) {
@@ -1978,7 +1980,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               />
             </div>
             
-            {newMessage.trim() || attachments.length ? (
+            {newMessage.trim() || attachments.length || selectedSound ? (
               <Button
                 onClick={sendMessage}
                 onPointerDown={(e) => e.preventDefault()}
