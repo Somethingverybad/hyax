@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
-import ImageViewer from "@/components/ImageViewer";
+import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
 import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
@@ -136,7 +136,15 @@ const pluralSubs = (n: number) => {
 };
 
 const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps) => {
-  const [viewer, setViewer] = useState<{ url: string; name: string; messageId: string } | null>(null);
+  // Просмотр картинок канала: список всех картинок ленты и позиция в нём.
+  const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number } | null>(null);
+  const openViewer = (postId: string) => {
+    const items: ViewerItem[] = posts
+      .filter((p) => p.file_url && !p.download_only && isImageFile(p.file_name, p.file_url))
+      .map((p) => ({ raw: p.file_url as string, name: p.file_name || "image", messageId: p.id }));
+    const index = Math.max(0, items.findIndex((x) => x.messageId === postId));
+    if (items.length) setViewer({ items, index });
+  };
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -623,7 +631,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words"><Linkify text={post.content} /></p>}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
-                  onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })}
+                  onOpenImage={(_url, p) => openViewer(p.id)}
                   onPlayAudio={playAudioFrom} />
                 {post._pending && post._failed && (
                   <div className="mt-2 flex items-center gap-3 text-caption">
@@ -839,14 +847,23 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
 
       {viewer && (
         <ImageViewer
-          item={viewer}
+          items={viewer.items}
+          index={viewer.index}
+          onIndex={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
           onClose={() => setViewer(null)}
           actions={[
             { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
-              try { const r = await api.addSavedImage(viewer.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки видны всем в твоём профиле" }); }
+              const cur = viewer.items[viewer.index];
+              if (!cur) return;
+              try { const r = await api.addSavedImage(cur.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки видны всем в твоём профиле" }); }
               catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
             } },
-            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: () => window.open(viewer.url, "_blank") },
+            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
+              const cur = viewer.items[viewer.index];
+              if (!cur) return;
+              const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
+              window.open(url, "_blank");
+            } },
           ]}
         />
       )}

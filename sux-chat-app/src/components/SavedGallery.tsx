@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { api, type SavedImage } from "@/api/client";
+import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
-import ImageViewer from "@/components/ImageViewer";
+import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 
 /** «1 фото», «12 фото» — слово не склоняется, но пусть будет одной точкой. */
 export const pluralPhotos = (n: number) => `${n} фото`;
@@ -27,8 +27,11 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
   onChanged?: (count: number) => void;
 }) => {
   const [items, setItems] = useState<SavedImage[] | null>(null);
-  const [open, setOpen] = useState<SavedImage | null>(null);
-  const openUrl = useMediaUrl(open?.file_url || "");
+  // Открытая сохранёнка — позицией в списке: просмотрщик листает их свайпом.
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const viewerItems: ViewerItem[] = (items || []).map((it) => ({
+    raw: it.file_url, name: it.file_name || "image", messageId: it.id,
+  }));
 
   useEffect(() => {
     let alive = true;
@@ -44,7 +47,7 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
         onChanged?.(next.length);
         return next;
       });
-      setOpen(null);
+      setOpenIdx(null);
       toast.success("Удалено из сохранёнок");
     } catch (e: any) {
       toast.error(e?.message || "Не удалось удалить");
@@ -69,17 +72,26 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
           </p>
         ) : (
           <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5">
-            {items.map((it) => <SavedTile key={it.id} item={it} className="aspect-[4/5] w-full" onClick={() => setOpen(it)} />)}
+            {items.map((it, i) => <SavedTile key={it.id} item={it} className="aspect-[4/5] w-full" onClick={() => setOpenIdx(i)} />)}
           </div>
         )}
       </div>
-      {open && openUrl && (
+      {openIdx !== null && viewerItems[openIdx] && (
         <ImageViewer
-          item={{ url: openUrl, name: open.file_name || "image" }}
-          onClose={() => setOpen(null)}
+          items={viewerItems}
+          index={openIdx}
+          onIndex={setOpenIdx}
+          onClose={() => setOpenIdx(null)}
           actions={[
-            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: () => window.open(openUrl, "_blank") },
-            ...(own ? [{ label: "Удалить из сохранёнок", icon: <Trash2 className="w-5 h-5" />, danger: true, onClick: () => void remove(open) }] : []),
+            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
+              const cur = viewerItems[openIdx];
+              const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
+              window.open(url, "_blank");
+            } },
+            ...(own ? [{ label: "Удалить из сохранёнок", icon: <Trash2 className="w-5 h-5" />, danger: true, onClick: () => {
+              const it = (items || [])[openIdx];
+              if (it) void remove(it);
+            } }] : []),
           ]}
         />
       )}

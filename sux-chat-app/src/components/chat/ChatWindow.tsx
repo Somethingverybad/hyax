@@ -21,7 +21,7 @@ import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
-import ImageViewer from "@/components/ImageViewer";
+import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
 
 /** Телефон/планшет: экранная клавиатура, Enter вставляет перенос строки. */
@@ -159,7 +159,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [sounds, setSounds] = useState<NotificationSoundInfo[]>([]);
   const [selectedSound, setSelectedSound] = useState<NotificationSoundInfo | null>(null);
   // Открытая на весь экран картинка: { url, name }.
-  const [viewer, setViewer] = useState<{ url: string; name: string; messageId?: string } | null>(null);
+  // Просмотр картинок: держим весь список переписки и позицию в нём, чтобы
+  // листать свайпом. Картинки альбома идут подряд — они и в ленте соседи.
+  const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number } | null>(null);
+  const openViewer = (messageId: string) => {
+    const items: ViewerItem[] = messages
+      .filter((m) => m.file_url && !m.download_only && isImageFile(m.file_name, m.file_url) && !imageLoadErrors.has(m.id))
+      .map((m) => ({ raw: m.file_url as string, name: m.file_name || "image", messageId: m.id }));
+    const index = Math.max(0, items.findIndex((x) => x.messageId === messageId));
+    if (items.length) setViewer({ items, index });
+  };
   // Проигрывание аудио-стикера по тапу; тап в любом месте прерывает.
   const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
   const soundStopRef = useRef<(() => void) | null>(null);
@@ -1745,7 +1754,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               failed: m._failed,
                             }))}
                             localMap={localImagesRef.current}
-                            onOpen={(url, name, id) => setViewer({ url, name, messageId: id })}
+                            onOpen={(_url, _name, id) => openViewer(id)}
                           />
                           )}
                           {albumAudio.map((m) => (
@@ -1765,7 +1774,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               name={message.file_name}
                               dims={message._dims || dimsOf(message.file_width, message.file_height)}
                               localMap={localImagesRef.current}
-                              onOpen={(url, name) => setViewer({ url, name, messageId: message.id })}
+                              onOpen={() => openViewer(message.id)}
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
                           ) : isAudioFile(message.file_name, message.file_url) ? (
@@ -2305,23 +2314,32 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       {viewer && (
         <ImageViewer
-          item={viewer}
+          items={viewer.items}
+          index={viewer.index}
+          onIndex={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
+          localMap={localImagesRef.current}
           onClose={() => setViewer(null)}
           actions={[
-            ...(viewer.messageId ? [
-              { label: "Переслать", icon: <Forward className="w-5 h-5 text-subtle" />, onClick: () => {
-                const m = messages.find((x) => x.id === viewer.messageId);
-                setViewer(null);
-                if (m) { setForwardQuery(""); setForwardFor(m); }
-              } },
-              { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
-                try {
-                  const r = await api.addSavedImage(viewer.messageId!);
-                  toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки видны всем в твоём профиле" });
-                } catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
-              } },
-            ] : []),
-            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: () => handleSaveFile(viewer.url, viewer.name) },
+            { label: "Переслать", icon: <Forward className="w-5 h-5 text-subtle" />, onClick: () => {
+              const cur = viewer.items[viewer.index];
+              const m = messages.find((x) => x.id === cur?.messageId);
+              setViewer(null);
+              if (m) { setForwardQuery(""); setForwardFor(m); }
+            } },
+            { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
+              const cur = viewer.items[viewer.index];
+              if (!cur) return;
+              try {
+                const r = await api.addSavedImage(cur.messageId);
+                toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки видны всем в твоём профиле" });
+              } catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+            } },
+            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
+              const cur = viewer.items[viewer.index];
+              if (!cur) return;
+              const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
+              handleSaveFile(url, cur.name);
+            } },
           ]}
         />
       )}
