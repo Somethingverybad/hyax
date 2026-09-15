@@ -134,16 +134,16 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   }, []);
 
   const rovTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const rovRateRef = useRef(0.5);
-  const sendRov = (on: boolean, rate?: number) => {
+  const sendRov = (on: boolean) => {
     const chatId = selectedChatIdRef.current;
     if (!chatId) return;
-    if (rate !== undefined) rovRateRef.current = rate;
     if (rovTimerRef.current) { clearInterval(rovTimerRef.current); rovTimerRef.current = null; }
-    wsRef.current?.send({ type: "rov", chat: chatId, on, rate: rovRateRef.current });
+    wsRef.current?.send({ type: "rov", chat: chatId, on });
     if (on) {
+      // Повторяем «держу», пока палец на площадке: приёмник глушит вибрацию
+      // по тишине, если сигналы перестали приходить.
       rovTimerRef.current = setInterval(() => {
-        wsRef.current?.send({ type: "rov", chat: chatId, on: true, rate: rovRateRef.current });
+        wsRef.current?.send({ type: "rov", chat: chatId, on: true });
       }, 400);
     }
   };
@@ -370,7 +370,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           else svc?.handleSignal(msg.signal_type, msg.data);
         } else if (msg?.data?.type === "rov") {
           // Сигнал живёт, только пока приложение открыто: в истории его нет.
-          if (msg.data.on) rovOn(msg.data.from_username, msg.data.rate);
+          if (msg.data.on) rovOn(msg.data.from_username);
           else rovOff();
         } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
           refreshChats();

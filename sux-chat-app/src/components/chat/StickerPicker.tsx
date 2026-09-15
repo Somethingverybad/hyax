@@ -27,10 +27,10 @@ interface UserStickerPack {
 
 interface StickerPickerProps {
   onSelect: (sticker: Sticker) => void;
-  /** Р.Ё.В: держим палец — у собеседника вибрирует телефон; выше палец —
-   *  чаще вибрация (rate 0..1). Панель только сообщает «держу/отпустил»,
-   *  отправкой по сокету занимается чат. */
-  onRov?: (on: boolean, rate?: number) => void;
+  /** Р.Ё.В: коротко ткнул — у собеседника один тычок, держишь — сплошная
+   *  вибрация. Панель только сообщает «держу/отпустил», отправкой по сокету
+   *  занимается чат. */
+  onRov?: (on: boolean) => void;
   /** Аудио-стикеры живут в этой же панели: отдельная кнопка рядом со
    *  стикерами дробила один и тот же сценарий «отправить что-то забавное». */
   sounds?: NotificationSoundInfo[];
@@ -54,7 +54,6 @@ const StickerPicker = ({
 }: StickerPickerProps) => {
   const [tab, setTab] = useState<"stickers" | "sounds" | "rov">("stickers");
   const [roving, setRoving] = useState(false);
-  const [rovRate, setRovRate] = useState(0.5);
   const [soundView, setSoundView] = useState<string | null>(() => {
     try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
   });
@@ -203,61 +202,39 @@ const StickerPicker = ({
   );
 
   // Площадка Р.Ё.В: пока палец на ней — шлём «держу», отпустили или увели
-  // палец — «отпустил». Высота касания задаёт частоту: вверху чаще, внизу
-  // реже. Указатель забираем себе, иначе жест теряется при прокрутке, и
-  // вибрация у собеседника осталась бы висеть.
-  const rateFromEvent = (e: React.PointerEvent) => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
-  };
+  // палец — «отпустил». Дальше решает приёмник: короткое касание — один
+  // тычок, удержание — сплошная вибрация. Указатель забираем себе, иначе
+  // жест теряется при прокрутке и вибрация у собеседника осталась бы висеть.
   const startRov = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    const rate = rateFromEvent(e);
-    setRovRate(rate);
     setRoving(true);
-    onRov?.(true, rate);
-  };
-  const moveRov = (e: React.PointerEvent) => {
-    if (!roving) return;
-    const rate = rateFromEvent(e);
-    // Шлём только заметные изменения — сокет не нужно засыпать мелочью.
-    if (Math.abs(rate - rovRate) < 0.04) return;
-    setRovRate(rate);
-    onRov?.(true, rate);
+    onRov?.(true);
   };
   const stopRov = () => { setRoving(false); onRov?.(false); };
   const rovTab = (
     <div className="h-64 flex flex-col">
       {tabs}
-      <div className="flex-1 flex gap-4 items-stretch px-6 py-3">
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 pb-3">
         <div
           role="button"
           tabIndex={0}
           onPointerDown={startRov}
-          onPointerMove={moveRov}
           onPointerUp={stopRov}
           onPointerCancel={stopRov}
           onPointerLeave={stopRov}
           className={cn(
-            "flex-1 rounded-2xl flex flex-col items-center justify-center gap-2 select-none touch-none transition-colors",
-            roving ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
+            "w-36 h-36 rounded-full flex items-center justify-center select-none touch-none transition-transform",
+            roving ? "bg-primary text-primary-foreground scale-95" : "bg-secondary text-foreground",
           )}
-          aria-label="Держать, чтобы отправить вибрацию; выше палец — чаще"
+          aria-label="Нажать — тычок, держать — сплошная вибрация"
         >
-          <Vibrate className={cn("w-10 h-10", roving && "animate-bounce")} />
-          <p className="text-xs px-4 text-center opacity-80">
-            {roving ? "Держу — выше палец, чаще вибрация" : "Держи палец. Выше — чаще, ниже — реже"}
-          </p>
+          <Vibrate className={cn("w-14 h-14", roving && "animate-pulse")} />
         </div>
-        {/* Шкала частоты: заполняется снизу вверх вслед за пальцем. */}
-        <div className="w-10 rounded-2xl bg-secondary relative overflow-hidden shrink-0">
-          <div
-            className="absolute left-0 right-0 bottom-0 bg-primary/70 transition-[height] duration-75"
-            style={{ height: `${(roving ? rovRate : 0) * 100}%` }}
-          />
-          <span className="absolute inset-x-0 top-1 text-center text-[10px] text-muted-foreground">часто</span>
-          <span className="absolute inset-x-0 bottom-1 text-center text-[10px] text-muted-foreground">редко</span>
-        </div>
+        <p className="text-xs text-muted-foreground text-center px-4">
+          {roving
+            ? "Держу — через секунду загудит сплошняком"
+            : "Коротко ткни — один тычок. Держи дольше секунды — гудит, пока не отпустишь"}
+        </p>
       </div>
     </div>
   );

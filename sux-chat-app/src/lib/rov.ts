@@ -1,35 +1,38 @@
 import { Capacitor } from "@capacitor/core";
 
 /**
- * Р.Ё.В — режим ёбнутой вибрации: пока собеседник держит палец на площадке,
- * у нас вибрирует телефон.
+ * Р.Ё.В — режим ёбнутой вибрации: собеседник жмёт площадку, у нас отзывается
+ * телефон.
  *
- * Непрерывной вибрации нет ни на iOS, ни в вебе, поэтому «держим» её сами:
- * повторяем короткие импульсы, пока приходят сигналы «держу». Сигналы идут
- * по сокету пачками (отправитель повторяет их, пока палец на экране), и если
- * пачка прервалась — глушим по тишине: собеседник мог отпустить, свернуть
- * приложение или потерять сеть.
+ * Поведение зависит от того, как долго держат:
+ *   • короткое касание (меньше секунды) — один тактильный тычок, такой же,
+ *     каким iPhone отзывается на нажатие кнопок;
+ *   • удержание — через секунду тычок переходит в сплошной гул основного
+ *     вибромотора и держится, пока не отпустят.
  *
- * Частоту задаёт отправитель движением пальца по вертикали (rate 0..1) —
- * её отрабатываем локально, поэтому частая вибрация не требует частых
- * пакетов. Потолок длительности тот же, что на сервере: 5 минут подряд.
+ * Тычок даём сразу по первому сигналу: иначе короткое касание пришлось бы
+ * ждать секунду, чтобы понять, что оно короткое. Сплошной вибрации «одной
+ * командой» нет ни на iOS, ни в вебе, поэтому гул поддерживаем сами —
+ * подкачиваем мотор чаще, чем он успевает остановиться.
+ *
+ * Сигналы идут по сокету пачками, пока палец на площадке. Пачка прервалась —
+ * глушим по тишине: собеседник мог отпустить, свернуть приложение или
+ * потерять сеть.
  */
-const PULSE_SLOW = 900;        // палец внизу — редкие удары
-const PULSE_FAST = 60;         // палец вверху — частые
-// На iOS сильная вибрация — это системный «звонковый» сигнал, он длится около
-// 0.4 с и укоротить его нельзя: чаще, чем раз в ~450 мс, бить бессмысленно —
-// удары сольются в кашу. На Android длительность задаём сами, поэтому там
-// частота работает во всём диапазоне.
-const MIN_PERIOD = Capacitor.getPlatform() === "ios" ? 450 : 60;
-const pulseFor = (rate: number) => Math.max(
-  MIN_PERIOD,
-  Math.round(PULSE_SLOW - (PULSE_SLOW - PULSE_FAST) * Math.min(1, Math.max(0, rate))),
-);
+const HOLD_MS = 1000;          // дольше этого — уже удержание, а не касание
 const SILENCE_MS = 1200;       // нет сигналов столько — считаем, что отпустили
-const MAX_MS = 5 * 60 * 1000;  // страховка на случай, если «отпустил» потерялся
+const MAX_MS = 5 * 60 * 1000;  // страховка, если «отпустил» потерялся
 
-let pulse: ReturnType<typeof setInterval> | null = null;
-let period = pulseFor(0.5);
+const platform = Capacitor.getPlatform();
+// iOS: системная вибрация длится ~0.4 с и укоротить её нельзя — подкачиваем
+// чаще, чтобы удары сливались в сплошное. Android и веб: держим мотор сами,
+// длинными импульсами внахлёст.
+const RUMBLE_STEP = platform === "ios" ? 380 : 1400;
+const RUMBLE_LEN = 1500;
+
+let active = false;
+let rumble: ReturnType<typeof setInterval> | null = null;
+let escalate: ReturnType<typeof setTimeout> | null = null;
 let silence: ReturnType<typeof setTimeout> | null = null;
 let hardStop: ReturnType<typeof setTimeout> | null = null;
 let onChange: ((active: boolean, from?: string) => void) | null = null;
@@ -37,37 +40,42 @@ let onChange: ((active: boolean, from?: string) => void) | null = null;
 /** Подписка для интерфейса: подсветить, что нас ревут. */
 export const onRovState = (cb: typeof onChange) => { onChange = cb; };
 
-const buzz = () => {
+/** Одиночный тычок — лёгкий тактильный отклик. */
+const tap = () => {
   if (Capacitor.isNativePlatform()) {
-    // Именно vibrate, а не impact: impact — это лёгкий тычок тактильного
-    // движка, его почти не чувствуешь в кармане. vibrate поднимает основной
-    // вибромотор — так же, как при звонке. На Android держим мотор почти
-    // весь такт, чтобы получилась сплошная дрожь, на iOS длительность
-    // системная (~0.4 с) и параметр игнорируется.
     import("@capacitor/haptics")
-      .then(({ Haptics }) => Haptics.vibrate({ duration: Math.max(180, Math.round(period * 0.9)) }))
+      .then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Medium }))
       .catch(() => {});
     return;
   }
-  // Браузер: где есть вибромотор (Android) — длинный импульс на весь такт.
-  // На десктопе метода нет, останется только подсветка в интерфейсе.
-  navigator.vibrate?.(Math.max(80, Math.round(period * 0.9)));
+  navigator.vibrate?.(35);
 };
 
-/** Пришёл сигнал «держу»: начинаем, продлеваем или меняем частоту. */
-export function rovOn(from?: string, rate = 0.5) {
-  const want = pulseFor(rate);
-  if (!pulse) {
-    period = want;
-    buzz();
-    pulse = setInterval(buzz, period);
+/** Подкачка сплошного гула: мотор на полную, внахлёст с прошлым импульсом. */
+const rumbleOnce = () => {
+  if (Capacitor.isNativePlatform()) {
+    import("@capacitor/haptics")
+      .then(({ Haptics }) => Haptics.vibrate({ duration: RUMBLE_LEN }))
+      .catch(() => {});
+    return;
+  }
+  navigator.vibrate?.(RUMBLE_LEN);
+};
+
+const startRumble = () => {
+  if (rumble) return;
+  rumbleOnce();
+  rumble = setInterval(rumbleOnce, RUMBLE_STEP);
+};
+
+/** Пришёл сигнал «держу»: первый — тычок, дальше перерастает в гул. */
+export function rovOn(from?: string) {
+  if (!active) {
+    active = true;
+    tap();
+    escalate = setTimeout(startRumble, HOLD_MS);
     hardStop = setTimeout(rovOff, MAX_MS);
     onChange?.(true, from);
-  } else if (want !== period) {
-    // Частоту сменили на ходу — перезапускаем такт с новым периодом.
-    period = want;
-    clearInterval(pulse);
-    pulse = setInterval(buzz, period);
   }
   if (silence) clearTimeout(silence);
   silence = setTimeout(rovOff, SILENCE_MS);
@@ -75,11 +83,14 @@ export function rovOn(from?: string, rate = 0.5) {
 
 /** «Отпустил» — либо сигналы кончились, либо вышло время. */
 export function rovOff() {
-  if (pulse) { clearInterval(pulse); pulse = null; }
+  if (!active && !rumble) return;
+  active = false;
+  if (rumble) { clearInterval(rumble); rumble = null; }
+  if (escalate) { clearTimeout(escalate); escalate = null; }
   if (silence) { clearTimeout(silence); silence = null; }
   if (hardStop) { clearTimeout(hardStop); hardStop = null; }
   navigator.vibrate?.(0);
   onChange?.(false);
 }
 
-export const rovActive = () => pulse !== null;
+export const rovActive = () => active;
