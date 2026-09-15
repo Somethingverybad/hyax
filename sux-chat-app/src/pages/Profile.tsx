@@ -20,6 +20,7 @@ interface Profile {
   avatar_url?: string | null;
   bio?: string | null;
   push_preview?: boolean;
+  rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
 }
 
@@ -255,6 +256,28 @@ const ProfilePage = () => {
               </span>
               <ChevronRight className="w-4 h-4 text-subtle shrink-0" />
             </button>
+          )}
+          {/* Р.Ё.В: вибрация, которую шлёт собеседник, пока держит палец.
+              Выключено — сервер такие сигналы до нас не доводит. */}
+          {profile && (
+            <label className="flex items-center justify-between gap-3 h-14 px-4">
+              <span className="min-w-0">
+                <span className="block text-body">Принимать Р.Ё.В</span>
+                <span className="block text-caption text-subtle truncate">Вибрация, пока собеседник держит палец</span>
+              </span>
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                checked={profile.rov_enabled !== false}
+                onChange={async (e) => {
+                  const v = e.target.checked;
+                  const next = { ...profile, rov_enabled: v };
+                  setProfile(next); writeCache("user", next);
+                  try { await api.updateProfile(profile.id, { rov_enabled: v }); }
+                  catch { toast.error("Не удалось сохранить"); setProfile({ ...profile, rov_enabled: !v }); }
+                }}
+              />
+            </label>
           )}
           {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
               вместо текста; сам пуш при этом всё равно зашифрован. */}
