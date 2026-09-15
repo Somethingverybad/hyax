@@ -17,7 +17,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
-import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
+import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
@@ -30,6 +30,18 @@ interface Profile {
   id: string;
   username: string;
   avatar_url?: string;
+}
+
+/** Вложение композера: фото и видео уходят альбомом, музыка играет плеером,
+ *  остальное — строкой со скачиванием. */
+type AttachMode = "photo" | "video" | "audio" | "file";
+interface Attach {
+  id: string;
+  file: File;
+  mode: AttachMode;
+  /** blob-ссылка для превью в композере и в пузыре до подтверждения. */
+  url: string;
+  dims?: { w: number; h: number } | null;
 }
 
 interface Message {
@@ -57,6 +69,8 @@ interface Message {
   /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
   file_width?: number | null;
   file_height?: number | null;
+  /** Общий id фото/видео, отправленных одним альбомом. */
+  album_id?: string | null;
   /** Отправлено как «Файл» — показывать строкой со скачиванием, не превью. */
   download_only?: boolean;
   sender_id: string;
@@ -80,6 +94,8 @@ interface Message {
    *  снятое пропадало. */
   _failed?: boolean;
   _rec?: VoiceRecording & { mirror: boolean };
+  /** Вложение, которое не доехало, — для кнопки «Повторить». */
+  _att?: Attach;
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
   forwarded_from?: { id: string; username: string; avatar_url?: string | null } | null;
   forwarded_title?: string;
@@ -274,7 +290,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // Вложения композера: можно выбрать несколько фото/видео разом (уйдут
+  // альбомом), добавить музыку или файл, и убрать лишнее до отправки.
+  const [attachments, setAttachments] = useState<Attach[]>([]);
+  const dropAttachment = (id: string) => setAttachments((prev) => {
+    const gone = prev.find((a) => a.id === id);
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    return prev.filter((a) => a.id !== id);
+  });
   // Десктоп: файл можно перетащить в окно чата или вставить из буфера (⌘V/Ctrl+V).
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
@@ -285,14 +308,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const onDrop = (e: React.DragEvent) => {
     if (!hasFiles(e)) return;
     e.preventDefault(); dragDepthRef.current = 0; setDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) void acceptFile(f);
+    void acceptFiles(Array.from(e.dataTransfer.files || []));
   };
   const onPasteFile = (e: React.ClipboardEvent) => {
-    const f = Array.from(e.clipboardData?.files || [])[0];
-    if (!f) return; // обычный текст — вставляется как есть
+    const list = Array.from(e.clipboardData?.files || []);
+    if (!list.length) return; // обычный текст — вставляется как есть
     e.preventDefault();
-    void acceptFile(f);
+    void acceptFiles(list);
   };
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
@@ -301,10 +323,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  // Просим сервер сжать видео (ffmpeg). Фото сжимаем на клиенте, файлы — как есть.
-  const pendingCompressRef = useRef<string | null>(null);
-  const pendingDownloadOnlyRef = useRef<boolean>(false);
   // Прогресс загрузки живёт в самом временном сообщении, а не отдельной
   // полоской над полем ввода: раньше пузырь для видео/файла/голосового
   // вообще не появлялся до ответа сервера, и казалось, что ничего не ушло.
@@ -623,36 +643,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const handlePick = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    mode: "photo" | "video" | "file",
+    mode: AttachMode,
   ) => {
-    const file = e.target.files?.[0];
+    const list = Array.from(e.target.files || []);
     e.target.value = ""; // чтобы повторный выбор того же файла сработал
-    if (!file) return;
-    await acceptFile(file, mode);
+    await acceptFiles(list, mode);
+  };
+
+  const acceptFiles = async (list: File[], mode?: AttachMode) => {
+    for (const f of list) await acceptFile(f, mode);
   };
 
   /** Принять файл из любого источника — меню скрепки, drag-n-drop, вставка из
    *  буфера. Без явного режима тип берём из MIME: картинка → фото (сжимаем
    *  здесь), видео → видео (пережмёт сервер), остальное — файл строкой. */
-  const acceptFile = async (file: File, mode?: "photo" | "video" | "file") => {
-    mode = mode ?? (file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "file");
+  const acceptFile = async (file: File, mode?: AttachMode) => {
+    mode = mode ?? (file.type.startsWith("image/") ? "photo"
+      : file.type.startsWith("video/") ? "video"
+      : file.type.startsWith("audio/") ? "audio" : "file");
     // Лимита на размер нет — ни здесь, ни на сервере, ни в nginx (0):
-    // фото и видео с телефона отправляются как есть.
-    if (mode === "photo") {
-      // Фото сжимаем прямо здесь, до отправки.
-      setSelectedFile(await compressImage(file));
-      pendingCompressRef.current = null;
-      pendingDownloadOnlyRef.current = false;
-    } else if (mode === "video") {
-      setSelectedFile(file);
-      pendingCompressRef.current = "video"; // сервер пережмёт ffmpeg-ом
-      pendingDownloadOnlyRef.current = false;
-    } else {
-      // «Файл» — без обработки, показываем строкой со скачиванием.
-      setSelectedFile(file);
-      pendingCompressRef.current = null;
-      pendingDownloadOnlyRef.current = true;
-    }
+    // фото и видео с телефона отправляются как есть. Фото сжимаем тут же.
+    const prepared = mode === "photo" ? await compressImage(file) : file;
+    const url = URL.createObjectURL(prepared);
+    const dims = mode === "photo" ? await imageDims(url) : null;
+    setAttachments((prev) => [...prev, { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: prepared, mode, url, dims }]);
   };
 
   const stopSticker = () => {
@@ -807,7 +821,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   const sendMessage = async () => {
-    if (!chatId || (!newMessage.trim() && !selectedFile)) return;
+    if (!chatId || (!newMessage.trim() && !attachments.length)) return;
 
     // Режим редактирования: не создаём новое, а меняем текст существующего.
     if (editing) {
@@ -828,74 +842,118 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
 
     const text = newMessage.trim();
-    const file = selectedFile;
+    const list = attachments;
     const sound = selectedSound;
     const reply = replyTo;
-    const compress = pendingCompressRef.current;
-    const downloadOnly = pendingDownloadOnlyRef.current;
-    pendingCompressRef.current = null;
-    pendingDownloadOnlyRef.current = false;
-
-    // Пузырь появляется мгновенно, поле очищается сразу — сеть догоняет
-    // в фоне. Для картинки заранее замеряем размеры из локального файла,
-    // чтобы пузырь сразу занял своё место и лента не дёргалась.
-    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    // Локальный blob для любого вложения: картинка, видео и файл строкой
-    // рисуются сразу из него — без этого пузырь у видео и файлов был пустым.
-    const localUrl = file ? URL.createObjectURL(file) : null;
-    const dims = localUrl && file!.type.startsWith("image/") ? await imageDims(localUrl) : null;
-
-    const optimistic: Message = {
-      id: tempId,
-      content: text || null,
-      file_url: localUrl,
-      file_name: file?.name ?? null,
-      sender_id: userId,
-      sender: { id: userId } as Profile,
-      created_at: new Date().toISOString(),
-      sound,
-      download_only: downloadOnly,
-      reply_to: reply
-        ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
-        : null,
-      pending: true,
-      _key: tempId,
-      _dims: dims,
-      _progress: file ? 0 : null,
-    };
 
     setNewMessage("");
-    setSelectedFile(null);
+    setAttachments([]);
     setSelectedSound(null);
     setReplyTo(null);
     // Клавиатуру после отправки не прячем: фокус остаётся в поле.
     if (isTouchDevice()) requestAnimationFrame(() => textareaRef.current?.focus());
-    setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
-    setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
 
-    try {
-      let sent: Message;
-      if (file) {
-        const uploadResult = await api.uploadFile(file, compress || undefined, (p) => setProgressFor(tempId, p));
-        setProgressFor(tempId, 100);
-        // Свою картинку рисуем из локального файла и после подтверждения —
-        // сервер нужен только собеседнику.
-        if (localUrl && uploadResult.file_url) {
-          localImagesRef.current.set(uploadResult.file_url, localUrl);
-        }
-        sent = await api.sendMessageWithFile(chatId, {
-          file_url: uploadResult.file_url,
-          file_name: uploadResult.file_name,
-          file_size: uploadResult.file_size,
-          width: uploadResult.width ?? dims?.w,
-          height: uploadResult.height ?? dims?.h,
-        }, text || undefined, sound?.id, reply?.id, downloadOnly);
-      } else {
-        sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
+    // Без вложений — обычное текстовое сообщение (или один звук).
+    if (!list.length) {
+      const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const optimistic: Message = {
+        id: tempId,
+        content: text || null,
+        file_url: null,
+        file_name: null,
+        sender_id: userId,
+        sender: { id: userId } as Profile,
+        created_at: new Date().toISOString(),
+        sound,
+        reply_to: reply
+          ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
+          : null,
+        pending: true,
+        _key: tempId,
+      };
+      setMessages(prev => [...prev, optimistic]);
+      setTimeout(() => scrollToBottom(true), 50);
+      try {
+        const sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
+        setMessages(prev =>
+          prev.some(m => m.id === sent.id)
+            ? prev.filter(m => m.id !== tempId)
+            : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m))
+        );
+      } catch (error: any) {
+        console.error("Error sending message:", error);
+        toast.error("Ошибка отправки: " + (error?.message || "Неизвестная ошибка"));
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setNewMessage(text);
+        setSelectedSound(sound);
+        setReplyTo(reply);
       }
+      return;
+    }
 
+    // Вложения: каждое — своё сообщение; два и больше фото/видео получают
+    // общий album_id и склеиваются в ленте в одну сетку, как в Telegram.
+    // Текст, звук и цитата идут с первым.
+    const mediaCount = list.filter(a => a.mode === "photo" || a.mode === "video").length;
+    const albumId = mediaCount > 1 ? (crypto.randomUUID?.() || `alb-${Date.now()}`) : null;
+    const jobs = list.map((att, i) => {
+      const tempId = `pending-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`;
+      const optimistic: Message = {
+        id: tempId,
+        content: i === 0 ? (text || null) : null,
+        file_url: att.url,
+        file_name: att.file.name,
+        sender_id: userId,
+        sender: { id: userId } as Profile,
+        created_at: new Date(Date.now() + i).toISOString(),
+        sound: i === 0 ? sound : null,
+        download_only: att.mode === "file",
+        album_id: albumId && (att.mode === "photo" || att.mode === "video") ? albumId : null,
+        reply_to: i === 0 && reply
+          ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
+          : null,
+        pending: true,
+        _key: tempId,
+        _dims: att.dims ?? null,
+        _progress: 0,
+        _att: att,
+      };
+      return { tempId, att, optimistic, content: i === 0 ? text : "", soundId: i === 0 ? sound?.id : undefined, replyId: i === 0 ? reply?.id : undefined, albumId: optimistic.album_id };
+    });
+
+    setMessages(prev => [...prev, ...jobs.map(j => j.optimistic)]);
+    setTimeout(() => scrollToBottom(true), 50);
+
+    for (const j of jobs) {
+      await sendAttachment(j.tempId, j.att, { content: j.content, soundId: j.soundId, replyId: j.replyId, albumId: j.albumId });
+    }
+  };
+
+  /** Загрузка и отправка одного вложения; повтор после ошибки — та же функция. */
+  const sendAttachment = async (
+    tempId: string,
+    att: Attach,
+    opts: { content?: string; soundId?: string; replyId?: string; albumId?: string | null } = {},
+  ) => {
+    if (!chatId) return;
+    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: 0 } : m)));
+    try {
+      const compress = att.mode === "video" ? "video" : undefined;
+      const uploadResult = await api.uploadFile(att.file, compress, (p) => setProgressFor(tempId, p));
+      setProgressFor(tempId, 100);
+      // Свою картинку рисуем из локального файла и после подтверждения —
+      // сервер нужен только собеседнику.
+      if (att.url && uploadResult.file_url) localImagesRef.current.set(uploadResult.file_url, att.url);
+      const sent = await api.sendMessageWithFile(chatId, {
+        file_url: uploadResult.file_url,
+        file_name: uploadResult.file_name,
+        file_size: uploadResult.file_size,
+        width: uploadResult.width ?? att.dims?.w,
+        height: uploadResult.height ?? att.dims?.h,
+        album_id: opts.albumId ?? null,
+      }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file");
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
       // размеры — DOM не перемонтируется, картинка не мигает. Если
       // синхронизация уже принесла это сообщение по сокету/опросу — просто
@@ -903,18 +961,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages(prev =>
         prev.some(m => m.id === sent.id)
           ? prev.filter(m => m.id !== tempId)
-          : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: dims, _progress: null } : m))
+          : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: att.dims ?? null, _progress: null, _att: undefined } : m))
       );
     } catch (error: any) {
-      console.error("Error sending message:", error);
-      toast.error("Ошибка отправки: " + (error.message || "Неизвестная ошибка"));
-      // Возвращаем черновик, чтобы можно было отправить повторно.
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-      setNewMessage(text);
-      setSelectedFile(file);
-      setSelectedSound(sound);
-      setReplyTo(reply);
-      if (localUrl) URL.revokeObjectURL(localUrl);
+      console.error("Error sending attachment:", error);
+      // Пузырь остаётся с «Повторить» — выбранный файл не теряется.
+      toast.error("Не удалось отправить — нажми «Повторить»");
+      setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: true, _progress: null } : m)));
     }
   };
 
@@ -1051,7 +1104,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const discardFailed = (m: Message) => {
     setMessages(prev => prev.filter(x => x.id !== m.id));
-    const u = m.video_url || m.voice_url;
+    const u = m.video_url || m.voice_url || m.file_url;
     if (u && u.startsWith("blob:")) URL.revokeObjectURL(u);
   };
 
@@ -1243,6 +1296,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       ].filter((i) => i.show)
     : [];
 
+  // Соседние сообщения одного альбома показываем одной сеткой: группу рисуем
+  // на первом её сообщении, остальные из ленты убираем.
+  const visibleMessages = messages.filter((m) => !hiddenIds.has(m.id));
+  const albumsById = new Map<string, Message[]>();
+  for (const m of visibleMessages) {
+    if (!m.album_id) continue;
+    const list = albumsById.get(m.album_id) || [];
+    list.push(m);
+    albumsById.set(m.album_id, list);
+  }
+  const albumTail = new Set<string>();
+  albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
+  const feedRows = visibleMessages.filter((m) => !albumTail.has(m.id));
+
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {dragOver && (
@@ -1384,8 +1451,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             </div>
           )}
-          {messages.filter((m) => !hiddenIds.has(m.id)).map((message, index) => {
+          {feedRows.map((message, index) => {
             const isOwn = message.sender?.id === userId;
+            // Альбом: несколько фото/видео одной отправки склеены в сетку —
+            // рисуем их на первом сообщении группы, остальные пропущены выше.
+            const album = message.album_id ? albumsById.get(message.album_id) : undefined;
+            const isAlbum = !!album && album.length > 1;
             const hasImage =
               !!message.file_url &&
               !message.download_only &&
@@ -1393,12 +1464,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               !imageLoadErrors.has(message.id);
             // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
             // которая раздувала сообщение на пол-экрана.
-            const imageOnly = hasImage && !message.content && !message.sticker?.file_url && !message.sound;
+            const imageOnly = (hasImage || isAlbum) && !message.content && !message.sticker?.file_url && !message.sound;
             // Видео-«треугольник» без текста/цитаты — тоже без прямоугольного
             // пузыря: обводку несёт сам треугольник (см. VideoNote).
             const videoOnly = !!message.video_url && !message.content && !message.sticker?.file_url && !message.sound && !message.reply_to;
             const bareBubble = imageOnly || videoOnly;
-            const previousMessage = index > 0 ? messages[index - 1] : null;
+            const previousMessage = index > 0 ? feedRows[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
             // Серия одного автора идёт плотно (8 px), смена автора или даты — 16 px.
@@ -1621,7 +1692,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       )}
 
                       {/* Файл */}
-                      {message.file_url && (
+                      {isAlbum ? (
+                        <div className={cn(!imageOnly && "mt-2")}>
+                          <AlbumGrid
+                            items={album!.map((m) => ({
+                              id: m.id,
+                              raw: m.file_url || "",
+                              name: m.file_name ?? null,
+                              dims: m._dims || dimsOf(m.file_width, m.file_height),
+                              pending: m.pending,
+                              progress: m._progress ?? null,
+                              failed: m._failed,
+                            }))}
+                            localMap={localImagesRef.current}
+                            onOpen={(url, name, id) => setViewer({ url, name, messageId: id })}
+                          />
+                        </div>
+                      ) : message.file_url && (
                         <div className={cn(!imageOnly && "mt-2")}>
                           {hasImage ? (
                             <MessageImage
@@ -1652,6 +1739,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           <span className="text-destructive font-medium">Не отправлено</span>
                           {message._rec && (
                             <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">Повторить</button>
+                          )}
+                          {message._att && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendAttachment(message.id, message._att!, { content: message.content || undefined, albumId: message.album_id }); }} className="underline">Повторить</button>
                           )}
                           <button type="button" onClick={(e) => { e.stopPropagation(); discardFailed(message); }} className="underline opacity-80">Удалить</button>
                         </div>
@@ -1739,25 +1829,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
             </div>
           )}
-          {selectedFile && (
-            <div className="mb-2 md:mb-3 p-2 md:p-3 bg-secondary/50 rounded-lg flex items-center justify-between border">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Paperclip className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm font-medium truncate">
-                  {selectedFile.name}
-                </span>
-                <span className="text-xs text-muted-foreground flex-shrink-0">
-                  ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
-                </span>
-              </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => setSelectedFile(null)}
-                className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
-              >
-                <X className="w-3 h-3" />
-              </Button>
+          {attachments.length > 0 && (
+            <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+              {attachments.map((a) => (
+                <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-secondary border border-border">
+                  {a.mode === "photo" ? (
+                    <img src={a.url} alt="" className="w-full h-full object-cover" />
+                  ) : a.mode === "video" ? (
+                    <video src={a.url} muted playsInline className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-center">
+                      {a.mode === "audio" ? <Music2 className="w-5 h-5 text-primary" /> : <FileText className="w-5 h-5 text-primary" />}
+                      <span className="text-[10px] leading-tight text-muted-foreground line-clamp-2 break-all">{a.file.name}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => dropAttachment(a.id)}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                    aria-label={`Убрать ${a.file.name}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           
@@ -1809,9 +1904,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
 
           <div className="flex gap-2 items-end">
-            <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handlePick(e, "photo")} />
-            <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => handlePick(e, "video")} />
-            <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handlePick(e, "file")} />
+            <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handlePick(e, "photo")} />
+            <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => handlePick(e, "video")} />
+            <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => handlePick(e, "audio")} />
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handlePick(e, "file")} />
 
             <div className="relative shrink-0">
               <Button
@@ -1833,6 +1929,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); videoInputRef.current?.click(); }}>
                     <Video className="w-4 h-4 text-primary" /> Видео
+                  </button>
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); audioInputRef.current?.click(); }}>
+                    <Music2 className="w-4 h-4 text-primary" /> Музыка
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
@@ -1877,7 +1977,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               />
             </div>
             
-            {newMessage.trim() || selectedFile ? (
+            {newMessage.trim() || attachments.length ? (
               <Button
                 onClick={sendMessage}
                 onPointerDown={(e) => e.preventDefault()}

@@ -10,7 +10,7 @@ import { shareChannel } from "@/lib/share";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -21,7 +21,7 @@ interface Channel {
 
 interface Post {
   id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null;
-  file_width?: number | null; file_height?: number | null;
+  file_width?: number | null; file_height?: number | null; album_id?: string | null;
   video_url?: string; video_duration?: number | null; video_mirror?: boolean;
   download_only?: boolean; sender?: { id: string; username: string };
   reactions?: { value: string; count: number }[]; reactions_total?: number;
@@ -57,7 +57,29 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
   );
 };
 
-const PostMedia = ({ post, onOpenImage }: { post: Post; onOpenImage?: (url: string, post: Post) => void }) => {
+const PostMedia = ({ post, album, onOpenImage }: { post: Post; album?: Post[]; onOpenImage?: (url: string, post: Post) => void }) => {
+  // Альбом: несколько фото/видео одной публикации — одной сеткой.
+  if (album && album.length > 1) {
+    return (
+      <div className="mt-2">
+        <AlbumGrid
+          items={album.map((p) => ({
+            id: p.id,
+            raw: p.file_url || "",
+            name: p.file_name ?? null,
+            dims: dimsOf(p.file_width, p.file_height),
+            pending: p._pending,
+            progress: p._progress ?? null,
+            failed: p._failed,
+          }))}
+          onOpen={(url, name, id) => {
+            const target = album.find((p) => p.id === id) || post;
+            onOpenImage?.(url, target);
+          }}
+        />
+      </div>
+    );
+  }
   if (post.video_url) {
     return (
       <div className="mt-2">
@@ -114,7 +136,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const [attachOpen, setAttachOpen] = useState(false);
   // Обёртка кнопки-скрепки и её меню: тапы внутри неё меню не закрывают.
   const attachRef = useRef<HTMLDivElement>(null);
-  const [attachment, setAttachment] = useState<{ file: File; mode: "photo" | "video" | "file" } | null>(null);
+  // Вложения поста: несколько фото/видео уходят альбомом, музыка играет
+  // плеером, лишнее убирается крестиком до публикации.
+  type AttachMode = "photo" | "video" | "audio" | "file";
+  interface Attach { id: string; file: File; mode: AttachMode; url: string }
+  const [attachments, setAttachments] = useState<Attach[]>([]);
+  const dropAttachment = (id: string) => setAttachments((prev) => {
+    const gone = prev.find((a) => a.id === id);
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    return prev.filter((a) => a.id !== id);
+  });
   // Пост с вложением встаёт в ленту сразу, из локального blob, с прогрессом
   // загрузки внутри — раньше до ответа сервера ничего не появлялось.
   const addPending = (post: Omit<Post, "id" | "created_at">) => {
@@ -147,22 +178,28 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   // Видео-«треугольник»: тап — начать запись, тап — закончить и опубликовать.
   const { recording, seconds: recSeconds, stream: recStream, start: startRec, stop: stopRec } = useMediaRecorder();
   const [facing, setFacing] = useState<"user" | "environment">("user");
   const [recBusy, setRecBusy] = useState(false);
 
-  const pick = async (e: React.ChangeEvent<HTMLInputElement>, mode: "photo" | "video" | "file") => {
-    const file = e.target.files?.[0];
+  const pick = async (e: React.ChangeEvent<HTMLInputElement>, mode: AttachMode) => {
+    const list = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!file) return;
-    await acceptFile(file, mode);
+    await acceptFiles(list, mode);
+  };
+  const acceptFiles = async (list: File[], mode?: AttachMode) => {
+    for (const f of list) await acceptFile(f, mode);
   };
   /** Файл из меню, перетаскивания или буфера; режим — из MIME, если не задан. Лимита нет. */
-  const acceptFile = async (file: File, mode?: "photo" | "video" | "file") => {
-    mode = mode ?? (file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "file");
-    setAttachment({ file: mode === "photo" ? await compressImage(file) : file, mode });
+  const acceptFile = async (file: File, mode?: AttachMode) => {
+    mode = mode ?? (file.type.startsWith("image/") ? "photo"
+      : file.type.startsWith("video/") ? "video"
+      : file.type.startsWith("audio/") ? "audio" : "file");
+    const prepared = mode === "photo" ? await compressImage(file) : file;
+    setAttachments((prev) => [...prev, { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: prepared, mode, url: URL.createObjectURL(prepared) }]);
   };
   // Десктоп: перетащить файл в окно канала или вставить из буфера — только админу.
   const [dragOver, setDragOver] = useState(false);
@@ -174,14 +211,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const onDrop = (e: React.DragEvent) => {
     if (!isAdmin || !hasFiles(e)) return;
     e.preventDefault(); dragDepthRef.current = 0; setDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) void acceptFile(f);
+    void acceptFiles(Array.from(e.dataTransfer.files || []));
   };
   const onPasteFile = (e: React.ClipboardEvent) => {
-    const f = Array.from(e.clipboardData?.files || [])[0];
-    if (!f) return;
+    const list = Array.from(e.clipboardData?.files || []);
+    if (!list.length) return;
     e.preventDefault();
-    void acceptFile(f);
+    void acceptFiles(list);
   };
 
   const toggleNote = async () => {
@@ -378,45 +414,52 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
 
   const publish = async () => {
     const body = text.trim();
-    if ((!body && !attachment) || sending) return;
+    if ((!body && !attachments.length) || sending) return;
     setSending(true);
-    let temp: ReturnType<typeof addPending> | null = null;
+    const list = attachments;
+    setAttachments([]);
+    setText("");
+    const snd = sound;
+    setSound(null);
     try {
-      if (attachment) {
-        const att = attachment;
-        setAttachment(null);
-        setText("");
-        temp = addPending({
-          content: body || undefined,
-          file_url: URL.createObjectURL(att.file),
-          file_name: att.file.name,
-          download_only: att.mode === "file",
-          sound: sound ? { name: sound.name } : null,
-          _progress: 0,
-        });
-        const uploaded = await api.uploadFile(
-          att.file,
-          att.mode === "video" ? "video" : undefined,
-          (p) => temp?.progress(p),
-        );
-        temp.progress(100);
-        await api.sendMessageWithFile(
-          channelId,
-          { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height },
-          body || undefined,
-          sound?.id,
-          undefined,
-          att.mode === "file",
-        );
+      if (!list.length) {
+        await api.sendMessage(channelId, body, snd?.id);
       } else {
-        await api.sendMessage(channelId, body, sound?.id);
-        setText("");
+        // Два и больше фото/видео — общий album_id: в ленте склеятся в сетку.
+        const mediaCount = list.filter((a) => a.mode === "photo" || a.mode === "video").length;
+        const albumId = mediaCount > 1 ? (crypto.randomUUID?.() || `alb-${Date.now()}`) : null;
+        for (let i = 0; i < list.length; i++) {
+          const att = list[i];
+          const album = albumId && (att.mode === "photo" || att.mode === "video") ? albumId : null;
+          const temp = addPending({
+            content: i === 0 ? body || undefined : undefined,
+            file_url: att.url,
+            file_name: att.file.name,
+            download_only: att.mode === "file",
+            album_id: album,
+            sound: i === 0 && snd ? { name: snd.name } : null,
+            _progress: 0,
+          });
+          try {
+            const uploaded = await api.uploadFile(att.file, att.mode === "video" ? "video" : undefined, (p) => temp.progress(p));
+            temp.progress(100);
+            await api.sendMessageWithFile(
+              channelId,
+              { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height, album_id: album },
+              i === 0 ? body || undefined : undefined,
+              i === 0 ? snd?.id : undefined,
+              undefined,
+              att.mode === "file",
+            );
+          } catch {
+            toast.error(`Не удалось опубликовать «${att.file.name}»`);
+            temp.drop();
+          }
+        }
       }
-      setSound(null);
       await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
-      temp?.drop();
       toast.error("Не удалось опубликовать");
     } finally {
       setSending(false);
@@ -468,6 +511,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   };
 
   const avatarUrl = channel?.avatar_url ? mediaUrl(channel.avatar_url) : null;
+
+  // Соседние посты одного альбома рисуем одной сеткой на первом из них.
+  const albumsById = new Map<string, Post[]>();
+  for (const p of posts) {
+    if (!p.album_id) continue;
+    const list = albumsById.get(p.album_id) || [];
+    list.push(p);
+    albumsById.set(p.album_id, list);
+  }
+  const albumTail = new Set<string>();
+  albumsById.forEach((list) => list.slice(1).forEach((p) => albumTail.add(p.id)));
+  const feedPosts = posts.filter((p) => !albumTail.has(p.id));
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -525,14 +580,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             {isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
           </p>
         ) : (
-          posts.map((post) => (
+          feedPosts.map((post) => (
             <div key={post.id} className="bg-surface-2 rounded-lg overflow-hidden">
               <div className="px-4 py-3">
                 {channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
-                <PostMedia post={post} onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
+                <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
+                  onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
                 {post._pending && post._failed && (
                   <div className="mt-2 flex items-center gap-3 text-caption">
                     <span className="text-destructive font-medium">Не опубликовано</span>
@@ -610,11 +666,26 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               <button type="button" onClick={() => setSound(null)} className="ml-1"><X className="w-3.5 h-3.5" /></button>
             </div>
           )}
-          {attachment && (
-            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-              {attachment.mode === "photo" ? <ImageIcon className="w-3.5 h-3.5" /> : attachment.mode === "video" ? <Video className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-              <span className="truncate flex-1 text-foreground">{attachment.file.name}</span>
-              <button type="button" onClick={() => setAttachment(null)} disabled={sending}><X className="w-3.5 h-3.5" /></button>
+          {attachments.length > 0 && (
+            <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+              {attachments.map((a) => (
+                <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
+                  {a.mode === "photo" ? (
+                    <img src={a.url} alt="" className="w-full h-full object-cover" />
+                  ) : a.mode === "video" ? (
+                    <video src={a.url} muted playsInline className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-center">
+                      {a.mode === "audio" ? <Music2 className="w-5 h-5 text-primary" /> : <FileText className="w-5 h-5 text-primary" />}
+                      <span className="text-[10px] leading-tight text-muted-foreground line-clamp-2 break-all">{a.file.name}</span>
+                    </div>
+                  )}
+                  <button type="button" onClick={() => dropAttachment(a.id)} disabled={sending}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={`Убрать ${a.file.name}`}>
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           {recording && (
@@ -627,12 +698,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               <button type="button" onClick={cancelNote} className="p-2 text-muted-foreground" aria-label="Отменить"><X className="w-5 h-5" /></button>
             </div>
           )}
-          <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e, "photo")} />
-          <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => pick(e, "video")} />
-          <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => pick(e, "file")} />
+          <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e, "photo")} />
+          <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => pick(e, "video")} />
+          <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => pick(e, "audio")} />
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => pick(e, "file")} />
           <div className="flex items-end gap-2">
             <div ref={attachRef} className="relative shrink-0">
-              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center", attachment && "text-primary border-primary")} aria-label="Прикрепить">
+              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center", attachments.length > 0 && "text-primary border-primary")} aria-label="Прикрепить">
                 <Paperclip className="w-5 h-5" />
               </button>
               {attachOpen && (
@@ -642,6 +714,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}>
                     <Video className="w-4 h-4 text-primary" /> Видео
+                  </button>
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}>
+                    <Music2 className="w-4 h-4 text-primary" /> Музыка
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}>
                     <FileText className="w-4 h-4 text-primary" /> Файл
@@ -656,12 +731,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               value={text}
               onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
-              placeholder={attachment ? "Подпись…" : "Написать в канал…"}
+              placeholder={attachments.length ? "Подпись…" : "Написать в канал…"}
               rows={1}
               disabled={recording}
               className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
             />
-            {text.trim() || attachment ? (
+            {text.trim() || attachments.length ? (
               <button
                 type="button"
                 onClick={publish}
