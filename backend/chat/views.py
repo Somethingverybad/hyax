@@ -950,7 +950,15 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)
-        
+
+        # Сообщение — одна ссылка на картинку: забираем её к себе и показываем
+        # картинкой (в фоне; клиент получит подмену обычной синхронизацией).
+        if not message.file_url:
+            from .linkimage import image_url_in, fetch_async
+            link = image_url_in(message.content)
+            if link:
+                fetch_async(message.id, link)
+
         _notify_new_message(message, profile, request)
 
         headers = self.get_success_headers(serializer.data)

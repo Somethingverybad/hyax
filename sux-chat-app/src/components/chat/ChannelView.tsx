@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2 } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
+import { Linkify } from "@/lib/linkify";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
@@ -586,7 +587,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 {channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
-                {post.content && <p className="text-body whitespace-pre-wrap break-words">{post.content}</p>}
+                {post.content && <p className="text-body whitespace-pre-wrap break-words"><Linkify text={post.content} /></p>}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
                   onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
                 {post._pending && post._failed && (
@@ -902,7 +903,7 @@ const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
               <div key={c.id} className="flex gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm"><b>{c.author?.username}</b> <span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span></p>
-                  <p className="text-sm break-words whitespace-pre-wrap">{c.content}</p>
+                  <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>
                 </div>
                 <button type="button" onClick={() => del(c.id)} className="p-1 text-muted-foreground shrink-0" aria-label="Удалить">
                   <Trash2 className="w-4 h-4" />

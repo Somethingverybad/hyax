@@ -11,6 +11,7 @@ import Identicon from "@/components/Identicon";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
+import { Linkify } from "@/lib/linkify";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl } from "@/hooks/use-media-url";
@@ -1680,7 +1681,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Текст сообщения */}
                       {message.content && (
                         <p className="text-body break-words whitespace-pre-wrap">
-                          {message.content}
+                          <Linkify text={message.content} />
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
                             <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption text-white/70 whitespace-nowrap">
