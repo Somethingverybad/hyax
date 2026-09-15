@@ -587,10 +587,16 @@ export const api = {
   leaveChannel: async (id: string): Promise<void> => {
     await fetchWithAuth(`${API_URL}/channels/${id}/leave/`, { method: "POST", headers: authHeaders() });
   },
-  getChannelPosts: async (id: string): Promise<any[]> => {
-    const res = await fetchWithAuth(`${API_URL}/channels/${id}/posts/`, { method: "GET", headers: authHeaders() });
+  /** Лента канала: страница (limit/before) или приращение (since) — как syncMessages. */
+  getChannelPosts: async (id: string, opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string }> => {
+    const q = new URLSearchParams();
+    if (opts.limit) q.set("limit", String(opts.limit));
+    if (opts.before) q.set("before", opts.before);
+    if (opts.since) q.set("since", opts.since);
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/posts/${q.toString() ? "?" + q : ""}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`posts ${res.status}`);
     const d = await res.json();
-    return d.posts || [];
+    return { posts: d.posts || [], deleted: d.deleted || [], has_more: !!d.has_more, now: d.now || new Date().toISOString() };
   },
   getChannelAdmins: async (id: string): Promise<any[]> => {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/admins/`, { method: "GET", headers: authHeaders() });
@@ -757,6 +763,8 @@ export const api = {
     file_size: number;
     width?: number | null;
     height?: number | null;
+    /** Общий id для фото/видео, отправленных одним альбомом. */
+    album_id?: string | null;
   }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
@@ -769,6 +777,7 @@ export const api = {
         file_size: fileData.file_size,
         file_width: fileData.width || undefined,
         file_height: fileData.height || undefined,
+        album_id: fileData.album_id || undefined,
         sound_id: soundId || undefined,
         reply_to_id: replyToId || undefined,
         download_only: downloadOnly ? "1" : undefined

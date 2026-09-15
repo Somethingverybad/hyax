@@ -2155,22 +2155,44 @@ class ChannelAdminsView(APIView):
 
 
 class ChannelPostsView(APIView):
-    """GET — лента канала (последние посты со сводкой откликов)."""
+    """GET — лента канала со сводкой откликов, постранично и приращениями
+    (как /messages/sync/ у чатов, чтобы клиент держал кэш и не тянул всё
+    при каждом входе): limit ≤ 200 (50), before=<ISO> — страница старее,
+    since=<ISO> — всё, что менялось после (новые/правленые; удалённые — в
+    deleted). Ответ: {posts, deleted, has_more, now}."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
+        from django.utils.dateparse import parse_datetime
         ch = _channel_or_none(pk)
         if not ch:
             return Response({"error": "Канал не найден"}, status=404)
         me = _prof(request)
         if not ch.is_public and _role_in(ch, me) is None:
             return Response({"error": "Канал приватный"}, status=403)
-        posts = list(
-            Message.objects.filter(chat=ch, deleted_for_all=False)
-            .select_related("sender", "sound")
-            .order_by("-created_at")[:50]
-        )[::-1]
-        return Response({"posts": [_post_payload(m, request) for m in posts]})
+        try:
+            limit = max(1, min(int(request.query_params.get('limit') or 50), 200))
+        except ValueError:
+            limit = 50
+        now = timezone.now()
+        base = Message.objects.filter(chat=ch).select_related("sender", "sound")
+        since = parse_datetime(request.query_params.get('since') or '')
+        if since:
+            changed = list(base.filter(updated_at__gt=since).order_by('created_at'))
+            return Response({
+                "posts": [_post_payload(m, request) for m in changed if not m.deleted_for_all],
+                "deleted": [str(m.id) for m in changed if m.deleted_for_all],
+                "has_more": False, "now": now.isoformat(),
+            })
+        qs = base.filter(deleted_for_all=False)
+        before = parse_datetime(request.query_params.get('before') or '')
+        if before:
+            qs = qs.filter(created_at__lt=before)
+        page = list(qs.order_by("-created_at")[:limit + 1])
+        has_more = len(page) > limit
+        posts = page[:limit][::-1]
+        return Response({"posts": [_post_payload(m, request) for m in posts], "deleted": [],
+                         "has_more": has_more, "now": now.isoformat()})
 
 
 def _post_or_none(pk):

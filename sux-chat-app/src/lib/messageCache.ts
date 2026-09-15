@@ -10,6 +10,7 @@
 
 const DB_NAME = "hyax-cache";
 const STORE = "messages";
+const POSTS_STORE = "posts";   // ленты каналов — тот же приём, отдельное хранилище
 const KEEP = 150;       // сообщений на чат
 const MAX_CHATS = 25;   // чатов в кэше; старые по времени записи вытесняются
 
@@ -30,11 +31,15 @@ function open(): Promise<IDBDatabase | null> {
   dbPromise = new Promise((resolve) => {
     try {
       if (typeof indexedDB === "undefined") { resolve(null); return; }
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, 2);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: "chatId" }).createIndex("savedAt", "savedAt");
+        }
+        // Версия 2: лента каналов. Ключ тот же — id чата-канала.
+        if (!db.objectStoreNames.contains(POSTS_STORE)) {
+          db.createObjectStore(POSTS_STORE, { keyPath: "chatId" }).createIndex("savedAt", "savedAt");
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -47,7 +52,7 @@ function open(): Promise<IDBDatabase | null> {
   return dbPromise;
 }
 
-const tx = (db: IDBDatabase, mode: IDBTransactionMode) => db.transaction(STORE, mode).objectStore(STORE);
+const tx = (db: IDBDatabase, mode: IDBTransactionMode, store: string = STORE) => db.transaction(store, mode).objectStore(store);
 const done = <T,>(r: IDBRequest<T>) => new Promise<T>((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 
 export async function readMessages(chatId: string): Promise<CachedChat | null> {
@@ -91,5 +96,47 @@ export async function writeMessages(chatId: string, messages: any[], syncedAt: s
 export async function clearMessageCache(): Promise<void> {
   const db = await open();
   if (!db) return;
-  try { await done(tx(db, "readwrite").clear()); } catch { /* ignore */ }
+  for (const s of [STORE, POSTS_STORE]) {
+    try { await done(tx(db, "readwrite", s).clear()); } catch { /* ignore */ }
+  }
+}
+
+// ── Лента канала ─────────────────────────────────────────────────────────────
+// Один в один с чатами: при входе рисуем из кэша, сеть догоняет приращением
+// (GET /channels/<id>/posts/?since=…). Клиентские поля постов (_pending и
+// прогресс публикации) в кэш не попадают.
+
+export async function readPosts(channelId: string): Promise<CachedChat | null> {
+  const db = await open();
+  if (!db) return null;
+  try { return ((await done(tx(db, "readonly", POSTS_STORE).get(channelId))) as CachedChat) || null; } catch { return null; }
+}
+
+const stripPost = (p: any) => {
+  const { _pending, _progress, _failed, _retry, ...rest } = p;
+  return rest;
+};
+
+export async function writePosts(channelId: string, posts: any[], syncedAt: string, hasMore: boolean): Promise<void> {
+  const db = await open();
+  if (!db) return;
+  try {
+    const confirmed = posts.filter((p) => !p._pending);
+    const tail = confirmed.slice(-KEEP).map(stripPost);
+    const rec: CachedChat = {
+      chatId: channelId, messages: tail, syncedAt,
+      hasMore: hasMore || confirmed.length > KEEP,
+      savedAt: Date.now(),
+    };
+    await done(tx(db, "readwrite", POSTS_STORE).put(rec));
+    const store = tx(db, "readonly", POSTS_STORE);
+    const count = await done(store.count());
+    if (count > MAX_CHATS) {
+      const keys = (await done(store.index("savedAt").getAllKeys())) as IDBValidKey[];
+      const rw = tx(db, "readwrite", POSTS_STORE);
+      keys.slice(0, count - MAX_CHATS).forEach((k) => rw.delete(k));
+    }
+  } catch {
+    /* кэш — не источник истины */
+  }
 }

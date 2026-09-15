@@ -105,6 +105,9 @@ class Message(models.Model):
     # место под медиа до загрузки, и лента не «схлопывается».
     file_width = models.IntegerField(blank=True, null=True)
     file_height = models.IntegerField(blank=True, null=True)
+    # Альбом: несколько фото/видео, отправленных разом, — отдельные сообщения
+    # с общим album_id; клиент склеивает соседние в одну сетку (как в Telegram).
+    album_id = models.UUIDField(blank=True, null=True, db_index=True)
     voice_url = models.TextField(blank=True, null=True)  # URL голосового сообщения
     voice_duration = models.IntegerField(blank=True, null=True)  # Длительность в секундах
     # Расшифровка голосового (faster-whisper, см. chat/transcribe.py): текст и

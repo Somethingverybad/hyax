@@ -308,3 +308,49 @@ export const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds:
   );
 };
 
+
+
+/** Элемент альбома — фото или видео из сообщения с общим album_id. */
+export interface AlbumItem {
+  id: string;
+  raw: string;
+  name: string | null;
+  dims?: { w: number; h: number } | null;
+  pending?: boolean;
+  progress?: number | null;
+  failed?: boolean;
+}
+
+const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void }) => {
+  const localBlob = item.raw.startsWith("blob:") ? item.raw : localMap?.get(item.raw);
+  const signed = useMediaUrl(localBlob ? null : item.raw);
+  const src = localBlob || signed;
+  const [loaded, setLoaded] = useState(!!localBlob);
+  const video = isVideoFile(item.name, item.raw);
+  return (
+    <div className="relative aspect-square overflow-hidden bg-black/20">
+      {!loaded && !video && <MediaSkeleton className="absolute inset-0" />}
+      {src && (video ? (
+        <video src={src} controls playsInline preload="metadata" className="w-full h-full object-cover" />
+      ) : (
+        <img src={src} alt={item.name || ""} loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen(src, item.name || "image", item.id)}
+          className={cn("w-full h-full object-cover cursor-pointer transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
+      ))}
+      {item.pending && item.progress != null && (
+        <div className="absolute inset-0 bg-black/45 flex items-center justify-center text-white text-sm font-semibold tabular-nums">
+          {item.failed ? "✕" : item.progress < 100 ? `${item.progress}%` : "…"}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Альбом: несколько фото/видео одной отправки — сетка 2 колонки (3 от пяти
+ *  штук), как в Telegram. Ячейки квадратные, чтобы лента не прыгала. */
+export const AlbumGrid = ({ items, localMap, onOpen, className }: {
+  items: AlbumItem[]; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void; className?: string;
+}) => (
+  <div className={cn("grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,100%)]", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
+    {items.map((it) => <AlbumCell key={it.id} item={it} localMap={localMap} onOpen={onOpen} />)}
+  </div>
+);

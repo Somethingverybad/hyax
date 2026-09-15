@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Tra
 import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
 import { compressImage } from "@/lib/compressImage";
+import { readPosts, writePosts } from "@/lib/messageCache";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
@@ -136,7 +137,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       const uploaded = await api.uploadFile(file, undefined, (p) => temp.progress(p));
       temp.progress(100);
       await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror);
-      await load();
+      await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
       toast.error("Не удалось опубликовать видео — нажми «Повторить»");
@@ -218,19 +219,106 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const isAdmin = channel?.my_role === "owner" || channel?.my_role === "admin";
   const subscribed = !!channel?.my_role;
 
-  const load = useCallback(async () => {
+  // Лента канала живёт по тем же правилам, что и переписка (см. messageCache):
+  // при входе рисуем из IndexedDB, сеть догоняет приращением по since, старые
+  // страницы подтягиваются при прокрутке вверх. Раньше каждый вход (и каждый
+  // тик поллинга) тянул последние 50 постов целиком.
+  const syncedAtRef = useRef<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const hasMoreRef = useRef(false);
+  hasMoreRef.current = hasMore;
+  const loadingOlderRef = useRef(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const scrollAdjustRef = useRef<{ height: number; top: number } | null>(null);
+  const viewedRef = useRef<Set<string>>(new Set());
+
+  /** Просмотр отмечаем один раз на пост за сессию (дедуп есть и на сервере). */
+  const markViews = (list: Post[]) => {
+    list.forEach((p) => {
+      if (p._pending || viewedRef.current.has(p.id)) return;
+      viewedRef.current.add(p.id);
+      api.markPostView(p.id);
+    });
+  };
+
+  /** Слияние с тем, что уже на экране: правки применяем, удалённые убираем,
+   *  неподтверждённые (публикующиеся) посты не трогаем. */
+  const applyPosts = (incoming: Post[], deleted: string[] = [], mode: "merge" | "prepend" = "merge") => {
+    setPosts((prev) => {
+      const gone = new Set(deleted);
+      const byId = new Map(prev.filter((p) => !gone.has(p.id)).map((p) => [p.id, p]));
+      for (const d of incoming) {
+        const local = byId.get(d.id);
+        byId.set(d.id, local ? { ...local, ...d, _pending: false } : d);
+      }
+      const merged = [...byId.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+      if (mode === "merge" && JSON.stringify(merged) === JSON.stringify(prev)) return prev;
+      return merged;
+    });
+    markViews(incoming);
+  };
+
+  /** Приращение с сервера; initial — первая страница, когда кэша нет. */
+  const sync = useCallback(async (initial = false) => {
     try {
-      const [ch, ps] = await Promise.all([api.getChannel(channelId), api.getChannelPosts(channelId)]);
-      setChannel(ch);
-      setPosts(ps);
-      // Отмечаем просмотры загруженных постов (дедуп на сервере).
-      ps.forEach((p: Post) => api.markPostView(p.id));
+      const since = syncedAtRef.current;
+      const r = await api.getChannelPosts(channelId, since && !initial ? { since } : { limit: 50 });
+      syncedAtRef.current = r.now;
+      if (!since || initial) { setHasMore(r.has_more); hasMoreRef.current = r.has_more; }
+      if (r.posts.length || r.deleted.length) applyPosts(r.posts, r.deleted);
+      setPosts((prev) => { void writePosts(channelId, prev, r.now, hasMoreRef.current); return prev; });
     } catch {
-      /* канал мог быть удалён */
-    } finally {
-      setLoading(false);
+      /* сеть подождёт: на экране то, что уже есть */
     }
   }, [channelId]);
+
+  /** Страница старее первого загруженного — при прокрутке к верху ленты. */
+  const loadOlder = async () => {
+    if (loadingOlderRef.current || !hasMoreRef.current) return;
+    const first = posts.find((p) => !p._pending);
+    if (!first) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const r = await api.getChannelPosts(channelId, { before: first.created_at, limit: 50 });
+      const el = feedRef.current;
+      if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      setHasMore(r.has_more);
+      hasMoreRef.current = r.has_more;
+      if (r.posts.length) applyPosts(r.posts, [], "prepend");
+    } catch {
+      /* ignore */
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  };
+
+  const onFeedScroll = () => {
+    const el = feedRef.current;
+    if (el && el.scrollTop < 160 && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
+  };
+
+  // Подгрузили страницу сверху — удерживаем на месте то, что было на экране.
+  useLayoutEffect(() => {
+    const a = scrollAdjustRef.current;
+    const el = feedRef.current;
+    if (!a || !el) return;
+    scrollAdjustRef.current = null;
+    el.scrollTop = a.top + (el.scrollHeight - a.height);
+  }, [posts]);
+
+  /** Вход в канал: встаём чуть выше низа и плавно доезжаем — как в чате. */
+  const scrollFeedOnOpen = () => {
+    setTimeout(() => {
+      const el = feedRef.current;
+      if (!el) return;
+      const start = el.scrollHeight - el.clientHeight * 2.2;
+      if (start < 240) { el.scrollTo({ top: el.scrollHeight }); return; }
+      el.scrollTop = start;
+      requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
+    }, 60);
+  };
 
   // Меню вложений закрывается тапом вне него. Тап по самому пункту меню
   // игнорируем: на телефоне pointerdown приходит раньше click, и если закрыть
@@ -247,17 +335,39 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   }, [attachOpen]);
 
   useEffect(() => {
+    let alive = true;
     setLoading(true);
-    load();
-    // Лёгкий поллинг новых постов.
-    const t = setInterval(load, 9000);
-    return () => clearInterval(t);
-  }, [load]);
-
-  useEffect(() => {
-    // Прокрутка к последнему посту при первой загрузке.
-    if (!loading) setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }), 50);
-  }, [loading]);
+    setPosts([]);
+    setHasMore(false);
+    syncedAtRef.current = null;
+    viewedRef.current = new Set();
+    (async () => {
+      const cached = await readPosts(channelId);
+      if (!alive) return;
+      const fromCache = !!cached?.messages?.length;
+      if (fromCache) {
+        syncedAtRef.current = cached!.syncedAt;
+        setHasMore(cached!.hasMore);
+        hasMoreRef.current = cached!.hasMore;
+        setPosts(cached!.messages as Post[]);
+        setLoading(false);
+        scrollFeedOnOpen();
+      }
+      try {
+        const ch = await api.getChannel(channelId);
+        if (alive) setChannel(ch);
+      } catch {
+        /* канал мог быть удалён */
+      }
+      await sync(!fromCache);
+      if (!alive) return;
+      setLoading(false);
+      if (!fromCache) scrollFeedOnOpen();
+    })();
+    // Лёгкий поллинг: с since он почти ничего не стоит.
+    const t = setInterval(() => { void sync(); }, 9000);
+    return () => { alive = false; clearInterval(t); };
+  }, [channelId, sync]);
 
   const openSounds = async () => {
     if (!sounds.length) {
@@ -303,7 +413,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         setText("");
       }
       setSound(null);
-      await load();
+      await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
       temp?.drop();
@@ -399,7 +509,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       </div>
 
       {/* Лента */}
-      <div ref={feedRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 md:px-6 [&>*]:md:max-w-[720px]">
+      <div ref={feedRef} onScroll={onFeedScroll} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 md:px-6 [&>*]:md:max-w-[720px]">
+        {hasMore && (
+          <div className="flex justify-center">
+            <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder}
+              className="text-xs text-muted-foreground px-3 py-1 bg-surface-2 rounded-full disabled:opacity-60">
+              {loadingOlder ? "Загружаю…" : "Показать старые посты"}
+            </button>
+          </div>
+        )}
         {loading ? (
           <p className="text-center text-sm text-muted-foreground py-10">Загрузка…</p>
         ) : posts.length === 0 ? (
