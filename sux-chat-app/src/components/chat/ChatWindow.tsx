@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate } from "lucide-react";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -199,7 +199,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     stop: stopRec,
   } = useMediaRecorder();
   // Короткий тап по кнопке переключает голос ↔ треугольник, удержание пишет.
-  const [recordKind, setRecordKind] = useState<RecordKind>("audio");
+  // Кнопка справа от поля ввода работает в трёх режимах: голосовое → видео →
+  // Р.Ё.В. Короткий тап переключает режим, удержание запускает действие.
+  type ComposerMode = RecordKind | "rov";
+  const MODES: ComposerMode[] = ["audio", "video", "rov"];
+  const [recordKind, setRecordKind] = useState<ComposerMode>("audio");
+  const [roving, setRoving] = useState(false);
   // Фронтальная/задняя камера для видео-сообщений (выбор до записи: удержание
   // занимает единственный палец, переключать во время съёмки нечем).
   const [facing, setFacing] = useState<"user" | "environment">("user");
@@ -1169,9 +1174,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     stopRequestedRef.current = false;
 
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    // Р.Ё.В: держим — у собеседника вибрирует. Ни микрофон, ни камера не
+    // нужны, поэтому отдельная короткая ветка.
+    if (recordKind === "rov") {
+      holdTimerRef.current = setTimeout(() => {
+        startedRef.current = true;
+        setRoving(true);
+        onRov?.(true);
+      }, HOLD_MS);
+      return;
+    }
     holdTimerRef.current = setTimeout(async () => {
       startingRef.current = true;
-      const ok = await startRec(recordKind, facing);
+      const ok = await startRec(recordKind as RecordKind, facing);
       startingRef.current = false;
       if (!ok) {
         toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
@@ -1212,11 +1227,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       return;
     }
 
+    // Р.Ё.В: отпустили — вибрация у собеседника гаснет.
+    if (recordKind === "rov") {
+      cancelArmedRef.current = false;
+      setCancelArmed(false);
+      if (startedRef.current) {
+        startedRef.current = false;
+        setRoving(false);
+        onRov?.(false);
+      } else if (!forceCancel) {
+        setRecordKind((k) => MODES[(MODES.indexOf(k) + 1) % MODES.length]);
+      }
+      return;
+    }
+
     // Запись так и не началась → это был тап: переключаем режим (если не отмена).
     if (!startedRef.current) {
       cancelArmedRef.current = false;
       setCancelArmed(false);
-      if (!forceCancel) setRecordKind((k) => (k === "audio" ? "video" : "audio"));
+      if (!forceCancel) setRecordKind((k) => MODES[(MODES.indexOf(k) + 1) % MODES.length]);
       return;
     }
 
@@ -1947,10 +1976,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </div>
           )}
 
+          {/* Р.Ё.В: пока держим кнопку — видно, что идёт вибрация у собеседника. */}
+          {roving && (
+            <div className="mb-2 flex items-center gap-3 px-3 py-2 border-2 border-primary bg-primary/10">
+              <Vibrate className="w-4 h-4 text-primary shrink-0 animate-pulse" />
+              <span className="text-xs text-muted-foreground flex-1 truncate">
+                Р.Ё.В — держите, у собеседника вибрирует
+              </span>
+            </div>
+          )}
+
           {stickersOpen && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
-                onRov={onRov}
                 onSelect={async (sticker) => {
                   setStickersOpen(false);
                   try {
@@ -2086,11 +2124,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   style={{ touchAction: "none" }}
                   className={cn(
                     "h-11 w-11 shrink-0 md:ml-3 rounded-md flex items-center justify-center transition-colors",
-                    recording ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
+                    recording || roving ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
                   )}
-                  aria-label={recordKind === "video" ? "Записать видео" : "Записать голосовое"}
+                  aria-label={
+                    recordKind === "video" ? "Записать видео"
+                      : recordKind === "rov" ? "Держать — вибрация собеседнику"
+                      : "Записать голосовое"
+                  }
+                  title={
+                    recordKind === "video" ? "Видео (тап — Р.Ё.В)"
+                      : recordKind === "rov" ? "Р.Ё.В: держи — у собеседника вибрирует (тап — голосовое)"
+                      : "Голосовое (тап — видео)"
+                  }
                 >
-                  {recordKind === "video" ? <Video className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  {recordKind === "video" ? <Video className="w-5 h-5" />
+                    : recordKind === "rov" ? <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />
+                    : <Mic className="w-5 h-5" />}
                 </button>
               </>
             )}

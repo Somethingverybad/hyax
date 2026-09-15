@@ -4,7 +4,7 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Vibrate } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { NotificationSoundInfo } from "@/api/client";
 
 interface Sticker {
@@ -27,10 +27,6 @@ interface UserStickerPack {
 
 interface StickerPickerProps {
   onSelect: (sticker: Sticker) => void;
-  /** Р.Ё.В: коротко ткнул — у собеседника один тычок, держишь — сплошная
-   *  вибрация. Панель только сообщает «держу/отпустил», отправкой по сокету
-   *  занимается чат. */
-  onRov?: (on: boolean) => void;
   /** Аудио-стикеры живут в этой же панели: отдельная кнопка рядом со
    *  стикерами дробила один и тот же сценарий «отправить что-то забавное». */
   sounds?: NotificationSoundInfo[];
@@ -47,13 +43,11 @@ interface StickerPickerProps {
  */
 const StickerPicker = ({
   onSelect,
-  onRov,
   sounds = [],
   selectedSoundId = null,
   onSelectSound,
 }: StickerPickerProps) => {
-  const [tab, setTab] = useState<"stickers" | "sounds" | "rov">("stickers");
-  const [roving, setRoving] = useState(false);
+  const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
   const [soundView, setSoundView] = useState<string | null>(() => {
     try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
   });
@@ -187,57 +181,9 @@ const StickerPicker = ({
         <Music2 className="w-3.5 h-3.5" />
         Звуки
       </button>
-      <button
-        type="button"
-        onClick={() => setTab("rov")}
-        className={cn(
-          "flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1.5",
-          tab === "rov" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
-        )}
-      >
-        <Vibrate className="w-3.5 h-3.5" />
-        Р.Ё.В
-      </button>
     </div>
   );
 
-  // Площадка Р.Ё.В: пока палец на ней — шлём «держу», отпустили или увели
-  // палец — «отпустил». Дальше решает приёмник: короткое касание — один
-  // тычок, удержание — сплошная вибрация. Указатель забираем себе, иначе
-  // жест теряется при прокрутке и вибрация у собеседника осталась бы висеть.
-  const startRov = (e: React.PointerEvent) => {
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    setRoving(true);
-    onRov?.(true);
-  };
-  const stopRov = () => { setRoving(false); onRov?.(false); };
-  const rovTab = (
-    <div className="h-64 flex flex-col">
-      {tabs}
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 pb-3">
-        <div
-          role="button"
-          tabIndex={0}
-          onPointerDown={startRov}
-          onPointerUp={stopRov}
-          onPointerCancel={stopRov}
-          onPointerLeave={stopRov}
-          className={cn(
-            "w-36 h-36 rounded-full flex items-center justify-center select-none touch-none transition-transform",
-            roving ? "bg-primary text-primary-foreground scale-95" : "bg-secondary text-foreground",
-          )}
-          aria-label="Нажать — тычок, держать — сплошная вибрация"
-        >
-          <Vibrate className={cn("w-14 h-14", roving && "animate-pulse")} />
-        </div>
-        <p className="text-xs text-muted-foreground text-center px-4">
-          {roving
-            ? "Держу — вибрация разгоняется до сплошной"
-            : "Коротко ткни — один тычок. Держи — вибрация разгонится и будет гудеть, пока не отпустишь"}
-        </p>
-      </div>
-    </div>
-  );
 
   // Паки аудио-стикеров и их содержимое.
   const soundPackNames = Array.from(new Set(sounds.map((s) => s.pack_name || "Разное")));
@@ -360,7 +306,6 @@ const StickerPicker = ({
   );
 
   if (tab === "sounds") return soundsTab;
-  if (tab === "rov") return rovTab;
 
   if (loading) {
     return (
