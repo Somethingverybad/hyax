@@ -275,6 +275,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // Десктоп: файл можно перетащить в окно чата или вставить из буфера (⌘V/Ctrl+V).
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes("Files");
+  const onDragEnter = (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepthRef.current++; setDragOver(true); };
+  const onDragOver = (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; };
+  const onDragLeave = (e: React.DragEvent) => { if (!hasFiles(e)) return; dragDepthRef.current = Math.max(0, dragDepthRef.current - 1); if (!dragDepthRef.current) setDragOver(false); };
+  const onDrop = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepthRef.current = 0; setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) void acceptFile(f);
+  };
+  const onPasteFile = (e: React.ClipboardEvent) => {
+    const f = Array.from(e.clipboardData?.files || [])[0];
+    if (!f) return; // обычный текст — вставляется как есть
+    e.preventDefault();
+    void acceptFile(f);
+  };
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -384,7 +403,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         syncedAtRef.current = cached.syncedAt;
         setHasMore(cached.hasMore);
         setMessages(cached.messages);
-        setTimeout(() => scrollToBottom(), 50);
+        scrollToBottomOnOpen();
         await syncSince(chatId);
       } else {
         try {
@@ -394,7 +413,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           setHasMore(r.has_more);
           setMessages(r.messages);
           void writeMessages(chatId, r.messages, r.now, r.has_more);
-          setTimeout(() => scrollToBottom(), 50);
+          scrollToBottomOnOpen();
         } catch {
           console.log("Не удалось загрузить сообщения");
         }
@@ -427,7 +446,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (soundChatRef.current !== chatId) {
       soundChatRef.current = chatId ?? null;
       newestRef.current = newest;
-      if (messages.length > 0) setTimeout(() => scrollToBottom(), 100);
+      // Первый рендер ленты нового чата — въезд уже запланирован в эффекте
+      // открытия; тут только фиксируем «самое новое».
       return;
     }
     const prevNewest = newestRef.current;
@@ -577,6 +597,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (el.scrollTop < 160 && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
   };
 
+  /** Вход в чат: встаём мгновенно чуть выше низа и плавно доезжаем до
+   *  последнего сообщения — короткий «въезд», а не прыжок и не долгий пролёт
+   *  через всю ленту. В коротком чате (старт у самого верха) — мгновенно,
+   *  иначе onFeedScroll принял бы старт за прокрутку вверх и позвал loadOlder. */
+  const scrollToBottomOnOpen = () => {
+    setTimeout(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const start = el.scrollHeight - el.clientHeight * 2.2;
+      if (start < 240) { el.scrollTo({ top: el.scrollHeight, behavior: "auto" }); return; }
+      el.scrollTop = start;
+      requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
+    }, 60);
+  };
+
   /** Прокрутка в самый низ: при открытии чата — мгновенно, при отправке — плавно. */
   const scrollToBottom = (smooth = false) => {
     setTimeout(() => {
@@ -593,6 +628,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const file = e.target.files?.[0];
     e.target.value = ""; // чтобы повторный выбор того же файла сработал
     if (!file) return;
+    await acceptFile(file, mode);
+  };
+
+  /** Принять файл из любого источника — меню скрепки, drag-n-drop, вставка из
+   *  буфера. Без явного режима тип берём из MIME: картинка → фото (сжимаем
+   *  здесь), видео → видео (пережмёт сервер), остальное — файл строкой. */
+  const acceptFile = async (file: File, mode?: "photo" | "video" | "file") => {
+    mode = mode ?? (file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "file");
     // Лимита на размер нет — ни здесь, ни на сервере, ни в nginx (0):
     // фото и видео с телефона отправляются как есть.
     if (mode === "photo") {
@@ -1201,7 +1244,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     : [];
 
   return (
-    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0">
+    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      {dragOver && (
+        <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <Paperclip className="w-8 h-8 mx-auto text-primary" />
+            <p className="mt-2 text-body font-semibold">Отпусти — отправлю в чат</p>
+            <p className="text-small text-subtle">картинка уйдёт как фото, видео — как видео, остальное — файлом</p>
+          </div>
+        </div>
+      )}
       {(onBack || title || peer || isGroup) && (
         <div className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
           {onBack && (
@@ -1809,6 +1861,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 placeholder="Сообщение..."
                 value={newMessage}
                 rows={1}
+                onPaste={onPasteFile}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={(e) => {
                   // На телефоне Enter — перенос строки (отправка кнопкой), на

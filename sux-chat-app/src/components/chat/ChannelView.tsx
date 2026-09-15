@@ -156,8 +156,31 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    // Лимита на размер нет (см. ChatWindow.handlePick).
+    await acceptFile(file, mode);
+  };
+  /** Файл из меню, перетаскивания или буфера; режим — из MIME, если не задан. Лимита нет. */
+  const acceptFile = async (file: File, mode?: "photo" | "video" | "file") => {
+    mode = mode ?? (file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "file");
     setAttachment({ file: mode === "photo" ? await compressImage(file) : file, mode });
+  };
+  // Десктоп: перетащить файл в окно канала или вставить из буфера — только админу.
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes("Files");
+  const onDragEnter = (e: React.DragEvent) => { if (!isAdmin || !hasFiles(e)) return; e.preventDefault(); dragDepthRef.current++; setDragOver(true); };
+  const onDragOver = (e: React.DragEvent) => { if (!isAdmin || !hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; };
+  const onDragLeave = (e: React.DragEvent) => { if (!hasFiles(e)) return; dragDepthRef.current = Math.max(0, dragDepthRef.current - 1); if (!dragDepthRef.current) setDragOver(false); };
+  const onDrop = (e: React.DragEvent) => {
+    if (!isAdmin || !hasFiles(e)) return;
+    e.preventDefault(); dragDepthRef.current = 0; setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) void acceptFile(f);
+  };
+  const onPasteFile = (e: React.ClipboardEvent) => {
+    const f = Array.from(e.clipboardData?.files || [])[0];
+    if (!f) return;
+    e.preventDefault();
+    void acceptFile(f);
   };
 
   const toggleNote = async () => {
@@ -337,7 +360,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const avatarUrl = channel?.avatar_url ? mediaUrl(channel.avatar_url) : null;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background min-w-0">
+    <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      {dragOver && (
+        <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <Paperclip className="w-8 h-8 mx-auto text-primary" />
+            <p className="mt-2 text-body font-semibold">Отпусти — прикреплю к посту</p>
+          </div>
+        </div>
+      )}
       {/* Шапка */}
       <div className="flex items-center gap-3 px-3 pad-safe-top py-2 border-b border-border shrink-0">
         {onBack && (
@@ -505,6 +536,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             </button>
             <textarea
               value={text}
+              onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
               placeholder={attachment ? "Подпись…" : "Написать в канал…"}
               rows={1}
