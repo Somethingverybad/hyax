@@ -84,28 +84,13 @@
   .stick .em{position:absolute;right:3px;bottom:2px;font-size:12px;text-shadow:0 1px 3px #000}
   .stick .anim{position:absolute;left:3px;top:3px;font-size:9px;letter-spacing:.4px;background:rgba(0,0,0,.55);
     color:var(--muted);border-radius:6px;padding:1px 4px}
-  /* музыка */
-  .track{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
-  .track .meta{flex:1;min-width:0}
-  .track .tt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .track .ta{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .track.playing .tt{color:var(--red2)}
-  .track .dur{color:var(--muted);font-size:12.5px;flex-shrink:0}
-  .player{position:sticky;bottom:0;z-index:5;margin-top:14px;display:flex;gap:8px;align-items:center;
-    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;
-    box-shadow:0 -6px 24px rgba(0,0,0,.45)}
-  .player .plmeta{flex:1;min-width:0}
-  .player .plt{font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .player .pla{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .player .pltime{color:var(--muted);font-size:12px;flex-shrink:0;font-variant-numeric:tabular-nums}
-  .player input[type=range]{flex:1.4;min-width:80px;accent-color:var(--red2);background:transparent}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="logo">ХУ<b>Я</b>КС · Creative Space</div>
-    <div class="sub">Мастерская контента. Пока — паки звуков, дальше больше.</div>
+    <div class="sub">Мастерская контента: паки звуков и стикеры из Telegram.</div>
   </header>
 
   <h2>Инструменты</h2>
@@ -121,10 +106,6 @@
     <div class="tile active">
       <div class="ico">🎨</div><div class="t">Стикеры</div>
       <div class="d">Импорт паков из Telegram</div><span class="badge">доступно</span>
-    </div>
-    <div class="tile active">
-      <div class="ico">🎵</div><div class="t">Музыка</div>
-      <div class="d">Общая фонотека и плеер</div><span class="badge">доступно</span>
     </div>
   </div>
 
@@ -177,27 +158,6 @@
     <div id="myStickerPacks"></div>
     <div class="card muted" id="noStickerPacks" hidden>Пока нет паков. Импортируйте первый выше.</div>
 
-    <h2>Музыка</h2>
-    <div class="card">
-      <div class="row" style="margin-bottom:0">
-        <button class="btn sm file" type="button"><span id="musicAddLabel">+ Загрузить треки</span>
-          <input id="musicFile" type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac"></button>
-        <span class="muted" style="font-size:12.5px">до 40 МБ</span>
-      </div>
-      <div class="prog" id="musicProg"><i></i></div>
-      <div class="result" id="musicResult"></div>
-      <div id="musicList"></div>
-      <div class="hint mt">Фонотека общая: слышно всем, удалить трек может только тот, кто его загрузил.</div>
-    </div>
-
-    <div class="player" id="player" hidden>
-      <button class="play" id="plPrev" type="button" title="Предыдущий">⏮</button>
-      <button class="play" id="plToggle" type="button" title="Играть">▶</button>
-      <button class="play" id="plNext" type="button" title="Следующий">⏭</button>
-      <div class="plmeta"><div class="plt" id="plTitle">—</div><div class="pla" id="plArtist"></div></div>
-      <input id="plSeek" type="range" min="0" max="1000" value="0" step="1" title="Перемотка">
-      <div class="pltime" id="plTime">0:00</div>
-    </div>
   </div>
 
   <div class="foot">ХУЯКС Creative Space</div>
@@ -218,8 +178,8 @@
 
   function showAuthState(){
     if(access){ loginBlock.hidden=true; studioBlock.hidden=false; el("whoName").textContent=uname||"—";
-      loadMine(); loadStickerPacks(); loadMusic(); }
-    else { studioBlock.hidden=true; loginBlock.hidden=false; stopPlayback(); }
+      loadMine(); loadStickerPacks(); }
+    else { studioBlock.hidden=true; loginBlock.hidden=false; }
   }
 
   // fetch с Bearer + авто-refresh один раз при 401
@@ -581,152 +541,6 @@
       if(ok){ el("tgUrl").value=""; loadStickerPacks(); }
     }
   }
-
-  // ── МУЗЫКА ──
-  var MUSIC_URL="/api/music/";
-  var musicProg=el("musicProg"), musicProgBar=musicProg.querySelector("i"), musicResult=el("musicResult");
-  var tracks=[], cur=-1, audio=null, seeking=false;
-  var player=el("player"), plToggle=el("plToggle"), plTitle=el("plTitle"), plArtist=el("plArtist"),
-      plSeek=el("plSeek"), plTime=el("plTime");
-
-  function fmt(sec){
-    sec=Math.max(0,Math.floor(sec||0));
-    var m=Math.floor(sec/60), s=sec%60;
-    return m+":"+(s<10?"0":"")+s;
-  }
-
-  function stopPlayback(){
-    if(audio){ audio.pause(); audio.src=""; audio=null; }
-    cur=-1; player.hidden=true; markPlaying();
-  }
-
-  function markPlaying(){
-    var rows=el("musicList").children;
-    for(var i=0;i<rows.length;i++){
-      var on = tracks[i] && cur>=0 && tracks[cur] && tracks[i].id===tracks[cur].id;
-      rows[i].classList.toggle("playing", !!on);
-      var b=rows[i].querySelector(".play");
-      if(b) b.textContent = (on && audio && !audio.paused) ? "❚❚" : "▶";
-    }
-    plToggle.textContent = (audio && !audio.paused) ? "❚❚" : "▶";
-  }
-
-  function playIndex(i){
-    if(i<0||i>=tracks.length) return;
-    var t=tracks[i];
-    if(cur===i && audio){ audio.paused ? audio.play().catch(function(){}) : audio.pause(); markPlaying(); return; }
-    if(audio){ audio.pause(); }
-    cur=i;
-    audio=new Audio(t.url);
-    audio.addEventListener("timeupdate", function(){
-      if(seeking) return;
-      var d=audio.duration||t.duration||0;
-      plSeek.value = d ? Math.round(audio.currentTime/d*1000) : 0;
-      plTime.textContent=fmt(audio.currentTime)+" / "+fmt(d);
-    });
-    audio.addEventListener("ended", function(){ next(); });
-    audio.addEventListener("play", markPlaying);
-    audio.addEventListener("pause", markPlaying);
-    audio.play().catch(function(){});
-    plTitle.textContent=t.title||"—";
-    plArtist.textContent=t.artist||(t.owner_username?("загрузил "+t.owner_username):"");
-    plTime.textContent="0:00 / "+fmt(t.duration);
-    plSeek.value=0;
-    player.hidden=false;
-    markPlaying();
-  }
-  function next(){ if(tracks.length) playIndex((cur+1)%tracks.length); }
-  function prev(){ if(tracks.length) playIndex((cur-1+tracks.length)%tracks.length); }
-
-  plToggle.addEventListener("click", function(){
-    if(!audio){ if(tracks.length) playIndex(0); return; }
-    audio.paused ? audio.play().catch(function(){}) : audio.pause();
-    markPlaying();
-  });
-  el("plNext").addEventListener("click", next);
-  el("plPrev").addEventListener("click", prev);
-  plSeek.addEventListener("input", function(){ seeking=true; });
-  plSeek.addEventListener("change", function(){
-    if(audio){
-      var d=audio.duration||0;
-      if(d) audio.currentTime = plSeek.value/1000*d;
-    }
-    seeking=false;
-  });
-
-  function trackRow(t,i){
-    var row=document.createElement("div"); row.className="track";
-    var play=document.createElement("button"); play.className="play"; play.type="button"; play.textContent="▶";
-    var meta=document.createElement("div"); meta.className="meta";
-    meta.innerHTML='<div class="tt">'+esc(t.title)+'</div><div class="ta">'+
-      esc(t.artist||"")+(t.artist&&t.owner_username?" · ":"")+
-      (t.owner_username?esc(t.owner_username):"")+'</div>';
-    var dur=document.createElement("div"); dur.className="dur"; dur.textContent=fmt(t.duration);
-    var del=document.createElement("button"); del.className="btn sm ghost danger"; del.type="button"; del.textContent="✕";
-    row.appendChild(play); row.appendChild(meta); row.appendChild(dur); row.appendChild(del);
-
-    play.addEventListener("click", function(){ playIndex(i); });
-    del.addEventListener("click", function(){
-      if(!confirm('Удалить трек «'+t.title+'»?')) return;
-      row.classList.add("spin");
-      authJson(MUSIC_URL+t.id+"/","DELETE").then(function(x){
-        row.classList.remove("spin");
-        if(x.ok){ if(cur===i) stopPlayback(); loadMusic(); }
-        else alert((x.data&&(x.data.error||x.data.detail))||"Удалить можно только свой трек.");
-      }).catch(function(){ row.classList.remove("spin"); });
-    });
-    return row;
-  }
-
-  function loadMusic(){
-    var box=el("musicList"); box.innerHTML='<div class="muted" style="padding-top:10px">Загрузка…</div>';
-    authJson(MUSIC_URL,"GET").then(function(x){
-      if(!x.ok){ box.innerHTML='<div class="muted" style="padding-top:10px">Не удалось загрузить фонотеку.</div>'; return; }
-      tracks=(x.data&&x.data.items)||[];
-      box.innerHTML="";
-      if(!tracks.length){ box.innerHTML='<div class="muted" style="padding-top:10px">Пока пусто. Загрузи первый трек.</div>'; player.hidden=true; return; }
-      tracks.forEach(function(t,i){ box.appendChild(trackRow(t,i)); });
-      markPlaying();
-    }).catch(function(e){ if(!(e&&e.auth)) box.innerHTML='<div class="muted" style="padding-top:10px">Ошибка сети.</div>'; });
-  }
-
-  el("musicFile").addEventListener("change", function(){
-    var input=this, files=Array.prototype.slice.call(input.files||[]);
-    if(!files.length) return;
-    var label=el("musicAddLabel"); musicResult.className="result";
-    musicProg.style.display="block"; musicProgBar.style.width="0%";
-    var okCount=0, fails=[];
-
-    (function upload(i){
-      if(i>=files.length){
-        label.textContent="+ Загрузить треки"; input.value="";
-        musicProgBar.style.width="100%";
-        setTimeout(function(){ musicProg.style.display="none"; },600);
-        musicResult.className="result "+(okCount?"ok":"err");
-        musicResult.innerHTML = (okCount?"<b>Загружено треков: "+okCount+".</b>":"<b>Ничего не загрузилось.</b>")+
-          (fails.length?'<div style="margin-top:8px;color:#ff9a95">Не приняты: '+fails.map(esc).join(", ")+"</div>":"");
-        if(okCount) loadMusic();
-        return;
-      }
-      var f=files[i];
-      label.textContent="Загрузка "+(i+1)+"/"+files.length+"…";
-      var fd=new FormData();
-      fd.append("file",f);
-      fd.append("title",f.name.replace(/\.[^.]+$/,""));
-      authUpload(MUSIC_URL, fd, function(e){
-        if(e.lengthComputable){
-          var frac=(i+e.loaded/e.total)/files.length;
-          musicProgBar.style.width=Math.round(frac*95)+"%";
-        }
-      }).then(function(x){
-        if(x.ok) okCount++; else fails.push(f.name+" — "+((x.data&&x.data.error)||("ошибка "+x.status)));
-        upload(i+1);
-      }).catch(function(e){
-        if(e&&e.auth) return;
-        fails.push(f.name+" — сеть"); upload(i+1);
-      });
-    })(0);
-  });
 
   showAuthState();
 })();

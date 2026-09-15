@@ -2454,7 +2454,13 @@ class TelegramStickerImportView(APIView):
 
 # ── Музыка (Creative Space) ───────────────────────────────────────────────────
 class MusicView(APIView):
-    """GET — общая библиотека (?mine=1 — только мои); POST — загрузить трек
+    """Фонотека Creative Space. СЕЙЧАС НЕ ИСПОЛЬЗУЕТСЯ: музыку загружают
+    сообщениями, а плеер в приложении собирает очередь из аудио переписки
+    (sux-chat-app/src/lib/player.ts). Страница студии раздел «Музыка»
+    больше не показывает; ручка и модель оставлены, пока не решено,
+    удалять ли их вместе с миграцией.
+
+    GET — общая библиотека (?mine=1 — только мои); POST — загрузить трек
     (multipart: file, title, artist); DELETE /music/<id>/ — своё."""
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
