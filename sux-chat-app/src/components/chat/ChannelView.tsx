@@ -4,10 +4,11 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
 import ImageViewer from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2 } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
 import { Linkify } from "@/lib/linkify";
+import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
@@ -17,6 +18,8 @@ interface Channel {
   id: string; name: string; username?: string | null; description?: string;
   avatar_url?: string | null; subscribers_count?: number; sign_posts?: boolean;
   my_role?: "owner" | "admin" | "subscriber" | null; creator?: string | null;
+  /** Звук уведомлений канала: с ним подписчики слышат новые посты. */
+  notify_sound?: NotificationSoundInfo | null;
   admins?: { id: string; username: string; role: string; is_bot?: boolean }[];
 }
 
@@ -932,12 +935,14 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
   channel: Channel; userId: string; onClose: () => void; onLeave: () => void; onDelete: () => void; onChanged: (c: Channel) => void;
 }) => {
   const isOwner = channel.my_role === "owner";
+  const isAdmin = isOwner || channel.my_role === "admin";
   const [name, setName] = useState(channel.name);
   const [description, setDescription] = useState(channel.description || "");
   const [signPosts, setSignPosts] = useState(!!channel.sign_posts);
   const [adminQuery, setAdminQuery] = useState("");
   const [adminResults, setAdminResults] = useState<any[]>([]);
   const [admins, setAdmins] = useState(channel.admins || []);
+  const [soundOpen, setSoundOpen] = useState(false);
 
   useEffect(() => {
     if (isOwner) api.getChannelAdmins(channel.id).then(setAdmins).catch(() => {});
@@ -1001,6 +1006,22 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
             <Share2 className="w-4 h-4" /> Поделиться каналом
           </button>
 
+          {/* Звук уведомлений канала — как «мой звук» в профиле, только его
+              слышат подписчики при новом посте. Менять может админ. */}
+          {isAdmin && (
+            <button type="button" onClick={() => setSoundOpen(true)}
+              className="w-full flex items-center gap-3 py-2.5 text-left">
+              <Music2 className="w-5 h-5 text-primary shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-body">Звук уведомлений канала</span>
+                <span className="block text-caption text-subtle truncate">
+                  {channel.notify_sound ? channel.notify_sound.name : "Обычный — выбери свой, его услышат подписчики"}
+                </span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-subtle shrink-0" />
+            </button>
+          )}
+
           {isOwner ? (
             <>
               <div>
@@ -1047,6 +1068,25 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
           )}
         </div>
       </div>
+      {soundOpen && (
+        <SoundPickerSheet
+          title="Звук уведомлений канала"
+          current={channel.notify_sound?.id || null}
+          onClose={() => setSoundOpen(false)}
+          onPick={async (s) => {
+            setSoundOpen(false);
+            const prev = channel.notify_sound || null;
+            onChanged({ ...channel, notify_sound: s });
+            try {
+              await api.updateChannel(channel.id, { notify_sound_id: s ? s.id : null });
+              toast.success(s ? `Подписчики услышат «${s.name}»` : "Обычный звук");
+            } catch {
+              toast.error("Не удалось сохранить");
+              onChanged({ ...channel, notify_sound: prev });
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -68,6 +68,9 @@ class Chat(models.Model):
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
     subscribers_count = models.IntegerField(default=0)
     default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Звук уведомлений канала: с ним подписчики получают пуши о новых постах,
+    # если у самого поста нет аудио-стикера (см. _notify_new_message).
+    notify_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     # Закреплённое сообщение — одно на чат, показывается полосой под шапкой.
     # SET_NULL: удалили сообщение — открепилось само.
     pinned_message = models.ForeignKey('Message', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")

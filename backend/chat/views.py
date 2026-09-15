@@ -484,8 +484,10 @@ def _notify_new_message(message, profile, request):
             title=push_title,
             body=preview[:150],
             extra={"chat_id": str(message.chat.id)},
-            # Звук: аудио-стикер сообщения, иначе «мой звук» отправителя.
+            # Звук: аудио-стикер поста, иначе звук канала, иначе «мой звук»
+            # отправителя. У канала свой — подписчики узнают его по звуку.
             sound=(message.sound.slug if message.sound_id
+                   else message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
                    else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None),
             # Кому выключено превью — «Новое сообщение» вместо текста.
             hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
@@ -2070,6 +2072,10 @@ class ChannelDetailView(APIView):
             ch.avatar_url = request.data.get("avatar_url") or None; fields.append("avatar_url")
         if "sign_posts" in request.data:
             ch.sign_posts = str(request.data.get("sign_posts")).lower() in ("1", "true", "yes"); fields.append("sign_posts")
+        if "notify_sound_id" in request.data:
+            sid = request.data.get("notify_sound_id")
+            ch.notify_sound = NotificationSound.objects.filter(id=sid, is_active=True).first() if sid else None
+            fields.append("notify_sound")
         if "username" in request.data:
             username = (request.data.get("username") or "").strip().lstrip("@") or None
             if username is not None:

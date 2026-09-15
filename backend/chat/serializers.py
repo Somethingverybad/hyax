@@ -284,12 +284,18 @@ class ChannelSerializer(serializers.ModelSerializer):
     """Инфо о канале для клиента. my_role — роль текущего пользователя в канале
     (owner/admin/subscriber) или None, если не подписан."""
     my_role = serializers.SerializerMethodField()
+    # Звук уведомлений канала: наружу — объектом (есть url для прослушивания),
+    # меняется через PATCH channels/<id>/ полем notify_sound_id.
+    notify_sound = serializers.SerializerMethodField()
+
+    def get_notify_sound(self, obj):
+        return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
 
     class Meta:
         model = Chat
         fields = ['id', 'kind', 'name', 'username', 'description', 'avatar_url',
                   'is_public', 'sign_posts', 'subscribers_count', 'creator',
-                  'my_role', 'created_at']
+                  'my_role', 'notify_sound', 'created_at']
 
     def get_my_role(self, obj):
         req = self.context.get('request')
