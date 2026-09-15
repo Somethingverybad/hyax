@@ -920,25 +920,31 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       return;
     }
 
-    // Вложения: каждое — своё сообщение; два и больше фото/видео получают
-    // общий album_id и склеиваются в ленте в одну сетку, как в Telegram.
-    // Текст, звук и цитата идут с первым.
-    const mediaCount = list.filter(a => a.mode === "photo" || a.mode === "video").length;
-    const albumId = mediaCount > 1 ? (crypto.randomUUID?.() || `alb-${Date.now()}`) : null;
-    const jobs = list.map((att, i) => {
+    // Вложения: каждое едет своим сообщением, но выбранные разом получают
+    // общий album_id и показываются как одно — фото, видео и музыка вместе.
+    // Больше ALBUM_MAX за раз не кладём: остальное уходит следующим
+    // сообщением, иначе пузырь превращается в простыню.
+    const ALBUM_MAX = 10;
+    const chunks: Attach[][] = [];
+    for (let i = 0; i < list.length; i += ALBUM_MAX) chunks.push(list.slice(i, i + ALBUM_MAX));
+    const jobs = chunks.flatMap((chunk, ci) => {
+      const albumId = chunk.length > 1 ? (crypto.randomUUID?.() || `alb-${Date.now()}-${ci}`) : null;
+      return chunk.map((att, k) => {
+      const i = ci * ALBUM_MAX + k;
+      const first = i === 0;
       const tempId = `pending-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`;
       const optimistic: Message = {
         id: tempId,
-        content: i === 0 ? (text || null) : null,
+        content: first ? (text || null) : null,
         file_url: att.url,
         file_name: att.file.name,
         sender_id: userId,
         sender: { id: userId } as Profile,
         created_at: new Date(Date.now() + i).toISOString(),
-        sound: i === 0 ? sound : null,
+        sound: first ? sound : null,
         download_only: att.mode === "file",
-        album_id: albumId && (att.mode === "photo" || att.mode === "video") ? albumId : null,
-        reply_to: i === 0 && reply
+        album_id: albumId,
+        reply_to: first && reply
           ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
           : null,
         pending: true,
@@ -947,7 +953,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         _progress: 0,
         _att: att,
       };
-      return { tempId, att, optimistic, content: i === 0 ? text : "", soundId: i === 0 ? sound?.id : undefined, replyId: i === 0 ? reply?.id : undefined, albumId: optimistic.album_id };
+      return { tempId, att, optimistic, content: first ? text : "", soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, albumId };
+      });
     });
 
     setMessages(prev => [...prev, ...jobs.map(j => j.optimistic)]);
@@ -1484,6 +1491,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // рисуем их на первом сообщении группы, остальные пропущены выше.
             const album = message.album_id ? albumsById.get(message.album_id) : undefined;
             const isAlbum = !!album && album.length > 1;
+            // В альбоме может быть что угодно: картинки и видео идут сеткой,
+            // музыка и файлы — строками под ней, всё в одном пузыре.
+            const albumMedia = isAlbum ? album!.filter((m) => !m.download_only && (isImageFile(m.file_name, m.file_url) || isVideoFile(m.file_name, m.file_url)) && !isAudioFile(m.file_name, m.file_url)) : [];
+            const albumAudio = isAlbum ? album!.filter((m) => isAudioFile(m.file_name, m.file_url)) : [];
+            const albumRest = isAlbum ? album!.filter((m) => !albumMedia.includes(m) && !albumAudio.includes(m)) : [];
             const hasImage =
               !!message.file_url &&
               !message.download_only &&
@@ -1491,7 +1503,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               !imageLoadErrors.has(message.id);
             // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
             // которая раздувала сообщение на пол-экрана.
-            const imageOnly = (hasImage || isAlbum) && !message.content && !message.sticker?.file_url && !message.sound;
+            const imageOnly = (hasImage || (isAlbum && !albumAudio.length && !albumRest.length)) && !message.content && !message.sticker?.file_url && !message.sound;
             // Видео-«треугольник» без текста/цитаты — тоже без прямоугольного
             // пузыря: обводку несёт сам треугольник (см. VideoNote).
             const videoOnly = !!message.video_url && !message.content && !message.sticker?.file_url && !message.sound && !message.reply_to;
@@ -1720,9 +1732,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                       {/* Файл */}
                       {isAlbum ? (
-                        <div className={cn(!imageOnly && "mt-2")}>
+                        <div className={cn(!imageOnly && "mt-2", "space-y-1.5")}>
+                          {albumMedia.length > 0 && (
                           <AlbumGrid
-                            items={album!.map((m) => ({
+                            items={albumMedia.map((m) => ({
                               id: m.id,
                               raw: m.file_url || "",
                               name: m.file_name ?? null,
@@ -1734,6 +1747,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             localMap={localImagesRef.current}
                             onOpen={(url, name, id) => setViewer({ url, name, messageId: id })}
                           />
+                          )}
+                          {albumAudio.map((m) => (
+                            <MessageAudioFile key={m.id} raw={m.file_url as string} name={m.file_name ?? null}
+                              isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(m)} />
+                          ))}
+                          {albumRest.map((m) => (
+                            <MessageFile key={m.id} raw={m.file_url as string} name={m.file_name ?? null}
+                              isOwn={isOwn} onSave={handleSaveFile} />
+                          ))}
                         </div>
                       ) : message.file_url && (
                         <div className={cn(!imageOnly && "mt-2")}>
@@ -1855,6 +1877,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <span className="text-sm">Сообщение удалено</span>
               <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
             </div>
+          )}
+          {attachments.length > 10 && (
+            <p className="mb-1 text-caption text-subtle">
+              Выбрано {attachments.length} — уйдут по 10 в сообщении
+            </p>
           )}
           {attachments.length > 0 && (
             <div className="mb-2 flex gap-2 overflow-x-auto pb-1">

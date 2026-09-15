@@ -63,12 +63,17 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
 };
 
 const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; album?: Post[]; onOpenImage?: (url: string, post: Post) => void; onPlayAudio?: (p: Post) => void }) => {
-  // Альбом: несколько фото/видео одной публикации — одной сеткой.
+  // Альбом одной публикации: картинки и видео — сеткой, музыка и файлы —
+  // строками под ней, всё в одном посте.
   if (album && album.length > 1) {
+    const media = album.filter((p) => !p.download_only && (isImageFile(p.file_name, p.file_url) || isVideoFile(p.file_name, p.file_url)) && !isAudioFile(p.file_name, p.file_url));
+    const audio = album.filter((p) => isAudioFile(p.file_name, p.file_url));
+    const rest = album.filter((p) => !media.includes(p) && !audio.includes(p));
     return (
-      <div className="mt-2">
+      <div className="mt-2 space-y-1.5">
+        {media.length > 0 && (
         <AlbumGrid
-          items={album.map((p) => ({
+          items={media.map((p) => ({
             id: p.id,
             raw: p.file_url || "",
             name: p.file_name ?? null,
@@ -82,6 +87,15 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
             onOpenImage?.(url, target);
           }}
         />
+        )}
+        {audio.map((p) => (
+          <MessageAudioFile key={p.id} raw={p.file_url as string} name={p.file_name || null}
+            isOwn={false} onSave={(url) => window.open(url, "_blank")} onPlay={() => onPlayAudio?.(p)} />
+        ))}
+        {rest.map((p) => (
+          <MessageFile key={p.id} raw={p.file_url as string} name={p.file_name || null}
+            isOwn={false} onSave={(url) => window.open(url, "_blank")} />
+        ))}
       </div>
     );
   }
@@ -439,12 +453,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       if (!list.length) {
         await api.sendMessage(channelId, body, snd?.id);
       } else {
-        // Два и больше фото/видео — общий album_id: в ленте склеятся в сетку.
-        const mediaCount = list.filter((a) => a.mode === "photo" || a.mode === "video").length;
-        const albumId = mediaCount > 1 ? (crypto.randomUUID?.() || `alb-${Date.now()}`) : null;
-        for (let i = 0; i < list.length; i++) {
-          const att = list[i];
-          const album = albumId && (att.mode === "photo" || att.mode === "video") ? albumId : null;
+        // Выбранное разом — один пост с общим album_id (фото, видео и музыка
+        // вместе); больше ALBUM_MAX за раз не кладём, остальное уходит
+        // следующим постом.
+        const ALBUM_MAX = 10;
+        const chunks: Attach[][] = [];
+        for (let i = 0; i < list.length; i += ALBUM_MAX) chunks.push(list.slice(i, i + ALBUM_MAX));
+        for (let ci = 0; ci < chunks.length; ci++) {
+        const chunk = chunks[ci];
+        const album = chunk.length > 1 ? (crypto.randomUUID?.() || `alb-${Date.now()}-${ci}`) : null;
+        for (let k = 0; k < chunk.length; k++) {
+          const att = chunk[k];
+          const i = ci * ALBUM_MAX + k;
           const temp = addPending({
             content: i === 0 ? body || undefined : undefined,
             file_url: att.url,
@@ -469,6 +489,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             toast.error(`Не удалось опубликовать «${att.file.name}»`);
             temp.drop();
           }
+        }
         }
       }
       await sync();
@@ -680,6 +701,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               <Music2 className="w-3.5 h-3.5" /> Звук пуша: <b className="text-foreground">{sound.name}</b>
               <button type="button" onClick={() => setSound(null)} className="ml-1"><X className="w-3.5 h-3.5" /></button>
             </div>
+          )}
+          {attachments.length > 10 && (
+            <p className="mb-1 text-caption text-subtle">Выбрано {attachments.length} — уйдут по 10 в посте</p>
           )}
           {attachments.length > 0 && (
             <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
