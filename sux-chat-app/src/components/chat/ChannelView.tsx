@@ -4,7 +4,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
 import ImageViewer from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, Play, Square, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
 import { Linkify } from "@/lib/linkify";
@@ -128,7 +128,6 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [soundOpen, setSoundOpen] = useState(false);
-  const [sounds, setSounds] = useState<NotificationSoundInfo[]>([]);
   const [sound, setSound] = useState<NotificationSoundInfo | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
@@ -409,12 +408,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     return () => { alive = false; clearInterval(t); };
   }, [channelId, sync]);
 
-  const openSounds = async () => {
-    if (!sounds.length) {
-      try { setSounds(await api.getNotificationSounds()); } catch { /* ignore */ }
-    }
-    setSoundOpen((v) => !v);
-  };
+  // Звук пуша для поста выбираем той же шторкой, что «мой звук» и звук
+  // канала: там поиск и паки, а каталог уже под сотню звуков.
+  const openSounds = () => setSoundOpen((v) => !v);
 
   const publish = async () => {
     const body = text.trim();
@@ -771,15 +767,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             )}
           </div>
           {soundOpen && (
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-lg bg-surface-1">
-              <button type="button" onClick={() => { setSound(null); setSoundOpen(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary border-b border-border/60">
-                Без звука
-              </button>
-              {sounds.map((s) => (
-                <SoundRow key={s.id} sound={s} selected={sound?.id === s.id} onPick={() => { setSound(s); setSoundOpen(false); }} />
-              ))}
-              {sounds.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">Звуков нет</p>}
-            </div>
+            <SoundPickerSheet
+              title="Звук уведомления для поста"
+              current={sound?.id ?? null}
+              onClose={() => setSoundOpen(false)}
+              onPick={(s) => { setSound(s); setSoundOpen(false); }}
+            />
           )}
         </div>
       ) : !subscribed ? (
@@ -831,29 +824,6 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
 };
 
 /** Звук в списке выбора — с проигрыванием. */
-const SoundRow = ({ sound, selected, onPick }: { sound: NotificationSoundInfo; selected: boolean; onPick: () => void }) => {
-  const stopRef = useRef<(() => void) | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const toggle = () => {
-    stopRef.current?.();
-    if (playing) { setPlaying(false); return; }
-    setPlaying(true);
-    playSfx(mediaUrl(sound.url), { volume: 0.7, onEnded: () => setPlaying(false) })
-      .then((stop) => { stopRef.current = stop; })
-      .catch(() => setPlaying(false));
-  };
-  useEffect(() => () => stopRef.current?.(), []);
-  return (
-    <div className={cn("flex items-center gap-2 px-3 py-2 border-b border-border/60", selected && "bg-primary/10")}>
-      <button type="button" onClick={toggle} className="w-8 h-8 shrink-0 flex items-center justify-center bg-secondary">
-        {playing ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-      </button>
-      <button type="button" onClick={onPick} className="flex-1 text-left text-sm truncate">{sound.name}</button>
-      {selected && <Check className="w-4 h-4 text-primary shrink-0" />}
-    </div>
-  );
-};
-
 /** Комментарии к посту. */
 const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
   post: Post; canComment: boolean; onClose: () => void; onCountChange: (n: number) => void;
