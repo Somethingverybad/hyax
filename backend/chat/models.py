@@ -14,6 +14,8 @@ class Profile(models.Model):
     bio = models.TextField(blank=True, null=True, max_length=500)  # Пользовательский статус/описание
     # Показывать текст сообщения в уведомлении. Выключено — в пуше только «Новое сообщение».
     push_preview = models.BooleanField(default=True)
+    # Р.Ё.В: принимать ли вибрацию от собеседника (см. consumers.handle_rov).
+    rov_enabled = models.BooleanField(default=True)
     # «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников, если у
     # самого сообщения нет аудио-стикера. Из каталога NotificationSound —
     # его caf/канал уже есть на устройствах получателей (syncNotificationSounds).

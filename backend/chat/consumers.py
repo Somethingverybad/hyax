@@ -542,6 +542,12 @@ class UserConsumer(AsyncWebsocketConsumer):
                 }))
                 return
             
+            # Р.Ё.В: «держу палец» / «отпустил». В историю не пишем — это
+            # живой сигнал, который имеет смысл только пока собеседник в сети.
+            if message_type == 'rov':
+                await self.handle_rov(text_data_json)
+                return
+
             # Обработка звонков через персональный канал
             if message_type in {
                 "call_invite",
@@ -556,7 +562,86 @@ class UserConsumer(AsyncWebsocketConsumer):
                 await self.handle_call_signal(message_type, text_data_json)
         except json.JSONDecodeError:
             pass
-    
+
+    # ── Р.Ё.В (режим ёбнутой вибрации) ───────────────────────────────────────
+    # Клиент шлёт {type:'rov', chat:<id>, on:true} пока держит палец (повторяя
+    # раз в несколько сотен миллисекунд) и {on:false} при отпускании.
+    # Ограничения: не чаще ROV_MAX_RATE событий в секунду и не дольше
+    # ROV_MAX_SECONDS непрерывно — иначе глушим и шлём «отпустил».
+    ROV_MAX_RATE = 10        # событий в секунду от одного отправителя
+    ROV_MAX_SECONDS = 300    # 5 минут непрерывного удержания
+
+    async def handle_rov(self, payload):
+        import time
+        now = time.monotonic()
+        # Частота: простое окно в одну секунду.
+        window = getattr(self, '_rov_window', (0.0, 0))
+        if now - window[0] >= 1.0:
+            window = (now, 0)
+        window = (window[0], window[1] + 1)
+        self._rov_window = window
+        if window[1] > self.ROV_MAX_RATE:
+            return
+
+        chat_id = payload.get('chat')
+        on = bool(payload.get('on'))
+        if not chat_id:
+            return
+
+        # Потолок длительности: помним начало серии и на пятой минуте
+        # принудительно «отпускаем».
+        started = getattr(self, '_rov_started', None)
+        if on:
+            if started is None:
+                self._rov_started = now
+            elif now - started > self.ROV_MAX_SECONDS:
+                on = False
+                self._rov_started = None
+        else:
+            self._rov_started = None
+
+        profile = await self.get_user_profile(self.user)
+        if not profile:
+            return
+        targets = await self.rov_targets(chat_id, profile)
+        if not targets:
+            return
+        me_id, me_name = await self.profile_brief(profile)
+        for target_id in targets:
+            await self.channel_layer.group_send(
+                f'user_{target_id}',
+                {
+                    'type': 'notification',
+                    'data': {
+                        'type': 'rov',
+                        'chat_id': str(chat_id),
+                        'from_id': me_id,
+                        'from_username': me_name,
+                        'on': on,
+                    },
+                },
+            )
+
+    @database_sync_to_async
+    def rov_targets(self, chat_id, profile):
+        """Кому ревём: собеседники по этому чату, у кого Р.Ё.В не выключен.
+        Каналы исключаем — там подписчиков может быть сколько угодно."""
+        from .models import Chat, ChatParticipant
+        chat = Chat.objects.filter(id=chat_id).only('id', 'kind').first()
+        if not chat or getattr(chat, 'kind', '') == 'channel':
+            return []
+        if not ChatParticipant.objects.filter(chat=chat, user=profile).exists():
+            return []
+        return [
+            str(p.user_id) for p in ChatParticipant.objects
+            .filter(chat=chat, user__rov_enabled=True)
+            .exclude(user=profile).only('user_id')
+        ]
+
+    @database_sync_to_async
+    def profile_brief(self, profile):
+        return str(profile.id), profile.username
+
     async def handle_call_signal(self, signal_type, payload):
         """Обработка звонков через персональный канал"""
         profile_id = await self.get_user_profile_id(self.user)

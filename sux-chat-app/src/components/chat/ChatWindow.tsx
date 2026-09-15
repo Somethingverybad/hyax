@@ -138,6 +138,8 @@ interface ChatWindowProps {
   /** Счётчик входящих по сокету для этого чата: растёт — перечитываем ленту
    *  сразу, не дожидаясь очередного опроса (см. эффект ниже). */
   messagePing?: number;
+  /** Р.Ё.В: панель сообщает «держу/отпустил», сокетом заведует страница чатов. */
+  onRov?: (on: boolean) => void;
   /** «Избранное»: чат без собеседника — без звонка, профиля и добавления людей. */
   saved?: boolean;
   /** Список чатов для пересылки и id «Избранного» для пункта «В избранное». */
@@ -145,7 +147,7 @@ interface ChatWindowProps {
   savedChatId?: string;
 }
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, saved, chats, savedChatId }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, onRov, saved, chats, savedChatId }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -1890,6 +1892,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {stickersOpen && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
+                onRov={onRov}
                 onSelect={async (sticker) => {
                   setStickersOpen(false);
                   try {

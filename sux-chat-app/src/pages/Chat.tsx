@@ -14,6 +14,7 @@ import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
+import { rovOn, rovOff, onRovState } from "@/lib/rov";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
 import { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
@@ -102,6 +103,33 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const [messagePing, setMessagePing] = useState(0);
   chatsRef.current = chats;
   const navigate = useNavigate();
+
+  // Р.Ё.В: пока держат площадку, повторяем «держу» — приёмник глушит
+  // вибрацию по тишине, если сигналы перестали приходить (сеть, сворачивание).
+  // Частота своя, с запасом под серверный потолок в 10 событий в секунду.
+  const rovTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sendRov = (on: boolean) => {
+    const chatId = selectedChatIdRef.current;
+    if (!chatId) return;
+    if (rovTimerRef.current) { clearInterval(rovTimerRef.current); rovTimerRef.current = null; }
+    wsRef.current?.send({ type: "rov", chat: chatId, on });
+    if (on) {
+      rovTimerRef.current = setInterval(() => {
+        wsRef.current?.send({ type: "rov", chat: chatId, on: true });
+      }, 400);
+    }
+  };
+  useEffect(() => () => { if (rovTimerRef.current) clearInterval(rovTimerRef.current); rovOff(); }, []);
+
+  // Показываем, кто нас ревёт: вибрация вибрацией, но на десктопе её нет.
+  useEffect(() => {
+    onRovState((active, from) => {
+      if (active) toast(`${from || "Собеседник"} ревёт`, { id: "rov", duration: 60000 });
+      else toast.dismiss("rov");
+    });
+    return () => onRovState(null);
+  }, []);
+
   // Со страницы профиля по ссылке (/u/<ник>) приходим с уже созданным чатом —
   // открываем его сразу, не заставляя искать в списке. Состояние навигации
   // читаем один раз: при следующих перерисовках оно не должно перебивать выбор.
@@ -312,6 +340,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             (group?.getCallId() && group.getCallId() === msg.data?.call_id);
           if (forGroup) group?.handleSignal(msg.signal_type, msg.data);
           else svc?.handleSignal(msg.signal_type, msg.data);
+        } else if (msg?.data?.type === "rov") {
+          // Сигнал живёт, только пока приложение открыто: в истории его нет.
+          if (msg.data.on) rovOn(msg.data.from_username);
+          else rovOff();
         } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
           refreshChats();
           // Системный баннер для веб/десктопа. На мобильных — нативный пуш.
@@ -727,6 +759,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           <ChatWindow
             chatId={selectedChatId}
             userId={user.id}
+            onRov={sendRov}
             peer={peer}
             group={selectedChat?.is_group ? selectedChat : null}
             saved={isSavedOpen}
@@ -805,6 +838,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
         <ChatWindow
           chatId={selectedChatId}
           userId={user.id}
+          onRov={sendRov}
           peer={peer}
           group={selectedChat?.is_group ? selectedChat : null}
           saved={isSavedOpen}
