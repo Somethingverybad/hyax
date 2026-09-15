@@ -668,9 +668,10 @@ class UserConsumer(AsyncWebsocketConsumer):
         from .models import Profile
         offline = [t for t in targets
                    if not is_online(t) and rov_push_allowed(from_id, t)]
-        logger.info("rov: в приложении нет у %d из %d — шлю пуш", len(offline), len(targets))
         if not offline:
+            logger.info("rov: пуш не нужен — все в приложении либо уже получили")
             return
+        logger.info("rov: шлю пуш %d из %d (их нет в приложении)", len(offline), len(targets))
         from .fcm import notify_profiles
         notify_profiles(
             Profile.objects.filter(id__in=offline),
