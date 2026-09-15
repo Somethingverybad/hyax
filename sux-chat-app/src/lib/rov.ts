@@ -1,4 +1,13 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+
+/** Сплошной гул через Core Haptics: системная вибрация iOS прерывистая по
+ *  своей природе, повтором её сплошной не сделать (ios/App/App/RovHapticsPlugin.swift). */
+interface RovHapticsPlugin {
+  start(o?: { intensity?: number; sharpness?: number }): Promise<{ value: boolean }>;
+  stop(): Promise<void>;
+  supported(): Promise<{ value: boolean }>;
+}
+const rovHaptics = registerPlugin<RovHapticsPlugin>("RovHaptics");
 
 /**
  * Р.Ё.В — режим ёбнутой вибрации: собеседник жмёт площадку, у нас отзывается
@@ -21,10 +30,10 @@ import { Capacitor } from "@capacitor/core";
  * глушим по тишине: собеседник мог отпустить, свернуть приложение или
  * потерять сеть.
  */
-const HOLD_MS = 600;           // дольше этого — уже удержание, а не касание
-const RAMP_MS = 3500;          // за столько тычки разгоняются до предела
-const START_PERIOD = 700;      // первая пауза между тычками
-const TAP_FLOOR = 110;         // чаще тычки уже не различить — пора гудеть
+const HOLD_MS = 450;           // дольше этого — уже удержание, а не касание
+const RAMP_MS = 1800;          // за столько тычки разгоняются до предела
+const START_PERIOD = 420;      // первая пауза между тычками
+const TAP_FLOOR = 90;          // чаще тычки уже не различить — пора гудеть
 const SILENCE_MS = 1200;       // нет сигналов столько — считаем, что отпустили
 const MAX_MS = 5 * 60 * 1000;  // страховка, если «отпустил» потерялся
 
@@ -59,7 +68,8 @@ const tap = (heavy = false) => {
   navigator.vibrate?.(heavy ? 45 : 35);
 };
 
-/** Сплошной гул: длинные импульсы мотора внахлёст. */
+/** Запасной гул — повтором системной вибрации: на iPhone он на ощупь
+ *  пульсирует, поэтому там сначала пробуем Core Haptics. */
 const rumbleOnce = () => {
   if (Capacitor.isNativePlatform()) {
     import("@capacitor/haptics")
@@ -72,9 +82,22 @@ const rumbleOnce = () => {
 
 const startRumble = () => {
   if (rumble) { clearTimeout(rumble); rumble = null; }
+  rumbling = true;
+  if (Capacitor.isNativePlatform()) {
+    // Core Haptics держит настоящий непрерывный гул; если движок недоступен
+    // (старое железо, занят звонком) — откатываемся на повтор вибрации.
+    rovHaptics.start({ intensity: 1, sharpness: 0.5 })
+      .then(({ value }) => { if (!value && rumbling) startFallbackRumble(); })
+      .catch(() => { if (rumbling) startFallbackRumble(); });
+    return;
+  }
+  startFallbackRumble();
+};
+
+const startFallbackRumble = () => {
+  if (!rumbling || rumble) return;
   rumbleOnce();
   rumble = setInterval(rumbleOnce, RUMBLE_STEP) as unknown as ReturnType<typeof setTimeout>;
-  rumbling = true;
 };
 
 /** Разгон: пауза между ТЫЧКАМИ сокращается от START_PERIOD до TAP_FLOOR;
@@ -82,8 +105,10 @@ const startRumble = () => {
 const rampStep = () => {
   const held = Date.now() - holdStart - HOLD_MS;
   const p = Math.min(1, Math.max(0, held / RAMP_MS));
-  // Медленно в начале, резче к концу — так нарастание отчётливее рукой.
-  const period = Math.round(START_PERIOD - (START_PERIOD - TAP_FLOOR) * (p * p));
+  // Ускоряемся сразу и заметно: квадратичная кривая тормозила в начале, и
+  // разгон ощущался вялым. Теперь наоборот — резко в начале, плавно к концу.
+  const eased = 1 - (1 - p) * (1 - p);
+  const period = Math.round(START_PERIOD - (START_PERIOD - TAP_FLOOR) * eased);
   if (period <= TAP_FLOOR) { startRumble(); return; }
   tap(true);
   rumble = setTimeout(rampStep, period);
@@ -113,6 +138,7 @@ export function rovOff() {
     clearInterval(rumble as unknown as ReturnType<typeof setInterval>);
     rumble = null;
   }
+  if (rumbling && Capacitor.isNativePlatform()) rovHaptics.stop().catch(() => {});
   rumbling = false;
   if (escalate) { clearTimeout(escalate); escalate = null; }
   if (silence) { clearTimeout(silence); silence = null; }

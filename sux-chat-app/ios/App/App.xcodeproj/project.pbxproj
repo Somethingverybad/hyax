@@ -25,6 +25,7 @@
 		C0DE00012026082200000001 /* NativeCallPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00022026082200000002 /* NativeCallPlugin.swift */; };
 		C0DE00032026082200000001 /* NativeCallAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00042026082200000002 /* NativeCallAudio.swift */; };
 		F1B2C3D40001000000000002 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1B2C3D40001000000000001 /* GoogleService-Info.plist */; };
+		FA16F02EBAD904FA7EBA2ABE /* RovHapticsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */; };
 		FA909F13C9A6517E730631A9 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5395E2DF04D075E1915E7055 /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -53,6 +54,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RovHapticsPlugin.swift; sourceTree = "<group>"; };
 		25B699FA0D7DC8FE07940A44 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 				9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */,
+				20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -329,6 +332,7 @@
 				C0DE00032026082200000001 /* NativeCallAudio.swift in Sources */,
 				B0B0CA110026082200000003 /* CallViewController.swift in Sources */,
 				6039706E2F0589C7952D4939 /* PushSecretPlugin.swift in Sources */,
+				FA16F02EBAD904FA7EBA2ABE /* RovHapticsPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
