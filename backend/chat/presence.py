@@ -57,3 +57,51 @@ def viewers(chat_id) -> set[str]:
             elif chat == str(chat_id):
                 out.add(key)
     return out
+
+
+# ── Кто сейчас на связи ──────────────────────────────────────────────────────
+# Считаем открытые сокеты: их может быть несколько (телефон и вкладка в
+# браузере). Нужно, чтобы понять, доедет ли Р.Ё.В живьём или собеседнику
+# надо слать пуш.
+
+_online: dict[str, int] = {}
+
+
+def add_connection(profile_id) -> None:
+    key = str(profile_id)
+    with _lock:
+        _online[key] = _online.get(key, 0) + 1
+
+
+def drop_connection(profile_id) -> None:
+    key = str(profile_id)
+    with _lock:
+        left = _online.get(key, 0) - 1
+        if left > 0:
+            _online[key] = left
+        else:
+            _online.pop(key, None)
+
+
+def is_online(profile_id) -> bool:
+    with _lock:
+        return _online.get(str(profile_id), 0) > 0
+
+
+# ── Пуш о Р.Ё.В: не чаще раза в минуту на пару «кто кого» ────────────────────
+# Иначе серия коротких тычков превратилась бы в очередь уведомлений.
+
+ROV_PUSH_INTERVAL = 60
+
+_rov_push: dict[tuple[str, str], float] = {}
+
+
+def rov_push_allowed(sender_id, target_id) -> bool:
+    key = (str(sender_id), str(target_id))
+    now = time.monotonic()
+    with _lock:
+        last = _rov_push.get(key, 0.0)
+        if now - last < ROV_PUSH_INTERVAL:
+            return False
+        _rov_push[key] = now
+        return True

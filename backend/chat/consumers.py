@@ -521,6 +521,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
+            from .presence import add_connection
+            add_connection(profile.id)
             await self.accept()
             print(f"✅ [UserConsumer] Подключен user_id={self.user_id}")
         except Exception as e:
@@ -533,8 +535,9 @@ class UserConsumer(AsyncWebsocketConsumer):
         try:
             profile = await self.get_user_profile(self.user)
             if profile:
-                from .presence import clear as clear_viewing
+                from .presence import clear as clear_viewing, drop_connection
                 clear_viewing(profile.id)
+                drop_connection(profile.id)
         except Exception:
             pass
         await self.channel_layer.group_discard(
@@ -638,6 +641,11 @@ class UserConsumer(AsyncWebsocketConsumer):
         if not targets:
             return
         me_id, me_name = await self.profile_brief(profile)
+        # Кого нет на связи — вибрацию живьём не получит: шлём один пуш на
+        # серию удержания, чтобы телефон дёрнулся хотя бы раз. Непрерывной
+        # вибрации в фоне не бывает: iOS усыпляет приложение.
+        if on and started is None:
+            await self.push_rov(targets, me_name, me_id)
         for target_id in targets:
             await self.channel_layer.group_send(
                 f'user_{target_id}',
@@ -653,6 +661,22 @@ class UserConsumer(AsyncWebsocketConsumer):
                     },
                 },
             )
+
+    @database_sync_to_async
+    def push_rov(self, targets, from_name, from_id):
+        from .presence import is_online, rov_push_allowed
+        from .models import Profile
+        offline = [t for t in targets
+                   if not is_online(t) and rov_push_allowed(from_id, t)]
+        if not offline:
+            return
+        from .fcm import notify_profiles
+        notify_profiles(
+            Profile.objects.filter(id__in=offline),
+            title=from_name,
+            body="Ревёт 📳",
+            extra={"kind": "rov"},
+        )
 
     @database_sync_to_async
     def rov_targets(self, chat_id, profile):
