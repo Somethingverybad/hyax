@@ -564,12 +564,16 @@ class UserConsumer(AsyncWebsocketConsumer):
             pass
 
     # ── Р.Ё.В (режим ёбнутой вибрации) ───────────────────────────────────────
-    # Клиент шлёт {type:'rov', chat:<id>, on:true} пока держит палец (повторяя
-    # раз в несколько сотен миллисекунд) и {on:false} при отпускании.
-    # Ограничения: не чаще ROV_MAX_RATE событий в секунду и не дольше
-    # ROV_MAX_SECONDS непрерывно — иначе глушим и шлём «отпустил».
-    ROV_MAX_RATE = 10        # событий в секунду от одного отправителя
+    # Клиент шлёт {type:'rov', chat:<id>, on:true, rate:0..1} пока держит палец
+    # и {on:false} при отпускании. rate — как высоко палец на площадке: это
+    # частота вибрации, её отрабатывает приёмник, поэтому частых пакетов для
+    # быстрой вибрации не нужно.
+    #
+    # ROV_MAX_RATE — не про частоту вибрации, а защита сокета от флуда:
+    # обычный клиент шлёт несколько сообщений в секунду (изменения + повтор
+    # «держу»), всё сверх этого — уже не жест.
     ROV_MAX_SECONDS = 300    # 5 минут непрерывного удержания
+    ROV_MAX_RATE = 30        # сообщений в секунду от одного отправителя
 
     async def handle_rov(self, payload):
         import time
@@ -587,6 +591,10 @@ class UserConsumer(AsyncWebsocketConsumer):
         on = bool(payload.get('on'))
         if not chat_id:
             return
+        try:
+            rate = min(1.0, max(0.0, float(payload.get('rate', 0.5))))
+        except (TypeError, ValueError):
+            rate = 0.5
 
         # Потолок длительности: помним начало серии и на пятой минуте
         # принудительно «отпускаем».
@@ -618,6 +626,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                         'from_id': me_id,
                         'from_username': me_name,
                         'on': on,
+                        'rate': rate,
                     },
                 },
             )

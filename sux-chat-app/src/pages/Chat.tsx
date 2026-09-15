@@ -108,14 +108,16 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // вибрацию по тишине, если сигналы перестали приходить (сеть, сворачивание).
   // Частота своя, с запасом под серверный потолок в 10 событий в секунду.
   const rovTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sendRov = (on: boolean) => {
+  const rovRateRef = useRef(0.5);
+  const sendRov = (on: boolean, rate?: number) => {
     const chatId = selectedChatIdRef.current;
     if (!chatId) return;
+    if (rate !== undefined) rovRateRef.current = rate;
     if (rovTimerRef.current) { clearInterval(rovTimerRef.current); rovTimerRef.current = null; }
-    wsRef.current?.send({ type: "rov", chat: chatId, on });
+    wsRef.current?.send({ type: "rov", chat: chatId, on, rate: rovRateRef.current });
     if (on) {
       rovTimerRef.current = setInterval(() => {
-        wsRef.current?.send({ type: "rov", chat: chatId, on: true });
+        wsRef.current?.send({ type: "rov", chat: chatId, on: true, rate: rovRateRef.current });
       }, 400);
     }
   };
@@ -342,7 +344,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           else svc?.handleSignal(msg.signal_type, msg.data);
         } else if (msg?.data?.type === "rov") {
           // Сигнал живёт, только пока приложение открыто: в истории его нет.
-          if (msg.data.on) rovOn(msg.data.from_username);
+          if (msg.data.on) rovOn(msg.data.from_username, msg.data.rate);
           else rovOff();
         } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
           refreshChats();
