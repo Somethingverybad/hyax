@@ -471,6 +471,7 @@ def _notify_new_message(message, profile, request):
         recipients = message.chat.participants.exclude(id=profile.id)
         if watching:
             recipients = recipients.exclude(id__in=watching)
+            logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
         preview = (message.content or "").strip()
         if not preview:
             if message.sticker_id:

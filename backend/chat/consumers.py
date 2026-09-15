@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -11,6 +12,9 @@ from .models import Chat, Profile, ChatParticipant, CallSession, CallParticipant
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -555,7 +559,9 @@ class UserConsumer(AsyncWebsocketConsumer):
                 profile = await self.get_user_profile(self.user)
                 if profile:
                     from .presence import set_viewing
-                    set_viewing(profile.id, text_data_json.get('chat'))
+                    chat = text_data_json.get('chat')
+                    set_viewing(profile.id, chat)
+                    logger.info("presence: %s смотрит %s", str(profile.id)[:8], str(chat)[:8] if chat else "—")
                 return
 
             # Р.Ё.В: «держу палец» / «отпустил». В историю не пишем — это
