@@ -8,8 +8,8 @@ updated_at, как и расшифровка голосовых (см. chat/tran
 
 Осторожность с чужими адресами: ходим только в публичную сеть (иначе ссылкой
 можно было бы заставить сервер сходить к себе же — 127.0.0.1, 10.0.0.0/8 или
-169.254.169.254 с метаданными облака) и доверяем Content-Type, а не
-расширению в ссылке.
+169.254.169.254 с метаданными облака) и определяем тип по сигнатуре самого
+файла, а не по расширению в ссылке.
 """
 import ipaddress
 import logging
@@ -25,7 +25,12 @@ logger = logging.getLogger(__name__)
 # Сообщение = одна ссылка и ничего больше: подпись к картинке не трогаем.
 URL_ONLY_RE = re.compile(r'^\s*(https?://[^\s<>"\']+)\s*$', re.IGNORECASE)
 
-# Тип берём из ответа сервера; расширение — только чтобы назвать файл.
+# Тип определяем по сигнатуре самого файла, а не по расширению в ссылке и не
+# по Content-Type: его многие отдают как application/octet-stream (наш же
+# nginx на /apk/ — тоже), и строгая проверка заголовка отбрасывала картинки.
+MAX_BYTES = 25 * 1024 * 1024
+TIMEOUT = (8, 25)  # соединение, чтение
+
 IMAGE_TYPES = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
@@ -33,8 +38,19 @@ IMAGE_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
-MAX_BYTES = 25 * 1024 * 1024
-TIMEOUT = (8, 25)  # соединение, чтение
+
+
+def sniff(head: bytes):
+    """(mime, расширение) по первым байтам — или None, если это не картинка."""
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", ".jpg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", ".png"
+    if head.startswith(b"GIF87a") or head.startswith(b"GIF89a"):
+        return "image/gif", ".gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp", ".webp"
+    return None
 
 
 def image_url_in(content):
@@ -81,17 +97,27 @@ def fetch_image(message_id, url):
                          headers={"User-Agent": "hyax-link-image/1.0"})
         if r.status_code != 200:
             return
-        ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        ext = IMAGE_TYPES.get(ctype)
-        if not ext:
-            return
-        name = f"{uuid.uuid4()}{ext}"
-        rel = os.path.join("messages", name)
+        header_ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        chunks = r.iter_content(65536)
+        first = next(chunks, b"")
+        kind = sniff(first)
+        if not kind:
+            # Сигнатура не картиночная — доверяем заголовку, только если он
+            # прямо называет тип из нашего списка.
+            ext = IMAGE_TYPES.get(header_ctype)
+            if not ext:
+                return
+            kind = (header_ctype, ext)
+        ctype, ext = kind
+
+        rel = os.path.join("messages", f"{uuid.uuid4()}{ext}")
         tmp_path = os.path.join(settings.MEDIA_ROOT, rel)
         os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
         got = 0
         with open(tmp_path, "wb") as out:
-            for chunk in r.iter_content(65536):
+            out.write(first)
+            got += len(first)
+            for chunk in chunks:
                 got += len(chunk)
                 if got > MAX_BYTES:
                     raise ValueError("слишком большая картинка")
@@ -113,6 +139,8 @@ def fetch_image(message_id, url):
 
         # Имя файла — из ссылки, чтобы в «Скачать» было человеческое.
         base = os.path.basename(urlparse(url).path) or f"image{ext}"
+        if not os.path.splitext(base)[1]:
+            base += ext
         msg.file_url = file_url
         msg.file_name = base[:120]
         msg.file_size = got
