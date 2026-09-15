@@ -14,10 +14,17 @@ import { Capacitor } from "@capacitor/core";
  * её отрабатываем локально, поэтому частая вибрация не требует частых
  * пакетов. Потолок длительности тот же, что на сервере: 5 минут подряд.
  */
-const PULSE_SLOW = 420;        // палец внизу — редкие удары
+const PULSE_SLOW = 900;        // палец внизу — редкие удары
 const PULSE_FAST = 60;         // палец вверху — частые
-const pulseFor = (rate: number) =>
-  Math.round(PULSE_SLOW - (PULSE_SLOW - PULSE_FAST) * Math.min(1, Math.max(0, rate)));
+// На iOS сильная вибрация — это системный «звонковый» сигнал, он длится около
+// 0.4 с и укоротить его нельзя: чаще, чем раз в ~450 мс, бить бессмысленно —
+// удары сольются в кашу. На Android длительность задаём сами, поэтому там
+// частота работает во всём диапазоне.
+const MIN_PERIOD = Capacitor.getPlatform() === "ios" ? 450 : 60;
+const pulseFor = (rate: number) => Math.max(
+  MIN_PERIOD,
+  Math.round(PULSE_SLOW - (PULSE_SLOW - PULSE_FAST) * Math.min(1, Math.max(0, rate))),
+);
 const SILENCE_MS = 1200;       // нет сигналов столько — считаем, что отпустили
 const MAX_MS = 5 * 60 * 1000;  // страховка на случай, если «отпустил» потерялся
 
@@ -32,14 +39,19 @@ export const onRovState = (cb: typeof onChange) => { onChange = cb; };
 
 const buzz = () => {
   if (Capacitor.isNativePlatform()) {
+    // Именно vibrate, а не impact: impact — это лёгкий тычок тактильного
+    // движка, его почти не чувствуешь в кармане. vibrate поднимает основной
+    // вибромотор — так же, как при звонке. На Android держим мотор почти
+    // весь такт, чтобы получилась сплошная дрожь, на iOS длительность
+    // системная (~0.4 с) и параметр игнорируется.
     import("@capacitor/haptics")
-      .then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Heavy }))
+      .then(({ Haptics }) => Haptics.vibrate({ duration: Math.max(180, Math.round(period * 0.9)) }))
       .catch(() => {});
     return;
   }
-  // Веб/Android-браузер: короткий импульс. На десктопе метода нет — молчим,
-  // подсветку в интерфейсе всё равно покажем.
-  navigator.vibrate?.(Math.min(120, period));
+  // Браузер: где есть вибромотор (Android) — длинный импульс на весь такт.
+  // На десктопе метода нет, останется только подсветка в интерфейсе.
+  navigator.vibrate?.(Math.max(80, Math.round(period * 0.9)));
 };
 
 /** Пришёл сигнал «держу»: начинаем, продлеваем или меняем частоту. */
