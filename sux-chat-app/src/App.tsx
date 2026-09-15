@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { App as CapApp } from "@capacitor/app";
 import PublicProfile from "./pages/PublicProfile";
 import PublicChannel from "./pages/PublicChannel";
+import MiniPlayer from "./components/MiniPlayer";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
@@ -112,6 +113,8 @@ const App = () => {
           
           <BrowserRouter>
             <DeepLinks />
+            {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
+            <MiniPlayer />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
                   Токен есть → в чат, нет → на вход. */}

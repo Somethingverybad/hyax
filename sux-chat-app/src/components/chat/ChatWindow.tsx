@@ -12,6 +12,7 @@ import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/cli
 import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
 import { Linkify } from "@/lib/linkify";
+import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl } from "@/hooks/use-media-url";
@@ -670,6 +671,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const url = URL.createObjectURL(prepared);
     const dims = mode === "photo" ? await imageDims(url) : null;
     setAttachments((prev) => [...prev, { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: prepared, mode, url, dims }]);
+  };
+
+  /** Очередь для плеера — все аудиофайлы этого чата по порядку; начинаем с
+   *  того, по которому ткнули. Так следующий трек играет сам, как в Telegram. */
+  const playAudioFrom = (m: Message) => {
+    const audios = messages.filter((x) => x.file_url && isAudioFile(x.file_name, x.file_url));
+    const queue: Track[] = audios.map((x) => ({
+      id: x.id,
+      raw: x.file_url as string,
+      title: (x.file_name || "Аудио").replace(/\.[^.]+$/, ""),
+      artist: x.sender?.username,
+    }));
+    const idx = Math.max(0, audios.findIndex((x) => x.id === m.id));
+    void playQueue(queue, idx);
   };
 
   const stopSticker = () => {
@@ -1725,7 +1740,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
                           ) : isAudioFile(message.file_name, message.file_url) ? (
-                            <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} />
+                            <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(message)} />
                           ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
                             <MessageVideoFile raw={message.file_url} dims={dimsOf(message.file_width, message.file_height)} />
                           ) : (

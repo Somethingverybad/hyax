@@ -8,6 +8,7 @@ import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Tra
 import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
 import { Linkify } from "@/lib/linkify";
+import { playQueue, type Track } from "@/lib/player";
 import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
@@ -61,7 +62,7 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
   );
 };
 
-const PostMedia = ({ post, album, onOpenImage }: { post: Post; album?: Post[]; onOpenImage?: (url: string, post: Post) => void }) => {
+const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; album?: Post[]; onOpenImage?: (url: string, post: Post) => void; onPlayAudio?: (p: Post) => void }) => {
   // Альбом: несколько фото/видео одной публикации — одной сеткой.
   if (album && album.length > 1) {
     return (
@@ -94,7 +95,7 @@ const PostMedia = ({ post, album, onOpenImage }: { post: Post; album?: Post[]; o
   if (!post.file_url) return null;
   if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (isAudioFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url) => window.open(url, "_blank")} /></div>;
+    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url) => window.open(url, "_blank")} onPlay={() => onPlayAudio?.(post)} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} /></div>;
@@ -331,6 +332,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
+  };
+
+  /** Очередь плеера — аудио-посты канала по порядку. */
+  const playAudioFrom = (p: Post) => {
+    const audios = posts.filter((x) => x.file_url && isAudioFile(x.file_name, x.file_url));
+    const queue: Track[] = audios.map((x) => ({
+      id: x.id,
+      raw: x.file_url as string,
+      title: (x.file_name || "Аудио").replace(/\.[^.]+$/, ""),
+      artist: x.sender?.username,
+    }));
+    void playQueue(queue, Math.max(0, audios.findIndex((x) => x.id === p.id)));
   };
 
   const onFeedScroll = () => {
@@ -589,7 +602,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words"><Linkify text={post.content} /></p>}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
-                  onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })} />
+                  onOpenImage={(url, p) => setViewer({ url, name: p.file_name || "image", messageId: p.id })}
+                  onPlayAudio={playAudioFrom} />
                 {post._pending && post._failed && (
                   <div className="mt-2 flex items-center gap-3 text-caption">
                     <span className="text-destructive font-medium">Не опубликовано</span>
