@@ -464,7 +464,13 @@ def _notify_new_message(message, profile, request):
     # ответ; падение отправки не должно ронять создание сообщения.
     try:
         from .fcm import notify_profiles
+        from .presence import viewers
+        # У кого этот чат открыт — пуш не нужен: сообщение он и так видит, а
+        # звук аудио-стикера проиграет само приложение (см. ChatWindow).
+        watching = viewers(message.chat.id)
         recipients = message.chat.participants.exclude(id=profile.id)
+        if watching:
+            recipients = recipients.exclude(id__in=watching)
         preview = (message.content or "").strip()
         if not preview:
             if message.sticker_id:

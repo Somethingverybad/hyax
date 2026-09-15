@@ -107,6 +107,32 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // Р.Ё.В: пока держат площадку, повторяем «держу» — приёмник глушит
   // вибрацию по тишине, если сигналы перестали приходить (сеть, сворачивание).
   // Частота своя, с запасом под серверный потолок в 10 событий в секунду.
+  // Сообщаем серверу, какой чат открыт: по нему он не будет слать пуш —
+  // сообщение и так на экране. Повторяем, пока чат открыт: отметка на
+  // сервере живёт ограниченное время и протухает, если связь оборвалась.
+  const viewingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const tell = (chat: string | null) => wsRef.current?.send({ type: "viewing", chat });
+    tell(selectedChatId);
+    if (viewingTimerRef.current) clearInterval(viewingTimerRef.current);
+    if (selectedChatId) {
+      viewingTimerRef.current = setInterval(() => tell(selectedChatIdRef.current), 45000);
+    }
+    return () => {
+      if (viewingTimerRef.current) { clearInterval(viewingTimerRef.current); viewingTimerRef.current = null; }
+    };
+  }, [selectedChatId]);
+
+  // Свернули приложение или вкладку — чат больше не «открыт», пуши снова нужны.
+  useEffect(() => {
+    const onVisible = () => {
+      const visible = document.visibilityState === "visible";
+      wsRef.current?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   const rovTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rovRateRef = useRef(0.5);
   const sendRov = (on: boolean, rate?: number) => {

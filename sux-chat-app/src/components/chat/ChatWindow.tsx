@@ -479,9 +479,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     newestRef.current = Math.max(newest, prevNewest);
     if (newMessages.length === 0) return;
 
-    // В открытом чате входящее не озвучиваем: человек и так смотрит на
-    // переписку. Звук уведомления — дело пуша (и баннера на десктопе, где
-    // пушей нет — см. Chat.tsx). Аудио-стикер остаётся кнопкой в пузыре.
+    // Обычное входящее в открытом чате не озвучиваем: человек и так смотрит
+    // на переписку, а пуш по этому чату сервер не шлёт (см. presence.py).
+    // Аудио-стикер — другое дело: он и есть сообщение, поэтому играет сам.
+    // До первой синхронизации молчим: то, что пришло, пока чат был закрыт, —
+    // не «прямо сейчас».
+    const withSound = primedRef.current
+      ? newMessages.find(m => m.sender?.id !== userId && m.sound?.url)
+      : null;
+    if (withSound?.sound?.url) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
+
     setTimeout(() => scrollToBottom(), 100);
   }, [messages, userId]);
 

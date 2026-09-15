@@ -526,6 +526,13 @@ class UserConsumer(AsyncWebsocketConsumer):
             raise
 
     async def disconnect(self, close_code):
+        try:
+            profile = await self.get_user_profile(self.user)
+            if profile:
+                from .presence import clear as clear_viewing
+                clear_viewing(profile.id)
+        except Exception:
+            pass
         await self.channel_layer.group_discard(
             self.user_group_name,
             self.channel_name
@@ -542,6 +549,15 @@ class UserConsumer(AsyncWebsocketConsumer):
                 }))
                 return
             
+            # Какой чат открыт: по этому признаку сервер не шлёт пуш тому,
+            # кто и так смотрит переписку (см. chat/presence.py).
+            if message_type == 'viewing':
+                profile = await self.get_user_profile(self.user)
+                if profile:
+                    from .presence import set_viewing
+                    set_viewing(profile.id, text_data_json.get('chat'))
+                return
+
             # Р.Ё.В: «держу палец» / «отпустил». В историю не пишем — это
             # живой сигнал, который имеет смысл только пока собеседник в сети.
             if message_type == 'rov':
