@@ -9,9 +9,11 @@ import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
 import { useTheme } from "@/lib/theme";
+import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
+  RefreshCw,
 } from "lucide-react";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -143,6 +145,34 @@ const ProfilePage = () => {
   const loadSaved = () =>
     api.listSavedImages(undefined, 1).then((r) => setSaved({ count: r.count })).catch(() => setSaved({ count: 0 }));
   useEffect(() => { void loadSaved(); }, []);
+
+  // Проверка обновлений вручную. Плашка на экране чатов показывается сама,
+  // но она одноразовая (закрыл — до следующей версии не вернётся), а спросить
+  // «а есть ли новая» человек хочет тогда, когда сам решил.
+  const [checking, setChecking] = useState(false);
+  const checkUpdates = async () => {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const found = await checkForUpdate();
+      if (!found) {
+        toast.success(
+          Capacitor.getPlatform() === "ios"
+            ? "Установлена последняя версия. Обновления для iOS приходят через TestFlight"
+            : "Установлена последняя версия",
+        );
+        return;
+      }
+      const r = await startUpdate(found);
+      if (r === "installer") toast.success(`Версия ${found.version}: установщик запущен`);
+      else if (r === "error") toast.error("Не удалось скачать обновление");
+      else toast.success(`Доступна версия ${found.version} — открываю загрузку`);
+    } catch {
+      toast.error("Не удалось проверить обновления");
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const online = (profile?.status || "online") === "online";
   const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
@@ -314,6 +344,15 @@ const ProfilePage = () => {
               label="Внешний вид"
               value={theme === "light" ? "Светлая" : "Тёмная"}
               onClick={() => navigate("/profile/appearance")}
+            />
+          </SettingsCard>
+
+          <SettingsCard>
+            <SettingsRow
+              icon={RefreshCw}
+              label="Проверить обновления"
+              value={checking ? "Проверяю…" : APP_VERSION}
+              onClick={checkUpdates}
             />
           </SettingsCard>
 

@@ -1,12 +1,14 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 interface InsetsPlugin {
-  get(): Promise<{ top: number; bottom: number; left: number; right: number; below: number }>;
+  get(): Promise<{ top: number; bottom: number; left: number; right: number; below: number; ime: number }>;
 }
 
 const plugin = registerPlugin<InsetsPlugin>("Insets");
 
 let below = 0;
+let ime = -1;
+const watchers = new Set<() => void>();
 
 /**
  * Полоса экрана ниже WebView (панель навигации) в CSS-пикселях.
@@ -17,6 +19,31 @@ let below = 0;
  */
 export function screenBelowWebView() {
   return below;
+}
+
+/**
+ * Насколько клавиатура перекрывает WebView, в CSS-пикселях. -1 — измерить
+ * нечем (iOS, браузер, Android до 11), тогда смещение считается по высоте
+ * клавиатуры от плагина (см. main.tsx).
+ *
+ * Именно перекрытие, а не высота: прошивки, которые сами ужимают окно под
+ * клавиатуру, дают здесь ноль — интерфейс уже на месте, двигать нечего.
+ */
+export function imeOverlap() {
+  return ime;
+}
+
+/** Подписка на обновление инсетов: плагин отвечает асинхронно. */
+export function onInsetsChange(cb: () => void) {
+  watchers.add(cb);
+  return () => watchers.delete(cb);
+}
+
+let refreshImpl: () => void = () => {};
+
+/** Перемерить прямо сейчас — например, когда клавиатура поехала. */
+export function refreshSafeArea() {
+  refreshImpl();
 }
 
 /**
@@ -47,6 +74,8 @@ export function watchSafeArea() {
       set("--sal", i.left);
       set("--sar", i.right);
       below = i.below / r;
+      ime = typeof i.ime === "number" && i.ime >= 0 ? i.ime / r : -1;
+      watchers.forEach((cb) => cb());
     } catch {
       // Плагина нет (браузер, старая сборка) — остаются значения из env().
     }
@@ -56,6 +85,7 @@ export function watchSafeArea() {
     apply();
     setTimeout(apply, 250);
   };
+  refreshImpl = refresh;
 
   refresh();
   window.visualViewport?.addEventListener("resize", refresh);

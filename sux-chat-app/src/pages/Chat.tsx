@@ -752,7 +752,6 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   if (isMobile) {
     return (
       <div className="h-screen flex flex-col bg-background">
-        <UpdateBanner />
         {callUi}
         {savedMode ? (
           <>
@@ -824,6 +823,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onChatCreated={handleChatCreated}
           />
           </div>
+          {/* Плашка обновления — внизу и только здесь. Сверху её на телефонах
+              с вырезом под камеру перекрывал сам вырез, и до кнопки было не
+              дотянуться. В переписке её нет намеренно: там снизу поле ввода. */}
+          <UpdateBanner />
           <BottomNav />
           </>
         )}

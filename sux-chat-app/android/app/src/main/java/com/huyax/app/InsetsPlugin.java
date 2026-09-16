@@ -50,6 +50,8 @@ public class InsetsPlugin extends Plugin {
         r.put("left", 0);
         r.put("right", 0);
         r.put("below", 0);
+        // -1 — «мерить нечем» (см. ниже); страница тогда считает сама.
+        r.put("ime", -1);
 
         WebView web = getBridge() != null ? getBridge().getWebView() : null;
         if (web == null || web.getHeight() == 0) return r;
@@ -59,7 +61,6 @@ public class InsetsPlugin extends Plugin {
 
         int top, bottom, left, right;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Клавиатуру (Type.ime) намеренно не берём: она не вырез, а ресайз.
             android.graphics.Insets bars = insets.getInsets(
                 WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
             );
@@ -93,6 +94,23 @@ public class InsetsPlugin extends Plugin {
         // WebView, поэтому на эту полосу её нужно уменьшить — иначе панель
         // ввода уезжает выше клавиатуры и под ней видно ленту сообщений.
         r.put("below", Math.max(0, (d[1] + decor.getHeight()) - (w[1] + web.getHeight())));
+
+        // Клавиатура: не её высота, а НАСКОЛЬКО ОНА ПЕРЕКРЫВАЕТ WebView.
+        // Разница принципиальная. Одни прошивки под клавиатуру окно ужимают
+        // (тогда WebView заканчивается над ней и перекрытия нет — двигать
+        // нечего), другие оставляют окно во весь экран (тогда перекрытие равно
+        // высоте клавиатуры минус полоса навигации). Высота клавиатуры сама по
+        // себе не различает эти случаи, и страница, сдвигая панель ввода на
+        // неё, на «ужимающих» прошивках сдвигала интерфейс дважды — панель
+        // улетала на треть экрана выше клавиатуры.
+        //
+        // Отдельный инсет для клавиатуры есть только с Android 11. Ниже —
+        // оставляем -1: там работает прежний расчёт на стороне страницы.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            int imeBottom = insets.getInsets(WindowInsets.Type.ime()).bottom;
+            int imeTopOnScreen = (d[1] + decor.getHeight()) - imeBottom;
+            r.put("ime", Math.max(0, (w[1] + web.getHeight()) - imeTopOnScreen));
+        }
 
         r.put("top", Math.max(0, (d[1] + top) - w[1]));
         r.put("bottom", Math.max(0, (w[1] + web.getHeight()) - (d[1] + decor.getHeight() - bottom)));

@@ -82,3 +82,31 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     return null;
   }
 }
+
+/**
+ * Перейти к установке найденного обновления.
+ *
+ * Десктоп качает установщик и запускает его сам; телефон и веб — уводим на
+ * файл или на страницу загрузок. Вынесено из плашки, чтобы кнопка «Проверить
+ * обновления» в профиле вела себя ровно так же.
+ */
+export async function startUpdate(info: UpdateInfo): Promise<"installer" | "opened" | "error"> {
+  const api = (window as any).electronAPI;
+  if (info.desktop && info.fileUrl && api?.installUpdate) {
+    try {
+      const r = await api.installUpdate(info.fileUrl, info.fileName || "hyax-update");
+      return r?.ok ? "installer" : "error";
+    } catch {
+      return "error";
+    }
+  }
+  const url = info.fileUrl || "https://huyax.e-tree.su/apk/";
+  if (api?.openExternal) api.openExternal(url);
+  else window.open(url, "_blank");
+  return "opened";
+}
+
+/** Обновления iOS приходят через TestFlight — своей ссылки у них обычно нет. */
+export function isIosWithoutFile() {
+  return Capacitor.getPlatform() === "ios";
+}

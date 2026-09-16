@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Download, RefreshCw } from "lucide-react";
-import { checkForUpdate, type UpdateInfo } from "@/lib/updateCheck";
+import { checkForUpdate, startUpdate, type UpdateInfo } from "@/lib/updateCheck";
 import { toast } from "sonner";
 
 const DISMISS_KEY = "update_dismissed_version";
@@ -110,21 +110,14 @@ const UpdateBanner = () => {
   const close = () => { dismiss(info.version); setInfo(null); };
 
   const update = async () => {
-    if (info.desktop && info.fileUrl && api?.installUpdate) {
-      setBusy(true);
-      try {
-        const r = await api.installUpdate(info.fileUrl, info.fileName || "hyax-update");
-        if (r?.ok) toast.success("Установщик запущен — следуй подсказкам");
-        else toast.error("Не удалось скачать обновление");
-      } finally {
-        setBusy(false);
-      }
-      return;
+    setBusy(true);
+    try {
+      const r = await startUpdate(info);
+      if (r === "installer") toast.success("Установщик запущен — следуй подсказкам");
+      else if (r === "error") toast.error("Не удалось скачать обновление");
+    } finally {
+      setBusy(false);
     }
-    // Телефон/веб: ведём на страницу загрузок (или прямой файл для Android).
-    const url = info.fileUrl || "https://huyax.e-tree.su/apk/";
-    if (api?.openExternal) api.openExternal(url);
-    else window.open(url, "_blank");
   };
 
   const canAct = info.desktop ? !!info.fileUrl : true;

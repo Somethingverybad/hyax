@@ -42,7 +42,7 @@ document.addEventListener(
 // с клавиатурой, а не догоняет её рывком после ресайза WebView.
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Capacitor as Cap } from "@capacitor/core";
-import { screenBelowWebView, watchSafeArea } from "./lib/safeArea";
+import { screenBelowWebView, watchSafeArea, imeOverlap, onInsetsChange, refreshSafeArea } from "./lib/safeArea";
 
 watchSafeArea();
 
@@ -54,50 +54,77 @@ if (Cap.isNativePlatform()) {
     // системного ресайза, и получался двойной сдвиг — интерфейс улетал вверх, а
     // между панелью ввода и клавиатурой зияла пустота.
     //
-    // Системного ресайза здесь тоже нет, хотя в манифесте и стоит
-    // windowSoftInputMode=adjustResize: окно разложено во весь экран
-    // (StatusBar overlay ставит SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN), а под этим
-    // флагом Android под клавиатуру окно не ужимает. Замеряно на месте:
-    // клавиатура открыта, а visualViewport остаётся 762px и панель ввода
-    // оказывается за ней. Поэтому высоту клавиатуры отрабатываем сами — тем же
-    // кодом, что и iOS, ниже.
+    // А вот сам системный ресайз (windowSoftInputMode=adjustResize) от прошивки
+    // к прошивке разный, и предсказать его нельзя. На одном телефоне окно во
+    // весь экран под клавиатуру не ужимается вовсе — измеряли: клавиатура
+    // открыта, а visualViewport остаётся 762px. На другом ужимается, и тогда
+    // сдвигать панель ввода второй раз нельзя. Поэтому здесь ничего не
+    // предполагаем: сколько поднимать, решает измеренное перекрытие (ниже).
     Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {});
   }
 
-  // WebView не ресайзим, а синхронно двигаем панель ввода сами — плагин
-  // присылает высоту клавиатуры до начала её анимации. Если прошивка всё же
-  // ужала viewport сама, alreadyShrunk вычтет уже отработанную часть, и
-  // двойного сдвига не будет.
+  // Насколько поднять панель ввода над клавиатурой.
+  //
+  // Считаем в координатах РАСКЛАДКИ, а не экрана, и только то, что раскладка не
+  // отработала сама. Ключ к универсальности: под клавиатуру страницу ужимают
+  // три разные силы, и на каждом телефоне работает своя комбинация — система
+  // ужимает окно, браузер ужимает visualViewport (а за ним --app-height, см.
+  // syncAppHeight выше), либо не происходит ни того ни другого. Считать «на
+  // сколько поднять» по высоте клавиатуры значит молча предположить, что не
+  // сработала ни одна из них, — и на Xiaomi это давало двойной сдвиг: панель
+  // ввода зависала на высоту клавиатуры выше неё.
+  //
+  // Поэтому находим верхнюю кромку клавиатуры в координатах раскладки и
+  // сдвигаем ровно на то, насколько низ видимой области её перекрывает. Когда
+  // страница ужалась сама — разность нулевая и двигать нечего; когда не
+  // ужалась — разность равна высоте клавиатуры. Одна формула на все случаи.
   let keyboardHeight = 0;
-  const applyKeyboardOffset = () => {
+  let lastOffset = -1;
+
+  const keyboardOffset = () => {
     const visible = window.visualViewport?.height ?? window.innerHeight;
-    const alreadyShrunk = Math.max(0, window.innerHeight - visible);
-    // Клавиатуру плагин меряет от низа экрана, а панель ввода живёт в
-    // координатах WebView: на Android под ним остаётся полоса панели
-    // навигации, и без её вычета панель ввода вставала выше клавиатуры,
-    // открывая под собой ленту сообщений.
-    const offset = Math.max(0, keyboardHeight - screenBelowWebView() - alreadyShrunk);
-    root.style.setProperty("--kb-height", `${Math.round(offset)}px`);
+    // Перекрытие клавиатуры с WebView. На Android 11+ это измерение
+    // (см. InsetsPlugin.java), иначе — расчёт: высота от плагина считается от
+    // низа экрана, а под WebView остаётся полоса навигации.
+    const measured = imeOverlap();
+    const overlap = measured >= 0
+      ? measured
+      : Math.max(0, keyboardHeight - screenBelowWebView());
+    const keyboardTop = window.innerHeight - overlap;
+    return Math.max(0, visible - keyboardTop);
+  };
+
+  const applyKeyboardOffset = () => {
+    const offset = Math.round(keyboardOffset());
+    if (offset === lastOffset) return;
+    lastOffset = offset;
+    root.style.setProperty("--kb-height", `${offset}px`);
+    // Лента сообщений подъезжает вверх синхронно с клавиатурой (см. ChatWindow).
+    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: offset, duration: 250 } }));
   };
 
   window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
+  // Инсеты приходят из нативного плагина асинхронно — пересчитываем по ответу.
+  onInsetsChange(applyKeyboardOffset);
 
   Keyboard.addListener("keyboardWillShow", (info) => {
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = info.keyboardHeight;
+    // Перекрытие меряем заново: без этого на Android оно осталось бы прежним —
+    // visualViewport при открытии клавиатуры срабатывает не на всех прошивках.
+    refreshSafeArea();
     applyKeyboardOffset();
-    // Лента сообщений подъезжает вверх синхронно с клавиатурой (см. ChatWindow).
-    const shift = Math.max(0, keyboardHeight - screenBelowWebView() - Math.max(0, window.innerHeight - (window.visualViewport?.height ?? window.innerHeight)));
-    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: shift, duration: 250 } }));
     setTimeout(applyKeyboardOffset, 120);
     setTimeout(applyKeyboardOffset, 320);
   });
 
   Keyboard.addListener("keyboardWillHide", () => {
     root.style.setProperty("--kb-duration", "250ms");
-    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: 0, duration: 250 } }));
     keyboardHeight = 0;
-    root.style.setProperty("--kb-height", "0px");
+    refreshSafeArea();
+    applyKeyboardOffset();
+    setTimeout(applyKeyboardOffset, 120);
+    setTimeout(applyKeyboardOffset, 320);
     window.scrollTo(0, 0);
   });
 }
