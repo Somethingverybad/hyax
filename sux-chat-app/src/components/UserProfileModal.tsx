@@ -132,7 +132,7 @@ const UserProfileModal = ({
               </div>
               {saved.items.length > 0 ? (
                 <div className="mt-3 grid grid-cols-5 gap-1.5">
-                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-white/5" onClick={() => setGalleryOpen(true)} />)}
+                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-border" onClick={() => setGalleryOpen(true)} />)}
                 </div>
               ) : (
                 <p className="mt-2 text-small text-subtle"></p>

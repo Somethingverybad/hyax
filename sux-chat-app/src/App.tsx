@@ -1,5 +1,9 @@
 import { Toaster } from "@/components/ui/toaster";
 import ProfilePage from "./pages/Profile";
+import ProfileEdit from "./pages/ProfileEdit";
+import ProfileNotifications from "./pages/ProfileNotifications";
+import ProfilePrivacy from "./pages/ProfilePrivacy";
+import ProfileAppearance from "./pages/ProfileAppearance";
 import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +21,7 @@ import { Minus, X } from "lucide-react";
 import { useRef, useEffect } from "react";
 
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { getTheme } from "@/lib/theme";
 
 
 const queryClient = new QueryClient();
@@ -88,7 +93,8 @@ const App = () => {
           // FULLSCREEN так и не появлялся), статус-бар оставался на экране, а
           // отступа под него не было — часы и значки накрывали шапку.
           await StatusBar.setOverlaysWebView({ overlay: true });
-          await StatusBar.setStyle({ style: Style.Dark });
+          // Стиль значков зависит от темы — его ставит lib/theme.
+          await StatusBar.setStyle({ style: getTheme() === "light" ? Style.Light : Style.Dark });
         } catch (error) {
           console.log('StatusBar not available:', error);
         }
@@ -132,6 +138,11 @@ const App = () => {
               {/* «Избранное» — та же страница чатов, сразу открытая на личном чате. */}
               <Route path="/saved" element={<Chat savedMode />} />
               <Route path="/profile" element={<ProfilePage />} />
+              {/* Подэкраны профиля: правка текста и разделы настроек. */}
+              <Route path="/profile/edit" element={<ProfileEdit />} />
+              <Route path="/profile/notifications" element={<ProfileNotifications />} />
+              <Route path="/profile/privacy" element={<ProfilePrivacy />} />
+              <Route path="/profile/appearance" element={<ProfileAppearance />} />
               {/* Карточка по ссылке «Поделиться профилем». */}
               <Route path="/u/:username" element={<PublicProfile />} />
               {/* Канал по ссылке «Поделиться каналом». */}

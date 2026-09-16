@@ -141,7 +141,7 @@ const PublicProfile = () => {
                   <span className="text-small text-subtle">{pluralPhotos(saved.count)}</span>
                 </div>
                 <div className="mt-3 grid grid-cols-5 gap-1.5">
-                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-white/5" onClick={() => setGalleryOpen(true)} />)}
+                  {saved.items.map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-border" onClick={() => setGalleryOpen(true)} />)}
                 </div>
                 <button type="button" onClick={() => setGalleryOpen(true)} className="mt-3 -mb-4 -mx-4 px-4 h-11 w-[calc(100%+32px)] border-t border-border flex items-center text-body active:bg-surface-3">
                   <span className="flex-1 text-left">Все сохранёнки</span>

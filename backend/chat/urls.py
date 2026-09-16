@@ -26,6 +26,7 @@ urlpatterns = [
     path('stickers/upload/', StickerUploadView.as_view(), name='sticker-upload'),
     path('voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('avatar/upload/', AvatarUploadView.as_view(), name='avatar-upload'),
+    path('cover/upload/', CoverUploadView.as_view(), name='cover-upload'),
     path('push/register/', PushRegisterView.as_view(), name='push-register'),
     path('saved-images/', SavedImagesView.as_view(), name='saved-images'),
     path('sticker-packs/import-telegram/', TelegramStickerImportView.as_view(), name='sticker-import-telegram'),

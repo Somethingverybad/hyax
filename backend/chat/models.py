@@ -9,6 +9,9 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     username = models.CharField(max_length=150, unique=True)
     avatar_url = models.TextField(blank=True, null=True)
+    # Обложка профиля — широкий баннер за аватаром (см. ProfileImageUploadView).
+    # Пусто — на экране профиля рисуется однотонная подложка.
+    cover_url = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, default="online")  # Статус онлайн/оффлайн
     call_status = models.CharField(max_length=20, default="idle")  # idle, calling, in_call
     bio = models.TextField(blank=True, null=True, max_length=500)  # Пользовательский статус/описание

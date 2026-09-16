@@ -64,6 +64,8 @@ interface Profile {
   id: string;
   username: string;
   avatar_url?: string;
+  /** Обложка профиля — баннер за аватаром. Пусто — однотонная подложка. */
+  cover_url?: string | null;
   status?: string;
   created_at?: string;
   user?: any;
@@ -1011,6 +1013,30 @@ export const api = {
     });
     if (!res.ok) throw new Error("Не удалось загрузить аватар");
     return res.json();
+  },
+
+  /** Обложка профиля. Сервер сам удаляет прежний файл и отдаёт новый путь. */
+  uploadCover: async (file: File): Promise<{ cover_url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchWithAuthMultipart(`${API_URL}/cover/upload/`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      let msg = "Не удалось загрузить обложку";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  removeCover: async (): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/cover/upload/`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Не удалось убрать обложку");
   },
 
 

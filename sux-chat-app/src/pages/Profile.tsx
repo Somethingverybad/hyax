@@ -4,52 +4,54 @@ import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
-import { playSfx } from "@/lib/sfx";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
-import { Camera, LogOut, Share2, Copy, ChevronRight, Music2, Play, Square, Check, X } from "lucide-react";
-import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
-import SoundPicker from "@/components/SoundPicker";
-import type { SavedImage } from "@/api/client";
+import { useTheme } from "@/lib/theme";
+import { SettingsCard, SettingsRow } from "@/components/settings";
+import {
+  Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
+} from "lucide-react";
+import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
-interface Profile {
+export interface Profile {
   id: string;
   username: string;
   avatar_url?: string | null;
+  cover_url?: string | null;
   bio?: string | null;
+  status?: string;
   push_preview?: boolean;
   rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
 }
 
-/** Строка каталога звуков: прослушать и выбрать. */
 /**
- * Настройки профиля: аватар, никнейм, статус.
+ * Профиль: обложка с аватаром, карточка имени и списки настроек.
+ *
+ * Разложено по макету редизайна: сам экран только показывает, а правки текста
+ * уехали на «Редактировать» (/profile/edit), тумблеры — в «Уведомления».
+ * Картинки (аватар и обложка) меняются прямо здесь, как на макете.
  *
  * Никнейм — это Profile.username, отображаемое имя в чатах. Логин при этом
  * не меняется: он живёт отдельно и используется только для входа.
- * «Статус» — поле bio на сервере.
  */
 const ProfilePage = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
   // Стартуем из кеша сессии — экран рисуется сразу, сеть обновит фоном.
   const cached = readCache<Profile>("user");
   const [profile, setProfile] = useState<Profile | null>(cached);
-  const [username, setUsername] = useState(cached?.username || "");
-  const [bio, setBio] = useState(cached?.bio || "");
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
+  const avatarRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
       try {
         const p = await api.getCurrentUser();
         setProfile(p);
-        setUsername(p.username || "");
-        setBio(p.bio || "");
         writeCache("user", p);
       } catch {
         navigate("/auth", { replace: true });
@@ -57,36 +59,57 @@ const ProfilePage = () => {
     })();
   }, [navigate]);
 
-  const save = async () => {
-    if (!profile) return;
-    setSaving(true);
-    try {
-      const updated = await api.updateProfile(profile.id, {
-        username: username.trim(),
-        bio: bio.trim(),
-      });
-      setProfile(updated);
-      writeCache("user", updated);
-      toast.success("Сохранено");
-    } catch (e: any) {
-      toast.error(e?.message || "Не удалось сохранить");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const changeAvatar = async (file: File | null) => {
     if (!file) return;
-    setUploading(true);
+    setUploading("avatar");
     try {
       const res = await api.uploadAvatar(file);
-      setProfile((p) => (p ? { ...p, avatar_url: res.avatar_url } : p));
+      setProfile((p) => {
+        if (!p) return p;
+        const next = { ...p, avatar_url: res.avatar_url };
+        writeCache("user", next);
+        return next;
+      });
       toast.success("Аватар обновлён");
     } catch (e: any) {
       toast.error(e?.message || "Не удалось загрузить аватар");
     } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+      setUploading(null);
+      if (avatarRef.current) avatarRef.current.value = "";
+    }
+  };
+
+  const changeCover = async (file: File | null) => {
+    if (!file) return;
+    setUploading("cover");
+    try {
+      const res = await api.uploadCover(file);
+      setProfile((p) => {
+        if (!p) return p;
+        const next = { ...p, cover_url: res.cover_url };
+        writeCache("user", next);
+        return next;
+      });
+      toast.success("Обложка обновлена");
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось загрузить обложку");
+    } finally {
+      setUploading(null);
+      if (coverRef.current) coverRef.current.value = "";
+    }
+  };
+
+  const removeCover = async () => {
+    try {
+      await api.removeCover();
+      setProfile((p) => {
+        if (!p) return p;
+        const next = { ...p, cover_url: null };
+        writeCache("user", next);
+        return next;
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось убрать обложку");
     }
   };
 
@@ -96,9 +119,14 @@ const ProfilePage = () => {
     navigate("/auth", { replace: true });
   };
 
-  const dirty =
-    profile !== null &&
-    (username.trim() !== (profile.username || "") || bio.trim() !== (profile.bio || ""));
+  const copy = async (value: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Скопировано");
+    } catch {
+      toast.error(`Не удалось скопировать ${what}`);
+    }
+  };
 
   // Нативный номер сборки (versionCode / CFBundleVersion): на Android совпадает
   // с APP_BUILD, на iOS — свой счётчик TestFlight.
@@ -107,233 +135,202 @@ const ProfilePage = () => {
     if (!Capacitor.isNativePlatform()) return;
     App.getInfo().then((i) => setNativeBuild(i.build)).catch(() => {});
   }, []);
-  // Сохранёнки: счётчик и пять превью для карточки в профиле.
-  const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
-  const loadSaved = () => api.listSavedImages(undefined, 5).then(setSaved).catch(() => setSaved({ count: 0, items: [] }));
-  useEffect(() => { void loadSaved(); }, []);
   const platformLabel = Capacitor.getPlatform() === "ios" ? "iOS" : "Android";
+
+  // Сохранёнки: на экране только счётчик, сама сетка — в галерее.
+  const [saved, setSaved] = useState<{ count: number } | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const loadSaved = () =>
+    api.listSavedImages(undefined, 1).then((r) => setSaved({ count: r.count })).catch(() => setSaved({ count: 0 }));
+  useEffect(() => { void loadSaved(); }, []);
+
+  const online = (profile?.status || "online") === "online";
+  const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center">
-        <span className="text-h1">Профиль</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 flex flex-col">
-        {/* Аватар слева, имя и статус справа — как карточка профиля в референсе.
-            Смена аватара — красный бейдж-камера в углу. */}
-        <div className="flex items-center gap-4">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => changeAvatar(e.target.files?.[0] || null)}
-          />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="relative w-[104px] h-[104px] shrink-0 rounded-lg bg-surface-3 disabled:opacity-60"
-            aria-label="Сменить аватар"
-          >
-            {profile?.avatar_url ? (
-              <img src={mediaUrl(profile.avatar_url)} alt="" className="w-full h-full rounded-lg object-cover" />
-            ) : (
-              <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
-                {(profile?.username || "?")[0]?.toUpperCase()}
-              </span>
-            )}
-            <span className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center">
-              <Camera className="w-4 h-4" />
-            </span>
-          </button>
-          <div className="min-w-0">
-            <p className="text-[24px] leading-tight font-semibold truncate">{profile?.username || "…"}</p>
-            <p className="mt-2 text-body text-subtle truncate">{profile?.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
-            {uploading && <p className="mt-1 text-caption text-subtle">Загрузка…</p>}
-          </div>
-        </div>
-
+      <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center gap-2">
+        <span className="text-h1 flex-1">Профиль</span>
         <button
           type="button"
-          onClick={async () => {
-            if (!profile?.username) return;
-            const r = await shareProfile(profile.username);
-            if (r === "copied") toast.success("Профиль скопирован");
-            else if (r === "error") toast.error("Не удалось поделиться");
-          }}
-          className="h-9 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"
+          onClick={() => navigate("/profile/edit")}
+          className="w-10 h-10 -mr-2 flex items-center justify-center text-primary active:opacity-60"
+          aria-label="Редактировать профиль"
         >
-          <Share2 className="w-4 h-4" />
-          Поделиться профилем
+          <Pencil className="w-5 h-5" />
         </button>
+      </div>
 
-        <div className="rounded-lg bg-surface-2 p-4 space-y-3">
-          <div className="space-y-1.5">
-            <label className="text-small text-subtle">Никнейм</label>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              maxLength={50}
-              className="w-full h-10 rounded-md bg-surface-4 border border-transparent px-3 text-body outline-none focus:border-amber"
-            />
-            <p className="text-caption text-subtle">Имя, которое видят собеседники. Логин для входа не меняется.</p>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-small text-subtle">Статус</label>
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              maxLength={500}
-              rows={2}
-              placeholder="Например: на связи после 18:00"
-              className="w-full rounded-md bg-surface-4 border border-transparent px-3 py-2 text-body outline-none resize-none focus:border-amber"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || !dirty || username.trim().length < 2}
-            className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-40"
-          >
-            {saving ? "Сохраняем…" : "Сохранить"}
-          </button>
-        </div>
+      {/* Прокрутка и раскладка разведены намеренно. Когда overflow-y-auto и
+          flex-col висели на одном блоке, его высота была ограничена экраном:
+          карточки не выходили за край, а ужимались (flex-shrink по умолчанию)
+          и обрезались собственным overflow-hidden — пропадали целые строки.
+          Теперь скроллит внешний блок, а внутренний свободно растёт вниз. */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="min-h-full px-4 pb-4 space-y-3 flex flex-col">
+          <input ref={avatarRef} type="file" accept="image/*" className="hidden"
+                 onChange={(e) => changeAvatar(e.target.files?.[0] || null)} />
+          <input ref={coverRef} type="file" accept="image/*" className="hidden"
+                 onChange={(e) => changeCover(e.target.files?.[0] || null)} />
 
-        <div className="rounded-lg bg-surface-2 p-4">
-          <p className="text-h2 mb-1">Информация</p>
-          {[
-            ["Имя пользователя", profile?.username ? "@" + profile.username : "…"],
-            ["ID пользователя", profile?.id || "…"],
-          ].map(([label, value]) => (
-            <div key={label} className="flex items-center gap-3 h-9">
-              <span className="text-small text-subtle w-32 shrink-0">{label}</span>
-              <span className="text-small text-muted-foreground flex-1 min-w-0 truncate">{value}</span>
+          {/* Обложка во всю ширину, аватар свешивается с её нижнего края —
+              поэтому блок выходит за горизонтальные отступы прокрутки. */}
+          <div className="shrink-0 -mx-4 relative">
+            <div className="h-36 w-full bg-surface-3 overflow-hidden">
+              {profile?.cover_url && (
+                <img src={mediaUrl(profile.cover_url)} alt="" className="w-full h-full object-cover" />
+              )}
+            </div>
+
+            <div className="absolute top-2 right-2 flex gap-2">
+              {profile?.cover_url && (
+                <button
+                  type="button"
+                  onClick={removeCover}
+                  className="w-9 h-9 rounded-full bg-black/45 text-white flex items-center justify-center active:opacity-70"
+                  aria-label="Убрать обложку"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={async () => { try { await navigator.clipboard.writeText(value); toast.success("Скопировано"); } catch { toast.error("Не удалось скопировать"); } }}
-                className="p-1.5 text-subtle active:text-foreground"
-                aria-label={`Скопировать: ${label}`}
+                onClick={() => coverRef.current?.click()}
+                disabled={uploading !== null}
+                className="w-9 h-9 rounded-full bg-black/45 text-white flex items-center justify-center active:opacity-70 disabled:opacity-40"
+                aria-label={profile?.cover_url ? "Сменить обложку" : "Поставить обложку"}
               >
-                <Copy className="w-4 h-4" />
+                <Camera className="w-4 h-4" />
               </button>
             </div>
-          ))}
-        </div>
 
-        <div className="rounded-lg bg-surface-2 p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-h2 flex-1">Сохранёнки</span>
-            <span className="text-small text-subtle">{saved ? pluralPhotos(saved.count) : "…"}</span>
-          </div>
-          {(saved?.items || []).length > 0 ? (
-            <div className="mt-3 grid grid-cols-5 gap-1.5">
-              {(saved?.items || []).map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-white/5" onClick={() => setGalleryOpen(true)} />)}
-            </div>
-          ) : (
-            <p className="mt-2 text-small text-subtle">Открой фото в чате, тапни по нему и выбери «Добавить в сохранёнки».</p>
-          )}
-          <button type="button" onClick={() => setGalleryOpen(true)} className="mt-3 -mb-4 -mx-4 px-4 h-11 w-[calc(100%+32px)] border-t border-border flex items-center text-body active:bg-surface-3">
-            <span className="flex-1 text-left">Все сохранёнки</span>
-            <ChevronRight className="w-4 h-4 text-subtle" />
-          </button>
-        </div>
-
-        <div className="rounded-lg bg-surface-2 divide-y divide-border">
-          {/* «Мой звук»: собеседники получают пуши о моих сообщениях с этим
-              звуком (если у сообщения нет своего аудио-стикера). */}
-          {profile && (
-            <button type="button" onClick={() => setSoundPickerOpen(true)} className="w-full flex items-center gap-3 h-14 px-4 text-left active:bg-surface-3">
-              <Music2 className="w-5 h-5 text-primary shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-body">Мой звук уведомлений</span>
-                <span className="block text-caption text-subtle truncate">
-                  {profile.notify_sound ? `${profile.notify_sound.name} — так звучат мои сообщения у других` : "Обычный — выбери свой, его услышат собеседники"}
+            <button
+              type="button"
+              onClick={() => avatarRef.current?.click()}
+              disabled={uploading !== null}
+              className="absolute -bottom-8 left-4 w-[88px] h-[88px] rounded-lg bg-surface-3 border-4 border-background disabled:opacity-60"
+              aria-label="Сменить аватар"
+            >
+              {profile?.avatar_url ? (
+                <img src={mediaUrl(profile.avatar_url)} alt="" className="w-full h-full rounded-[6px] object-cover" />
+              ) : (
+                <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
+                  {(profile?.username || "?")[0]?.toUpperCase()}
                 </span>
+              )}
+              <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center">
+                <Camera className="w-3.5 h-3.5" />
               </span>
-              <ChevronRight className="w-4 h-4 text-subtle shrink-0" />
             </button>
-          )}
-          {/* Р.Ё.В: вибрация, которую шлёт собеседник, пока держит палец.
-              Выключено — сервер такие сигналы до нас не доводит. */}
-          {profile && (
-            <label className="flex items-center justify-between gap-3 h-14 px-4">
-              <span className="min-w-0">
-                <span className="block text-body">Принимать Р.Ё.В</span>
-                <span className="block text-caption text-subtle truncate">Вибрация, пока собеседник держит палец</span>
-              </span>
-              <input
-                type="checkbox"
-                className="w-5 h-5 accent-primary shrink-0"
-                checked={profile.rov_enabled !== false}
-                onChange={async (e) => {
-                  const v = e.target.checked;
-                  const next = { ...profile, rov_enabled: v };
-                  setProfile(next); writeCache("user", next);
-                  try { await api.updateProfile(profile.id, { rov_enabled: v }); }
-                  catch { toast.error("Не удалось сохранить"); setProfile({ ...profile, rov_enabled: !v }); }
-                }}
-              />
-            </label>
-          )}
-          {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
-              вместо текста; сам пуш при этом всё равно зашифрован. */}
-          {Capacitor.isNativePlatform() && profile && (
-            <label className="flex items-center justify-between gap-3 h-14 px-4">
-              <span className="min-w-0">
-                <span className="block text-body">Текст в уведомлениях</span>
-                <span className="block text-caption text-subtle truncate">Выключи — в пуше будет только «Новое сообщение»</span>
-              </span>
-              <input
-                type="checkbox"
-                className="w-5 h-5 accent-primary shrink-0"
-                checked={profile.push_preview !== false}
-                onChange={async (e) => {
-                  const v = e.target.checked;
-                  setProfile({ ...profile, push_preview: v });
-                  try { await api.updateProfile(profile.id, { push_preview: v }); }
-                  catch { toast.error("Не удалось сохранить"); setProfile({ ...profile, push_preview: !v }); }
-                }}
-              />
-            </label>
-          )}
+          </div>
+
+          {/* Отступ сверху — под свешивающийся аватар. */}
+          <div className="shrink-0 pt-10">
+            <div className="flex items-center gap-2">
+              <p className="text-[24px] leading-tight font-semibold truncate">{profile?.username || "…"}</p>
+              <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${online ? "bg-online" : "bg-subtle"}`} aria-hidden />
+            </div>
+            <p className="mt-1 text-body text-subtle truncate">{bio || "Статус не указан"}</p>
+            {uploading && (
+              <p className="mt-1 text-caption text-subtle">
+                {uploading === "cover" ? "Загружаем обложку…" : "Загружаем аватар…"}
+              </p>
+            )}
+          </div>
+
           <button
             type="button"
-            onClick={logout}
-            className="w-full h-12 px-4 flex items-center gap-3 text-body text-primary active:bg-surface-3"
+            onClick={async () => {
+              if (!profile?.username) return;
+              const r = await shareProfile(profile.username);
+              if (r === "copied") toast.success("Профиль скопирован");
+              else if (r === "error") toast.error("Не удалось поделиться");
+            }}
+            className="shrink-0 h-10 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"
           >
-            <LogOut className="w-5 h-5" />
-            <span className="flex-1 text-left">Выйти</span>
+            <Share2 className="w-4 h-4" />
+            Поделиться профилем
           </button>
-        </div>
 
-        {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
-            всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
-            его показываем рядом, если он отличается. */}
-        <div className="mt-auto pt-4 text-center text-caption text-subtle select-text">
-          ХУЯКС {APP_VERSION} · сборка {APP_BUILD}
-          {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
+          <SettingsCard>
+            <SettingsRow
+              icon={Tag}
+              label="Никнейм"
+              value={profile?.username || "…"}
+              trailing={
+                <button
+                  type="button"
+                  onClick={() => copy(profile?.username || "", "никнейм")}
+                  className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
+                  aria-label="Скопировать никнейм"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              }
+            />
+            <SettingsRow
+              icon={AlignLeft}
+              label="О себе"
+              value={bio || "Не указано"}
+              onClick={() => navigate("/profile/edit")}
+            />
+            <SettingsRow
+              icon={AtSign}
+              label="Имя пользователя"
+              value={profile?.username ? "@" + profile.username : "…"}
+              trailing={
+                <button
+                  type="button"
+                  onClick={() => copy(profile?.username ? "@" + profile.username : "", "имя")}
+                  className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
+                  aria-label="Скопировать имя пользователя"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              }
+            />
+          </SettingsCard>
+
+          <SettingsCard>
+            <SettingsRow
+              icon={Images}
+              label="Сохранёнки"
+              value={saved ? pluralPhotos(saved.count) : "…"}
+              onClick={() => setGalleryOpen(true)}
+            />
+            <SettingsRow
+              icon={Bell}
+              label="Уведомления"
+              value={profile?.notify_sound ? profile.notify_sound.name : "Обычный звук"}
+              onClick={() => navigate("/profile/notifications")}
+            />
+            <SettingsRow
+              icon={Lock}
+              label="Конфиденциальность"
+              onClick={() => navigate("/profile/privacy")}
+            />
+            <SettingsRow
+              icon={Palette}
+              label="Внешний вид"
+              value={theme === "light" ? "Светлая" : "Тёмная"}
+              onClick={() => navigate("/profile/appearance")}
+            />
+          </SettingsCard>
+
+          <SettingsCard>
+            <SettingsRow icon={LogOut} label="Выйти" danger onClick={logout} trailing={<span />} />
+          </SettingsCard>
+
+          {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
+              всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
+              его показываем рядом, если он отличается. */}
+          <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
+            ХУЯКС {APP_VERSION} · сборка {APP_BUILD}
+            {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
+          </div>
         </div>
       </div>
 
-      {soundPickerOpen && profile && (
-        <SoundPicker
-          title="Мой звук уведомлений"
-          current={profile.notify_sound?.id || null}
-          onClose={() => setSoundPickerOpen(false)}
-          onPick={async (s) => {
-            setSoundPickerOpen(false);
-            const prev = profile.notify_sound || null;
-            const next = { ...profile, notify_sound: s };
-            setProfile(next); writeCache("user", next);
-            try { await api.updateProfile(profile.id, { notify_sound_id: s ? s.id : null }); toast.success(s ? `Теперь твои сообщения звучат как «${s.name}»` : "Обычный звук"); }
-            catch { toast.error("Не удалось сохранить"); const back = { ...profile, notify_sound: prev }; setProfile(back); writeCache("user", back); }
-          }}
-        />
-      )}
       {galleryOpen && (
         <SavedGallery own onClose={() => { setGalleryOpen(false); void loadSaved(); }} />
       )}

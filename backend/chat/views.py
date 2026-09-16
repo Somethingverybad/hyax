@@ -1469,69 +1469,111 @@ class VoiceUploadView(APIView):
         })
 
 
+# Картинки профиля: аватар и обложка. Отличаются каталогом, полем модели и
+# лимитом размера — проверки и удаление прежнего файла общие.
+def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
+    """Кладёт картинку в MEDIA_ROOT/<subdir> и прописывает путь в профиль.
+
+    stamped=True добавляет к имени случайный суффикс: обложка меняется целиком,
+    и при постоянном имени браузер продолжал бы показывать прежнюю из кеша.
+    У аватара имя стабильное — так сложилось исторически, ссылки на него
+    разбросаны по кешам клиентов.
+    """
+    file = request.FILES.get('file')
+    if not file:
+        return Response({"error": "No file provided"}, status=400)
+
+    if file.size > max_mb * 1024 * 1024:
+        return Response({"error": f"File too large (max {max_mb}MB)"}, status=400)
+
+    allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+    file_extension = os.path.splitext(file.name)[1].lower()
+    if file_extension not in allowed_extensions:
+        return Response({"error": "Only image files are allowed"}, status=400)
+
+    try:
+        profile = request.user.profile
+    except Profile.DoesNotExist:
+        return Response({"error": "Profile not found"}, status=400)
+
+    target_dir = os.path.join(settings.MEDIA_ROOT, subdir)
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Прежний файл удаляем, иначе в media копятся хвосты от каждой замены.
+    previous = getattr(profile, field, None)
+    if previous:
+        old_full_path = os.path.join(settings.MEDIA_ROOT, previous.replace('/media/', ''))
+        if os.path.exists(old_full_path):
+            try:
+                os.remove(old_full_path)
+            except OSError:
+                pass
+
+    suffix = f"_{uuid.uuid4().hex[:8]}" if stamped else ""
+    file_path = os.path.join(subdir, f"{prefix}_{profile.id}{suffix}{file_extension}")
+    with open(os.path.join(settings.MEDIA_ROOT, file_path), 'wb+') as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+
+    file_url = f'/media/{file_path}'
+    setattr(profile, field, file_url)
+    profile.save(update_fields=[field])
+    return file_url
+
+
 # Загрузка аватаров
 class AvatarUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def post(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return Response({"error": "User not authenticated"}, status=401)
-        
-        file = request.FILES.get('file')
-        if not file:
-            return Response({"error": "No file provided"}, status=400)
-        
-        # Проверяем размер файла (макс. 5MB для аватаров)
-        if file.size > 5 * 1024 * 1024:
-            return Response({"error": "File too large (max 5MB for avatars)"}, status=400)
-        
-        # Проверяем, что это изображение
-        allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
-        file_extension = os.path.splitext(file.name)[1].lower()
-        if file_extension not in allowed_extensions:
-            return Response({"error": "Only image files are allowed for avatars"}, status=400)
-        
+        result = _save_profile_image(
+            request, field='avatar_url', subdir='avatars', prefix='avatar',
+            max_mb=5, stamped=False,
+        )
+        if isinstance(result, Response):
+            return result
+        return Response({
+            "avatar_url": result,
+            "message": "Avatar uploaded successfully"
+        })
+
+
+# Загрузка обложки профиля
+class CoverUploadView(APIView):
+    """Широкий баннер за аватаром. Лимит выше, чем у аватара: обложка на всю
+    ширину экрана, 5 МБ для неё маловато."""
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        result = _save_profile_image(
+            request, field='cover_url', subdir='covers', prefix='cover',
+            max_mb=10, stamped=True,
+        )
+        if isinstance(result, Response):
+            return result
+        return Response({
+            "cover_url": result,
+            "message": "Cover uploaded successfully"
+        })
+
+    def delete(self, request, *args, **kwargs):
+        """Снять обложку — экран профиля вернётся к однотонной подложке."""
         try:
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
-        
-        # Генерируем уникальное имя файла
-        unique_filename = f"avatar_{profile.id}{file_extension}"
-        
-        # Создаем директорию avatars если её нет
-        avatars_dir = os.path.join(settings.MEDIA_ROOT, 'avatars')
-        os.makedirs(avatars_dir, exist_ok=True)
-        
-        # Удаляем старый аватар если есть
-        if profile.avatar_url:
-            old_avatar_path = profile.avatar_url.replace('/media/', '')
-            old_full_path = os.path.join(settings.MEDIA_ROOT, old_avatar_path)
+        if profile.cover_url:
+            old_full_path = os.path.join(settings.MEDIA_ROOT, profile.cover_url.replace('/media/', ''))
             if os.path.exists(old_full_path):
                 try:
                     os.remove(old_full_path)
-                except:
+                except OSError:
                     pass
-        
-        # Сохраняем файл
-        file_path = os.path.join('avatars', unique_filename)
-        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
-        with open(full_path, 'wb+') as destination:
-            for chunk in file.chunks():
-                destination.write(chunk)
-        
-        # Используем относительный путь
-        file_url = f'/media/{file_path}'
-        
-        # Обновляем профиль
-        profile.avatar_url = file_url
-        profile.save()
-        
-        return Response({
-            "avatar_url": file_url,
-            "message": "Avatar uploaded successfully"
-        })
+            profile.cover_url = None
+            profile.save(update_fields=['cover_url'])
+        return Response({"cover_url": None})
 
 
 class MediaSignView(APIView):
