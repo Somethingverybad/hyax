@@ -250,7 +250,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://huyax.e-tree.su/apk/"
+        "url": "https://storage.yandexcloud.net/hyax-public/installers/"
       }
     ],
     "nsis": {

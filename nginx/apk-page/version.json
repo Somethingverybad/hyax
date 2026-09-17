@@ -5,10 +5,10 @@
   "ios_build": 128,
   "notes": "Р.Ё.В переехал на кнопку записи третьим режимом: голосовое → видео → Р.Ё.В, тап переключает, удержание — вибрация",
   "files": {
-    "mac": "/apk/hyax-mac.dmg",
-    "win": "/apk/hyax-windows.exe",
-    "linux": "/apk/hyax-linux.AppImage",
-    "android": "/apk/hyax.apk",
-    "linux_deb": "/apk/hyax-linux.deb"
+    "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
+    "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
+    "linux": "https://storage.yandexcloud.net/hyax-public/installers/hyax-linux.AppImage",
+    "android": "https://storage.yandexcloud.net/hyax-public/installers/hyax.apk",
+    "linux_deb": "https://storage.yandexcloud.net/hyax-public/installers/hyax-linux.deb"
   }
 }
