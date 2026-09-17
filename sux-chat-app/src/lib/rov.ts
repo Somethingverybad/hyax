@@ -6,6 +6,11 @@ interface RovHapticsPlugin {
   start(o?: { intensity?: number; sharpness?: number }): Promise<{ value: boolean }>;
   stop(): Promise<void>;
   supported(): Promise<{ value: boolean }>;
+  /** Одиночный тычок. Есть только на Android (RovHapticsPlugin.java): там
+   *  вибрация @capacitor/haptics идёт классом «касание» и на MIUI с
+   *  выключенным тактильным откликом отбрасывается системой. На iOS метода
+   *  нет — падаем в Haptics.impact. */
+  tap(o?: { heavy?: boolean }): Promise<void>;
 }
 const rovHaptics = registerPlugin<RovHapticsPlugin>("RovHaptics");
 
@@ -57,12 +62,17 @@ export const onRovState = (cb: typeof onChange) => { onChange = cb; };
 
 /** Одиночный тычок — короткий тактильный удар, различимый по отдельности.
  *  На разгоне бьём «тяжёлым» стилем: средний в кармане почти не слышно. */
+const hapticsTap = (heavy: boolean) =>
+  import("@capacitor/haptics")
+    .then(({ Haptics, ImpactStyle }) =>
+      Haptics.impact({ style: heavy ? ImpactStyle.Heavy : ImpactStyle.Medium }))
+    .catch(() => {});
+
 const tap = (heavy = false) => {
   if (Capacitor.isNativePlatform()) {
-    import("@capacitor/haptics")
-      .then(({ Haptics, ImpactStyle }) =>
-        Haptics.impact({ style: heavy ? ImpactStyle.Heavy : ImpactStyle.Medium }))
-      .catch(() => {});
+    // Android: свой плагин с классом «коммуникация». iOS его не реализует —
+    // промис отклоняется, и тычок идёт через Haptics, как раньше.
+    rovHaptics.tap({ heavy }).catch(() => hapticsTap(heavy));
     return;
   }
   navigator.vibrate?.(heavy ? 45 : 35);
