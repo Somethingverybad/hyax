@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { initTheme } from "./lib/theme";
-import { installAppLog } from "./lib/applog";
+import { installAppLog, applog } from "./lib/applog";
 
 // Лог баг-репортов — с самого старта, чтобы поймать и ошибки инициализации.
 installAppLog();
@@ -83,6 +83,7 @@ if (Cap.isNativePlatform()) {
   // ужалась — разность равна высоте клавиатуры. Одна формула на все случаи.
   let keyboardHeight = 0;
   let lastOffset = -1;
+  let lastTrace = "";
 
   const keyboardOffset = () => {
     const visible = window.visualViewport?.height ?? window.innerHeight;
@@ -94,11 +95,21 @@ if (Cap.isNativePlatform()) {
       ? measured
       : Math.max(0, keyboardHeight - screenBelowWebView());
     const keyboardTop = window.innerHeight - overlap;
-    return Math.max(0, visible - keyboardTop);
+    const offset = Math.max(0, visible - keyboardTop);
+    // Телеметрия для баг-репорта: по этим числам видно, какая из трёх сил
+    // ужала страницу и почему панель встала туда, куда встала. Пишем только
+    // при изменении, чтобы не засорять лог.
+    const trace = `kb vv=${Math.round(visible)} inner=${window.innerHeight} ime=${measured >= 0 ? Math.round(measured) : "n/a"} kbH=${Math.round(keyboardHeight)} below=${Math.round(screenBelowWebView())} → ${Math.round(offset)}`;
+    if (trace !== lastTrace) { lastTrace = trace; applog.info(trace); }
+    return offset;
   };
 
   const applyKeyboardOffset = () => {
     const offset = Math.round(keyboardOffset());
+    // Отступ под полосу навигации, пока клавиатура открыта, не нужен: полоса за
+    // ней. Иначе внутри панели ввода оставалась пустая полка в её высоту.
+    const keyboardUp = keyboardHeight > 0 || offset > 0 || (window.visualViewport?.height ?? window.innerHeight) < window.innerHeight - 40;
+    root.style.setProperty("--kb-sab", keyboardUp ? "0px" : "var(--sab)");
     if (offset === lastOffset) return;
     lastOffset = offset;
     root.style.setProperty("--kb-height", `${offset}px`);
@@ -106,28 +117,48 @@ if (Cap.isNativePlatform()) {
     window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: offset, duration: 250 } }));
   };
 
-  window.visualViewport?.addEventListener("resize", applyKeyboardOffset);
+  // После show/hide значения приходят вразнобой: сначала может прийти
+  // перекрытие, и только потом ужаться viewport — мгновенный расчёт в этот
+  // момент даёт полный сдвиг, который через кадр надо откатывать (панель
+  // «отлетает» и возвращается). Поэтому не верим одиночному замеру: опрашиваем
+  // каждые 60 мс и применяем значение, только когда два замера подряд совпали.
+  // По истечении окна применяем последнее — на прошивках, где ничего не
+  // меняется после первого кадра, это ровно тот же результат.
+  let settleTimer: ReturnType<typeof setInterval> | null = null;
+  const settle = () => {
+    if (settleTimer) clearInterval(settleTimer);
+    let prev = -1, ticks = 0;
+    settleTimer = setInterval(() => {
+      const cur = Math.round(keyboardOffset());
+      ticks += 1;
+      if (cur === prev || ticks >= 12) {
+        applyKeyboardOffset();
+        if (ticks >= 12 || cur === prev) { clearInterval(settleTimer!); settleTimer = null; }
+      }
+      prev = cur;
+    }, 60);
+  };
+
+  window.visualViewport?.addEventListener("resize", settle);
   // Инсеты приходят из нативного плагина асинхронно — пересчитываем по ответу.
-  onInsetsChange(applyKeyboardOffset);
+  onInsetsChange(settle);
 
   Keyboard.addListener("keyboardWillShow", (info) => {
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = info.keyboardHeight;
+    applog.info(`kb show h=${Math.round(info.keyboardHeight)}`);
     // Перекрытие меряем заново: без этого на Android оно осталось бы прежним —
     // visualViewport при открытии клавиатуры срабатывает не на всех прошивках.
     refreshSafeArea();
-    applyKeyboardOffset();
-    setTimeout(applyKeyboardOffset, 120);
-    setTimeout(applyKeyboardOffset, 320);
+    settle();
   });
 
   Keyboard.addListener("keyboardWillHide", () => {
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = 0;
+    applog.info("kb hide");
     refreshSafeArea();
-    applyKeyboardOffset();
-    setTimeout(applyKeyboardOffset, 120);
-    setTimeout(applyKeyboardOffset, 320);
+    settle();
     window.scrollTo(0, 0);
   });
 }

@@ -287,7 +287,10 @@ html, body, #root {
 }
 
 .pad-safe-bottom {
-  padding-bottom: calc(0.75rem + var(--sab)) !important;
+  /* --kb-sab ставит main.tsx: обычно = --sab, при открытой клавиатуре 0 —
+     полоса навигации в этот момент за клавиатурой, резервировать под неё
+     место незачем. */
+  padding-bottom: calc(0.75rem + var(--kb-sab, var(--sab))) !important;
 }
 
 /* В нативной обёртке WebView занимает весь экран, включая зоны под вырезами.
