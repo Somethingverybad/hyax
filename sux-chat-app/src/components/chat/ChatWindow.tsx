@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
+import { applog } from "@/lib/applog";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -691,6 +692,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       : file.type.startsWith("audio/") ? "audio" : "file");
     // Лимита на размер нет — ни здесь, ни на сервере, ни в nginx (0):
     // фото и видео с телефона отправляются как есть. Фото сжимаем тут же.
+    // В лог баг-репорта: что выбрали и какого размера. Без этого «видео не
+    // отправляется» не отличить от «пикер ничего не вернул».
+    applog.info(`attach pick ${mode} ${file.type || "?"} ${Math.round(file.size / 1024)}KB`);
     const prepared = mode === "photo" ? await compressImage(file) : file;
     const url = URL.createObjectURL(prepared);
     const dims = mode === "photo" ? await imageDims(url) : null;
@@ -992,7 +996,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: 0 } : m)));
     try {
       const compress = att.mode === "video" ? "video" : undefined;
+      applog.info(`attach upload start ${att.mode} ${Math.round(att.file.size / 1024)}KB`);
       const uploadResult = await api.uploadFile(att.file, compress, (p) => setProgressFor(tempId, p));
+      applog.info(`attach upload ok ${att.mode} → ${uploadResult.file_url ? "url" : "no url"}`);
       setProgressFor(tempId, 100);
       // Свою картинку рисуем из локального файла и после подтверждения —
       // сервер нужен только собеседнику.
@@ -1129,7 +1135,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       let sent: Message;
       if (isVideo) {
+        applog.info(`recording upload start video ${Math.round(result.file.size / 1024)}KB`);
         const uploaded = await api.uploadFile(result.file, undefined, (p) => setProgressFor(tempId, p));
+        applog.info("recording upload ok video");
         setProgressFor(tempId, 100);
         // Фронтальная камера снимается в зеркальном (селфи) виде — помечаем,
         // чтобы воспроизведение в чате отразилось так же. Сам файл не меняем.
@@ -1292,6 +1300,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return currentDate !== previousDate;
   };
 
+  const safeHost = (u: string) => { try { return new URL(u).host; } catch { return "?"; } };
+
   // Функция для сохранения файла локально (для Electron)
   const handleSaveFile = async (fileUrl: string, fileName: string) => {
     // Проверяем, запущено ли приложение в Electron
@@ -1309,8 +1319,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         console.error('Error saving file:', error);
         toast.error('Ошибка сохранения файла');
       }
+    } else if (Capacitor.isNativePlatform()) {
+      // Телефон: подписанная ссылка на чужой origin. window.open — Capacitor
+      // отдаёт такой URL системному браузеру, а тот качает через свой менеджер
+      // загрузок; <a download> в WebView не делает ничего. Так же поступают
+      // сохранёнки и каналы.
+      applog.info(`file save native ${safeHost(fileUrl)} ${fileName}`);
+      window.open(fileUrl, "_blank");
     } else {
-      // Fallback: открываем файл в новой вкладке для сохранения вручную
+      // Веб: скачать через ссылку с download.
+      applog.info(`file save web ${safeHost(fileUrl)} ${fileName}`);
       const link = document.createElement('a');
       link.href = fileUrl;
       link.download = fileName;
