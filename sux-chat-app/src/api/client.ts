@@ -1,3 +1,4 @@
+import { applog, safePath } from "@/lib/applog";
 // Сервер и его CDN-прокси. HTTP (API, медиа, загрузки) идёт через CDN,
 // чтобы клиенты не стучались на сервер напрямую; WebSocket CDN не проксирует,
 // он всегда идёт на сервер. Если CDN не отвечает (не настроен, лежит,
@@ -30,14 +31,33 @@ if (!ENV_ORIGIN && typeof window !== "undefined") {
 /** fetch с откатом: сетевая ошибка на CDN-адресе → повтор того же запроса напрямую. */
 async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : (input as Request).url;
+  // В лог баг-репорта: метод, путь без query, код и длительность. Ни тел, ни
+  // заголовков — там токены и переписка (см. lib/applog.ts).
+  const method = (init?.method || "GET").toUpperCase();
+  const t0 = performance.now();
+  const done = (res: Response | null, err?: unknown) => {
+    const ms = Math.round(performance.now() - t0);
+    const path = safePath(url);
+    if (res) (res.ok ? applog.info : applog.warn)(`http ${method} ${path} → ${res.status} ${ms}ms`);
+    else applog.error(`http ${method} ${path} ✗ ${err instanceof Error ? err.name : "network"} ${ms}ms`);
+  };
   try {
-    return await fetch(input, init);
+    const res = await fetch(input, init);
+    done(res);
+    return res;
   } catch (e) {
     // Запрос мог быть собран с CDN-адресом до того, как проба переключила
     // origin — повторяем напрямую в любом случае, если URL был на CDN.
-    if (!url.startsWith(CDN_ORIGIN)) throw e;
+    if (!url.startsWith(CDN_ORIGIN)) { done(null, e); throw e; }
     switchToDirect((e as Error)?.name || "network");
-    return fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
+    try {
+      const res = await fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
+      done(res);
+      return res;
+    } catch (e2) {
+      done(null, e2);
+      throw e2;
+    }
   }
 }
 
@@ -76,6 +96,25 @@ interface Profile {
   /** Принимать Р.Ё.В — вибрацию, которую шлёт собеседник. */
   rov_enabled?: boolean;
 }
+
+/** Пак звуков — карточка по ссылке /sp/<id> и список добавленных. */
+export interface SoundPackInfo {
+  id: string;
+  name: string;
+  order: number;
+  sounds: NotificationSoundInfo[];
+  is_public: boolean;
+  /** Базовый (без владельца) — есть у всех. */
+  is_base: boolean;
+  creator: string | null;
+  /** Уже добавлен текущим пользователем. */
+  added: boolean;
+  /** Создан текущим пользователем. */
+  mine: boolean;
+}
+
+export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack";
+export type ReportReason = "sexual" | "violence" | "abuse" | "spam" | "illegal" | "other";
 
 export interface SavedImage {
   id: string;
@@ -1029,6 +1068,76 @@ export const api = {
       throw new Error(msg);
     }
     return res.json();
+  },
+
+  // ---- Жалобы и блокировки ----
+
+  /** Пожаловаться. Уходит в системный чат «Жалобы» к support/admin. */
+  report: async (data: { target_type: ReportTarget; target_id: string; reason: ReportReason; comment?: string }): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/reports/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      let msg = "Не удалось отправить жалобу";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+  },
+
+  listBlocks: async (): Promise<{ id: string; username: string; avatar_url?: string | null }[]> => {
+    const res = await fetchWithAuth(`${API_URL}/blocks/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить список");
+    return (await res.json()).blocked || [];
+  },
+
+  blockUser: async (profileId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/blocks/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
+    });
+    if (!res.ok) throw new Error("Не удалось заблокировать");
+  },
+
+  unblockUser: async (profileId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/blocks/`, {
+      method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
+    });
+    if (!res.ok) throw new Error("Не удалось разблокировать");
+  },
+
+  // ---- Паки звуков (подписка, как у стикеров) ----
+
+  getSoundPack: async (id: string): Promise<SoundPackInfo> => {
+    const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Пак не найден");
+    return res.json();
+  },
+
+  addSoundPack: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось добавить пак");
+  },
+
+  removeSoundPack: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/subscribe/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось убрать пак");
+  },
+
+  listAddedSoundPacks: async (): Promise<SoundPackInfo[]> => {
+    const res = await fetchWithAuth(`${API_URL}/sounds/added/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить паки");
+    return (await res.json()).packs || [];
+  },
+
+  /** Баг-репорт: multipart с описанием, скриншотом, логом и meta. */
+  sendBugReport: async (fd: FormData): Promise<void> => {
+    const res = await fetchWithAuthMultipart(`${API_URL}/bugreports/`, { method: "POST", body: fd });
+    if (!res.ok) {
+      let msg = "Не удалось отправить репорт";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
   },
 
   removeCover: async (): Promise<void> => {

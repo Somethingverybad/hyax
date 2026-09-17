@@ -382,6 +382,13 @@ class ChatViewSet(viewsets.ModelViewSet):
             return Response(self.get_serializer(chat).data, status=status.HTTP_201_CREATED)
 
         # Ищем существующие чаты с точно такими же участниками
+        # Личка при блокировке в любую сторону не создаётся: иначе один писал
+        # бы в пустоту, а второй получал бы новый чат от того, кого закрыл.
+        if len(participant_uuids) == 2:
+            from .moderation import blocked_either_way
+            if blocked_either_way(participant_uuids[0], participant_uuids[1]):
+                return Response({'detail': 'Нельзя написать этому пользователю'}, status=status.HTTP_403_FORBIDDEN)
+
         existing_chats = Chat.objects.annotate(
             participant_count=models.Count('participants'),
             matching_participants=models.Count(
@@ -469,6 +476,8 @@ def _notify_new_message(message, profile, request):
         # звук аудио-стикера проиграет само приложение (см. ChatWindow).
         watching = viewers(message.chat.id)
         recipients = message.chat.participants.exclude(id=profile.id)
+        # Кто заблокировал отправителя — пуш о его сообщении не получает.
+        recipients = recipients.exclude(blocks__blocked_id=profile.id)
         if watching:
             recipients = recipients.exclude(id__in=watching)
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
@@ -555,7 +564,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Скрываем удалённые: у всех — для каждого; «у себя» — для того, кто удалил.
         queryset = queryset.exclude(deleted_for_all=True)
         try:
-            queryset = queryset.exclude(deleted_for=self.request.user.profile)
+            me = self.request.user.profile
+            queryset = queryset.exclude(deleted_for=me)
+            # Заблокированные: их сообщения для меня не существуют.
+            from .moderation import blocked_ids
+            blocked = blocked_ids(me)
+            if blocked:
+                queryset = queryset.exclude(sender_id__in=blocked)
         except Exception:
             pass
         return queryset.order_by('created_at')
@@ -718,6 +733,11 @@ class MessageViewSet(viewsets.ModelViewSet):
             .select_related('sender', 'sound', 'sticker', 'reply_to__sender', 'forwarded_from')
             .prefetch_related('read_statuses__user')
         )
+        # Заблокированные: их сообщения не отдаём ни страницей, ни приращением.
+        from .moderation import blocked_ids
+        blocked = blocked_ids(profile)
+        if blocked:
+            base = base.exclude(sender_id__in=blocked)
         ser = lambda qs: MessageSerializer(qs, many=True, context={'request': request}).data
 
         since = parse_datetime(request.query_params.get('since') or '')
@@ -1678,9 +1698,15 @@ def _delete_sound_files(sound):
     except Exception: pass
 
 
-def _pack_payload(pack):
+def _pack_payload(pack, me=None):
     sounds = NotificationSoundSerializer(pack.sounds.all().order_by("order", "slug"), many=True).data
-    return {"id": str(pack.id), "name": pack.name, "order": pack.order, "sounds": sounds}
+    return {
+        "id": str(pack.id), "name": pack.name, "order": pack.order, "sounds": sounds,
+        "is_public": pack.is_public, "is_base": pack.is_base,
+        "creator": pack.creator.username if pack.creator_id else None,
+        "added": bool(me) and UserSoundPack.objects.filter(user=me, pack=pack).exists(),
+        "mine": bool(me) and pack.creator_id == getattr(me, "id", None),
+    }
 
 
 class SoundPackStudioView(APIView):
@@ -1742,6 +1768,14 @@ class SoundPackDetailView(APIView):
         if not profile or pack.creator_id != profile.id:
             return None, Response({"error": "Это не ваш пак"}, status=403)
         return pack, None
+
+    def get(self, request, pk):
+        """Карточка пака по ссылке /sp/<id>: публичный — любому, приватный — владельцу."""
+        me = _studio_profile(request)
+        pack = SoundPack.objects.filter(pk=pk).prefetch_related("sounds").first()
+        if not pack or (not pack.is_public and (not me or pack.creator_id != me.id)):
+            return Response({"error": "Пак не найден"}, status=404)
+        return Response(_pack_payload(pack, me))
 
     def patch(self, request, pk):
         pack, err = self._get_owned(request, pk)
@@ -1831,7 +1865,13 @@ class NotificationSoundListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        sounds = NotificationSound.objects.filter(is_active=True)
+        # Не всё всем: базовые паки (без владельца) и звуки вне паков — у
+        # каждого; остальное — то, что человек создал сам или добавил по ссылке.
+        me = getattr(request.user, "profile", None)
+        visible = models.Q(pack__isnull=True) | models.Q(pack__creator__isnull=True)
+        if me:
+            visible |= models.Q(pack__creator=me) | models.Q(pack__added_by_users__user=me)
+        sounds = NotificationSound.objects.filter(is_active=True).filter(visible).distinct()
         return Response(NotificationSoundSerializer(sounds, many=True).data)
 
 
@@ -2575,3 +2615,219 @@ class MusicView(APIView):
             pass
         track.delete()
         return Response(status=204)
+
+
+# ---- Жалобы и блокировки (App Store 1.2: контроль пользовательского контента) ----
+
+def _report_snapshot(target_type, target_id):
+    """Что именно вызвало жалобу — текстом, на момент подачи.
+
+    Автор может удалить сообщение или переименовать пак сразу после жалобы;
+    без снимка модератор увидел бы пустоту. Возвращает (текст, на кого жалоба).
+    """
+    if target_type == "message":
+        m = Message.objects.filter(id=target_id).select_related("sender").first()
+        if not m:
+            return "", None
+        parts = [f"«{(m.content or '')[:500]}»" if m.content else "(без текста)"]
+        if m.file_url:
+            parts.append(f"вложение: {m.file_name or m.file_url}")
+        return " · ".join(parts), m.sender
+    if target_type == "user":
+        p = Profile.objects.filter(id=target_id).first()
+        return (f"{p.username} — {(p.bio or '')[:200]}" if p else ""), p
+    if target_type == "chat":
+        c = Chat.objects.filter(id=target_id).first()
+        return (f"{c.name or c.username or c.id} ({c.kind})" if c else ""), (c.creator if c else None)
+    if target_type == "sound_pack":
+        pack = SoundPack.objects.filter(id=target_id).first()
+        if not pack:
+            return "", None
+        names = ", ".join(pack.sounds.values_list("name", flat=True)[:20])
+        return f"пак «{pack.name}»: {names}", pack.creator
+    if target_type == "sticker_pack":
+        pack = StickerPack.objects.filter(id=target_id).first()
+        return (f"пак «{pack.name}»" if pack else ""), getattr(pack, "creator", None)
+    return "", None
+
+
+class ReportView(APIView):
+    """POST — пожаловаться на пользователя, сообщение, чат или пак.
+
+    Жалоба сохраняется и тут же уходит сообщением в системный чат «Жалобы»
+    (см. moderation.py): разбирают её там, а не в отдельной панели.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .moderation import deliver
+
+        me = getattr(request.user, "profile", None)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+
+        target_type = (request.data.get("target_type") or "").strip()
+        target_id = str(request.data.get("target_id") or "").strip()
+        reason = (request.data.get("reason") or "").strip()
+        comment = (request.data.get("comment") or "").strip()[:2000]
+
+        valid_targets = {t[0] for t in Report.TARGETS}
+        valid_reasons = {r[0] for r in Report.REASONS}
+        if target_type not in valid_targets:
+            return Response({"error": "Неизвестный тип объекта"}, status=400)
+        if reason not in valid_reasons:
+            return Response({"error": "Не выбрана причина"}, status=400)
+        if not target_id:
+            return Response({"error": "Не указан объект"}, status=400)
+
+        snapshot, target_profile = _report_snapshot(target_type, target_id)
+        # На себя жаловаться незачем — обычно это промах по меню.
+        if target_profile and target_profile.id == me.id:
+            return Response({"error": "Это ваш собственный контент"}, status=400)
+
+        report = Report.objects.create(
+            reporter=me,
+            target_type=target_type,
+            target_id=target_id[:64],
+            target_profile=target_profile,
+            reason=reason,
+            comment=comment,
+            snapshot=snapshot[:4000],
+        )
+        deliver(report)
+        return Response({"ok": True, "id": str(report.id)}, status=201)
+
+
+class BlockView(APIView):
+    """GET — кого я заблокировал. POST — заблокировать. DELETE — снять."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _me(self, request):
+        return getattr(request.user, "profile", None)
+
+    def get(self, request):
+        me = self._me(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        rows = Block.objects.filter(blocker=me).select_related("blocked")
+        return Response({"blocked": [
+            {"id": str(b.blocked.id), "username": b.blocked.username, "avatar_url": b.blocked.avatar_url}
+            for b in rows
+        ]})
+
+    def post(self, request):
+        me = self._me(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        other = Profile.objects.filter(id=str(request.data.get("profile_id") or "")).first()
+        if not other:
+            return Response({"error": "Пользователь не найден"}, status=404)
+        if other.id == me.id:
+            return Response({"error": "Нельзя заблокировать себя"}, status=400)
+        Block.objects.get_or_create(blocker=me, blocked=other)
+        return Response({"ok": True})
+
+    def delete(self, request):
+        me = self._me(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        Block.objects.filter(blocker=me, blocked_id=str(request.data.get("profile_id") or "")).delete()
+        return Response({"ok": True})
+
+
+
+class BugReportView(APIView):
+    """POST multipart — сообщение о проблеме: описание, скриншот, лог, meta.
+
+    Файлы кладём в MEDIA_ROOT/bugreports/<id>/ — своей папкой на репорт, чтобы
+    скриншот и лог лежали рядом и удалялись вместе. Лог принимаем текстом
+    (поле log) и сами пишем в файл: клиенту незачем собирать Blob.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    MAX_LOG = 2 * 1024 * 1024
+    MAX_SHOT = 10 * 1024 * 1024
+
+    def post(self, request):
+        import json
+        from .moderation import deliver_bug
+
+        me = getattr(request.user, "profile", None)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+
+        description = (request.data.get("description") or "").strip()[:4000]
+        log_text = request.data.get("log") or ""
+        shot = request.FILES.get("screenshot")
+        try:
+            meta = json.loads(request.data.get("meta") or "{}")
+            if not isinstance(meta, dict):
+                meta = {}
+        except ValueError:
+            meta = {}
+
+        if not description and not shot and not log_text:
+            return Response({"error": "Пустой репорт: добавьте описание или скриншот"}, status=400)
+        if shot and shot.size > self.MAX_SHOT:
+            return Response({"error": "Скриншот больше 10 МБ"}, status=400)
+        if shot and os.path.splitext(shot.name)[1].lower() not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
+            return Response({"error": "Скриншот должен быть картинкой"}, status=400)
+
+        bug = BugReport(reporter=me, description=description, meta=meta)
+        folder = os.path.join('bugreports', str(bug.id))
+        os.makedirs(os.path.join(settings.MEDIA_ROOT, folder), exist_ok=True)
+
+        if shot:
+            name = f"screenshot{os.path.splitext(shot.name)[1].lower()}"
+            with open(os.path.join(settings.MEDIA_ROOT, folder, name), 'wb+') as dst:
+                for chunk in shot.chunks():
+                    dst.write(chunk)
+            bug.screenshot_url = f"/media/{folder}/{name}"
+
+        if log_text:
+            data = log_text.encode('utf-8', 'replace')[: self.MAX_LOG]
+            with open(os.path.join(settings.MEDIA_ROOT, folder, 'app.log'), 'wb') as dst:
+                dst.write(data)
+            bug.log_url = f"/media/{folder}/app.log"
+
+        bug.save()
+        deliver_bug(bug, request.build_absolute_uri('/').rstrip('/'))
+        return Response({"ok": True, "id": str(bug.id)}, status=201)
+
+
+
+class SoundPackSubscribeView(APIView):
+    """POST — добавить пак себе, DELETE — убрать. Свои и базовые добавлять незачем."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        me = _studio_profile(request)
+        pack = SoundPack.objects.filter(pk=pk).first()
+        if not me or not pack:
+            return Response({"error": "Пак не найден"}, status=404)
+        if not pack.is_public and pack.creator_id != me.id:
+            return Response({"error": "Пак не найден"}, status=404)
+        if pack.is_base or pack.creator_id == me.id:
+            return Response({"ok": True, "already": True})
+        UserSoundPack.objects.get_or_create(user=me, pack=pack)
+        return Response({"ok": True})
+
+    def delete(self, request, pk):
+        me = _studio_profile(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        UserSoundPack.objects.filter(user=me, pack_id=pk).delete()
+        return Response({"ok": True})
+
+
+class AddedSoundPacksView(APIView):
+    """GET — паки, которые я добавил по ссылке (без своих и базовых)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        me = _studio_profile(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        rows = UserSoundPack.objects.filter(user=me).select_related("pack__creator").prefetch_related("pack__sounds")
+        return Response({"packs": [_pack_payload(r.pack, me) for r in rows]})

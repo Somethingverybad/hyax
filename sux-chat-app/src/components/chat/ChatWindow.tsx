@@ -4,6 +4,7 @@ import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate } from "lucide-react";
+import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
@@ -221,6 +222,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Долгий тап по сообщению открывает меню — так же, как в мессенджерах,
   // где системное выделение текста только мешает.
   const [menuMessage, setMenuMessage] = useState<Message | null>(null);
+  // Жалоба на сообщение — шторка поверх ленты.
+  const [reportFor, setReportFor] = useState<Message | null>(null);
   // Позиция меню: задана — компактное меню у курсора (десктоп, правый клик);
   // null — нижняя шторка (телефон, долгое удержание).
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -1363,6 +1366,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
         { label: "Копировать текст", show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
         { label: "Редактировать", show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
+        { label: "Пожаловаться", show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
         { label: "Удалить у себя", show: true, onClick: () => startDelete(menuMessage, "me") },
         { label: "Удалить у всех", show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
       ].filter((i) => i.show)
@@ -2314,6 +2318,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),
           «Избранное» — первой строкой. */}
+      {reportFor && (
+        <ReportSheet target={{ type: "message", id: reportFor.id }} title="Жалоба на сообщение" onClose={() => setReportFor(null)} />
+      )}
       {forwardFor && (
         <div className="fixed inset-0 z-[75] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setForwardFor(null)}>
           <div className="w-full md:max-w-md bg-card border-t-2 md:border-2 border-border max-h-[80%] flex flex-col pb-[var(--sab)]" onClick={(e) => e.stopPropagation()}>

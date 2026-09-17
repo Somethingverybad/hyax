@@ -329,6 +329,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         try:
             message = convert_uuid_to_str(event.get('message', {}))
+            # Сообщение от заблокированного в сокет не отдаём: иначе оно
+            # всплывало бы вживую, хотя из списка и sync уже отфильтровано.
+            if await self.sender_blocked_by_me(message):
+                return
             await self.send(text_data=json.dumps({
                 'type': 'new_message',
                 'message': message
@@ -352,6 +356,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Проверка аутентификации пользователя"""
         return user.is_authenticated
     
+    @database_sync_to_async
+    def sender_blocked_by_me(self, message):
+        """Заблокировал ли текущий пользователь автора этого сообщения."""
+        from .models import Block
+        sender = message.get('sender') if isinstance(message, dict) else None
+        sender_id = sender.get('id') if isinstance(sender, dict) else sender
+        if not sender_id:
+            return False
+        try:
+            return Block.objects.filter(blocker__user=self.user, blocked_id=sender_id).exists()
+        except Exception:
+            return False
+
     @database_sync_to_async
     def check_chat_access(self, chat_id, user):
         """Проверка доступа пользователя к чату"""

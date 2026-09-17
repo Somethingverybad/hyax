@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { X, Phone, Share2, Copy, ChevronRight } from "lucide-react";
+import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban } from "lucide-react";
+import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
@@ -32,6 +33,23 @@ const UserProfileModal = ({
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  // Заблокирован ли этот человек мной — кнопка переключается между
+  // «Заблокировать» и «Разблокировать».
+  const [blocked, setBlocked] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.listBlocks().then((l) => alive && setBlocked(l.some((b) => b.id === userId))).catch(() => alive && setBlocked(false));
+    return () => { alive = false; };
+  }, [userId]);
+  const toggleBlock = async () => {
+    if (blocked === null) return;
+    try {
+      if (blocked) { await api.unblockUser(userId); toast.success("Разблокирован"); }
+      else { await api.blockUser(userId); toast.success("Заблокирован: его сообщения и пуши больше не придут"); }
+      setBlocked(!blocked);
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+  };
   useEffect(() => {
     let alive = true;
     api.listSavedImages(userId, 5).then((d) => alive && setSaved(d)).catch(() => alive && setSaved({ count: 0, items: [] }));
@@ -115,6 +133,27 @@ const UserProfileModal = ({
               </button>
             </div>
 
+            {/* Жалоба и блокировка — вторичные, серые, ниже основных действий. */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90"
+              >
+                <Flag className="w-4 h-4" />
+                Пожаловаться
+              </button>
+              <button
+                type="button"
+                onClick={toggleBlock}
+                disabled={blocked === null}
+                className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-primary font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50"
+              >
+                <Ban className="w-4 h-4" />
+                {blocked ? "Разблокировать" : "Заблокировать"}
+              </button>
+            </div>
+
             <div className="border-t border-border" />
 
             {profile.bio && (
@@ -169,6 +208,9 @@ const UserProfileModal = ({
       </div>
       {galleryOpen && profile && (
         <SavedGallery profileId={profile.id} own={false} title={`Сохранёнки ${profile.username}`} onClose={() => setGalleryOpen(false)} />
+      )}
+      {reportOpen && (
+        <ReportSheet target={{ type: "user", id: userId }} title={`Жалоба на ${profile?.username || "пользователя"}`} onClose={() => setReportOpen(false)} />
       )}
     </div>
   );

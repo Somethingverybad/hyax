@@ -7,7 +7,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import SoundPicker from "@/components/SoundPicker";
 import { toast } from "sonner";
-import { Music2 } from "lucide-react";
+import { Music2, Library } from "lucide-react";
 import type { Profile } from "./Profile";
 
 /** Переключатель-галочка в строке настроек. */
@@ -77,6 +77,12 @@ const ProfileNotifications = () => {
                   : "Обычный — выбери свой, его услышат собеседники"
               }
               onClick={() => setPickerOpen(true)}
+            />
+            <SettingsRow
+              icon={Library}
+              label="Паки звуков"
+              hint="Базовые есть у всех, чужие — по ссылке автора"
+              onClick={() => navigate("/profile/soundpacks")}
             />
           </SettingsCard>
         )}

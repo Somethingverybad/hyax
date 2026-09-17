@@ -24,6 +24,27 @@ class Profile(models.Model):
     # его caf/канал уже есть на устройствах получателей (syncNotificationSounds).
     notify_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     created_at = models.DateTimeField(default=timezone.now)
+    # Роль. Права смотрим по ней, а не по флагам Django: is_staff/is_superuser
+    # живут на User и открывают админку, а роль — это про поведение самого
+    # мессенджера (кто видит системный чат жалоб). Премиум пока заготовка и от
+    # обычного пользователя ничем не отличается.
+    ROLE_USER = "user"
+    ROLE_PREMIUM = "premium"
+    ROLE_SUPPORT = "support"
+    ROLE_ADMIN = "admin"
+    ROLES = [
+        (ROLE_USER, "Пользователь"),
+        (ROLE_PREMIUM, "Премиум"),
+        (ROLE_SUPPORT, "Поддержка"),
+        (ROLE_ADMIN, "Администратор"),
+    ]
+    role = models.CharField(max_length=16, choices=ROLES, default=ROLE_USER, db_index=True)
+
+    @property
+    def is_staff_role(self):
+        """Видит системные чаты поддержки."""
+        return self.role in (self.ROLE_SUPPORT, self.ROLE_ADMIN)
+
     # Боты — отдельный класс пользователей: не логинятся паролем, ходят в API
     # по bot_token, у каждого есть владелец-создатель.
     is_bot = models.BooleanField(default=False)
@@ -244,12 +265,19 @@ class SoundPack(models.Model):
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(default=timezone.now)
     creator = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="created_sound_packs")  # владелец: правит/удаляет через студию
+    # Публичный пак открывается по ссылке /sp/<id> любому; приватный — только
+    # владельцу. Базовые паки (creator пуст) видят все без подписки.
+    is_public = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["order", "name"]
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_base(self):
+        return self.creator_id is None
 
 
 class NotificationSound(models.Model):
@@ -470,3 +498,119 @@ class MusicTrack(models.Model):
 
     def __str__(self):
         return f"{self.artist} — {self.title}" if self.artist else self.title
+
+
+class Block(models.Model):
+    """Чёрный список: blocker больше не получает ничего от blocked.
+
+    Требование App Store 1.2 для приложений с пользовательским контентом —
+    возможность заблокировать того, кто злоупотребляет. Блокировка
+    односторонняя и невидимая для заблокированного: он по-прежнему может
+    писать, но до адресата это не доходит (см. фильтры в views).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    blocker = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="blocks")
+    blocked = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="blocked_by")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("blocker", "blocked")
+        indexes = [models.Index(fields=["blocker", "blocked"])]
+
+    def __str__(self):
+        return f"{self.blocker} ⛔ {self.blocked}"
+
+
+class Report(models.Model):
+    """Жалоба на контент или пользователя.
+
+    Хранит СНИМОК того, на что жаловались: автор может удалить сообщение или
+    переименовать пак сразу после жалобы, и без снимка модератору осталось бы
+    пустое место. Снимок — обычный текст, чтобы не зависеть от того, жива ли
+    исходная запись.
+    """
+    TARGETS = [
+        ("user", "Пользователь"),
+        ("message", "Сообщение"),
+        ("chat", "Чат или канал"),
+        ("sound_pack", "Пак звуков"),
+        ("sticker_pack", "Пак стикеров"),
+    ]
+    REASONS = [
+        ("sexual", "Сексуальный контент"),
+        ("violence", "Насилие или угрозы"),
+        ("abuse", "Оскорбления, травля"),
+        ("spam", "Спам или мошенничество"),
+        ("illegal", "Противозаконное"),
+        ("other", "Другое"),
+    ]
+    STATUSES = [
+        ("new", "Новая"),
+        ("reviewed", "Рассмотрена"),
+        ("actioned", "Приняты меры"),
+        ("rejected", "Отклонена"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reporter = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, related_name="reports_sent")
+    target_type = models.CharField(max_length=16, choices=TARGETS)
+    target_id = models.CharField(max_length=64)
+    # На кого жалуются, если это удалось определить: автор сообщения, владелец
+    # пака. Нужно, чтобы модератор видел повторные жалобы на одного человека.
+    target_profile = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="reports_received")
+    reason = models.CharField(max_length=16, choices=REASONS)
+    comment = models.TextField(blank=True, default="")
+    snapshot = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=16, choices=STATUSES, default="new", db_index=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    handled_at = models.DateTimeField(null=True, blank=True)
+    moderator_note = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_target_type_display()} · {self.get_reason_display()} · {self.status}"
+
+
+class BugReport(models.Model):
+    """Сообщение о проблеме от пользователя: описание, скриншот и лог
+    приложения за текущую сессию (см. sux-chat-app/src/lib/applog.ts).
+
+    Лог — текст без переписки и токенов, это гарантирует клиент. Хранится как
+    файл, а не в поле: типичный лог — сотни строк, в списке админки ему не
+    место, а модератор открывает его по ссылке.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reporter = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, related_name="bug_reports")
+    description = models.TextField(blank=True, default="")
+    screenshot_url = models.TextField(blank=True, default="")
+    log_url = models.TextField(blank=True, default="")
+    # Откуда пришло: версия, сборка, платформа, устройство — то, что клиент
+    # знает о себе. JSON, потому что набор полей у платформ разный.
+    meta = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=[("new", "Новый"), ("seen", "Просмотрен"), ("fixed", "Исправлен"), ("wontfix", "Не будем")], default="new", db_index=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.created_at:%d.%m %H:%M} · {self.reporter} · {self.status}"
+
+
+class UserSoundPack(models.Model):
+    """Подписка на пак звуков — как UserStickerPack у стикеров.
+
+    Раньше /api/sounds/ отдавал все активные звуки всем: чужой пак попадал в
+    пикер каждому сразу после загрузки. Теперь человек видит базовые паки, свои
+    и те, что добавил сам по ссылке.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="added_sound_packs")
+    pack = models.ForeignKey(SoundPack, on_delete=models.CASCADE, related_name="added_by_users")
+    added_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("user", "pack")
+        ordering = ["added_at"]

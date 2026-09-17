@@ -4,6 +4,10 @@ import ProfileEdit from "./pages/ProfileEdit";
 import ProfileNotifications from "./pages/ProfileNotifications";
 import ProfilePrivacy from "./pages/ProfilePrivacy";
 import ProfileAppearance from "./pages/ProfileAppearance";
+import ProfileBugReport from "./pages/ProfileBugReport";
+import ProfileSoundPacks from "./pages/ProfileSoundPacks";
+import SoundPackPage from "./pages/SoundPackPage";
+import { applog } from "@/lib/applog";
 import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -45,6 +49,8 @@ const closeWindow = () => {
 // пересчитывается, поэтому переход не дёргается даже на слабых устройствах.
 const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  // Переходы — в лог баг-репорта: по ним видно, на каком экране что случилось.
+  useEffect(() => { applog.info(`route ${location.pathname}`); }, [location.pathname]);
   return (
     <div key={location.pathname} className="route-transition h-full">
       <Routes location={location}>{children}</Routes>
@@ -70,7 +76,7 @@ const DeepLinks = () => {
       if (!url) return;
       try {
         const u = new URL(url);
-        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/")) navRef.current(u.pathname + u.search);
+        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/sp/")) navRef.current(u.pathname + u.search);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
@@ -143,6 +149,10 @@ const App = () => {
               <Route path="/profile/notifications" element={<ProfileNotifications />} />
               <Route path="/profile/privacy" element={<ProfilePrivacy />} />
               <Route path="/profile/appearance" element={<ProfileAppearance />} />
+              <Route path="/profile/bugreport" element={<ProfileBugReport />} />
+              <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
+              {/* Пак звуков по ссылке «Поделиться паком». */}
+              <Route path="/sp/:id" element={<SoundPackPage />} />
               {/* Карточка по ссылке «Поделиться профилем». */}
               <Route path="/u/:username" element={<PublicProfile />} />
               {/* Канал по ссылке «Поделиться каналом». */}

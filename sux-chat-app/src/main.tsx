@@ -2,7 +2,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { initTheme } from "./lib/theme";
+import { installAppLog } from "./lib/applog";
 
+// Лог баг-репортов — с самого старта, чтобы поймать и ошибки инициализации.
+installAppLog();
 // Тему ставим до первой отрисовки: иначе светлая тема моргнёт тёмным кадром.
 initTheme();
 

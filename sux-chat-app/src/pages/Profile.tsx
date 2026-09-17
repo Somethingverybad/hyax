@@ -13,7 +13,7 @@ import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
-  RefreshCw,
+  RefreshCw, Bug,
 } from "lucide-react";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -353,6 +353,12 @@ const ProfilePage = () => {
               label="Проверить обновления"
               value={checking ? "Проверяю…" : APP_VERSION}
               onClick={checkUpdates}
+            />
+            <SettingsRow
+              icon={Bug}
+              label="Сообщить о проблеме"
+              hint="Скриншот и лог уйдут разработчикам"
+              onClick={() => navigate("/profile/bugreport")}
             />
           </SettingsCard>
 
