@@ -167,6 +167,13 @@
 (function(){
   var TOKEN_URL="/api/token/", REFRESH_URL="/api/token/refresh/";
   var CREATE_URL="/api/sounds/pack/", MINE_URL="/api/sounds/mine/";
+  // Ссылка на пак: по ней пак добавляют себе в приложении (звуки — /sp/, стикеры — /stp/).
+  function copyLink(path, btn){
+    var url=location.origin+path;
+    var done=function(){ var t=btn.textContent; btn.textContent="Скопировано"; setTimeout(function(){ btn.textContent=t; },1500); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done, function(){ prompt("Ссылка на пак:", url); }); }
+    else prompt("Ссылка на пак:", url);
+  }
   var loginBlock=el("loginBlock"), studioBlock=el("studioBlock");
   var access="", refresh="", uname="";
   try{ access=localStorage.getItem("studio_access")||""; refresh=localStorage.getItem("studio_refresh")||""; uname=localStorage.getItem("studio_uname")||""; }catch(e){}
@@ -240,7 +247,9 @@
     var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=p.name;
     var save=document.createElement("button"); save.className="btn sm"; save.textContent="Переименовать";
     var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить пак";
-    head.appendChild(nameIn); head.appendChild(save); head.appendChild(del);
+    var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
+    link.addEventListener("click", function(){ copyLink("/sp/"+p.id, link); });
+    head.appendChild(nameIn); head.appendChild(save); head.appendChild(link); head.appendChild(del);
     card.appendChild(head);
 
     save.addEventListener("click", function(){
@@ -445,7 +454,9 @@
     var btns=document.createElement("div"); btns.style.display="flex"; btns.style.gap="8px";
     var show=document.createElement("button"); show.className="btn sm"; show.textContent="Показать";
     var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить";
-    btns.appendChild(show); btns.appendChild(del);
+    var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
+    link.addEventListener("click", function(){ copyLink("/stp/"+pack.id, link); });
+    btns.appendChild(show); btns.appendChild(link); btns.appendChild(del);
     head.appendChild(title); head.appendChild(btns);
     card.appendChild(head);
 

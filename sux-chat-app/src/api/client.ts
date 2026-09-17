@@ -113,6 +113,18 @@ export interface SoundPackInfo {
   mine: boolean;
 }
 
+/** Стикерпак — карточка по ссылке /stp/<id>. author — сериализованный профиль. */
+export interface StickerPackInfo {
+  id: string;
+  name: string;
+  description?: string | null;
+  author?: { id: string; username: string; avatar_url?: string | null } | null;
+  is_public: boolean;
+  stickers_count: number;
+  /** Уже добавлен текущим пользователем. */
+  is_saved: boolean;
+}
+
 export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack";
 export type ReportReason = "sexual" | "violence" | "abuse" | "spam" | "illegal" | "other";
 
@@ -1104,6 +1116,24 @@ export const api = {
       method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
     if (!res.ok) throw new Error("Не удалось разблокировать");
+  },
+
+  // ---- Стикерпаки по ссылке ----
+
+  getStickerPack: async (id: string): Promise<StickerPackInfo> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Пак не найден");
+    return res.json();
+  },
+
+  saveStickerPack: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/save/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось добавить пак");
+  },
+
+  unsaveStickerPack: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/unsave/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось убрать пак");
   },
 
   // ---- Паки звуков (подписка, как у стикеров) ----

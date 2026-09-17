@@ -7,6 +7,7 @@ import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import SoundPackPage from "./pages/SoundPackPage";
+import StickerPackPage from "./pages/StickerPackPage";
 import { applog } from "@/lib/applog";
 import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -76,7 +77,7 @@ const DeepLinks = () => {
       if (!url) return;
       try {
         const u = new URL(url);
-        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/sp/")) navRef.current(u.pathname + u.search);
+        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/")) navRef.current(u.pathname + u.search);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
@@ -153,6 +154,8 @@ const App = () => {
               <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
               {/* Пак звуков по ссылке «Поделиться паком». */}
               <Route path="/sp/:id" element={<SoundPackPage />} />
+              {/* Стикерпак по ссылке из студии. */}
+              <Route path="/stp/:id" element={<StickerPackPage />} />
               {/* Карточка по ссылке «Поделиться профилем». */}
               <Route path="/u/:username" element={<PublicProfile />} />
               {/* Канал по ссылке «Поделиться каналом». */}
