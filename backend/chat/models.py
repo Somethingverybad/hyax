@@ -266,8 +266,13 @@ class SoundPack(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     creator = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="created_sound_packs")  # владелец: правит/удаляет через студию
     # Публичный пак открывается по ссылке /sp/<id> любому; приватный — только
-    # владельцу. Базовые паки (creator пуст) видят все без подписки.
+    # владельцу.
     is_public = models.BooleanField(default=True)
+    # Стандартный пак: есть у всех без подписки. Ставится галочкой в админке;
+    # таких паков может быть несколько. Раньше «стандартным» считался пак без
+    # владельца — это не давало ни завести несколько наборов, ни снять
+    # стандартность у старого, не удаляя его.
+    is_default = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         ordering = ["order", "name"]
@@ -277,7 +282,7 @@ class SoundPack(models.Model):
 
     @property
     def is_base(self):
-        return self.creator_id is None
+        return self.is_default
 
 
 class NotificationSound(models.Model):

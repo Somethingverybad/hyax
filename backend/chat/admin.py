@@ -122,10 +122,11 @@ admin.site.register(Message)
 
 @admin.register(SoundPack)
 class SoundPackAdmin(admin.ModelAdmin):
-    """Пак без владельца — базовый, его видят все. Остальные — по подписке."""
-    list_display = ("name", "creator", "is_public", "order", "created_at")
-    list_editable = ("is_public", "order")
-    list_filter = ("is_public",)
+    """Стандартный пак (галочка «По умолчанию») есть у всех без подписки;
+    таких может быть несколько. Остальные — по ссылке."""
+    list_display = ("name", "is_default", "creator", "is_public", "order", "created_at")
+    list_editable = ("is_default", "is_public", "order")
+    list_filter = ("is_default", "is_public")
     search_fields = ("name", "creator__username")
 
 

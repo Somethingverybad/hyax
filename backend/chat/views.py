@@ -1702,7 +1702,7 @@ def _pack_payload(pack, me=None):
     sounds = NotificationSoundSerializer(pack.sounds.all().order_by("order", "slug"), many=True).data
     return {
         "id": str(pack.id), "name": pack.name, "order": pack.order, "sounds": sounds,
-        "is_public": pack.is_public, "is_base": pack.is_base,
+        "is_public": pack.is_public, "is_default": pack.is_default,
         "creator": pack.creator.username if pack.creator_id else None,
         "added": bool(me) and UserSoundPack.objects.filter(user=me, pack=pack).exists(),
         "mine": bool(me) and pack.creator_id == getattr(me, "id", None),
@@ -1865,10 +1865,10 @@ class NotificationSoundListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        # Не всё всем: базовые паки (без владельца) и звуки вне паков — у
-        # каждого; остальное — то, что человек создал сам или добавил по ссылке.
+        # Не всё всем: стандартные паки (галочка в админке) и звуки вне паков —
+        # у каждого; остальное — то, что человек создал сам или добавил по ссылке.
         me = getattr(request.user, "profile", None)
-        visible = models.Q(pack__isnull=True) | models.Q(pack__creator__isnull=True)
+        visible = models.Q(pack__isnull=True) | models.Q(pack__is_default=True)
         if me:
             visible |= models.Q(pack__creator=me) | models.Q(pack__added_by_users__user=me)
         sounds = NotificationSound.objects.filter(is_active=True).filter(visible).distinct()
@@ -2808,7 +2808,7 @@ class SoundPackSubscribeView(APIView):
             return Response({"error": "Пак не найден"}, status=404)
         if not pack.is_public and pack.creator_id != me.id:
             return Response({"error": "Пак не найден"}, status=404)
-        if pack.is_base or pack.creator_id == me.id:
+        if pack.is_default or pack.creator_id == me.id:
             return Response({"ok": True, "already": True})
         UserSoundPack.objects.get_or_create(user=me, pack=pack)
         return Response({"ok": True})

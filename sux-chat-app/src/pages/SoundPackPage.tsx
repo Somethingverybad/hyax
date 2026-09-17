@@ -85,12 +85,12 @@ const SoundPackPage = () => {
               <div className="min-w-0">
                 <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}</p>
                 <p className="mt-1 text-small text-subtle truncate">
-                  {pack.is_base ? "Базовый пак" : pack.creator ? `Автор: ${pack.creator}` : "Без автора"} · {pack.sounds.length} звуков
+                  {pack.is_default ? "Стандартный пак" : pack.creator ? `Автор: ${pack.creator}` : "Без автора"} · {pack.sounds.length} звуков
                 </p>
               </div>
             </div>
 
-            {!pack.is_base && !pack.mine && (
+            {!pack.is_default && !pack.mine && (
               <button
                 type="button"
                 onClick={act}
@@ -101,7 +101,7 @@ const SoundPackPage = () => {
               </button>
             )}
             {pack.mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>}
-            {pack.is_base && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Базовый пак — он есть у всех</p>}
+            {pack.is_default && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Стандартный пак — он есть у всех</p>}
 
             <SettingsCard>
               {pack.sounds.map((s) => (

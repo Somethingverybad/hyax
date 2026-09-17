@@ -104,8 +104,8 @@ export interface SoundPackInfo {
   order: number;
   sounds: NotificationSoundInfo[];
   is_public: boolean;
-  /** Базовый (без владельца) — есть у всех. */
-  is_base: boolean;
+  /** Стандартный (галочка в админке) — есть у всех без подписки. */
+  is_default: boolean;
   creator: string | null;
   /** Уже добавлен текущим пользователем. */
   added: boolean;
