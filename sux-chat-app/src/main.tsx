@@ -132,6 +132,22 @@ if (Cap.isNativePlatform()) {
   // каждые 60 мс и применяем значение, только когда два замера подряд совпали.
   // По истечении окна применяем последнее — на прошивках, где ничего не
   // меняется после первого кадра, это ровно тот же результат.
+  // Viewport на момент keyboardWillShow: пока он не изменился, состояние
+  // «клавиатура открывается» ещё не отражено в раскладке, и формула даёт
+  // ложный полный сдвиг. На vivo нативное перекрытие приходит раньше, чем
+  // Chrome ужимает viewport, — и панель подпрыгивала на высоту клавиатуры,
+  // а через кадр опускалась. Положительный сдвиг применяем, только когда
+  // viewport (высота или панорама) сдвинулся с исходного — либо когда окно
+  // ожидания истекло: есть прошивки, где он не меняется вовсе.
+  let vvAtShow = -1;
+  let vvTopAtShow = -1;
+  const viewportMoved = () => {
+    const vv = Math.round(window.visualViewport?.height ?? window.innerHeight);
+    const top = Math.round(window.visualViewport?.offsetTop ?? 0);
+    return vvAtShow < 0 || vv !== vvAtShow || top !== vvTopAtShow;
+  };
+  const MAX_TICKS = 14; // 14 × 60 мс ≈ 840 мс — дольше любой анимации клавиатуры
+
   let settleTimer: ReturnType<typeof setInterval> | null = null;
   const settle = () => {
     if (settleTimer) clearInterval(settleTimer);
@@ -139,9 +155,13 @@ if (Cap.isNativePlatform()) {
     settleTimer = setInterval(() => {
       const cur = Math.round(keyboardOffset());
       ticks += 1;
-      if (cur === prev || ticks >= 12) {
+      const timedOut = ticks >= MAX_TICKS;
+      // Нулевой сдвиг безопасен всегда; ненулевой — только по подтверждённому
+      // viewport или по таймауту.
+      const trustworthy = cur === 0 || viewportMoved() || timedOut;
+      if (trustworthy && (cur === prev || timedOut)) {
         applyKeyboardOffset();
-        if (ticks >= 12 || cur === prev) { clearInterval(settleTimer!); settleTimer = null; }
+        clearInterval(settleTimer!); settleTimer = null;
       }
       prev = cur;
     }, 60);
@@ -156,7 +176,9 @@ if (Cap.isNativePlatform()) {
   Keyboard.addListener("keyboardWillShow", (info) => {
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = info.keyboardHeight;
-    applog.info(`kb show h=${Math.round(info.keyboardHeight)}`);
+    vvAtShow = Math.round(window.visualViewport?.height ?? window.innerHeight);
+    vvTopAtShow = Math.round(window.visualViewport?.offsetTop ?? 0);
+    applog.info(`kb show h=${Math.round(info.keyboardHeight)} vv0=${vvAtShow}`);
     // Перекрытие меряем заново: без этого на Android оно осталось бы прежним —
     // visualViewport при открытии клавиатуры срабатывает не на всех прошивках.
     refreshSafeArea();
@@ -166,6 +188,7 @@ if (Cap.isNativePlatform()) {
   Keyboard.addListener("keyboardWillHide", () => {
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = 0;
+    vvAtShow = -1; vvTopAtShow = -1;
     applog.info("kb hide");
     refreshSafeArea();
     settle();
