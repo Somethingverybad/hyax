@@ -515,7 +515,8 @@ class Block(models.Model):
 
     class Meta:
         unique_together = ("blocker", "blocked")
-        indexes = [models.Index(fields=["blocker", "blocked"])]
+        # Имя задано явно, чтобы совпадать с 0036: без него Django генерирует своё.
+        indexes = [models.Index(fields=["blocker", "blocked"], name="chat_block_blocker_idx")]
 
     def __str__(self):
         return f"{self.blocker} ⛔ {self.blocked}"
