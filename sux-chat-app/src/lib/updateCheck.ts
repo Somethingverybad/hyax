@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import { APP_VERSION } from "./appVersion";
+import { APP_VERSION, APP_BUILD } from "./appVersion";
 
 /**
  * Проверка обновлений через манифест на сервере (/apk/version.json). Клиент
@@ -11,6 +11,10 @@ const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
 
 export interface UpdateManifest {
   version: string;
+  /** Номер сборки (число коммитов). Версия может не меняться неделями, а
+   *  сборки идти каждый день — без сравнения сборок тестировщики сидели на
+   *  старой и видели «установлена последняя версия». */
+  build?: number;
   notes?: string;
   files?: { mac?: string; win?: string; linux?: string; linux_deb?: string; android?: string; ios?: string };
 }
@@ -49,7 +53,11 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
       .catch(() => fetch(`${MANIFEST_URL_DIRECT}?t=${Date.now()}`, { cache: "no-store" }));
     if (!res.ok) return null;
     const m: UpdateManifest = await res.json();
-    if (!m?.version || cmp(m.version, APP_VERSION) <= 0) return null;
+    if (!m?.version) return null;
+    const byVersion = cmp(m.version, APP_VERSION);
+    const localBuild = parseInt(APP_BUILD, 10) || 0;
+    const newer = byVersion > 0 || (byVersion === 0 && typeof m.build === "number" && localBuild > 0 && m.build > localBuild);
+    if (!newer) return null;
 
     const isDesktop = !!(window as any).electronAPI;
     const platform = Capacitor.getPlatform(); // ios | android | web

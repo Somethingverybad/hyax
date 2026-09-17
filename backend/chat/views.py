@@ -1621,12 +1621,16 @@ class MediaSignView(APIView):
         # Сохранёнки видны в профиле всем (как в референсе) — картинка из них
         # доступна любому вошедшему, даже если он не в исходном чате.
         if not SavedImage.objects.filter(file_url=marker).exists():
-            msg = Message.objects.filter(
+            # Один файл может лежать в нескольких сообщениях: переслали, отправили
+            # в два чата. Право на скачивание — если он виден хотя бы в одном чате,
+            # где человек участник. Раньше брали first() (порядок по UUID —
+            # случайный), и участники второго чата получали 403.
+            msgs = list(Message.objects.filter(
                 Q(file_url=marker) | Q(video_url=marker) | Q(voice_url=marker)
-            ).select_related('chat').first()
-            if not msg:
+            ).select_related('chat'))
+            if not msgs:
                 return Response({"error": "not found"}, status=404)
-            if not _can_see_chat(msg.chat, profile):
+            if not any(_can_see_chat(m.chat, profile) for m in msgs):
                 return Response({"error": "forbidden"}, status=403)
 
         try:

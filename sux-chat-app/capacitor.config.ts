@@ -44,7 +44,9 @@ const config: CapacitorConfig = {
   },
   // 🔧 НАСТРОЙКИ ДЛЯ ANDROID
   android: {
-    overrideUserAgent: "true",
+    // overrideUserAgent здесь стояло строкой "true" — и WebView представлялся
+    // серверам буквально как «true» (в баг-репортах «Устройство: true»).
+    // Нужен был только суффикс.
     appendUserAgent: "fullscreen-app",
     webContentsDebuggingEnabled: true
   }
