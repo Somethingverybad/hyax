@@ -12,7 +12,7 @@ const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
 export interface UpdateManifest {
   version: string;
   notes?: string;
-  files?: { mac?: string; win?: string; linux?: string; android?: string; ios?: string };
+  files?: { mac?: string; win?: string; linux?: string; linux_deb?: string; android?: string; ios?: string };
 }
 
 export interface UpdateInfo {
@@ -59,6 +59,11 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     if (isDesktop) {
       const os = desktopOs();
       fileUrl = m.files?.[os];
+      // Linux из .deb обновляется только новым .deb: AppImage ему бесполезен.
+      if (os === "linux" && m.files?.linux_deb) {
+        const kind = await (window as any).electronAPI?.installKind?.().catch(() => null);
+        if (kind === "deb") fileUrl = m.files.linux_deb;
+      }
       fileName = fileUrl?.split("/").pop();
     } else if (platform === "android") {
       fileUrl = m.files?.android;

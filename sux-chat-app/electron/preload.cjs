@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('update-state', handler);
   },
   appVersion: () => ipcRenderer.invoke('app-version'),
+  // Как установлено на Linux: appimage | deb | other; иначе native.
+  installKind: () => ipcRenderer.invoke('install-kind'),
 });

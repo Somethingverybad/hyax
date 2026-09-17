@@ -219,8 +219,22 @@ autoUpdater.on('update-downloaded', (info) => sendUpdate({ state: 'downloaded', 
 autoUpdater.on('error', (err) => sendUpdate({ state: 'error', message: String((err && err.message) || err) }));
 
 const updaterEnabled = () => app.isPackaged || !!process.env.HYAX_UPDATE_URL;
+
+// Как установлено приложение на Linux. electron-updater умеет обновлять только
+// AppImage (подменяет файл, на который указывает $APPIMAGE); пакет из .deb
+// лежит в /opt и обновляется только новым .deb. Страница шлёт deb-пользователю
+// ссылку на .deb, а не на AppImage, — и апдейтер на нём не дёргаем, иначе он
+// падал бы с «APPIMAGE env is not defined» при каждой проверке.
+const installKind = () => {
+  if (process.platform !== 'linux') return 'native';
+  if (process.env.APPIMAGE) return 'appimage';
+  return /^\/(opt|usr)\//.test(process.execPath) ? 'deb' : 'other';
+};
+ipcMain.handle('install-kind', () => installKind());
+
 ipcMain.handle('update-check', async () => {
   if (!updaterEnabled()) return { ok: false, reason: 'dev' };
+  if (installKind() === 'deb' || installKind() === 'other') return { ok: false, reason: installKind() };
   try {
     const r = await autoUpdater.checkForUpdates();
     return { ok: true, version: r && r.updateInfo ? r.updateInfo.version : null };
