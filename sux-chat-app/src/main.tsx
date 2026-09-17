@@ -110,14 +110,28 @@ if (Cap.isNativePlatform()) {
     return offset;
   };
 
+  // Панорама визуального viewport — компенсируем сдвигом корня (см. index.css)
+  // СИНХРОННО, в обработчике события, а не через стабилизатор: это чистое
+  // измерение, ждать тут нечего, а каждые 60 мс ожидания — кадры, в которых
+  // Chrome уже увёз содержимое вверх, а корень ещё не сдвинут. На Redmi
+  // панорама 0→173 занимала ~100 мс, и панель проваливалась на эти 173 px,
+  // пока стабилизатор не догонял.
+  let lastPan = -1;
+  const syncPan = () => {
+    const top = Math.round(window.visualViewport?.offsetTop ?? 0);
+    if (top === lastPan) return;
+    lastPan = top;
+    root.style.setProperty("--vv-top", `${top}px`);
+  };
+
+
   const applyKeyboardOffset = () => {
     const offset = Math.round(keyboardOffset());
     // Отступ под полосу навигации, пока клавиатура открыта, не нужен: полоса за
     // ней. Иначе внутри панели ввода оставалась пустая полка в её высоту.
     const keyboardUp = keyboardHeight > 0 || offset > 0 || (window.visualViewport?.height ?? window.innerHeight) < window.innerHeight - 40;
     root.style.setProperty("--kb-sab", keyboardUp ? "0px" : "var(--sab)");
-    // Панорама визуального viewport — компенсируем сдвигом корня (см. index.css).
-    root.style.setProperty("--vv-top", `${Math.round(window.visualViewport?.offsetTop ?? 0)}px`);
+    syncPan();
     if (offset === lastOffset) return;
     lastOffset = offset;
     root.style.setProperty("--kb-height", `${offset}px`);
@@ -167,9 +181,9 @@ if (Cap.isNativePlatform()) {
     }, 60);
   };
 
-  window.visualViewport?.addEventListener("resize", settle);
+  window.visualViewport?.addEventListener("resize", () => { syncPan(); settle(); });
   // Панорама приходит событием scroll визуального viewport, не resize.
-  window.visualViewport?.addEventListener("scroll", settle);
+  window.visualViewport?.addEventListener("scroll", () => { syncPan(); settle(); });
   // Инсеты приходят из нативного плагина асинхронно — пересчитываем по ответу.
   onInsetsChange(settle);
 
