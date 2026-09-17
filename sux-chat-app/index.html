@@ -2,7 +2,12 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-content: клавиатура ужимает саму раскладку
+         (innerHeight, dvh), а не визуальный viewport. Без этого Chromium на
+         части прошивок (vivo) панорамировал визуальный viewport к полю ввода
+         и не откатывал — интерфейс уезжал на высоту клавиатуры. iOS атрибут
+         игнорирует. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#0f0f10" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.ico" sizes="any" />

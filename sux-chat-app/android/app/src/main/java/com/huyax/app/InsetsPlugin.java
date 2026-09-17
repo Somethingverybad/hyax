@@ -52,6 +52,9 @@ public class InsetsPlugin extends Plugin {
         r.put("below", 0);
         // -1 — «мерить нечем» (см. ниже); страница тогда считает сама.
         r.put("ime", -1);
+        // Высота WebView в пикселях устройства: при resizes-content innerHeight
+        // страницы меньше неё, а перекрытие клавиатуры считается именно от неё.
+        r.put("webHeight", -1);
 
         WebView web = getBridge() != null ? getBridge().getWebView() : null;
         if (web == null || web.getHeight() == 0) return r;
@@ -94,6 +97,8 @@ public class InsetsPlugin extends Plugin {
         // WebView, поэтому на эту полосу её нужно уменьшить — иначе панель
         // ввода уезжает выше клавиатуры и под ней видно ленту сообщений.
         r.put("below", Math.max(0, (d[1] + decor.getHeight()) - (w[1] + web.getHeight())));
+
+        r.put("webHeight", web.getHeight());
 
         // Клавиатура: не её высота, а НАСКОЛЬКО ОНА ПЕРЕКРЫВАЕТ WebView.
         // Разница принципиальная. Одни прошивки под клавиатуру окно ужимают

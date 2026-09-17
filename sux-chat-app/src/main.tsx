@@ -45,7 +45,7 @@ document.addEventListener(
 // с клавиатурой, а не догоняет её рывком после ресайза WebView.
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Capacitor as Cap } from "@capacitor/core";
-import { screenBelowWebView, watchSafeArea, imeOverlap, onInsetsChange, refreshSafeArea } from "./lib/safeArea";
+import { screenBelowWebView, watchSafeArea, imeOverlap, onInsetsChange, refreshSafeArea, webViewHeight } from "./lib/safeArea";
 
 watchSafeArea();
 
@@ -94,12 +94,18 @@ if (Cap.isNativePlatform()) {
     const overlap = measured >= 0
       ? measured
       : Math.max(0, keyboardHeight - screenBelowWebView());
-    const keyboardTop = window.innerHeight - overlap;
+    // Кромку считаем от высоты WebView, а не от innerHeight: с
+    // interactive-widget=resizes-content раскладка ужимается под клавиатуру,
+    // а перекрытие измерено нативно от полной высоты WebView.
+    const webH = webViewHeight();
+    const keyboardTop = (webH > 0 ? webH : window.innerHeight) - overlap;
     const offset = Math.max(0, visible - keyboardTop);
     // Телеметрия для баг-репорта: по этим числам видно, какая из трёх сил
-    // ужала страницу и почему панель встала туда, куда встала. Пишем только
+    // ужала страницу и почему панель встала туда, куда встала. vvTop —
+    // панорама визуального viewport (на vivo уносила интерфейс). Пишем только
     // при изменении, чтобы не засорять лог.
-    const trace = `kb vv=${Math.round(visible)} inner=${window.innerHeight} ime=${measured >= 0 ? Math.round(measured) : "n/a"} kbH=${Math.round(keyboardHeight)} below=${Math.round(screenBelowWebView())} → ${Math.round(offset)}`;
+    const vvTop = Math.round(window.visualViewport?.offsetTop ?? 0);
+    const trace = `kb vv=${Math.round(visible)} vvTop=${vvTop} inner=${window.innerHeight} webH=${webH > 0 ? Math.round(webH) : "n/a"} ime=${measured >= 0 ? Math.round(measured) : "n/a"} kbH=${Math.round(keyboardHeight)} below=${Math.round(screenBelowWebView())} → ${Math.round(offset)}`;
     if (trace !== lastTrace) { lastTrace = trace; applog.info(trace); }
     return offset;
   };
@@ -110,6 +116,8 @@ if (Cap.isNativePlatform()) {
     // ней. Иначе внутри панели ввода оставалась пустая полка в её высоту.
     const keyboardUp = keyboardHeight > 0 || offset > 0 || (window.visualViewport?.height ?? window.innerHeight) < window.innerHeight - 40;
     root.style.setProperty("--kb-sab", keyboardUp ? "0px" : "var(--sab)");
+    // Панорама визуального viewport — компенсируем сдвигом корня (см. index.css).
+    root.style.setProperty("--vv-top", `${Math.round(window.visualViewport?.offsetTop ?? 0)}px`);
     if (offset === lastOffset) return;
     lastOffset = offset;
     root.style.setProperty("--kb-height", `${offset}px`);
@@ -140,6 +148,8 @@ if (Cap.isNativePlatform()) {
   };
 
   window.visualViewport?.addEventListener("resize", settle);
+  // Панорама приходит событием scroll визуального viewport, не resize.
+  window.visualViewport?.addEventListener("scroll", settle);
   // Инсеты приходят из нативного плагина асинхронно — пересчитываем по ответу.
   onInsetsChange(settle);
 

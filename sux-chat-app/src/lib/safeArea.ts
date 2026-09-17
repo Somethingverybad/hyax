@@ -1,13 +1,14 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 interface InsetsPlugin {
-  get(): Promise<{ top: number; bottom: number; left: number; right: number; below: number; ime: number }>;
+  get(): Promise<{ top: number; bottom: number; left: number; right: number; below: number; ime: number; webHeight?: number }>;
 }
 
 const plugin = registerPlugin<InsetsPlugin>("Insets");
 
 let below = 0;
 let ime = -1;
+let webH = -1;
 const watchers = new Set<() => void>();
 
 /**
@@ -31,6 +32,14 @@ export function screenBelowWebView() {
  */
 export function imeOverlap() {
   return ime;
+}
+
+/** Высота WebView в CSS-пикселях, -1 если неизвестна. При
+ *  interactive-widget=resizes-content innerHeight ужимается под клавиатуру, а
+ *  перекрытие (imeOverlap) измерено от полной высоты WebView — считать кромку
+ *  клавиатуры нужно от неё. */
+export function webViewHeight() {
+  return webH;
 }
 
 /** Подписка на обновление инсетов: плагин отвечает асинхронно. */
@@ -75,6 +84,7 @@ export function watchSafeArea() {
       set("--sar", i.right);
       below = i.below / r;
       ime = typeof i.ime === "number" && i.ime >= 0 ? i.ime / r : -1;
+      webH = typeof i.webHeight === "number" && i.webHeight > 0 ? i.webHeight / r : -1;
       watchers.forEach((cb) => cb());
     } catch {
       // Плагина нет (браузер, старая сборка) — остаются значения из env().
