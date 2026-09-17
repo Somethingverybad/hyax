@@ -10,10 +10,11 @@ import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
 import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
+import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
-  RefreshCw, Bug,
+  RefreshCw, Bug, Eraser,
 } from "lucide-react";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -172,6 +173,23 @@ const ProfilePage = () => {
     } finally {
       setChecking(false);
     }
+  };
+
+  // Сброс кеша — в два тапа: первый переводит строку в режим подтверждения,
+  // второй чистит. Без модалки: она тут тяжелее самого действия, а случайный
+  // тап всего лишь заставит перекачать ленты.
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  useEffect(() => {
+    if (!confirmClear) return;
+    const t = setTimeout(() => setConfirmClear(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmClear]);
+  const clearCache = async () => {
+    if (clearing) return;
+    if (!confirmClear) { setConfirmClear(true); return; }
+    setClearing(true);
+    await clearAppCache(); // сам перезагрузит приложение
   };
 
   const online = (profile?.status || "online") === "online";
@@ -359,6 +377,14 @@ const ProfilePage = () => {
               label="Сообщить о проблеме"
               hint="Скриншот и лог уйдут разработчикам"
               onClick={() => navigate("/profile/bugreport")}
+            />
+            <SettingsRow
+              icon={Eraser}
+              label={clearing ? "Очищаю…" : confirmClear ? "Нажми ещё раз — точно очистить" : "Очистить кэш"}
+              hint={confirmClear ? "Ленты и медиа перекачаются, вход и тема останутся" : "Если что-то отображается неправильно"}
+              onClick={clearCache}
+              danger={confirmClear}
+              trailing={<span />}
             />
           </SettingsCard>
 
