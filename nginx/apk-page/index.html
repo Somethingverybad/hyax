@@ -91,6 +91,16 @@
             (m.ios_build ? " (" + m.ios_build + ")" : "") + "</span>";
         }
         el.innerHTML = html;
+        // Ссылки на установщики — с номером сборки в запросе. Адрес файла
+        // постоянный, и браузер считал уже скачанную копию свежей: после
+        // выкладки нового релиза со страницы приходил старый установщик.
+        // Сборка в адресе делает ссылку новой при каждом релизе.
+        if (m.build) {
+          var links = document.querySelectorAll('a[href*="hyax-public/installers/"]');
+          for (var i = 0; i < links.length; i++) {
+            links[i].href = links[i].href.split("?")[0] + "?v=" + m.build;
+          }
+        }
       })
       .catch(function () { document.getElementById("version").textContent = "Версия: неизвестна"; });
   </script>
