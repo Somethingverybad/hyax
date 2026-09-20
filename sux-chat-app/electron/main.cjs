@@ -7,13 +7,10 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
-// Приложение переименовано (ХУЯКС → WhoYaX), а каталог данных Electron выводит
-// из productName. Без закрепления обновление открыло бы пустой профиль:
-// пропали бы вход, кеш и настройки. Держим прежний путь; до ready и до
-// первого обращения к getPath('userData').
-if (app.isPackaged) {
-  try { app.setPath('userData', path.join(app.getPath('appData'), 'ХУЯКС')); } catch {}
-}
+// Каталог данных переименование не задело: Electron берёт его из поля name в
+// package.json (hyax-messenger), а не из productName, — проверено на сборке
+// 272. Закреплять путь не нужно, и попытка закрепить его на «ХУЯКС» уводила
+// приложение в пустой профиль: такого каталога никогда не существовало.
 
 // Журнал main-процесса: ~/Library/Logs/hyax-messenger/main.log (mac),
 // %APPDATA%/hyax-messenger/logs (win), ~/.config/hyax-messenger/logs (linux).

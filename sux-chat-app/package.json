@@ -158,8 +158,18 @@
     "mac": {
       "category": "public.app-category.social-networking",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "icon": "assets/icon.icns",
       "darkModeSupport": true,
@@ -169,7 +179,7 @@
       },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "notarize": false,
+      "notarize": true,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
       "artifactName": "hyax-mac.${ext}"
