@@ -4,7 +4,7 @@ import { applog } from "@/lib/applog";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown } from "lucide-react";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
@@ -373,6 +373,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const primedRef = useRef(false);
   // Сохранение позиции прокрутки при подгрузке старых сообщений сверху.
   const scrollAdjustRef = useRef<{ height: number; top: number } | null>(null);
+  // Положение ленты. «Прижата к низу» (pinned) — человек смотрит на последние
+  // сообщения: новые приходят с доездом вниз, а рост содержимого (догрузилась
+  // картинка, развернулась расшифровка) низ не отрывает. Отлистал вверх —
+  // ленту не трогаем вообще: новые считаем в newBelow и показываем кнопку.
+  const pinnedRef = useRef(true);
+  // Последние известные scrollTop и расстояние до низа — для сдвига ленты при
+  // открытии и закрытии клавиатуры (см. обработчик hyax:keyboard).
+  const lastTopRef = useRef<number | null>(null);
+  const lastDistRef = useRef<number | null>(null);
+  // Палец сейчас на ленте; и «после жеста довести позицию» — если клавиатура
+  // сменила состояние посреди касания (см. обработчик hyax:keyboard).
+  const feedTouchRef = useRef(false);
+  const pendingKbFixRef = useRef(false);
+  const settleAfterTouch = () => {
+    feedTouchRef.current = false;
+    if (!pendingKbFixRef.current) return;
+    pendingKbFixRef.current = false;
+    // Жест закончился — если лента была прижата к низу, возвращаем её к низу:
+    // во время касания система могла не принять нашу позицию.
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+    });
+  };
+  const jumpingRef = useRef(0); // до какого момента идёт наш собственный доезд вниз
+  const feedRef = useRef<HTMLDivElement>(null);
+  const [newBelow, setNewBelow] = useState(0);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  // Входящие, пришедшие при открытом чате, — им анимация появления (msg-in).
+  const [freshIds, setFreshIds] = useState<Set<string>>(() => new Set());
   // Самое свежее сообщение на прошлом рендере — по нему ищем новые входящие
   // (длина списка больше не годится: страницы добавляются и сверху).
   const newestRef = useRef<number>(0);
@@ -435,6 +465,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     let alive = true;
     syncedAtRef.current = null;
     primedRef.current = false;
+    pinnedRef.current = true;
+    lastTopRef.current = null;
+    lastDistRef.current = null;
+    setNewBelow(0);
+    setAwayFromBottom(false);
+    setFreshIds(new Set());
     setHasMore(false);
     setMessages([]);
 
@@ -482,7 +518,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Новые входящие: звук и прокрутка вниз. Сравниваем по времени самого
   // свежего сообщения на прошлом рендере, а не по длине списка — страницы
   // теперь добавляются и сверху (loadOlder), и это не «новые».
-  useEffect(() => {
+  // Layout-эффект, а не обычный: класс анимации должен встать до первой
+  // отрисовки нового пузыря, иначе он на кадр мелькает уже проявленным.
+  useLayoutEffect(() => {
     const ts = (m: Message) => Date.parse(m.created_at) || 0;
     const newest = messages.length ? ts(messages[messages.length - 1]) : 0;
     if (soundChatRef.current !== chatId) {
@@ -507,8 +545,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       : null;
     if (withSound?.sound?.url) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
 
-    setTimeout(() => scrollToBottom(), 100);
+    const incoming = newMessages.filter(m => m.sender?.id !== userId);
+    if (primedRef.current && incoming.length) setFreshIds(new Set(incoming.map(m => m.id)));
+    // Своё сообщение всегда ведёт вниз. Чужое — только если лента и так у низа;
+    // отлистал вверх — остаёмся на месте и считаем пришедшее.
+    if (incoming.length < newMessages.length || pinnedRef.current) goBottom(primedRef.current);
+    else setNewBelow(n => n + incoming.length);
   }, [messages, userId]);
+
+  // Пока лента прижата к низу, рост содержимого его не отрывает: картинка
+  // догрузилась, появилась расшифровка голосового, пришла реакция. Без этого
+  // последнее сообщение уезжало под поле ввода, а следующий доезд дёргал ленту.
+  useEffect(() => {
+    const feed = feedRef.current, el = scrollRef.current;
+    if (!feed || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedRef.current && Date.now() > jumpingRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(feed);
+    return () => ro.disconnect();
+  }, [chatId]);
 
   // Подгрузили страницу сверху — удерживаем то, что было на экране, на месте:
   // до перерисовки высоту ленты запомнили в scrollAdjustRef.
@@ -558,36 +614,49 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (Capacitor.isNativePlatform()) import("@capacitor/keyboard").then(({ Keyboard }) => Keyboard.hide()).catch(() => {});
   };
   useEffect(() => {
-    let raf = 0;
+    let cleanup: ReturnType<typeof setTimeout> | undefined;
     const onKb = (ev: Event) => {
-      const el = scrollRef.current;
+      const el = scrollRef.current, feed = feedRef.current;
       if (!el) return;
       const { height, duration } = (ev as CustomEvent<{ height: number; duration: number }>).detail;
-      const delta = height - kbShiftRef.current;
+      if (height === kbShiftRef.current) return;
       kbShiftRef.current = height;
-      if (!delta) return;
-      cancelAnimationFrame(raf);
-      // Двигаем ПРИРАЩЕНИЯМИ от текущего scrollTop, а не «from + delta·ease»
-      // от запомненной точки: поле ввода в autoFocus, клавиатура поднимается
-      // сразу при входе в чат, и абсолютная формула стартовала с scrollTop=0 —
-      // пока шла её анимация, scrollToBottom() проматывал ленту вниз, а
-      // следующий кадр возвращал её к «0 + высота клавиатуры». Так лента
-      // «периодически» открывалась сверху. С приращениями параллельная
-      // прокрутка вниз остаётся внизу (лишнее срезает clamp браузера).
-      const start = performance.now();
-      const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-      let applied = 0;
-      const step = (now: number) => {
-        const p = Math.min(1, (now - start) / duration);
-        const target = delta * ease(p);
-        el.scrollTop += target - applied;
-        applied = target;
-        if (p < 1) raf = requestAnimationFrame(step);
-      };
-      raf = requestAnimationFrame(step);
+      // Инвариант — расстояние от низа ленты до низа содержимого: то, на что
+      // человек смотрел над полем ввода, остаётся над полем ввода и при
+      // открытии, и при закрытии клавиатуры. Отступ под клавиатуру
+      // (.chat-scroll padding-bottom) к этому моменту уже изменён, и браузер
+      // сам подрезал scrollTop под новую высоту — поэтому считаем целевую
+      // позицию заново от сохранённого расстояния, а не «прибавляем дельту»:
+      // с дельтой закрытие у самого низа вычитало высоту клавиатуры дважды,
+      // и последние сообщения оставались отлистанными вверх.
+      const prevTop = lastTopRef.current ?? el.scrollTop;
+      const dist = lastDistRef.current ?? 0;
+      const target = Math.max(0, el.scrollHeight - el.clientHeight - dist);
+      el.scrollTop = target;
+      const moved = el.scrollTop - prevTop;
+      lastTopRef.current = el.scrollTop;
+      // Палец на ленте (клавиатуру прячут свайпом вниз): прокруткой сейчас
+      // владеет система, программный scrollTop iOS применит только после
+      // жеста, а трансформ — сразу. Сообщения на это время повисали выше
+      // своего места. Поэтому при активном касании трансформ не ставим:
+      // лента встаёт на место без анимации, под уезжающей клавиатурой.
+      const touching = feedTouchRef.current;
+      applog.info(`kbfeed h=${Math.round(height)} touch=${touching ? 1 : 0} prev=${Math.round(prevTop)} target=${Math.round(target)} got=${Math.round(el.scrollTop)} dist=${Math.round(dist)} sh=${el.scrollHeight} ch=${el.clientHeight}`);
+      if (touching) { pendingKbFixRef.current = true; return; }
+      if (!feed || !moved || !duration) return;
+      // Сам переезд показываем трансформом с той же кривой и длительностью,
+      // что у панели ввода (.pad-safe-bottom): его считает композитор, лента
+      // идёт вровень с клавиатурой, а scrollTop по кадрам никто не пишет.
+      clearTimeout(cleanup);
+      feed.style.transition = "none";
+      feed.style.transform = `translateY(${moved}px)`;
+      void feed.offsetHeight; // зафиксировать стартовое положение до перехода
+      feed.style.transition = `transform ${duration}ms cubic-bezier(0.17, 0.59, 0.4, 1)`;
+      feed.style.transform = "translateY(0)";
+      cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; }, duration + 60);
     };
     window.addEventListener("hyax:keyboard", onKb);
-    return () => { window.removeEventListener("hyax:keyboard", onKb); cancelAnimationFrame(raf); };
+    return () => { window.removeEventListener("hyax:keyboard", onKb); clearTimeout(cleanup); };
   }, []);
 
   /** Приращение с сервера: всё, что менялось после последней синхронизации. */
@@ -643,32 +712,52 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const onFeedScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollTop < 160 && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    lastTopRef.current = el.scrollTop;
+    lastDistRef.current = Math.max(0, dist);
+    const jumping = Date.now() < jumpingRef.current;
+    if (dist < 80) {
+      pinnedRef.current = true;
+      jumpingRef.current = 0;
+      if (newBelow) setNewBelow(0);
+    } else if (!jumping) {
+      pinnedRef.current = false;
+    }
+    const away = dist > 400 && !jumping;
+    if (away !== awayFromBottom) setAwayFromBottom(away);
+    // Старые страницы тянем заранее, за полтора экрана до верха: пока человек
+    // долистает, они уже в ленте, и вставка не приходится на край под пальцем.
+    if (el.scrollTop < Math.max(600, el.clientHeight * 1.5) && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
   };
 
-  /** Вход в чат: встаём мгновенно чуть выше низа и плавно доезжаем до
-   *  последнего сообщения — короткий «въезд», а не прыжок и не долгий пролёт
-   *  через всю ленту. В коротком чате (старт у самого верха) — мгновенно,
-   *  иначе onFeedScroll принял бы старт за прокрутку вверх и позвал loadOlder. */
-  const scrollToBottomOnOpen = () => {
-    setTimeout(() => {
+  /** Доезд в самый низ — по новому сообщению, после отправки, по кнопке. */
+  const goBottom = (smooth: boolean) => {
+    pinnedRef.current = true;
+    setNewBelow(0);
+    requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (!el) return;
-      const start = el.scrollHeight - el.clientHeight * 2.2;
-      if (start < 240) { el.scrollTo({ top: el.scrollHeight, behavior: "auto" }); return; }
-      el.scrollTop = start;
-      requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
-    }, 60);
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Плавно — только на короткой дистанции: пролёт через всю ленту дольше
+      // и заметнее, чем мгновенный переход.
+      const animate = smooth && dist < el.clientHeight * 3;
+      jumpingRef.current = animate ? Date.now() + 700 : 0;
+      el.scrollTo({ top: el.scrollHeight, behavior: animate ? "smooth" : "auto" });
+    });
   };
 
-  /** Прокрутка в самый низ: при открытии чата — мгновенно, при отправке — плавно. */
-  const scrollToBottom = (smooth = false) => {
-    setTimeout(() => {
-      const el = scrollRef.current;
-      if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-      else messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "end" });
-    }, smooth ? 30 : 100);
+  /** Вход в чат: лента сразу стоит на последнем сообщении. */
+  const scrollToBottomOnOpen = () => {
+    // Вход в чат — сразу у последнего сообщения, без «въезда»: плавный пролёт
+    // на входе спорил с догрузкой истории и синхронизацией, лента дёргалась.
+    // Дальше низ удерживает ResizeObserver (см. выше), пока лента прижата.
+    pinnedRef.current = true;
+    const snap = () => { const el = scrollRef.current; if (el && pinnedRef.current) el.scrollTop = el.scrollHeight; };
+    requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
   };
+
+  /** После отправки (текст, медиа, стикер) — вниз, плавно. */
+  const scrollToBottom = (smooth = false) => goBottom(smooth);
 
   const handlePick = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -1523,7 +1612,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         ref={scrollRef}
         onScroll={onFeedScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6"
-        onTouchStart={(e) => { kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
+        onTouchStart={(e) => { feedTouchRef.current = true; kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
+        onTouchEnd={settleAfterTouch}
+        onTouchCancel={settleAfterTouch}
         onTouchMove={(e) => {
           // Свайп вниз по ленте при открытой клавиатуре прячет её (как в Telegram).
           const s = kbSwipeRef.current;
@@ -1532,7 +1623,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         }}
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        <div className="max-w-4xl mx-auto space-y-2">
+        <div ref={feedRef} className="max-w-4xl mx-auto space-y-2">
           {hasMore && (
             <div className="flex justify-center">
               <button
@@ -1581,7 +1672,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
-                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", message._key && "msg-in")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (
@@ -1664,12 +1755,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       className={cn(
                       "relative",
                       !bareBubble && "px-4 py-3 rounded-lg",
-                      // Свои — тёмно-красные с хвостиком наружу (bubble-own в
-                      // index.css), входящие — зелёные, симметричные.
+                      // Цвета пузырей — переменные темы (--bubble-own/-in и их
+                      // -fg, см. msg-own/msg-peer в index.css): текст внутри
+                      // наследуется, поэтому тема может сделать пузырь и тёмным,
+                      // и светлым. Хвостик — bubble-own/bubble-in.
                       !bareBubble &&
                         (isOwn
-                          ? cn("bg-primary-deep text-white", lastInGroup && "bubble-own")
-                          : cn("bg-success text-white", lastInGroup && "bubble-in"))
+                          ? cn("msg-bubble msg-own", lastInGroup && "bubble-own")
+                          : cn("msg-bubble msg-peer", lastInGroup && "bubble-in"))
                     )}>
                       {/* Цитируемое сообщение (реплай). */}
                       {/* Пересланное: от кого пришло изначально. */}
@@ -1782,7 +1875,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           <Linkify text={message.content} />
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
-                            <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption text-white/70 whitespace-nowrap">
+                            <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
                               {message.is_edited ? "изм. " : ""}{formatTime(message.created_at)}
                               {message.pending ? <Check className="w-3.5 h-3.5" /> : <CheckCheck className="w-3.5 h-3.5" />}
                             </span>
@@ -1844,7 +1937,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       )}
                       {/* Не ушло: запись на месте, можно повторить или убрать. */}
                       {message.pending && message._failed && (
-                        <div className={cn("mt-1.5 flex items-center gap-3 text-caption", isOwn && !bareBubble ? "text-white/80" : "text-subtle")}>
+                        <div className={cn("mt-1.5 flex items-center gap-3 text-caption", isOwn && !bareBubble ? "opacity-80" : "text-subtle")}>
                           <span className="text-destructive font-medium">Не отправлено</span>
                           {message._rec && (
                             <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">Повторить</button>
@@ -1857,7 +1950,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       )}
                       {/* Загрузка вложения: полоска и проценты прямо в пузыре. */}
                       {message.pending && !message._failed && message._progress != null && (
-                        <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[96px]", isOwn && !bareBubble ? "text-white/70" : "text-subtle")}>
+                        <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[96px]", isOwn && !bareBubble ? "opacity-70" : "text-subtle")}>
                           <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
                             <div className="h-full bg-current transition-[width] duration-150" style={{ width: `${Math.max(3, message._progress)}%` }} />
                           </div>
@@ -1895,6 +1988,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* Кнопка «вниз»: появляется, когда лента отлистана вверх; со счётчиком,
+          если за это время пришли новые. Сама лента при этом не двигается. */}
+      {(awayFromBottom || newBelow > 0) && (
+        <div className="relative h-0 z-10">
+          <button
+            type="button"
+            onClick={() => goBottom(true)}
+            className="ui-btn absolute right-3 md:right-6 -top-14 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80"
+            aria-label={newBelow > 0 ? `Новых сообщений: ${newBelow}. Вниз` : "Вниз"}
+          >
+            <ArrowDown className="w-5 h-5" />
+            {newBelow > 0 && (
+              <span className="absolute -top-2 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-primary text-primary-foreground text-[11px] font-semibold flex items-center justify-center">
+                {newBelow > 99 ? "99+" : newBelow}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Поле ввода */}
       <div ref={composeRef} className="chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0">

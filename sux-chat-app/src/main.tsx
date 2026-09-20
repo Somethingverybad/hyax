@@ -27,6 +27,13 @@ syncAppHeight();
 window.visualViewport?.addEventListener("resize", syncAppHeight);
 window.visualViewport?.addEventListener("scroll", syncAppHeight);
 window.addEventListener("resize", syncAppHeight);
+// Поворот экрана: WKWebView шлёт resize раньше, чем обновит размеры viewport,
+// и высота приложения оставалась от прежней ориентации — раскладка не
+// возвращалась после поворота обратно. Перемеряем ещё несколько раз, пока
+// система доводит размеры.
+window.addEventListener("orientationchange", () => {
+  for (const ms of [0, 120, 350, 700]) window.setTimeout(syncAppHeight, ms);
+});
 
 // При фокусе на поле браузер сам не всегда доводит его до видимой зоны —
 // особенно когда высота меняется вместе с клавиатурой. Досматриваем вручную.
@@ -162,6 +169,15 @@ if (Cap.isNativePlatform()) {
   };
   const MAX_TICKS = 14; // 14 × 60 мс ≈ 840 мс — дольше любой анимации клавиатуры
 
+  // iOS: вся осторожность выше там не нужна и вредна. Режим ресайза выключен,
+  // viewport под клавиатуру не меняется НИКОГДА, сдвиг всегда равен высоте
+  // клавиатуры из keyboardWillShow. Правило «ждём, пока viewport сдвинется»
+  // (сделано под vivo) на iOS не выполнялось вовсе, и поле ввода уезжало по
+  // таймауту — через ~840 мс после клавиатуры. Поэтому на iOS применяем сдвиг
+  // сразу, в самом обработчике: переход 250 мс стартует вместе с системной
+  // анимацией клавиатуры.
+  const isIOS = Cap.getPlatform() === "ios";
+
   let settleTimer: ReturnType<typeof setInterval> | null = null;
   const settle = () => {
     if (settleTimer) clearInterval(settleTimer);
@@ -172,7 +188,7 @@ if (Cap.isNativePlatform()) {
       const timedOut = ticks >= MAX_TICKS;
       // Нулевой сдвиг безопасен всегда; ненулевой — только по подтверждённому
       // viewport или по таймауту.
-      const trustworthy = cur === 0 || viewportMoved() || timedOut;
+      const trustworthy = isIOS || cur === 0 || viewportMoved() || timedOut;
       if (trustworthy && (cur === prev || timedOut)) {
         applyKeyboardOffset();
         clearInterval(settleTimer!); settleTimer = null;
@@ -196,6 +212,7 @@ if (Cap.isNativePlatform()) {
     // Перекрытие меряем заново: без этого на Android оно осталось бы прежним —
     // visualViewport при открытии клавиатуры срабатывает не на всех прошивках.
     refreshSafeArea();
+    if (isIOS) applyKeyboardOffset();
     settle();
   });
 
@@ -205,6 +222,7 @@ if (Cap.isNativePlatform()) {
     vvAtShow = -1; vvTopAtShow = -1;
     applog.info("kb hide");
     refreshSafeArea();
+    if (isIOS) applyKeyboardOffset();
     settle();
     window.scrollTo(0, 0);
   });
