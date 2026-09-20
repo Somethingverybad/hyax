@@ -41,6 +41,11 @@ const resolveUrl = async (raw: string, localMap?: Map<string, string>) => {
  * сохранёнки, скачать, удалить — набор передаёт вызывающий экран. Тап по
  * чёрному фону закрывает просмотр.
  */
+/** Кнопки поверх снимка: белый значок на тёмной полупрозрачной подложке.
+ *  Без неё крестик и меню терялись на светлых фото и скриншотах — снимок
+ *  во весь экран оказывается прямо под ними. */
+const chrome = "w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center active:opacity-70";
+
 const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
   items: ViewerItem[];
   index: number;
@@ -106,14 +111,14 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
         style={{ top: "calc(var(--sat) + 0.5rem)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button type="button" onClick={onClose} className="p-2 text-white" aria-label="Закрыть">
+        <button type="button" onClick={onClose} className={chrome} aria-label="Закрыть">
           <X className="w-6 h-6" />
         </button>
         {items.length > 1 && (
-          <span className="text-white/80 text-small tabular-nums">{index + 1} из {items.length}</span>
+          <span className="px-2.5 py-1 rounded-full bg-black/55 text-white/90 text-small tabular-nums">{index + 1} из {items.length}</span>
         )}
         {actions.length > 0 ? (
-          <button type="button" onClick={() => setMenuOpen((v) => !v)} className="p-2 text-white" aria-label="Меню">
+          <button type="button" onClick={() => setMenuOpen((v) => !v)} className={chrome} aria-label="Меню">
             <MoreVertical className="w-6 h-6" />
           </button>
         ) : <span className="w-10" />}
