@@ -15,6 +15,9 @@ export const PUBLIC_ORIGIN = "https://huyax.e-tree.su";
 
 export const profileLink = (username: string) => `${PUBLIC_ORIGIN}/u/${encodeURIComponent(username)}`;
 /** Ссылка на пак звуков: по ней пак добавляют себе (см. pages/SoundPackPage). */
+/** Ссылка на тему оформления — /t/<id>, как у паков. */
+export const themeLink = (id: string) => `${PUBLIC_ORIGIN}/t/${id}`;
+
 export const soundPackLink = (id: string) => `${PUBLIC_ORIGIN}/sp/${id}`;
 /** Ссылка на стикерпак: по ней пак добавляют себе (см. pages/StickerPackPage). */
 export const stickerPackLink = (id: string) => `${PUBLIC_ORIGIN}/stp/${id}`;

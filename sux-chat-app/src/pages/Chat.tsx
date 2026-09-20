@@ -11,6 +11,7 @@ import ChannelView from "@/components/chat/ChannelView";
 import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
 import TermsGate from "@/components/TermsGate";
+import { syncThemeFromProfile } from "@/lib/theme";
 import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { requestMediaPermissionsOnce } from "@/lib/permissions";
@@ -37,6 +38,9 @@ interface ChatType {
   created_at: string;
   updated_at: string;
   participants?: ProfileType[];
+  /** Закрепление (личное) и время последнего сообщения — порядок списка. */
+  pinned_at?: string | null;
+  last_message_at?: string | null;
   last_message?: { text: string; sender_id: string } | null;
   unread_count?: number;
 }
@@ -185,6 +189,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       try {
         const profile = await api.getProfile();
         setUser(profile);
+        // Тема хранится в профиле: на новом устройстве включаем ту же (lib/theme).
+        void syncThemeFromProfile((profile as any).active_theme);
         writeCache("user", profile);
         const userChats = await mergeUnread(await api.getChats());
         setChats(userChats);

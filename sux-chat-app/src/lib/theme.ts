@@ -1,89 +1,117 @@
 import { Capacitor } from "@capacitor/core";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { useSyncExternalStore } from "react";
+import { BUILTIN_THEMES, DEFAULT_THEME, builtinById } from "@/themes/builtin";
+import { normalizeTheme, paintTheme, themeAttrs, themeVars } from "@/themes/engine";
+import type { ThemeDef } from "@/themes/types";
 
 /**
- * Тема оформления: тёмная (исходная, по умолчанию), светлая и «Необрутализм»
- * (кремовый фон, обводки тушью, жёсткие тени — по стайлгайду ChatApp).
+ * Активная тема и список установленных.
  *
- * Вся палитра живёт токенами в index.css, поэтому переключение — это один
- * атрибут data-theme на <html>: `:root[data-theme="light"]` переопределяет
- * те же переменные, и перекрашивается всё приложение разом.
+ * Тема — данные (src/themes): встроенные лежат в коде, пользовательские
+ * приходят с сервера. Выбор хранится на сервере в профиле (active_theme) и
+ * переезжает между устройствами; здесь — копия: id и сам объект активной темы
+ * в localStorage, чтобы приложение красилось до первого запроса и без сети.
  */
-export type Theme = "dark" | "light" | "neo";
-
-export const THEME_LABELS: Record<Theme, string> = { dark: "Тёмная", light: "Светлая", neo: "Необрутализм" };
-
-/** Фон у темы светлый: тёмные значки статус-бара, светлая системная подложка. */
-export function isLightTheme(theme: Theme): boolean {
-  return theme !== "dark";
-}
-
-/** Цвет фона темы — для <meta name="theme-color"> (панель браузера, PWA). */
-const THEME_COLOR: Record<Theme, string> = { dark: "#0f0f10", light: "#f8fafc", neo: "#f5f5eb" };
-
-const STORAGE_KEY = "hyax-theme";
-const DEFAULT: Theme = "dark";
+const KEY_ID = "hyax-theme";
+const KEY_DEF = "hyax-theme-def";
+const KEY_LIST = "hyax-themes";
 
 const listeners = new Set<() => void>();
-let current: Theme = DEFAULT;
+let current: ThemeDef = DEFAULT_THEME;
+let installed: ThemeDef[] = [];
+const emit = () => listeners.forEach((l) => l());
 
-function readStored(): Theme {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY);
-    return v === "light" || v === "dark" || v === "neo" ? v : DEFAULT;
-  } catch {
-    // Приватный режим или заблокированное хранилище — не повод падать.
-    return DEFAULT;
-  }
+function read<T>(key: string): T | null {
+  try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : null; }
+  catch { return null; } // приватный режим или битый JSON — не повод падать
+}
+function write(key: string, value: unknown) {
+  try { localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value)); }
+  catch { /* не сохранилось — тема всё равно применится до конца сессии */ }
 }
 
 /** Статус-бар в нативной обёртке рисует система: цвет его значков задаём сами.
  *  Style.Dark — светлые значки для тёмного фона, Style.Light — наоборот. */
-function syncStatusBar(theme: Theme) {
+function syncStatusBar(t: ThemeDef) {
   if (!Capacitor.isNativePlatform()) return;
-  StatusBar.setStyle({ style: isLightTheme(theme) ? Style.Light : Style.Dark }).catch(() => {});
+  StatusBar.setStyle({ style: t.base === "light" ? Style.Light : Style.Dark }).catch(() => {});
 }
 
-function paint(theme: Theme) {
-  document.documentElement.dataset.theme = theme;
+function paint(t: ThemeDef) {
+  const root = document.documentElement;
+  if (t.id === "dark") {
+    // Встроенная тёмная живёт токенами index.css (там же её десктопные
+    // поправки) — снимаем всё, что выставила предыдущая тема.
+    for (const k of Object.keys(themeVars(t))) root.style.removeProperty(k);
+    for (const [k, v] of Object.entries(themeAttrs(t))) root.setAttribute(k, v);
+  } else {
+    paintTheme(root, t);
+  }
   // Нативные элементы (подложка при оверскролле, экранная клавиатура) берут
-  // цвет отсюда — иначе в светлой теме они остаются чёрными.
-  // Именно light/dark, а не имя темы: у color-scheme других значений нет.
-  document.documentElement.style.colorScheme = isLightTheme(theme) ? "light" : "dark";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLOR[theme]);
-  syncStatusBar(theme);
+  // цвет отсюда. Именно light/dark: у color-scheme других значений нет.
+  root.style.colorScheme = t.base;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t.colors.background);
+  syncStatusBar(t);
 }
 
 /** Вызывается из main.tsx до первой отрисовки: иначе экран моргнёт тёмным. */
 export function initTheme() {
-  current = readStored();
+  let id: string | null = null;
+  try { id = localStorage.getItem(KEY_ID); } catch { /* недоступно */ }
+  installed = (read<unknown[]>(KEY_LIST) || []).map((t) => normalizeTheme(t));
+  const cached = read<unknown>(KEY_DEF);
+  current = (id && builtinById(id))
+    || (id && cached && (cached as any).id === id ? normalizeTheme(cached) : null)
+    || DEFAULT_THEME;
   paint(current);
 }
 
-export function getTheme(): Theme {
-  return current;
+export function getTheme(): ThemeDef { return current; }
+export function getInstalledThemes(): ThemeDef[] { return installed; }
+
+/** Применить тему. remote=false — не сообщать серверу (значение пришло с него). */
+export function setTheme(t: ThemeDef, remote = true) {
+  current = t;
+  write(KEY_ID, t.id);
+  write(KEY_DEF, t);
+  paint(t);
+  emit();
+  if (remote) void import("@/api/client").then(({ api }) => api.setActiveTheme(t.id)).catch(() => {});
 }
 
-export function setTheme(theme: Theme) {
-  if (theme === current) return;
-  current = theme;
-  try {
-    localStorage.setItem(STORAGE_KEY, theme);
-  } catch {
-    // Не сохранилось — тема всё равно применится до конца сессии.
+/** Заменить список установленных (ответ сервера). Активная пользовательская
+ *  тема обновляется, если автор её поправил; пропала из списка — откат. */
+export function setInstalledThemes(list: ThemeDef[]) {
+  installed = list;
+  write(KEY_LIST, list);
+  if (!current.builtin) {
+    const fresh = list.find((t) => t.id === current.id);
+    if (fresh) { current = fresh; write(KEY_DEF, fresh); paint(fresh); }
   }
-  paint(theme);
-  listeners.forEach((l) => l());
+  emit();
 }
 
-export function useTheme(): Theme {
-  return useSyncExternalStore(
-    (onChange) => {
-      listeners.add(onChange);
-      return () => listeners.delete(onChange);
-    },
-    getTheme,
-    () => DEFAULT,
-  );
+/** Профиль пришёл с сервера: на этом устройстве ставим ту же тему. */
+export async function syncThemeFromProfile(activeId: string | null | undefined) {
+  if (!activeId || activeId === current.id) return;
+  const known = builtinById(activeId) || installed.find((t) => t.id === activeId);
+  if (known) { setTheme(known, false); return; }
+  try {
+    const { api } = await import("@/api/client");
+    setTheme(normalizeTheme(await api.getTheme(activeId)), false);
+  } catch { /* тема удалена или нет сети — остаёмся на текущей */ }
 }
+
+function subscribe(onChange: () => void) {
+  listeners.add(onChange);
+  return () => { listeners.delete(onChange); };
+}
+export function useTheme(): ThemeDef {
+  return useSyncExternalStore(subscribe, getTheme, () => DEFAULT_THEME);
+}
+export function useInstalledThemes(): ThemeDef[] {
+  return useSyncExternalStore(subscribe, getInstalledThemes, () => []);
+}
+
+export { BUILTIN_THEMES };

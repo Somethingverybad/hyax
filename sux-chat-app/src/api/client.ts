@@ -97,6 +97,8 @@ export interface Profile {
   rov_enabled?: boolean;
   /** Показывать паки 18+. Приходит только в своём профиле. */
   allow_adult?: boolean;
+  /** Выбранная тема: dark | light | neo либо uuid темы с сервера. */
+  active_theme?: string;
   /** Когда приняты правила. null — ещё не приняты (экран согласия);
    *  undefined — сервер поля не знает или это чужой профиль. */
   terms_accepted_at?: string | null;
@@ -138,7 +140,7 @@ export interface StickerPackInfo {
   is_saved: boolean;
 }
 
-export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack";
+export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack" | "theme";
 export type ReportReason = "sexual" | "violence" | "abuse" | "spam" | "illegal" | "other";
 
 export interface SavedImage {
@@ -1049,6 +1051,59 @@ export const api = {
     return res.json();
   },
 
+
+  /** Закрепить чат вверху списка или открепить. Закрепление личное. */
+  pinChat: async (chatId: string, pinned: boolean): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/pin/`, {
+      method: pinned ? "POST" : "DELETE", headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error(pinned ? "Не удалось закрепить" : "Не удалось открепить");
+  },
+
+  // ===== ТЕМЫ ОФОРМЛЕНИЯ =====
+  /** Мои темы и установленные чужие. Объекты — «сырые», через normalizeTheme. */
+  listThemes: async (): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/themes/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить темы");
+    return (await res.json()).themes || [];
+  },
+  getTheme: async (id: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/themes/${id}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Тема не найдена");
+    return res.json();
+  },
+  /** Создать (без id) или сохранить свою тему. Сервер проверяет схему. */
+  saveTheme: async (theme: { id?: string; name: string; base: string; colors: Record<string, string>; shape: object; is_public?: boolean }): Promise<any> => {
+    const { id, ...body } = theme;
+    const res = await fetchWithAuth(id ? `${API_URL}/themes/${id}/` : `${API_URL}/themes/`, {
+      method: id ? "PATCH" : "POST", headers: authHeaders(), body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let msg = "Не удалось сохранить тему";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+  deleteTheme: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/themes/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось удалить тему");
+  },
+  installTheme: async (id: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/themes/${id}/install/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось установить тему");
+    return res.json();
+  },
+  uninstallTheme: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/themes/${id}/install/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось убрать тему");
+  },
+  /** Запомнить выбор темы в профиле — он переедет на другие устройства. */
+  setActiveTheme: async (themeId: string): Promise<void> => {
+    if (!localStorage.getItem("access_token")) return;
+    const me = await api.getCurrentUser();
+    await fetchWithAuth(`${API_URL}/profiles/${me.id}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ active_theme: themeId }) });
+  },
 
   // ===== АККАУНТ =====
   /** Принять правила и политику — для тех, кто регистрировался до их появления. */

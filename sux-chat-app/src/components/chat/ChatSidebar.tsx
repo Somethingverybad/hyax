@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
-import { RefreshCw, Share2 } from "lucide-react";
+import { RefreshCw, Share2, Pin } from "lucide-react";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
 import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
@@ -40,6 +40,10 @@ interface Chat {
   is_group?: boolean;
   participants?: Profile[];
   created_at?: string;
+  /** Когда я закрепил чат; null — не закреплён. Закрепление личное. */
+  pinned_at?: string | null;
+  /** Время последнего сообщения — по нему сортируется список. */
+  last_message_at?: string | null;
 }
 
 interface ChatSidebarProps {
@@ -136,7 +140,26 @@ const ChatSidebar = ({
   // Удаление чата: десктоп — меню по правому клику у курсора; телефон —
   // свайп влево открывает красную кнопку.
   const [chatMenu, setChatMenu] = useState<{ x: number; y: number; chatId: string; title: string } | null>(null);
+  // Свайп влево открывает удаление, вправо — закрепление.
   const [swipedChatId, setSwipedChatId] = useState<string | null>(null);
+  const [pinSwipedId, setPinSwipedId] = useState<string | null>(null);
+  // Закрепление применяем сразу на экране, не дожидаясь ответа: иначе строка
+  // прыгает вверх с задержкой в полсекунды. При ошибке откатываем.
+  const [pinOverride, setPinOverride] = useState<Record<string, string | null>>({});
+  const pinnedAt = (c: Chat) => (c.id in pinOverride ? pinOverride[c.id] : c.pinned_at ?? null);
+
+  const togglePin = async (chat: Chat) => {
+    const next = pinnedAt(chat) ? null : new Date().toISOString();
+    setPinSwipedId(null);
+    setPinOverride((p) => ({ ...p, [chat.id]: next }));
+    try {
+      await api.pinChat(chat.id, !!next);
+      await onRefresh?.();
+    } catch (e: any) {
+      setPinOverride((p) => { const { [chat.id]: _, ...rest } = p; return rest; });
+      toast.error(e?.message || "Не получилось");
+    }
+  };
   const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
 
   useEffect(() => {
@@ -676,7 +699,19 @@ const ChatSidebar = ({
             </button>
           )}
           {chats.length > 0 ? (
-            chats.filter((chat) => {
+            [...chats].sort((x, y) => {
+              // Закреплённые сверху, позже закреплённый выше; остальные — по
+              // времени последнего сообщения. Тот же порядок отдаёт сервер;
+              // здесь он держится и между обновлениями списка (закрепили —
+              // строка уезжает вверх сразу, не дожидаясь ответа).
+              const px = pinnedAt(x), py = pinnedAt(y);
+              if (px && py) return py.localeCompare(px);
+              if (px) return -1;
+              if (py) return 1;
+              const tx = x.last_message_at || x.created_at || "";
+              const ty = y.last_message_at || y.created_at || "";
+              return ty.localeCompare(tx);
+            }).filter((chat) => {
               if (listTab === "unread" && !(((chat as any).unread_count || 0) > 0)) return false;
               if (listTab === "channels" && (chat as any).kind !== "channel") return false;
               const q = listFilter.trim().toLowerCase();
@@ -714,6 +749,18 @@ const ChatSidebar = ({
                 >
                   {/* Разделитель с полями 16 px; после последней строки и на десктопе его нет. */}
                   <div className="chat-row-divider absolute bottom-0 left-4 right-4 h-px bg-border pointer-events-none z-10 md:hidden" />
+                  {/* Закрепление — свайпом вправо (телефон): кнопка слева, под строкой */}
+                  <button
+                    type="button"
+                    onClick={() => togglePin(chat)}
+                    className="absolute inset-y-0 left-0 w-20 bg-amber text-background flex flex-col items-center justify-center gap-0.5 md:hidden"
+                    tabIndex={pinSwipedId === chat.id ? 0 : -1}
+                    aria-label={pinnedAt(chat) ? "Открепить чат" : "Закрепить чат"}
+                  >
+                    <Pin className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">{pinnedAt(chat) ? "Открепить" : "Закрепить"}</span>
+                  </button>
+
                   {/* Красная кнопка удаления — открывается свайпом влево (телефон) */}
                   <button
                     type="button"
@@ -732,7 +779,7 @@ const ChatSidebar = ({
                     } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                       isCollapsed ? "justify-center" : ""
                     }`}
-                    style={{ transform: swipedChatId === chat.id ? "translateX(-80px)" : "translateX(0)" }}
+                    style={{ transform: swipedChatId === chat.id ? "translateX(-80px)" : pinSwipedId === chat.id ? "translateX(80px)" : "translateX(0)" }}
                     onContextMenu={(e) => {
                       if (isCollapsed) return;
                       e.preventDefault();
@@ -748,14 +795,19 @@ const ChatSidebar = ({
                       const t = e.changedTouches[0];
                       const dx = t.clientX - s.x, dy = t.clientY - s.y;
                       if (Math.abs(dx) > Math.abs(dy) * 1.5) {
-                        if (dx < -45) setSwipedChatId(chat.id);
+                        // Влево — удаление, вправо — закрепление. Свайп в
+                        // обратную сторону сначала закрывает открытую кнопку.
+                        if (dx < -45) { setPinSwipedId(null); setSwipedChatId(chat.id); }
+                        else if (dx > 45 && swipedChatId !== chat.id) { setSwipedChatId(null); setPinSwipedId(chat.id); }
                         else if (dx > 25) setSwipedChatId(null);
+                        else if (dx < -25) setPinSwipedId(null);
                       }
                     }}
                   >
                   <button
                     onClick={() => {
                       if (swipedChatId === chat.id) { setSwipedChatId(null); return; }
+                      if (pinSwipedId === chat.id) { setPinSwipedId(null); return; }
                       handleSelectChat(chat.id, chatTitle, (chat as any).kind);
                     }}
                     // min-w-0: без него кнопка (flex-элемент) не ужимается ниже
@@ -799,6 +851,7 @@ const ChatSidebar = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <p className="text-h2 md:text-[15px] truncate min-w-0 flex items-center gap-1.5">
+                            {pinnedAt(chat) && <Pin className="w-3.5 h-3.5 text-amber shrink-0" aria-label="Закреплён" />}
                             {isChannel && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
                             <span className="truncate">{chatTitle}</span>
                           </p>

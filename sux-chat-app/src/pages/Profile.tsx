@@ -8,7 +8,7 @@ import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile } from "@/lib/share";
-import { useTheme, THEME_LABELS } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
@@ -360,7 +360,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Palette}
               label="Внешний вид"
-              value={THEME_LABELS[theme]}
+              value={theme.name}
               onClick={() => navigate("/profile/appearance")}
             />
           </SettingsCard>

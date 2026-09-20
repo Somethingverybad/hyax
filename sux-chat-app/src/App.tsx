@@ -8,6 +8,8 @@ import ProfileBugReport from "./pages/ProfileBugReport";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
 import Legal from "./pages/Legal";
+import ThemeEditor from "./pages/ThemeEditor";
+import ThemePage from "./pages/ThemePage";
 import SoundPackPage from "./pages/SoundPackPage";
 import StickerPackPage from "./pages/StickerPackPage";
 import { applog } from "@/lib/applog";
@@ -28,7 +30,7 @@ import { Minus, X } from "lucide-react";
 import { useRef, useEffect } from "react";
 
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { getTheme, isLightTheme } from "@/lib/theme";
+import { getTheme } from "@/lib/theme";
 
 
 const queryClient = new QueryClient();
@@ -79,7 +81,7 @@ const DeepLinks = () => {
       if (!url) return;
       try {
         const u = new URL(url);
-        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/")) navRef.current(u.pathname + u.search);
+        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/t/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/")) navRef.current(u.pathname + u.search);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
@@ -103,7 +105,7 @@ const App = () => {
           // отступа под него не было — часы и значки накрывали шапку.
           await StatusBar.setOverlaysWebView({ overlay: true });
           // Стиль значков зависит от темы — его ставит lib/theme.
-          await StatusBar.setStyle({ style: isLightTheme(getTheme()) ? Style.Light : Style.Dark });
+          await StatusBar.setStyle({ style: getTheme().base === "light" ? Style.Light : Style.Dark });
         } catch (error) {
           console.log('StatusBar not available:', error);
         }
@@ -155,6 +157,10 @@ const App = () => {
               <Route path="/profile/bugreport" element={<ProfileBugReport />} />
               <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
               <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
+              {/* Редактор темы: новая или своя по id. */}
+              <Route path="/profile/themes/:id" element={<ThemeEditor />} />
+              {/* Тема по ссылке «Поделиться темой». */}
+              <Route path="/t/:id" element={<ThemePage />} />
               {/* Правила и политика — публичные, без входа: на них ссылаются
                   экран регистрации и карточка приложения в сторах. */}
               <Route path="/terms" element={<Legal kind="terms" />} />
