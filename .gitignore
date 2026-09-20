@@ -14,3 +14,6 @@ web/
 
 # веса whisper скачиваются на сервере (chat/transcribe.py)
 backend/whisper-models/
+
+# журнал ключей S3 после удаления аккаунтов (chat/account.py)
+backend/private/

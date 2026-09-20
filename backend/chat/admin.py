@@ -5,7 +5,7 @@ from django.utils.html import format_html
 
 from .models import (
     Block, BugReport, Chat, ChatParticipant, Friendship, Message, NotificationSound,
-    Profile, Report, SoundPack,
+    Profile, Report, SoundPack, StickerPack,
 )
 
 
@@ -124,10 +124,19 @@ admin.site.register(Message)
 class SoundPackAdmin(admin.ModelAdmin):
     """Стандартный пак (галочка «По умолчанию») есть у всех без подписки;
     таких может быть несколько. Остальные — по ссылке."""
-    list_display = ("name", "is_default", "creator", "is_public", "order", "created_at")
-    list_editable = ("is_default", "is_public", "order")
-    list_filter = ("is_default", "is_public")
+    list_display = ("name", "is_default", "is_adult", "creator", "is_public", "order", "created_at")
+    list_editable = ("is_default", "is_adult", "is_public", "order")
+    list_filter = ("is_default", "is_adult", "is_public")
     search_fields = ("name", "creator__username")
+
+
+@admin.register(StickerPack)
+class StickerPackAdmin(admin.ModelAdmin):
+    """Пометка 18+ прячет пак от тех, кто не включил «Показывать 18+»."""
+    list_display = ("name", "is_adult", "author", "is_public", "created_at")
+    list_editable = ("is_adult", "is_public")
+    list_filter = ("is_adult", "is_public")
+    search_fields = ("name", "author__username")
 
 
 @admin.register(NotificationSound)

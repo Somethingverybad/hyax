@@ -24,6 +24,13 @@ class ProfileViewSet(viewsets.ModelViewSet):
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        # Личные настройки (18+, принятие правил) отдаём и принимаем только в
+        # запросах к своему профилю; чужой профиль читается базовым набором.
+        if self.action in ('update', 'partial_update', 'me', 'update_me'):
+            return OwnProfileSerializer
+        return ProfileSerializer
+
     def _own_profile_or_403(self, request, instance):
         """Менять и удалять можно только свой профиль. Раньше стоял AllowAny
         без проверки владельца — PATCH чужого профиля проходил у любого."""
@@ -1014,8 +1021,15 @@ def register_user(request):
             password=password
         )
         
-        # Создаем профиль и связываем с пользователем
-        Profile.objects.create(user=user, username=username)
+        # Создаем профиль и связываем с пользователем.
+        # accept_terms шлют клиенты с галочкой согласия на экране регистрации.
+        # Старые сборки поля не знают — их не отбиваем, а правила покажем
+        # отдельным экраном после обновления (terms_accepted_at пуст).
+        accepted = str(request.data.get('accept_terms', '')).lower() in ('1', 'true', 'on')
+        Profile.objects.create(
+            user=user, username=username,
+            terms_accepted_at=timezone.now() if accepted else None,
+        )
         
         return Response({
             'message': 'Пользователь создан',
@@ -1054,7 +1068,7 @@ def get_current_user_profile(request):
     try:
         logger.warning(f"👤 [get_current_user_profile] Запрос от пользователя: {request.user}")
         profile = request.user.profile
-        serializer = ProfileSerializer(profile)
+        serializer = OwnProfileSerializer(profile)
         data = serializer.data
         logger.warning(f"✅ [get_current_user_profile] Отправка профиля: id={data.get('id')}, username={data.get('username')}")
         return Response(data)
@@ -1210,6 +1224,20 @@ class FileUploadView(APIView):
 
 
 # ViewSet для стикерпаков
+ADULT_LOCKED_ERROR = "Это пак 18+. Включите «Показывать 18+» в настройках профиля"
+
+
+def _adult_hidden(pack, me):
+    """Пак 18+ скрыт от тех, кто не включил настройку. Автор свой пак видит
+    всегда — иначе не смог бы его ни править, ни снять пометку."""
+    if not getattr(pack, "is_adult", False):
+        return False
+    if me is None:
+        return True
+    owner_id = getattr(pack, "author_id", None) or getattr(pack, "creator_id", None)
+    return not me.allow_adult and owner_id != me.id
+
+
 class StickerPackViewSet(viewsets.ModelViewSet):
     queryset = StickerPack.objects.all()
     serializer_class = StickerPackSerializer
@@ -1240,12 +1268,27 @@ class StickerPackViewSet(viewsets.ModelViewSet):
         except Profile.DoesNotExist:
             raise ValidationError("Profile not found")
     
+    def _author_or_403(self, request):
+        pack = self.get_object()
+        if pack.author_id != getattr(getattr(request.user, 'profile', None), 'id', None):
+            return Response({"error": "Менять может только автор пака"}, status=403)
+        return None
+
+    def update(self, request, *args, **kwargs):
+        # Раньше проверки не было: PATCH чужого публичного пака проходил у любого.
+        return self._author_or_403(request) or super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self._author_or_403(request) or super().partial_update(request, *args, **kwargs)
+
     @action(detail=True, methods=['post'])
     def save(self, request, pk=None):
         """Сохранить стикерпак себе"""
         pack = self.get_object()
         try:
             profile = request.user.profile
+            if _adult_hidden(pack, profile):
+                return Response({"error": ADULT_LOCKED_ERROR, "adult_locked": True}, status=403)
             user_pack, created = UserStickerPack.objects.get_or_create(user=profile, pack=pack)
             if created:
                 return Response({"status": "success", "message": "Sticker pack saved"})
@@ -1274,6 +1317,10 @@ class StickerPackViewSet(viewsets.ModelViewSet):
         try:
             profile = request.user.profile
             user_packs = UserStickerPack.objects.filter(user=profile).select_related('pack__author').prefetch_related('pack__stickers')
+            if not profile.allow_adult:
+                # Пак пометили 18+ уже после того, как человек его сохранил, —
+                # из пикера он пропадает, подписка остаётся и вернётся с настройкой.
+                user_packs = user_packs.exclude(models.Q(pack__is_adult=True) & ~models.Q(pack__author=profile))
             serializer = UserStickerPackSerializer(user_packs, many=True, context={'request': request})
             return Response(serializer.data)
         except Profile.DoesNotExist:
@@ -1333,6 +1380,8 @@ class StickerPackViewSet(viewsets.ModelViewSet):
             # Проверяем, что пак публичный или пользователь - автор
             if not pack.is_public and pack.author != profile:
                 return Response({"error": "This sticker pack is private"}, status=403)
+            if _adult_hidden(pack, profile):
+                return Response({"error": ADULT_LOCKED_ERROR, "adult_locked": True}, status=403)
             
             # Сохраняем пак пользователю
             user_pack, created = UserStickerPack.objects.get_or_create(user=profile, pack=pack)
@@ -1365,6 +1414,12 @@ class StickerViewSet(viewsets.ModelViewSet):
         pack_id = self.request.query_params.get('pack')
         if pack_id:
             queryset = queryset.filter(pack_id=pack_id)
+        me = getattr(self.request.user, 'profile', None)
+        if not (me and me.allow_adult):
+            hidden = models.Q(pack__is_adult=True)
+            if me:
+                hidden &= ~models.Q(pack__author=me)
+            queryset = queryset.exclude(hidden)
         return queryset.order_by('order', 'created_at')
     
     def perform_create(self, serializer):
@@ -1702,11 +1757,15 @@ def _delete_sound_files(sound):
     except Exception: pass
 
 
-def _pack_payload(pack, me=None):
-    sounds = NotificationSoundSerializer(pack.sounds.all().order_by("order", "slug"), many=True).data
+def _pack_payload(pack, me=None, locked=False):
+    # locked — пак 18+ открыли без настройки: карточка видна (название, автор,
+    # пометка), а сами звуки не отдаём.
+    sounds = [] if locked else NotificationSoundSerializer(pack.sounds.all().order_by("order", "slug"), many=True).data
     return {
         "id": str(pack.id), "name": pack.name, "order": pack.order, "sounds": sounds,
+        "sounds_count": pack.sounds.count(),
         "is_public": pack.is_public, "is_default": pack.is_default,
+        "is_adult": pack.is_adult, "adult_locked": locked,
         "creator": pack.creator.username if pack.creator_id else None,
         "added": bool(me) and UserSoundPack.objects.filter(user=me, pack=pack).exists(),
         "mine": bool(me) and pack.creator_id == getattr(me, "id", None),
@@ -1779,15 +1838,23 @@ class SoundPackDetailView(APIView):
         pack = SoundPack.objects.filter(pk=pk).prefetch_related("sounds").first()
         if not pack or (not pack.is_public and (not me or pack.creator_id != me.id)):
             return Response({"error": "Пак не найден"}, status=404)
-        return Response(_pack_payload(pack, me))
+        return Response(_pack_payload(pack, me, locked=_adult_hidden(pack, me)))
 
     def patch(self, request, pk):
         pack, err = self._get_owned(request, pk)
         if err: return err
-        name = (request.data.get("name") or "").strip()
-        if not name:
-            return Response({"error": "Пустое название"}, status=400)
-        pack.name = name[:64]; pack.save(update_fields=["name"])
+        fields = []
+        if "name" in request.data:
+            name = (request.data.get("name") or "").strip()
+            if not name:
+                return Response({"error": "Пустое название"}, status=400)
+            pack.name = name[:64]; fields.append("name")
+        if "is_adult" in request.data:
+            pack.is_adult = str(request.data.get("is_adult")).lower() in ("1", "true", "on")
+            fields.append("is_adult")
+        if not fields:
+            return Response({"error": "Нечего менять"}, status=400)
+        pack.save(update_fields=fields)
         return Response(_pack_payload(pack))
 
     def delete(self, request, pk):
@@ -1875,7 +1942,15 @@ class NotificationSoundListView(APIView):
         visible = models.Q(pack__isnull=True) | models.Q(pack__is_default=True)
         if me:
             visible |= models.Q(pack__creator=me) | models.Q(pack__added_by_users__user=me)
-        sounds = NotificationSound.objects.filter(is_active=True).filter(visible).distinct()
+        sounds = NotificationSound.objects.filter(is_active=True).filter(visible)
+        if not (me and me.allow_adult):
+            # Паки 18+ без настройки не попадают ни в пикер, ни в звуки пушей
+            # (пуш с таким звуком придёт со стандартным). Свой пак автор видит.
+            hidden = models.Q(pack__is_adult=True)
+            if me:
+                hidden &= ~models.Q(pack__creator=me)
+            sounds = sounds.exclude(hidden)
+        sounds = sounds.distinct()
         return Response(NotificationSoundSerializer(sounds, many=True).data)
 
 
@@ -2814,6 +2889,8 @@ class SoundPackSubscribeView(APIView):
             return Response({"error": "Пак не найден"}, status=404)
         if pack.is_default or pack.creator_id == me.id:
             return Response({"ok": True, "already": True})
+        if _adult_hidden(pack, me):
+            return Response({"error": ADULT_LOCKED_ERROR, "adult_locked": True}, status=403)
         UserSoundPack.objects.get_or_create(user=me, pack=pack)
         return Response({"ok": True})
 
@@ -2834,4 +2911,6 @@ class AddedSoundPacksView(APIView):
         if not me:
             return Response({"error": "Нет профиля"}, status=403)
         rows = UserSoundPack.objects.filter(user=me).select_related("pack__creator").prefetch_related("pack__sounds")
+        if not me.allow_adult:
+            rows = rows.exclude(pack__is_adult=True)
         return Response({"packs": [_pack_payload(r.pack, me) for r in rows]})

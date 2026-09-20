@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
+from .account import AcceptTermsView, DeleteAccountView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
 
@@ -20,6 +21,8 @@ urlpatterns = [
     path('auth/register/', register_user, name='register'),
     path('auth/login/', login_user, name='login'),
     path('auth/logout/', logout_user, name='logout'),
+    path('account/accept-terms/', AcceptTermsView.as_view(), name='account-accept-terms'),
+    path('account/delete/', DeleteAccountView.as_view(), name='account-delete'),
     path('token/', TokenObtainPairView.as_view(serializer_class=CustomTokenObtainPairSerializer), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('upload/', FileUploadView.as_view(), name='file-upload'),

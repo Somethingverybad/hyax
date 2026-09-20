@@ -30,6 +30,16 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Никнейм длиннее 50 символов")
         return value
 
+class OwnProfileSerializer(ProfileSerializer):
+    """Свой профиль: то же плюс личные настройки, которые собеседникам знать
+    незачем. Базовый сериализатор уходит в участников чата и отправителей
+    сообщений, поэтому 18+ и отметка о принятии правил живут только здесь."""
+    class Meta(ProfileSerializer.Meta):
+        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at']
+        # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
+        read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
+
+
 class PublicProfileSerializer(serializers.ModelSerializer):
     """Карточка по ссылке /u/<ник>: только то, что и так видно в чате.
     Без call_status, push_preview и прочих приватных настроек."""
@@ -129,11 +139,23 @@ class StickerPackSerializer(serializers.ModelSerializer):
     author = ProfileSerializer(read_only=True)
     stickers_count = serializers.SerializerMethodField()
     is_saved = serializers.SerializerMethodField()
+    # Пак 18+ открыт без настройки «Показывать 18+»: карточку отдаём, стикеры — нет
+    # (их режет StickerViewSet.get_queryset).
+    adult_locked = serializers.SerializerMethodField()
     
     class Meta:
         model = StickerPack
-        fields = ['id', 'name', 'description', 'author', 'is_public', 'created_at', 'updated_at', 'stickers_count', 'is_saved']
+        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'created_at', 'updated_at', 'stickers_count', 'is_saved']
         read_only_fields = ['author', 'created_at', 'updated_at']
+
+    def get_adult_locked(self, obj):
+        if not obj.is_adult:
+            return False
+        request = self.context.get('request')
+        me = getattr(getattr(request, 'user', None), 'profile', None) if request else None
+        if me is None:
+            return True
+        return not me.allow_adult and obj.author_id != me.id
     
     def get_stickers_count(self, obj):
         return obj.stickers.count()

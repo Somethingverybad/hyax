@@ -50,7 +50,7 @@ def _firebase_app():
 
 # Заглушки, которые видит Apple/Google и которые покажет система, если
 # устройство не смогло расшифровать пуш.
-PLACEHOLDER_TITLE = "ХУЯКС"
+PLACEHOLDER_TITLE = "WhoYaX"
 PLACEHOLDER_BODY = "Новое сообщение"
 
 

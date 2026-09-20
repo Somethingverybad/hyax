@@ -1003,7 +1003,7 @@ class UserConsumer(AsyncWebsocketConsumer):
             if not voip_sent:
                 await database_sync_to_async(notify_profiles)(
                     profiles,
-                    title=chat_name or payload.get("from_username", "ХУЯКС"),
+                    title=chat_name or payload.get("from_username", "WhoYaX"),
                     body=f"{payload.get('from_username')} звонит в группе",
                     extra=payload,
                     sound="call",

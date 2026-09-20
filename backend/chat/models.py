@@ -19,6 +19,13 @@ class Profile(models.Model):
     push_preview = models.BooleanField(default=True)
     # Р.Ё.В: принимать ли вибрацию от собеседника (см. consumers.handle_rov).
     rov_enabled = models.BooleanField(default=True)
+    # Показывать паки звуков и стикеров с пометкой 18+. По умолчанию выключено:
+    # такие паки не попадают в пикер и не открываются по ссылке, пока человек
+    # сам не включит настройку и не подтвердит возраст.
+    allow_adult = models.BooleanField(default=False)
+    # Когда человек принял правила и политику конфиденциальности. Пусто у тех,
+    # кто регистрировался до появления правил, — клиент покажет им экран согласия.
+    terms_accepted_at = models.DateTimeField(blank=True, null=True)
     # «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников, если у
     # самого сообщения нет аудио-стикера. Из каталога NotificationSound —
     # его caf/канал уже есть на устройствах получателей (syncNotificationSounds).
@@ -273,6 +280,9 @@ class SoundPack(models.Model):
     # владельца — это не давало ни завести несколько наборов, ни снять
     # стандартность у старого, не удаляя его.
     is_default = models.BooleanField(default=False, db_index=True)
+    # Пак 18+: виден только тем, кто включил «Показывать 18+» (Profile.allow_adult).
+    # Ставит автор в студии или модератор в админке.
+    is_adult = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         ordering = ["order", "name"]
@@ -345,6 +355,8 @@ class StickerPack(models.Model):
     description = models.TextField(blank=True, null=True)
     author = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="created_sticker_packs")
     is_public = models.BooleanField(default=True)  # Публичный или приватный стикерпак
+    # Пак 18+ — см. SoundPack.is_adult.
+    is_adult = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
     
