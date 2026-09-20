@@ -113,7 +113,7 @@ export async function readPosts(channelId: string): Promise<CachedChat | null> {
 }
 
 const stripPost = (p: any) => {
-  const { _pending, _progress, _failed, _retry, ...rest } = p;
+  const { _pending, _progress, _failed, _retry, _key, ...rest } = p;
   return rest;
 };
 

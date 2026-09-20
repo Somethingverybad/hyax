@@ -35,6 +35,9 @@ interface Post {
   /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер).
    *  _failed + _retry — не ушло: пост остаётся с «Повторить»/«Удалить», снятое не теряется. */
   _pending?: boolean; _progress?: number | null; _failed?: boolean; _retry?: () => void;
+  /** Ключ рендера временной карточки: переживает замену на настоящий пост,
+   *  чтобы React не пересоздавал карточку (см. addPending.confirm). */
+  _key?: string;
 }
 
 const REACTIONS = ["🔥", "❤️", "👍", "😂", "😮", "😢"];
@@ -182,6 +185,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       id,
       progress: (p: number | null) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _progress: p } : x))),
       drop: () => setPosts((prev) => prev.filter((x) => x.id !== id)),
+      /** Сервер принял пост: временная карточка превращается в настоящий пост
+       *  на том же месте. Раньше её никто не убирал — после перехода ленты на
+       *  приращения (sync по since) она оставалась висеть с «публикация…»
+       *  рядом с пришедшим постом, пока не перезайдёшь в канал. Если sync или
+       *  сокет успели принести пост раньше — просто убираем карточку. */
+      confirm: (real?: Post | null) => setPosts((prev) => {
+        if (!real?.id || prev.some((x) => x.id === real.id)) return prev.filter((x) => x.id !== id);
+        return prev.map((x) => (x.id === id ? { ...real, _key: id } : x));
+      }),
       fail: (retry: () => void) => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _failed: true, _progress: null, _retry: retry } : x))),
       restart: () => setPosts((prev) => prev.map((x) => (x.id === id ? { ...x, _failed: false, _progress: 0 } : x))),
     };
@@ -193,7 +205,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       temp.restart();
       const uploaded = await api.uploadFile(file, undefined, (p) => temp.progress(p));
       temp.progress(100);
-      await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror);
+      temp.confirm(await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror));
       await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
@@ -485,14 +497,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           try {
             const uploaded = await api.uploadFile(att.file, att.mode === "video" ? "video" : undefined, (p) => temp.progress(p));
             temp.progress(100);
-            await api.sendMessageWithFile(
+            temp.confirm(await api.sendMessageWithFile(
               channelId,
               { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height, album_id: album },
               i === 0 ? body || undefined : undefined,
               i === 0 ? snd?.id : undefined,
               undefined,
               att.mode === "file",
-            );
+            ));
           } catch {
             toast.error(`Не удалось опубликовать «${att.file.name}»`);
             temp.drop();
@@ -624,7 +636,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           </p>
         ) : (
           feedPosts.map((post) => (
-            <div key={post.id} className="bg-surface-2 rounded-lg overflow-hidden">
+            <div key={post._key ?? post.id} className="bg-surface-2 rounded-lg overflow-hidden">
               <div className="px-4 py-3">
                 {channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
@@ -822,7 +834,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             />
           )}
         </div>
-      ) : !subscribed ? (
+      ) : channel && !subscribed ? (
+        // Только когда канал уже загружен: пока роль неизвестна, «не подписан»
+        // ещё не факт — кнопка мелькала на мгновение у подписчиков и админов.
         // Подписчику кнопка не нужна — она стояла и после подписки, потому что
         // ветка была просто «не админ». Отписка — в инфо-модалке канала.
         <div className="pad-safe-bottom px-3 py-3 shrink-0">
