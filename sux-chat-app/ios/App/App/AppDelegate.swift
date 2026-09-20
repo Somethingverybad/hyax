@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import CoreSpotlight
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -10,7 +11,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // PushKit надо зарегистрировать сразу при запуске: VoIP-пуш может быть
         // причиной самого запуска, и его нужно принять до загрузки WebView.
         VoipManager.shared.start()
+        indexForSpotlight()
         return true
+    }
+
+    /// Spotlight ищет приложение только по имени под иконкой и кириллицу в
+    /// латиницу не переводит: после переименования в WhoYaX запрос прежним
+    /// названием ничего не находил. Кладём в системный индекс одну карточку
+    /// приложения с прежними написаниями в ключевых словах — они нигде не
+    /// показываются, в выдаче видно только «WhoYaX». Тап по карточке просто
+    /// открывает приложение. Идентификатор постоянный: повторная индексация
+    /// обновляет ту же запись, а не плодит новые.
+    private func indexForSpotlight() {
+        guard CSSearchableIndex.isIndexingAvailable() else { return }
+        let attrs = CSSearchableItemAttributeSet(contentType: .item)
+        attrs.title = "WhoYaX"
+        attrs.contentDescription = "Мессенджер"
+        attrs.keywords = ["хуякс", "хуяк", "hyax", "huyax", "whoyax", "вуякс", "мессенджер"]
+        let item = CSSearchableItem(uniqueIdentifier: "app", domainIdentifier: "com.hyax.messenger.app", attributeSet: attrs)
+        item.expirationDate = .distantFuture
+        CSSearchableIndex.default().indexSearchableItems([item]) { error in
+            if let error = error { NSLog("Spotlight: индексация не удалась: %@", error.localizedDescription) }
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
@@ -45,6 +67,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Called when the app was launched with an activity, including Universal Links.
         // Feel free to add additional processing here, but if you want the App API to support
         // tracking app url opens, make sure to keep this call
+        // Тап по карточке из Spotlight (см. indexForSpotlight): приложение уже
+        // открыто этим тапом, вести некуда — просто подтверждаем обработку.
+        if userActivity.activityType == CSSearchableItemActionType { return true }
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
