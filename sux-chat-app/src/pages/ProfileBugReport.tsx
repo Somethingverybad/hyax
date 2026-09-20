@@ -97,7 +97,7 @@ const ProfileBugReport = () => {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0] || null)} />
 
-        <div className="rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
           <label className="text-small text-subtle" htmlFor="bug-text">Что случилось</label>
           <textarea
             id="bug-text"
@@ -109,7 +109,7 @@ const ProfileBugReport = () => {
           />
         </div>
 
-        <div className="rounded-lg bg-surface-2 border border-border p-4">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border p-4">
           <p className="text-small text-subtle mb-2">Скриншот</p>
           {preview ? (
             <div className="relative inline-block">
@@ -126,7 +126,7 @@ const ProfileBugReport = () => {
           )}
         </div>
 
-        <div className="rounded-lg bg-surface-2 border border-border">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border">
           <label className="min-h-14 px-4 py-2.5 flex items-center gap-3">
             <FileText className="w-5 h-5 text-primary shrink-0" />
             <span className="min-w-0 flex-1">

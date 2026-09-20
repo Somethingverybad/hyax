@@ -66,6 +66,13 @@ All colors MUST be HSL.
     --shadow-glow: none;
     --shadow-card: none;
 
+    /* Пузыри сообщений: фон и цвет текста своих и входящих. По умолчанию —
+       тёмные заливки с белым текстом; тема может задать любые пары. */
+    --bubble-own: var(--primary-deep);
+    --bubble-own-fg: 0 0% 100%;
+    --bubble-in: var(--success);
+    --bubble-in-fg: 0 0% 100%;
+
     /* Фон ленты переписки на десктопе — чуть глубже основного фона. Раньше
        значение стояло прямо в медиазапросе и не знало про темы. */
     --chat-canvas: 240 3% 4.7%;
@@ -121,6 +128,66 @@ All colors MUST be HSL.
 
     /* Лента переписки на десктопе — на тон глуше фона. */
     --chat-canvas: 220 14% 96%;
+  }
+
+  /* «Необрутализм» — третья тема, по стайлгайду ChatApp: кремовый фон, белые
+     поверхности, чёрная тушь вместо серых линий, зелёный акцент и пастельные
+     заливки (жёлтый, лавандовый). Палитра гайда: #22C55E, #F5F5EB, #111111,
+     #FFE08A, #D9C7FF, #FFB3BA, #C7E2FF, #FFFFFF. Здесь только цвета; толстые
+     обводки и жёсткие тени — отдельным блоком в конце файла. */
+  :root[data-theme="neo"] {
+    /* Фон #F5F5EB, тушь #111111 */
+    --background: 60 33% 94%;
+    --foreground: 0 0% 7%;
+    --ink: 0 0% 7%;
+
+    /* 1 и 2 — карточки и списки (#FFFFFF); 3 — нажатая и активная строка
+       (светлый жёлтый от #FFE08A); 4 — вторичные кнопки и чипы (лавандовый
+       от #D9C7FF). */
+    --surface-1: 0 0% 100%;
+    --surface-2: 0 0% 100%;
+    --surface-3: 45 100% 88%;
+    --surface-4: 259 100% 92%;
+    --card-foreground: 0 0% 7%;
+    --popover-foreground: 0 0% 7%;
+    --secondary-foreground: 0 0% 7%;
+    --muted-foreground: 0 0% 30%;
+    --subtle-foreground: 0 0% 42%;
+
+    /* Акцент #22C55E, на нём чёрный текст — как на кнопках гайда. */
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 7%;
+    --primary-deep: 142 71% 45%;
+    /* Пузыри: свои — зелёные, входящие — белые, текст тушью; обводка и тень —
+       в блоке формы в конце файла. */
+    --bubble-own: 142 71% 45%;
+    --bubble-own-fg: 0 0% 7%;
+    --bubble-in: 0 0% 100%;
+    --bubble-in-fg: 0 0% 7%;
+    --accent: 259 100% 89%;
+    --accent-foreground: 0 0% 7%;
+    /* Красный и текстом (иконка корзины), и фоном кнопки — на нём тушь. */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 7%;
+
+    --success: 142 72% 27%;
+    --success-foreground: 0 0% 100%;
+    --online: 142 71% 45%;
+    --amber: 41 100% 50%;
+
+    /* Линии — тушь. Разделители строк внутри карточек глушим ниже. */
+    --border: 0 0% 7%;
+    --input: 0 0% 7%;
+    --ring: 142 71% 45%;
+
+    --radius: 10px;
+    --radius-field: 8px;
+
+    --gradient-primary: linear-gradient(0deg, hsl(142 71% 45%), hsl(142 71% 45%));
+    --gradient-card: linear-gradient(0deg, hsl(0 0% 100%), hsl(0 0% 100%));
+    --shadow-card: 4px 4px 0 0 hsl(0 0% 7%);
+
+    --chat-canvas: 60 30% 90%;
   }
 }
 
@@ -455,13 +522,17 @@ textarea,
   animation: msg-flash 1.2s ease-out;
 }
 /* Десктоп: колонка переписки чуть темнее сайдбара и шапки, как в референсе. */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 500px) {
   .chat-scroll, .chat-compose { background: hsl(var(--chat-canvas)); }
   /* Десктопный референс держит зелёный входящих глуше телефонного. Только в
      тёмной теме: в светлой свой зелёный уже подобран под белый текст, и это
      правило перебивало его, потому что идёт ниже по файлу. */
-  :root:not([data-theme="light"]) { --success: 140 33% 28%; }
+  :root:not([data-theme="light"]):not([data-theme="neo"]) { --success: 140 33% 28%; }
 }
+/* Пузыри сообщений: цвета из переменных темы, текст внутри наследуется. */
+.msg-own { background-color: hsl(var(--bubble-own)); color: hsl(var(--bubble-own-fg)); }
+.msg-peer { background-color: hsl(var(--bubble-in)); color: hsl(var(--bubble-in-fg)); }
+
 /* Хвостики пузырей: фигурный клин по SVG-маске, цвет наследуется от пузыря,
    поэтому одинаково работает для своих (красных) и чужих (зелёных). */
 .bubble-own, .bubble-in { position: relative; }
@@ -494,3 +565,161 @@ textarea,
 @keyframes supra-breathe { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.18); opacity: .6; } }
 @keyframes supra-slide { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(36px); } }
 @media (prefers-reduced-motion: reduce) { .supra * { animation: none !important; } }
+
+
+/* ── Тема «Необрутализм»: форма ───────────────────────────────────────────────
+   Цвета заданы токенами выше; здесь то, чего токенами не выразить: обводка
+   тушью 2 px, жёсткая тень без размытия со сдвигом вправо-вниз и «вдавливание»
+   при нажатии. Правила привязаны к теме и к смысловым классам (ui-card, ui-btn)
+   либо к самим цветам действия (bg-primary и т. п.), поэтому две другие темы
+   они не задевают. */
+:root[data-theme="neo"] svg.lucide { stroke-width: 2; }
+
+/* Карточки и плитки. */
+:root[data-theme="neo"] .ui-card {
+  border: 2px solid hsl(var(--ink));
+  box-shadow: 4px 4px 0 0 hsl(var(--ink));
+}
+/* Разделители строк внутри карточек — светлые, как в гайде: чёрные линии
+   через каждую строку спорили бы с обводкой самой карточки. */
+:root[data-theme="neo"] .divide-border > :not([hidden]) ~ :not([hidden]),
+:root[data-theme="neo"] .chat-row-divider {
+  border-color: hsl(60 12% 84%);
+}
+
+/* Кнопки действия: всё, что залито акцентом, красным, лавандовым или тушью. */
+:root[data-theme="neo"] :is(button, a, [role="button"], label):is(.bg-primary, .bg-destructive, .bg-surface-4, .bg-foreground, .ui-btn) {
+  border: 2px solid hsl(var(--ink));
+  box-shadow: 3px 3px 0 0 hsl(var(--ink));
+  transition: transform 80ms ease-out, box-shadow 80ms ease-out;
+}
+:root[data-theme="neo"] :is(button, a, [role="button"], label):is(.bg-primary, .bg-destructive, .bg-surface-4, .bg-foreground, .ui-btn):active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 hsl(var(--ink));
+}
+:root[data-theme="neo"] :is(button, a, [role="button"]):is(.bg-primary, .bg-destructive, .bg-surface-4, .ui-btn):disabled {
+  box-shadow: none;
+}
+/* Счётчики непрочитанного и прочие акцентные «пилюли». */
+:root[data-theme="neo"] span.bg-primary {
+  border: 1.5px solid hsl(var(--ink));
+}
+
+/* Поля ввода: белые, с обводкой тушью; фокус — зелёная обводка с зелёной
+   жёсткой тенью (в гайде «Фокус»). Прозрачные поля (поиск внутри своей
+   плашки, скрытые file-input) не трогаем. */
+:root[data-theme="neo"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea):not(.bg-transparent) {
+  background-color: hsl(0 0% 100%);
+  border: 2px solid hsl(var(--ink));
+}
+:root[data-theme="neo"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea):not(.bg-transparent):focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 3px 3px 0 0 hsl(var(--primary));
+  outline: none;
+}
+
+/* Шапки экранов и нижняя навигация отчёркнуты той же линией 2 px. */
+:root[data-theme="neo"] .pad-safe-top.border-b { border-bottom-width: 2px; }
+:root[data-theme="neo"] .ui-bottom-nav { border-top-width: 2px; }
+
+/* Пузыри сообщений: обводка тушью и короткая жёсткая тень (короче, чем у
+   кнопок: пузыри стоят вплотную друг к другу). Хвостик убираем — клин по
+   маске обвести нельзя; вместо него остаётся срезанный угол последнего
+   пузыря в группе. */
+:root[data-theme="neo"] .msg-bubble {
+  border: 2px solid hsl(var(--ink));
+  box-shadow: 2px 2px 0 0 hsl(var(--ink));
+}
+:root[data-theme="neo"] .bubble-own::after,
+:root[data-theme="neo"] .bubble-in::after { display: none; }
+
+/* Фото, видео и альбомы (msg-media): та же обводка и тень, что у пузырей.
+   Внутри пузыря (картинка с подписью) тень не нужна — её уже несёт пузырь.
+   Контур видеокружка-треугольника — тушью вместо цвета стороны. */
+:root[data-theme="neo"] .msg-media {
+  border: 2px solid hsl(var(--ink));
+  box-shadow: 2px 2px 0 0 hsl(var(--ink));
+}
+:root[data-theme="neo"] .msg-bubble .msg-media { box-shadow: none; }
+:root[data-theme="neo"] .msg-note-edge { background-color: hsl(var(--ink)); }
+
+/* ── «Необрутализм»: список чатов и нижняя панель по макету ───────────────────
+   Строка чата — отдельная карточка с обводкой и тенью, аватары квадратные,
+   поиск и чипы — с жёсткой тенью, нижняя панель — плавающая карточка, активная
+   вкладка залита акцентом и подписана. Только телефонная раскладка: в
+   десктопном сайдбаре строки остаются плотным списком. */
+:root[data-theme="neo"] .ui-status-chip {
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 2px solid hsl(var(--ink));
+  border-radius: 6px;
+  background: hsl(142 70% 72%);
+  color: hsl(var(--ink));
+  font-weight: 600;
+}
+:root[data-theme="neo"] .ui-icon-btn,
+:root[data-theme="neo"] .ui-plus {
+  width: 44px; height: 44px;
+  border: 2px solid hsl(var(--ink));
+  border-radius: var(--radius-field);
+  box-shadow: 3px 3px 0 0 hsl(var(--ink));
+  color: hsl(var(--ink));
+  display: flex; align-items: center; justify-content: center;
+}
+:root[data-theme="neo"] .ui-icon-btn { background: hsl(0 0% 100%); }
+:root[data-theme="neo"] .ui-icon-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 0 hsl(var(--ink)); }
+
+:root[data-theme="neo"] .ui-search {
+  background: hsl(0 0% 100%);
+  border: 2px solid hsl(var(--ink));
+  box-shadow: 3px 3px 0 0 hsl(var(--ink));
+}
+:root[data-theme="neo"] .ui-search:focus-within { border-color: hsl(var(--ink)); box-shadow: 3px 3px 0 0 hsl(var(--primary)); }
+/* Поле внутри плашки поиска — без своей обводки (общее правило для input). */
+:root[data-theme="neo"] .ui-search input { border: 0; box-shadow: none; background: transparent; }
+
+:root[data-theme="neo"] .ui-chip {
+  border: 2px solid hsl(var(--ink));
+  border-radius: 8px;
+  box-shadow: 2px 2px 0 0 hsl(var(--ink));
+  background: hsl(0 0% 100%);
+  color: hsl(var(--ink));
+  margin-bottom: 2px;
+}
+:root[data-theme="neo"] .ui-chip.ui-chip-on { background: hsl(142 70% 72%); }
+:root[data-theme="neo"] .ui-chip-count { border: 1.5px solid hsl(var(--ink)); }
+
+/* Аватары в списке и шапке — квадратные, с обводкой. */
+:root[data-theme="neo"] .chat-row-card > :is(img, div):first-of-type,
+:root[data-theme="neo"] .ui-me-avatar {
+  border-radius: 8px;
+  border: 2px solid hsl(var(--ink));
+}
+
+@media not ((min-width: 768px) and (min-height: 500px)) {
+  :root[data-theme="neo"] .chat-row { margin: 0 12px 8px; overflow: visible; }
+  :root[data-theme="neo"] .chat-row-divider { display: none; }
+  :root[data-theme="neo"] .chat-row-card {
+    background: hsl(0 0% 100%);
+    border: 2px solid hsl(var(--ink));
+    border-radius: var(--radius-field);
+    box-shadow: 3px 3px 0 0 hsl(var(--ink));
+  }
+  :root[data-theme="neo"] .chat-row-card.bg-surface-3 { background: hsl(var(--surface-3)); }
+  /* Кнопка удаления по свайпу — той же формы, под карточкой. */
+  :root[data-theme="neo"] .chat-row > button.bg-destructive { border-radius: var(--radius-field); box-shadow: none; }
+
+  /* Нижняя панель: плавающая карточка. */
+  :root[data-theme="neo"] .ui-bottom-nav {
+    margin: 0 10px calc(6px + var(--kb-sab, var(--sab)));
+    padding: 4px !important;
+    gap: 4px;
+    border: 2px solid hsl(var(--ink));
+    border-radius: var(--radius);
+    box-shadow: 3px 3px 0 0 hsl(var(--ink));
+    background: hsl(0 0% 100%);
+  }
+  :root[data-theme="neo"] .ui-nav-item { color: hsl(var(--ink)); border-radius: 7px; border: 2px solid transparent; }
+  :root[data-theme="neo"] .ui-nav-item.ui-nav-on { background: hsl(142 70% 62%); border-color: hsl(var(--ink)); color: hsl(var(--ink)); }
+  :root[data-theme="neo"] .ui-nav-label { display: block; }
+}

@@ -92,7 +92,7 @@ const StickerPackPage = () => {
             )}
             {mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>}
 
-            {!pack.adult_locked && <div className="rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
+            {!pack.adult_locked && <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
               {stickers.map((s) => (
                 <div key={s.id} className="aspect-square rounded-md bg-surface-3 flex items-center justify-center overflow-hidden">
                   <img src={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" loading="lazy" />

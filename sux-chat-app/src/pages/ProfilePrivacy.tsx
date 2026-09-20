@@ -114,7 +114,7 @@ const ProfilePrivacy = () => {
           />
         </SettingsCard>
 
-        <div className="rounded-lg bg-surface-2 border border-border p-4 flex gap-3">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 flex gap-3">
           <Lock className="w-5 h-5 text-subtle shrink-0 mt-0.5" />
           <p className="text-small text-subtle">
             Остальные настройки — кто видит профиль, обложку и время последнего входа — пока в разработке.

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  * границы сливается; в тёмной она совпадает с цветом разделителей и не видна.
  */
 export const SettingsCard = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <div className={cn("shrink-0 rounded-lg bg-surface-2 border border-border divide-y divide-border overflow-hidden", className)}>
+  <div className={cn("shrink-0 ui-card rounded-lg bg-surface-2 border border-border divide-y divide-border overflow-hidden", className)}>
     {children}
   </div>
 );

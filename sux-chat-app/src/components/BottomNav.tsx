@@ -17,7 +17,7 @@ const ITEMS = [
 
 const BottomNav = () => {
   return (
-    <nav className="shrink-0 flex border-t border-border bg-background pad-safe-bottom">
+    <nav className="ui-bottom-nav shrink-0 flex border-t border-border bg-background pad-safe-bottom">
       {ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
@@ -26,13 +26,15 @@ const BottomNav = () => {
           title={label}
           className={({ isActive }) =>
             cn(
-              "flex-1 flex items-center justify-center h-14 transition-colors active:bg-surface-2",
-              isActive ? "text-primary" : "text-subtle",
+              "ui-nav-item flex-1 flex flex-col items-center justify-center gap-0.5 h-14 transition-colors active:bg-surface-2",
+              isActive ? "ui-nav-on text-primary" : "text-subtle",
             )
           }
         >
           {/* Без подписей, как на референсе: активная вкладка — красная иконка. */}
           <Icon className="w-6 h-6" />
+          {/* Подпись видна только в темах, где она предусмотрена (см. index.css). */}
+          <span className="ui-nav-label hidden text-[11px] font-semibold leading-none">{label}</span>
         </NavLink>
       ))}
     </nav>

@@ -89,7 +89,7 @@ const ProfileEdit = () => {
       />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <div className="rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
           <label className="text-small text-subtle" htmlFor="edit-username">Никнейм</label>
           <input
             id="edit-username"
@@ -106,7 +106,7 @@ const ProfileEdit = () => {
           )}
         </div>
 
-        <div className="rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
           <label className="text-small text-subtle" htmlFor="edit-bio">О себе</label>
           <textarea
             id="edit-bio"

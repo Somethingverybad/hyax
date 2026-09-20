@@ -39,7 +39,7 @@ const ProfileDeleteAccount = () => {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title="Удалить аккаунт" />
       <form onSubmit={submit} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <div className="rounded-lg bg-surface-2 border border-border p-4 space-y-2">
+        <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-2">
           <p className="text-body font-medium text-destructive flex items-center gap-2"><Trash2 className="w-4 h-4" /> Это навсегда</p>
           <p className="text-small text-subtle">
             Сразу и без возможности восстановить удалятся: профиль, все ваши сообщения, личные чаты,

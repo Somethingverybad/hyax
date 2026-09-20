@@ -13,7 +13,7 @@ export const AdultBadge = () => (
 const AdultLock = () => {
   const navigate = useNavigate();
   return (
-    <div className="rounded-lg bg-surface-2 border border-border p-4 space-y-3">
+    <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-3">
       <p className="text-body font-medium flex items-center gap-2"><EyeOff className="w-4 h-4" /> Пак для взрослых</p>
       <p className="text-small text-subtle">
         Автор или модератор пометил его 18+. Чтобы открыть и добавить такой пак, включите «Показывать 18+» в настройках.

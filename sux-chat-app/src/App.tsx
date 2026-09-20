@@ -28,7 +28,7 @@ import { Minus, X } from "lucide-react";
 import { useRef, useEffect } from "react";
 
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { getTheme } from "@/lib/theme";
+import { getTheme, isLightTheme } from "@/lib/theme";
 
 
 const queryClient = new QueryClient();
@@ -103,7 +103,7 @@ const App = () => {
           // отступа под него не было — часы и значки накрывали шапку.
           await StatusBar.setOverlaysWebView({ overlay: true });
           // Стиль значков зависит от темы — его ставит lib/theme.
-          await StatusBar.setStyle({ style: getTheme() === "light" ? Style.Light : Style.Dark });
+          await StatusBar.setStyle({ style: isLightTheme(getTheme()) ? Style.Light : Style.Dark });
         } catch (error) {
           console.log('StatusBar not available:', error);
         }

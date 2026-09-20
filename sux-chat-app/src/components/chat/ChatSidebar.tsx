@@ -109,6 +109,9 @@ const ChatSidebar = ({
   const [searchQuery, setSearchQuery] = useState("");
   // Поиск по списку чатов (поле под шапкой): по названию и именам участников.
   const [listFilter, setListFilter] = useState("");
+  // Фильтр-чипы под поиском: все чаты, только с непрочитанным, только каналы.
+  const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
+  const unreadChats = chats.filter((c) => ((c as any).unread_count || 0) > 0).length;
   // Режим диалога «Новый чат»: личный · группа · канал.
   const [mode, setMode] = useState<"user" | "group" | "channel">("user");
   const groupMode = mode === "group";
@@ -393,7 +396,7 @@ const ChatSidebar = ({
                 <Identicon
                   id={currentUser?.id || "?"}
                   avatarUrl={currentUser?.avatar_url}
-                  className="w-10 h-10"
+                  className="ui-me-avatar w-10 h-10"
                 />
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 text-h2 md:text-[15px]">
@@ -412,13 +415,13 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </span>
-                  <span className="block text-small text-online">В сети</span>
+                  <span className="ui-status-chip inline-block text-small text-online">В сети</span>
                 </span>
               </button>
               <button
                 type="button"
                 onClick={onOpenProfile}
-                className="p-2 text-muted-foreground active:text-foreground"
+                className="ui-icon-btn p-2 text-muted-foreground active:text-foreground"
                 aria-label="Настройки"
               >
                 <SettingsIcon className="w-6 h-6" />
@@ -430,7 +433,7 @@ const ChatSidebar = ({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:brightness-90 hover:brightness-110"
+                className="ui-plus w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:brightness-90 hover:brightness-110"
                 aria-label="Новый чат"
                 title="Новый чат"
               >
@@ -599,7 +602,7 @@ const ChatSidebar = ({
         )}
         </div>
         {!isCollapsed && (
-          <label className="mt-2 flex items-center gap-2 h-11 md:h-9 px-3 rounded-md bg-surface-1 md:bg-transparent md:border md:border-border text-subtle focus-within:ring-1 focus-within:ring-amber md:focus-within:border-amber md:focus-within:ring-0">
+          <label className="ui-search mt-2 flex items-center gap-2 h-11 md:h-9 px-3 rounded-md bg-surface-1 md:bg-transparent md:border md:border-border text-subtle focus-within:ring-1 focus-within:ring-amber md:focus-within:border-amber md:focus-within:ring-0">
             <SearchIcon className="w-5 h-5 md:w-4 md:h-4 shrink-0" />
             <input
               value={listFilter}
@@ -608,6 +611,32 @@ const ChatSidebar = ({
               className="flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"
             />
           </label>
+        )}
+        {!isCollapsed && (
+          <div className="mt-2.5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 pb-1">
+            {([
+              { id: "all", label: "Все" },
+              { id: "unread", label: "Непрочитанные", count: unreadChats },
+              { id: "channels", label: "Каналы" },
+            ] as const).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setListTab(t.id)}
+                aria-pressed={listTab === t.id}
+                className={`ui-chip shrink-0 h-8 px-3 rounded-full text-small font-medium inline-flex items-center gap-1.5 transition-colors ${
+                  listTab === t.id ? "ui-chip-on bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground active:bg-surface-3"
+                }`}
+              >
+                {t.label}
+                {"count" in t && t.count > 0 && (
+                  <span className="ui-chip-count min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[11px] leading-none font-semibold inline-flex items-center justify-center">
+                    {t.count > 99 ? "99+" : t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
@@ -648,6 +677,8 @@ const ChatSidebar = ({
           )}
           {chats.length > 0 ? (
             chats.filter((chat) => {
+              if (listTab === "unread" && !(((chat as any).unread_count || 0) > 0)) return false;
+              if (listTab === "channels" && (chat as any).kind !== "channel") return false;
               const q = listFilter.trim().toLowerCase();
               if (!q) return true;
               if ((chat.name || "").toLowerCase().includes(q)) return true;
@@ -696,7 +727,7 @@ const ChatSidebar = ({
 
                   {/* Содержимое строки: ездит по свайпу, правый клик → меню */}
                   <div
-                    className={`group relative pl-3 pr-4 py-3 md:py-2.5 md:mr-1 md:rounded-r-lg flex items-center gap-3.5 md:gap-3 transition-transform border-l-4 ${
+                    className={`chat-row-card group relative pl-3 pr-4 py-3 md:py-2.5 md:mr-1 md:rounded-r-lg flex items-center gap-3.5 md:gap-3 transition-transform border-l-4 ${
                       selectedChatId === chat.id ? "bg-surface-3 border-primary" : "bg-background border-transparent active:bg-surface-2 md:hover:bg-surface-2"
                     } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                       isCollapsed ? "justify-center" : ""

@@ -136,7 +136,7 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   const [loaded, setLoaded] = useState(!!localBlob);
   const size = dims ? previewSize(dims) : { width: 160, height: 112 };
   return (
-    <div className="relative rounded-lg overflow-hidden max-w-full" style={size}>
+    <div className="msg-media relative rounded-lg overflow-hidden max-w-full" style={size}>
       {!loaded && <MediaSkeleton className="absolute inset-0" />}
       {src && (
         <img
@@ -160,7 +160,7 @@ export const MessageVideoFile = ({ raw, dims }: { raw: string; dims?: { w: numbe
   // прыгала, когда плеер узнает размер кадра. Без размеров — как раньше.
   const size = dims ? (() => { const s = Math.min(280 / dims.w, 256 / dims.h, 1); return { width: Math.round(dims.w * s), height: Math.round(dims.h * s) }; })() : { width: 176, height: 112 };
   return (
-    <div className="relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
+    <div className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
       {!ready && <MediaSkeleton className="absolute inset-0" />}
       {src && (
         <video
@@ -244,7 +244,7 @@ export const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds:
           входящие — зелёная. Видео вписано внутрь с отступом, и кромка
           подложки читается как контур треугольника. */}
       <div
-        className={cn("absolute inset-0", own ? "bg-primary" : "bg-success")}
+        className={cn("msg-note-edge absolute inset-0", own ? "bg-primary" : "bg-success")}
         style={{ clipPath: TRIANGLE }}
       />
       <video
@@ -324,7 +324,7 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
 export const AlbumGrid = ({ items, localMap, onOpen, className }: {
   items: AlbumItem[]; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void; className?: string;
 }) => (
-  <div className={cn("grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,100%)]", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
+  <div className={cn("msg-media grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,100%)]", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
     {items.map((it) => <AlbumCell key={it.id} item={it} localMap={localMap} onOpen={onOpen} />)}
   </div>
 );
