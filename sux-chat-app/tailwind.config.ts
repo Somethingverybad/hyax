@@ -13,6 +13,12 @@ export default {
       },
     },
     extend: {
+      screens: {
+        // Десктопная раскладка — по ширине И высоте: телефон в горизонтали шире
+        // 768 px, но на его 393 px высоты две колонки не помещаются. Тот же
+        // запрос — DESKTOP_QUERY в hooks/use-mobile.tsx.
+        md: { raw: "(min-width: 768px) and (min-height: 500px)" },
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
