@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 272,
+  "build": 277,
   "ios_version": "1.1.11",
-  "ios_build": 132,
-  "notes": "Теперь мы WhoYaX. Новая тема «Необрутализм», фильтры в списке чатов, лента больше не дёргается при подгрузке, правила и удаление аккаунта",
+  "ios_build": 133,
+  "notes": "Свои темы оформления: собери свою и поделись ссылкой. Закрепление чатов свайпом вправо, список — по последнему сообщению",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
