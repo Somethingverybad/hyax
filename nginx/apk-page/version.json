@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 265,
+  "build": 272,
   "ios_version": "1.1.11",
-  "ios_build": 131,
-  "notes": "Теперь мы WhoYaX. Правила и политика конфиденциальности, удаление аккаунта, настройка «Показывать 18+» для паков",
+  "ios_build": 132,
+  "notes": "Теперь мы WhoYaX. Новая тема «Необрутализм», фильтры в списке чатов, лента больше не дёргается при подгрузке, правила и удаление аккаунта",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
