@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ХУЯКС · Creative Space</title>
+<title>WhoYaX · Creative Space</title>
 <style>
   :root{
     --bg:#0d0d0f; --card:#17171b; --card2:#1e1e24; --line:#2a2a31;
@@ -113,7 +113,7 @@
   <div id="loginBlock" hidden>
     <h2>Вход</h2>
     <div class="card">
-      <div class="field"><label>Логин</label><input id="username" type="text" autocomplete="username" placeholder="ваш логин в ХУЯКС"></div>
+      <div class="field"><label>Логин</label><input id="username" type="text" autocomplete="username" placeholder="ваш логин в WhoYaX"></div>
       <div class="field" style="margin-bottom:12px"><label>Пароль</label><input id="password" type="password" autocomplete="current-password" placeholder="пароль"></div>
       <button class="btn primary wide" id="loginBtn" type="button">Войти</button>
       <div class="result" id="loginResult"></div>
@@ -160,7 +160,7 @@
 
   </div>
 
-  <div class="foot">ХУЯКС Creative Space</div>
+  <div class="foot">WhoYaX Creative Space</div>
 </div>
 
 <script>
@@ -241,6 +241,23 @@
     packs.forEach(function(p){ box.appendChild(packCard(p)); });
   }
 
+  // Галочка «18+» на карточке пака: пак с ней видят только те, кто включил
+  // «Показывать 18+» в приложении. Ошибка (чужой пак, сеть) — откатываем.
+  function adultToggle(url, checked){
+    var lab=document.createElement("label"); lab.className="muted"; lab.style.cssText="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap";
+    var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!checked;
+    lab.appendChild(cb); lab.appendChild(document.createTextNode("18+"));
+    lab.title="Пак для взрослых: скрыт у тех, кто не включил «Показывать 18+»";
+    cb.addEventListener("change", function(){
+      cb.disabled=true;
+      authJson(url,"PATCH",{is_adult:cb.checked}).then(function(x){
+        cb.disabled=false;
+        if(!x.ok){ cb.checked=!cb.checked; alert((x.data&&(x.data.error||x.data.detail))||"Не удалось сохранить"); }
+      }).catch(function(){ cb.disabled=false; cb.checked=!cb.checked; });
+    });
+    return lab;
+  }
+
   function packCard(p){
     var card=document.createElement("div"); card.className="card";
     var head=document.createElement("div"); head.className="packhead";
@@ -249,7 +266,7 @@
     var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить пак";
     var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
     link.addEventListener("click", function(){ copyLink("/sp/"+p.id, link); });
-    head.appendChild(nameIn); head.appendChild(save); head.appendChild(link); head.appendChild(del);
+    head.appendChild(nameIn); head.appendChild(save); head.appendChild(link); head.appendChild(adultToggle("/api/sounds/pack/"+p.id+"/", p.is_adult)); head.appendChild(del);
     card.appendChild(head);
 
     save.addEventListener("click", function(){
@@ -456,7 +473,7 @@
     var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить";
     var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
     link.addEventListener("click", function(){ copyLink("/stp/"+pack.id, link); });
-    btns.appendChild(show); btns.appendChild(link); btns.appendChild(del);
+    btns.appendChild(show); btns.appendChild(link); btns.appendChild(adultToggle("/api/sticker-packs/"+pack.id+"/", pack.is_adult)); btns.appendChild(del);
     head.appendChild(title); head.appendChild(btns);
     card.appendChild(head);
 

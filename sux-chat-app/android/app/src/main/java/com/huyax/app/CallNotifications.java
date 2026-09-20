@@ -65,7 +65,7 @@ final class CallNotifications {
     static void show(Context ctx, JSONObject call) {
         ensureChannel(ctx);
         boolean isGroup = call.optBoolean("group", false);
-        String caller = call.optString("fromUsername", "ХУЯКС");
+        String caller = call.optString("fromUsername", "WhoYaX");
         String name = isGroup
             ? call.optString("chatName", "Группа") + " · " + caller
             : caller;

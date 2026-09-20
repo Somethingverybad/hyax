@@ -1,10 +1,10 @@
 {
   "name": "hyax-messenger",
   "private": true,
-  "version": "1.1.10",
+  "version": "1.1.11",
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "ХУЯКС эсемэсэнджер",
+  "description": "WhoYaX эсемэсэнджер",
   "author": "Somethingverybad <Ancher001@yandex.ru>",
   "homepage": "https://github.com/Somethingverybad/hyax",
   "scripts": {
@@ -125,7 +125,7 @@
   },
   "build": {
     "appId": "com.hyax.messenger",
-    "productName": "ХУЯКС",
+    "productName": "WhoYaX",
     "directories": {
       "output": "release"
     },
@@ -221,13 +221,13 @@
       "artifactName": "hyax-linux.${ext}",
       "category": "Network;InstantMessaging;Chat",
       "maintainer": "Somethingverybad <Ancher001@yandex.ru>",
-      "synopsis": "ХУЯКС эсемэсэнджер",
-      "description": "Десктопный клиент мессенджера ХУЯКС: чаты, голосовые и видео-сообщения, звонки.",
+      "synopsis": "WhoYaX эсемэсэнджер",
+      "description": "Десктопный клиент мессенджера WhoYaX: чаты, голосовые и видео-сообщения, звонки.",
       "desktop": {
         "entry": {
-          "Name": "ХУЯКС",
-          "Comment": "ХУЯКС эсемэсэнджер",
-          "Keywords": "chat;messenger;хуякс;hyax;",
+          "Name": "WhoYaX",
+          "Comment": "WhoYaX эсемэсэнджер",
+          "Keywords": "chat;messenger;whoyax;hyax;",
           "StartupWMClass": "hyax-messenger",
           "StartupNotify": "true"
         }

@@ -1,20 +1,47 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard } from "@/components/settings";
+import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
-import { api } from "@/api/client";
+import { api, type Profile } from "@/api/client";
+import { readCache, writeCache } from "@/lib/session-cache";
+import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
-import { Ban, Lock } from "lucide-react";
+import { Ban, Lock, FileText, ShieldCheck, Trash2 } from "lucide-react";
 
 type Blocked = { id: string; username: string; avatar_url?: string | null };
 
 /**
- * Конфиденциальность. Пока здесь одно: чёрный список. Разблокировать можно
- * прямо отсюда — иначе пришлось бы искать человека, чтобы открыть его карточку.
+ * Конфиденциальность: чёрный список (разблокировать можно прямо отсюда — иначе
+ * пришлось бы искать человека, чтобы открыть его карточку), показ паков 18+,
+ * правила с политикой и удаление аккаунта.
  */
 const ProfilePrivacy = () => {
+  const navigate = useNavigate();
   const [list, setList] = useState<Blocked[] | null>(null);
   useEffect(() => { api.listBlocks().then(setList).catch(() => setList([])); }, []);
+
+  const [profile, setProfile] = useState<Profile | null>(readCache<Profile>("user"));
+  // Включение 18+ — в два тапа: первый показывает, что именно подтверждаешь.
+  const [confirmAdult, setConfirmAdult] = useState(false);
+  useEffect(() => {
+    api.getCurrentUser().then((p) => { setProfile(p); writeCache("user", p); }).catch(() => {});
+  }, []);
+
+  const setAdult = async (value: boolean) => {
+    if (!profile) return;
+    const prev = profile;
+    const next = { ...profile, allow_adult: value };
+    setProfile(next); writeCache("user", next); setConfirmAdult(false);
+    try {
+      await api.updateProfile(prev.id, { allow_adult: value });
+      // Каталог звуков изменился: паки 18+ появились или пропали.
+      void syncNotificationSounds().catch(() => {});
+    } catch {
+      toast.error("Не удалось сохранить");
+      setProfile(prev); writeCache("user", prev);
+    }
+  };
 
   const unblock = async (b: Blocked) => {
     try {
@@ -41,6 +68,50 @@ const ProfilePrivacy = () => {
               <button type="button" onClick={() => unblock(b)} className="text-small text-primary active:opacity-60">Разблокировать</button>
             </div>
           ))}
+        </SettingsCard>
+
+        <p className="px-1 pt-2 text-small text-subtle">Контент</p>
+        <SettingsCard>
+          <SettingsRow
+            label="Показывать 18+"
+            hint={profile?.allow_adult ? "Паки стикеров и звуков для взрослых видны" : "Паки для взрослых скрыты"}
+            trailing={
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                aria-label="Показывать 18+"
+                checked={!!profile?.allow_adult}
+                disabled={!profile}
+                onChange={(e) => (e.target.checked ? setConfirmAdult(true) : setAdult(false))}
+              />
+            }
+          />
+          {confirmAdult && (
+            <div className="px-4 py-3 space-y-3">
+              <p className="text-small text-subtle">
+                Паки с пометкой 18+ могут содержать грубую лексику и материалы для взрослых. Включая показ, вы подтверждаете, что вам есть 18 лет.
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setAdult(true)} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-small font-medium active:opacity-90">Мне есть 18, включить</button>
+                <button type="button" onClick={() => setConfirmAdult(false)} className="flex-1 h-10 rounded-md bg-surface-4 text-small font-medium active:opacity-90">Отмена</button>
+              </div>
+            </div>
+          )}
+        </SettingsCard>
+
+        <SettingsCard>
+          <SettingsRow icon={FileText} label="Правила" onClick={() => navigate("/terms")} />
+          <SettingsRow icon={ShieldCheck} label="Политика конфиденциальности" onClick={() => navigate("/privacy")} />
+        </SettingsCard>
+
+        <SettingsCard>
+          <SettingsRow
+            icon={Trash2}
+            label="Удалить аккаунт"
+            hint="Безвозвратно, со всеми сообщениями"
+            danger
+            onClick={() => navigate("/profile/delete")}
+          />
         </SettingsCard>
 
         <div className="rounded-lg bg-surface-2 border border-border p-4 flex gap-3">

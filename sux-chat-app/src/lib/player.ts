@@ -60,7 +60,7 @@ const updateSession = () => {
   if (!nav.mediaSession || !t) return;
   try {
     const MM = (window as any).MediaMetadata;
-    if (MM) nav.mediaSession.metadata = new MM({ title: t.title, artist: t.artist || "ХУЯКС" });
+    if (MM) nav.mediaSession.metadata = new MM({ title: t.title, artist: t.artist || "WhoYaX" });
     nav.mediaSession.playbackState = state.playing ? "playing" : "paused";
     nav.mediaSession.setActionHandler("play", () => void toggle());
     nav.mediaSession.setActionHandler("pause", () => void toggle());

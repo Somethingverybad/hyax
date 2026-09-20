@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">ХУЯКС</string>
-    <string name="title_activity_main">ХУЯКС</string>
+    <string name="app_name">WhoYaX</string>
+    <string name="title_activity_main">WhoYaX</string>
     <string name="package_name">com.huyax.app</string>
     <string name="custom_url_scheme">com.huyax.app</string>
 </resources>

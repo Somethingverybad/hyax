@@ -396,7 +396,7 @@ const ProfilePage = () => {
               всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
               его показываем рядом, если он отличается. */}
           <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
-            ХУЯКС {APP_VERSION} · сборка {APP_BUILD}
+            WhoYaX {APP_VERSION} · сборка {APP_BUILD}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
           </div>
         </div>

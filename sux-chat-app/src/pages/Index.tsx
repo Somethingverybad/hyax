@@ -15,7 +15,7 @@ const Index = () => {
           </div>
           
           <h1 className="mb-4 md:mb-6 text-3xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            ХУЯКС эсемэсэнджер
+            WhoYaX эсемэсэнджер
           </h1>
           
           <p className="text-base md:text-xl text-muted-foreground mb-8 md:mb-12">

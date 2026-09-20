@@ -13,7 +13,7 @@ import androidx.core.app.NotificationCompat;
 /**
  * Пока идёт разговор, приложение должно жить: без службы переднего плана
  * система усыпляет процесс при блокировке экрана и звонок обрывается.
- * Заодно в шторке висит понятное «Звонок ХУЯКС» с возвратом в приложение.
+ * Заодно в шторке висит понятное «Звонок WhoYaX» с возвратом в приложение.
  */
 public class CallForegroundService extends Service {
 
@@ -44,7 +44,7 @@ public class CallForegroundService extends Service {
 
         Notification notification = new NotificationCompat.Builder(this, CallNotifications.CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Звонок ХУЯКС")
+            .setContentTitle("Звонок WhoYaX")
             .setContentText("Идёт разговор")
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setOngoing(true)

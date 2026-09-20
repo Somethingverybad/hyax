@@ -68,7 +68,7 @@ public class CallMessagingService extends FirebaseMessagingService {
         // по сокету и прозвучало само, как и раньше с системными пушами.
         if (MainActivity.isForeground) return;
         JSONObject p = PushCrypto.decrypt(getApplicationContext(), data.get("e"));
-        String title = p != null ? p.optString("title", "ХУЯКС") : "ХУЯКС";
+        String title = p != null ? p.optString("title", "WhoYaX") : "WhoYaX";
         String body = p != null ? p.optString("body", "Новое сообщение") : "Новое сообщение";
         String chatId = p != null ? p.optString("chat_id", "") : "";
         String channel = data.get("ch");

@@ -7,6 +7,14 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
+// Приложение переименовано (ХУЯКС → WhoYaX), а каталог данных Electron выводит
+// из productName. Без закрепления обновление открыло бы пустой профиль:
+// пропали бы вход, кеш и настройки. Держим прежний путь; до ready и до
+// первого обращения к getPath('userData').
+if (app.isPackaged) {
+  try { app.setPath('userData', path.join(app.getPath('appData'), 'ХУЯКС')); } catch {}
+}
+
 // Журнал main-процесса: ~/Library/Logs/hyax-messenger/main.log (mac),
 // %APPDATA%/hyax-messenger/logs (win), ~/.config/hyax-messenger/logs (linux).
 // Упакованное приложение не пишет в консоль, а падение при старте или ошибку
@@ -73,7 +81,7 @@ function createWindow() {
     minHeight: 600,
     show: false,
     backgroundColor: '#0a0a0a',
-    title: 'ХУЯКС',
+    title: 'WhoYaX',
     ...(process.platform === 'linux' ? { icon: LINUX_ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

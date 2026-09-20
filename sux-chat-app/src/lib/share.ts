@@ -1,7 +1,7 @@
 /**
  * Поделиться профилем. Поиска по людям в приложении нет — единственный
  * способ начать чат с человеком, это получить от него ссылку. Ссылка
- * https://huyax.e-tree.su/u/<ник>: на телефоне с установленным ХУЯКСом она
+ * https://huyax.e-tree.su/u/<ник>: на телефоне с установленным WhoYaXом она
  * открывается прямо в приложении (universal link / app link), у остальных —
  * в браузере той же страницей с кнопкой «Написать» и ссылкой на установку.
  *
@@ -34,15 +34,15 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
 }
 
 export const shareChannel = (ch: { id: string; name: string; username?: string | null }) =>
-  shareUrl("ХУЯКС", `Канал «${ch.name}» в ХУЯКС`, channelLink(ch));
+  shareUrl("WhoYaX", `Канал «${ch.name}» в WhoYaX`, channelLink(ch));
 
 export async function shareProfile(username: string): Promise<ShareResult> {
   const url = profileLink(username);
-  const text = `Напиши мне в ХУЯКС: ${url}`;
+  const text = `Напиши мне в WhoYaX: ${url}`;
   const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
   if (typeof nav.share === "function") {
     try {
-      await nav.share({ title: "ХУЯКС", text: `Напиши мне в ХУЯКС`, url });
+      await nav.share({ title: "WhoYaX", text: `Напиши мне в WhoYaX`, url });
       return "shared";
     } catch (e: any) {
       // Пользователь закрыл шит — это не ошибка.

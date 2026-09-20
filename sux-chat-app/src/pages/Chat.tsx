@@ -10,6 +10,7 @@ import ChatWindow from "@/components/chat/ChatWindow";
 import ChannelView from "@/components/chat/ChannelView";
 import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
+import TermsGate from "@/components/TermsGate";
 import { api, mediaUrl } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { requestMediaPermissionsOnce } from "@/lib/permissions";
@@ -45,6 +46,8 @@ interface ProfileType {
   username: string;
   avatar_url?: string;
   status?: string;
+  /** null — правила ещё не приняты (см. TermsGate). */
+  terms_accepted_at?: string | null;
 }
 
 /** savedMode — вкладка «Избранное»: вместо списка сразу открыт личный чат
@@ -747,11 +750,21 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
 
   if (!user) return null;
 
+  // Правила появились позже первых аккаунтов: кто их ещё не принимал, видит
+  // экран согласия поверх чатов. Строго null — поле пришло и оно пустое.
+  const termsGate = user.terms_accepted_at === null ? (
+    <TermsGate
+      onAccepted={(p) => { const next = { ...user, terms_accepted_at: p.terms_accepted_at }; setUser(next); writeCache("user", next); }}
+      onLogout={handleLogout}
+    />
+  ) : null;
+
   // На телефоне два экрана вместо двух колонок: список чатов и переписка.
   // Показываем что-то одно — так же, как в привычных мессенджерах.
   if (isMobile) {
     return (
       <div className="h-screen flex flex-col bg-background">
+        {termsGate}
         {callUi}
         {savedMode ? (
           <>
@@ -837,6 +850,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <UpdateBanner />
+      {termsGate}
       <div className="flex-1 flex min-h-0">
       {callUi}
       <ChatSidebar

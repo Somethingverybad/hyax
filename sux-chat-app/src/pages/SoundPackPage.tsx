@@ -7,6 +7,7 @@ import { SettingsCard } from "@/components/settings";
 import { api, mediaUrl, type SoundPackInfo } from "@/api/client";
 import { soundPackLink } from "@/lib/share";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
+import AdultLock, { AdultBadge } from "@/components/AdultLock";
 
 /**
  * Пак звуков по ссылке /sp/<id> — как /u/<ник> для профиля. Отсюда пак
@@ -83,14 +84,16 @@ const SoundPackPage = () => {
                 <Music2 className="w-7 h-7 text-primary" />
               </span>
               <div className="min-w-0">
-                <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}</p>
+                <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>
                 <p className="mt-1 text-small text-subtle truncate">
-                  {pack.is_default ? "Стандартный пак" : pack.creator ? `Автор: ${pack.creator}` : "Без автора"} · {pack.sounds.length} звуков
+                  {pack.is_default ? "Стандартный пак" : pack.creator ? `Автор: ${pack.creator}` : "Без автора"} · {pack.sounds_count ?? pack.sounds.length} звуков
                 </p>
               </div>
             </div>
 
-            {!pack.is_default && !pack.mine && (
+            {pack.adult_locked && <AdultLock />}
+
+            {!pack.is_default && !pack.mine && !pack.adult_locked && (
               <button
                 type="button"
                 onClick={act}
@@ -103,7 +106,7 @@ const SoundPackPage = () => {
             {pack.mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>}
             {pack.is_default && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Стандартный пак — он есть у всех</p>}
 
-            <SettingsCard>
+            {!pack.adult_locked && <SettingsCard>
               {pack.sounds.map((s) => (
                 <button key={s.id} type="button" onClick={() => toggle(s)} className="w-full h-12 px-4 flex items-center gap-3 text-left active:bg-surface-3">
                   <span className="w-8 h-8 rounded-full bg-surface-4 flex items-center justify-center shrink-0">
@@ -112,7 +115,7 @@ const SoundPackPage = () => {
                   <span className="flex-1 text-body truncate">{s.name}</span>
                 </button>
               ))}
-            </SettingsCard>
+            </SettingsCard>}
           </>
         )}
       </div>

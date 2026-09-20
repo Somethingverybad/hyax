@@ -121,7 +121,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         let uuid = UUID(uuidString: callId) ?? UUID()
         // В группе звонит не человек, а сама группа — так и подписываем.
         let isGroup = (data["group"] as? String) == "1" || (data["group"] as? Bool) == true
-        let caller = (data["from_username"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "ХУЯКС"
+        let caller = (data["from_username"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "WhoYaX"
         let groupName = (data["chat_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Группа"
         let name = isGroup ? "\(groupName) · \(caller)" : caller
         let update = CXCallUpdate()
@@ -340,7 +340,7 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func reportOutgoingCall(_ call: CAPPluginCall) {
         guard let callId = call.getString("callId") else { call.reject("callId обязателен"); return }
-        VoipManager.shared.reportOutgoing(callId: callId, name: call.getString("name") ?? "ХУЯКС")
+        VoipManager.shared.reportOutgoing(callId: callId, name: call.getString("name") ?? "WhoYaX")
         call.resolve()
     }
 

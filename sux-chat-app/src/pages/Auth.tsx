@@ -8,12 +8,19 @@ import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { api } from "@/api/client";
+import { LegalView, type LegalKind } from "./Legal";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // Согласие с правилами и политикой — обязательное условие регистрации
+  // (App Store, гайдлайн 1.2: пользовательский контент).
+  const [agreed, setAgreed] = useState(false);
+  // Правила открываются поверх формы: переход на /terms размонтировал бы
+  // экран и стёр уже введённые логин с паролем.
+  const [legal, setLegal] = useState<LegalKind | null>(null);
   // Двухшаговый вход, как в мессенджерах: сначала логин, потом пароль.
   // Одно поле на экране — клавиатура ничего не перекрывает, а панели
   // скользят transform-ом (его считает композитор, перехода без рывков).
@@ -76,7 +83,7 @@ const Auth = () => {
     try {
       const data = isLogin
         ? await api.login(username, password)
-        : await api.register(username, password);
+        : await api.register(username, password, agreed);
 
       if (data.error) throw new Error(data.error);
 
@@ -113,13 +120,13 @@ const Auth = () => {
         <div className="flex flex-col items-center mb-4 md:mb-6">
           <img
             src={logo}
-            alt="ХУЯКС"
+            alt="WhoYaX"
             className="w-20 h-20 md:w-24 md:h-24 mb-4 rounded-lg select-none pointer-events-none"
             draggable={false}
           />
 
           <div className="text-center mb-2 md:mb-3">
-            <h1 className="text-[28px] md:text-[32px] font-semibold text-foreground leading-none">ХУЯКС</h1>
+            <h1 className="text-[28px] md:text-[32px] font-semibold text-foreground leading-none">WhoYaX</h1>
             <p className="text-caption text-subtle mt-1.5 tracking-[0.08em] uppercase">эсемэсэнджер</p>
           </div>
 
@@ -198,10 +205,28 @@ const Auth = () => {
                     className="h-12 bg-surface-2 border-transparent rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
                   />
                 </div>
+                {!isLogin && (
+                  <label className="flex items-start gap-2.5 text-small text-subtle">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 w-5 h-5 accent-primary shrink-0"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                      tabIndex={step === 1 ? 0 : -1}
+                    />
+                    <span>
+                      Мне есть 17 лет, я принимаю{" "}
+                      <a href="/terms" onClick={(e) => { e.preventDefault(); setLegal("terms"); }} className="text-primary underline">правила</a>
+                      {" "}и{" "}
+                      <a href="/privacy" onClick={(e) => { e.preventDefault(); setLegal("privacy"); }} className="text-primary underline">политику конфиденциальности</a>.
+                      Недопустимый контент и оскорбления запрещены.
+                    </span>
+                  </label>
+                )}
                 <Button
                   type="submit"
                   className="w-full h-12 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body disabled:opacity-40"
-                  disabled={loading || !password}
+                  disabled={loading || !password || (!isLogin && !agreed)}
                 >
                   {loading ? (
                     <div className="flex items-center gap-2">
@@ -209,7 +234,7 @@ const Auth = () => {
                       Загрузка...
                     </div>
                   ) : isLogin ? (
-                    "Войти в ХУЯКС"
+                    "Войти в WhoYaX"
                   ) : (
                     "Создать аккаунт"
                   )}
@@ -230,6 +255,11 @@ const Auth = () => {
           </button>
         </div>
       </Card>
+      {legal && (
+        <div className="fixed inset-0 z-50">
+          <LegalView kind={legal} onClose={() => setLegal(null)} />
+        </div>
+      )}
     </div>
   );
 };

@@ -80,7 +80,7 @@ interface AuthResponse {
   user_id?: string;
 }
 
-interface Profile {
+export interface Profile {
   id: string;
   username: string;
   avatar_url?: string;
@@ -95,6 +95,11 @@ interface Profile {
   notify_sound?: NotificationSoundInfo | null;
   /** Принимать Р.Ё.В — вибрацию, которую шлёт собеседник. */
   rov_enabled?: boolean;
+  /** Показывать паки 18+. Приходит только в своём профиле. */
+  allow_adult?: boolean;
+  /** Когда приняты правила. null — ещё не приняты (экран согласия);
+   *  undefined — сервер поля не знает или это чужой профиль. */
+  terms_accepted_at?: string | null;
 }
 
 /** Пак звуков — карточка по ссылке /sp/<id> и список добавленных. */
@@ -111,6 +116,11 @@ export interface SoundPackInfo {
   added: boolean;
   /** Создан текущим пользователем. */
   mine: boolean;
+  /** Пак 18+. */
+  is_adult?: boolean;
+  /** 18+ и настройка выключена: звуки не приходят, добавить нельзя. */
+  adult_locked?: boolean;
+  sounds_count?: number;
 }
 
 /** Стикерпак — карточка по ссылке /stp/<id>. author — сериализованный профиль. */
@@ -120,6 +130,9 @@ export interface StickerPackInfo {
   description?: string | null;
   author?: { id: string; username: string; avatar_url?: string | null } | null;
   is_public: boolean;
+  is_adult?: boolean;
+  /** 18+ и настройка выключена: стикеры не приходят, добавить нельзя. */
+  adult_locked?: boolean;
   stickers_count: number;
   /** Уже добавлен текущим пользователем. */
   is_saved: boolean;
@@ -386,11 +399,11 @@ async function uploadWithProgress(
 
 export const api = {
   // ===== AUTH =====
-  register: async (username: string, password: string): Promise<AuthResponse> => {
+  register: async (username: string, password: string, acceptTerms = false): Promise<AuthResponse> => {
     const res = await fetchWithAuth(`${API_URL}/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, accept_terms: acceptTerms }),
     });
 
     if (!res.ok) {
@@ -1037,8 +1050,30 @@ export const api = {
   },
 
 
+  // ===== АККАУНТ =====
+  /** Принять правила и политику — для тех, кто регистрировался до их появления. */
+  acceptTerms: async (): Promise<Profile> => {
+    const res = await fetchWithAuth(`${API_URL}/account/accept-terms/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось сохранить согласие");
+    return res.json();
+  },
+
+  /** Безвозвратно удалить свой аккаунт. Пароль — подтверждение. */
+  deleteAccount: async (password: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/account/delete/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      let msg = "Не удалось удалить аккаунт";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+  },
+
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; notify_sound_id?: string | null }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; notify_sound_id?: string | null }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

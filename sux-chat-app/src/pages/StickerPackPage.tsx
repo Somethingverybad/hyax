@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, mediaUrl, type StickerPackInfo } from "@/api/client";
 import { stickerPackLink } from "@/lib/share";
+import AdultLock, { AdultBadge } from "@/components/AdultLock";
 
 /**
  * Стикерпак по ссылке /stp/<id> — как /sp/<id> для звуков. Сетка стикеров
@@ -70,14 +71,16 @@ const StickerPackPage = () => {
                 {stickers[0] ? <img src={mediaUrl(stickers[0].file_url)} alt="" className="w-12 h-12 object-contain" /> : <StickerIcon className="w-7 h-7 text-primary" />}
               </span>
               <div className="min-w-0">
-                <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}</p>
+                <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>
                 <p className="mt-1 text-small text-subtle truncate">
                   {pack.author?.username ? `Автор: ${pack.author.username}` : "Без автора"} · {pack.stickers_count} стикеров
                 </p>
               </div>
             </div>
 
-            {!mine && (
+            {pack.adult_locked && <AdultLock />}
+
+            {!mine && !pack.adult_locked && (
               <button
                 type="button"
                 onClick={act}
@@ -89,14 +92,14 @@ const StickerPackPage = () => {
             )}
             {mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>}
 
-            <div className="rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
+            {!pack.adult_locked && <div className="rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
               {stickers.map((s) => (
                 <div key={s.id} className="aspect-square rounded-md bg-surface-3 flex items-center justify-center overflow-hidden">
                   <img src={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" loading="lazy" />
                 </div>
               ))}
               {stickers.length === 0 && <p className="col-span-4 py-6 text-center text-small text-subtle">Стикеры ещё грузятся</p>}
-            </div>
+            </div>}
           </>
         )}
       </div>

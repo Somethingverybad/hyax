@@ -6,6 +6,8 @@ import ProfilePrivacy from "./pages/ProfilePrivacy";
 import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
+import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
+import Legal from "./pages/Legal";
 import SoundPackPage from "./pages/SoundPackPage";
 import StickerPackPage from "./pages/StickerPackPage";
 import { applog } from "@/lib/applog";
@@ -152,6 +154,11 @@ const App = () => {
               <Route path="/profile/appearance" element={<ProfileAppearance />} />
               <Route path="/profile/bugreport" element={<ProfileBugReport />} />
               <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
+              <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
+              {/* Правила и политика — публичные, без входа: на них ссылаются
+                  экран регистрации и карточка приложения в сторах. */}
+              <Route path="/terms" element={<Legal kind="terms" />} />
+              <Route path="/privacy" element={<Legal kind="privacy" />} />
               {/* Пак звуков по ссылке «Поделиться паком». */}
               <Route path="/sp/:id" element={<SoundPackPage />} />
               {/* Стикерпак по ссылке из студии. */}

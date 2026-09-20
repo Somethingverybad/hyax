@@ -74,7 +74,7 @@ const UpdateBanner = () => {
       <div className="shrink-0 bg-primary text-primary-foreground px-3 py-2 flex items-center gap-2">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">
-            {upd.state === "downloaded" ? "Обновление готово" : "ХУЯКС ХУЯКС и новая версия, закачаешься"}
+            {upd.state === "downloaded" ? "Обновление готово" : "Вжух — и новая версия, закачаешься"}
           </div>
           <div className="text-xs opacity-80 truncate">
             {upd.state === "downloading"
@@ -125,7 +125,7 @@ const UpdateBanner = () => {
   return (
     <div className="shrink-0 bg-primary text-primary-foreground px-3 py-2 flex items-center gap-2">
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">ХУЯКС ХУЯКС и новая версия, закачаешься</div>
+        <div className="text-sm font-semibold truncate">Вжух — и новая версия, закачаешься</div>
         <div className="text-xs opacity-80 truncate">
           Версия {info.version}{info.notes ? ` — ${info.notes}` : ""}
         </div>

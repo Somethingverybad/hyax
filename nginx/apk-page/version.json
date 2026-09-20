@@ -1,9 +1,9 @@
 {
-  "version": "1.1.10",
-  "build": 263,
-  "ios_version": "1.1.10",
-  "ios_build": 129,
-  "notes": "Р.Ё.В переехал на кнопку записи третьим режимом: голосовое → видео → Р.Ё.В, тап переключает, удержание — вибрация",
+  "version": "1.1.11",
+  "build": 265,
+  "ios_version": "1.1.11",
+  "ios_build": 130,
+  "notes": "Теперь мы WhoYaX. Правила и политика конфиденциальности, удаление аккаунта, настройка «Показывать 18+» для паков",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
