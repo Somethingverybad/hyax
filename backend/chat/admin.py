@@ -5,7 +5,7 @@ from django.utils.html import format_html
 
 from .models import (
     Block, BugReport, Chat, ChatParticipant, Friendship, Message, NotificationSound,
-    Profile, Report, SoundPack, StickerPack,
+    Profile, Report, SoundPack, StickerPack, Theme,
 )
 
 
@@ -146,3 +146,13 @@ class NotificationSoundAdmin(admin.ModelAdmin):
     list_filter = ("pack", "is_active")
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("caf_url", "updated_at")
+
+
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    """Темы пользователей. Снять галочку «is_public» — тема перестаёт открываться
+    по ссылке; удалить — пропадёт и у установивших."""
+    list_display = ("name", "author", "is_public", "updated_at")
+    list_editable = ("is_public",)
+    list_filter = ("is_public",)
+    search_fields = ("name", "author__username")

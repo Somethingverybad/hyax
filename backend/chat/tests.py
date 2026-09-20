@@ -17,7 +17,10 @@ def make_user(name, password="pass-12345", **profile_kw):
 
 def client_for(profile):
     c = APIClient()
-    c.force_authenticate(user=profile.user)
+    # Свежий User из базы: у profile.user в кеше висит этот же объект Profile,
+    # и вьюхи читали бы request.user.profile в состоянии на момент создания —
+    # в бою каждый запрос грузит пользователя заново.
+    c.force_authenticate(user=User.objects.get(pk=profile.user_id))
     return c
 
 
@@ -195,3 +198,185 @@ class DeleteAccountTests(TestCase):
         client_for(self.me).post("/api/account/delete/", {"password": "pass-12345"}, format="json")
         r = APIClient().post("/api/token/", {"username": "me", "password": "pass-12345"}, format="json")
         self.assertEqual(r.status_code, 401)
+
+
+def theme_body(**over):
+    colors = {k: "#202020" for k in (
+        "background", "surface1", "surface2", "surface3", "surface4", "primary", "primaryDeep", "accent",
+        "destructive", "success", "online", "amber", "border", "divider", "ring", "accentSoft",
+        "bubbleOwn", "bubbleIn", "chatCanvas")}
+    colors.update({k: "#FFFFFF" for k in (
+        "foreground", "mutedForeground", "subtleForeground", "primaryForeground", "accentForeground",
+        "destructiveForeground", "successForeground", "ink", "bubbleOwnFg", "bubbleInFg")})
+    body = {
+        "name": "Ночная", "base": "dark", "colors": colors,
+        "shape": {"style": "flat", "radius": 12, "radiusField": 10, "borderWidth": 1, "shadowOffset": 0,
+                  "iconStroke": 1.5, "rowCards": False, "floatingNav": False},
+    }
+    body.update(over)
+    return body
+
+
+class ThemeTests(TestCase):
+    def setUp(self):
+        self.author = make_user("author")
+        self.fan = make_user("fan")
+
+    def create(self, **over):
+        return client_for(self.author).post("/api/themes/", theme_body(**over), format="json")
+
+    def test_create_and_list(self):
+        r = self.create()
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(r.data["mine"])
+        self.assertEqual(r.data["colors"]["background"], "#202020")
+        self.assertEqual(len(client_for(self.author).get("/api/themes/").data["themes"]), 1)
+        self.assertEqual(client_for(self.fan).get("/api/themes/").data["themes"], [])
+
+    def test_unknown_keys_are_dropped(self):
+        body = theme_body()
+        body["css"] = "body{display:none}"
+        body["colors"]["evil"] = "url(javascript:alert(1))"
+        body["shape"]["position"] = "fixed"
+        r = client_for(self.author).post("/api/themes/", body, format="json")
+        self.assertEqual(r.status_code, 201)
+        from .models import Theme
+        data = Theme.objects.get(pk=r.data["id"]).data
+        self.assertNotIn("css", data)
+        self.assertNotIn("evil", data["colors"])
+        self.assertNotIn("position", data["shape"])
+
+    def test_rejects_bad_values(self):
+        bad_color = theme_body(); bad_color["colors"]["primary"] = "red; background:url(x)"
+        bad_radius = theme_body(); bad_radius["shape"]["radius"] = 5000
+        bad_flag = theme_body(); bad_flag["shape"]["rowCards"] = "yes"
+        missing = theme_body(); del missing["colors"]["ink"]
+        for body in (bad_color, bad_radius, bad_flag, missing, theme_body(name="  "), theme_body(base="sepia")):
+            self.assertEqual(client_for(self.author).post("/api/themes/", body, format="json").status_code, 400)
+
+    def test_rejects_unreadable_theme(self):
+        body = theme_body()
+        body["colors"]["foreground"] = "#222222"  # тёмным по тёмному
+        r = client_for(self.author).post("/api/themes/", body, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("контраст", r.data["error"])
+
+    def test_install_flow(self):
+        tid = self.create().data["id"]
+        fan = client_for(self.fan)
+        self.assertFalse(fan.get(f"/api/themes/{tid}/").data["installed"])
+        self.assertEqual(fan.post(f"/api/themes/{tid}/install/").status_code, 200)
+        listed = fan.get("/api/themes/").data["themes"]
+        self.assertEqual([t["id"] for t in listed], [tid])
+        self.assertTrue(listed[0]["installed"])
+        self.assertFalse(listed[0]["mine"])
+        self.assertEqual(listed[0]["installs"], 1)
+        # активная тема сбрасывается, если тему убрали
+        fan.patch(f"/api/profiles/{self.fan.id}/", {"active_theme": tid}, format="json")
+        # новый клиент: force_authenticate держит одного User на все запросы, а
+        # с ним и закешированный профиль в состоянии до PATCH
+        fan = client_for(self.fan)
+        fan.delete(f"/api/themes/{tid}/install/")
+        self.assertEqual(Profile.objects.get(pk=self.fan.pk).active_theme, "")
+        self.assertEqual(fan.get("/api/themes/").data["themes"], [])
+
+    def test_only_author_edits_and_deletes(self):
+        tid = self.create().data["id"]
+        fan = client_for(self.fan)
+        self.assertEqual(fan.patch(f"/api/themes/{tid}/", theme_body(name="Чужая"), format="json").status_code, 403)
+        self.assertEqual(fan.delete(f"/api/themes/{tid}/").status_code, 403)
+        r = client_for(self.author).patch(f"/api/themes/{tid}/", theme_body(name="Новая"), format="json")
+        self.assertEqual(r.data["name"], "Новая")
+        self.assertEqual(client_for(self.author).delete(f"/api/themes/{tid}/").status_code, 200)
+
+    def test_private_theme_hidden_from_others(self):
+        tid = self.create(is_public=False).data["id"]
+        self.assertEqual(client_for(self.fan).get(f"/api/themes/{tid}/").status_code, 404)
+        self.assertEqual(client_for(self.fan).post(f"/api/themes/{tid}/install/").status_code, 404)
+        self.assertEqual(client_for(self.author).get(f"/api/themes/{tid}/").status_code, 200)
+
+    def test_active_theme_in_own_profile(self):
+        c = client_for(self.author)
+        self.assertEqual(c.patch(f"/api/profiles/{self.author.id}/", {"active_theme": "neo"}, format="json").status_code, 200)
+        self.assertEqual(client_for(self.author).get("/api/profiles/current/").data["active_theme"], "neo")
+        self.assertEqual(c.patch(f"/api/profiles/{self.author.id}/", {"active_theme": "<script>"}, format="json").status_code, 400)
+        self.assertNotIn("active_theme", client_for(self.fan).get(f"/api/profiles/{self.author.id}/").data)
+
+    def test_theme_survives_author_deletion(self):
+        tid = self.create().data["id"]
+        client_for(self.fan).post(f"/api/themes/{tid}/install/")
+        client_for(self.author).post("/api/account/delete/", {"password": "pass-12345"}, format="json")
+        r = client_for(self.fan).get(f"/api/themes/{tid}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.data["author"])
+
+    def test_report_theme(self):
+        tid = self.create().data["id"]
+        r = client_for(self.fan).post("/api/reports/", {"target_type": "theme", "target_id": tid, "reason": "other"}, format="json")
+        self.assertIn(r.status_code, (200, 201))
+
+
+class ChatOrderTests(TestCase):
+    """Порядок списка чатов: закреплённые сверху, остальные по последнему
+    сообщению. Закрепление личное — у собеседника свой порядок."""
+
+    def setUp(self):
+        from django.utils import timezone as tz
+        import datetime
+        self.me = make_user("me")
+        self.a, self.b, self.c = make_user("a"), make_user("b"), make_user("c")
+        now = tz.now()
+        self.chats = {}
+        for i, peer in enumerate((self.a, self.b, self.c)):
+            chat = Chat.objects.create(kind="direct")
+            ChatParticipant.objects.create(chat=chat, user=self.me)
+            ChatParticipant.objects.create(chat=chat, user=peer)
+            m = Message.objects.create(chat=chat, sender=peer, content=peer.username)
+            # i=0 самый старый, i=2 самый свежий
+            Message.objects.filter(pk=m.pk).update(created_at=now - datetime.timedelta(minutes=10 - i * 4))
+            self.chats[peer.username] = chat
+
+    def order(self, profile=None):
+        r = client_for(profile or self.me).get("/api/chats/")
+        self.assertEqual(r.status_code, 200)
+        names = []
+        for row in r.data:
+            other = [p["username"] for p in row["participants"] if p["username"] != (profile or self.me).username]
+            names.append(other[0] if other else "?")
+        return names
+
+    def test_sorted_by_last_message(self):
+        self.assertEqual(self.order(), ["c", "b", "a"])
+
+    def test_new_message_lifts_chat(self):
+        Message.objects.create(chat=self.chats["a"], sender=self.a, content="ещё")
+        self.assertEqual(self.order()[0], "a")
+
+    def test_pin_moves_to_top_and_is_personal(self):
+        c = client_for(self.me)
+        self.assertEqual(c.post(f"/api/chats/{self.chats['a'].id}/pin/").status_code, 200)
+        self.assertEqual(self.order(), ["a", "c", "b"])
+        # у собеседника порядок не изменился: закрепление своё у каждого
+        self.assertIsNone(client_for(self.a).get("/api/chats/").data[0]["pinned_at"])
+
+    def test_latest_pin_on_top(self):
+        c = client_for(self.me)
+        c.post(f"/api/chats/{self.chats['a'].id}/pin/")
+        c.post(f"/api/chats/{self.chats['b'].id}/pin/")
+        self.assertEqual(self.order(), ["b", "a", "c"])
+
+    def test_unpin_returns_to_time_order(self):
+        c = client_for(self.me)
+        c.post(f"/api/chats/{self.chats['a'].id}/pin/")
+        self.assertEqual(client_for(self.me).delete(f"/api/chats/{self.chats['a'].id}/pin/").status_code, 200)
+        self.assertEqual(self.order(), ["c", "b", "a"])
+        self.assertTrue(all(row["pinned_at"] is None for row in client_for(self.me).get("/api/chats/").data))
+
+    def test_pin_requires_membership(self):
+        other = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=other, user=self.a)
+        self.assertEqual(client_for(self.me).post(f"/api/chats/{other.id}/pin/").status_code, 404)
+
+    def test_last_message_at_in_payload(self):
+        row = client_for(self.me).get("/api/chats/").data[0]
+        self.assertIsNotNone(row["last_message_at"])

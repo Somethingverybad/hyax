@@ -173,9 +173,23 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_voice_a=Subquery(last.values('voice_url')[:1]),
                     last_video_a=Subquery(last.values('video_url')[:1]),
                     last_file_a=Subquery(last.values('file_url')[:1]),
+                    last_at_a=Subquery(last.values('created_at')[:1]),
+                    # Моё закрепление: у каждого участника своё.
+                    my_pinned_at=Subquery(
+                        ChatParticipant.objects
+                        .filter(chat=OuterRef('pk'), user=profile)
+                        .values('pinned_at')[:1]
+                    ),
                 )
                 .select_related('pinned_message__sender')
-                .order_by('-updated_at')
+                # Закреплённые сверху (позже закреплённый выше), остальные — по
+                # времени последнего сообщения. Пустой чат опускается на время
+                # создания: иначе он висел бы наверху вечно.
+                .order_by(
+                    models.F('my_pinned_at').desc(nulls_last=True),
+                    models.F('last_at_a').desc(nulls_last=True),
+                    '-created_at',
+                )
             )
         except Profile.DoesNotExist:
             return Chat.objects.none()
@@ -194,6 +208,23 @@ class ChatViewSet(viewsets.ModelViewSet):
             chat = Chat.objects.create(kind="saved", creator=profile, name="Избранное")
             ChatParticipant.objects.get_or_create(chat=chat, user=profile, defaults={"role": "owner"})
         return Response(self.get_serializer(chat).data)
+
+    @action(detail=True, methods=['post', 'delete'])
+    def pin(self, request, pk=None):
+        """POST — закрепить чат вверху списка, DELETE — открепить.
+
+        Закрепление личное: у собеседника порядок свой. Время закрепления
+        задаёт порядок среди закреплённых — последний закреплённый сверху.
+        """
+        profile = getattr(request.user, 'profile', None)
+        if not profile:
+            return Response({"error": "Profile not found"}, status=400)
+        row = ChatParticipant.objects.filter(chat_id=pk, user=profile).first()
+        if not row:
+            return Response({"error": "Вы не участник этого чата"}, status=404)
+        row.pinned_at = timezone.now() if request.method == 'POST' else None
+        row.save(update_fields=['pinned_at'])
+        return Response({"ok": True, "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None})
 
     @action(detail=True, methods=['post'])
     def leave(self, request, pk=None):
@@ -2726,7 +2757,10 @@ def _report_snapshot(target_type, target_id):
         return f"пак «{pack.name}»: {names}", pack.creator
     if target_type == "sticker_pack":
         pack = StickerPack.objects.filter(id=target_id).first()
-        return (f"пак «{pack.name}»" if pack else ""), getattr(pack, "creator", None)
+        return (f"пак «{pack.name}»" if pack else ""), getattr(pack, "author", None)
+    if target_type == "theme":
+        theme = Theme.objects.filter(id=target_id).first()
+        return (f"тема «{theme.name}»" if theme else ""), (theme.author if theme else None)
     return "", None
 
 

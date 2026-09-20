@@ -35,9 +35,21 @@ class OwnProfileSerializer(ProfileSerializer):
     незачем. Базовый сериализатор уходит в участников чата и отправителей
     сообщений, поэтому 18+ и отметка о принятии правил живут только здесь."""
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at']
+        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
+
+    def validate_active_theme(self, value):
+        from .themes import BUILTIN_IDS
+        value = (value or "").strip()
+        if value in BUILTIN_IDS or value == "":
+            return value
+        import uuid as _uuid
+        try:
+            _uuid.UUID(value)
+        except ValueError:
+            raise serializers.ValidationError("Неизвестная тема")
+        return value
 
 
 class PublicProfileSerializer(serializers.ModelSerializer):
@@ -65,10 +77,24 @@ class ChatSerializer(serializers.ModelSerializer):
 
     creator = serializers.SerializerMethodField()
     pinned_message = serializers.SerializerMethodField()
+    # Когда я закрепил этот чат (аннотация my_pinned_at из get_queryset).
+    # null — не закреплён. Закрепление личное, у собеседника своё.
+    pinned_at = serializers.SerializerMethodField()
+    # Время последнего сообщения — по нему клиент сортирует список. updated_at
+    # у чата меняется и от переименования, и от смены аватара.
+    last_message_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'participants', 'last_message', 'pinned_message']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message']
+
+    def get_pinned_at(self, obj):
+        v = getattr(obj, 'my_pinned_at', None)
+        return v.isoformat() if v else None
+
+    def get_last_message_at(self, obj):
+        v = getattr(obj, 'last_at_a', None)
+        return v.isoformat() if v else None
 
     def get_creator(self, obj):
         return str(obj.creator_id) if obj.creator_id else None

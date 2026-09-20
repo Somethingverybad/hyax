@@ -26,6 +26,10 @@ class Profile(models.Model):
     # Когда человек принял правила и политику конфиденциальности. Пусто у тех,
     # кто регистрировался до появления правил, — клиент покажет им экран согласия.
     terms_accepted_at = models.DateTimeField(blank=True, null=True)
+    # Выбранная тема оформления: dark | light | neo либо uuid темы из Theme.
+    # Хранится на сервере, чтобы выбор переезжал между устройствами; на самом
+    # устройстве лежит копия (см. клиент, src/lib/theme.ts).
+    active_theme = models.CharField(max_length=64, blank=True, default="")
     # «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников, если у
     # самого сообщения нет аудио-стикера. Из каталога NotificationSound —
     # его caf/канал уже есть на устройствах получателей (syncNotificationSounds).
@@ -116,6 +120,10 @@ class ChatParticipant(models.Model):
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE)
     user = models.ForeignKey(Profile, on_delete=models.CASCADE)
     joined_at = models.DateTimeField(default=timezone.now)
+    # Закрепление чата — у каждого своё: список сортируется по времени
+    # последнего сообщения, а закреплённые всегда сверху, позже закреплённый
+    # выше. Пусто — чат не закреплён.
+    pinned_at = models.DateTimeField(blank=True, null=True)
     # Роль: owner · admin · subscriber (каналы) / member (группы, личка).
     # Постить в канал могут только owner/admin.
     role = models.CharField(max_length=12, default="member")
@@ -553,6 +561,7 @@ class Report(models.Model):
         ("chat", "Чат или канал"),
         ("sound_pack", "Пак звуков"),
         ("sticker_pack", "Пак стикеров"),
+        ("theme", "Тема оформления"),
     ]
     REASONS = [
         ("sexual", "Сексуальный контент"),
@@ -631,4 +640,37 @@ class UserSoundPack(models.Model):
 
     class Meta:
         unique_together = ("user", "pack")
+        ordering = ["added_at"]
+
+
+class Theme(models.Model):
+    """Тема оформления, сделанная пользователем. data — объект по схеме
+    chat/themes.py (цвета hex и параметры формы); произвольного CSS в теме нет.
+    Делятся ссылкой /t/<id>, как паками."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=40)
+    # SET_NULL: удалил аккаунт — тема остаётся у тех, кто её установил.
+    author = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="themes")
+    data = models.JSONField()
+    # Приватная тема по ссылке не открывается; автору видна всегда.
+    is_public = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return self.name
+
+
+class UserTheme(models.Model):
+    """Установленная тема — как UserStickerPack у стикеров."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="installed_themes")
+    theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name="installed_by")
+    added_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("user", "theme")
         ordering = ["added_at"]
