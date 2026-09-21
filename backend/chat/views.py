@@ -2820,9 +2820,12 @@ def _webm_sticker_to_webp(src_path):
     try:
         subprocess.run(
             ["ffmpeg", "-y", "-c:v", "libvpx-vp9", "-i", src_path,
-             "-vf", "fps=24,scale='min(256,iw)':-2:flags=lanczos",
+             # 160 px и 15 кадров в секунду: стикер в чате меньше этого, а вес
+             # ~130 КБ вместо ~500 КБ при 256 px/24 к/с (набор из 120 стикеров —
+             # 16 МБ вместо 61 МБ). Проверено на реальном наборе.
+             "-vf", "fps=15,scale='min(160,iw)':-2:flags=lanczos",
              "-loop", "0", "-an", "-c:v", "libwebp_anim",
-             "-lossless", "0", "-q:v", "70", "-compression_level", "4", dst],
+             "-lossless", "0", "-q:v", "55", "-compression_level", "6", dst],
             check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         if os.path.getsize(dst) > 0:
