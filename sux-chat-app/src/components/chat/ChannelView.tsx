@@ -989,6 +989,37 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
   const [adminResults, setAdminResults] = useState<any[]>([]);
   const [admins, setAdmins] = useState(channel.admins || []);
   const [soundOpen, setSoundOpen] = useState(false);
+  // Аватар канала: картинку кладём обычной загрузкой, ссылку — в канал.
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  const pickAvatar = async (file?: File | null) => {
+    if (!file || avatarBusy) return;
+    setAvatarBusy(true);
+    try {
+      const up = await api.uploadFile(file);
+      const updated = await api.updateChannel(channel.id, { avatar_url: up.file_url });
+      onChanged({ ...channel, ...updated });
+      toast.success("Аватар обновлён");
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось загрузить аватар");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const dropAvatar = async () => {
+    setAvatarBusy(true);
+    try {
+      const updated = await api.updateChannel(channel.id, { avatar_url: null });
+      onChanged({ ...channel, ...updated, avatar_url: null });
+      toast.success("Аватар убран");
+    } catch (e: any) {
+      toast.error(e?.message || "Не получилось");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (isOwner) api.getChannelAdmins(channel.id).then(setAdmins).catch(() => {});
@@ -1033,6 +1064,36 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
           <button type="button" onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
         <div className="px-4 py-4 space-y-4">
+          {/* Аватар канала: админ меняет по тапу, остальные просто видят. */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => isAdmin && avatarInput.current?.click()}
+              disabled={!isAdmin || avatarBusy}
+              className="ui-card w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-3 flex items-center justify-center disabled:opacity-100"
+              aria-label={isAdmin ? "Сменить аватар канала" : undefined}
+            >
+              {channel.avatar_url
+                ? <img src={mediaUrl(channel.avatar_url)} alt="" className="w-full h-full object-cover" />
+                : <Radio className="w-7 h-7 text-primary" />}
+            </button>
+            {isAdmin && (
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <button type="button" onClick={() => avatarInput.current?.click()} disabled={avatarBusy}
+                  className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5 disabled:opacity-50">
+                  <ImageIcon className="w-4 h-4" /> {avatarBusy ? "Загружаю…" : channel.avatar_url ? "Сменить аватар" : "Поставить аватар"}
+                </button>
+                {channel.avatar_url && (
+                  <button type="button" onClick={dropAvatar} disabled={avatarBusy}
+                    className="ml-2 h-9 px-3 rounded-md bg-surface-4 text-small font-medium text-destructive disabled:opacity-50">
+                    Убрать
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <input ref={avatarInput} type="file" accept="image/*" hidden onChange={(e) => { pickAvatar(e.target.files?.[0]); e.target.value = ""; }} />
+
           {!isOwner && channel.description && (
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{channel.description}</p>
           )}
