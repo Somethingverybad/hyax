@@ -2825,7 +2825,9 @@ def _webm_sticker_to_webp(src_path):
              # 16 МБ вместо 61 МБ). Проверено на реальном наборе.
              "-vf", "fps=15,scale='min(160,iw)':-2:flags=lanczos",
              "-loop", "0", "-an", "-c:v", "libwebp_anim",
-             "-lossless", "0", "-q:v", "55", "-compression_level", "6", dst],
+             # compression_level 4: в 20 раз быстрее 6 (0,6 с против 11 с на
+             # стикер) при файле тяжелее всего на ~7%.
+             "-lossless", "0", "-q:v", "55", "-compression_level", "4", dst],
             check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         if os.path.getsize(dst) > 0:
