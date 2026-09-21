@@ -595,7 +595,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         return context
     
     def get_queryset(self):
-        queryset = Message.objects.select_related('sender').prefetch_related('read_statuses__user')
+        queryset = Message.objects.select_related('sender__notify_sound').prefetch_related('read_statuses__user')
         chat_id = self.request.query_params.get('chat')
         if chat_id:
             queryset = queryset.filter(chat_id=chat_id)
