@@ -855,17 +855,31 @@ const ChatSidebar = ({
                             {isChannel && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
                             <span className="truncate">{chatTitle}</span>
                           </p>
-                          {chat.updated_at && (
-                            <span className="text-caption text-subtle shrink-0 inline-flex items-center gap-1">
-                              {(chat as any).last_message?.sender_id === currentUser?.id && (
-                                <CheckCheckIcon className="w-4 h-4 text-primary" />
-                              )}
-                              {new Date(chat.updated_at).toLocaleTimeString("ru-RU", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          )}
+                          {(() => {
+                            // Время последнего сообщения, а не изменения чата:
+                            // updated_at меняют переименование, смена аватара и
+                            // закрепление, и в списке стояло не то время.
+                            // Сегодняшние — часы и минуты, вчерашние — «вчера»,
+                            // старше — дата.
+                            const iso = chat.last_message_at || (chat as any).last_message?.created_at || chat.updated_at;
+                            if (!iso) return null;
+                            const d = new Date(iso);
+                            const today = new Date(); today.setHours(0, 0, 0, 0);
+                            const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+                            const label = d >= today
+                              ? d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+                              : d >= yesterday
+                                ? "вчера"
+                                : d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+                            return (
+                              <span className="text-caption text-subtle shrink-0 inline-flex items-center gap-1">
+                                {(chat as any).last_message?.sender_id === currentUser?.id && (
+                                  <CheckCheckIcon className="w-4 h-4 text-primary" />
+                                )}
+                                {label}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
                           <p className="text-body md:text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
