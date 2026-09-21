@@ -29,6 +29,8 @@ export interface Profile {
   push_preview?: boolean;
   rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
+  /** Статус «Скрыт» (Конфиденциальность). */
+  hide_online?: boolean;
 }
 
 /**
@@ -193,7 +195,8 @@ const ProfilePage = () => {
     await clearAppCache(); // сам перезагрузит приложение
   };
 
-  const online = (profile?.status || "online") === "online";
+  // Своя точка: зелёная — «В сети», серая — выбран статус «Скрыт».
+  const online = !profile?.hide_online;
   const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
 
   return (
@@ -277,7 +280,7 @@ const ProfilePage = () => {
           <div className="shrink-0 pt-10">
             <div className="flex items-center gap-2">
               <p className="text-[24px] leading-tight font-semibold truncate">{profile?.username || "…"}</p>
-              <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${online ? "bg-online" : "bg-subtle"}`} aria-hidden />
+              <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${online ? "bg-online" : "bg-subtle"}`} title={online ? "В сети" : "Скрыт"} aria-hidden />
             </div>
             <p className="mt-1 text-body text-subtle truncate">{bio || "Статус не указан"}</p>
             {uploading && (

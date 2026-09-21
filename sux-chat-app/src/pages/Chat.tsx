@@ -50,6 +50,8 @@ interface ProfileType {
   username: string;
   avatar_url?: string;
   status?: string;
+  /** «В сети» — живой статус, обновляется по сокету (событие presence). */
+  is_online?: boolean;
   /** null — правила ещё не приняты (см. TermsGate). */
   terms_accepted_at?: string | null;
 }
@@ -135,6 +137,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     const onVisible = () => {
       const visible = document.visibilityState === "visible";
       wsRef.current?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null });
+      // «В сети» у собеседников — только пока приложение на экране.
+      wsRef.current?.send({ type: "active", active: visible });
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -336,6 +340,9 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
 
     const ws = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
       maxReconnectAttempts: 20,
+      // Сервер считает новое соединение «на экране»; если переподключились
+      // в фоне — сразу поправляем, чтобы у собеседников не горело «в сети».
+      onOpen: () => ws.send({ type: "active", active: document.visibilityState === "visible" }),
       onMessage: (msg: any) => {
         const svc = callRef.current;
         if (msg?.type === "notification" && msg.data?.type === "incoming_call") {
@@ -377,6 +384,15 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             (group?.getCallId() && group.getCallId() === msg.data?.call_id);
           if (forGroup) group?.handleSignal(msg.signal_type, msg.data);
           else svc?.handleSignal(msg.signal_type, msg.data);
+        } else if (msg?.data?.type === "presence") {
+          // Собеседник зашёл или вышел: правим его в участниках чатов — оттуда
+          // статус читают и список, и шапка переписки.
+          const pid = String(msg.data.profile_id);
+          const online = !!msg.data.online;
+          setChats((prev) => prev.map((c) =>
+            c.participants?.some((p) => p.id === pid && p.is_online !== online)
+              ? { ...c, participants: c.participants.map((p) => (p.id === pid ? { ...p, is_online: online } : p)) }
+              : c));
         } else if (msg?.data?.type === "rov") {
           // Сигнал живёт, только пока приложение открыто: в истории его нет.
           if (msg.data.on) rovOn(msg.data.from_username);

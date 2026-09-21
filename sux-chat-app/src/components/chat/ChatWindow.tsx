@@ -5,7 +5,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2 } from "lucide-react";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
@@ -23,7 +23,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
-import { LivePreview, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
+import { LivePreview, TRIANGLE, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
@@ -136,7 +136,7 @@ interface ChatWindowProps {
   chatId: string | null;
   userId: string;
   /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
-  peer?: { id: string; username: string; avatar_url?: string | null } | null;
+  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; is_bot?: boolean } | null;
   onCall?: () => void;
   /** Метаданные группы (если это групповой чат) — для настроек и прав админа. */
   group?: ChatInfo | null;
@@ -225,6 +225,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const startingRef = useRef(false);     // устройство ещё захватывается
   const stopRequestedRef = useRef(false);// палец отпустили во время захвата
   const [cancelArmed, setCancelArmed] = useState(false);
+  // Отклик, пока устройство просыпается и пока запись дописывается: на iPhone
+  // камера и микрофон включаются заметное время, а после отпускания iOS ещё
+  // дописывает файл. Без этих фаз экран в эти секунды замирал, и казалось,
+  // что приложение зависло.
+  //  starting — удержание распознано, микрофон/камера включаются;
+  //  finishing — палец отпущен, запись закрывается перед отправкой.
+  const [recPhase, setRecPhase] = useState<"idle" | "starting" | "finishing">("idle");
+  const [recPressed, setRecPressed] = useState(false);
   // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
   // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
   const cancelArmedRef = useRef(false);
@@ -923,6 +931,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setPlayingSoundId(msgId);
     const stop = await playSfx(mediaUrl(url), {
       volume: 0.9,
+      tap: true,
       onEnded: () => { soundStopRef.current = null; setPlayingSoundId(null); },
     });
     soundStopRef.current = stop;
@@ -1397,9 +1406,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // getUserMedia вообще не обращается — раньше тап каждый раз захватывал и тут
   // же отпускал устройство, отсюда лаги и случайное «нет доступа».
   const HOLD_MS = 220;
+  /** Тактильный отклик записи: лёгкий — «держу, включаю», средний — «пишу». */
+  const recHaptic = (heavy: boolean) => {
+    if (!Capacitor.isNativePlatform()) return;
+    import("@capacitor/haptics")
+      .then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: heavy ? ImpactStyle.Medium : ImpactStyle.Light }))
+      .catch(() => {});
+  };
   const beginRecording = (e: React.PointerEvent) => {
     if (uploading) return;
     pressStartedAtRef.current = Date.now();
+    setRecPressed(true);
     // Забираем указатель себе: иначе движение пальца уходит странице как
     // прокрутка, событие обрывается, и жест отмены не срабатывает.
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -1422,9 +1439,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
     holdTimerRef.current = setTimeout(async () => {
       startingRef.current = true;
+      setRecPhase("starting");
+      recHaptic(false);
       const ok = await startRec(recordKind as RecordKind, facing);
       startingRef.current = false;
       if (!ok) {
+        setRecPhase("idle");
         toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
         return;
       }
@@ -1433,9 +1453,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       // запись сразу, как только она стартовала.
       if (stopRequestedRef.current) {
         startedRef.current = false;
-        const result = await stopRec(cancelArmedRef.current);
+        const cancel = cancelArmedRef.current;
+        const result = await stopRec(cancel);
+        setRecPhase("idle");
+        if (!result && !cancel) toast("Удерживайте кнопку, пока идёт запись");
         await processRecording(result);
+        return;
       }
+      setRecPhase("idle");
+      recHaptic(true);
     }, HOLD_MS);
   };
 
@@ -1449,6 +1475,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   const finishRecording = async (forceCancel = false) => {
+    setRecPressed(false);
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
@@ -1460,6 +1487,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (startingRef.current && !startedRef.current) {
       stopRequestedRef.current = true;
       if (forceCancel) cancelArmedRef.current = true;
+      setRecPhase("finishing");
       return;
     }
 
@@ -1488,7 +1516,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     startedRef.current = false;
     cancelArmedRef.current = false;
     setCancelArmed(false);
+    // Плашка сразу говорит «готовлю», пока iOS дописывает файл: иначе после
+    // отпускания секунду-другую ничего не менялось.
+    if (!cancel) setRecPhase("finishing");
     const result = await stopRec(cancel);
+    setRecPhase("idle");
+    if (!cancel) recHaptic(false);
     await processRecording(result);
   };
 
@@ -1662,7 +1695,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11" />
               <span className="min-w-0 flex flex-col">
                 <span className="text-h1 truncate leading-tight">{headerTitle || peer.username || "Чат"}</span>
-                <span className="text-small text-muted-foreground truncate">@{peer.username}</span>
+                <span className="text-small text-muted-foreground truncate">
+                  {!peer.is_bot && (
+                    <span className={peer.is_online ? "text-online" : undefined}>
+                      {peer.is_online ? "в сети" : "не в сети"}
+                    </span>
+                  )}
+                  {!peer.is_bot && " · "}@{peer.username}
+                </span>
               </span>
             </button>
           ) : isGroup ? (
@@ -2251,28 +2291,46 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
           
 
-          {recording && recordKind === "video" && (
+          {recordKind === "video" && (recording || recPhase === "starting") && (
             <div className="mb-2 flex justify-center">
-              <LivePreview stream={recStream} dimmed={cancelArmed} facing={facing} />
+              {recording ? (
+                <LivePreview stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={facing} />
+              ) : (
+                // Камера ещё просыпается — рамка треугольника на месте сразу.
+                <div className="relative w-40 h-40">
+                  <div className="absolute inset-0 bg-surface-3 animate-pulse" style={{ clipPath: TRIANGLE }} />
+                  <Loader2 className="absolute left-1/2 top-[62%] -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-muted-foreground animate-spin" />
+                </div>
+              )}
             </div>
           )}
 
-          {recording && (
+          {(recording || recPhase !== "idle") && (
             <div className={cn(
               "mb-2 flex items-center gap-3 px-3 py-2 border-2",
               cancelArmed ? "border-primary bg-primary/10" : "border-border bg-secondary/40"
             )}>
-              <span className="w-2.5 h-2.5 bg-primary animate-pulse shrink-0" />
-              <span className="font-mono text-sm">
-                {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
-                {String(recSeconds % 60).padStart(2, "0")}
-              </span>
+              {recPhase !== "idle" ? (
+                <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+              ) : (
+                <span className="w-2.5 h-2.5 bg-primary animate-pulse shrink-0" />
+              )}
+              {recording && (
+                <span className="font-mono text-sm">
+                  {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
+                  {String(recSeconds % 60).padStart(2, "0")}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground flex-1 truncate">
-                {cancelArmed
-                  ? "Отпустите — запись отменится"
-                  : recordKind === "video"
-                    ? "Снимаем треугольник · влево для отмены"
-                    : "Ведите влево, чтобы отменить"}
+                {recPhase === "starting"
+                  ? (recordKind === "video" ? "Включаю камеру… держите кнопку" : "Включаю микрофон… держите кнопку")
+                  : recPhase === "finishing"
+                    ? (cancelArmed ? "Отменяю…" : "Готовлю к отправке…")
+                    : cancelArmed
+                      ? "Отпустите — запись отменится"
+                      : recordKind === "video"
+                        ? "Снимаем треугольник · влево для отмены"
+                        : "Ведите влево, чтобы отменить"}
               </span>
               {cancelArmed && <Trash2 className="w-4 h-4 text-primary shrink-0" />}
             </div>
@@ -2425,8 +2483,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   disabled={uploading}
                   style={{ touchAction: "none" }}
                   className={cn(
-                    "h-11 w-11 shrink-0 md:ml-3 rounded-md flex items-center justify-center transition-colors",
-                    recording || roving ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
+                    "h-11 w-11 shrink-0 md:ml-3 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
+                    // Вдавливается сразу на касание — до того, как проснётся микрофон.
+                    recPressed && "scale-90",
+                    recording || roving || recPhase !== "idle" ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
                   )}
                   aria-label={
                     recordKind === "video" ? "Записать видео"
@@ -2439,7 +2499,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       : "Голосовое (тап — видео)"
                   }
                 >
-                  {recordKind === "video" ? <Video className="w-5 h-5" />
+                  {uploading ? <Loader2 className="w-5 h-5 animate-spin" />
+                    : recordKind === "video" ? <Video className="w-5 h-5" />
                     : recordKind === "rov" ? <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />
                     : <Mic className="w-5 h-5" />}
                 </button>

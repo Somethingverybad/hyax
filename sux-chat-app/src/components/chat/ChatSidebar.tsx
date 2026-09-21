@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
+import { cn } from "@/lib/utils";
 import { RefreshCw, Share2, Pin } from "lucide-react";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
@@ -32,6 +33,8 @@ interface Profile {
   id: string;
   username: string;
   avatar_url?: string;
+  is_online?: boolean;
+  hide_online?: boolean;
 }
 
 interface Chat {
@@ -438,7 +441,9 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </span>
-                  <span className="ui-status-chip inline-block text-small text-online">В сети</span>
+                  <span className={cn("ui-status-chip inline-block text-small", currentUser?.hide_online ? "text-subtle" : "text-online")}>
+                    {currentUser?.hide_online ? "Скрыт" : "В сети"}
+                  </span>
                 </span>
               </button>
               <button
@@ -840,11 +845,20 @@ const ChatSidebar = ({
                         </div>
                       )
                     ) : (
-                      <Identicon
-                        id={displayParticipants[0]?.id || chat.id}
-                        avatarUrl={displayParticipants[0]?.avatar_url}
-                        className="w-[46px] h-[46px] md:w-9 md:h-9"
-                      />
+                      <span className="relative shrink-0">
+                        <Identicon
+                          id={displayParticipants[0]?.id || chat.id}
+                          avatarUrl={displayParticipants[0]?.avatar_url}
+                          className="w-[46px] h-[46px] md:w-9 md:h-9"
+                        />
+                        {/* Статус — из общего списка чатов: его обновляет сокет. */}
+                        {chat.participants?.some((p) => p.id !== currentUser?.id && p.is_online) && (
+                          <span
+                            className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-online border-2 border-background"
+                            aria-label="В сети"
+                          />
+                        )}
+                      </span>
                     )}
 
                     {!isCollapsed && (

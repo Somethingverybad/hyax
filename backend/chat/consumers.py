@@ -538,9 +538,11 @@ class UserConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
-            from .presence import add_connection
+            from .presence import add_connection, conn_open
             add_connection(profile.id)
             await self.accept()
+            if conn_open(self.channel_name, profile.id):
+                await self.broadcast_presence(profile)
             print(f"✅ [UserConsumer] Подключен user_id={self.user_id}")
         except Exception as e:
             print(f"❌ [UserConsumer] Ошибка connect: {e}")
@@ -555,6 +557,9 @@ class UserConsumer(AsyncWebsocketConsumer):
                 from .presence import clear as clear_viewing, drop_connection
                 clear_viewing(profile.id)
                 drop_connection(profile.id)
+                from .presence import conn_close
+                if conn_close(self.channel_name, profile.id):
+                    await self.broadcast_presence(profile)
         except Exception:
             pass
         await self.channel_layer.group_discard(
@@ -571,6 +576,21 @@ class UserConsumer(AsyncWebsocketConsumer):
                 await self.send(text_data=json.dumps({
                     'type': 'pong'
                 }))
+                profile = await self.get_user_profile(self.user)
+                if profile:
+                    from .presence import conn_ping
+                    if conn_ping(self.channel_name, profile.id):
+                        await self.broadcast_presence(profile)
+                return
+
+            # Приложение на экране или свёрнуто — от этого зависит «в сети»
+            # у собеседников (см. chat/presence.py).
+            if message_type == 'active':
+                profile = await self.get_user_profile(self.user)
+                if profile:
+                    from .presence import conn_active
+                    if conn_active(self.channel_name, profile.id, bool(text_data_json.get('active'))):
+                        await self.broadcast_presence(profile)
                 return
             
             # Какой чат открыт: по этому признаку сервер не шлёт пуш тому,
@@ -678,6 +698,16 @@ class UserConsumer(AsyncWebsocketConsumer):
                     },
                 },
             )
+
+    async def broadcast_presence(self, profile):
+        """Собеседникам по личным чатам — «в сети» / «не в сети»."""
+        from .presence import presence_events
+        try:
+            events = await database_sync_to_async(presence_events)(profile)
+            for group, event in events:
+                await self.channel_layer.group_send(group, event)
+        except Exception:
+            logger.exception("presence: рассылка статуса не удалась")
 
     @database_sync_to_async
     def push_rov(self, targets, from_name, from_id):

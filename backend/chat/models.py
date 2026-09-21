@@ -19,6 +19,9 @@ class Profile(models.Model):
     push_preview = models.BooleanField(default=True)
     # Р.Ё.В: принимать ли вибрацию от собеседника (см. consumers.handle_rov).
     rov_enabled = models.BooleanField(default=True)
+    # Статус «Скрыт»: собеседники видят «не в сети», даже когда человек в
+    # приложении (см. presence.shown_online).
+    hide_online = models.BooleanField(default=False)
     # Показывать паки звуков и стикеров с пометкой 18+. По умолчанию выключено:
     # такие паки не попадают в пикер и не открываются по ссылке, пока человек
     # сам не включит настройку и не подтвердит возраст.

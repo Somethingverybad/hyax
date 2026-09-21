@@ -653,3 +653,65 @@ class UsernameCaseTests(TestCase):
         # свой же ник в другом регистре — можно
         r = client_for(self.big).patch(f"/api/profiles/{self.big.id}/", {"username": "Eviltree_X"}, format="json")
         self.assertEqual(r.status_code, 200)
+
+
+class PresenceTests(TestCase):
+    """«В сети» / «не в сети» / «Скрыт»: что видят собеседники."""
+
+    def setUp(self):
+        from . import presence
+        presence._conns.clear()
+        self.presence = presence
+        self.me = make_user("me")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        direct = Chat.objects.create(kind="direct")
+        group = Chat.objects.create(kind="group", is_group=True, name="G", creator=self.me)
+        for chat, people in ((direct, (self.me, self.friend)), (group, (self.me, self.stranger))):
+            for p in people:
+                ChatParticipant.objects.create(chat=chat, user=p)
+
+    def tearDown(self):
+        self.presence._conns.clear()
+
+    def friend_sees_me(self):
+        chats = client_for(self.friend).get("/api/chats/").data
+        chats = chats.get("results", chats) if isinstance(chats, dict) else chats
+        people = [p for c in chats for p in c["participants"] if p["id"] == str(self.me.id)]
+        return people[0]["is_online"]
+
+    def test_transitions(self):
+        p = self.presence
+        self.assertTrue(p.conn_open("a", self.me.id))
+        self.assertFalse(p.conn_open("b", self.me.id))      # второе устройство — уже в сети
+        self.assertFalse(p.conn_active("a", self.me.id, False))
+        self.assertTrue(p.conn_active("b", self.me.id, False))  # свернул везде — не в сети
+        self.assertTrue(p.conn_active("a", self.me.id, True))
+        self.assertTrue(p.conn_close("a", self.me.id))
+
+    def test_stale_connection_is_offline(self):
+        self.presence.conn_open("a", self.me.id)
+        ch, (pid, act, ts) = next(iter(self.presence._conns.items()))
+        self.presence._conns[ch] = (pid, act, ts - self.presence.STALE - 1)
+        self.assertFalse(self.presence.is_active(self.me.id))
+
+    def test_chat_list_shows_online(self):
+        self.assertFalse(self.friend_sees_me())
+        self.presence.conn_open("a", self.me.id)
+        self.assertTrue(self.friend_sees_me())
+
+    def test_hidden_looks_offline(self):
+        self.presence.conn_open("a", self.me.id)
+        r = client_for(self.me).patch(f"/api/profiles/{self.me.id}/", {"hide_online": True}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data["hide_online"])
+        self.assertFalse(self.friend_sees_me())
+
+    def test_hidden_flag_is_private(self):
+        self.me.hide_online = True
+        self.me.save()
+        r = client_for(self.friend).get(f"/api/profiles/{self.me.id}/")
+        self.assertNotIn("hide_online", r.data)
+
+    def test_peers_are_direct_chats_only(self):
+        self.assertEqual(self.presence.presence_peers(self.me.id), [str(self.friend.id)])

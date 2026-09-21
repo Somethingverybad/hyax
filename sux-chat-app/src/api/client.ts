@@ -150,6 +150,10 @@ export interface Profile {
   rov_enabled?: boolean;
   /** Показывать паки 18+. Приходит только в своём профиле. */
   allow_adult?: boolean;
+  /** «В сети» — живой статус; у тех, кто выбрал «Скрыт», всегда false. */
+  is_online?: boolean;
+  /** Статус «Скрыт»: собеседники видят «не в сети». Только в своём профиле. */
+  hide_online?: boolean;
   /** Выбранная тема: dark | light | neo либо uuid темы с сервера. */
   active_theme?: string;
   /** Когда приняты правила. null — ещё не приняты (экран согласия);
@@ -1328,7 +1332,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; notify_sound_id?: string | null }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; notify_sound_id?: string | null }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

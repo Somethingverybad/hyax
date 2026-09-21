@@ -43,6 +43,19 @@ const ProfilePrivacy = () => {
     }
   };
 
+  const setHidden = async (value: boolean) => {
+    if (!profile) return;
+    const prev = profile;
+    const next = { ...profile, hide_online: value };
+    setProfile(next); writeCache("user", next);
+    try {
+      await api.updateProfile(prev.id, { hide_online: value });
+    } catch {
+      toast.error("Не удалось сохранить");
+      setProfile(prev); writeCache("user", prev);
+    }
+  };
+
   const unblock = async (b: Blocked) => {
     try {
       await api.unblockUser(b.id);
@@ -68,6 +81,26 @@ const ProfilePrivacy = () => {
               <button type="button" onClick={() => unblock(b)} className="text-small text-primary active:opacity-60">Разблокировать</button>
             </div>
           ))}
+        </SettingsCard>
+
+        <p className="px-1 pt-2 text-small text-subtle">Статус</p>
+        <SettingsCard>
+          <SettingsRow
+            label="Скрыть, что я в сети"
+            hint={profile?.hide_online
+              ? "Статус «Скрыт»: собеседники видят вас не в сети"
+              : "Собеседники видят, когда вы в сети"}
+            trailing={
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                aria-label="Скрыть, что я в сети"
+                checked={!!profile?.hide_online}
+                disabled={!profile}
+                onChange={(e) => setHidden(e.target.checked)}
+              />
+            }
+          />
         </SettingsCard>
 
         <p className="px-1 pt-2 text-small text-subtle">Контент</p>
@@ -117,7 +150,7 @@ const ProfilePrivacy = () => {
         <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 flex gap-3">
           <Lock className="w-5 h-5 text-subtle shrink-0 mt-0.5" />
           <p className="text-small text-subtle">
-            Остальные настройки — кто видит профиль, обложку и время последнего входа — пока в разработке.
+            Остальные настройки — кто видит профиль и обложку — пока в разработке.
           </p>
         </div>
       </div>

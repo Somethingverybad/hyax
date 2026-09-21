@@ -11,12 +11,19 @@ class ProfileSerializer(serializers.ModelSerializer):
         source='notify_sound', queryset=NotificationSound.objects.filter(is_active=True),
         allow_null=True, required=False, write_only=True)
 
+    # «В сети» — живой статус из presence; у «Скрыт» всегда False.
+    is_online = serializers.SerializerMethodField()
+
     def get_notify_sound(self, obj):
         return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
 
+    def get_is_online(self, obj):
+        from .presence import shown_online
+        return shown_online(obj)
+
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
@@ -42,9 +49,21 @@ class OwnProfileSerializer(ProfileSerializer):
     незачем. Базовый сериализатор уходит в участников чата и отправителей
     сообщений, поэтому 18+ и отметка о принятии правил живут только здесь."""
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme']
+        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
+
+    def update(self, instance, validated_data):
+        was_hidden = instance.hide_online
+        instance = super().update(instance, validated_data)
+        if instance.hide_online != was_hidden:
+            # Включил «Скрыт» — собеседники сразу видят «не в сети», и наоборот.
+            from .presence import broadcast_presence_sync
+            try:
+                broadcast_presence_sync(instance)
+            except Exception:
+                pass
+        return instance
 
     def validate_active_theme(self, value):
         from .themes import BUILTIN_IDS
