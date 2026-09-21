@@ -71,7 +71,7 @@ const StickerPicker = ({
       return;
     }
     setPlayingId(sound.id);
-    playSfx(mediaUrl(sound.url), { volume: 0.7, onEnded: () => setPlayingId(null) })
+    playSfx(mediaUrl(sound.url), { volume: 0.7, tap: true, onEnded: () => setPlayingId(null) })
       .then((stop) => { previewRef.current = stop; })
       .catch(() => setPlayingId(null));
   };

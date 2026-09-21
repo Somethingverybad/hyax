@@ -26,7 +26,7 @@ const SoundRow = ({ sound, selected, onPick }: {
     stopRef.current?.();
     if (playing || !sound) { setPlaying(false); return; }
     setPlaying(true);
-    playSfx(mediaUrl(sound.url), { volume: 0.7, onEnded: () => setPlaying(false) })
+    playSfx(mediaUrl(sound.url), { volume: 0.7, tap: true, onEnded: () => setPlaying(false) })
       .then((stop) => { stopRef.current = stop; })
       .catch(() => setPlaying(false));
   };
