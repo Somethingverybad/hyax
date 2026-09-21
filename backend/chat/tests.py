@@ -434,3 +434,59 @@ class SoundPackCoverTests(TestCase):
         first = c.post(self.url(), {"file": self.png("a.png")}, format="multipart").data["cover_url"]
         client_for(self.author).post(self.url(), {"file": self.png("b.png")}, format="multipart")
         self.assertFalse(os.path.exists(os.path.join(settings.MEDIA_ROOT, first[len("/media/"):])))
+
+
+class MessageAroundTests(TestCase):
+    """Окно вокруг сообщения: переход к закреплённому одним запросом."""
+
+    def setUp(self):
+        import datetime
+        from django.utils import timezone as tz
+        self.me = make_user("me")
+        self.peer = make_user("peer")
+        self.chat = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=self.chat, user=self.me)
+        ChatParticipant.objects.create(chat=self.chat, user=self.peer)
+        now = tz.now()
+        self.msgs = []
+        for i in range(200):
+            m = Message.objects.create(chat=self.chat, sender=self.peer if i % 2 else self.me, content=f"msg {i}")
+            Message.objects.filter(pk=m.pk).update(created_at=now - datetime.timedelta(minutes=200 - i))
+            self.msgs.append(m)
+
+    def around(self, msg, limit=50):
+        return client_for(self.me).get(f"/api/messages/sync/?chat={self.chat.id}&around={msg.id}&limit={limit}")
+
+    def test_window_centred_on_message(self):
+        r = self.around(self.msgs[100])
+        self.assertEqual(r.status_code, 200)
+        ids = [m["id"] for m in r.data["messages"]]
+        self.assertIn(str(self.msgs[100].id), ids)
+        self.assertEqual(len(ids), 51)  # 25 до + сама + 25 после
+        self.assertEqual(ids[0], str(self.msgs[75].id))
+        self.assertEqual(ids[-1], str(self.msgs[125].id))
+        self.assertTrue(r.data["has_more"])
+        self.assertTrue(r.data["has_newer"])
+
+    def test_window_at_the_very_beginning(self):
+        r = self.around(self.msgs[2])
+        ids = [m["id"] for m in r.data["messages"]]
+        self.assertEqual(ids[0], str(self.msgs[0].id))
+        self.assertFalse(r.data["has_more"])
+        self.assertTrue(r.data["has_newer"])
+
+    def test_window_at_the_end(self):
+        r = self.around(self.msgs[-1])
+        ids = [m["id"] for m in r.data["messages"]]
+        self.assertEqual(ids[-1], str(self.msgs[-1].id))
+        self.assertFalse(r.data["has_newer"])
+
+    def test_unknown_message(self):
+        import uuid as _u
+        r = client_for(self.me).get(f"/api/messages/sync/?chat={self.chat.id}&around={_u.uuid4()}")
+        self.assertEqual(r.status_code, 404)
+
+    def test_stranger_cannot_read_window(self):
+        other = make_user("other")
+        r = client_for(other).get(f"/api/messages/sync/?chat={self.chat.id}&around={self.msgs[10].id}")
+        self.assertEqual(r.status_code, 404)

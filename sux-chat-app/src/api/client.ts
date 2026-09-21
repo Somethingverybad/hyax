@@ -751,11 +751,13 @@ export const api = {
    *  что менялось после (плюс id удалённых у всех); before — страница старее. */
   syncMessages: async (
     chatId: string,
-    opts: { since?: string; before?: string; limit?: number } = {},
-  ): Promise<{ messages: any[]; deleted: string[]; has_more: boolean; now: string }> => {
+    opts: { since?: string; before?: string; limit?: number; around?: string } = {},
+  ): Promise<{ messages: any[]; deleted: string[]; has_more: boolean; has_newer?: boolean; now: string }> => {
     const q = new URLSearchParams({ chat: chatId });
     if (opts.since) q.set("since", opts.since);
     if (opts.before) q.set("before", opts.before);
+    // around — окно вокруг сообщения: переход к закреплённому одним запросом.
+    if (opts.around) q.set("around", opts.around);
     if (opts.limit) q.set("limit", String(opts.limit));
     const res = await fetchWithAuth(`${API_URL}/messages/sync/?${q.toString()}`, { headers: authHeaders() });
     if (!res.ok) throw new Error(`sync failed: ${res.status}`);
@@ -1274,6 +1276,27 @@ export const api = {
   getSoundPack: async (id: string): Promise<SoundPackInfo> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new Error("Пак не найден");
+    return res.json();
+  },
+
+  /** Импорт набора стикеров из Telegram по ссылке t.me/addstickers/… .
+   *  Сервер качает стикеры в фоне, поэтому отвечает сразу — прогресс
+   *  спрашиваем отдельно (telegramImportProgress). */
+  importTelegramStickers: async (url: string): Promise<{ pack_id: string; name: string; total: number; done: number }> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/import-telegram/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ url }),
+    });
+    if (!res.ok) {
+      let msg = "Не удалось импортировать набор";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  telegramImportProgress: async (packId: string): Promise<{ total: number; done: number; failed: number; finished: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/import-telegram/${packId}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Импорт не найден");
     return res.json();
   },
 

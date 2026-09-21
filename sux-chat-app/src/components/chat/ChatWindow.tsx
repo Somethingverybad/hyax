@@ -267,14 +267,34 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Прокрутка к закреплённому: сообщение есть в ленте — едем к нему.
   const jumpToMessage = async (id: string) => {
     let el = document.getElementById(`msg-${id}`);
-    // Цель выше загруженной части — докачиваем страницы (не больше 20).
-    for (let i = 0; !el && i < 20; i++) {
-      const got = await loadOlder();
-      if (!got) break;
-      await new Promise((r) => setTimeout(r, 60));
-      el = document.getElementById(`msg-${id}`);
+    // Цели нет в загруженной части — просим у сервера окно вокруг неё одним
+    // запросом. Раньше клиент листал страницы по одной: полтора десятка
+    // запросов и около десяти секунд до закреплённого сообщения.
+    if (!el && chatId) {
+      setJumping(true);
+      try {
+        const r = await api.syncMessages(chatId, { around: id, limit: 60 });
+        if (r.messages.length) {
+          // Окно заменяет ленту целиком: между ним и концом переписки может
+          // быть пропуск, и склеивать их нельзя. Вернуться к последним
+          // сообщениям — кнопкой «вниз» (она перезагрузит хвост).
+          windowedRef.current = !!r.has_newer;
+          setHasMore(r.has_more);
+          hasMoreRef.current = r.has_more;
+          setMessages(r.messages);
+          await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
+          el = document.getElementById(`msg-${id}`);
+        }
+      } catch {
+        /* не нашлось — скажем об этом ниже */
+      } finally {
+        setJumping(false);
+      }
     }
     if (!el) { toast("Сообщение не найдено — возможно, удалено"); return; }
+    // К сообщению едем вручную: лента больше не считается прижатой к низу,
+    // иначе наблюдатель за размером тут же вернул бы её обратно.
+    pinnedRef.current = false;
     el.scrollIntoView({ block: "center", behavior: "smooth" });
     el.classList.add("msg-flash");
     setTimeout(() => el!.classList.remove("msg-flash"), 1200);
@@ -394,6 +414,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     applog.info(`feed ${why} top=${Math.round(el.scrollTop)} dist=${Math.round(el.scrollHeight - el.scrollTop - el.clientHeight)} sh=${el.scrollHeight} ch=${el.clientHeight} pinned=${pinnedRef.current ? 1 : 0} msgs=${messagesRef.current}`);
   };
   const messagesRef = useRef(0);
+  // Актуальный список для функций, живущих дольше одного рендера (подгрузка
+  // страниц в цикле): в замыкании messages остаётся тем, каким был при
+  // создании функции.
+  const messagesListRef = useRef<Message[]>([]);
   const pendingKbFixRef = useRef(false);
   const settleAfterTouch = () => {
     feedTouchRef.current = false;
@@ -409,6 +433,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const jumpingRef = useRef(0); // до какого момента идёт наш собственный доезд вниз
   const feedRef = useRef<HTMLDivElement>(null);
   const [newBelow, setNewBelow] = useState(0);
+  // Лента показывает окно вокруг старого сообщения, а не хвост переписки:
+  // кнопка «вниз» должна не прокручивать, а перезагрузить последние сообщения.
+  const windowedRef = useRef(false);
+  const [jumping, setJumping] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   // Входящие, пришедшие при открытом чате, — им анимация появления (msg-in).
   const [freshIds, setFreshIds] = useState<Set<string>>(() => new Set());
@@ -475,6 +503,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     syncedAtRef.current = null;
     primedRef.current = false;
     pinnedRef.current = true;
+    windowedRef.current = false;
     setNewBelow(0);
     setAwayFromBottom(false);
     setFreshIds(new Set());
@@ -529,6 +558,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // отрисовки нового пузыря, иначе он на кадр мелькает уже проявленным.
   useLayoutEffect(() => {
     messagesRef.current = messages.length;
+    messagesListRef.current = messages;
     const ts = (m: Message) => Date.parse(m.created_at) || 0;
     const newest = messages.length ? ts(messages[messages.length - 1]) : 0;
     if (soundChatRef.current !== chatId) {
@@ -568,18 +598,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const feed = feedRef.current, el = scrollRef.current;
     if (!feed || !el || typeof ResizeObserver === "undefined") return;
     let lastLogged = 0;
+    let lastCh = el.clientHeight;
     const ro = new ResizeObserver(() => {
       if (!pinnedRef.current || Date.now() <= jumpingRef.current) return;
       const before = el.scrollTop;
+      const chChanged = el.clientHeight !== lastCh;
+      const delta = lastCh - el.clientHeight;
+      lastCh = el.clientHeight;
       el.scrollTop = el.scrollHeight;
-      // Лента подросла (догрузилась картинка, пришло сообщение) — держим низ.
-      // Пишем в лог не чаще раза в 400 мс и только заметные сдвиги.
-      if (Math.abs(el.scrollTop - before) > 2 && Date.now() - lastLogged > 400) {
+      // Держим низ и когда лента подросла (догрузилась картинка, пришло
+      // сообщение), и когда она стала ниже сама: над перепиской появляется
+      // полоса закреплённого сообщения, и высота падала на её высоту уже
+      // после доводки — последнее сообщение уезжало под поле ввода.
+      if (Math.abs(el.scrollTop - before) > 2 && (chChanged || Date.now() - lastLogged > 400)) {
         lastLogged = Date.now();
-        logFeed(`grow +${Math.round(el.scrollTop - before)}`);
+        logFeed(chChanged ? `shrink ${delta > 0 ? "-" : "+"}${Math.abs(Math.round(delta))}` : `grow +${Math.round(el.scrollTop - before)}`);
       }
     });
     ro.observe(feed);
+    // Сам контейнер тоже меряем: его высоту меняют полоса закрепления,
+    // панель ответа и рост поля ввода — рост содержимого тут ни при чём.
+    ro.observe(el);
     return () => ro.disconnect();
   }, [chatId]);
 
@@ -705,7 +744,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const loadOlder = async (): Promise<boolean> => {
     const id = chatId;
     if (!id || loadingOlderRef.current || !hasMoreRef.current) return false;
-    const first = messages.find(m => !m.pending);
+    const first = messagesListRef.current.find(m => !m.pending);
     if (!first) return false;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
@@ -752,8 +791,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (el.scrollTop < Math.max(600, el.clientHeight * 1.5) && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
   };
 
+  /** Вернуться к последним сообщениям из окна вокруг старого. */
+  const backToLatest = async () => {
+    if (!chatId) return;
+    setJumping(true);
+    try {
+      const r = await api.syncMessages(chatId, { limit: 50 });
+      windowedRef.current = false;
+      syncedAtRef.current = r.now;
+      setHasMore(r.has_more);
+      hasMoreRef.current = r.has_more;
+      setMessages(r.messages);
+      void writeMessages(chatId, r.messages, r.now, r.has_more);
+      scrollToBottomOnOpen();
+    } catch {
+      toast.error("Не удалось вернуться к последним сообщениям");
+    } finally {
+      setJumping(false);
+    }
+  };
+
   /** Доезд в самый низ — по новому сообщению, после отправки, по кнопке. */
   const goBottom = (smooth: boolean) => {
+    if (windowedRef.current) { void backToLatest(); return; }
     pinnedRef.current = true;
     setNewBelow(0);
     requestAnimationFrame(() => {
@@ -1610,11 +1670,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
         </div>
       )}
-      {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
+      {/* Лента и полоса закрепления в одном слое: полоса лежит ПОВЕРХ
+          переписки и не меняет её высоту — раньше её появление укорачивало
+          ленту уже после доводки, и сообщения дёргались. */}
+      <div className="relative flex-1 min-h-0 flex flex-col">
+      {jumping && (
+        <div className="absolute top-0 left-0 right-0 z-30 h-0.5 bg-primary/30 overflow-hidden" aria-hidden>
+          <div className="h-full w-1/3 bg-primary animate-[msg-in_0.9s_ease-in-out_infinite_alternate]" />
+        </div>
+      )}
+            {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
       {pinned && (
-        <div className="shrink-0 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1">
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm">
           <Pin className="w-5 h-5 text-primary shrink-0" />
-          <button type="button" onClick={() => jumpToMessage(pinned.id)} className="flex-1 min-w-0 text-left">
+          <button type="button" onClick={() => jumpToMessage(pinned.id)} disabled={jumping} className="flex-1 min-w-0 text-left disabled:opacity-60">
             <span className="block text-small text-primary leading-tight">Закреплено · {pinned.sender_username}</span>
             <span className="block text-body line-clamp-1 break-all">{pinned.preview}</span>
           </button>
@@ -2026,6 +2095,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {/* Невидимый элемент для прокрутки вниз */}
           <div ref={messagesEndRef} />
         </div>
+      </div>
+
       </div>
 
       {/* Кнопка «вниз»: появляется, когда лента отлистана вверх; со счётчиком,

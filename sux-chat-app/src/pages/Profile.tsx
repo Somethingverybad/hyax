@@ -15,6 +15,7 @@ import { SettingsCard, SettingsRow } from "@/components/settings";
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
+  Sticker,
 } from "lucide-react";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -351,6 +352,12 @@ const ProfilePage = () => {
               label="Уведомления"
               value={profile?.notify_sound ? profile.notify_sound.name : "Обычный звук"}
               onClick={() => navigate("/profile/notifications")}
+            />
+            <SettingsRow
+              icon={Sticker}
+              label="Стикерпаки"
+              hint="Свои наборы и импорт из Telegram"
+              onClick={() => navigate("/profile/stickerpacks")}
             />
             <SettingsRow
               icon={Lock}

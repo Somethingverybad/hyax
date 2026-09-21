@@ -744,6 +744,10 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         chat — обязателен; limit ≤ 200 (по умолчанию 50).
         before=<ISO> — страница старее: created_at < before, самые новые из них.
+        around=<id> — окно вокруг сообщения: половина лимита до него, половина
+        после. Нужно для перехода к закреплённому или к цитате: раньше клиент
+        дотягивался до старого сообщения, запрашивая страницы одну за другой —
+        полтора десятка запросов и около десяти секунд ожидания.
         since=<ISO> — всё, что менялось после: новые, отредактированные и
         удалённые у всех (их id — в deleted, самих сообщений нет).
         Ответ: {messages, deleted, has_more, now}; now — серверное время для
@@ -789,6 +793,26 @@ class MessageViewSet(viewsets.ModelViewSet):
             })
 
         live = base.exclude(deleted_for_all=True)
+
+        around = (request.query_params.get('around') or '').strip()
+        if around:
+            target = live.filter(id=around).first()
+            if not target:
+                return Response({"error": "Сообщение не найдено"}, status=404)
+            half = limit // 2
+            older = list(live.filter(created_at__lt=target.created_at).order_by('-created_at')[:half])[::-1]
+            newer = list(live.filter(created_at__gt=target.created_at).order_by('created_at')[:half])
+            window = older + [target] + newer
+            return Response({
+                "messages": ser(window),
+                "deleted": [],
+                # Сверху есть ещё, если набрали полную половину; снизу — если
+                # новее окна остались сообщения (клиент вернётся к низу кнопкой).
+                "has_more": len(older) >= half,
+                "has_newer": live.filter(created_at__gt=(newer[-1].created_at if newer else target.created_at)).exists(),
+                "now": now.isoformat(),
+            })
+
         before = parse_datetime(request.query_params.get('before') or '')
         if before:
             live = live.filter(created_at__lt=before)
