@@ -36,6 +36,10 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
   catch { return "error"; }
 }
 
+/** Поделиться паком звуков: системное окно «Поделиться», иначе — буфер. */
+export const shareSoundPack = (name: string, id: string) =>
+  shareUrl("WhoYaX", `Пак звуков «${name}» в WhoYaX`, soundPackLink(id));
+
 export const shareChannel = (ch: { id: string; name: string; username?: string | null }) =>
   shareUrl("WhoYaX", `Канал «${ch.name}» в WhoYaX`, channelLink(ch));
 

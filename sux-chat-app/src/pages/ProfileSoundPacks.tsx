@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Music2, Link2, ChevronRight } from "lucide-react";
+import { Music2, Link2, ChevronRight, Plus } from "lucide-react";
 import { packCover } from "@/lib/packCover";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -52,6 +52,14 @@ const ProfileSoundPacks = () => {
             <button type="button" onClick={openLink} className="h-10 px-4 rounded-md bg-primary text-primary-foreground font-medium active:opacity-90">Открыть</button>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => navigate("/profile/soundpacks/new")}
+          className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
+        >
+          <Plus className="w-5 h-5" /> Создать свой пак
+        </button>
 
         <p className="px-1 text-small text-subtle">Добавленные</p>
         <SettingsCard>

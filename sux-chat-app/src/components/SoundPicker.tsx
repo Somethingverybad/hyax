@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Play, Search, Square, X } from "lucide-react";
+import { Check, ChevronDown, Play, Search, Share2, Square, X } from "lucide-react";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { shareSoundPack } from "@/lib/share";
 
 /**
  * Выбор звука уведомлений из общего каталога — один компонент на все места:
@@ -52,6 +54,19 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
   const [sounds, setSounds] = useState<NotificationSoundInfo[] | null>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // Долгое нажатие по названию пака (правая кнопка на десктопе) — поделиться.
+  // Меню показываем под самим заголовком пака, без отдельного экрана.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const holdRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const heldRef = useRef(false);
+
+  const share = async (name: string, id: string | null | undefined) => {
+    setMenuFor(null);
+    if (!id) { toast.error("У этого пака нет ссылки"); return; }
+    const r = await shareSoundPack(name, id);
+    if (r === "copied") toast.success("Ссылка скопирована");
+    else if (r === "error") toast.error("Не удалось поделиться");
+  };
 
   useEffect(() => { api.getNotificationSounds().then(setSounds).catch(() => setSounds([])); }, []);
 
@@ -121,17 +136,40 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
               <div key={pack}>
                 <button
                   type="button"
-                  onClick={() => setOpen((prev) => {
-                    const next = new Set(prev);
-                    next.has(pack) ? next.delete(pack) : next.add(pack);
-                    return next;
-                  })}
+                  onClick={() => {
+                    // После долгого нажатия тап не должен ещё и свернуть пак.
+                    if (heldRef.current) { heldRef.current = false; return; }
+                    setOpen((prev) => {
+                      const next = new Set(prev);
+                      next.has(pack) ? next.delete(pack) : next.add(pack);
+                      return next;
+                    });
+                  }}
+                  onContextMenu={(e) => { e.preventDefault(); setMenuFor(menuFor === pack ? null : pack); }}
+                  onTouchStart={() => {
+                    heldRef.current = false;
+                    holdRef.current = setTimeout(() => { heldRef.current = true; setMenuFor(pack); }, 450);
+                  }}
+                  onTouchEnd={() => clearTimeout(holdRef.current)}
+                  onTouchMove={() => clearTimeout(holdRef.current)}
                   className="w-full sticky top-0 z-10 flex items-center gap-2 px-3 h-10 bg-surface-3 border-b border-border/60 text-left"
                 >
                   <ChevronDown className={cn("w-4 h-4 text-subtle transition-transform", !expanded && "-rotate-90")} />
                   <span className="flex-1 min-w-0 truncate text-small font-medium">{pack}</span>
                   <span className="text-caption text-subtle">{list.length}</span>
                 </button>
+                {menuFor === pack && (
+                  <div className="px-3 py-2 flex gap-2 bg-surface-3/60 border-b border-border/60">
+                    <button
+                      type="button"
+                      onClick={() => share(pack, list[0]?.pack)}
+                      className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-small font-medium inline-flex items-center gap-1.5"
+                    >
+                      <Share2 className="w-4 h-4" /> Поделиться паком
+                    </button>
+                    <button type="button" onClick={() => setMenuFor(null)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium">Отмена</button>
+                  </div>
+                )}
                 {expanded && list.map((s) => (
                   <SoundRow key={s.id} sound={s} selected={current === s.id} onPick={() => onPick(s)} />
                 ))}

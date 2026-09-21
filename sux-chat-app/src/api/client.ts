@@ -1236,6 +1236,23 @@ export const api = {
     return res.json();
   },
 
+  /** Создать свой пак звуков: название и файлы с их названиями. */
+  createSoundPack: async (name: string, items: { file: File; title: string }[]): Promise<SoundPackInfo> => {
+    const fd = new FormData();
+    fd.append("pack_name", name);
+    for (const it of items) { fd.append("files", it.file); fd.append("names", it.title); }
+    const res = await fetchWithAuthMultipart(`${API_URL}/sounds/pack/`, { method: "POST", body: fd });
+    if (!res.ok) {
+      let msg = "Не удалось создать пак";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    // Студийная ручка отвечает {pack, created, failed}.
+    if (data?.failed?.length) throw new Error(`Не обработано звуков: ${data.failed.length}`);
+    return data.pack;
+  },
+
   /** Обложка пака: загрузить или убрать (только владелец). */
   setSoundPackCover: async (id: string, file: File | null): Promise<SoundPackInfo> => {
     let res: Response;

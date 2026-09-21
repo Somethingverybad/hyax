@@ -9,6 +9,7 @@ import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
 import Legal from "./pages/Legal";
 import ThemeEditor from "./pages/ThemeEditor";
+import SoundPackNew from "./pages/SoundPackNew";
 import ThemePage from "./pages/ThemePage";
 import SoundPackPage from "./pages/SoundPackPage";
 import StickerPackPage from "./pages/StickerPackPage";
@@ -156,6 +157,8 @@ const App = () => {
               <Route path="/profile/appearance" element={<ProfileAppearance />} />
               <Route path="/profile/bugreport" element={<ProfileBugReport />} />
               <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
+              {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}
+              <Route path="/profile/soundpacks/new" element={<SoundPackNew />} />
               <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
               {/* Редактор темы: новая или своя по id. */}
               <Route path="/profile/themes/:id" element={<ThemeEditor />} />

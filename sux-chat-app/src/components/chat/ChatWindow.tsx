@@ -1639,6 +1639,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
           {feedRows.map((message, index) => {
             const isOwn = message.sender?.id === userId;
+            // Ссылка на пак или тему разворачивается карточкой (PackLinkCard),
+            // и в тексте её уже не показываем.
+            const packLink = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u)) || null;
+            const shownText = packLink
+              // Схлопываем пробелы, оставшиеся от вырезанной ссылки, но переносы строк храним.
+              ? (message.content || "").replace(packLink, "").replace(/[ \t]{2,}/g, " ").trim()
+              : (message.content || "");
             // Альбом: несколько фото/видео одной отправки склеены в сетку —
             // рисуем их на первом сообщении группы, остальные пропущены выше.
             const album = message.album_id ? albumsById.get(message.album_id) : undefined;
@@ -1871,16 +1878,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       )}
 
                       {/* Карточка пака или темы: ссылка из переписки
-                          разворачивается в плитку с кнопкой «Добавить себе». */}
-                      {(() => {
-                        const link = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u));
-                        return link ? <PackLinkCard url={link} own={isOwn && !bareBubble} /> : null;
-                      })()}
+                          разворачивается в плитку с кнопкой «Добавить себе».
+                          Саму ссылку из текста убираем — длинный адрес рядом с
+                          карточкой только загромождал пузырь. */}
+                      {packLink && <PackLinkCard url={packLink} own={isOwn && !bareBubble} />}
 
                       {/* Текст сообщения */}
                       {message.content && (
                         <p className="text-body break-words whitespace-pre-wrap">
-                          <Linkify text={message.content} />
+                          <Linkify text={shownText} />
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
                             <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
