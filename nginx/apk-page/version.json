@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 308,
+  "build": 317,
   "ios_version": "1.1.11",
-  "ios_build": 142,
-  "notes": "Большие видео уходят кусками и не рвутся, отправка переживает выход из чата, аватар канала, переход к закреплённому мгновенно",
+  "ios_build": 143,
+  "notes": "Статусы «в сети» и «скрыт», отклик при записи голосовых и треугольников, звуки по нажатию в тихом режиме, системные меню на русском",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
