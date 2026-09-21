@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 283,
+  "build": 285,
   "ios_version": "1.1.11",
-  "ios_build": 135,
-  "notes": "Паки и темы открываются прямо в приложении, в сообщении — карточка с кнопкой «Добавить себе». У паков звуков появились обложки",
+  "ios_build": 136,
+  "notes": "Свой пак звуков собирается прямо в приложении, паком можно поделиться из выбора звука, ссылка на пак показывается карточкой",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
