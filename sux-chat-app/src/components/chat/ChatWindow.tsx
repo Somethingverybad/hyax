@@ -382,6 +382,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Палец сейчас на ленте; и «после жеста довести позицию» — если клавиатура
   // сменила состояние посреди касания (см. обработчик hyax:keyboard).
   const feedTouchRef = useRef(false);
+  // Прокрутку затеял человек (палец, колесо, клавиши), а не перерисовка.
+  // Событие scroll прилетает и когда лента просто выросла — по нему нельзя
+  // судить, что человек ушёл от низа.
+  const userScrollRef = useRef(0);
+  const markUserScroll = () => { userScrollRef.current = Date.now(); };
+  /** Телеметрия положения ленты для баг-репорта: где стоим и почему сдвинулись. */
+  const logFeed = (why: string) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    applog.info(`feed ${why} top=${Math.round(el.scrollTop)} dist=${Math.round(el.scrollHeight - el.scrollTop - el.clientHeight)} sh=${el.scrollHeight} ch=${el.clientHeight} pinned=${pinnedRef.current ? 1 : 0} msgs=${messagesRef.current}`);
+  };
+  const messagesRef = useRef(0);
   const pendingKbFixRef = useRef(false);
   const settleAfterTouch = () => {
     feedTouchRef.current = false;
@@ -516,6 +528,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Layout-эффект, а не обычный: класс анимации должен встать до первой
   // отрисовки нового пузыря, иначе он на кадр мелькает уже проявленным.
   useLayoutEffect(() => {
+    messagesRef.current = messages.length;
     const ts = (m: Message) => Date.parse(m.created_at) || 0;
     const newest = messages.length ? ts(messages[messages.length - 1]) : 0;
     if (soundChatRef.current !== chatId) {
@@ -554,8 +567,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     const feed = feedRef.current, el = scrollRef.current;
     if (!feed || !el || typeof ResizeObserver === "undefined") return;
+    let lastLogged = 0;
     const ro = new ResizeObserver(() => {
-      if (pinnedRef.current && Date.now() > jumpingRef.current) el.scrollTop = el.scrollHeight;
+      if (!pinnedRef.current || Date.now() <= jumpingRef.current) return;
+      const before = el.scrollTop;
+      el.scrollTop = el.scrollHeight;
+      // Лента подросла (догрузилась картинка, пришло сообщение) — держим низ.
+      // Пишем в лог не чаще раза в 400 мс и только заметные сдвиги.
+      if (Math.abs(el.scrollTop - before) > 2 && Date.now() - lastLogged > 400) {
+        lastLogged = Date.now();
+        logFeed(`grow +${Math.round(el.scrollTop - before)}`);
+      }
     });
     ro.observe(feed);
     return () => ro.disconnect();
@@ -709,12 +731,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     const jumping = Date.now() < jumpingRef.current;
+    // Отцепляемся от низа только по прокрутке рукой. Раньше хватало любого
+    // события scroll, а оно приходит и от роста ленты: пока грузились картинки,
+    // лента «отцеплялась» и уезжала от последнего сообщения при каждом входе
+    // в чат.
+    const byUser = Date.now() - userScrollRef.current < 900;
     if (dist < 80) {
+      if (!pinnedRef.current) logFeed("repin");
       pinnedRef.current = true;
       jumpingRef.current = 0;
       if (newBelow) setNewBelow(0);
-    } else if (!jumping) {
+    } else if (!jumping && byUser && pinnedRef.current) {
       pinnedRef.current = false;
+      logFeed("unpin");
     }
     const away = dist > 400 && !jumping;
     if (away !== awayFromBottom) setAwayFromBottom(away);
@@ -741,12 +770,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   /** Вход в чат: лента сразу стоит на последнем сообщении. */
   const scrollToBottomOnOpen = () => {
+    logFeed("open");
     // Вход в чат — сразу у последнего сообщения, без «въезда»: плавный пролёт
     // на входе спорил с догрузкой истории и синхронизацией, лента дёргалась.
     // Дальше низ удерживает ResizeObserver (см. выше), пока лента прижата.
     pinnedRef.current = true;
     const snap = () => { const el = scrollRef.current; if (el && pinnedRef.current) el.scrollTop = el.scrollHeight; };
-    requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
+    requestAnimationFrame(() => { snap(); requestAnimationFrame(() => { snap(); logFeed("snap"); }); });
   };
 
   /** После отправки (текст, медиа, стикер) — вниз, плавно. */
@@ -1605,7 +1635,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         ref={scrollRef}
         onScroll={onFeedScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6"
-        onTouchStart={(e) => { feedTouchRef.current = true; kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
+        onTouchStart={(e) => { feedTouchRef.current = true; markUserScroll(); kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
+        onTouchMoveCapture={markUserScroll}
+        onWheel={markUserScroll}
+        onKeyDown={markUserScroll}
         onTouchEnd={settleAfterTouch}
         onTouchCancel={settleAfterTouch}
         onTouchMove={(e) => {
