@@ -312,7 +312,7 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
       ))}
       {item.pending && item.progress != null && (
         <div className="absolute inset-0 bg-black/45 flex items-center justify-center text-white text-sm font-semibold tabular-nums">
-          {item.failed ? "✕" : item.progress < 100 ? `${item.progress}%` : "…"}
+          {item.failed ? "✕" : item.progress === -1 ? "ждёт" : item.progress === -2 ? "сжатие" : item.progress < 100 ? `${item.progress}%` : "…"}
         </div>
       )}
     </div>

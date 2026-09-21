@@ -421,11 +421,29 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
  * её заново. Последний кусок собирает файл на сервере и возвращает обычный
  * ответ загрузки.
  */
-async function uploadInChunks(
+// Большие файлы грузим строго по одному на всё приложение. Две отправки
+// разом (два альбома, повторная отправка) делили слабый мобильный канал, и
+// iOS рвал соединения — «The network connection was lost», второе видео так и
+// не доходило. Очередь общая: следующая загрузка ждёт конца предыдущей.
+let chunkQueue: Promise<unknown> = Promise.resolve();
+
+function uploadInChunks(
   file: File,
   extra: Record<string, string>,
   onProgress?: (percent: number) => void,
 ): Promise<any> {
+  const run = chunkQueue.then(() => uploadInChunksNow(file, extra, onProgress));
+  // Очередь не должна вставать из-за чужой ошибки.
+  chunkQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function uploadInChunksNow(
+  file: File,
+  extra: Record<string, string>,
+  onProgress?: (percent: number) => void,
+): Promise<any> {
+  onProgress?.(0); // очередь дошла — загрузка началась
   const token = await getFreshAccessToken();
   const uploadId = (crypto.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/[^0-9a-f]/gi, "").slice(0, 32).padEnd(32, "0").toLowerCase();
   const total = Math.ceil(file.size / CHUNK_SIZE);
@@ -444,7 +462,10 @@ async function uploadInChunks(
       for (const [k, v] of Object.entries(extra)) body.append(k, v);
     }
     let lastErr: unknown = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Мобильная сеть рвётся надолго — ждём дольше и пробуем больше раз:
+    // паузы 0,5 · 1 · 2 · 4 · 6 · 8 с, всего около 20 с на кусок.
+    const PAUSES = [500, 1000, 2000, 4000, 6000, 8000];
+    for (let attempt = 0; attempt <= PAUSES.length; attempt++) {
       try {
         const res = await fetch(`${uploadBase()}/upload/chunk/`, {
           method: "POST",
@@ -454,14 +475,21 @@ async function uploadInChunks(
         if (!res.ok) {
           let msg = `Кусок ${i + 1} из ${total}: ошибка ${res.status}`;
           try { msg = (await res.json()).error || msg; } catch { /* не JSON */ }
-          throw new Error(msg);
+          // Отказ сервера по сути (не сеть, не перегрузка) повторять бессмысленно.
+          const fatal = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429 && res.status !== 409;
+          throw Object.assign(new Error(msg), { fatal });
         }
         // Последний кусок: сервер склеил файл и обрабатывает его в фоне
         // (сжатие видео, хранилище) — держим 99%, пока не придёт итог.
         onProgress?.(last ? 99 : Math.round(((i + 1) / total) * 100));
         if (last) {
           let done = await res.json();
-          if (done?.processing) done = await waitUploadDone(uploadId, token);
+          if (done?.processing) {
+            // -2 — «обработка на сервере»: файл уже залит, сервер сжимает
+            // видео. На голых 99% это выглядело зависанием.
+            onProgress?.(-2);
+            done = await waitUploadDone(uploadId, token);
+          }
           onProgress?.(100);
           applog.info(`upload chunked ok ${Math.round(file.size / 1024)}KB ${Math.round(performance.now() - started)}ms`);
           return done;
@@ -470,8 +498,9 @@ async function uploadInChunks(
         break;
       } catch (e) {
         lastErr = e;
+        if ((e as any)?.fatal || attempt >= PAUSES.length) break;
         applog.warn(`upload кусок ${i + 1}/${total} не прошёл, попытка ${attempt + 1}`);
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, PAUSES[attempt]));
       }
     }
     if (lastErr) {

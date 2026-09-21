@@ -41,6 +41,12 @@ interface Profile {
 /** Вложение композера: фото и видео уходят альбомом, музыка играет плеером,
  *  остальное — строкой со скачиванием. */
 type AttachMode = "photo" | "video" | "audio" | "file";
+/** Подпись стадии отправки вложения. Особые значения прогресса:
+ *  -1 — ждёт своей очереди, -2 — файл залит, сервер его обрабатывает. */
+export const uploadLabel = (p: number) =>
+  p === -1 ? "в очереди" : p === -2 ? "обработка…" : p < 100 ? `${p}%` : "отправка…";
+export const uploadBarWidth = (p: number) => (p === -1 ? 0 : p === -2 ? 100 : Math.max(3, p));
+
 interface Attach {
   id: string;
   file: File;
@@ -1159,7 +1165,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         pending: true,
         _key: tempId,
         _dims: att.dims ?? null,
-        _progress: 0,
+        // -1 — «в очереди»: вложения грузятся по одному, и второе видео в
+        // альбоме стояло на «0%», пока грузилось первое, — выглядело зависшим.
+        _progress: -1,
         _att: att,
       };
       return { tempId, att, optimistic, content: first ? text : "", soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, albumId };
@@ -1185,8 +1193,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Чат запоминаем на старте: пока идёт загрузка, человек мог перейти в
     // другой — отправлять нужно туда, откуда выбирали файл.
     const forChat = chatId;
-    outbox.patch(forChat, tempId, { _failed: false, _progress: 0 });
-    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: 0 } : m)));
+    // «В очереди», пока загрузка реально не началась: большие файлы ждут
+    // общей очереди (api.uploadFile), и 0% в это время выглядел зависанием.
+    outbox.patch(forChat, tempId, { _failed: false, _progress: -1 });
+    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: -1 } : m)));
     try {
       const compress = att.mode === "video" ? "video" : undefined;
       applog.info(`attach upload start ${att.mode} ${Math.round(att.file.size / 1024)}KB`);
@@ -2101,9 +2111,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {message.pending && !message._failed && message._progress != null && (
                         <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[96px]", isOwn && !bareBubble ? "opacity-70" : "text-subtle")}>
                           <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
-                            <div className="h-full bg-current transition-[width] duration-150" style={{ width: `${Math.max(3, message._progress)}%` }} />
+                            <div
+                              className={cn("h-full bg-current transition-[width] duration-150", message._progress === -2 && "animate-pulse")}
+                              style={{ width: `${uploadBarWidth(message._progress)}%` }}
+                            />
                           </div>
-                          <span className="tabular-nums shrink-0">{message._progress < 100 ? `${message._progress}%` : "отправка…"}</span>
+                          <span className="tabular-nums shrink-0">{uploadLabel(message._progress)}</span>
                         </div>
                       )}
                     </div>
