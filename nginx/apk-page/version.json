@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 285,
+  "build": 287,
   "ios_version": "1.1.11",
-  "ios_build": 136,
-  "notes": "Свой пак звуков собирается прямо в приложении, паком можно поделиться из выбора звука, ссылка на пак показывается карточкой",
+  "ios_build": 137,
+  "notes": "Свой пак звуков собирается в приложении, паком можно поделиться из выбора звука, ссылка показывается карточкой. На входе — цитаты",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
