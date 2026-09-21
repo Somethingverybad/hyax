@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 289,
+  "build": 291,
   "ios_version": "1.1.11",
-  "ios_build": 138,
-  "notes": "Починили открытие паков по ссылке и прыжок переписки при открытии клавиатуры. Свой пак звуков собирается в приложении, на входе — цитаты",
+  "ios_build": 139,
+  "notes": "Новая форма входа с супрематическими фигурами, тихие повторы запросов, починили открытие паков и прыжок переписки при клавиатуре",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
