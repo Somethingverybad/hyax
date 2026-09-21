@@ -236,8 +236,24 @@ class NotificationSoundSerializer(serializers.ModelSerializer):
         return obj.pack.name if obj.pack_id else "Разное"
 
 
+class MessageSenderSerializer(serializers.ModelSerializer):
+    """Автор сообщения: только то, что рисует лента. Полный профиль на каждое
+    сообщение раздувал ответ (60 сообщений — 139 КБ) и тянул звук уведомлений
+    отдельным запросом на каждого автора."""
+    notify_sound = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Profile
+        fields = ['id', 'username', 'avatar_url', 'status', 'is_bot', 'notify_sound']
+
+    def get_notify_sound(self, obj):
+        # Нужен только url: по нему проигрывается «мой звук» у собеседника.
+        s = obj.notify_sound
+        return {"id": str(s.id), "url": s.file.url if s.file else ""} if s else None
+
+
 class MessageSerializer(serializers.ModelSerializer):
-    sender = ProfileSerializer(read_only=True)
+    sender = MessageSenderSerializer(read_only=True)
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
     sticker = StickerSerializer(read_only=True)
@@ -293,20 +309,22 @@ class MessageSerializer(serializers.ModelSerializer):
         return data
     
     def get_is_read(self, obj):
-        """Проверяет, прочитано ли сообщение текущим пользователем"""
+        """Прочитано ли сообщение мной. Считаем по уже загруженным отметкам:
+        запрос .filter(...).exists() выполнялся на каждое сообщение, и окно из
+        шестидесяти сообщений собиралось полсекунды."""
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            try:
-                profile = request.user.profile
-                return obj.read_statuses.filter(user=profile).exists()
-            except Profile.DoesNotExist:
-                return False
-        return False
-    
+        me = getattr(getattr(request, 'user', None), 'profile', None)
+        if me is None:
+            return False
+        return any(rs.user_id == me.id for rs in obj.read_statuses.all())
+
     def get_read_by(self, obj):
-        """Возвращает список пользователей, прочитавших сообщение"""
-        read_statuses = obj.read_statuses.select_related('user').all()[:10]  # Ограничиваем для производительности
-        return MessageReadStatusSerializer(read_statuses, many=True).data
+        """Кто прочитал — коротко: id, ник и время. Полный профиль на каждую
+        отметку занимал больше места, чем само сообщение."""
+        return [
+            {"id": str(rs.user_id), "username": rs.user.username if rs.user_id else "", "read_at": rs.read_at.isoformat()}
+            for rs in list(obj.read_statuses.all())[:10]
+        ]
 
 
 # Кастомный сериализатор для JWT токенов

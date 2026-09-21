@@ -772,7 +772,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         base = (
             Message.objects.filter(chat=chat)
             .exclude(deleted_for=profile)
-            .select_related('sender', 'sound', 'sticker', 'reply_to__sender', 'forwarded_from')
+            .select_related('sender__notify_sound', 'sound', 'sticker', 'reply_to__sender', 'forwarded_from')
             .prefetch_related('read_statuses__user')
         )
         # Заблокированные: их сообщения не отдаём ни страницей, ни приращением.
