@@ -12,6 +12,17 @@ let apiOrigin = ENV_ORIGIN || CDN_ORIGIN;
 let API_URL = `${apiOrigin}/api`;
 
 export const getApiOrigin = () => apiOrigin;
+
+/**
+ * Адрес для отправки файлов — всегда прямой, мимо CDN.
+ *
+ * CDN рассчитан на раздачу, а не на приём: видео на 53 МБ он обрывал по
+ * таймауту шлюза (504) примерно через минуту, и только после этого клиент
+ * начинал загрузку заново напрямую — вдвое дольше и без внятного объяснения.
+ * Скачивание и обычные запросы по-прежнему идут через CDN.
+ */
+const UPLOAD_URL = `${ENV_ORIGIN || DIRECT_ORIGIN}/api`;
+export const getUploadOrigin = () => UPLOAD_URL;
 export const isCdnActive = () => apiOrigin === CDN_ORIGIN;
 
 function switchToDirect(reason: string) {
@@ -408,7 +419,10 @@ async function uploadWithProgress(
   onProgress?: (percent: number) => void,
 ): Promise<any> {
   const token = await getFreshAccessToken();
+  const started = performance.now();
+  const size = (() => { let n = 0; formData.forEach((v) => { if (v instanceof Blob) n += v.size; }); return Math.round(n / 1024); })();
   const attempt = (target: string) => new Promise<any>((resolve, reject) => {
+    applog.info(`upload start ${safePath(target)} ${size}KB`);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", target);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -416,17 +430,27 @@ async function uploadWithProgress(
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
     };
     xhr.onload = () => {
+      const ms = Math.round(performance.now() - started);
       if (xhr.status >= 200 && xhr.status < 300) {
+        applog.info(`upload ok ${safePath(target)} ${size}KB ${ms}ms`);
         try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); }
         return;
       }
+      applog.warn(`upload ✗ ${safePath(target)} ${size}KB → ${xhr.status} ${ms}ms`);
       let detail = "";
       try { detail = JSON.parse(xhr.responseText)?.error || ""; } catch { /* не JSON */ }
       const err = new Error(detail || (xhr.status === 413 ? "Файл слишком большой для сервера" : `Загрузка не удалась (${xhr.status})`)) as Error & { status?: number };
       err.status = xhr.status;
       reject(err);
     };
-    xhr.onerror = () => reject(Object.assign(new Error("Сеть оборвала загрузку"), { status: 0 }));
+    xhr.onerror = () => {
+      applog.error(`upload ✗ ${safePath(target)} ${size}KB сеть ${Math.round(performance.now() - started)}ms`);
+      reject(Object.assign(new Error("Сеть оборвала загрузку"), { status: 0 }));
+    };
+    xhr.ontimeout = () => {
+      applog.error(`upload ✗ ${safePath(target)} ${size}KB таймаут`);
+      reject(Object.assign(new Error("Загрузка не уложилась во время"), { status: 408 }));
+    };
     xhr.send(formData);
   });
   try {
@@ -855,10 +879,10 @@ export const api = {
     if (compress) formData.append('compress', compress);
     if (local) formData.append('local', '1');
     if (onProgress) {
-      return uploadWithProgress(`${API_URL}/upload/`, formData, onProgress);
+      return uploadWithProgress(`${UPLOAD_URL}/upload/`, formData, onProgress);
     }
 
-    const res = await fetchWithAuthMultipart(`${API_URL}/upload/`, {
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -905,8 +929,8 @@ export const api = {
   uploadVoice: async (file: File, onProgress?: (percent: number) => void): Promise<{ file_url: string; file_name: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    if (onProgress) return uploadWithProgress(`${API_URL}/voice/upload/`, formData, onProgress);
-    const res = await fetchWithAuthMultipart(`${API_URL}/voice/upload/`, {
+    if (onProgress) return uploadWithProgress(`${UPLOAD_URL}/voice/upload/`, formData, onProgress);
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/voice/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1068,7 +1092,7 @@ export const api = {
   uploadSticker: async (file: File): Promise<{ file_url: string; file_name: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetchWithAuthMultipart(`${API_URL}/stickers/upload/`, {
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/stickers/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1193,7 +1217,7 @@ export const api = {
   uploadAvatar: async (file: File): Promise<{ avatar_url: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetchWithAuthMultipart(`${API_URL}/avatar/upload/`, {
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/avatar/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1205,7 +1229,7 @@ export const api = {
   uploadCover: async (file: File): Promise<{ cover_url: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetchWithAuthMultipart(`${API_URL}/cover/upload/`, {
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/cover/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1305,7 +1329,7 @@ export const api = {
     const fd = new FormData();
     fd.append("pack_name", name);
     for (const it of items) { fd.append("files", it.file); fd.append("names", it.title); }
-    const res = await fetchWithAuthMultipart(`${API_URL}/sounds/pack/`, { method: "POST", body: fd });
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/sounds/pack/`, { method: "POST", body: fd });
     if (!res.ok) {
       let msg = "Не удалось создать пак";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
@@ -1325,7 +1349,7 @@ export const api = {
       fd.append("file", file);
       // Заголовки не ставим: границу multipart проставляет браузер сам,
       // а токен подставляет fetchWithAuthMultipart.
-      res = await fetchWithAuthMultipart(`${API_URL}/sounds/pack/${id}/cover/`, { method: "POST", body: fd });
+      res = await fetchWithAuthMultipart(`${UPLOAD_URL}/sounds/pack/${id}/cover/`, { method: "POST", body: fd });
     } else {
       res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/cover/`, { method: "DELETE", headers: authHeaders() });
     }
@@ -1355,7 +1379,7 @@ export const api = {
 
   /** Баг-репорт: multipart с описанием, скриншотом, логом и meta. */
   sendBugReport: async (fd: FormData): Promise<void> => {
-    const res = await fetchWithAuthMultipart(`${API_URL}/bugreports/`, { method: "POST", body: fd });
+    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/bugreports/`, { method: "POST", body: fd });
     if (!res.ok) {
       let msg = "Не удалось отправить репорт";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
