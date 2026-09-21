@@ -43,6 +43,17 @@ async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promis
   };
   try {
     const res = await fetch(input, init);
+    // CDN иногда отвечает 403 на обычный запрос к API: до сервера он при этом
+    // не доходит (в логах Django и nginx таких отказов нет), а в приложении
+    // это выглядело как «Пак не найден». Свои запреты сервер шлёт кодами 401 и
+    // 404, поэтому 403 с CDN считаем отказом самого CDN: уходим напрямую и
+    // повторяем. Запросы обложек и загрузок это тоже чинит.
+    if (res.status === 403 && url.startsWith(CDN_ORIGIN)) {
+      switchToDirect("403 от CDN");
+      const retry = await fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
+      done(retry);
+      return retry;
+    }
     done(res);
     return res;
   } catch (e) {

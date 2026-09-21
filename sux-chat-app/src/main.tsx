@@ -141,9 +141,12 @@ if (Cap.isNativePlatform()) {
     syncPan();
     if (offset === lastOffset) return;
     lastOffset = offset;
-    root.style.setProperty("--kb-height", `${offset}px`);
-    // Лента сообщений подъезжает вверх синхронно с клавиатурой (см. ChatWindow).
+    // Событие — ДО изменения --kb-height: лента должна успеть замерить, где
+    // она стоит сейчас, пока отступ под клавиатуру ещё прежний. Раньше замер
+    // брался из последнего события прокрутки, и если с тех пор пришли новые
+    // сообщения, лента прыгала на разницу (в баг-репорте — на 393 px).
     window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: offset, duration: 250 } }));
+    root.style.setProperty("--kb-height", `${offset}px`);
   };
 
   // После show/hide значения приходят вразнобой: сначала может прийти

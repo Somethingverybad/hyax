@@ -379,10 +379,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // картинка, развернулась расшифровка) низ не отрывает. Отлистал вверх —
   // ленту не трогаем вообще: новые считаем в newBelow и показываем кнопку.
   const pinnedRef = useRef(true);
-  // Последние известные scrollTop и расстояние до низа — для сдвига ленты при
-  // открытии и закрытии клавиатуры (см. обработчик hyax:keyboard).
-  const lastTopRef = useRef<number | null>(null);
-  const lastDistRef = useRef<number | null>(null);
   // Палец сейчас на ленте; и «после жеста довести позицию» — если клавиатура
   // сменила состояние посреди касания (см. обработчик hyax:keyboard).
   const feedTouchRef = useRef(false);
@@ -467,8 +463,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     syncedAtRef.current = null;
     primedRef.current = false;
     pinnedRef.current = true;
-    lastTopRef.current = null;
-    lastDistRef.current = null;
     setNewBelow(0);
     setAwayFromBottom(false);
     setFreshIds(new Set());
@@ -622,39 +616,39 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const { height, duration } = (ev as CustomEvent<{ height: number; duration: number }>).detail;
       if (height === kbShiftRef.current) return;
       kbShiftRef.current = height;
+      // Событие приходит до того, как поменяется отступ под клавиатуру
+      // (main.tsx), поэтому расстояние до низа меряем прямо сейчас — по факту,
+      // а не по последнему событию прокрутки: между ними могли прийти новые
+      // сообщения, и лента прыгала на их высоту.
+      const dist = Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+      const prevTop = el.scrollTop;
+      const touching = feedTouchRef.current;
       // Инвариант — расстояние от низа ленты до низа содержимого: то, на что
       // человек смотрел над полем ввода, остаётся над полем ввода и при
-      // открытии, и при закрытии клавиатуры. Отступ под клавиатуру
-      // (.chat-scroll padding-bottom) к этому моменту уже изменён, и браузер
-      // сам подрезал scrollTop под новую высоту — поэтому считаем целевую
-      // позицию заново от сохранённого расстояния, а не «прибавляем дельту»:
-      // с дельтой закрытие у самого низа вычитало высоту клавиатуры дважды,
-      // и последние сообщения оставались отлистанными вверх.
-      const prevTop = lastTopRef.current ?? el.scrollTop;
-      const dist = lastDistRef.current ?? 0;
-      const target = Math.max(0, el.scrollHeight - el.clientHeight - dist);
-      el.scrollTop = target;
-      const moved = el.scrollTop - prevTop;
-      lastTopRef.current = el.scrollTop;
-      // Палец на ленте (клавиатуру прячут свайпом вниз): прокруткой сейчас
-      // владеет система, программный scrollTop iOS применит только после
-      // жеста, а трансформ — сразу. Сообщения на это время повисали выше
-      // своего места. Поэтому при активном касании трансформ не ставим:
-      // лента встаёт на место без анимации, под уезжающей клавиатурой.
-      const touching = feedTouchRef.current;
-      applog.info(`kbfeed h=${Math.round(height)} touch=${touching ? 1 : 0} prev=${Math.round(prevTop)} target=${Math.round(target)} got=${Math.round(el.scrollTop)} dist=${Math.round(dist)} sh=${el.scrollHeight} ch=${el.clientHeight}`);
-      if (touching) { pendingKbFixRef.current = true; return; }
-      if (!feed || !moved || !duration) return;
-      // Сам переезд показываем трансформом с той же кривой и длительностью,
-      // что у панели ввода (.pad-safe-bottom): его считает композитор, лента
-      // идёт вровень с клавиатурой, а scrollTop по кадрам никто не пишет.
-      clearTimeout(cleanup);
-      feed.style.transition = "none";
-      feed.style.transform = `translateY(${moved}px)`;
-      void feed.offsetHeight; // зафиксировать стартовое положение до перехода
-      feed.style.transition = `transform ${duration}ms cubic-bezier(0.17, 0.59, 0.4, 1)`;
-      feed.style.transform = "translateY(0)";
-      cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; }, duration + 60);
+      // открытии, и при закрытии клавиатуры.
+      requestAnimationFrame(() => {
+        const node = scrollRef.current;
+        if (!node) return;
+        const target = Math.max(0, node.scrollHeight - node.clientHeight - dist);
+        node.scrollTop = target;
+        const moved = node.scrollTop - prevTop;
+        applog.info(`kbfeed h=${Math.round(height)} touch=${touching ? 1 : 0} prev=${Math.round(prevTop)} target=${Math.round(target)} got=${Math.round(node.scrollTop)} dist=${Math.round(dist)} sh=${node.scrollHeight} ch=${node.clientHeight}`);
+        // Палец на ленте (клавиатуру прячут свайпом вниз): прокруткой владеет
+        // система, программный scrollTop iOS применит только после жеста, а
+        // трансформ — сразу, и сообщения повисали выше своего места.
+        if (touching) { pendingKbFixRef.current = true; return; }
+        if (!feed || !moved || !duration) return;
+        // Переезд показываем трансформом с той же кривой и длительностью, что
+        // у панели ввода: лента идёт вровень с клавиатурой, а scrollTop по
+        // кадрам никто не пишет.
+        clearTimeout(cleanup);
+        feed.style.transition = "none";
+        feed.style.transform = `translateY(${moved}px)`;
+        void feed.offsetHeight; // зафиксировать стартовое положение до перехода
+        feed.style.transition = `transform ${duration}ms cubic-bezier(0.17, 0.59, 0.4, 1)`;
+        feed.style.transform = "translateY(0)";
+        cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; }, duration + 60);
+      });
     };
     window.addEventListener("hyax:keyboard", onKb);
     return () => { window.removeEventListener("hyax:keyboard", onKb); clearTimeout(cleanup); };
@@ -714,8 +708,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const el = scrollRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    lastTopRef.current = el.scrollTop;
-    lastDistRef.current = Math.max(0, dist);
     const jumping = Date.now() < jumpingRef.current;
     if (dist < 80) {
       pinnedRef.current = true;
