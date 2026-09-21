@@ -1,4 +1,5 @@
 import re
+import shutil
 import uuid
 import logging
 from django.db import models
@@ -1174,108 +1175,199 @@ def _probe_dims(path):
     return None
 
 
+def _finalize_upload(request, file_path, original_name, out_size, file_extension):
+    """Общий хвост загрузки: сжатие видео, размеры, S3 и ответ клиенту.
+
+    Один и тот же код нужен и обычной загрузке одним запросом, и сборке файла
+    из кусков (ChunkUploadView), поэтому он вынесен сюда.
+    """
+    full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+    out_name = original_name
+    is_video = file_extension.lower() in ('.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv')
+
+    # Сжатие видео на сервере (ffmpeg): клиент присылает compress=video для
+    # вкладки «Видео». Файлы (вкладка «Файл») не трогаем. Фото жмёт клиент.
+    compress = (request.data.get('compress') or '').lower()
+    if compress == 'video' and is_video:
+        import subprocess
+        transcoded = os.path.join('messages', f"{uuid.uuid4()}.mp4")
+        transcoded_full = os.path.join(settings.MEDIA_ROOT, transcoded)
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", full_path,
+                 "-vf", "scale='-2:min(720,ih)'",
+                 "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+                 "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
+                 transcoded_full],
+                check=True, timeout=180,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            new_size = os.path.getsize(transcoded_full)
+            # Берём пережатый вариант только если он реально меньше.
+            if new_size > 0 and new_size < out_size:
+                os.remove(full_path)
+                file_path = transcoded
+                full_path = transcoded_full
+                out_size = new_size
+                out_name = f"{os.path.splitext(original_name)[0]}.mp4"
+            else:
+                os.remove(transcoded_full)
+        except Exception:
+            # ffmpeg недоступен/упал/таймаут — оставляем оригинал.
+            try:
+                if os.path.exists(transcoded_full):
+                    os.remove(transcoded_full)
+            except Exception:
+                pass
+
+    # Хранилище: при включённом S3 отправляем итоговый файл в бакет и отдаём
+    # его публичный URL, локальную копию удаляем. Иначе раздаём локально через
+    # nginx (/media/...). Размеры — пока файл ещё на диске.
+    dims = None
+    if is_video or file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'):
+        dims = _probe_dims(full_path)
+    local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
+    if s3_enabled() and not local_only:
+        try:
+            url = s3_upload(full_path, file_path)
+            try:
+                os.remove(full_path)
+            except Exception:
+                pass
+            file_url = url
+        except Exception:
+            logger.exception("S3: загрузка не удалась, отдаю локально")
+            file_url = f'/media/{file_path}'
+    else:
+        file_url = f'/media/{file_path}'
+
+    return Response({
+        "file_url": file_url,
+        "file_name": out_name,
+        "file_size": out_size,
+        "width": dims[0] if dims else None,
+        "height": dims[1] if dims else None,
+    })
+
+
 class FileUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
-    
+
     def post(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return Response({"error": "User not authenticated"}, status=401)
-        
+
         file = request.FILES.get('file')
         if not file:
             return Response({"error": "No file provided"}, status=400)
-        
+
         # Лимита на размер вложений нет (по решению владельца): nginx —
         # client_max_body_size 0, файл пишется на диск чанками.
-        
         try:
-            profile = request.user.profile
+            request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
-        
-        # Генерируем уникальное имя файла
+
         file_extension = os.path.splitext(file.name)[1]
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        
-        # Создаем директорию messages если её нет
         messages_dir = os.path.join(settings.MEDIA_ROOT, 'messages')
         os.makedirs(messages_dir, exist_ok=True)
-        
-        # Сохраняем файл
-        file_path = os.path.join('messages', unique_filename)
-        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
-        with open(full_path, 'wb+') as destination:
+        file_path = os.path.join('messages', f"{uuid.uuid4()}{file_extension}")
+        with open(os.path.join(settings.MEDIA_ROOT, file_path), 'wb+') as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
 
-        out_name = file.name
-        out_size = file.size
+        return _finalize_upload(request, file_path, file.name, file.size, file_extension)
 
-        # Сжатие видео на сервере (ffmpeg): клиент присылает compress=video для
-        # вкладки «Видео». Файлы (вкладка «Файл») не трогаем. Фото жмёт клиент.
-        compress = (request.data.get('compress') or '').lower()
-        is_video = file_extension.lower() in ('.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv')
-        if compress == 'video' and is_video:
-            import subprocess
-            transcoded = os.path.join('messages', f"{uuid.uuid4()}.mp4")
-            transcoded_full = os.path.join(settings.MEDIA_ROOT, transcoded)
+
+class ChunkUploadView(APIView):
+    """Загрузка файла кусками: POST /api/upload/chunk/.
+
+    Большое видео одним запросом не проходит через CDN — тот обрывает приём по
+    таймауту шлюза примерно через минуту. А CDN нужен: через него клиенты
+    обходят блокировки. Поэтому файл режется на куски по несколько мегабайт:
+    каждый запрос короткий, неудачный кусок повторяется сам, прогресс идёт
+    ровно. Части складываются в MEDIA_ROOT/chunks/<upload_id>/ и склеиваются
+    по последнему куску.
+
+    Поля: upload_id (32 hex), index, total, chunk (файл), на последнем —
+    file_name и, как у обычной загрузки, compress/local.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    # Свой мусор чистим сами: если отправку бросили на середине, части
+    # останутся на диске, поэтому при каждой сборке выметаем старые каталоги.
+    STALE_HOURS = 12
+
+    def _dir(self, upload_id):
+        return os.path.join(settings.MEDIA_ROOT, 'chunks', upload_id)
+
+    def _sweep(self):
+        import time as _time
+        root = os.path.join(settings.MEDIA_ROOT, 'chunks')
+        if not os.path.isdir(root):
+            return
+        deadline = _time.time() - self.STALE_HOURS * 3600
+        for name in os.listdir(root):
+            path = os.path.join(root, name)
             try:
-                subprocess.run(
-                    ["ffmpeg", "-y", "-i", full_path,
-                     "-vf", "scale='-2:min(720,ih)'",
-                     "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
-                     "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
-                     transcoded_full],
-                    check=True, timeout=180,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-                new_size = os.path.getsize(transcoded_full)
-                # Берём пережатый вариант только если он реально меньше.
-                if new_size > 0 and new_size < out_size:
-                    os.remove(full_path)
-                    file_path = transcoded
-                    out_size = new_size
-                    base = os.path.splitext(file.name)[0]
-                    out_name = f"{base}.mp4"
-                else:
-                    os.remove(transcoded_full)
-            except Exception:
-                # ffmpeg недоступен/упал/таймаут — оставляем оригинал.
-                try:
-                    if os.path.exists(transcoded_full):
-                        os.remove(transcoded_full)
-                except Exception:
-                    pass
+                if os.path.isdir(path) and os.path.getmtime(path) < deadline:
+                    shutil.rmtree(path, ignore_errors=True)
+            except OSError:
+                pass
 
-        # Хранилище: при включённом S3 отправляем итоговый файл в бакет и
-        # отдаём его публичный URL, локальную копию удаляем. Иначе — как раньше,
-        # раздаём локально через nginx (/media/...).
-        # Размеры — до отправки в S3, пока файл ещё на диске.
-        dims = None
-        if is_video or file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'):
-            dims = _probe_dims(os.path.join(settings.MEDIA_ROOT, file_path))
-        local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
-        if s3_enabled() and not local_only:
-            try:
-                url = s3_upload(os.path.join(settings.MEDIA_ROOT, file_path), file_path)
-                try:
-                    os.remove(os.path.join(settings.MEDIA_ROOT, file_path))
-                except Exception:
-                    pass
-                file_url = url
-            except Exception:
-                logger.exception("S3: загрузка не удалась, отдаю локально")
-                file_url = f'/media/{file_path}'
-        else:
-            file_url = f'/media/{file_path}'
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({"error": "User not authenticated"}, status=401)
+        try:
+            request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
 
-        return Response({
-            "file_url": file_url,
-            "file_name": out_name,
-            "file_size": out_size,
-            "width": dims[0] if dims else None,
-            "height": dims[1] if dims else None
-        })
+        upload_id = (request.data.get('upload_id') or '').strip()
+        # Только hex: идентификатор идёт в путь на диске.
+        if not re.fullmatch(r'[0-9a-f]{32}', upload_id):
+            return Response({"error": "Некорректный upload_id"}, status=400)
+        try:
+            index = int(request.data.get('index'))
+            total = int(request.data.get('total'))
+        except (TypeError, ValueError):
+            return Response({"error": "index и total обязательны"}, status=400)
+        if total < 1 or total > 2000 or not (0 <= index < total):
+            return Response({"error": "index вне диапазона"}, status=400)
+        chunk = request.FILES.get('chunk')
+        if not chunk:
+            return Response({"error": "Нет куска"}, status=400)
+
+        target_dir = self._dir(upload_id)
+        os.makedirs(target_dir, exist_ok=True)
+        with open(os.path.join(target_dir, f"{index:05d}"), 'wb+') as dst:
+            for part in chunk.chunks():
+                dst.write(part)
+
+        if index < total - 1:
+            return Response({"received": index, "total": total})
+
+        # Последний кусок — склеиваем. Недостающий кусок значит, что запрос
+        # где-то потерялся: лучше сказать об этом, чем собрать битый файл.
+        names = sorted(os.listdir(target_dir))
+        if len(names) != total:
+            missing = sorted(set(range(total)) - {int(n) for n in names if n.isdigit()})
+            return Response({"error": "Не все куски дошли", "missing": missing[:20]}, status=409)
+
+        original_name = (request.data.get('file_name') or 'file').strip()[:255]
+        file_extension = os.path.splitext(original_name)[1]
+        messages_dir = os.path.join(settings.MEDIA_ROOT, 'messages')
+        os.makedirs(messages_dir, exist_ok=True)
+        file_path = os.path.join('messages', f"{uuid.uuid4()}{file_extension}")
+        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        with open(full_path, 'wb+') as dst:
+            for name in names:
+                with open(os.path.join(target_dir, name), 'rb') as src:
+                    shutil.copyfileobj(src, dst, 1024 * 1024)
+        size = os.path.getsize(full_path)
+        shutil.rmtree(target_dir, ignore_errors=True)
+        self._sweep()
+
+        return _finalize_upload(request, file_path, original_name, size, file_extension)
 
 
 # ViewSet для стикерпаков

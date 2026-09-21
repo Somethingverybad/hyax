@@ -14,15 +14,16 @@ let API_URL = `${apiOrigin}/api`;
 export const getApiOrigin = () => apiOrigin;
 
 /**
- * Адрес для отправки файлов — всегда прямой, мимо CDN.
- *
- * CDN рассчитан на раздачу, а не на приём: видео на 53 МБ он обрывал по
- * таймауту шлюза (504) примерно через минуту, и только после этого клиент
- * начинал загрузку заново напрямую — вдвое дольше и без внятного объяснения.
- * Скачивание и обычные запросы по-прежнему идут через CDN.
+ * Отправка файлов идёт туда же, куда и всё остальное (через CDN): он нужен,
+ * чтобы обходить блокировки. Но приём больших файлов CDN обрывает по таймауту
+ * шлюза примерно через минуту — видео на 53 МБ так и не уходило. Поэтому всё
+ * крупнее CHUNK_MIN режем на куски: каждый запрос короткий и укладывается в
+ * лимит, неудачный кусок повторяется сам, прогресс идёт ровно.
  */
-const UPLOAD_URL = `${ENV_ORIGIN || DIRECT_ORIGIN}/api`;
-export const getUploadOrigin = () => UPLOAD_URL;
+const uploadBase = () => API_URL;
+/** С какого размера рубим на куски и по сколько. */
+const CHUNK_MIN = 6 * 1024 * 1024;
+const CHUNK_SIZE = 4 * 1024 * 1024;
 export const isCdnActive = () => apiOrigin === CDN_ORIGIN;
 
 function switchToDirect(reason: string) {
@@ -413,6 +414,70 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
  *  запрос (сетевая ошибка, 413, 408, 5xx — у CDN свои лимиты на тело и
  *  время запроса, большой файл с мобильной сети в них не укладывается) —
  *  тот же запрос повторяется напрямую на сервер, где лимит 50 МБ и сутки. */
+/**
+ * Отправка файла кусками. Каждый кусок — отдельный короткий запрос, поэтому
+ * шлюз CDN успевает его принять; кусок, который не дошёл, повторяется до трёх
+ * раз, и на слабой сети это спасает всю отправку вместо того, чтобы начинать
+ * её заново. Последний кусок собирает файл на сервере и возвращает обычный
+ * ответ загрузки.
+ */
+async function uploadInChunks(
+  file: File,
+  extra: Record<string, string>,
+  onProgress?: (percent: number) => void,
+): Promise<any> {
+  const token = await getFreshAccessToken();
+  const uploadId = (crypto.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/[^0-9a-f]/gi, "").slice(0, 32).padEnd(32, "0").toLowerCase();
+  const total = Math.ceil(file.size / CHUNK_SIZE);
+  applog.info(`upload chunked start ${Math.round(file.size / 1024)}KB кусков=${total}`);
+  const started = performance.now();
+
+  for (let i = 0; i < total; i++) {
+    const last = i === total - 1;
+    const body = new FormData();
+    body.append("upload_id", uploadId);
+    body.append("index", String(i));
+    body.append("total", String(total));
+    body.append("chunk", file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE), "part");
+    if (last) {
+      body.append("file_name", file.name);
+      for (const [k, v] of Object.entries(extra)) body.append(k, v);
+    }
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${uploadBase()}/upload/chunk/`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body,
+        });
+        if (!res.ok) {
+          let msg = `Кусок ${i + 1} из ${total}: ошибка ${res.status}`;
+          try { msg = (await res.json()).error || msg; } catch { /* не JSON */ }
+          throw new Error(msg);
+        }
+        onProgress?.(Math.round(((i + 1) / total) * 100));
+        if (last) {
+          const done = await res.json();
+          applog.info(`upload chunked ok ${Math.round(file.size / 1024)}KB ${Math.round(performance.now() - started)}ms`);
+          return done;
+        }
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        applog.warn(`upload кусок ${i + 1}/${total} не прошёл, попытка ${attempt + 1}`);
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+    if (lastErr) {
+      applog.error(`upload chunked ✗ на куске ${i + 1}/${total}`);
+      throw lastErr;
+    }
+  }
+  throw new Error("Загрузка не завершилась");
+}
+
 async function uploadWithProgress(
   url: string,
   formData: FormData,
@@ -874,15 +939,23 @@ export const api = {
     onProgress?: (percent: number) => void,
     local?: boolean,
   ): Promise<{ file_url: string; file_name: string; file_size: number; width?: number | null; height?: number | null }> => {
+    // Большой файл — кусками: одним запросом его обрывает шлюз CDN.
+    if (file.size > CHUNK_MIN) {
+      const extra: Record<string, string> = {};
+      if (compress) extra.compress = compress;
+      if (local) extra.local = '1';
+      return uploadInChunks(file, extra, onProgress);
+    }
+
     const formData = new FormData();
     formData.append('file', file);
     if (compress) formData.append('compress', compress);
     if (local) formData.append('local', '1');
     if (onProgress) {
-      return uploadWithProgress(`${UPLOAD_URL}/upload/`, formData, onProgress);
+      return uploadWithProgress(`${uploadBase()}/upload/`, formData, onProgress);
     }
 
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/upload/`, {
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -929,8 +1002,8 @@ export const api = {
   uploadVoice: async (file: File, onProgress?: (percent: number) => void): Promise<{ file_url: string; file_name: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    if (onProgress) return uploadWithProgress(`${UPLOAD_URL}/voice/upload/`, formData, onProgress);
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/voice/upload/`, {
+    if (onProgress) return uploadWithProgress(`${uploadBase()}/voice/upload/`, formData, onProgress);
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/voice/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1092,7 +1165,7 @@ export const api = {
   uploadSticker: async (file: File): Promise<{ file_url: string; file_name: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/stickers/upload/`, {
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/stickers/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1217,7 +1290,7 @@ export const api = {
   uploadAvatar: async (file: File): Promise<{ avatar_url: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/avatar/upload/`, {
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/avatar/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1229,7 +1302,7 @@ export const api = {
   uploadCover: async (file: File): Promise<{ cover_url: string }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/cover/upload/`, {
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/cover/upload/`, {
       method: "POST",
       body: formData,
     });
@@ -1329,7 +1402,7 @@ export const api = {
     const fd = new FormData();
     fd.append("pack_name", name);
     for (const it of items) { fd.append("files", it.file); fd.append("names", it.title); }
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/sounds/pack/`, { method: "POST", body: fd });
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/sounds/pack/`, { method: "POST", body: fd });
     if (!res.ok) {
       let msg = "Не удалось создать пак";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
@@ -1349,7 +1422,7 @@ export const api = {
       fd.append("file", file);
       // Заголовки не ставим: границу multipart проставляет браузер сам,
       // а токен подставляет fetchWithAuthMultipart.
-      res = await fetchWithAuthMultipart(`${UPLOAD_URL}/sounds/pack/${id}/cover/`, { method: "POST", body: fd });
+      res = await fetchWithAuthMultipart(`${uploadBase()}/sounds/pack/${id}/cover/`, { method: "POST", body: fd });
     } else {
       res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/cover/`, { method: "DELETE", headers: authHeaders() });
     }
@@ -1379,7 +1452,7 @@ export const api = {
 
   /** Баг-репорт: multipart с описанием, скриншотом, логом и meta. */
   sendBugReport: async (fd: FormData): Promise<void> => {
-    const res = await fetchWithAuthMultipart(`${UPLOAD_URL}/bugreports/`, { method: "POST", body: fd });
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/bugreports/`, { method: "POST", body: fd });
     if (!res.ok) {
       let msg = "Не удалось отправить репорт";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }

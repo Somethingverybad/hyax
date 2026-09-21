@@ -490,3 +490,66 @@ class MessageAroundTests(TestCase):
         other = make_user("other")
         r = client_for(other).get(f"/api/messages/sync/?chat={self.chat.id}&around={self.msgs[10].id}")
         self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ChunkUploadTests(TestCase):
+    """Загрузка файла кусками: большое видео не проходит через CDN одним
+    запросом, поэтому режется на части и склеивается на сервере."""
+
+    def setUp(self):
+        self.me = make_user("uploader")
+        self.c = client_for(self.me)
+
+    def send(self, upload_id, index, total, blob, **extra):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        data = {"upload_id": upload_id, "index": index, "total": total,
+                "chunk": SimpleUploadedFile("part", blob, content_type="application/octet-stream")}
+        data.update(extra)
+        return client_for(self.me).post("/api/upload/chunk/", data, format="multipart")
+
+    def test_assembles_file_from_chunks(self):
+        import os, uuid as _u
+        from django.conf import settings
+        uid = _u.uuid4().hex
+        parts = [b"a" * 1024, b"b" * 1024, b"c" * 7]
+        for i, p in enumerate(parts[:-1]):
+            r = self.send(uid, i, 3, p)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data["received"], i)
+        r = self.send(uid, 2, 3, parts[-1], file_name="клип.mp4", local="1")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["file_name"], "клип.mp4")
+        self.assertEqual(r.data["file_size"], sum(len(p) for p in parts))
+        path = os.path.join(settings.MEDIA_ROOT, r.data["file_url"][len("/media/"):])
+        self.assertEqual(open(path, "rb").read(), b"".join(parts))
+        # временные куски убраны
+        self.assertFalse(os.path.exists(os.path.join(settings.MEDIA_ROOT, "chunks", uid)))
+
+    def test_missing_chunk_reported(self):
+        import uuid as _u
+        uid = _u.uuid4().hex
+        self.send(uid, 0, 3, b"a" * 16)
+        r = self.send(uid, 2, 3, b"c" * 16, file_name="x.bin", local="1")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data["missing"], [1])
+
+    def test_rejects_bad_upload_id_and_index(self):
+        import uuid as _u
+        self.assertEqual(self.send("../etc", 0, 1, b"x", file_name="a.bin").status_code, 400)
+        self.assertEqual(self.send(_u.uuid4().hex, 5, 3, b"x", file_name="a.bin").status_code, 400)
+        r = client_for(self.me).post("/api/upload/chunk/", {"upload_id": _u.uuid4().hex, "index": 0, "total": 1}, format="multipart")
+        self.assertEqual(r.status_code, 400)
+
+    def test_requires_auth(self):
+        import uuid as _u
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = APIClient().post("/api/upload/chunk/", {"upload_id": _u.uuid4().hex, "index": 0, "total": 1,
+                                                    "chunk": SimpleUploadedFile("p", b"x")}, format="multipart")
+        self.assertIn(r.status_code, (401, 403))
+
+    def test_single_request_upload_still_works(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = self.c.post("/api/upload/", {"file": SimpleUploadedFile("pic.png", b"\x89PNG" + b"\x00" * 32, content_type="image/png"), "local": "1"}, format="multipart")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data["file_url"].startswith("/media/messages/"))
