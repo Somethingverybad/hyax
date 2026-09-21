@@ -13,7 +13,8 @@ import Identicon from "@/components/Identicon";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { playSfx } from "@/lib/sfx";
-import { Linkify } from "@/lib/linkify";
+import { Linkify, packLinkKind } from "@/lib/linkify";
+import PackLinkCard from "./PackLinkCard";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
@@ -1868,6 +1869,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                         </div>
                       )}
+
+                      {/* Карточка пака или темы: ссылка из переписки
+                          разворачивается в плитку с кнопкой «Добавить себе». */}
+                      {(() => {
+                        const link = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u));
+                        return link ? <PackLinkCard url={link} own={isOwn && !bareBubble} /> : null;
+                      })()}
 
                       {/* Текст сообщения */}
                       {message.content && (

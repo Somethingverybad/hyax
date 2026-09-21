@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
-import { Linkify } from "@/lib/linkify";
+import { Linkify, packLinkKind } from "@/lib/linkify";
+import PackLinkCard from "./PackLinkCard";
 import { playQueue, type Track } from "@/lib/player";
 import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
@@ -642,6 +643,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words"><Linkify text={post.content} /></p>}
+                {(() => {
+                  // Пак или тема по ссылке в посте — плиткой с «Добавить себе».
+                  const link = (post.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u));
+                  return link ? <PackLinkCard url={link} /> : null;
+                })()}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
                   onOpenImage={(_url, p) => openViewer(p.id)}
                   onPlayAudio={playAudioFrom} />
