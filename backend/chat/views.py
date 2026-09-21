@@ -1176,10 +1176,18 @@ def _probe_dims(path):
 
 
 def _finalize_upload(request, file_path, original_name, out_size, file_extension):
-    """Общий хвост загрузки: сжатие видео, размеры, S3 и ответ клиенту.
+    """Общий хвост загрузки для запроса: см. _finalize_file."""
+    compress = (request.data.get('compress') or '').lower()
+    local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
+    return Response(_finalize_file(file_path, original_name, out_size, file_extension, compress, local_only))
 
-    Один и тот же код нужен и обычной загрузке одним запросом, и сборке файла
-    из кусков (ChunkUploadView), поэтому он вынесен сюда.
+
+def _finalize_file(file_path, original_name, out_size, file_extension, compress, local_only):
+    """Сжатие видео, размеры, S3 — и итог загрузки словарём.
+
+    Не зависит от запроса: для кусочной загрузки эта работа идёт в фоновом
+    потоке. Внутри запроса она занимала десятки секунд на большом видео, и
+    сервер обрывал такой запрос по таймауту.
     """
     full_path = os.path.join(settings.MEDIA_ROOT, file_path)
     out_name = original_name
@@ -1187,7 +1195,6 @@ def _finalize_upload(request, file_path, original_name, out_size, file_extension
 
     # Сжатие видео на сервере (ffmpeg): клиент присылает compress=video для
     # вкладки «Видео». Файлы (вкладка «Файл») не трогаем. Фото жмёт клиент.
-    compress = (request.data.get('compress') or '').lower()
     if compress == 'video' and is_video:
         import subprocess
         transcoded = os.path.join('messages', f"{uuid.uuid4()}.mp4")
@@ -1226,7 +1233,6 @@ def _finalize_upload(request, file_path, original_name, out_size, file_extension
     dims = None
     if is_video or file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'):
         dims = _probe_dims(full_path)
-    local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
     if s3_enabled() and not local_only:
         try:
             url = s3_upload(full_path, file_path)
@@ -1241,13 +1247,13 @@ def _finalize_upload(request, file_path, original_name, out_size, file_extension
     else:
         file_url = f'/media/{file_path}'
 
-    return Response({
+    return {
         "file_url": file_url,
         "file_name": out_name,
         "file_size": out_size,
         "width": dims[0] if dims else None,
         "height": dims[1] if dims else None,
-    })
+    }
 
 
 class FileUploadView(APIView):
@@ -1280,33 +1286,38 @@ class FileUploadView(APIView):
 
 
 class ChunkUploadView(APIView):
-    """Загрузка файла кусками: POST /api/upload/chunk/.
+    """Загрузка файла кусками: POST /api/upload/chunk/, готовность — GET
+    /api/upload/chunk/<upload_id>/.
 
     Большое видео одним запросом не проходит через CDN — тот обрывает приём по
     таймауту шлюза примерно через минуту. А CDN нужен: через него клиенты
-    обходят блокировки. Поэтому файл режется на куски по несколько мегабайт:
-    каждый запрос короткий, неудачный кусок повторяется сам, прогресс идёт
-    ровно. Части складываются в MEDIA_ROOT/chunks/<upload_id>/ и склеиваются
-    по последнему куску.
+    обходят блокировки. Поэтому файл режется на куски по несколько мегабайт.
 
-    Поля: upload_id (32 hex), index, total, chunk (файл), на последнем —
-    file_name и, как у обычной загрузки, compress/local.
+    Последний кусок только склеивает файл и сразу отвечает «обрабатывается»:
+    сжатие видео и отправка в хранилище идут в фоне. Раньше они шли прямо в
+    запросе последнего куска — десятки секунд; сервер обрывал такой запрос,
+    телефон повторял кусок, а куски к тому времени уже удалены — «не все куски
+    дошли», и видео висело на 92%. Итог клиент забирает короткими опросами.
+
+    Состояния на диске (MEDIA_ROOT/chunks/): <id>/ — куски, <id>.processing —
+    идёт обработка, <id>.done.json — итог, <id>.error — сбой обработки.
     """
     parser_classes = [MultiPartParser, FormParser]
-    # Свой мусор чистим сами: если отправку бросили на середине, части
-    # останутся на диске, поэтому при каждой сборке выметаем старые каталоги.
+    # Брошенные на середине загрузки выметаем при каждой сборке.
     STALE_HOURS = 12
 
-    def _dir(self, upload_id):
-        return os.path.join(settings.MEDIA_ROOT, 'chunks', upload_id)
+    def _root(self):
+        return os.path.join(settings.MEDIA_ROOT, 'chunks')
 
-    def _done_path(self, upload_id):
-        # Итог уже собранной загрузки: повтор последнего куска получает его же.
-        return os.path.join(settings.MEDIA_ROOT, 'chunks', f"{upload_id}.done.json")
+    def _dir(self, upload_id):
+        return os.path.join(self._root(), upload_id)
+
+    def _state(self, upload_id, suffix):
+        return os.path.join(self._root(), f"{upload_id}.{suffix}")
 
     def _sweep(self):
         import time as _time
-        root = os.path.join(settings.MEDIA_ROOT, 'chunks')
+        root = self._root()
         if not os.path.isdir(root):
             return
         deadline = _time.time() - self.STALE_HOURS * 3600
@@ -1318,9 +1329,43 @@ class ChunkUploadView(APIView):
                 if os.path.isdir(path):
                     shutil.rmtree(path, ignore_errors=True)
                 else:
-                    os.remove(path)  # итог старой загрузки (.done.json)
+                    os.remove(path)
             except OSError:
                 pass
+
+    def _status(self, upload_id):
+        """Итог, «обрабатывается», сбой — или None, если такой загрузки нет."""
+        import json as _json
+        done = self._state(upload_id, 'done.json')
+        if os.path.exists(done):
+            try:
+                with open(done, encoding='utf-8') as f:
+                    return Response(_json.load(f))
+            except (OSError, ValueError):
+                pass
+        err = self._state(upload_id, 'error')
+        if os.path.exists(err):
+            try:
+                msg = open(err, encoding='utf-8').read()[:200]
+            except OSError:
+                msg = ''
+            return Response({"error": msg or "Не удалось обработать файл"}, status=500)
+        if os.path.exists(self._state(upload_id, 'processing')):
+            return Response({"processing": True, "upload_id": upload_id}, status=202)
+        return None
+
+    @staticmethod
+    def _valid_id(upload_id):
+        # Только hex: идентификатор идёт в путь на диске.
+        return bool(re.fullmatch(r'[0-9a-f]{32}', upload_id or ''))
+
+    def get(self, request, upload_id=None, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({"error": "User not authenticated"}, status=401)
+        if not self._valid_id(upload_id):
+            return Response({"error": "Некорректный upload_id"}, status=400)
+        st = self._status(upload_id)
+        return st or Response({"error": "Загрузка не найдена"}, status=404)
 
     def post(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
@@ -1331,8 +1376,7 @@ class ChunkUploadView(APIView):
             return Response({"error": "Profile not found"}, status=400)
 
         upload_id = (request.data.get('upload_id') or '').strip()
-        # Только hex: идентификатор идёт в путь на диске.
-        if not re.fullmatch(r'[0-9a-f]{32}', upload_id):
+        if not self._valid_id(upload_id):
             return Response({"error": "Некорректный upload_id"}, status=400)
         try:
             index = int(request.data.get('index'))
@@ -1341,18 +1385,12 @@ class ChunkUploadView(APIView):
             return Response({"error": "index и total обязательны"}, status=400)
         if total < 1 or total > 2000 or not (0 <= index < total):
             return Response({"error": "index вне диапазона"}, status=400)
-        # Загрузка уже собрана — это повтор. Бывает так: сервер склеил файл и
-        # ответил, а ответ до телефона не дошёл (сеть, таймаут CDN на долгой
-        # сборке). Клиент повторяет последний кусок — отдаём тот же итог, а не
-        # «не все куски дошли»: куски к этому моменту уже удалены.
-        done_path = self._done_path(upload_id)
-        if os.path.exists(done_path):
-            import json as _json
-            try:
-                with open(done_path, encoding='utf-8') as f:
-                    return Response(_json.load(f))
-            except (OSError, ValueError):
-                pass
+
+        # Повтор после того, как файл уже склеен (ответ до телефона не дошёл):
+        # отдаём состояние, а не «не все куски дошли» — кусков уже нет.
+        st = self._status(upload_id)
+        if st is not None:
+            return st
 
         chunk = request.FILES.get('chunk')
         if not chunk:
@@ -1367,17 +1405,17 @@ class ChunkUploadView(APIView):
         if index < total - 1:
             return Response({"received": index, "total": total})
 
-        # Последний кусок — склеиваем. Недостающий кусок значит, что запрос
-        # где-то потерялся: лучше сказать об этом, чем собрать битый файл.
-        names = sorted(os.listdir(target_dir))
+        # Последний кусок — проверяем, что дошли все, и склеиваем.
+        names = sorted(n for n in os.listdir(target_dir) if n.isdigit())
         if len(names) != total:
-            missing = sorted(set(range(total)) - {int(n) for n in names if n.isdigit()})
+            missing = sorted(set(range(total)) - {int(n) for n in names})
             return Response({"error": "Не все куски дошли", "missing": missing[:20]}, status=409)
 
         original_name = (request.data.get('file_name') or 'file').strip()[:255]
         file_extension = os.path.splitext(original_name)[1]
-        messages_dir = os.path.join(settings.MEDIA_ROOT, 'messages')
-        os.makedirs(messages_dir, exist_ok=True)
+        compress = (request.data.get('compress') or '').lower()
+        local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
+        os.makedirs(os.path.join(settings.MEDIA_ROOT, 'messages'), exist_ok=True)
         file_path = os.path.join('messages', f"{uuid.uuid4()}{file_extension}")
         full_path = os.path.join(settings.MEDIA_ROOT, file_path)
         with open(full_path, 'wb+') as dst:
@@ -1385,18 +1423,46 @@ class ChunkUploadView(APIView):
                 with open(os.path.join(target_dir, name), 'rb') as src:
                     shutil.copyfileobj(src, dst, 1024 * 1024)
         size = os.path.getsize(full_path)
+        # Метку «обрабатывается» ставим ДО удаления кусков: повтор в этот
+        # момент должен увидеть обработку, а не пустое место.
+        open(self._state(upload_id, 'processing'), 'w').close()
         shutil.rmtree(target_dir, ignore_errors=True)
         self._sweep()
 
-        response = _finalize_upload(request, file_path, original_name, size, file_extension)
-        if response.status_code == 200:
-            import json as _json
+        # Без фона — только в тестах и если явно попросили (sync=1): там
+        # ждать удобнее, чем опрашивать.
+        if getattr(settings, 'CHUNK_UPLOAD_SYNC', False) or str(request.data.get('sync') or '') == '1':
+            self._finish(upload_id, file_path, original_name, size, file_extension, compress, local_only)
+            return self._status(upload_id)
+
+        import threading
+        threading.Thread(
+            target=self._finish,
+            args=(upload_id, file_path, original_name, size, file_extension, compress, local_only),
+            daemon=True,
+        ).start()
+        return Response({"processing": True, "upload_id": upload_id}, status=202)
+
+    def _finish(self, upload_id, file_path, original_name, size, file_extension, compress, local_only):
+        import json as _json
+        from django.db import close_old_connections
+        try:
+            result = _finalize_file(file_path, original_name, size, file_extension, compress, local_only)
+            with open(self._state(upload_id, 'done.json'), 'w', encoding='utf-8') as f:
+                _json.dump(result, f, ensure_ascii=False)
+        except Exception as e:
+            logger.exception("Кусочная загрузка: обработка %s не удалась", upload_id)
             try:
-                with open(self._done_path(upload_id), 'w', encoding='utf-8') as f:
-                    _json.dump(response.data, f, ensure_ascii=False)
+                with open(self._state(upload_id, 'error'), 'w', encoding='utf-8') as f:
+                    f.write(str(e)[:200])
             except OSError:
-                logger.warning("Кусочная загрузка: не записался итог %s", upload_id)
-        return response
+                pass
+        finally:
+            try:
+                os.remove(self._state(upload_id, 'processing'))
+            except OSError:
+                pass
+            close_old_connections()
 
 
 # ViewSet для стикерпаков

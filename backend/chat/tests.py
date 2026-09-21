@@ -492,7 +492,7 @@ class MessageAroundTests(TestCase):
         self.assertEqual(r.status_code, 404)
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), CHUNK_UPLOAD_SYNC=True)
 class ChunkUploadTests(TestCase):
     """Загрузка файла кусками: большое видео не проходит через CDN одним
     запросом, поэтому режется на части и склеивается на сервере."""
@@ -555,7 +555,7 @@ class ChunkUploadTests(TestCase):
         self.assertTrue(r.data["file_url"].startswith("/media/messages/"))
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), CHUNK_UPLOAD_SYNC=True)
 class ChunkUploadRetryTests(TestCase):
     """Повтор последнего куска после успешной сборки: сервер склеил файл, а
     ответ до телефона не дошёл. Раньше повтор получал 409 «не все куски дошли»."""
@@ -576,3 +576,40 @@ class ChunkUploadRetryTests(TestCase):
         self.assertEqual(again.status_code, 200)
         self.assertEqual(again.data["file_url"], first.data["file_url"])
         self.assertEqual(again.data["file_size"], 96)
+
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ChunkUploadBackgroundTests(TestCase):
+    """Последний кусок отвечает сразу, обработка идёт в фоне, итог — опросом.
+    Повтор последнего куска во время обработки не даёт «не все куски дошли»."""
+
+    def test_processing_then_done(self):
+        import time, uuid as _u
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        me = make_user("bg")
+        uid = _u.uuid4().hex
+        def send(i, blob, **extra):
+            data = {"upload_id": uid, "index": i, "total": 2, "chunk": SimpleUploadedFile("p", blob)}
+            data.update(extra)
+            return client_for(me).post("/api/upload/chunk/", data, format="multipart")
+        send(0, b"a" * 64)
+        r = send(1, b"b" * 32, file_name="v.bin", local="1")
+        self.assertIn(r.status_code, (200, 202))
+        # повтор последнего куска сразу после — не 409
+        again = send(1, b"b" * 32, file_name="v.bin", local="1")
+        self.assertIn(again.status_code, (200, 202))
+        # опрашиваем, пока фон не закончит
+        for _ in range(50):
+            st = client_for(me).get(f"/api/upload/chunk/{uid}/")
+            if st.status_code == 200:
+                break
+            time.sleep(0.05)
+        self.assertEqual(st.status_code, 200)
+        self.assertEqual(st.data["file_size"], 96)
+
+    def test_unknown_upload_status(self):
+        import uuid as _u
+        me = make_user("bg2")
+        self.assertEqual(client_for(me).get(f"/api/upload/chunk/{_u.uuid4().hex}/").status_code, 404)
+        self.assertEqual(client_for(me).get("/api/upload/chunk/not-a-hex-id/").status_code, 400)

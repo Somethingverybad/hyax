@@ -456,9 +456,13 @@ async function uploadInChunks(
           try { msg = (await res.json()).error || msg; } catch { /* не JSON */ }
           throw new Error(msg);
         }
-        onProgress?.(Math.round(((i + 1) / total) * 100));
+        // Последний кусок: сервер склеил файл и обрабатывает его в фоне
+        // (сжатие видео, хранилище) — держим 99%, пока не придёт итог.
+        onProgress?.(last ? 99 : Math.round(((i + 1) / total) * 100));
         if (last) {
-          const done = await res.json();
+          let done = await res.json();
+          if (done?.processing) done = await waitUploadDone(uploadId, token);
+          onProgress?.(100);
           applog.info(`upload chunked ok ${Math.round(file.size / 1024)}KB ${Math.round(performance.now() - started)}ms`);
           return done;
         }
@@ -476,6 +480,31 @@ async function uploadInChunks(
     }
   }
   throw new Error("Загрузка не завершилась");
+}
+
+/** Ждём, пока сервер обработает склеенный файл. Опросы короткие — каждый
+ *  укладывается в таймаут CDN; сжатие большого видео занимает до пары минут. */
+async function waitUploadDone(uploadId: string, token?: string): Promise<any> {
+  const deadline = Date.now() + 6 * 60_000;
+  let delay = 1200;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(4000, Math.round(delay * 1.3));
+    try {
+      const res = await fetch(`${uploadBase()}/upload/chunk/${uploadId}/`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (res.status === 202) continue;
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return data;
+      throw new Error(data?.error || `Обработка не удалась (${res.status})`);
+    } catch (e) {
+      // Сетевой сбой посреди ожидания — не повод терять уже залитый файл.
+      if (e instanceof TypeError) continue;
+      throw e;
+    }
+  }
+  throw new Error("Сервер слишком долго обрабатывает файл");
 }
 
 async function uploadWithProgress(
