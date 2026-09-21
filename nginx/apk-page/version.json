@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 291,
+  "build": 299,
   "ios_version": "1.1.11",
-  "ios_build": 140,
-  "notes": "Новая форма входа с супрематическими фигурами, тихие повторы запросов, починили открытие паков и прыжок переписки при клавиатуре",
+  "ios_build": 141,
+  "notes": "Переход к закреплённому сообщению — мгновенно, лента не дёргается, стикерпаки из Telegram по ссылке, в списке чатов — время последнего сообщения",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
