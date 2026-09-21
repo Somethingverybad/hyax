@@ -380,3 +380,57 @@ class ChatOrderTests(TestCase):
     def test_last_message_at_in_payload(self):
         row = client_for(self.me).get("/api/chats/").data[0]
         self.assertIsNotNone(row["last_message_at"])
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class SoundPackCoverTests(TestCase):
+    """Обложка пака звуков: ставит только владелец, без неё клиент рисует свою."""
+
+    def setUp(self):
+        self.author = make_user("author")
+        self.other = make_user("other")
+        self.pack = SoundPack.objects.create(name="Пак", creator=self.author)
+
+    def png(self, name="cover.png"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        # Минимальный валидный PNG: вьюха проверяет расширение и размер.
+        blob = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+        return SimpleUploadedFile(name, blob, content_type="image/png")
+
+    def url(self):
+        return f"/api/sounds/pack/{self.pack.id}/cover/"
+
+    def test_owner_sets_and_clears_cover(self):
+        c = client_for(self.author)
+        r = c.post(self.url(), {"file": self.png()}, format="multipart")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data["cover_url"].startswith("/media/packs/"))
+        self.assertTrue(SoundPack.objects.get(pk=self.pack.pk).cover_url)
+        r = client_for(self.author).delete(self.url())
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.data["cover_url"])
+        self.assertEqual(SoundPack.objects.get(pk=self.pack.pk).cover_url, "")
+
+    def test_only_owner(self):
+        self.assertEqual(client_for(self.other).post(self.url(), {"file": self.png()}, format="multipart").status_code, 403)
+        self.assertEqual(client_for(self.other).delete(self.url()).status_code, 403)
+
+    def test_rejects_non_image_and_missing(self):
+        c = client_for(self.author)
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        bad = SimpleUploadedFile("song.mp3", b"\x00" * 16, content_type="audio/mpeg")
+        self.assertEqual(c.post(self.url(), {"file": bad}, format="multipart").status_code, 400)
+        self.assertEqual(client_for(self.author).post(self.url(), {}, format="multipart").status_code, 400)
+
+    def test_cover_in_pack_payload(self):
+        client_for(self.author).post(self.url(), {"file": self.png()}, format="multipart")
+        r = client_for(self.other).get(f"/api/sounds/pack/{self.pack.id}/")
+        self.assertTrue(r.data["cover_url"].startswith("/media/packs/"))
+
+    def test_replacing_cover_removes_old_file(self):
+        import os
+        from django.conf import settings
+        c = client_for(self.author)
+        first = c.post(self.url(), {"file": self.png("a.png")}, format="multipart").data["cover_url"]
+        client_for(self.author).post(self.url(), {"file": self.png("b.png")}, format="multipart")
+        self.assertFalse(os.path.exists(os.path.join(settings.MEDIA_ROOT, first[len("/media/"):])))

@@ -291,6 +291,9 @@ class SoundPack(models.Model):
     # Пак 18+: виден только тем, кто включил «Показывать 18+» (Profile.allow_adult).
     # Ставит автор в студии или модератор в админке.
     is_adult = models.BooleanField(default=False, db_index=True)
+    # Обложка пака (URL загруженного файла). Пусто — клиент рисует свою
+    # картинку по теме оформления (см. src/assets/pack-cover-*).
+    cover_url = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["order", "name"]

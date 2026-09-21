@@ -258,6 +258,43 @@
     return lab;
   }
 
+  // Обложка пака: показываем миниатюру, меняем и убираем. Без обложки
+  // приложение рисует свою картинку под тему оформления.
+  function coverBox(p){
+    var wrap=document.createElement("label");
+    wrap.className="btn sm file"; wrap.style.cssText="display:inline-flex;align-items:center;gap:8px;white-space:nowrap";
+    var img=document.createElement("img");
+    img.style.cssText="width:28px;height:28px;border-radius:6px;object-fit:cover;background:var(--line);display:"+(p.cover_url?"block":"none");
+    if(p.cover_url) img.src=p.cover_url;
+    var cap=document.createElement("span"); cap.textContent=p.cover_url?"Обложка":"+ Обложка";
+    var input=document.createElement("input"); input.type="file"; input.accept="image/*";
+    wrap.appendChild(img); wrap.appendChild(cap); wrap.appendChild(input);
+    input.addEventListener("change", function(){
+      if(!input.files.length) return;
+      var fd=new FormData(); fd.append("file", input.files[0]);
+      cap.textContent="Загрузка…";
+      authUpload("/api/sounds/pack/"+p.id+"/cover/", fd, null).then(function(x){
+        if(x.ok && x.data && x.data.cover_url){
+          p.cover_url=x.data.cover_url; img.src=x.data.cover_url+"?t="+Date.now(); img.style.display="block"; cap.textContent="Обложка";
+        } else { cap.textContent="+ Обложка"; alert((x.data&&x.data.error)||"Не удалось загрузить"); }
+        input.value="";
+      }).catch(function(){ cap.textContent="+ Обложка"; input.value=""; });
+    });
+    var del=document.createElement("button"); del.className="btn sm"; del.textContent="Убрать обложку";
+    del.style.display = p.cover_url ? "" : "none";
+    del.addEventListener("click", function(e){
+      e.preventDefault();
+      authJson("/api/sounds/pack/"+p.id+"/cover/","DELETE").then(function(x){
+        if(x.ok){ p.cover_url=null; img.style.display="none"; cap.textContent="+ Обложка"; del.style.display="none"; }
+        else alert((x.data&&x.data.error)||"Ошибка");
+      }).catch(function(){});
+    });
+    var box=document.createDocumentFragment(); box.appendChild(wrap); box.appendChild(del);
+    // Кнопку «убрать» показываем только когда обложка есть.
+    wrap.addEventListener("cover", function(){ del.style.display = p.cover_url ? "" : "none"; });
+    return box;
+  }
+
   function packCard(p){
     var card=document.createElement("div"); card.className="card";
     var head=document.createElement("div"); head.className="packhead";
@@ -266,7 +303,7 @@
     var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить пак";
     var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
     link.addEventListener("click", function(){ copyLink("/sp/"+p.id, link); });
-    head.appendChild(nameIn); head.appendChild(save); head.appendChild(link); head.appendChild(adultToggle("/api/sounds/pack/"+p.id+"/", p.is_adult)); head.appendChild(del);
+    head.appendChild(nameIn); head.appendChild(save); head.appendChild(link); head.appendChild(coverBox(p)); head.appendChild(adultToggle("/api/sounds/pack/"+p.id+"/", p.is_adult)); head.appendChild(del);
     card.appendChild(head);
 
     save.addEventListener("click", function(){

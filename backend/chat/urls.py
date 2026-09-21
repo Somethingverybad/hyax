@@ -65,6 +65,7 @@ urlpatterns = [
     path('sounds/pack/', SoundPackStudioView.as_view(), name='sound-pack-studio'),
     path('sounds/pack/<uuid:pk>/', SoundPackDetailView.as_view(), name='sound-pack-detail'),
     path('sounds/pack/<uuid:pk>/sounds/', SoundPackAddSoundsView.as_view(), name='sound-pack-add'),
+    path('sounds/pack/<uuid:pk>/cover/', SoundPackCoverView.as_view(), name='sound-pack-cover'),
     path('sounds/pack/<uuid:pk>/subscribe/', SoundPackSubscribeView.as_view(), name='sound-pack-subscribe'),
     path('sounds/added/', AddedSoundPacksView.as_view(), name='sound-packs-added'),
     path('sounds/sound/<uuid:pk>/', SoundDetailView.as_view(), name='sound-detail'),

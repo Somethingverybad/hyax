@@ -7,6 +7,7 @@ import { packLinkKind } from "@/lib/linkify";
 import { setInstalledThemes, setTheme, getInstalledThemes } from "@/lib/theme";
 import { normalizeTheme } from "@/themes/engine";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
+import { packCover } from "@/lib/packCover";
 
 type Info = { title: string; subtitle: string; cover?: string | null; added: boolean; mine: boolean };
 
@@ -28,7 +29,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
       try {
         if (target.kind === "sound") {
           const p = await api.getSoundPack(target.id);
-          return { title: p.name, subtitle: `Пак звуков · ${p.sounds_count ?? p.sounds.length} звуков`, added: p.added || p.mine || p.is_default, mine: p.mine || p.is_default };
+          return { title: p.name, subtitle: `Пак звуков · ${p.sounds_count ?? p.sounds.length} звуков`, cover: packCover(p.cover_url), added: p.added || p.mine || p.is_default, mine: p.mine || p.is_default };
         }
         if (target.kind === "sticker") {
           const p = await api.getStickerPack(target.id);
@@ -80,7 +81,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
     >
       <span className="px-2.5 py-2 flex items-center gap-2.5">
         <span className="w-10 h-10 shrink-0 rounded-md bg-surface-3 flex items-center justify-center overflow-hidden">
-          {info?.cover ? <img src={mediaUrl(info.cover)} alt="" className="w-8 h-8 object-contain" /> : <Icon className="w-5 h-5 text-primary" />}
+          {info?.cover ? <img src={info.cover.startsWith("/media/") ? mediaUrl(info.cover) : info.cover} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-primary" />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-small font-medium truncate">{info ? info.title : "Загрузка…"}</span>

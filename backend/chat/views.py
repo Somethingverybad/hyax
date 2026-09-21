@@ -1796,6 +1796,7 @@ def _pack_payload(pack, me=None, locked=False):
         "id": str(pack.id), "name": pack.name, "order": pack.order, "sounds": sounds,
         "sounds_count": pack.sounds.count(),
         "is_public": pack.is_public, "is_default": pack.is_default,
+        "cover_url": pack.cover_url or None,
         "is_adult": pack.is_adult, "adult_locked": locked,
         "creator": pack.creator.username if pack.creator_id else None,
         "added": bool(me) and UserSoundPack.objects.filter(user=me, pack=pack).exists(),
@@ -2908,6 +2909,66 @@ class BugReportView(APIView):
         deliver_bug(bug, request.build_absolute_uri('/').rstrip('/'))
         return Response({"ok": True, "id": str(bug.id)}, status=201)
 
+
+
+class SoundPackCoverView(APIView):
+    """POST — обложка пака (multipart, поле file), DELETE — убрать.
+    Только владелец пака; без обложки клиент рисует свою по теме."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _owned(self, request, pk):
+        me = _studio_profile(request)
+        pack = SoundPack.objects.filter(pk=pk).first()
+        if not pack:
+            return None, Response({"error": "Пак не найден"}, status=404)
+        if not me or pack.creator_id != me.id:
+            return None, Response({"error": "Это не ваш пак"}, status=403)
+        return pack, None
+
+    def _drop_old(self, pack):
+        if not pack.cover_url or not pack.cover_url.startswith('/media/'):
+            return
+        old = os.path.join(settings.MEDIA_ROOT, pack.cover_url[len('/media/'):])
+        try:
+            if os.path.isfile(old):
+                os.remove(old)
+        except OSError:
+            logger.warning("Обложка пака: не удалился файл %s", old)
+
+    def post(self, request, pk):
+        pack, err = self._owned(request, pk)
+        if err:
+            return err
+        f = request.FILES.get('file')
+        if not f:
+            return Response({"error": "Файл не передан"}, status=400)
+        if f.size > 5 * 1024 * 1024:
+            return Response({"error": "Файл больше 5 МБ"}, status=400)
+        ext = os.path.splitext(f.name)[1].lower()
+        if ext not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
+            return Response({"error": "Только картинки"}, status=400)
+        target_dir = os.path.join(settings.MEDIA_ROOT, 'packs')
+        os.makedirs(target_dir, exist_ok=True)
+        self._drop_old(pack)
+        # Случайный суффикс: обложка меняется целиком, при постоянном имени
+        # клиенты продолжали бы показывать прежнюю из кеша.
+        rel = os.path.join('packs', f"pack_{pack.id}_{uuid.uuid4().hex[:8]}{ext}")
+        with open(os.path.join(settings.MEDIA_ROOT, rel), 'wb+') as dst:
+            for chunk in f.chunks():
+                dst.write(chunk)
+        pack.cover_url = f'/media/{rel}'
+        pack.save(update_fields=['cover_url'])
+        return Response(_pack_payload(pack, _studio_profile(request)))
+
+    def delete(self, request, pk):
+        pack, err = self._owned(request, pk)
+        if err:
+            return err
+        self._drop_old(pack)
+        pack.cover_url = ""
+        pack.save(update_fields=['cover_url'])
+        return Response(_pack_payload(pack, _studio_profile(request)))
 
 
 class SoundPackSubscribeView(APIView):

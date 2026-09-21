@@ -113,6 +113,8 @@ export interface SoundPackInfo {
   is_public: boolean;
   /** Стандартный (галочка в админке) — есть у всех без подписки. */
   is_default: boolean;
+  /** Обложка пака; null — клиент рисует свою по теме (lib/packCover). */
+  cover_url?: string | null;
   creator: string | null;
   /** Уже добавлен текущим пользователем. */
   added: boolean;
@@ -1231,6 +1233,26 @@ export const api = {
   getSoundPack: async (id: string): Promise<SoundPackInfo> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new Error("Пак не найден");
+    return res.json();
+  },
+
+  /** Обложка пака: загрузить или убрать (только владелец). */
+  setSoundPackCover: async (id: string, file: File | null): Promise<SoundPackInfo> => {
+    let res: Response;
+    if (file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      // Заголовки не ставим: границу multipart проставляет браузер сам,
+      // а токен подставляет fetchWithAuthMultipart.
+      res = await fetchWithAuthMultipart(`${API_URL}/sounds/pack/${id}/cover/`, { method: "POST", body: fd });
+    } else {
+      res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/cover/`, { method: "DELETE", headers: authHeaders() });
+    }
+    if (!res.ok) {
+      let msg = "Не удалось сохранить обложку";
+      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+      throw new Error(msg);
+    }
     return res.json();
   },
 

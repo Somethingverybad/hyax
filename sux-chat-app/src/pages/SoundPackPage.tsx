@@ -6,6 +6,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard } from "@/components/settings";
 import { api, mediaUrl, type SoundPackInfo } from "@/api/client";
 import { soundPackLink } from "@/lib/share";
+import { packCover } from "@/lib/packCover";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import AdultLock, { AdultBadge } from "@/components/AdultLock";
 
@@ -80,8 +81,8 @@ const SoundPackPage = () => {
         ) : (
           <>
             <div className="flex items-center gap-4">
-              <span className="w-16 h-16 rounded-lg bg-surface-3 flex items-center justify-center shrink-0">
-                <Music2 className="w-7 h-7 text-primary" />
+              <span className="ui-card w-16 h-16 rounded-lg bg-surface-3 overflow-hidden shrink-0">
+                <img src={packCover(pack.cover_url)} alt="" className="w-full h-full object-cover" />
               </span>
               <div className="min-w-0">
                 <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Music2, Link2, ChevronRight } from "lucide-react";
+import { packCover } from "@/lib/packCover";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
@@ -61,7 +62,8 @@ const ProfileSoundPacks = () => {
           ) : packs.map((p) => (
             <SettingsRow
               key={p.id}
-              icon={Music2}
+              // Обложка вместо значка: своя у пака либо заготовка по теме.
+              leading={<img src={packCover(p.cover_url)} alt="" className="ui-card w-9 h-9 rounded-md object-cover shrink-0" />}
               label={p.name}
               hint={`${p.sounds.length} звуков${p.creator ? ` · ${p.creator}` : ""}`}
               onClick={() => navigate(`/sp/${p.id}`)}

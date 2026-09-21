@@ -19,6 +19,7 @@ export const SettingsCard = ({ children, className }: { children: React.ReactNod
  */
 export const SettingsRow = ({
   icon: Icon,
+  leading,
   label,
   value,
   hint,
@@ -27,6 +28,8 @@ export const SettingsRow = ({
   danger,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
+  /** Заменяет значок слева — например обложкой пака. */
+  leading?: React.ReactNode;
   label: string;
   /** Текущее значение справа — как «Включены» или «@ник». */
   value?: React.ReactNode;
@@ -38,7 +41,7 @@ export const SettingsRow = ({
 }) => {
   const body = (
     <>
-      {Icon && <Icon className={cn("w-5 h-5 shrink-0", danger ? "text-destructive" : "text-primary")} />}
+      {leading ?? (Icon && <Icon className={cn("w-5 h-5 shrink-0", danger ? "text-destructive" : "text-primary")} />)}
       <span className="min-w-0 flex-1 text-left">
         <span className={cn("block text-body", danger && "text-destructive")}>{label}</span>
         {hint && <span className="block text-caption text-subtle truncate">{hint}</span>}
