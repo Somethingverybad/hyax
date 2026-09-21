@@ -1214,7 +1214,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const startLongPress = (message: Message) => {
     if (longPressRef.current) clearTimeout(longPressRef.current);
-    longPressRef.current = setTimeout(() => { setMenuPos(null); setMenuMessage(message); }, 450);
+    longPressRef.current = setTimeout(() => {
+      // Клавиатура закрывает нижнюю половину экрана, и меню сообщения
+      // («Ответить», «Редактировать», «Переслать») оказывалось за ней.
+      hideKeyboard();
+      setMenuPos(null);
+      setMenuMessage(message);
+    }, 450);
   };
 
   const cancelLongPress = () => {
@@ -1859,6 +1865,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         // На десктопе правая кнопка открывает компактное меню
                         // прямо у курсора (позиция → menuPos).
                         e.preventDefault();
+                        hideKeyboard();
                         setMenuMessage(message);
                         setMenuPos({ x: e.clientX, y: e.clientY });
                       }}
