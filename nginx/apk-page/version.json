@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 299,
+  "build": 308,
   "ios_version": "1.1.11",
-  "ios_build": 141,
-  "notes": "Переход к закреплённому сообщению — мгновенно, лента не дёргается, стикерпаки из Telegram по ссылке, в списке чатов — время последнего сообщения",
+  "ios_build": 142,
+  "notes": "Большие видео уходят кусками и не рвутся, отправка переживает выход из чата, аватар канала, переход к закреплённому мгновенно",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
