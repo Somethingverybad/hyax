@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 277,
+  "build": 281,
   "ios_version": "1.1.11",
-  "ios_build": 133,
-  "notes": "Свои темы оформления: собери свою и поделись ссылкой. Закрепление чатов свайпом вправо, список — по последнему сообщению",
+  "ios_build": 134,
+  "notes": "Паки и темы по ссылке открываются прямо в приложении: в сообщении появляется карточка с кнопкой «Добавить себе»",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
