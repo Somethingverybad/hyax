@@ -186,6 +186,15 @@ class Message(models.Model):
     # поле нужно перечислять явно.
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
     deleted_for = models.ManyToManyField(Profile, blank=True, related_name="hidden_messages")  # удалено «у себя»
+
+    class Meta:
+        # Лента читается всегда одинаково: сообщения одного чата по времени.
+        # Без составного индекса база перебирала таблицу целиком и сортировала
+        # — окно вокруг закреплённого сообщения открывалось полторы секунды.
+        indexes = [
+            models.Index(fields=["chat", "-created_at"], name="msg_chat_created_idx"),
+        ]
+
     
     # Добавляем свойство для удобства
     @property

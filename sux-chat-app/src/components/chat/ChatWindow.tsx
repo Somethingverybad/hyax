@@ -795,6 +795,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const backToLatest = async () => {
     if (!chatId) return;
     setJumping(true);
+    // Сначала хвост из кэша — он уже на устройстве, лента возвращается сразу;
+    // сеть догоняет следом. Без этого возврат ждал ответа сервера.
+    try {
+      const cached = await readMessages(chatId);
+      if (cached?.messages?.length) {
+        windowedRef.current = false;
+        setHasMore(cached.hasMore);
+        hasMoreRef.current = cached.hasMore;
+        setMessages(cached.messages);
+        scrollToBottomOnOpen();
+      }
+    } catch { /* кэша нет — ждём сеть */ }
     try {
       const r = await api.syncMessages(chatId, { limit: 50 });
       windowedRef.current = false;
