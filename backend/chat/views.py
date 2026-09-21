@@ -2806,6 +2806,37 @@ def _tg_pack_name(url):
     return m.group(1) if m else None
 
 
+def _webm_sticker_to_webp(src_path):
+    """Видеостикер Telegram (.webm, VP9 с прозрачностью) → анимированный WebP.
+
+    iPhone не показывает webm картинкой, а видео VP9 с прозрачностью не
+    играет вовсе: набор из 120 таких стикеров грузился и оставался пустым.
+    Анимированный WebP понимают и iOS, и Android, и десктоп, прозрачность
+    сохраняется. Декодер libvpx-vp9 указан явно: встроенный vp9 теряет альфу.
+    Возвращает путь к .webp или None, если сконвертировать не вышло.
+    """
+    import subprocess
+    dst = os.path.splitext(src_path)[0] + '.webp'
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-c:v", "libvpx-vp9", "-i", src_path,
+             "-vf", "fps=24,scale='min(256,iw)':-2:flags=lanczos",
+             "-loop", "0", "-an", "-c:v", "libwebp_anim",
+             "-lossless", "0", "-q:v", "70", "-compression_level", "4", dst],
+            check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        if os.path.getsize(dst) > 0:
+            return dst
+    except Exception:
+        logger.warning("Видеостикер не сконвертировался: %s", src_path)
+    try:
+        if os.path.exists(dst):
+            os.remove(dst)
+    except OSError:
+        pass
+    return None
+
+
 def _tg_import_worker(pack_id, token, stickers, profile_id):
     import os as _os
     from django.conf import settings as _settings
@@ -2825,6 +2856,12 @@ def _tg_import_worker(pack_id, token, stickers, profile_id):
             name = f'{uuid.uuid4()}{ext}'
             with open(_os.path.join(stickers_dir, name), 'wb') as out:
                 out.write(data)
+            if ext == '.webm':
+                # Видеостикер — в анимированный WebP, иначе на iPhone пусто.
+                webp = _webm_sticker_to_webp(_os.path.join(stickers_dir, name))
+                if webp:
+                    _os.remove(_os.path.join(stickers_dir, name))
+                    name = _os.path.basename(webp)
             Sticker.objects.create(pack_id=pack_id, file_url=f'/media/stickers/{name}', file_name=name,
                                    emoji=(st.get('emoji') or '')[:10], order=order)
             order += 1

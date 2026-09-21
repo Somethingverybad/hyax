@@ -6,6 +6,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { api, mediaUrl, type StickerPackInfo } from "@/api/client";
 import { stickerPackLink } from "@/lib/share";
 import AdultLock, { AdultBadge } from "@/components/AdultLock";
+import StickerView from "@/components/chat/StickerView";
 
 /**
  * Стикерпак по ссылке /stp/<id> — как /sp/<id> для звуков. Сетка стикеров
@@ -95,7 +96,9 @@ const StickerPackPage = () => {
             {!pack.adult_locked && <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
               {stickers.map((s) => (
                 <div key={s.id} className="aspect-square rounded-md bg-surface-3 flex items-center justify-center overflow-hidden">
-                  <img src={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" loading="lazy" />
+                  {/* Через StickerView, а не <img>: анимированные стикеры Telegram
+                      (.tgs — Lottie) картинкой не показываются вовсе. */}
+                  <StickerView url={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" />
                 </div>
               ))}
               {stickers.length === 0 && <p className="col-span-4 py-6 text-center text-small text-subtle">Стикеры ещё грузятся</p>}
