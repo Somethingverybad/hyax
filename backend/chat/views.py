@@ -90,7 +90,12 @@ class ProfileViewSet(viewsets.ModelViewSet):
         # его тебе назвали (участник в группу, админ в канал). Знакомятся
         # по ссылке «Поделиться профилем» (/u/<ник>).
         if search_query:
-            queryset = queryset.filter(username__iexact=search_query.lstrip('@'))
+            q = search_query.lstrip('@')
+            # Точное совпадение важнее: есть ники, различающиеся только
+            # регистром (EvilTree и eviltree), и без учёта регистра находились
+            # оба — а по ссылке открывался случайный.
+            exact = queryset.filter(username=q)
+            queryset = exact if exact.exists() else queryset.filter(username__iexact=q)
         elif self.action == 'list':
             queryset = queryset.none()
 
@@ -100,7 +105,14 @@ class ProfileViewSet(viewsets.ModelViewSet):
             permission_classes=[permissions.IsAuthenticated])
     def by_username(self, request, username=None):
         """Публичная карточка для ссылки /u/<ник>."""
-        profile = Profile.objects.filter(username__iexact=(username or '').strip()).first()
+        name = (username or '').strip()
+        # Сначала точное совпадение с учётом регистра, и только если его нет —
+        # без учёта, и лишь когда такой профиль один. Раньше ссылка /u/EvilTree
+        # открывала профиль eviltree: он просто стоял первым.
+        profile = Profile.objects.filter(username=name).first()
+        if profile is None:
+            candidates = list(Profile.objects.filter(username__iexact=name)[:2])
+            profile = candidates[0] if len(candidates) == 1 else None
         if not profile:
             return Response({"error": "Пользователь не найден"}, status=404)
         return Response(PublicProfileSerializer(profile).data)
@@ -1066,7 +1078,9 @@ def register_user(request):
         if not all([username, password]):
             return Response({'error': 'Логин и пароль обязательны'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if User.objects.filter(username=username).exists():
+        # Без учёта регистра: EvilTree и eviltree — для людей один и тот же
+        # ник, и два таких профиля путали ссылки и поиск.
+        if User.objects.filter(username__iexact=username).exists() or Profile.objects.filter(username__iexact=username).exists():
             return Response({'error': 'Пользователь с таким логином уже существует'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Создаем пользователя с username

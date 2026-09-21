@@ -613,3 +613,43 @@ class ChunkUploadBackgroundTests(TestCase):
         me = make_user("bg2")
         self.assertEqual(client_for(me).get(f"/api/upload/chunk/{_u.uuid4().hex}/").status_code, 404)
         self.assertEqual(client_for(me).get("/api/upload/chunk/not-a-hex-id/").status_code, 400)
+
+
+class UsernameCaseTests(TestCase):
+    """Ники, различающиеся только регистром: ссылка ведёт в точный профиль,
+    новые такие пары не заводятся."""
+
+    def setUp(self):
+        self.big = make_user("EvilTree")
+        self.small = make_user("eviltree")
+        self.viewer = make_user("viewer")
+
+    def test_link_opens_exact_profile(self):
+        c = client_for(self.viewer)
+        self.assertEqual(c.get("/api/profiles/by-username/EvilTree/").data["id"], str(self.big.id))
+        self.assertEqual(c.get("/api/profiles/by-username/eviltree/").data["id"], str(self.small.id))
+
+    def test_ambiguous_case_insensitive_is_not_guessed(self):
+        r = client_for(self.viewer).get("/api/profiles/by-username/EVILTREE/")
+        self.assertEqual(r.status_code, 404)
+
+    def test_unique_case_insensitive_still_found(self):
+        make_user("Solo")
+        r = client_for(self.viewer).get("/api/profiles/by-username/solo/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_search_prefers_exact(self):
+        r = client_for(self.viewer).get("/api/profiles/?search=EvilTree")
+        rows = r.data["results"] if isinstance(r.data, dict) else r.data
+        self.assertEqual([x["id"] for x in rows], [str(self.big.id)])
+
+    def test_register_rejects_case_duplicate(self):
+        r = APIClient().post("/api/auth/register/", {"username": "EVILTREE", "password": "pass-12345", "accept_terms": True}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_rename_rejects_case_duplicate(self):
+        r = client_for(self.viewer).patch(f"/api/profiles/{self.viewer.id}/", {"username": "EVILtree"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        # свой же ник в другом регистре — можно
+        r = client_for(self.big).patch(f"/api/profiles/{self.big.id}/", {"username": "Eviltree_X"}, format="json")
+        self.assertEqual(r.status_code, 200)
