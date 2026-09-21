@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { api } from "@/api/client";
 import { LegalView, type LegalKind } from "./Legal";
+import AuthQuote from "@/components/AuthQuote";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -130,12 +131,11 @@ const Auth = () => {
             <p className="text-caption text-subtle mt-1.5 tracking-[0.08em] uppercase">эсемэсэнджер</p>
           </div>
 
-          <p className="text-subtle text-center mt-1.5 mb-2 text-small">
-            {isLogin 
-              ? "Не очень то и быстрый и ненадежный месенджер" 
-              : "ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!"
-            }
-          </p>
+          {isLogin ? (
+            <AuthQuote className="text-subtle mt-1.5 mb-2 text-small" />
+          ) : (
+            <p className="text-subtle text-center mt-1.5 mb-2 text-small">ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!</p>
+          )}
         </div>
 
         <form onSubmit={handleAuth}>

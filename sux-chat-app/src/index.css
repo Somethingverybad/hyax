@@ -620,3 +620,24 @@ textarea,
   [data-nav="floating"] .ui-nav-item.ui-nav-on { background: hsl(var(--accent-soft)); border-color: hsl(var(--ui-line)); color: hsl(var(--foreground)); }
   [data-nav="floating"] .ui-nav-label { display: block; }
 }
+
+/* Цитата на экране входа: рукописный курсив и мягкая смена строк.
+   Анимируем только прозрачность и сдвиг — раскладку это не трогает. */
+.auth-quote {
+  font-style: italic;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+.auth-quote-in { animation: quote-in 420ms cubic-bezier(0.17, 0.59, 0.4, 1) both; }
+.auth-quote-out { animation: quote-out 300ms ease-in both; }
+@keyframes quote-in {
+  from { opacity: 0; transform: translateY(6px); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes quote-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-quote-in, .auth-quote-out { animation: none; opacity: 1; transform: none; filter: none; }
+}
