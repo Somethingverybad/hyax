@@ -72,6 +72,10 @@ export default {
         'gradient-primary': 'var(--gradient-primary)',
         'gradient-card': 'var(--gradient-card)',
       },
+      height: {
+        // Поля и кнопки на форме входа — чуть выше обычных (по макету).
+        13: "3.25rem",
+      },
       boxShadow: {
         'glow': 'var(--shadow-glow)',
         'card': 'var(--shadow-card)',

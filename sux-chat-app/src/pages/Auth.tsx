@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, User as UserIcon, X } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { api } from "@/api/client";
 import { LegalView, type LegalKind } from "./Legal";
 import AuthQuote from "@/components/AuthQuote";
+import SuprematistBackdrop from "@/components/SuprematistBackdrop";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -117,18 +118,26 @@ const Auth = () => {
       className="min-h-screen overflow-y-auto flex items-start justify-center bg-background px-4 py-3"
       style={{ paddingTop: "calc(var(--sat) + 2vh)" }}
     >
-      <Card className="w-full max-w-md p-0 md:p-6 bg-transparent border-0 shadow-none">
-        <div className="flex flex-col items-center mb-4 md:mb-6">
+      <Card className="auth-card relative w-full max-w-md p-5 md:p-7 overflow-hidden rounded-[18px]">
+        <SuprematistBackdrop />
+        {/* Девиз в углу, как на макете: три слова столбиком и черта под ними. */}
+        <div className="relative text-right text-[11px] leading-[1.45] font-semibold tracking-[0.12em] text-foreground/80">
+          ЛЮДИ.<br />СООБЩЕНИЯ.<br />БЛИЖЕ.
+          <span className="mt-1.5 ml-auto block w-10 h-[2px] bg-foreground/70" />
+        </div>
+
+        <div className="relative flex flex-col items-center mb-4 md:mb-6 -mt-6">
           <img
             src={logo}
             alt="WhoYaX"
-            className="w-20 h-20 md:w-24 md:h-24 mb-4 rounded-lg select-none pointer-events-none"
+            className="w-20 h-20 md:w-24 md:h-24 mb-3 rounded-[14px] select-none pointer-events-none"
             draggable={false}
           />
 
           <div className="text-center mb-2 md:mb-3">
-            <h1 className="text-[28px] md:text-[32px] font-semibold text-foreground leading-none">WhoYaX</h1>
-            <p className="text-caption text-subtle mt-1.5 tracking-[0.08em] uppercase">эсемэсэнджер</p>
+            <h1 className="text-[34px] md:text-[38px] font-extrabold text-foreground leading-none tracking-tight">WhoYaX</h1>
+            <p className="text-caption text-subtle mt-1.5 tracking-[0.32em] uppercase">эсемэсэнджер</p>
+            <span className="mt-2.5 mx-auto block w-9 h-[3px] rounded-full bg-foreground/80" />
           </div>
 
           {isLogin ? (
@@ -138,7 +147,7 @@ const Auth = () => {
           )}
         </div>
 
-        <form onSubmit={handleAuth}>
+        <form onSubmit={handleAuth} className="relative">
           {/* Слайдер шагов: две панели в ряд, сдвиг transform-ом. */}
           <div className="overflow-hidden">
             <div
@@ -151,31 +160,46 @@ const Auth = () => {
                   <Label htmlFor="username" className="text-small font-normal text-subtle">
                     {isLogin ? "Логин" : "Имя пользователя"}
                   </Label>
-                  <Input
-                    id="username"
-                    ref={usernameRef}
-                    type="text"
-                    placeholder="username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    autoComplete="username"
-                    tabIndex={step === 0 ? 0 : -1}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        goToPassword();
-                      }
-                    }}
-                    className="h-12 bg-surface-2 border-transparent rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
-                  />
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-subtle pointer-events-none" />
+                    <Input
+                      id="username"
+                      ref={usernameRef}
+                      type="text"
+                      placeholder="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      autoComplete="username"
+                      tabIndex={step === 0 ? 0 : -1}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          goToPassword();
+                        }
+                      }}
+                      className="h-13 pl-10 pr-10 bg-surface-1 rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
+                    />
+                    {username && (
+                      <button
+                        type="button"
+                        onClick={() => { setUsername(""); usernameRef.current?.focus(); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-subtle active:opacity-60"
+                        aria-label="Очистить"
+                        tabIndex={-1}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <Button
                   type="button"
                   onClick={goToPassword}
                   disabled={!username.trim()}
-                  className="w-full h-12 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body disabled:opacity-40"
+                  className="ui-btn w-full h-13 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-body tracking-[0.18em] uppercase disabled:opacity-40 flex items-center justify-between px-5"
                 >
-                  Далее
+                  <span>Далее</span>
+                  <ArrowRight className="w-5 h-5" />
                 </Button>
               </div>
 
@@ -244,14 +268,15 @@ const Auth = () => {
           </div>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="relative mt-6 flex items-center justify-center gap-3">
+          <span className="h-[2px] w-10 bg-foreground/70 shrink-0" />
           <button
             type="button"
             onClick={() => { setIsLogin(!isLogin); setStep(0); setPassword(""); }}
             className="text-body text-subtle"
           >
             {isLogin ? "Нет аккаунта? " : "Уже есть аккаунт? "}
-            <span className="text-primary font-semibold">{isLogin ? "Зарегистрируйтесь" : "Войдите"}</span>
+            <span className="text-primary font-semibold underline underline-offset-4">{isLogin ? "Зарегистрируйтесь" : "Войдите"}</span>
           </button>
         </div>
       </Card>

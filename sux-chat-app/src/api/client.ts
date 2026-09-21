@@ -29,6 +29,8 @@ if (!ENV_ORIGIN && typeof window !== "undefined") {
 }
 
 /** fetch с откатом: сетевая ошибка на CDN-адресе → повтор того же запроса напрямую. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : (input as Request).url;
   // В лог баг-репорта: метод, путь без query, код и длительность. Ни тел, ни
@@ -41,6 +43,16 @@ async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promis
     if (res) (res.ok ? applog.info : applog.warn)(`http ${method} ${path} → ${res.status} ${ms}ms`);
     else applog.error(`http ${method} ${path} ✗ ${err instanceof Error ? err.name : "network"} ${ms}ms`);
   };
+  // Сеть до CDN и обратно подводит: часть запросов не проходит с первого раза.
+  // Молча повторяем — для человека это просто чуть дольше загрузка, а не
+  // сообщение об ошибке. Повторяем только чтение (GET/HEAD): повтор отправки
+  // мог бы продублировать сообщение, если сервер успел его принять.
+  const idempotent = method === "GET" || method === "HEAD";
+  const RETRY_DELAYS = [250, 700, 1500];
+  const retriable = (status: number) => status === 502 || status === 503 || status === 504 || status === 429;
+  let attempt = 0;
+
+  for (;;) {
   try {
     const res = await fetch(input, init);
     // CDN иногда отвечает 403 на обычный запрос к API: до сервера он при этом
@@ -54,21 +66,39 @@ async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promis
       done(retry);
       return retry;
     }
+    if (idempotent && retriable(res.status) && attempt < RETRY_DELAYS.length) {
+      applog.warn(`http ${method} ${safePath(url)} → ${res.status}, повтор ${attempt + 1}`);
+      await sleep(RETRY_DELAYS[attempt++]);
+      continue;
+    }
     done(res);
     return res;
   } catch (e) {
     // Запрос мог быть собран с CDN-адресом до того, как проба переключила
     // origin — повторяем напрямую в любом случае, если URL был на CDN.
-    if (!url.startsWith(CDN_ORIGIN)) { done(null, e); throw e; }
+    if (!url.startsWith(CDN_ORIGIN)) {
+      if (idempotent && attempt < RETRY_DELAYS.length) {
+        applog.warn(`http ${method} ${safePath(url)} ✗ сеть, повтор ${attempt + 1}`);
+        await sleep(RETRY_DELAYS[attempt++]);
+        continue;
+      }
+      done(null, e); throw e;
+    }
     switchToDirect((e as Error)?.name || "network");
     try {
       const res = await fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
       done(res);
       return res;
     } catch (e2) {
+      if (idempotent && attempt < RETRY_DELAYS.length) {
+        applog.warn(`http ${method} ${safePath(url)} ✗ сеть напрямую, повтор ${attempt + 1}`);
+        await sleep(RETRY_DELAYS[attempt++]);
+        continue;
+      }
       done(null, e2);
       throw e2;
     }
+  }
   }
 }
 

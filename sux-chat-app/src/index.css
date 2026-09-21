@@ -641,3 +641,68 @@ textarea,
 @media (prefers-reduced-motion: reduce) {
   .auth-quote-in, .auth-quote-out { animation: none; opacity: 1; transform: none; filter: none; }
 }
+
+/* ── Форма входа: супрематические фигуры ──────────────────────────────────────
+   Цвета — из темы: акцент, «тушь» и цвет входящих сообщений. Движение только
+   трансформами; при системной настройке «уменьшить движение» фигуры замирают. */
+.supra-shape { position: absolute; display: block; will-change: transform; }
+.supra-a {
+  top: -6%; left: -14%; width: 46%; height: 13%;
+  background: hsl(var(--destructive));
+  transform: rotate(-38deg);
+  animation: supra-drift-a 14s ease-in-out infinite;
+}
+.supra-b {
+  top: 11%; left: -12%; width: 34%; height: 9%;
+  background: hsl(var(--ink));
+  transform: rotate(-38deg);
+  animation: supra-drift-b 17s ease-in-out infinite;
+}
+.supra-c {
+  top: 22%; left: -6%; width: 17%; aspect-ratio: 1;
+  background: hsl(var(--success));
+  transform: rotate(-38deg);
+  animation: supra-drift-c 20s ease-in-out infinite;
+}
+.supra-line {
+  top: -4%; left: 6%; width: 2px; height: 34%;
+  background: hsl(var(--ink));
+  transform: rotate(-38deg);
+  animation: supra-drift-b 23s ease-in-out infinite reverse;
+}
+.supra-d {
+  /* Ниже строки «Нет аккаунта?»: фигура вплотную подходила к ссылке. */
+  bottom: -11%; right: 2%; width: 11%; aspect-ratio: 1;
+  background: hsl(var(--ink));
+  transform: rotate(-14deg);
+  animation: supra-drift-c 18s ease-in-out infinite reverse;
+}
+.supra-e {
+  bottom: -9%; right: -16%; width: 24%; height: 7%;
+  background: hsl(var(--destructive));
+  transform: rotate(-38deg);
+  animation: supra-drift-a 16s ease-in-out infinite reverse;
+}
+@keyframes supra-drift-a {
+  0%, 100% { transform: rotate(-38deg) translate(0, 0); }
+  50% { transform: rotate(-35deg) translate(14px, 10px); }
+}
+@keyframes supra-drift-b {
+  0%, 100% { transform: rotate(-38deg) translate(0, 0); }
+  50% { transform: rotate(-41deg) translate(-10px, 12px); }
+}
+@keyframes supra-drift-c {
+  0%, 100% { transform: rotate(-38deg) scale(1); }
+  50% { transform: rotate(-30deg) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .supra-shape { animation: none !important; }
+}
+
+/* Карточка входа: обводка и жёсткая тень в темах с такой формой, мягкая
+   рамка в остальных (значения приходят из темы). */
+.auth-card {
+  border: var(--ui-bw) solid hsl(var(--ui-line, var(--border)));
+  box-shadow: var(--shadow-card);
+  background: hsl(var(--background));
+}
