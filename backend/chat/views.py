@@ -1300,6 +1300,10 @@ class ChunkUploadView(APIView):
     def _dir(self, upload_id):
         return os.path.join(settings.MEDIA_ROOT, 'chunks', upload_id)
 
+    def _done_path(self, upload_id):
+        # Итог уже собранной загрузки: повтор последнего куска получает его же.
+        return os.path.join(settings.MEDIA_ROOT, 'chunks', f"{upload_id}.done.json")
+
     def _sweep(self):
         import time as _time
         root = os.path.join(settings.MEDIA_ROOT, 'chunks')
@@ -1309,8 +1313,12 @@ class ChunkUploadView(APIView):
         for name in os.listdir(root):
             path = os.path.join(root, name)
             try:
-                if os.path.isdir(path) and os.path.getmtime(path) < deadline:
+                if os.path.getmtime(path) >= deadline:
+                    continue
+                if os.path.isdir(path):
                     shutil.rmtree(path, ignore_errors=True)
+                else:
+                    os.remove(path)  # итог старой загрузки (.done.json)
             except OSError:
                 pass
 
@@ -1333,6 +1341,19 @@ class ChunkUploadView(APIView):
             return Response({"error": "index и total обязательны"}, status=400)
         if total < 1 or total > 2000 or not (0 <= index < total):
             return Response({"error": "index вне диапазона"}, status=400)
+        # Загрузка уже собрана — это повтор. Бывает так: сервер склеил файл и
+        # ответил, а ответ до телефона не дошёл (сеть, таймаут CDN на долгой
+        # сборке). Клиент повторяет последний кусок — отдаём тот же итог, а не
+        # «не все куски дошли»: куски к этому моменту уже удалены.
+        done_path = self._done_path(upload_id)
+        if os.path.exists(done_path):
+            import json as _json
+            try:
+                with open(done_path, encoding='utf-8') as f:
+                    return Response(_json.load(f))
+            except (OSError, ValueError):
+                pass
+
         chunk = request.FILES.get('chunk')
         if not chunk:
             return Response({"error": "Нет куска"}, status=400)
@@ -1367,7 +1388,15 @@ class ChunkUploadView(APIView):
         shutil.rmtree(target_dir, ignore_errors=True)
         self._sweep()
 
-        return _finalize_upload(request, file_path, original_name, size, file_extension)
+        response = _finalize_upload(request, file_path, original_name, size, file_extension)
+        if response.status_code == 200:
+            import json as _json
+            try:
+                with open(self._done_path(upload_id), 'w', encoding='utf-8') as f:
+                    _json.dump(response.data, f, ensure_ascii=False)
+            except OSError:
+                logger.warning("Кусочная загрузка: не записался итог %s", upload_id)
+        return response
 
 
 # ViewSet для стикерпаков

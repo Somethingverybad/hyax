@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
+import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -371,8 +372,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Прогресс загрузки живёт в самом временном сообщении, а не отдельной
   // полоской над полем ввода: раньше пузырь для видео/файла/голосового
   // вообще не появлялся до ответа сервера, и казалось, что ничего не ушло.
-  const setProgressFor = (tempId: string, p: number | null) =>
+  const setProgressFor = (tempId: string, p: number | null, forChat: string | null = chatId) => {
+    // Прогресс пишем и в очередь: экран могли закрыть, а загрузка идёт.
+    if (forChat) outbox.patch(forChat, tempId, { _progress: p });
     setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _progress: p } : m)));
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Свои картинки показываем из локального файла: сервер их и так получил от
   // нас, скачивать обратно — лишний трафик и «пустой» пузырь на время загрузки.
@@ -1162,6 +1166,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       });
     });
 
+    for (const j of jobs) outbox.put(chatId, j.optimistic as any);
     setMessages(prev => [...prev, ...jobs.map(j => j.optimistic)]);
     setTimeout(() => scrollToBottom(true), 50);
 
@@ -1177,17 +1182,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     opts: { content?: string; soundId?: string; replyId?: string; albumId?: string | null } = {},
   ) => {
     if (!chatId) return;
+    // Чат запоминаем на старте: пока идёт загрузка, человек мог перейти в
+    // другой — отправлять нужно туда, откуда выбирали файл.
+    const forChat = chatId;
+    outbox.patch(forChat, tempId, { _failed: false, _progress: 0 });
     setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: 0 } : m)));
     try {
       const compress = att.mode === "video" ? "video" : undefined;
       applog.info(`attach upload start ${att.mode} ${Math.round(att.file.size / 1024)}KB`);
-      const uploadResult = await api.uploadFile(att.file, compress, (p) => setProgressFor(tempId, p));
+      const uploadResult = await api.uploadFile(att.file, compress, (p) => setProgressFor(tempId, p, forChat));
       applog.info(`attach upload ok ${att.mode} → ${uploadResult.file_url ? "url" : "no url"}`);
-      setProgressFor(tempId, 100);
+      setProgressFor(tempId, 100, forChat);
       // Свою картинку рисуем из локального файла и после подтверждения —
       // сервер нужен только собеседнику.
       if (att.url && uploadResult.file_url) localImagesRef.current.set(uploadResult.file_url, att.url);
-      const sent = await api.sendMessageWithFile(chatId, {
+      const sent = await api.sendMessageWithFile(forChat, {
         file_url: uploadResult.file_url,
         file_name: uploadResult.file_name,
         file_size: uploadResult.file_size,
@@ -1199,6 +1208,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       // размеры — DOM не перемонтируется, картинка не мигает. Если
       // синхронизация уже принесла это сообщение по сокету/опросу — просто
       // убираем временный пузырь, чтобы не было дубля.
+      outbox.drop(forChat, tempId);
       setMessages(prev =>
         prev.some(m => m.id === sent.id)
           ? prev.filter(m => m.id !== tempId)
@@ -1208,9 +1218,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       console.error("Error sending attachment:", error);
       // Пузырь остаётся с «Повторить» — выбранный файл не теряется.
       toast.error("Не удалось отправить — нажми «Повторить»");
+      outbox.patch(forChat, tempId, { _failed: true, _progress: null });
       setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: true, _progress: null } : m)));
     }
   };
+
+  // Открыли чат, где что-то ещё грузится (начали и ушли) — показываем эти
+  // пузыри с прогрессом и дальше следим за ними. Файлы в очереди живут, пока
+  // приложение открыто.
+  useEffect(() => {
+    if (!chatId) return;
+    const sync = () => setMessages(prev => mergePending(prev, outbox.forChat(chatId) as any));
+    sync();
+    return outbox.subscribe((changed) => { if (changed === chatId) sync(); });
+  }, [chatId]);
 
   const startLongPress = (message: Message) => {
     if (longPressRef.current) clearTimeout(longPressRef.current);
@@ -1352,6 +1373,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   const discardFailed = (m: Message) => {
+    if (chatId) outbox.drop(chatId, m.id);
     setMessages(prev => prev.filter(x => x.id !== m.id));
     const u = m.video_url || m.voice_url || m.file_url;
     if (u && u.startsWith("blob:")) URL.revokeObjectURL(u);

@@ -553,3 +553,26 @@ class ChunkUploadTests(TestCase):
         r = self.c.post("/api/upload/", {"file": SimpleUploadedFile("pic.png", b"\x89PNG" + b"\x00" * 32, content_type="image/png"), "local": "1"}, format="multipart")
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.data["file_url"].startswith("/media/messages/"))
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ChunkUploadRetryTests(TestCase):
+    """Повтор последнего куска после успешной сборки: сервер склеил файл, а
+    ответ до телефона не дошёл. Раньше повтор получал 409 «не все куски дошли»."""
+
+    def test_retry_of_last_chunk_returns_same_result(self):
+        import uuid as _u
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        me = make_user("retrier")
+        uid = _u.uuid4().hex
+        def send(i, blob, **extra):
+            data = {"upload_id": uid, "index": i, "total": 2, "chunk": SimpleUploadedFile("p", blob)}
+            data.update(extra)
+            return client_for(me).post("/api/upload/chunk/", data, format="multipart")
+        send(0, b"a" * 64)
+        first = send(1, b"b" * 32, file_name="клип.mp4", local="1")
+        self.assertEqual(first.status_code, 200)
+        again = send(1, b"b" * 32, file_name="клип.mp4", local="1")
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.data["file_url"], first.data["file_url"])
+        self.assertEqual(again.data["file_size"], 96)
