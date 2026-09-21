@@ -1175,7 +1175,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     });
 
     for (const j of jobs) outbox.put(chatId, j.optimistic as any);
-    setMessages(prev => [...prev, ...jobs.map(j => j.optimistic)]);
+    // Очередь сама подмешивает свои пузыри в ленту (подписка ниже), поэтому
+    // здесь — слияние по id, а не добавление: раньше пузырь попадал в ленту
+    // дважды с одним ключом, и React его вовсе не показывал до перезахода.
+    setMessages(prev => mergePending(prev, jobs.map(j => j.optimistic) as any));
     setTimeout(() => scrollToBottom(true), 50);
 
     for (const j of jobs) {

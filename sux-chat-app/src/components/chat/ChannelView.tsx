@@ -997,7 +997,10 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
     if (!file || avatarBusy) return;
     setAvatarBusy(true);
     try {
-      const up = await api.uploadFile(file);
+      // local=true — аватар должен лежать открыто, как у групп: вложения
+      // сообщений уходят в закрытое хранилище (ссылка s3://…), и в списке
+      // чатов такой аватар не открывался — вместо картинки была пустая рамка.
+      const up = await api.uploadFile(file, undefined, undefined, true);
       const updated = await api.updateChannel(channel.id, { avatar_url: up.file_url });
       onChanged({ ...channel, ...updated });
       toast.success("Аватар обновлён");
