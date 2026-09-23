@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 333,
+  "build": 338,
   "ios_version": "1.1.11",
-  "ios_build": 145,
-  "notes": "Реакции на сообщения и посты, стеклянные темы со своей иконкой, кадрирование аватара и обложки, настройка «кто видит сохранёнки», статусы в сети",
+  "ios_build": 146,
+  "notes": "Музыка: плейлисты из переписки. Реакции на сообщения и посты, уведомления о реакциях. Стеклянные темы, иконка по теме, кадрирование обложки и аватара",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
