@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil } from "lucide-react";
+import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil,
+         Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
-import { playQueue, usePlayer, currentTrack, fmtTime, type Track } from "@/lib/player";
+import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, toggle,
+         toggleShuffle, cycleRepeat, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,6 +25,83 @@ const pluralTracks = (n: number) => {
   if (d === 1 && dd !== 11) return `${n} трек`;
   if (d >= 2 && d <= 4 && (dd < 10 || dd >= 20)) return `${n} трека`;
   return `${n} треков`;
+};
+
+
+/**
+ * Панель плеера на экране музыки: здесь она не всплывающая полоска, а часть
+ * экрана — вкладка целиком отведена под музыку. Полоску (MiniPlayer) на этом
+ * экране прячем, чтобы плеер не двоился.
+ */
+const PlayerPanel = () => {
+  const s = usePlayer();
+  const t = currentTrack();
+  if (!t) return null;
+  const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
+  const RepeatIcon = s.repeat === "one" ? Repeat1 : Repeat;
+
+  return (
+    <div className="shrink-0 px-4 pb-2">
+      <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1">
+            <span className="block text-body truncate">{t.title}</span>
+            <span className="block text-caption text-subtle tabular-nums">
+              {fmtTime(s.time)}{s.duration ? ` / ${fmtTime(s.duration)}` : ""}
+              {s.queue.length > 1 && ` · ${s.index + 1} из ${s.queue.length}`}
+            </span>
+          </span>
+          <button type="button" onClick={stop} className="p-2 text-subtle" aria-label="Закрыть плеер">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div
+          className="h-1.5 rounded-full bg-black/20 overflow-hidden cursor-pointer"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            if (s.duration) seek(((e.clientX - r.left) / r.width) * s.duration);
+          }}
+        >
+          <div className="h-full rounded-full bg-primary" style={{ width: `${frac * 100}%` }} />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={toggleShuffle}
+            aria-pressed={s.shuffle}
+            aria-label="Перемешать"
+            className={cn("w-10 h-10 rounded-full flex items-center justify-center",
+              s.shuffle ? "text-primary bg-primary/15" : "text-subtle")}
+          >
+            <Shuffle className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void prev()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label="Предыдущий">
+              <SkipBack className="w-5 h-5" />
+            </button>
+            <button type="button" onClick={() => void toggle()} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center" aria-label={s.playing ? "Пауза" : "Играть"}>
+              {s.playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            </button>
+            <button type="button" onClick={() => void next()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label="Следующий">
+              <SkipForward className="w-5 h-5" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={cycleRepeat}
+            aria-pressed={s.repeat !== "off"}
+            aria-label={s.repeat === "one" ? "Повторять один" : s.repeat === "all" ? "Повторять всё" : "Без повтора"}
+            className={cn("w-10 h-10 rounded-full flex items-center justify-center",
+              s.repeat !== "off" ? "text-primary bg-primary/15" : "text-subtle")}
+          >
+            <RepeatIcon className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const Music = () => {
@@ -140,6 +219,7 @@ const Music = () => {
             </SettingsCard>
           )}
         </div>
+        <PlayerPanel />
         <BottomNav />
       </div>
     );
@@ -197,6 +277,7 @@ const Music = () => {
           Музыка берётся из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».
         </p>
       </div>
+      <PlayerPanel />
       <BottomNav />
     </div>
   );

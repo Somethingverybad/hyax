@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 import { currentTrack, fmtTime, next, prev, seek, stop, toggle, usePlayer } from "@/lib/player";
 
@@ -15,6 +16,8 @@ const MiniPlayer = () => {
   const s = usePlayer();
   const t = currentTrack();
   const box = useRef<HTMLDivElement>(null);
+  // На вкладке «Музыка» плеер — часть экрана (PlayerPanel), полоска там лишняя.
+  const onMusicTab = useLocation().pathname.startsWith("/music");
 
   // Высота полосы — наружу: по ней сдвигается закреплённое сообщение.
   useEffect(() => {
@@ -25,7 +28,7 @@ const MiniPlayer = () => {
     return () => { root.style.setProperty("--player-h", "0px"); };
   }, [t?.id, !!t]);
 
-  if (!t) return null;
+  if (!t || onMusicTab) return null;
 
   const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
 

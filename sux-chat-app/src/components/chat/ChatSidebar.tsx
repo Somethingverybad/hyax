@@ -137,6 +137,24 @@ const ChatSidebar = ({
   const [currentUser, setCurrentUser] = useState<Profile | null>(
     () => readCache<Profile>("user")
   );
+  // Где кончается верхний блок (шапка, поиск, фильтры): под ним встаёт
+  // мини-плеер. Иначе он закрывал бы поиск — он-то стоит под шапкой чата,
+  // а здесь шапка выше (см. components/MiniPlayer.tsx).
+  const topRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const set = () => {
+      const h = topRef.current?.getBoundingClientRect().bottom;
+      if (h) document.documentElement.style.setProperty("--player-top", `${Math.round(h)}px`);
+    };
+    set();
+    const id = setInterval(set, 1000);  // список фильтров появляется не сразу
+    window.addEventListener("resize", set);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("resize", set);
+      document.documentElement.style.removeProperty("--player-top");
+    };
+  }, [isCollapsed]);
   const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>({});
   const [loadingParticipants, setLoadingParticipants] = useState<{[chatId: string]: boolean}>({});
   const [deletingChats, setDeletingChats] = useState<{[chatId: string]: boolean}>({});
@@ -397,7 +415,7 @@ const ChatSidebar = ({
     }`}>
       {/* Шапка: аватар + имя + «В сети», справа шестерёнка и красный «+»
           (открывает диалог нового чата). Ниже — поиск по списку. */}
-      <div className="px-4 pt-2 pb-3 pad-safe-top">
+      <div ref={topRef} className="px-4 pt-2 pb-3 pad-safe-top">
         <div className="flex items-center gap-3 h-14 md:h-16">
           {!isMobileLayout && isCollapsed && (
             <Button
@@ -682,9 +700,10 @@ const ChatSidebar = ({
         />
       </div>
 
-      {/* Список чатов */}
+      {/* Список чатов. Отступ сверху — под мини-плеер: он стоит полосой над
+          списком, и без отступа накрывал бы первую строку. */}
       <ScrollArea className="flex-1">
-        <div>
+        <div style={{ paddingTop: "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {onOpenSaved && !isCollapsed && (
             <button
               type="button"

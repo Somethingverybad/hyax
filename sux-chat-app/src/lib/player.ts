@@ -21,15 +21,25 @@ export interface Track {
   artist?: string;
 }
 
+/** Что делать, когда трек кончился: ничего, по кругу, повторять один. */
+export type RepeatMode = "off" | "all" | "one";
+
 interface State {
   queue: Track[];
   index: number;
   playing: boolean;
   time: number;
   duration: number;
+  /** Перемешивание: следующий трек выбирается случайно. */
+  shuffle: boolean;
+  repeat: RepeatMode;
 }
 
-let state: State = { queue: [], index: -1, playing: false, time: 0, duration: 0 };
+let state: State = { queue: [], index: -1, playing: false, time: 0, duration: 0,
+                     shuffle: false, repeat: "off" };
+// Что уже играли в перемешанном порядке: чтобы не повторять одно и то же,
+// пока не кончится очередь.
+let heard = new Set<number>();
 let audio: HTMLAudioElement | null = null;
 const subs = new Set<() => void>();
 
@@ -74,7 +84,7 @@ const attach = (el: HTMLAudioElement) => {
   el.onloadedmetadata = () => { state.duration = el.duration || 0; emit(); };
   el.onplay = () => { state.playing = true; emit(); updateSession(); };
   el.onpause = () => { state.playing = false; emit(); updateSession(); };
-  el.onended = () => { void next(); };
+  el.onended = () => { void next(true); };
   el.onerror = () => { state.playing = false; emit(); };
 };
 
@@ -112,9 +122,44 @@ export async function toggle() {
   else audio.pause();
 }
 
-export async function next() {
-  if (state.index + 1 < state.queue.length) await start(state.index + 1);
-  else stop();
+/** Следующий по порядку или случайный — смотря как включено перемешивание. */
+function nextIndex(): number | null {
+  const n = state.queue.length;
+  if (!n) return null;
+  if (state.shuffle) {
+    heard.add(state.index);
+    let left = [...Array(n).keys()].filter((i) => !heard.has(i));
+    if (!left.length) {
+      // Круг закончился: начинаем заново, кроме текущего — иначе один и тот
+      // же трек мог бы пойти дважды подряд.
+      heard = new Set([state.index]);
+      left = [...Array(n).keys()].filter((i) => i !== state.index);
+      if (!left.length) return state.repeat === "off" ? null : state.index;
+    }
+    return left[Math.floor(Math.random() * left.length)];
+  }
+  if (state.index + 1 < n) return state.index + 1;
+  return state.repeat === "all" ? 0 : null;
+}
+
+export async function next(auto = false) {
+  // Повтор одного действует только когда трек кончился сам: кнопку «дальше»
+  // человек нажимает, чтобы сменить трек, а не услышать тот же.
+  if (auto && state.repeat === "one") { await start(state.index); return; }
+  const i = nextIndex();
+  if (i === null) stop();
+  else await start(i);
+}
+
+export function toggleShuffle() {
+  state.shuffle = !state.shuffle;
+  heard = new Set([state.index]);
+  emit();
+}
+
+export function cycleRepeat() {
+  state.repeat = state.repeat === "off" ? "all" : state.repeat === "all" ? "one" : "off";
+  emit();
 }
 
 export async function prev() {
@@ -130,7 +175,10 @@ export function seek(sec: number) {
 export function stop() {
   audio?.pause();
   if (audio) audio.src = "";
-  state = { queue: [], index: -1, playing: false, time: 0, duration: 0 };
+  // Перемешивание и повтор — настройки человека, они переживают остановку.
+  state = { queue: [], index: -1, playing: false, time: 0, duration: 0,
+            shuffle: state.shuffle, repeat: state.repeat };
+  heard = new Set();
   emit();
 }
 
