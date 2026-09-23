@@ -115,8 +115,25 @@ def _media_from_page(url):
         if m:
             found = m.group(1).strip()
             if found.startswith("http"):
-                return found
+                return _full_size(found)
     return None
+
+
+def _full_size(url):
+    """У Pinterest в метатегах лежит уменьшённая копия (…/736x/…): пробуем
+    оригинал и возвращаем его, только если он правда есть."""
+    import requests
+    m = re.match(r"^(https://i\.pinimg\.com/)\d+x/(.+)$", url)
+    if not m:
+        return url
+    original = f"{m.group(1)}originals/{m.group(2)}"
+    try:
+        r = requests.head(original, timeout=(5, 10), allow_redirects=True)
+        if r.status_code == 200:
+            return original
+    except Exception:
+        pass
+    return url
 
 
 def _public_host(url) -> bool:
