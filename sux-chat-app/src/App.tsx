@@ -4,6 +4,7 @@ import ProfileEdit from "./pages/ProfileEdit";
 import ProfileNotifications from "./pages/ProfileNotifications";
 import ProfilePrivacy from "./pages/ProfilePrivacy";
 import ProfileSavedAccess from "@/pages/ProfileSavedAccess";
+import Music from "@/pages/Music";
 import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
@@ -162,6 +163,8 @@ const App = () => {
               <Route path="/chat" element={<Chat />} />
               {/* «Избранное» — та же страница чатов, сразу открытая на личном чате. */}
               <Route path="/saved" element={<Chat savedMode />} />
+              {/* Музыка: плейлисты из того, что присылали в переписке. */}
+              <Route path="/music" element={<Music />} />
               <Route path="/profile" element={<ProfilePage />} />
               {/* Подэкраны профиля: правка текста и разделы настроек. */}
               <Route path="/profile/edit" element={<ProfileEdit />} />

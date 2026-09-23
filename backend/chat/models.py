@@ -553,6 +553,51 @@ class MusicTrack(models.Model):
         return f"{self.artist} — {self.title}" if self.artist else self.title
 
 
+class Playlist(models.Model):
+    """Плейлист пользователя. У каждого есть «Моя музыка» — он создаётся
+    при первом обращении и не удаляется (is_default)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="playlists")
+    name = models.CharField(max_length=60)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "created_at"]
+
+    def __str__(self):
+        return f"{self.owner.username}: {self.name}"
+
+
+class PlaylistTrack(models.Model):
+    """Трек в плейлисте — музыка из переписки.
+
+    Ссылку на файл храним у себя, а не только ссылкой на сообщение:
+    сообщение могут удалить, а плейлист от этого рассыпаться не должен
+    (то же решение, что в сохранёнках). source — для перехода к
+    сообщению, пока оно живо.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="tracks")
+    source = models.ForeignKey(Message, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    file_url = models.TextField()
+    title = models.CharField(max_length=200)
+    artist = models.CharField(max_length=200, blank=True, default="")
+    duration = models.FloatField(null=True, blank=True)
+    position = models.IntegerField(default=0)
+    added_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["position", "added_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["playlist", "file_url"], name="uniq_track_per_playlist"),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
 class SavedViewer(models.Model):
     """Кому владелец открыл свои сохранёнки при настройке «избранные люди».
     Список-разрешение, зеркало Block: тот же смысл, обратный знак."""

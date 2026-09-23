@@ -15,6 +15,8 @@ import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/cli
 import { cn } from "@/lib/utils";
 import { DEFAULT_REACTION, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
+import PlaylistPicker from "@/components/chat/PlaylistPicker";
+import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
@@ -241,6 +243,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [recPressed, setRecPressed] = useState(false);
   // Сообщение, для которого открыт выбор реакции, и раскрыт ли полный набор.
   const [reactFor, setReactFor] = useState<Message | null>(null);
+  // Сообщение с музыкой, для которого выбирают плейлист.
+  const [playlistFor, setPlaylistFor] = useState<Message | null>(null);
+  const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
   // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
   // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
   const cancelArmedRef = useRef(false);
@@ -1678,6 +1683,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const menuItems = menuMessage
     ? [
         { label: "Реакция", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
+        { label: "В плейлист", show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
         { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
         { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardQuery(""); setForwardFor(menuMessage); closeMenu(); } },
         { label: "В избранное", show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
@@ -2562,6 +2568,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           </div>
         </div>
       </div>
+
+      <PlaylistPicker
+        message={playlistFor}
+        onClose={() => setPlaylistFor(null)}
+      />
 
       <ReactionPicker
         open={!!reactFor}

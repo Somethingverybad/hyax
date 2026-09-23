@@ -2060,7 +2060,11 @@ class MediaSignView(APIView):
         # настройку доступа (см. can_see_saved).
         from .moderation import can_see_saved
         saved_owners = SavedImage.objects.filter(file_url=marker).values_list('owner_id', flat=True)
-        if not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
+        # Музыка из своих плейлистов открывается всегда: трек остаётся,
+        # даже если исходное сообщение удалили (см. PlaylistTrack).
+        in_my_playlist = PlaylistTrack.objects.filter(
+            file_url=marker, playlist__owner=profile).exists()
+        if not in_my_playlist and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
             # в два чата. Право на скачивание — если он виден хотя бы в одном чате,
             # где человек участник. Раньше брали first() (порядок по UUID —
@@ -3213,6 +3217,124 @@ class ReportView(APIView):
         )
         deliver(report)
         return Response({"ok": True, "id": str(report.id)}, status=201)
+
+
+AUDIO_RE = re.compile(r"\.(mp3|m4a|aac|flac|wav|ogg|opus|weba|webm)$")
+
+
+def _default_playlist(profile):
+    """«Моя музыка» — создаётся при первом обращении, как чат «Избранное»."""
+    pl = Playlist.objects.filter(owner=profile, is_default=True).first()
+    if not pl:
+        pl = Playlist.objects.create(owner=profile, name="Моя музыка", is_default=True)
+    return pl
+
+
+class PlaylistsView(APIView):
+    """GET — мои плейлисты (первый — «Моя музыка»). POST {name} — создать."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        _default_playlist(me)
+        rows = Playlist.objects.filter(owner=me).prefetch_related("tracks")
+        return Response({"playlists": PlaylistSerializer(rows, many=True).data})
+
+    def post(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        name = (request.data.get("name") or "").strip()[:60]
+        if not name:
+            return Response({"error": "Название пустое"}, status=400)
+        # «Моя музыка» должна существовать раньше остальных: иначе у того, кто
+        # начал со своего плейлиста, её бы не было вовсе.
+        _default_playlist(me)
+        if Playlist.objects.filter(owner=me).count() >= 50:
+            return Response({"error": "Слишком много плейлистов"}, status=409)
+        pl = Playlist.objects.create(owner=me, name=name)
+        return Response(PlaylistSerializer(pl).data, status=201)
+
+
+class PlaylistView(APIView):
+    """GET — треки. PATCH {name} — переименовать. DELETE — удалить
+    (кроме «Моей музыки»: она одна и всегда есть)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _mine(self, request, pk):
+        return Playlist.objects.filter(id=pk, owner=_prof(request)).first()
+
+    def get(self, request, pk):
+        pl = self._mine(request, pk)
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        return Response({
+            "playlist": PlaylistSerializer(pl).data,
+            "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
+        })
+
+    def patch(self, request, pk):
+        pl = self._mine(request, pk)
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        name = (request.data.get("name") or "").strip()[:60]
+        if not name:
+            return Response({"error": "Название пустое"}, status=400)
+        pl.name = name
+        pl.save(update_fields=["name"])
+        return Response(PlaylistSerializer(pl).data)
+
+    def delete(self, request, pk):
+        pl = self._mine(request, pk)
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        if pl.is_default:
+            return Response({"error": "«Моя музыка» не удаляется"}, status=400)
+        pl.delete()
+        return Response(status=204)
+
+
+class PlaylistTracksView(APIView):
+    """POST {message_id, playlist?} — добавить музыку из сообщения.
+    DELETE /playlists/<pk>/tracks/<track>/ — убрать трек."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk=None):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        pl = (Playlist.objects.filter(id=pk, owner=me).first() if pk else _default_playlist(me))
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        msg = Message.objects.filter(id=request.data.get("message_id")).select_related("chat").first()
+        if not msg or not msg.file_url:
+            return Response({"error": "Сообщение с музыкой не найдено"}, status=404)
+        if not _can_see_chat(msg.chat, me):
+            return Response({"error": "Нет доступа к сообщению"}, status=403)
+        name = (msg.file_name or "").strip()
+        if not AUDIO_RE.search((name or msg.file_url).lower().split("?")[0]):
+            return Response({"error": "Это не музыка"}, status=400)
+        title = re.sub(r"\.[^.]+$", "", name) or "Без названия"
+        last = pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0
+        track, created = PlaylistTrack.objects.get_or_create(
+            playlist=pl, file_url=msg.file_url,
+            defaults={"source": msg, "title": title[:200], "position": last + 1},
+        )
+        return Response(
+            {"track": PlaylistTrackSerializer(track).data, "playlist": PlaylistSerializer(pl).data,
+             "already": not created},
+            status=201 if created else 200,
+        )
+
+    def delete(self, request, pk=None, track=None):
+        me = _prof(request)
+        row = PlaylistTrack.objects.filter(id=track, playlist_id=pk, playlist__owner=me).first()
+        if not row:
+            return Response({"error": "Трек не найден"}, status=404)
+        row.delete()
+        return Response(status=204)
 
 
 class SavedViewersView(APIView):

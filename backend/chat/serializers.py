@@ -280,6 +280,25 @@ class NotificationSoundSerializer(serializers.ModelSerializer):
         return obj.pack.name if obj.pack_id else "Разное"
 
 
+class PlaylistTrackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaylistTrack
+        fields = ["id", "file_url", "title", "artist", "duration", "position", "added_at", "source"]
+        read_only_fields = fields
+
+
+class PlaylistSerializer(serializers.ModelSerializer):
+    tracks_count = serializers.SerializerMethodField()
+
+    def get_tracks_count(self, obj):
+        return obj.tracks.count()
+
+    class Meta:
+        model = Playlist
+        fields = ["id", "name", "is_default", "created_at", "tracks_count"]
+        read_only_fields = ["id", "is_default", "created_at", "tracks_count"]
+
+
 class MessageSenderSerializer(serializers.ModelSerializer):
     """Автор сообщения: только то, что рисует лента. Полный профиль на каждое
     сообщение раздувал ответ (60 сообщений — 139 КБ) и тянул звук уведомлений

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { MessageSquare, Bookmark, User } from "lucide-react";
+import { MessageSquare, Bookmark, Music2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const ITEMS = [
   { to: "/chat", label: "Чаты", icon: MessageSquare },
   { to: "/saved", label: "Избранное", icon: Bookmark },
+  { to: "/music", label: "Музыка", icon: Music2 },
   { to: "/profile", label: "Профиль", icon: User },
 ];
 

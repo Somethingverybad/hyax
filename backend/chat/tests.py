@@ -5,8 +5,9 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import (
-    Chat, ChatParticipant, Message, NotificationSound, PostReaction, Profile,
-    SavedImage, SoundPack, Sticker, StickerPack, UserSoundPack, UserStickerPack,
+    Chat, ChatParticipant, Message, NotificationSound, Playlist, PlaylistTrack,
+    PostReaction, Profile, SavedImage, SoundPack, Sticker, StickerPack,
+    UserSoundPack, UserStickerPack,
 )
 
 
@@ -850,3 +851,77 @@ class ReactionTests(TestCase):
         for e in ("🔥", "❤️", "👍"):
             self.react(self.me if e == "🔥" else self.friend, e)
         self.assertEqual([x["emoji"] for x in self.summary(self.me)], ["❤️", "👍", "🔥"])
+
+
+
+class PlaylistTests(TestCase):
+    """Плейлисты: «Моя музыка» заводится сама, музыка добавляется из сообщений."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.song = Message.objects.create(chat=self.chat, sender=self.friend, content="",
+                                           file_url="s3://media/track.mp3", file_name="Дом культуры.mp3")
+        self.doc = Message.objects.create(chat=self.chat, sender=self.friend, content="",
+                                          file_url="s3://media/doc.pdf", file_name="Договор.pdf")
+
+    def add(self, who, msg, playlist=None):
+        url = f"/api/playlists/{playlist}/tracks/" if playlist else "/api/playlists/tracks/"
+        return client_for(who).post(url, {"message_id": str(msg.id)}, format="json")
+
+    def test_default_playlist_appears_empty(self):
+        r = client_for(self.me).get("/api/playlists/")
+        self.assertEqual(len(r.data["playlists"]), 1)
+        self.assertEqual(r.data["playlists"][0]["name"], "Моя музыка")
+        self.assertTrue(r.data["playlists"][0]["is_default"])
+        self.assertEqual(r.data["playlists"][0]["tracks_count"], 0)
+
+    def test_add_music_from_message(self):
+        r = self.add(self.me, self.song)
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data["track"]["title"], "Дом культуры")
+        pl = Playlist.objects.get(owner=self.me, is_default=True)
+        self.assertEqual(pl.tracks.count(), 1)
+        # повторное добавление не плодит дубли
+        self.assertEqual(self.add(self.me, self.song).data["already"], True)
+        self.assertEqual(pl.tracks.count(), 1)
+
+    def test_only_audio(self):
+        self.assertEqual(self.add(self.me, self.doc).status_code, 400)
+
+    def test_outsider_cannot_add(self):
+        self.assertEqual(self.add(self.stranger, self.song).status_code, 403)
+
+    def test_track_survives_message_deletion(self):
+        self.add(self.me, self.song)
+        self.song.delete()
+        track = PlaylistTrack.objects.get(playlist__owner=self.me)
+        self.assertIsNone(track.source)
+        self.assertEqual(track.file_url, "s3://media/track.mp3")
+
+    def test_create_rename_and_delete(self):
+        c = client_for(self.me)
+        made = c.post("/api/playlists/", {"name": "Для бега"}, format="json")
+        self.assertEqual(made.status_code, 201)
+        pid = made.data["id"]
+        self.assertEqual(c.patch(f"/api/playlists/{pid}/", {"name": "Бег"}, format="json").data["name"], "Бег")
+        self.assertEqual(c.delete(f"/api/playlists/{pid}/").status_code, 204)
+        # «Моя музыка» не удаляется
+        default = Playlist.objects.get(owner=self.me, is_default=True)
+        self.assertEqual(c.delete(f"/api/playlists/{default.id}/").status_code, 400)
+
+    def test_playlists_are_private(self):
+        made = client_for(self.me).post("/api/playlists/", {"name": "Моё"}, format="json")
+        r = client_for(self.friend).get(f"/api/playlists/{made.data['id']}/")
+        self.assertEqual(r.status_code, 404)
+
+    def test_remove_track(self):
+        added = self.add(self.me, self.song)
+        pl = Playlist.objects.get(owner=self.me, is_default=True)
+        r = client_for(self.me).delete(f"/api/playlists/{pl.id}/tracks/{added.data['track']['id']}/")
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(pl.tracks.count(), 0)

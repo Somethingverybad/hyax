@@ -218,6 +218,27 @@ export interface SavedImage {
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
 import type { ReactionSummary } from "@/lib/reactions";
 
+/** Плейлист и трек: музыка из переписки, собранная в списки. */
+export interface Playlist {
+  id: string;
+  name: string;
+  is_default: boolean;
+  created_at?: string;
+  tracks_count?: number;
+}
+
+export interface PlaylistTrack {
+  id: string;
+  /** Как лежит на сервере: /media/... или s3://key — плееру этого достаточно. */
+  file_url: string;
+  title: string;
+  artist?: string;
+  duration?: number | null;
+  /** Исходное сообщение; null — его удалили, трек остался. */
+  source?: string | null;
+  added_at?: string;
+}
+
 export interface PinnedInfo {
   id: string;
   sender_username: string;
@@ -1430,6 +1451,62 @@ export const api = {
       method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
     if (!res.ok) throw new Error("Не удалось убрать");
+  },
+
+  /** Плейлисты: свои, с числом треков. «Моя музыка» заводится сама. */
+  listPlaylists: async (): Promise<Playlist[]> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить плейлисты");
+    return (await res.json()).playlists || [];
+  },
+
+  getPlaylist: async (id: string): Promise<{ playlist: Playlist; tracks: PlaylistTrack[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Плейлист не найден");
+    return res.json();
+  },
+
+  createPlaylist: async (name: string): Promise<Playlist> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Не удалось создать плейлист");
+    return data;
+  },
+
+  renamePlaylist: async (id: string, name: string): Promise<Playlist> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/`, {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Не удалось переименовать");
+    return data;
+  },
+
+  deletePlaylist: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok && res.status !== 204) {
+      throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось удалить");
+    }
+  },
+
+  /** Добавить музыку из сообщения. Без playlistId — в «Мою музыку». */
+  addTrackFromMessage: async (messageId: string, playlistId?: string): Promise<{ track: PlaylistTrack; playlist: Playlist; already: boolean }> => {
+    const url = playlistId ? `${API_URL}/playlists/${playlistId}/tracks/` : `${API_URL}/playlists/tracks/`;
+    const res = await fetchWithAuth(url, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ message_id: messageId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Не удалось добавить");
+    return data;
+  },
+
+  removeTrack: async (playlistId: string, trackId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${playlistId}/tracks/${trackId}/`, {
+      method: "DELETE", headers: authHeaders(),
+    });
+    if (!res.ok && res.status !== 204) throw new Error("Не удалось убрать трек");
   },
 
   listBlocks: async (): Promise<{ id: string; username: string; avatar_url?: string | null }[]> => {
