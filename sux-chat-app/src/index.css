@@ -597,12 +597,59 @@ textarea,
   backdrop-filter: blur(16px);
 }
 
-/* Акцентные кнопки светятся — «inner glow» из стайлгайда. */
-[data-shape="glass"] :is(button, a, [role="button"], label):is(.bg-primary, .ui-btn) {
+/* Акцентные кнопки — тоже стекло: полупрозрачная заливка акцентом, тонкая
+   цветная грань и свечение. Нажатие даёт сплошной цвет — так в стайлгайде
+   («Default» полупрозрачный, «Pressed» залитый), и нажатие заметно без
+   анимации. Текст остаётся белым: поверх тёмной подложки он читается лучше
+   цветного. */
+[data-shape="glass"] :is(button, a, [role="button"], label):is(.bg-primary, .bg-destructive, .ui-btn):not(:disabled) {
+  background-color: hsl(var(--primary) / 0.26);
+  border: 1px solid hsl(var(--primary) / 0.5);
   box-shadow: var(--glass-glow);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
 }
-[data-shape="glass"] :is(button, a, [role="button"], label):is(.bg-primary, .ui-btn):active:not(:disabled) {
+[data-shape="glass"] :is(button, a, [role="button"], label).bg-destructive:not(:disabled) {
+  background-color: hsl(var(--destructive) / 0.26);
+  border-color: hsl(var(--destructive) / 0.5);
+}
+[data-shape="glass"] :is(button, a, [role="button"], label):is(.bg-primary, .bg-destructive, .ui-btn):active:not(:disabled) {
+  background-color: hsl(var(--primary));
   box-shadow: none;
+}
+[data-shape="glass"] :is(button, a, [role="button"], label).bg-destructive:active:not(:disabled) {
+  background-color: hsl(var(--destructive));
+}
+/* Светлая тема: на белом фоне полупрозрачный красный даёт бледно-розовый, и
+   белый значок на нём пропадает. Поэтому там, как в стайлгайде, розовая
+   заливка с красной гранью и красным текстом; нажатие — сплошной красный
+   с белым. */
+[data-shape="glass"][data-base="light"] :is(button, a, [role="button"], label):is(.bg-primary, .bg-destructive, .ui-btn):not(:disabled) {
+  background-color: hsl(var(--primary) / 0.14);
+  border-color: hsl(var(--primary) / 0.55);
+  color: hsl(var(--primary));
+  color: color-mix(in srgb, hsl(var(--primary)) 72%, black);
+}
+[data-shape="glass"][data-base="light"] :is(button, a, [role="button"], label).bg-destructive:not(:disabled) {
+  background-color: hsl(var(--destructive) / 0.14);
+  border-color: hsl(var(--destructive) / 0.55);
+  color: hsl(var(--destructive));
+}
+[data-shape="glass"][data-base="light"] :is(button, a, [role="button"], label):is(.bg-primary, .bg-destructive, .ui-btn):active:not(:disabled) {
+  color: hsl(var(--primary-foreground));
+}
+[data-shape="glass"][data-base="light"] .ui-chip-on {
+  background-color: hsl(var(--primary) / 0.14);
+  border-color: hsl(var(--primary) / 0.55);
+  color: hsl(var(--primary));
+  color: color-mix(in srgb, hsl(var(--primary)) 72%, black);
+}
+
+/* Выбранный фильтр — такая же таблетка из акцента. */
+[data-shape="glass"] .ui-chip-on {
+  background-color: hsl(var(--primary) / 0.26);
+  border: 1px solid hsl(var(--primary) / 0.5);
+  box-shadow: var(--glass-glow);
 }
 /* Активная вкладка нижней навигации — тоже со свечением. */
 [data-shape="glass"] .ui-nav-on { text-shadow: 0 0 18px hsl(var(--primary) / 0.5); }
@@ -858,7 +905,14 @@ textarea,
   [data-shape="glass"][data-nav="floating"] .ui-nav-item.ui-nav-on {
     background: hsl(var(--primary) / 0.14);
     border-color: hsl(var(--primary) / 0.35);
+    /* Красный значок на красной подложке давал 2.7:1. В тёмной берём светлее,
+       в светлой — глубже, но это по-прежнему тот же акцент темы. */
+    color: hsl(var(--foreground));
+    color: color-mix(in srgb, hsl(var(--primary)) 45%, white);
+  }
+  [data-shape="glass"][data-base="light"][data-nav="floating"] .ui-nav-item.ui-nav-on {
     color: hsl(var(--primary));
+  color: color-mix(in srgb, hsl(var(--primary)) 72%, black);
   }
 }
 
