@@ -136,11 +136,12 @@ const CoverCropper = ({ file, onCancel, onDone }: {
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/90 flex flex-col">
-      <div className="flex items-center justify-between px-4 h-14 shrink-0">
+      {/* pad-safe-top: иначе кнопки уезжают под строку состояния и островок. */}
+      <div className="flex items-center justify-between px-4 min-h-14 pad-safe-top shrink-0">
         <button type="button" onClick={onCancel} className="ui-icon-btn p-2 text-white" aria-label="Отмена">
           <X className="w-5 h-5" />
         </button>
-        <span className="text-small text-white/80">Двигайте и щипком меняйте масштаб</span>
+        <span className="text-small text-white/80 px-2 text-center">Двигайте и щипком меняйте масштаб</span>
         <button type="button" onClick={save} disabled={!img || busy} className="ui-icon-btn p-2 text-white disabled:opacity-50" aria-label="Готово">
           <Check className="w-5 h-5" />
         </button>
@@ -172,7 +173,7 @@ const CoverCropper = ({ file, onCancel, onDone }: {
         </div>
       </div>
 
-      <div className="px-6 pb-8 pt-2 flex items-center gap-3 shrink-0">
+      <div className="px-6 pt-2 pb-[calc(var(--sab)+24px)] flex items-center gap-3 shrink-0">
         <ZoomIn className="w-4 h-4 text-white/70 shrink-0" />
         <input
           type="range"
