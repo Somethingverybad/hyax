@@ -22,6 +22,9 @@ export const soundPackLink = (id: string) => `${PUBLIC_ORIGIN}/sp/${id}`;
 /** Ссылка на стикерпак: по ней пак добавляют себе (см. pages/StickerPackPage). */
 export const stickerPackLink = (id: string) => `${PUBLIC_ORIGIN}/stp/${id}`;
 
+/** Плейлист по ссылке: ключ, а не id — доступ можно отозвать. */
+export const playlistLink = (token: string) => `${PUBLIC_ORIGIN}/pl/${token}`;
+
 /** Ссылка на канал: по @username, а без него — по id (канал без хэндла тоже можно передать). */
 export const channelLink = (ch: { id: string; username?: string | null }) =>
   `${PUBLIC_ORIGIN}/c/${encodeURIComponent(ch.username || ch.id)}`;
@@ -39,6 +42,10 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
 /** Поделиться паком звуков: системное окно «Поделиться», иначе — буфер. */
 export const shareSoundPack = (name: string, id: string) =>
   shareUrl("WhoYaX", `Пак звуков «${name}» в WhoYaX`, soundPackLink(id));
+
+/** Поделиться плейлистом: системное окно «Поделиться», иначе — буфер. */
+export const sharePlaylistLink = (name: string, token: string) =>
+  shareUrl("WhoYaX", `Плейлист «${name}» в WhoYaX`, playlistLink(token));
 
 export const shareChannel = (ch: { id: string; name: string; username?: string | null }) =>
   shareUrl("WhoYaX", `Канал «${ch.name}» в WhoYaX`, channelLink(ch));

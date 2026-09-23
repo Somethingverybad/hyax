@@ -1228,15 +1228,6 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         _notify_new_message(message, profile, request)
 
-        # Тестовый VK Music Bot живёт поверх обычных сообщений: клиенту не
-        # нужен отдельный протокол. Обработка идёт в фоне и включается только
-        # через VK_MUSIC_BOT_ENABLED, поэтому остальные чаты не затрагивает.
-        try:
-            from .vk_music import maybe_handle_message
-            maybe_handle_message(message)
-        except Exception:
-            logger.exception("VK music bot: не удалось запустить обработчик")
-
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)
         
@@ -2114,6 +2105,11 @@ class MediaSignView(APIView):
         # даже если исходное сообщение удалили (см. PlaylistTrack).
         in_my_playlist = PlaylistTrack.objects.filter(
             file_url=marker, playlist__owner=profile).exists()
+        # Плейлист, открытый по ссылке, слушают все, кому её дали: иначе
+        # поделиться можно было бы только названиями треков.
+        if not in_my_playlist:
+            in_my_playlist = PlaylistTrack.objects.filter(file_url=marker).exclude(
+                playlist__share_token="").exists()
         if not in_my_playlist and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
             # в два чата. Право на скачивание — если он виден хотя бы в одном чате,
@@ -3344,6 +3340,71 @@ class PlaylistView(APIView):
             return Response({"error": "«Моя музыка» не удаляется"}, status=400)
         pl.delete()
         return Response(status=204)
+
+
+class PlaylistShareView(APIView):
+    """POST — открыть плейлист по ссылке (вернёт ключ). DELETE — закрыть доступ."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _mine(self, request, pk):
+        return Playlist.objects.filter(id=pk, owner=_prof(request)).first()
+
+    def post(self, request, pk):
+        import secrets
+        pl = self._mine(request, pk)
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        if not pl.share_token:
+            pl.share_token = secrets.token_urlsafe(16)[:32]
+            pl.save(update_fields=["share_token"])
+        return Response({"share_token": pl.share_token})
+
+    def delete(self, request, pk):
+        pl = self._mine(request, pk)
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        pl.share_token = ""
+        pl.save(update_fields=["share_token"])
+        return Response(status=204)
+
+
+class SharedPlaylistView(APIView):
+    """Плейлист по ссылке: GET — посмотреть и послушать, POST — забрать себе.
+
+    Открывает любой, у кого есть ключ: плейлист становится общим только после
+    того, как владелец сам нажал «Поделиться», и ссылку можно отозвать.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _by_token(self, token):
+        return Playlist.objects.filter(share_token=token).exclude(share_token="").first()
+
+    def get(self, request, token):
+        pl = self._by_token(token)
+        if not pl:
+            return Response({"error": "Плейлист не найден или ссылка отозвана"}, status=404)
+        return Response({
+            "playlist": PlaylistSerializer(pl).data,
+            "owner": pl.owner.username,
+            "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
+        })
+
+    def post(self, request, token):
+        """Скопировать себе: треки те же, плейлист свой — чужой не меняется."""
+        me = _prof(request)
+        pl = self._by_token(token)
+        if not me or not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        if pl.owner_id == me.id:
+            return Response({"error": "Это ваш плейлист"}, status=400)
+        copy = Playlist.objects.create(owner=me, name=pl.name[:60])
+        rows = [
+            PlaylistTrack(playlist=copy, source=t.source, file_url=t.file_url,
+                          title=t.title, artist=t.artist, duration=t.duration, position=t.position)
+            for t in pl.tracks.all()
+        ]
+        PlaylistTrack.objects.bulk_create(rows)
+        return Response({"playlist": PlaylistSerializer(copy).data}, status=201)
 
 
 class PlaylistTracksView(APIView):

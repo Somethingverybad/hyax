@@ -223,6 +223,8 @@ export interface Playlist {
   id: string;
   name: string;
   is_default: boolean;
+  /** Ключ ссылки; пусто — плейлист личный. */
+  share_token?: string;
   created_at?: string;
   tracks_count?: number;
 }
@@ -900,6 +902,42 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/admins/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId, action }) });
     return res.json();
   },
+  /** Открыть плейлист по ссылке: вернёт ключ (повторный вызов — тот же). */
+  sharePlaylist: async (id: string): Promise<string> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/share/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось открыть доступ");
+    return (await res.json()).share_token as string;
+  },
+
+  /** Закрыть доступ: прежняя ссылка перестанет работать. */
+  unsharePlaylist: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/share/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok && res.status !== 204) throw new Error("Не удалось закрыть доступ");
+  },
+
+  getSharedPlaylist: async (token: string): Promise<{ playlist: Playlist; owner: string; tracks: PlaylistTrack[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/shared/${token}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Плейлист не найден или ссылка отозвана");
+    return res.json();
+  },
+
+  /** Забрать чужой плейлист себе: создаётся свой, чужой не меняется. */
+  savePlaylistCopy: async (token: string): Promise<Playlist> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/shared/${token}/`, { method: "POST", headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Не удалось сохранить");
+    return data.playlist;
+  },
+
+  /** Отправить трек в чат обычным сообщением с файлом. */
+  sendTrackToChat: async (chatId: string, track: { file_url: string; title: string }): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ chat: chatId, content: "", file_url: track.file_url, file_name: `${track.title}.mp3` }),
+    });
+    if (!res.ok) throw new Error("Не удалось отправить");
+  },
+
   /** Нажать кнопку под сообщением бота: data уходит боту событием. */
   pressButton: async (messageId: string, data: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/press/`, {

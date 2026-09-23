@@ -5,6 +5,7 @@ import ProfileNotifications from "./pages/ProfileNotifications";
 import ProfilePrivacy from "./pages/ProfilePrivacy";
 import ProfileSavedAccess from "@/pages/ProfileSavedAccess";
 import Music from "@/pages/Music";
+import SharedPlaylist from "@/pages/SharedPlaylist";
 import { syncThemeFromProfile } from "@/lib/theme";
 import { readCache } from "@/lib/session-cache";
 import ProfileAppearance from "./pages/ProfileAppearance";
@@ -185,6 +186,8 @@ const App = () => {
               <Route path="/saved" element={<Chat savedMode />} />
               {/* Музыка: плейлисты из того, что присылали в переписке. */}
               <Route path="/music" element={<Music />} />
+              {/* Плейлист по ссылке «Поделиться». */}
+              <Route path="/pl/:token" element={<SharedPlaylist />} />
               <Route path="/profile" element={<ProfilePage />} />
               {/* Подэкраны профиля: правка текста и разделы настроек. */}
               <Route path="/profile/edit" element={<ProfileEdit />} />

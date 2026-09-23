@@ -295,8 +295,8 @@ class PlaylistSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Playlist
-        fields = ["id", "name", "is_default", "created_at", "tracks_count"]
-        read_only_fields = ["id", "is_default", "created_at", "tracks_count"]
+        fields = ["id", "name", "is_default", "created_at", "tracks_count", "share_token"]
+        read_only_fields = ["id", "is_default", "created_at", "tracks_count", "share_token"]
 
 
 class MessageSenderSerializer(serializers.ModelSerializer):

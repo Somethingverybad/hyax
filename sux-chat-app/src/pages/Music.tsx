@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil,
+import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send,
          Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
+import { sharePlaylistLink } from "@/lib/share";
+import Identicon from "@/components/Identicon";
 import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, toggle,
          toggleShuffle, cycleRepeat, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
@@ -125,6 +127,10 @@ const Music = () => {
   const [name, setName] = useState("");
   const player = usePlayer();
   const playing = currentTrack();
+  // Трек, который отправляем в чат: пока он выбран, открыта шторка выбора чата.
+  const [sendFor, setSendFor] = useState<PlaylistTrack | null>(null);
+  const [chats, setChats] = useState<{ id: string; title: string; avatar?: string | null }[] | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = () =>
     api.listPlaylists()
@@ -173,6 +179,55 @@ const Music = () => {
     } catch (e: any) { toast.error(e?.message || "Не получилось"); }
   };
 
+  /** Ссылка на плейлист: ключ берём у сервера, дальше системное «Поделиться». */
+  const share = async (pl: Playlist) => {
+    try {
+      const token = pl.share_token || (await api.sharePlaylist(pl.id));
+      setOpen({ ...pl, share_token: token });
+      const how = await sharePlaylistLink(pl.name, token);
+      if (how === "copied") toast.success("Ссылка скопирована");
+      if (how === "error") toast.error("Не удалось поделиться");
+      load();
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+  };
+
+  const unshare = async (pl: Playlist) => {
+    try {
+      await api.unsharePlaylist(pl.id);
+      setOpen({ ...pl, share_token: "" });
+      toast.success("Ссылка отозвана");
+      load();
+    } catch { toast.error("Не получилось"); }
+  };
+
+  /** Отправить трек в чат: список чатов берём тот же, что в списке переписок. */
+  const pickChat = async (t: PlaylistTrack) => {
+    setSendFor(t);
+    if (chats) return;
+    try {
+      const rows = await api.getChats();
+      const me = readCache<{ id: string }>("user")?.id;
+      setChats(rows
+        .filter((c: any) => c.kind !== "channel")
+        .map((c: any) => ({
+          id: c.id,
+          title: c.name || (c.participants || []).find((p: any) => p.id !== me)?.username || "Чат",
+          avatar: (c.participants || []).find((p: any) => p.id !== me)?.avatar_url || null,
+        })));
+    } catch { setChats([]); }
+  };
+
+  const sendTo = async (chatId: string) => {
+    if (!sendFor || busy) return;
+    setBusy(true);
+    try {
+      await api.sendTrackToChat(chatId, { file_url: sendFor.file_url, title: sendFor.title });
+      toast.success("Отправлено");
+      setSendFor(null);
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    finally { setBusy(false); }
+  };
+
   const removeTrack = async (t: PlaylistTrack) => {
     if (!open) return;
     const before = tracks || [];
@@ -194,6 +249,14 @@ const Music = () => {
             <ChevronLeft className="w-5 h-5" />
           </button>
           <span className="text-h2 flex-1 truncate">{open.name}</span>
+          <button
+            type="button"
+            onClick={() => void (open.share_token ? unshare(open) : share(open))}
+            className={cn("ui-icon-btn p-2", open.share_token ? "text-primary" : "text-muted-foreground")}
+            aria-label={open.share_token ? "Закрыть доступ по ссылке" : "Поделиться плейлистом"}
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
           <button type="button" onClick={() => rename(open)} className="ui-icon-btn p-2 text-muted-foreground" aria-label="Переименовать">
             <Pencil className="w-4 h-4" />
           </button>
@@ -229,14 +292,24 @@ const Music = () => {
                     value={isNow && player.duration ? fmtTime(player.time) : undefined}
                     onClick={() => void playQueue(tracks.map(trackToQueue), i)}
                     trailing={
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); void removeTrack(t); }}
-                        className="p-2 text-subtle active:text-destructive"
-                        aria-label="Убрать из плейлиста"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <span className="flex items-center">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void pickChat(t); }}
+                          className="p-2 text-subtle active:text-primary"
+                          aria-label="Отправить в чат"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void removeTrack(t); }}
+                          className="p-2 text-subtle active:text-destructive"
+                          aria-label="Убрать из плейлиста"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </span>
                     }
                   />
                 );
@@ -244,8 +317,42 @@ const Music = () => {
             </SettingsCard>
           )}
         </div>
+        {open.share_token && (
+          <p className="px-4 pb-2 text-caption text-subtle">
+            Плейлист открыт по ссылке. Нажмите значок «поделиться» ещё раз, чтобы отозвать её.
+          </p>
+        )}
         <PlayerPanel />
         <BottomNav />
+        {sendFor && (
+          <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setSendFor(null)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="ui-card relative w-full rounded-t-[16px] bg-surface-2 p-4 pb-[calc(var(--sab)+20px)] space-y-2 max-h-[70vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
+              <p className="text-h2">Отправить в чат</p>
+              <p className="text-caption text-subtle truncate">{sendFor.title}</p>
+              {chats === null ? (
+                <p className="text-small text-subtle">Загрузка…</p>
+              ) : chats.length === 0 ? (
+                <p className="text-small text-subtle">Пока некуда отправлять — нет чатов.</p>
+              ) : chats.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void sendTo(c.id)}
+                  className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50"
+                >
+                  <Identicon id={c.id} avatarUrl={c.avatar} className="w-8 h-8 rounded-md shrink-0" />
+                  <span className="flex-1 text-body truncate">{c.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

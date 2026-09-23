@@ -980,3 +980,58 @@ class ButtonTests(TestCase):
                                      format="json").data
         r = client_for(self.stranger).post(f"/api/messages/{msg['id']}/press/", {"data": "pick:1"}, format="json")
         self.assertEqual(r.status_code, 403)
+
+
+
+class PlaylistShareTests(TestCase):
+    """Плейлист по ссылке: открывает любой со ссылкой, доступ отзывается."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.other = make_user("other")
+        self.pl = Playlist.objects.create(owner=self.me, name="Для бега")
+        PlaylistTrack.objects.create(playlist=self.pl, file_url="s3://media/run.mp3",
+                                     title="Бег", position=1)
+
+    def test_share_and_open(self):
+        c = client_for(self.me)
+        token = c.post(f"/api/playlists/{self.pl.id}/share/").data["share_token"]
+        self.assertTrue(token)
+        r = client_for(self.other).get(f"/api/playlists/shared/{token}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["owner"], "me")
+        self.assertEqual([t["title"] for t in r.data["tracks"]], ["Бег"])
+
+    def test_link_is_stable(self):
+        c = client_for(self.me)
+        first = c.post(f"/api/playlists/{self.pl.id}/share/").data["share_token"]
+        again = c.post(f"/api/playlists/{self.pl.id}/share/").data["share_token"]
+        self.assertEqual(first, again, "повторное нажатие не должно менять ссылку")
+
+    def test_revoke(self):
+        c = client_for(self.me)
+        token = c.post(f"/api/playlists/{self.pl.id}/share/").data["share_token"]
+        self.assertEqual(c.delete(f"/api/playlists/{self.pl.id}/share/").status_code, 204)
+        self.assertEqual(client_for(self.other).get(f"/api/playlists/shared/{token}/").status_code, 404)
+
+    def test_private_playlist_is_not_reachable(self):
+        r = client_for(self.other).get(f"/api/playlists/shared/{self.pl.id}/")
+        self.assertEqual(r.status_code, 404)
+
+    def test_save_copy(self):
+        token = client_for(self.me).post(f"/api/playlists/{self.pl.id}/share/").data["share_token"]
+        r = client_for(self.other).post(f"/api/playlists/shared/{token}/")
+        self.assertEqual(r.status_code, 201)
+        copy = Playlist.objects.get(id=r.data["playlist"]["id"])
+        self.assertEqual(copy.owner, self.other)
+        self.assertEqual(copy.name, "Для бега")
+        self.assertEqual([t.title for t in copy.tracks.all()], ["Бег"])
+        # оригинал не тронут
+        self.assertEqual(self.pl.tracks.count(), 1)
+
+    def test_owner_cannot_copy_own(self):
+        token = client_for(self.me).post(f"/api/playlists/{self.pl.id}/share/").data["share_token"]
+        self.assertEqual(client_for(self.me).post(f"/api/playlists/shared/{token}/").status_code, 400)
+
+    def test_only_owner_shares(self):
+        self.assertEqual(client_for(self.other).post(f"/api/playlists/{self.pl.id}/share/").status_code, 404)

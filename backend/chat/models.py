@@ -564,6 +564,10 @@ class Playlist(models.Model):
     owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="playlists")
     name = models.CharField(max_length=60)
     is_default = models.BooleanField(default=False)
+    # Ключ ссылки: пусто — плейлист личный. Появляется, когда владелец нажал
+    # «Поделиться», и пропадает, если он закрыл доступ. Не id: по id нельзя
+    # было бы отозвать ссылку, не удаляя плейлист.
+    share_token = models.CharField(max_length=32, blank=True, default="", db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
