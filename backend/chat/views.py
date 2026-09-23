@@ -1858,9 +1858,13 @@ class AvatarUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # stamped: имя со случайным хвостом. С постоянным именем адрес не
+        # менялся, и новый аватар не было видно — телефон и браузер показывали
+        # картинку из кеша, пока его не сбросишь. Прежний файл всё равно
+        # удаляется, хвостов в media не копится.
         result = _save_profile_image(
             request, field='avatar_url', subdir='avatars', prefix='avatar',
-            max_mb=5, stamped=False,
+            max_mb=5, stamped=True,
         )
         if isinstance(result, Response):
             return result

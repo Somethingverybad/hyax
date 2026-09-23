@@ -2,19 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { X, Check, ZoomIn } from "lucide-react";
 
 /**
- * Кадрирование обложки профиля: картинку двигают пальцем, масштаб — щипком или
- * ползунком. Рамка 3:1 — пропорции баннера в профиле, поэтому человек видит
- * ровно ту часть снимка, которая потом и покажется.
+ * Кадрирование картинки профиля: её двигают пальцем, масштаб — щипком или
+ * ползунком. Рамка той же формы, что и место, куда картинка встанет: 3:1 у
+ * обложки, квадрат у аватара — человек видит ровно то, что потом покажется.
  *
  * Режем на клиенте: на сервере нет Pillow, он кладёт файл как есть, и в
  * баннер высотой 144 px улетал полноразмерный снимок с камеры.
  */
-export const COVER_ASPECT = 3;
-const OUT_WIDTH = 1200;
 const MAX_ZOOM = 4;
 
-const CoverCropper = ({ file, onCancel, onDone }: {
+const ImageCropper = ({ file, aspect, outWidth, onCancel, onDone }: {
   file: File;
+  /** Ширина к высоте: 3 — обложка, 1 — аватар. */
+  aspect: number;
+  /** Ширина готовой картинки в пикселях; высота — по aspect. */
+  outWidth: number;
   onCancel: () => void;
   onDone: (cropped: File) => void;
 }) => {
@@ -39,7 +41,7 @@ const CoverCropper = ({ file, onCancel, onDone }: {
   useEffect(() => {
     const measure = () => {
       const w = frameRef.current?.clientWidth || 0;
-      setFrame({ w, h: Math.round(w / COVER_ASPECT) });
+      setFrame({ w, h: Math.round(w / aspect) });
     };
     measure();
     window.addEventListener("resize", measure);
@@ -114,8 +116,8 @@ const CoverCropper = ({ file, onCancel, onDone }: {
     try {
       const k = base * zoom;            // экранные пиксели на пиксель снимка
       const canvas = document.createElement("canvas");
-      canvas.width = OUT_WIDTH;
-      canvas.height = Math.round(OUT_WIDTH / COVER_ASPECT);
+      canvas.width = outWidth;
+      canvas.height = Math.round(outWidth / aspect);
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("нет холста");
       ctx.drawImage(
@@ -150,7 +152,7 @@ const CoverCropper = ({ file, onCancel, onDone }: {
       <div className="flex-1 flex items-center justify-center px-4">
         <div
           ref={frameRef}
-          className="w-full max-w-[560px] overflow-hidden bg-black border border-white/30 touch-none select-none"
+          className={`w-full overflow-hidden bg-black border border-white/30 touch-none select-none ${aspect >= 2 ? "max-w-[560px]" : "max-w-[320px]"}`}
           style={{ height: frame.h || undefined }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -190,4 +192,4 @@ const CoverCropper = ({ file, onCancel, onDone }: {
   );
 };
 
-export default CoverCropper;
+export default ImageCropper;

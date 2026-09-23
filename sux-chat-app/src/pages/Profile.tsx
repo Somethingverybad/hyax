@@ -12,7 +12,7 @@ import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
-import CoverCropper from "@/components/CoverCropper";
+import ImageCropper from "@/components/ImageCropper";
 
 const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
 import {
@@ -57,8 +57,9 @@ const ProfilePage = () => {
   const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
-  // Выбранная, но ещё не кадрированная обложка: пока она здесь, открыт кадратор.
-  const [coverFile, setCoverFile] = useState<File | null>(null);
+  // Выбранная, но ещё не кадрированная картинка: пока она здесь, открыт кадратор.
+  // kind решает форму рамки и куда уйдёт результат.
+  const [cropping, setCropping] = useState<{ file: File; kind: "avatar" | "cover" } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -72,8 +73,15 @@ const ProfilePage = () => {
     })();
   }, [navigate]);
 
+  const pickImage = (kind: "avatar" | "cover", file: File | null) => {
+    const input = kind === "avatar" ? avatarRef.current : coverRef.current;
+    if (input) input.value = "";
+    if (file) setCropping({ file, kind });
+  };
+
   const changeAvatar = async (file: File | null) => {
     if (!file) return;
+    setCropping(null);
     setUploading("avatar");
     try {
       const res = await api.uploadAvatar(file);
@@ -88,20 +96,12 @@ const ProfilePage = () => {
       toast.error(e?.message || "Не удалось загрузить аватар");
     } finally {
       setUploading(null);
-      if (avatarRef.current) avatarRef.current.value = "";
     }
-  };
-
-  // Выбранный файл сначала кадрируем: в баннер 3:1 иначе улетал
-  // полноразмерный снимок, и человек не управлял тем, что попадёт в кадр.
-  const pickCover = (file: File | null) => {
-    if (coverRef.current) coverRef.current.value = "";
-    if (file) setCoverFile(file);
   };
 
   const changeCover = async (file: File | null) => {
     if (!file) return;
-    setCoverFile(null);
+    setCropping(null);
     setUploading("cover");
     try {
       const res = await api.uploadCover(file);
@@ -235,9 +235,9 @@ const ProfilePage = () => {
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-full px-4 pb-4 space-y-3 flex flex-col">
           <input ref={avatarRef} type="file" accept="image/*" className="hidden"
-                 onChange={(e) => changeAvatar(e.target.files?.[0] || null)} />
+                 onChange={(e) => pickImage("avatar", e.target.files?.[0] || null)} />
           <input ref={coverRef} type="file" accept="image/*" className="hidden"
-                 onChange={(e) => pickCover(e.target.files?.[0] || null)} />
+                 onChange={(e) => pickImage("cover", e.target.files?.[0] || null)} />
 
           {/* Обложка во всю ширину, аватар свешивается с её нижнего края —
               поэтому блок выходит за горизонтальные отступы прокрутки. */}
@@ -427,11 +427,13 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {coverFile && (
-        <CoverCropper
-          file={coverFile}
-          onCancel={() => setCoverFile(null)}
-          onDone={(cropped) => void changeCover(cropped)}
+      {cropping && (
+        <ImageCropper
+          file={cropping.file}
+          aspect={cropping.kind === "cover" ? 3 : 1}
+          outWidth={cropping.kind === "cover" ? 1200 : 640}
+          onCancel={() => setCropping(null)}
+          onDone={(cropped) => void (cropping.kind === "cover" ? changeCover(cropped) : changeAvatar(cropped))}
         />
       )}
 
