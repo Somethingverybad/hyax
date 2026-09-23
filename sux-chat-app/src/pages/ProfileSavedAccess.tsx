@@ -24,12 +24,31 @@ const ProfileSavedAccess = () => {
   const [profile, setProfile] = useState<Profile | null>(readCache<Profile>("user"));
   const [viewers, setViewers] = useState<Person[] | null>(null);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<Person[]>([]);
+  // Люди из переписок: по ним ищем прямо на устройстве. Поиск на сервере
+  // намеренно точный (ник целиком) — каталога пользователей нет, чтобы никто
+  // не перебирал всех по буквам, — поэтому по части ника он ничего не найдёт.
+  const [people, setPeople] = useState<Person[]>([]);
+  const [byNick, setByNick] = useState<Person[]>([]);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     api.getCurrentUser().then((p) => { setProfile(p); writeCache("user", p); }).catch(() => {});
     api.listSavedViewers().then(setViewers).catch(() => setViewers([]));
+    api.getChats()
+      .then((chats) => {
+        const me = readCache<Profile>("user")?.id;
+        const seen = new Map<string, Person>();
+        for (const c of chats) {
+          if (c.kind === "channel") continue;
+          for (const p of c.participants || []) {
+            if (p.id !== me && !p.is_bot && !seen.has(p.id)) {
+              seen.set(p.id, { id: p.id, username: p.username, avatar_url: p.avatar_url });
+            }
+          }
+        }
+        setPeople([...seen.values()].sort((a, b) => a.username.localeCompare(b.username)));
+      })
+      .catch(() => setPeople([]));
   }, []);
 
   const mode = profile?.saved_visibility || "all";
@@ -47,24 +66,32 @@ const ProfileSavedAccess = () => {
     }
   };
 
-  // Поиск с задержкой: иначе запрос уходил на каждую букву.
+  const q = query.trim().replace(/^@/, "").toLowerCase();
+  const fromChats = q
+    ? people.filter((p) => p.username.toLowerCase().includes(q))
+    : people;
+
+  // Человека, с которым переписки ещё нет, находим по нику целиком — так
+  // устроен поиск на сервере. Спрашиваем его, только если среди собеседников
+  // никого похожего не нашлось.
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) { setFound([]); return; }
+    if (q.length < 2 || fromChats.length > 0) { setByNick([]); return; }
     setSearching(true);
     const t = setTimeout(() => {
       api.searchUsers(q)
-        .then((list) => setFound(list.filter((p) => p.id !== profile?.id).slice(0, 12)))
-        .catch(() => setFound([]))
+        .then((list) => setByNick(list.filter((p) => p.id !== profile?.id).slice(0, 5)))
+        .catch(() => setByNick([]))
         .finally(() => setSearching(false));
-    }, 300);
+    }, 400);
     return () => clearTimeout(t);
-  }, [query, profile?.id]);
+  }, [q, fromChats.length, profile?.id]);
+
+  const found = [...fromChats, ...byNick].filter((p) => !viewers?.some((v) => v.id === p.id)).slice(0, 20);
 
   const add = async (p: Person) => {
     if (viewers?.some((v) => v.id === p.id)) return;
     setViewers((l) => [...(l || []), p]);
-    setQuery(""); setFound([]);
+    setQuery(""); setByNick([]);
     try { await api.addSavedViewer(p.id); }
     catch (e: any) {
       toast.error(e?.message || "Не получилось");
@@ -118,7 +145,7 @@ const ProfileSavedAccess = () => {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ник человека"
+                  placeholder="Имя или ник"
                   className="flex-1 bg-transparent outline-none text-body min-w-0"
                   aria-label="Поиск человека"
                 />
@@ -128,12 +155,15 @@ const ProfileSavedAccess = () => {
                   </button>
                 )}
               </div>
-              {query.trim().length >= 2 && (
-                searching ? (
-                  <p className="text-small text-subtle px-1">Ищу…</p>
-                ) : found.length === 0 ? (
-                  <p className="text-small text-subtle px-1">Никого не нашлось</p>
-                ) : found.map((p) => (
+              {found.length === 0 && searching && <p className="text-small text-subtle px-1">Ищу…</p>}
+              {found.length === 0 && !searching && (
+                <p className="text-small text-subtle px-1">
+                  {q
+                    ? "Никого не нашлось. С кем переписки ещё не было — введите ник целиком."
+                    : "Здесь люди, с которыми у вас есть переписка. Кого нет в списке — введите его ник целиком."}
+                </p>
+              )}
+              {found.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -143,10 +173,9 @@ const ProfileSavedAccess = () => {
                   >
                     <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 rounded-md shrink-0" />
                     <span className="flex-1 text-body truncate">{p.username}</span>
-                    <span className="text-small text-subtle">{viewers?.some((v) => v.id === p.id) ? "уже есть" : "добавить"}</span>
+                    <span className="text-small text-subtle">добавить</span>
                   </button>
-                ))
-              )}
+              ))}
             </div>
           </>
         )}
