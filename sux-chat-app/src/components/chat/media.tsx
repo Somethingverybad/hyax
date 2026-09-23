@@ -64,7 +64,7 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
     <div className={cn(
       // Потолок ширины обязателен: обрезка текста сама по себе не мешает
       // карточке растянуться под всё название.
-      "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] w-full max-w-[min(72vw,22rem)]",
+      "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-[min(72vw,22rem)]",
       isOwn ? "bg-primary/20 border-primary/30" : "bg-muted border-border",
     )}>
       <button type="button" onClick={() => onPlay?.()} disabled={!onPlay} className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center bg-black/20 disabled:opacity-50" aria-label={mine && s.playing ? "Пауза" : "Играть"}>
@@ -74,8 +74,8 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
         <div className="text-sm overflow-hidden whitespace-nowrap">
           <span
             ref={titleRef}
-            className={cn("inline-block max-w-full align-bottom truncate", shift > 0 && "audio-title-run")}
-            style={shift > 0 ? ({ "--shift": `-${shift}px` } as React.CSSProperties) : undefined}
+            className={cn("inline-block max-w-full align-bottom truncate", shift > 0 && mine && "audio-title-run")}
+            style={shift > 0 && mine ? ({ "--shift": `-${shift}px` } as React.CSSProperties) : undefined}
             title={title}
           >
             {title}
