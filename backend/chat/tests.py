@@ -834,6 +834,18 @@ class ReactionTests(TestCase):
     def test_outsider_cannot_react(self):
         self.assertEqual(self.react(self.stranger, "❤️").status_code, 403)
 
+    def test_sync_brings_reactions(self):
+        """Реакция доезжает обычной синхронизацией: у кого чат был закрыт,
+        событие он пропустил, а лента открывается из кеша."""
+        from django.utils import timezone
+        mark = timezone.now().isoformat()
+        self.react(self.friend, "🔥")
+        r = client_for(self.me).get(f"/api/messages/sync/?chat={self.chat.id}&since={mark}")
+        ids = [m["id"] for m in r.data["messages"]]
+        self.assertIn(str(self.msg.id), ids, "сообщение не попало в приращение")
+        row = next(m for m in r.data["messages"] if m["id"] == str(self.msg.id))
+        self.assertEqual([x["emoji"] for x in row["reactions"]], ["🔥"])
+
     def test_order_follows_tile_sheet(self):
         for e in ("🔥", "❤️", "👍"):
             self.react(self.me if e == "🔥" else self.friend, e)

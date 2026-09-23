@@ -353,6 +353,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [addResults, setAddResults] = useState<Profile[]>([]);
   const [adding, setAdding] = useState(false);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Двойной тап считаем сами: событие dblclick в WKWebView до нас не доходит —
+  // экран уже слушает касания для свайпа и удержания.
+  const lastTapRef = useRef<{ id: string; at: number } | null>(null);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -984,6 +987,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
     swipeActiveRef.current = false;
     swipeTimeRef.current = performance.now();
+    // Второе касание того же сообщения в пределах 320 мс — двойной тап:
+    // ставим сердце и удержание не запускаем.
+    const prev = lastTapRef.current;
+    const now = performance.now();
+    if (prev && prev.id === message.id && now - prev.at < 320) {
+      lastTapRef.current = null;
+      cancelLongPress();
+      if (!message.pending) toggleReaction(message, DEFAULT_REACTION);
+      return;
+    }
+    lastTapRef.current = { id: message.id, at: now };
     startLongPress(message);
   };
   const msgPointerMove = (e: React.PointerEvent, message: Message, isOwn: boolean) => {

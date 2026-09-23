@@ -581,6 +581,42 @@ def _notify_new_message(message, profile, request):
             )
 
 
+def _push_reaction(message, reactor, emoji):
+    """Пуш автору сообщения: на него отреагировали.
+
+    Себе не шлём, заблокировавшему — тоже, и тому, у кого этот чат открыт:
+    он и так видит реакцию (то же правило, что у новых сообщений).
+    """
+    author = message.sender
+    if not author or author.id == reactor.id:
+        return
+    try:
+        from .fcm import notify_profiles
+        from .presence import viewers
+        from .moderation import blocked_either_way
+        if blocked_either_way(author.id, reactor.id):
+            return
+        if str(author.id) in viewers(message.chat_id):
+            return
+        preview = (message.content or "").strip()
+        if not preview:
+            preview = ("Стикер" if message.sticker_id else
+                       "Видео-сообщение" if getattr(message, "video_url", None) else
+                       "Голосовое сообщение" if getattr(message, "voice_url", None) else
+                       "Файл" if getattr(message, "file_url", None) else "сообщение")
+        notify_profiles(
+            Profile.objects.filter(id=author.id),
+            title=reactor.username,
+            body=f"{emoji} на «{preview[:60]}»",
+            extra={"chat_id": str(message.chat_id), "kind": "reaction"},
+            hide_body_for=set(
+                Profile.objects.filter(id=author.id, push_preview=False).values_list("id", flat=True)
+            ),
+        )
+    except Exception:
+        logger.exception("реакции: пуш не ушёл")
+
+
 def _notify_reactions(message):
     """Разослать сводку реакций участникам чата.
 
@@ -765,7 +801,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Такой реакции нет"}, status=400)
 
         # Повторное нажатие снимает реакцию; разных — не больше предела профиля.
-        if not PostReaction.objects.filter(post=msg, user=profile, value=emoji).delete()[0]:
+        removed = PostReaction.objects.filter(post=msg, user=profile, value=emoji).delete()[0]
+        if not removed:
             limit = profile.reaction_limit or 3
             if PostReaction.objects.filter(post=msg, user=profile).count() >= limit:
                 return Response(
@@ -775,8 +812,15 @@ class MessageViewSet(viewsets.ModelViewSet):
                 )
             PostReaction.objects.create(post=msg, user=profile, value=emoji, kind="emoji")
 
+        # Помечаем сообщение изменённым: обычная синхронизация (since=…)
+        # приносит только то, что менялось, и без этого реакция не доезжала
+        # до того, у кого чат был закрыт — событие он пропустил, а лента
+        # открывалась из кеша. Теперь реакция приедет и без события.
+        msg.save(update_fields=["updated_at"])
         msg.refresh_from_db()
         _notify_reactions(msg)
+        if not removed:
+            _push_reaction(msg, profile, emoji)
         return Response({"reactions": reactions_payload(msg, profile.id)})
 
     @action(detail=True, methods=['post'])
