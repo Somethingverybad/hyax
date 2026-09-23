@@ -5,6 +5,10 @@
 const KEYS = {
   user: "cache_user",
   chats: "cache_chats",
+  // Чат «Избранное»: его id сервер отдаёт отдельным запросом, и без кеша
+  // вкладка каждый раз открывалась с «Загрузка…», хотя сами сообщения лежат
+  // в кеше и показались бы сразу.
+  saved: "cache_saved_chat",
 } as const;
 
 export function readCache<T>(key: keyof typeof KEYS): T | null {

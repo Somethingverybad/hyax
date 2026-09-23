@@ -71,12 +71,21 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   // Чат «Избранное» — узнаём у сервера один раз; в списке chats его нет.
-  const [savedChat, setSavedChat] = useState<ChatType | null>(null);
+  // Из кеша он берётся сразу, поэтому вкладка открывается с сообщениями, а не
+  // с «Загрузка…»; ответ сервера потом только подтверждает id.
+  const [savedChat, setSavedChat] = useState<ChatType | null>(() => readCache<ChatType>("saved"));
   useEffect(() => {
     let alive = true;
+    const cached = readCache<ChatType>("saved");
+    if (savedMode && cached?.id) { setSelectedChatId(cached.id); setSelectedKind("saved"); }
     api.getSavedChat()
-      .then((c) => { if (!alive) return; setSavedChat(c as any); if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); } })
-      .catch(() => { if (savedMode) toast.error("Не удалось открыть Избранное"); });
+      .then((c) => {
+        if (!alive) return;
+        setSavedChat(c as any);
+        writeCache("saved", c);
+        if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); }
+      })
+      .catch(() => { if (savedMode && !cached?.id) toast.error("Не удалось открыть Избранное"); });
     return () => { alive = false; };
   }, [savedMode]);
 
