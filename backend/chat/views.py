@@ -1187,6 +1187,15 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         _notify_new_message(message, profile, request)
 
+        # Тестовый VK Music Bot живёт поверх обычных сообщений: клиенту не
+        # нужен отдельный протокол. Обработка идёт в фоне и включается только
+        # через VK_MUSIC_BOT_ENABLED, поэтому остальные чаты не затрагивает.
+        try:
+            from .vk_music import maybe_handle_message
+            maybe_handle_message(message)
+        except Exception:
+            logger.exception("VK music bot: не удалось запустить обработчик")
+
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)
         

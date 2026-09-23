@@ -67,6 +67,26 @@ services:
     extra_hosts:
       - "api.telegram.org:2001:67c:4e8:f004::9"
 
+  # Бот: ссылка в чат — файл в ответ. Ходит во внутренний api по токену бота,
+  # поэтому трафик не выходит наружу и шлюз не режет большие файлы.
+  media-bot:
+    build: ./bots/media-bot
+    container_name: sux_chat_media_bot
+    restart: unless-stopped
+    environment:
+      HYAX_API: http://api:8000/api
+      HYAX_WS: ws://api:8000/ws
+      HYAX_BOT_TOKEN: ${MEDIA_BOT_TOKEN:-}
+      HYAX_QUALITY: ${MEDIA_BOT_QUALITY:-720}
+      HYAX_PARALLEL: ${MEDIA_BOT_PARALLEL:-2}
+      COOKIES_DIR: /cookies
+    volumes:
+      - ./bots/media-bot/cookies:/cookies:ro
+    depends_on:
+      - api
+    networks:
+      - sux_chat_network
+
   coturn:
     image: coturn/coturn:4.6.3
     container_name: sux_chat_coturn

@@ -17,6 +17,18 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+@database_sync_to_async
+def _bot_user_by_token(token):
+    """Пользователь-бот по его ключу или None.
+
+    Ключ бота — не JWT, обычная проверка его отклоняет (см. chat/bot_auth.py).
+    Нужен обоим сокетам: без этого бот узнавал бы о сообщениях только опросом.
+    """
+    row = Profile.objects.select_related("user").filter(
+        bot_token=(token or "").strip(), is_bot=True).first()
+    return row.user if row else None
+
+
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.chat_id = self.scope['url_route']['kwargs']['chat_id']
@@ -45,9 +57,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     if user_id:
                         self.user = await database_sync_to_async(User.objects.get)(id=user_id)
                 except (InvalidToken, TokenError, User.DoesNotExist) as e:
-                    print(f"❌ [WS] токен отклонён: {type(e).__name__}: {e}")
-                    await self.close(code=4001)
-                    return
+                    # Токен бота — не JWT: боты ходят по своему ключу
+                    # (см. chat/bot_auth.py). Без этого бот мог бы только
+                    # опрашивать сервер и отвечал бы с задержкой.
+                    bot_user = await _bot_user_by_token(token_key)
+                    if bot_user:
+                        self.user = bot_user
+                    else:
+                        print(f"❌ [WS] токен отклонён: {type(e).__name__}: {e}")
+                        await self.close(code=4001)
+                        return
 
         # Проверка аутентификации асинхронно
         is_authenticated = await self.check_user_authenticated(self.user)
@@ -513,9 +532,16 @@ class UserConsumer(AsyncWebsocketConsumer):
                         if user_id:
                             self.user = await database_sync_to_async(User.objects.get)(id=user_id)
                     except (InvalidToken, TokenError, User.DoesNotExist) as e:
-                        print(f"❌ [WS user] токен отклонён: {type(e).__name__}: {e}")
-                        await self.close(code=4001)
-                        return
+                        # Токен бота — не JWT (см. chat/bot_auth.py). Боту нужен
+                        # именно этот сокет: иначе он узнавал бы о сообщениях
+                        # только опросом и отвечал с задержкой.
+                        bot_user = await _bot_user_by_token(token_key)
+                        if bot_user:
+                            self.user = bot_user
+                        else:
+                            print(f"❌ [WS user] токен отклонён: {type(e).__name__}: {e}")
+                            await self.close(code=4001)
+                            return
 
             # Проверка аутентификации асинхронно
             is_authenticated = await self.check_user_authenticated(self.user)
