@@ -1115,6 +1115,41 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return "Сообщение";
   };
 
+  /** Стикер уходит так же, как текст: появляется в ленте сразу, с той же
+   *  анимацией, а ответ сервера подменяет временное сообщение. Раньше он ждал
+   *  ответа и перезагружал всю ленту — стикер возникал рывком и не по месту. */
+  const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }) => {
+    if (!chatId) return;
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimistic: Message = {
+      id: tempId,
+      content: null,
+      file_url: null,
+      file_name: null,
+      sender_id: userId,
+      sender: { id: userId } as Profile,
+      created_at: new Date().toISOString(),
+      sticker: { id: sticker.id, file_url: sticker.file_url, emoji: sticker.emoji },
+      pending: true,
+      _key: tempId,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    lastSendTimeRef.current = Date.now();
+    setTimeout(() => scrollToBottom(true), 50);
+    void playSfx("/sounds/send.mp3", { volume: 0.3 });
+    try {
+      const sent = await api.sendMessageWithSticker(chatId, sticker.id);
+      setMessages((prev) =>
+        prev.some((m) => m.id === sent.id)
+          ? prev.filter((m) => m.id !== tempId)
+          : prev.map((m) => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m))
+      );
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      toast.error("Не удалось отправить стикер");
+    }
+  };
+
   const sendMessage = async () => {
     // Звук — самостоятельное сообщение: пузырь с одним аудио-стикером,
     // который получатель может проиграть. Текст для этого не нужен.
@@ -1937,7 +1972,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // Видео-«треугольник» без текста/цитаты — тоже без прямоугольного
             // пузыря: обводку несёт сам треугольник (см. VideoNote).
             const videoOnly = !!message.video_url && !message.content && !message.sticker?.file_url && !message.sound && !message.reply_to;
-            const bareBubble = imageOnly || videoOnly;
+            // Стикер сам себе картинка: пузырь вокруг него — лишняя рамка.
+            // У аудио-стикера пузырь остаётся: там есть строка воспроизведения.
+            const stickerOnly = !!message.sticker?.file_url && !message.content && !message.sound && !message.reply_to;
+            const bareBubble = imageOnly || videoOnly || stickerOnly;
             const previousMessage = index > 0 ? feedRows[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
@@ -2465,15 +2503,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {stickersOpen && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
-                onSelect={async (sticker) => {
-                  setStickersOpen(false);
-                  try {
-                    await api.sendMessageWithSticker(chatId!, sticker.id);
-                    await fetchMessages();
-                  } catch {
-                    toast.error("Не удалось отправить стикер");
-                  }
-                }}
+                onSelect={(sticker) => { setStickersOpen(false); void sendSticker(sticker); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
