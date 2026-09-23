@@ -5,6 +5,7 @@ import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil,
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
+import { readCache, writeCache } from "@/lib/session-cache";
 import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, toggle,
          toggleShuffle, cycleRepeat, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
@@ -105,23 +106,43 @@ const PlayerPanel = () => {
 };
 
 const Music = () => {
-  const [lists, setLists] = useState<Playlist[] | null>(null);
+  // Из кеша — сразу, сеть только обновляет: иначе вкладка каждый раз
+  // открывалась с «Загрузка…», хотя список не меняется от захода к заходу.
+  const [lists, setLists] = useState<Playlist[] | null>(() => readCache<Playlist[]>("playlists"));
   const [open, setOpen] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<PlaylistTrack[] | null>(null);
+  const cachedTracks = (id: string) =>
+    (readCache<Record<string, PlaylistTrack[]>>("playlistTracks") || {})[id] || null;
+  const rememberTracks = (id: string, rows: PlaylistTrack[]) => {
+    const all = readCache<Record<string, PlaylistTrack[]>>("playlistTracks") || {};
+    // Держим только последние десять плейлистов: кеш не должен расти без края.
+    const next = { ...all, [id]: rows };
+    const keys = Object.keys(next);
+    if (keys.length > 10) delete next[keys[0]];
+    writeCache("playlistTracks", next);
+  };
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const player = usePlayer();
   const playing = currentTrack();
 
-  const load = () => api.listPlaylists().then(setLists).catch(() => setLists([]));
+  const load = () =>
+    api.listPlaylists()
+      .then((rows) => { setLists(rows); writeCache("playlists", rows); })
+      .catch(() => setLists((l) => l ?? []));
   useEffect(() => { load(); }, []);
 
   const openList = async (pl: Playlist) => {
-    setOpen(pl); setTracks(null);
+    setOpen(pl);
+    setTracks(cachedTracks(pl.id));  // из кеша — мгновенно, дальше обновим
     try {
       const r = await api.getPlaylist(pl.id);
-      setOpen(r.playlist); setTracks(r.tracks);
-    } catch { toast.error("Не удалось открыть плейлист"); setOpen(null); }
+      setOpen(r.playlist);
+      setTracks(r.tracks);
+      rememberTracks(pl.id, r.tracks);
+    } catch {
+      if (!cachedTracks(pl.id)) { toast.error("Не удалось открыть плейлист"); setOpen(null); }
+    }
   };
 
   const create = async () => {
@@ -156,7 +177,11 @@ const Music = () => {
     if (!open) return;
     const before = tracks || [];
     setTracks(before.filter((x) => x.id !== t.id));
-    try { await api.removeTrack(open.id, t.id); load(); }
+    try {
+      await api.removeTrack(open.id, t.id);
+      rememberTracks(open.id, before.filter((x) => x.id !== t.id));
+      load();
+    }
     catch { toast.error("Не удалось убрать трек"); setTracks(before); }
   };
 
