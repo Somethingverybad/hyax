@@ -79,6 +79,22 @@ def probe(path: str) -> tuple[float, int, int]:
         return 0.0, 0, 0
 
 
+#: Ошибки, при которых виноваты куки, а не ссылка. С протухшей сессией YouTube
+#: отвечает «страницу нужно перезагрузить», и без кук тот же ролик качается.
+COOKIE_ERRORS = (
+    "page needs to be reloaded",
+    "sign in to confirm",
+    "login required",
+    "this content isn",
+    "http error 403",
+)
+
+
+def _looks_like_cookie_problem(err: Exception) -> bool:
+    text = str(err).lower()
+    return any(m in text for m in COOKIE_ERRORS)
+
+
 def fetch(url: str, mode: str = "720", out_dir: str | None = None) -> Media:
     """Скачать по ссылке. mode: «audio» либо высота кадра (360/480/720/1080).
 
@@ -86,8 +102,18 @@ def fetch(url: str, mode: str = "720", out_dir: str | None = None) -> Media:
     везде без перекодирования — а перекодировать час видео на сервере дорого.
     """
     out_dir = out_dir or tempfile.mkdtemp(prefix="media-bot-")
+    try:
+        return _fetch(url, mode, out_dir, use_cookies=True)
+    except Exception as e:
+        if not _cookies_for(url) or not _looks_like_cookie_problem(e):
+            raise
+        log.warning("куки не приняты (%s) — повторяю без них", str(e)[:80])
+        return _fetch(url, mode, out_dir, use_cookies=False)
+
+
+def _fetch(url: str, mode: str, out_dir: str, use_cookies: bool) -> Media:
     outtmpl = os.path.join(out_dir, "%(id)s.%(ext)s")
-    cookies = _cookies_for(url)
+    cookies = _cookies_for(url) if use_cookies else None
 
     if mode == "audio":
         opts = {
