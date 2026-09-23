@@ -48,16 +48,39 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
   const title = (name || "Аудио").replace(/\.[^.]+$/, "");
   const frac = mine && s.duration ? Math.min(1, s.time / s.duration) : 0;
 
+  // Длинное название прокручиваем, а не растягиваем пузырь: с названиями вроде
+  // «Faint (Official Music Video) [4K UPGRADE]» карточка вылезала за край
+  // экрана. Сдвиг считаем по факту — CSS не знает, поместился ли текст.
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    const extra = el.scrollWidth - el.clientWidth;
+    setShift(extra > 4 ? extra : 0);
+  }, [title]);
+
   return (
     <div className={cn(
-      "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-full",
+      // Потолок ширины обязателен: обрезка текста сама по себе не мешает
+      // карточке растянуться под всё название.
+      "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] w-full max-w-[min(72vw,22rem)]",
       isOwn ? "bg-primary/20 border-primary/30" : "bg-muted border-border",
     )}>
       <button type="button" onClick={() => onPlay?.()} disabled={!onPlay} className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center bg-black/20 disabled:opacity-50" aria-label={mine && s.playing ? "Пауза" : "Играть"}>
         {mine && s.playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </button>
       <div className="flex-1 min-w-0">
-        <div className="text-sm truncate">{title}</div>
+        <div className="text-sm overflow-hidden whitespace-nowrap">
+          <span
+            ref={titleRef}
+            className={cn("inline-block max-w-full align-bottom truncate", shift > 0 && "audio-title-run")}
+            style={shift > 0 ? ({ "--shift": `-${shift}px` } as React.CSSProperties) : undefined}
+            title={title}
+          >
+            {title}
+          </span>
+        </div>
         <div className="mt-1 h-1.5 rounded-full bg-black/20 overflow-hidden">
           <div className="h-full rounded-full bg-current opacity-80" style={{ width: `${frac * 100}%` }} />
         </div>

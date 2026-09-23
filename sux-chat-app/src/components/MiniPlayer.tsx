@@ -1,20 +1,40 @@
+import { useEffect, useRef } from "react";
 import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 import { currentTrack, fmtTime, next, prev, seek, stop, toggle, usePlayer } from "@/lib/player";
 
 /**
- * Мини-плеер: узкая полоса над нижней навигацией. Появляется, когда играет
- * трек из переписки, и не пропадает при переходе в другой чат — очередь живёт
- * в @/lib/player, а не на экране.
+ * Мини-плеер: полоса под шапкой — там же, где полоса закреплённого сообщения.
+ * Появляется, когда играет трек, и не пропадает при переходе в другой чат:
+ * очередь живёт в @/lib/player, а не на экране.
+ *
+ * Закреп при этом съезжает вниз на высоту плеера: обе полосы стоят в одном
+ * месте, поэтому высоту плеер сообщает переменной --player-h, а закреп по ней
+ * сдвигается (см. ChatWindow и index.css).
  */
 const MiniPlayer = () => {
   const s = usePlayer();
   const t = currentTrack();
+  const box = useRef<HTMLDivElement>(null);
+
+  // Высота полосы — наружу: по ней сдвигается закреплённое сообщение.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!t) { root.style.setProperty("--player-h", "0px"); return; }
+    const h = box.current?.offsetHeight || 56;
+    root.style.setProperty("--player-h", `${h}px`);
+    return () => { root.style.setProperty("--player-h", "0px"); };
+  }, [t?.id, !!t]);
+
   if (!t) return null;
 
   const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
 
   return (
-    <div className="fixed left-0 right-0 bottom-[calc(var(--sab)+56px)] z-40 px-2 md:bottom-3 md:left-auto md:right-3 md:w-[380px]">
+    <div
+      ref={box}
+      className="player-bar fixed left-0 right-0 z-30 px-2 md:left-auto md:right-3 md:w-[380px]"
+      style={{ top: "var(--player-top, calc(var(--sat) + 56px))" }}
+    >
       <div className="rounded-lg border border-border bg-surface-2 shadow-lg overflow-hidden">
         <div
           className="h-1 bg-black/20 cursor-pointer"

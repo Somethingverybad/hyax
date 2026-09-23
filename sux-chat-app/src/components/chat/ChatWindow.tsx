@@ -247,6 +247,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [reactFor, setReactFor] = useState<Message | null>(null);
   // Какая кнопка сейчас нажата: пока ответ не ушёл, повторное нажатие не пускаем.
   const [pressing, setPressing] = useState<string | null>(null);
+  // Где кончается шапка: по этой метке под ней встаёт мини-плеер, а за ним —
+  // полоса закрепления. Высота шапки разная на телефоне и на десктопе.
+  const headerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const set = () => {
+      const h = headerRef.current?.offsetHeight;
+      if (h) document.documentElement.style.setProperty("--player-top", `${h}px`);
+    };
+    set();
+    window.addEventListener("resize", set);
+    return () => {
+      window.removeEventListener("resize", set);
+      document.documentElement.style.removeProperty("--player-top");
+    };
+  }, [chatId, peer?.id]);
   // Сообщение с музыкой, для которого выбирают плейлист.
   const [playlistFor, setPlaylistFor] = useState<Message | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
@@ -1740,7 +1755,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {(onBack || title || peer || isGroup) && (
-        <div className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
+        <div ref={headerRef} className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
           {onBack && (
             <button
               type="button"
@@ -1840,7 +1855,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
             {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
       {pinned && (
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm">
+        <div
+          className="pinned-bar absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm"
+          style={{ transform: "translateY(var(--player-h, 0px))" }}
+        >
           <Pin className="w-5 h-5 text-primary shrink-0" />
           <button type="button" onClick={() => jumpToMessage(pinned.id)} disabled={jumping} className="flex-1 min-w-0 text-left disabled:opacity-60">
             <span className="block text-small text-primary leading-tight">Закреплено · {pinned.sender_username}</span>

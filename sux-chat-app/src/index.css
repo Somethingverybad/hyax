@@ -674,6 +674,40 @@ textarea,
   }
 }
 
+/* Мини-плеер и полоса закрепления стоят в одном месте — под шапкой. Плеер
+   съезжает сверху, а закреп уступает ему место, сдвигаясь на его высоту
+   (--player-h ставит сам плеер). Двигаем только transform: раскладка при этом
+   не пересчитывается. */
+@keyframes player-slide-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.player-bar { animation: player-slide-in 220ms cubic-bezier(0.32, 0.72, 0, 1); }
+.pinned-bar { transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .player-bar { animation: none; }
+  .pinned-bar { transition: none; }
+}
+
+/* Длинное название трека едет само: карточка остаётся в границах экрана, а
+   прочитать название целиком всё равно можно. Пауза на краях — чтобы начало и
+   конец успевали прочитаться; --shift ставит компонент по факту переполнения. */
+@keyframes audio-title-run {
+  0%, 15% { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--shift, 0px)); }
+}
+
+.audio-title-run {
+  animation: audio-title-run 9s ease-in-out infinite alternate;
+  text-overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-title-run { animation: none; text-overflow: ellipsis; }
+}
+
 /* Прыжок к закреплённому сообщению: короткая подсветка, чтобы глаз нашёл его в ленте. */
 .msg-flash {
   animation: msg-flash 1.2s ease-out;
