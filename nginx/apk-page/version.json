@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 322,
+  "build": 333,
   "ios_version": "1.1.11",
-  "ios_build": 144,
-  "notes": "Статусы «в сети» и «скрыт», отклик при записи, звуки в тихом режиме, кадрирование аватара и обложки, настройка «кто видит сохранёнки»",
+  "ios_build": 145,
+  "notes": "Реакции на сообщения и посты, стеклянные темы со своей иконкой, кадрирование аватара и обложки, настройка «кто видит сохранёнки», статусы в сети",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
