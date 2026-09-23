@@ -5,6 +5,8 @@ import ProfileNotifications from "./pages/ProfileNotifications";
 import ProfilePrivacy from "./pages/ProfilePrivacy";
 import ProfileSavedAccess from "@/pages/ProfileSavedAccess";
 import Music from "@/pages/Music";
+import { syncThemeFromProfile } from "@/lib/theme";
+import { readCache } from "@/lib/session-cache";
 import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
@@ -61,6 +63,23 @@ const closeWindow = () => {
 // историю, а также когда путь стал короче; вглубь — когда длиннее. Переход
 // между вкладками одного уровня направления не имеет, там прежнее проявление.
 const routeDepth = (path: string) => path.split("/").filter(Boolean).length;
+
+/** Тема с сервера — на любом экране, а не только в чатах.
+ *  Открытие по ссылке сразу в «Музыку» или в профиль раньше оставляло
+ *  тему по умолчанию: выбор подхватывался только тем экраном, который
+ *  сам грузит профиль. Берём из кеша, а без него — одним запросом. */
+const ThemeFromProfile = () => {
+  useEffect(() => {
+    const cached = readCache<{ active_theme?: string }>("user");
+    if (cached?.active_theme) { void syncThemeFromProfile(cached.active_theme); return; }
+    if (!localStorage.getItem("access_token")) return;
+    void import("@/api/client")
+      .then(({ api }) => api.getCurrentUser())
+      .then((p: any) => syncThemeFromProfile(p?.active_theme))
+      .catch(() => { /* без сети останется тема с устройства */ });
+  }, []);
+  return null;
+};
 
 const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
@@ -147,6 +166,7 @@ const App = () => {
             <DeepLinks />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
             <MiniPlayer />
+            <ThemeFromProfile />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
                   Токен есть → в чат, нет → на вход. */}

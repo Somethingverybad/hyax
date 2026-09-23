@@ -61,7 +61,7 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
         <div className="mt-1 h-1.5 rounded-full bg-black/20 overflow-hidden">
           <div className="h-full rounded-full bg-current opacity-80" style={{ width: `${frac * 100}%` }} />
         </div>
-        <div className="mt-0.5 text-[11px] opacity-70 tabular-nums">
+        <div className="mt-0.5 text-[11px] opacity-85 tabular-nums">
           {mine ? `${fmtTime(s.time)}${s.duration ? ` / ${fmtTime(s.duration)}` : ""}` : "Нажми, чтобы слушать"}
         </div>
       </div>
