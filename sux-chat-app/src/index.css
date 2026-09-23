@@ -454,13 +454,35 @@ textarea,
    Правила ни к одной теме по имени не привязаны: цвета берутся из переменных,
    поэтому своя тема со стилем «стекло» получает тот же вид. */
 [data-shape="glass"] {
-  --glass-blur: 20px;
-  --glass-fill: 0.6;        /* непрозрачность самой поверхности */
+  --glass-blur: 24px;
   --glass-line: 0.1;        /* яркость тонкой грани по краю */
   --glass-glow: 0 0 28px -6px hsl(var(--primary) / 0.45);
 }
-[data-shape="glass"][data-base="light"] { --glass-edge: 255 255 255; --glass-shade: 11 11 12; }
-[data-shape="glass"][data-base="dark"] { --glass-edge: 255 255 255; --glass-shade: 0 0 0; --glass-line: 0.14; }
+/* Поверхность — светлая вуаль поверх полупрозрачной подложки, а не просто
+   прозрачный цвет: иначе подсветки фона просвечивают сквозь карточки цветными
+   полосами, и каждая строка списка красится в оранжево-красный. */
+[data-shape="glass"][data-base="dark"] {
+  --glass-edge: 255 255 255;
+  --glass-shade: 0 0 0;
+  --glass-line: 0.12;
+  /* Грань стекла: на тёмном — светлая, на светлом — тень. Белая грань на
+     белой карточке не видна вовсе, и поверхности сливались с фоном. */
+  --glass-border: 255 255 255 / 0.12;
+  /* Вдвое слабее, чем кажется по числам: подсветка ложится и на страницу, и
+     на подложку экрана, поэтому складывается. */
+  --glow-warm: 0.26; --glow-cool: 0.20; --glow-warm-2: 0.17; --glow-cool-2: 0.11;
+  --glass-surface: linear-gradient(rgb(255 255 255 / 0.19), rgb(255 255 255 / 0.07)), hsl(var(--surface-1) / 0.92);
+  --glass-surface-soft: linear-gradient(rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.05)), hsl(var(--surface-1) / 0.66);
+}
+[data-shape="glass"][data-base="light"] {
+  --glass-edge: 255 255 255;
+  --glass-shade: 11 11 12;
+  --glass-line: 0.55;
+  --glass-border: 11 11 12 / 0.10;
+  --glow-warm: 0.22; --glow-cool: 0.17; --glow-warm-2: 0.18; --glow-cool-2: 0.13;
+  --glass-surface: linear-gradient(rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.74)), hsl(var(--surface-1) / 0.7);
+  --glass-surface-soft: linear-gradient(rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.44)), hsl(var(--surface-1) / 0.45);
+}
 
 /* Подсветки за стеклом: без них размывать нечего и поверхность выглядит
    просто полупрозрачной. Фиксированные — фон не едет за прокруткой. */
@@ -468,36 +490,77 @@ textarea,
    нарисовано под элементом, а страницы залиты плотным фоном, и без этого
    стекло размывало бы ровную заливку. Привязка к окну (fixed) совмещает
    рисунок на всех слоях. */
-[data-shape="glass"] body,
-[data-shape="glass"] .bg-background {
+[data-shape="glass"] #root {
   background-image:
-    radial-gradient(60% 45% at 12% 0%, hsl(var(--primary) / 0.22), transparent 70%),
-    radial-gradient(55% 40% at 95% 12%, hsl(var(--success) / 0.18), transparent 70%),
-    radial-gradient(70% 50% at 50% 100%, hsl(var(--primary) / 0.10), transparent 75%);
+    radial-gradient(62% 30% at 96% 0%, hsl(var(--primary) / var(--glow-warm)), transparent 70%),
+    radial-gradient(60% 32% at 0% 0%, hsl(var(--success) / var(--glow-cool)), transparent 70%),
+    radial-gradient(66% 32% at 0% 100%, hsl(var(--primary) / var(--glow-warm-2)), transparent 72%),
+    radial-gradient(58% 28% at 100% 100%, hsl(var(--success) / var(--glow-cool-2)), transparent 74%);
   background-attachment: fixed;
   background-repeat: no-repeat;
 }
+/* Подложки экранов прозрачны: подсветку рисует страница целиком, и ровно один
+   раз — иначе слои складывались и угол уходил в чистый красный. Всплывающие
+   окна и шторки (fixed/absolute, диалоги) остаются плотными: сквозь них
+   содержимое под ними просвечивать не должно. */
+[data-shape="glass"] .bg-background:not(.fixed):not(.absolute):not([role="dialog"]):not([data-state]) {
+  background-color: transparent;
+}
 
 /* Карточки, шапки, панель ввода и нижняя навигация — одно и то же стекло. */
-[data-shape="glass"] :is(.ui-card, .ui-bottom-nav, .chat-compose, .pad-safe-top, .ui-status-chip) {
-  background-color: hsl(var(--surface-2) / var(--glass-fill));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+/* Шапка — самое лёгкое стекло: плотная панель гасила подсветку в верхних
+   углах, и они выглядели серыми. */
+[data-shape="glass"] .pad-safe-top {
+  background: var(--glass-surface-soft);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
 }
+
+[data-shape="glass"] :is(.ui-card, .ui-bottom-nav, .chat-compose, .ui-status-chip) {
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+}
+
+/* Круглые кнопки-значки (шестерёнка в шапке, действия) — стеклянные таблетки:
+   голый значок на фоне читался как недорисованный. */
+[data-shape="glass"] .ui-icon-btn {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--glass-surface-soft);
+  border: 1px solid rgb(var(--glass-border));
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+/* Фильтры списка: невыбранные были почти неразличимы на фоне — теперь это
+   такие же таблетки, только спокойнее. Выбранный остаётся акцентным. */
+[data-shape="glass"] .ui-chip:not(.ui-chip-on) {
+  background: var(--glass-surface-soft);
+  border: 1px solid rgb(var(--glass-border));
+  box-shadow: 0 6px 16px -10px rgb(var(--glass-shade) / 0.45);
+  color: hsl(var(--foreground));
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+[data-shape="glass"] .ui-chip-on { box-shadow: var(--glass-glow); }
 [data-shape="glass"] .ui-card {
-  border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
-  box-shadow: 0 8px 24px -12px rgb(var(--glass-shade) / 0.35);
+  border: 1px solid rgb(var(--glass-border));
+  box-shadow: 0 10px 28px -14px rgb(var(--glass-shade) / 0.45);
 }
 [data-shape="glass"] :is(.ui-bottom-nav, .pad-safe-top) {
-  border-color: rgb(var(--glass-edge) / var(--glass-line));
+  border-color: rgb(var(--glass-border));
 }
 
 /* Поля ввода — то же стекло, но тоньше, чтобы текст читался. */
-[data-shape="glass"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea):not(.bg-transparent) {
-  background-color: hsl(var(--surface-3) / 0.55);
-  border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+[data-shape="glass"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea):not(.bg-transparent),
+[data-shape="glass"] .ui-search {
+  background: var(--glass-surface-soft);
+  border: 1px solid rgb(var(--glass-border));
+  box-shadow: 0 8px 20px -12px rgb(var(--glass-shade) / 0.45);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 /* Акцентные кнопки светятся — «inner glow» из стайлгайда. */
@@ -514,7 +577,7 @@ textarea,
    так переписка читается и поверх подсветок. */
 [data-shape="glass"] .bubble-in {
   background-color: hsl(var(--bubble-in) / 0.62);
-  border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+  border: 1px solid rgb(var(--glass-border));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   backdrop-filter: blur(var(--glass-blur));
 }
@@ -729,18 +792,33 @@ textarea,
 
   /* Стекло: карточки строк и плавающая панель — полупрозрачные, с размытием
      фона. Идут после общих правил, иначе те перекрыли бы их плотной заливкой. */
+  /* Один левый край у поиска, фильтров и карточек: было 16 против 12. */
+  [data-shape="glass"] .chat-row { margin: 0 16px 8px; }
   [data-shape="glass"] .chat-row-card {
-    background: hsl(var(--surface-2) / var(--glass-fill));
-    border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+    background: var(--glass-surface);
+    border: 1px solid rgb(var(--glass-border));
     border-radius: var(--radius);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-    box-shadow: 0 10px 26px -14px rgb(var(--glass-shade) / 0.5);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    box-shadow: 0 10px 26px -14px rgb(var(--glass-shade) / 0.55);
   }
-  [data-shape="glass"] .chat-row-card.bg-surface-3 { background: hsl(var(--surface-3) / 0.72); }
+  /* Под строкой лежат «закрепить» и «удалить»: сквозь стекло они просвечивали
+     жёлтой и красной полосой в каждой строке. Показываем их только когда
+     строку действительно сдвинули пальцем. */
+  [data-shape="glass"] .chat-row > button:is(.bg-amber, .bg-destructive) {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+  [data-shape="glass"] .chat-row.row-swiped > button.bg-destructive,
+  [data-shape="glass"] .chat-row.row-pin-swiped > button.bg-amber { opacity: 1; }
+
+  [data-shape="glass"] .chat-row-card.bg-surface-3 { background: var(--glass-surface); filter: brightness(1.12); }
   [data-shape="glass"][data-nav="floating"] .ui-bottom-nav {
-    background: hsl(var(--surface-2) / var(--glass-fill));
-    border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+    /* Снизу не меньше, чем по бокам: с одним лишь отступом под home-индикатор
+       панель на устройствах без него прижималась к краю. */
+    margin: 0 16px max(16px, calc(8px + var(--kb-sab, var(--sab))));
+    background: var(--glass-surface);
+    border: 1px solid rgb(var(--glass-border));
     box-shadow: 0 12px 30px -16px rgb(var(--glass-shade) / 0.6);
   }
   [data-shape="glass"][data-nav="floating"] .ui-nav-item.ui-nav-on {

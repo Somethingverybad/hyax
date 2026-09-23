@@ -750,7 +750,7 @@ const ChatSidebar = ({
               return (
                 <div
                   key={chat.id}
-                  className="chat-row relative overflow-hidden"
+                  className={`chat-row relative overflow-hidden${swipedChatId === chat.id ? " row-swiped" : ""}${pinSwipedId === chat.id ? " row-pin-swiped" : ""}`}
                 >
                   {/* Разделитель с полями 16 px; после последней строки и на десктопе его нет. */}
                   <div className="chat-row-divider absolute bottom-0 left-4 right-4 h-px bg-border pointer-events-none z-10 md:hidden" />

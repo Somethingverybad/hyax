@@ -126,14 +126,16 @@ const GLASS = { style: "glass", radius: 16, radiusField: 18, borderWidth: 1, sha
 export const GLASS_LIGHT: ThemeDef = {
   id: "glass-light", name: "Стекло светлое", base: "light", builtin: true,
   colors: {
-    background: "#F8F8F5",
+    // Фон чуть темнее белого: на #F8F8F5 белые карточки сливались с ним
+    // (разница 6 уровней — не поверхность, а погрешность округления).
+    background: "#F1F0EC",
     foreground: "#0B0B0C",
     surface1: "#FFFFFF",
     surface2: "#FFFFFF",
     surface3: "#F2F2EF",
     surface4: "#E9E9E4",
-    mutedForeground: "#6B7280",
-    subtleForeground: "#8E939B",
+    mutedForeground: "#5C6067",
+    subtleForeground: "#6B6F76",
     primary: "#E11D2E",
     primaryForeground: "#FFFFFF",
     primaryDeep: "#B3121F",
@@ -168,8 +170,8 @@ export const GLASS_DARK: ThemeDef = {
     surface2: "#1F1F23",
     surface3: "#26262B",
     surface4: "#2F2F35",
-    mutedForeground: "#A3A3A7",
-    subtleForeground: "#7C7C82",
+    mutedForeground: "#B6B6BC",
+    subtleForeground: "#9A9AA2",
     primary: "#FF3B3B",
     primaryForeground: "#FFFFFF",
     primaryDeep: "#C42A2A",
