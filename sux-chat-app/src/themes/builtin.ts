@@ -121,7 +121,7 @@ export const NEO: ThemeDef = {
 
 /** Стекло: поверхности полупрозрачные, фон за ними размыт, акцент светится.
  *  Числа из стайлгайда: размытие 20, непрозрачность поверхности 60%. */
-const GLASS = { style: "glass", radius: 16, radiusField: 14, borderWidth: 1, shadowOffset: 0, iconStroke: 1.75, rowCards: false, floatingNav: false } as const;
+const GLASS = { style: "glass", radius: 16, radiusField: 18, borderWidth: 1, shadowOffset: 0, iconStroke: 1.75, rowCards: true, floatingNav: true } as const;
 
 export const GLASS_LIGHT: ThemeDef = {
   id: "glass-light", name: "Стекло светлое", base: "light", builtin: true,

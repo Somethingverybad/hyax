@@ -726,6 +726,28 @@ textarea,
   [data-nav="floating"] .ui-nav-item { color: hsl(var(--foreground)); border-radius: calc(var(--radius) - 3px); border: var(--ui-bw) solid transparent; }
   [data-nav="floating"] .ui-nav-item.ui-nav-on { background: hsl(var(--accent-soft)); border-color: hsl(var(--ui-line)); color: hsl(var(--foreground)); }
   [data-nav="floating"] .ui-nav-label { display: block; }
+
+  /* Стекло: карточки строк и плавающая панель — полупрозрачные, с размытием
+     фона. Идут после общих правил, иначе те перекрыли бы их плотной заливкой. */
+  [data-shape="glass"] .chat-row-card {
+    background: hsl(var(--surface-2) / var(--glass-fill));
+    border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+    border-radius: var(--radius);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+    box-shadow: 0 10px 26px -14px rgb(var(--glass-shade) / 0.5);
+  }
+  [data-shape="glass"] .chat-row-card.bg-surface-3 { background: hsl(var(--surface-3) / 0.72); }
+  [data-shape="glass"][data-nav="floating"] .ui-bottom-nav {
+    background: hsl(var(--surface-2) / var(--glass-fill));
+    border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+    box-shadow: 0 12px 30px -16px rgb(var(--glass-shade) / 0.6);
+  }
+  [data-shape="glass"][data-nav="floating"] .ui-nav-item.ui-nav-on {
+    background: hsl(var(--primary) / 0.14);
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--primary));
+  }
 }
 
 /* Цитата на экране входа: рукописный курсив и мягкая смена строк.

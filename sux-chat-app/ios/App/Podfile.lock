@@ -3,6 +3,8 @@ PODS:
     - CapacitorCordova
   - CapacitorApp (7.1.0):
     - Capacitor
+  - CapacitorCommunityAppIcon (6.0.0):
+    - Capacitor
   - CapacitorCommunityHttp (1.4.1):
     - Capacitor
   - CapacitorCordova (7.4.4)
@@ -79,6 +81,7 @@ PODS:
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
+  - "CapacitorCommunityAppIcon (from `../../node_modules/@capacitor-community/app-icon`)"
   - "CapacitorCommunityHttp (from `../../node_modules/@capacitor-community/http`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
@@ -107,6 +110,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorApp:
     :path: "../../node_modules/@capacitor/app"
+  CapacitorCommunityAppIcon:
+    :path: "../../node_modules/@capacitor-community/app-icon"
   CapacitorCommunityHttp:
     :path: "../../node_modules/@capacitor-community/http"
   CapacitorCordova:
@@ -127,6 +132,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Capacitor: 358dd1c3fdd71d969547b17e159fd8a7736cb45f
   CapacitorApp: 26587c2ce485d88ddb39adb21cac64f8e481afe3
+  CapacitorCommunityAppIcon: a937eb756114f0f1aa2de894d23b63db02d042e6
   CapacitorCommunityHttp: 7eba71da94e070e37a26a60483350285a33e3903
   CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
   CapacitorFilesystem: c63fc54df41e5a6761785a7f3c49dc696c22e296
@@ -146,6 +152,6 @@ SPEC CHECKSUMS:
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   WebRTC-SDK: e16ed5e9f54d2a983d5f1f479a4b55f20da202fe
 
-PODFILE CHECKSUM: d6d0a98dbf469825a0d7690b440da0f1153b4ff1
+PODFILE CHECKSUM: 7eaea48f8f3451b358f11b7a45c23259076a5ed2
 
 COCOAPODS: 1.16.2

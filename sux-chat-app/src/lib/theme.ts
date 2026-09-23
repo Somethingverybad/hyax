@@ -38,6 +38,32 @@ function syncStatusBar(t: ThemeDef) {
   StatusBar.setStyle({ style: t.base === "light" ? Style.Light : Style.Dark }).catch(() => {});
 }
 
+/** Иконка приложения на домашнем экране — по теме.
+ *
+ *  Набор иконок зашит в сборку: iOS умеет переключаться только между теми,
+ *  что лежат внутри приложения (CFBundleAlternateIcons), подгрузить картинку
+ *  на лету нельзя. Своя тема получает иконку по светлому или тёмному тону.
+ *
+ *  Меняем, только если иконка и правда другая: на каждую смену iOS показывает
+ *  своё окно «Вы изменили иконку», и дёргать его на ровном месте незачем. */
+const ICON_BY_THEME: Record<string, string> = {
+  light: "Light", dark: "Dark", neo: "Neo", "glass-light": "Glass", "glass-dark": "Glass",
+};
+
+function syncAppIcon(t: ThemeDef) {
+  if (Capacitor.getPlatform() !== "ios") return;
+  const want = ICON_BY_THEME[t.id] || (t.base === "light" ? "Light" : "Dark");
+  void import("@capacitor-community/app-icon")
+    .then(async ({ AppIcon }) => {
+      const { value: now } = await AppIcon.getName();
+      if (now === want) return;
+      // suppressNotification: false — системное окно показывается, но и
+      // приватных вызовов, за которые Apple снимает с проверки, тут нет.
+      await AppIcon.change({ name: want, suppressNotification: false });
+    })
+    .catch(() => { /* иконка не сменилась — тема всё равно применилась */ });
+}
+
 function paint(t: ThemeDef) {
   const root = document.documentElement;
   if (t.id === "dark") {
@@ -53,6 +79,7 @@ function paint(t: ThemeDef) {
   root.style.colorScheme = t.base;
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t.colors.background);
   syncStatusBar(t);
+  syncAppIcon(t);
 }
 
 /** Вызывается из main.tsx до первой отрисовки: иначе экран моргнёт тёмным. */
