@@ -26,6 +26,9 @@ class Profile(models.Model):
     # владелец добавил (SavedViewer), none — никто, кроме него самого.
     SAVED_VISIBILITY = [("all", "Все"), ("selected", "Избранные"), ("none", "Никто")]
     saved_visibility = models.CharField(max_length=10, choices=SAVED_VISIBILITY, default="all")
+    # Сколько разных реакций человек может поставить на одно сообщение.
+    # Поле, а не константа: «премиум» — это просто другое число у профиля.
+    reaction_limit = models.PositiveSmallIntegerField(default=3)
     # Показывать паки звуков и стикеров с пометкой 18+. По умолчанию выключено:
     # такие паки не попадают в пикер и не открываются по ссылке, пока человек
     # сам не включит настройку и не подтвердит возраст.
@@ -468,9 +471,14 @@ class CallParticipant(models.Model):
 
 
 class PostReaction(models.Model):
-    """Реакция на пост канала. Одна активная реакция на пользователя
-    (unique post+user). kind обобщён: сейчас emoji, потом custom (реакции из
-    Creative Space) — value хранит символ или id ассета."""
+    """Реакция на сообщение — и на пост канала, и на обычное сообщение:
+    пост это тоже Message, и правила у них одни.
+
+    Разных реакций от одного человека — не больше Profile.reaction_limit
+    (по умолчанию три), поэтому уникальность по тройке post+user+value,
+    а не по паре: повторное нажатие на то же эмодзи снимает реакцию.
+    kind обобщён: сейчас emoji, потом custom (реакции из Creative Space) —
+    value хранит символ или id ассета."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     post = models.ForeignKey('Message', on_delete=models.CASCADE, related_name="reactions")
     user = models.ForeignKey('Profile', on_delete=models.CASCADE, related_name="post_reactions")
@@ -479,7 +487,8 @@ class PostReaction(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        unique_together = ("post", "user")
+        unique_together = ("post", "user", "value")
+        indexes = [models.Index(fields=["post"], name="chat_reaction_post_idx")]
 
 
 class PostComment(models.Model):

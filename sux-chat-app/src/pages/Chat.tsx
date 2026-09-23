@@ -124,6 +124,11 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // Растёт на каждое входящее по сокету в открытом чате — ChatWindow по нему
   // перечитывает ленту сразу, а не через опрос.
   const [messagePing, setMessagePing] = useState(0);
+  // Последнее событие о реакциях — ChatWindow применяет его к своей ленте.
+  const [reactionEvent, setReactionEvent] = useState<{
+    chat_id: string; message_id: string;
+    reactions: { emoji: string; count: number; users: string[] }[]; at: number;
+  } | null>(null);
   chatsRef.current = chats;
   const navigate = useNavigate();
 
@@ -398,6 +403,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             (group?.getCallId() && group.getCallId() === msg.data?.call_id);
           if (forGroup) group?.handleSignal(msg.signal_type, msg.data);
           else svc?.handleSignal(msg.signal_type, msg.data);
+        } else if (msg?.data?.type === "reaction") {
+          // Реакции приходят событием: обычная синхронизация их не приносит —
+          // само сообщение при этом не меняется.
+          setReactionEvent({ ...msg.data, at: Date.now() });
         } else if (msg?.data?.type === "presence") {
           // Собеседник зашёл или вышел: правим его в участниках чатов — оттуда
           // статус читают и список, и шапка переписки.
@@ -815,6 +824,9 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
                   chats={listChats}
                   savedChatId={savedChat?.id}
                   messagePing={messagePing}
+          reactionEvent={reactionEvent}
+            reactionEvent={reactionEvent}
+                  reactionEvent={reactionEvent}
                   title="Избранное"
                 />
               ) : (
@@ -849,6 +861,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onGroupUpdated={refreshChats}
             onCall={startCall}
             messagePing={messagePing}
+          reactionEvent={reactionEvent}
+            reactionEvent={reactionEvent}
             onBack={() => setSelectedChatId(null)}
             title={chatHeaderTitle}
           />
@@ -934,6 +948,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           onGroupUpdated={refreshChats}
           onCall={startCall}
           messagePing={messagePing}
+          reactionEvent={reactionEvent}
           title={chatHeaderTitle}
         />
         )

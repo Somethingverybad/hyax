@@ -67,6 +67,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
+        # Чей это сокет — пригодится обработчикам событий чата.
+        self.profile_id = await self.get_user_profile_id(self.user)
         await self.accept()
 
     async def disconnect(self, close_code):

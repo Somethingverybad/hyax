@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { DEFAULT_REACTION, type ReactionSummary } from "@/lib/reactions";
+import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
@@ -58,6 +60,8 @@ interface Attach {
 
 interface Message {
   id: string;
+  /** Сводка реакций: эмодзи, сколько и моя ли. */
+  reactions?: ReactionSummary[];
   content: string | null;
   file_url: string | null;
   file_name: string | null;
@@ -149,6 +153,8 @@ interface ChatWindowProps {
   /** Счётчик входящих по сокету для этого чата: растёт — перечитываем ленту
    *  сразу, не дожидаясь очередного опроса (см. эффект ниже). */
   messagePing?: number;
+  /** Событие о реакциях из личного сокета (см. pages/Chat.tsx). */
+  reactionEvent?: { chat_id: string; message_id: string; reactions: { emoji: string; count: number; users: string[] }[]; at: number } | null;
   /** Р.Ё.В: панель сообщает «держу/отпустил», сокетом заведует страница чатов. */
   onRov?: (on: boolean) => void;
   /** «Избранное»: чат без собеседника — без звонка, профиля и добавления людей. */
@@ -158,7 +164,7 @@ interface ChatWindowProps {
   savedChatId?: string;
 }
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, onRov, saved, chats, savedChatId }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -233,6 +239,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   //  finishing — палец отпущен, запись закрывается перед отправкой.
   const [recPhase, setRecPhase] = useState<"idle" | "starting" | "finishing">("idle");
   const [recPressed, setRecPressed] = useState(false);
+  // Сообщение, для которого открыт выбор реакции, и раскрыт ли полный набор.
+  const [reactFor, setReactFor] = useState<Message | null>(null);
   // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
   // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
   const cancelArmedRef = useRef(false);
@@ -1327,6 +1335,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  // Реакция от собеседника: своё «mine» считаем сами — в событии приходят
+  // те, кто поставил, а не персональная сводка на каждого.
+  useEffect(() => {
+    if (!reactionEvent || reactionEvent.chat_id !== chatId) return;
+    setMessages((prev) => prev.map((m) => (m.id === reactionEvent.message_id
+      ? { ...m, reactions: reactionEvent.reactions.map((r) => ({ emoji: r.emoji, count: r.count, mine: (r.users || []).includes(userId) })) }
+      : m)));
+  }, [reactionEvent?.at, chatId, userId]);
+
+  /** Поставить или снять реакцию. Логика общая с каналами (Reactions.tsx). */
+  const toggleReaction = (message: Message, emoji: string) => {
+    setReactFor(null);
+    const before = messages.find((m) => m.id === message.id)?.reactions;
+    const set = (rows: ReactionSummary[] | undefined) =>
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, reactions: rows } : m)));
+    set(applyReaction(before, emoji));
+    void sendReaction(message.id, emoji, set, () => set(before));
+  };
+
   const processRecording = async (result: VoiceRecording | null) => {
     if (!result || !chatId) return;
     // Пузырь с записью появляется сразу, из локального blob, с прогрессом
@@ -1636,6 +1663,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Пункты меню сообщения — общий список для шторки и компактного меню.
   const menuItems = menuMessage
     ? [
+        { label: "Реакция", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
         { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
         { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardQuery(""); setForwardFor(menuMessage); closeMenu(); } },
         { label: "В избранное", show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
@@ -1948,6 +1976,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         if (justSwipedRef.current) return;
                         if (message.sound?.url) toggleSticker(message.id, message.sound.url);
                       }}
+                      // Двойной тап ставит сердце — как в мессенджерах;
+                      // остальные реакции в меню сообщения.
+                      onDoubleClick={() => { if (!message.pending) toggleReaction(message, DEFAULT_REACTION); }}
                       className={cn(
                       "relative",
                       !bareBubble && "px-4 py-3 rounded-lg",
@@ -2163,6 +2194,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         </div>
                       )}
                     </div>
+
+                    {/* Реакции — под пузырём, как в тайллисте. */}
+                    <ReactionBar
+                      reactions={message.reactions}
+                      onToggle={(emoji) => toggleReaction(message, emoji)}
+                      size="s"
+                      className={cn("mt-1", isOwn && "justify-end")}
+                    />
 
                     {/* Время и статус снаружи — у чужих и у пузырей без текста
                         (картинка, треугольник): внутри им негде. */}
@@ -2509,6 +2548,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           </div>
         </div>
       </div>
+
+      <ReactionPicker
+        open={!!reactFor}
+        onClose={() => setReactFor(null)}
+        onPick={(emoji) => { if (reactFor) toggleReaction(reactFor, emoji); }}
+      />
 
       {addOpen && (
         <div

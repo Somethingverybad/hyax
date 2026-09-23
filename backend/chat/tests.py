@@ -5,8 +5,8 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import (
-    Chat, ChatParticipant, Message, NotificationSound, Profile, SavedImage,
-    SoundPack, Sticker, StickerPack, UserSoundPack, UserStickerPack,
+    Chat, ChatParticipant, Message, NotificationSound, PostReaction, Profile,
+    SavedImage, SoundPack, Sticker, StickerPack, UserSoundPack, UserStickerPack,
 )
 
 
@@ -776,3 +776,65 @@ class SavedVisibilityTests(TestCase):
     def test_cannot_add_viewers_for_someone_else(self):
         r = client_for(self.stranger).patch(f"/api/profiles/{self.me.id}/", {"saved_visibility": "none"}, format="json")
         self.assertEqual(r.status_code, 403)
+
+
+
+class ReactionTests(TestCase):
+    """Реакции: переключение, предел на человека, закрытый набор эмодзи."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.msg = Message.objects.create(chat=self.chat, sender=self.friend, content="привет")
+
+    def react(self, who, emoji):
+        return client_for(who).post(f"/api/messages/{self.msg.id}/react/", {"emoji": emoji}, format="json")
+
+    def summary(self, who):
+        r = client_for(who).get(f"/api/messages/?chat={self.chat.id}")
+        rows = r.data.get("results", r.data) if isinstance(r.data, dict) else r.data
+        return next(m["reactions"] for m in rows if m["id"] == str(self.msg.id))
+
+    def test_put_and_remove(self):
+        r = self.react(self.me, "❤️")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["reactions"], [{"emoji": "❤️", "count": 1, "mine": True}])
+        # повторное нажатие снимает
+        self.assertEqual(self.react(self.me, "❤️").data["reactions"], [])
+
+    def test_counts_and_mine(self):
+        self.react(self.me, "❤️")
+        self.react(self.friend, "❤️")
+        self.react(self.friend, "🔥")
+        mine = {x["emoji"]: x for x in self.summary(self.me)}
+        self.assertEqual(mine["❤️"]["count"], 2)
+        self.assertTrue(mine["❤️"]["mine"])
+        self.assertFalse(mine["🔥"]["mine"])
+
+    def test_limit_three_per_person(self):
+        for e in ("❤️", "🔥", "👍"):
+            self.assertEqual(self.react(self.me, e).status_code, 200)
+        r = self.react(self.me, "🎉")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data["limit"], 3)
+        # предел — поле профиля: поднимаем, и четвёртая проходит
+        self.me.reaction_limit = 5
+        self.me.save()
+        self.assertEqual(self.react(self.me, "🎉").status_code, 200)
+
+    def test_unknown_emoji_rejected(self):
+        for bad in ("🍆", "не эмодзи", ""):
+            self.assertEqual(self.react(self.me, bad).status_code, 400)
+        self.assertEqual(PostReaction.objects.count(), 0)
+
+    def test_outsider_cannot_react(self):
+        self.assertEqual(self.react(self.stranger, "❤️").status_code, 403)
+
+    def test_order_follows_tile_sheet(self):
+        for e in ("🔥", "❤️", "👍"):
+            self.react(self.me if e == "🔥" else self.friend, e)
+        self.assertEqual([x["emoji"] for x in self.summary(self.me)], ["❤️", "👍", "🔥"])

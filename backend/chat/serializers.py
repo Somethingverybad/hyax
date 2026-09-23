@@ -296,8 +296,32 @@ class MessageSenderSerializer(serializers.ModelSerializer):
         return {"id": str(s.id), "url": s.file.url if s.file else ""} if s else None
 
 
+def reactions_payload(message, me_id=None):
+    """Сводка реакций сообщения: [{emoji, count, mine}] в порядке тайллиста.
+
+    Клиенту не нужен поимённый список — он рисует таблетку «эмодзи + число» и
+    подсвечивает свои. Поимённо это была бы лишняя выдача на каждое сообщение.
+    """
+    from .reactions import ALL
+    order = {emoji: i for i, (emoji, _) in enumerate(ALL)}
+    counts, mine = {}, set()
+    for r in message.reactions.all():
+        counts[r.value] = counts.get(r.value, 0) + 1
+        if me_id and str(r.user_id) == str(me_id):
+            mine.add(r.value)
+    return [
+        {"emoji": e, "count": c, "mine": e in mine}
+        for e, c in sorted(counts.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))
+    ]
+
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = MessageSenderSerializer(read_only=True)
+    reactions = serializers.SerializerMethodField()
+
+    def get_reactions(self, obj):
+        me = getattr(getattr(self.context.get("request"), "user", None), "profile", None)
+        return reactions_payload(obj, me.id if me else None)
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
     sticker = StickerSerializer(read_only=True)
@@ -307,7 +331,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'reactions']
         read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title']
 
     def get_forwarded_from(self, obj):

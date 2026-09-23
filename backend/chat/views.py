@@ -581,6 +581,49 @@ def _notify_new_message(message, profile, request):
             )
 
 
+def _notify_reactions(message):
+    """Разослать сводку реакций участникам чата.
+
+    В личные сокеты, а не в сокет чата: клиент подключается только к
+    личному каналу (см. pages/Chat.tsx), а обычная синхронизация реакции
+    не приносит — она не меняет само сообщение.
+
+    В сводке — кто поставил: по этому списку каждый находит свои реакции,
+    и это же показывают мессенджеры при долгом нажатии на реакцию.
+    """
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    from .reactions import ALL
+
+    layer = get_channel_layer()
+    if not layer:
+        return
+    order = {emoji: i for i, (emoji, _) in enumerate(ALL)}
+    groups = {}
+    for r in message.reactions.all():
+        groups.setdefault(r.value, []).append(str(r.user_id))
+    payload = [
+        {"emoji": e, "count": len(users), "users": users}
+        for e, users in sorted(groups.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))
+    ]
+    try:
+        for row in ChatParticipant.objects.filter(chat_id=message.chat_id):
+            async_to_sync(layer.group_send)(
+                f'user_{row.user_id}',
+                {
+                    'type': 'notification',
+                    'data': {
+                        'type': 'reaction',
+                        'chat_id': str(message.chat_id),
+                        'message_id': str(message.id),
+                        'reactions': payload,
+                    },
+                },
+            )
+    except Exception:
+        logger.exception("реакции: рассылка не удалась")
+
+
 def _can_see_chat(chat, profile):
     """Читать чат может участник; публичный канал — любой."""
     if ChatParticipant.objects.filter(chat=chat, user=profile).exists():
@@ -700,6 +743,41 @@ class MessageViewSet(viewsets.ModelViewSet):
         chat.save(update_fields=['pinned_message'])
         from .serializers import pinned_payload
         return Response({"pinned_message": pinned_payload(chat.pinned_message)})
+
+    @action(detail=True, methods=['post'])
+    def react(self, request, pk=None):
+        """Поставить или снять реакцию: {emoji}. Повторное нажатие снимает.
+
+        Разных реакций от одного человека — не больше Profile.reaction_limit
+        (по умолчанию три). Набор эмодзи закрытый: chat/reactions.py.
+        """
+        from .reactions import ALLOWED
+        from .serializers import reactions_payload
+        msg = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        if not _can_see_chat(msg.chat, profile):
+            return Response({"error": "Нет доступа к сообщению"}, status=403)
+        emoji = (request.data.get('emoji') or '').strip()
+        if emoji not in ALLOWED:
+            return Response({"error": "Такой реакции нет"}, status=400)
+
+        # Повторное нажатие снимает реакцию; разных — не больше предела профиля.
+        if not PostReaction.objects.filter(post=msg, user=profile, value=emoji).delete()[0]:
+            limit = profile.reaction_limit or 3
+            if PostReaction.objects.filter(post=msg, user=profile).count() >= limit:
+                return Response(
+                    {"error": f"Можно поставить не больше {limit} реакций на сообщение",
+                     "limit": limit},
+                    status=409,
+                )
+            PostReaction.objects.create(post=msg, user=profile, value=emoji, kind="emoji")
+
+        msg.refresh_from_db()
+        _notify_reactions(msg)
+        return Response({"reactions": reactions_payload(msg, profile.id)})
 
     @action(detail=True, methods=['post'])
     def forward(self, request, pk=None):
@@ -2389,13 +2467,10 @@ def _post_payload(msg, request):
     """Пост канала = Message + сводка реакций/просмотров/комментов."""
     data = MessageSerializer(msg, context={"request": request}).data
     prof = _prof(request)
-    aggs = list(msg.reactions.values("value").annotate(c=models.Count("id")).order_by("-c"))
-    data["reactions"] = [{"value": a["value"], "count": a["c"]} for a in aggs]
-    data["reactions_total"] = sum(a["c"] for a in aggs)
-    data["my_reaction"] = None
-    if prof:
-        mine = msg.reactions.filter(user=prof).first()
-        data["my_reaction"] = mine.value if mine else None
+    # Сводка та же, что у сообщений ([{emoji, count, mine}]): реакции в
+    # каналах и в переписке — одно и то же, и клиент рисует их одним
+    # модулем (components/chat/Reactions.tsx).
+    data["reactions_total"] = msg.reactions.count()
     data["comments_count"] = msg.comments.filter(deleted=False).count()
     data["views_count"] = msg.views.count()
     return data
@@ -2659,10 +2734,16 @@ class PostReactView(APIView):
         value = (request.data.get("value") or "").strip()
         if not value:
             return Response({"error": "Пустая реакция"}, status=400)
-        PostReaction.objects.update_or_create(
-            post=msg, user=me,
-            defaults={"value": value[:64], "kind": (request.data.get("kind") or "emoji")[:10]},
-        )
+        # Те же правила, что у сообщений: повторное нажатие снимает, разных
+        # реакций — не больше предела профиля.
+        if not PostReaction.objects.filter(post=msg, user=me, value=value[:64]).delete()[0]:
+            limit = me.reaction_limit or 3
+            if PostReaction.objects.filter(post=msg, user=me).count() >= limit:
+                return Response({"error": f"Не больше {limit} реакций", "limit": limit}, status=409)
+            PostReaction.objects.create(
+                post=msg, user=me, value=value[:64],
+                kind=(request.data.get("kind") or "emoji")[:10],
+            )
         return Response(_post_payload(msg, request))
 
     def delete(self, request, pk):

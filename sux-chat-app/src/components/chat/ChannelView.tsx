@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
+import { type ReactionSummary } from "@/lib/reactions";
+import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
 import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
@@ -30,8 +32,8 @@ interface Post {
   file_width?: number | null; file_height?: number | null; album_id?: string | null;
   video_url?: string; video_duration?: number | null; video_mirror?: boolean;
   download_only?: boolean; sender?: { id: string; username: string };
-  reactions?: { value: string; count: number }[]; reactions_total?: number;
-  my_reaction?: string | null; comments_count?: number; views_count?: number;
+  reactions?: ReactionSummary[]; reactions_total?: number;
+  comments_count?: number; views_count?: number;
   sound?: { name: string } | null;
   /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер).
    *  _failed + _retry — не ушло: пост остаётся с «Повторить»/«Удалить», снятое не теряется. */
@@ -41,7 +43,6 @@ interface Post {
   _key?: string;
 }
 
-const REACTIONS = ["🔥", "❤️", "👍", "😂", "😮", "😢"];
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -522,18 +523,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     }
   };
 
-  const react = async (post: Post, value: string) => {
+  /** Реакция на пост — тем же модулем и тем же запросом, что в переписке:
+   *  пост канала это тоже сообщение (см. components/chat/Reactions.tsx). */
+  const react = (post: Post, emoji: string) => {
     setReactPickFor(null);
-    try {
-      const summary = post.my_reaction === value
-        ? await api.unreactPost(post.id)
-        : await api.reactToPost(post.id, value);
-      setPosts((prev) => prev.map((p) => (p.id === post.id
-        ? { ...p, reactions: summary.reactions, reactions_total: summary.reactions_total, my_reaction: summary.my_reaction }
-        : p)));
-    } catch {
-      toast.error("Не получилось");
-    }
+    const before = posts.find((p) => p.id === post.id)?.reactions;
+    const set = (rows: ReactionSummary[] | undefined) =>
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, reactions: rows } : p)));
+    set(applyReaction(before, emoji));
+    void sendReaction(post.id, emoji, set, () => set(before));
   };
 
   const subscribe = async () => {
@@ -674,37 +672,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               </div>
               {/* Реакции + комментарии */}
               <div className="flex items-center gap-2 px-3 py-2 border-t border-border flex-wrap">
-                {(post.reactions || []).map((r) => (
-                  <button
-                    key={r.value}
-                    type="button"
-                    onClick={() => subscribed ? react(post, r.value) : toast.error("Подпишитесь, чтобы реагировать")}
-                    className={cn(
-                      "h-8 px-2.5 text-small rounded-full border inline-flex items-center gap-1",
-                      post.my_reaction === r.value ? "border-primary bg-primary/15 text-foreground" : "border-transparent bg-surface-4 text-foreground",
-                    )}
-                  >
-                    {r.value} {r.count}
-                  </button>
-                ))}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => subscribed ? setReactPickFor(reactPickFor === post.id ? null : post.id) : toast.error("Подпишитесь, чтобы реагировать")}
-                    className="h-8 px-2.5 text-small rounded-full bg-surface-4 text-muted-foreground inline-flex items-center"
-                  >
-                    ＋
-                  </button>
-                  {reactPickFor === post.id && (
-                    <div className="absolute z-20 bottom-full mb-1 left-0 flex gap-1 bg-surface-1 border border-border rounded-lg p-1">
-                      {REACTIONS.map((e) => (
-                        <button key={e} type="button" onClick={() => react(post, e)} className="w-9 h-9 text-lg hover:bg-secondary">
-                          {e}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <ReactionBar
+                  reactions={post.reactions}
+                  onToggle={(emoji) => subscribed ? react(post, emoji) : toast.error("Подпишитесь, чтобы реагировать")}
+                />
+                <button
+                  type="button"
+                  onClick={() => subscribed ? setReactPickFor(post.id) : toast.error("Подпишитесь, чтобы реагировать")}
+                  aria-label="Добавить реакцию"
+                  className="h-8 px-2.5 text-small rounded-full bg-surface-4 text-muted-foreground inline-flex items-center"
+                >
+                  ＋
+                </button>
                 <button
                   type="button"
                   onClick={() => setCommentsFor(post)}
@@ -887,6 +866,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           ]}
         />
       )}
+      <ReactionPicker
+        open={!!reactPickFor}
+        onClose={() => setReactPickFor(null)}
+        onPick={(emoji) => { const post = posts.find((p) => p.id === reactPickFor); if (post) react(post, emoji); }}
+      />
+
       {commentsFor && (
         <CommentsSheet
           post={commentsFor}

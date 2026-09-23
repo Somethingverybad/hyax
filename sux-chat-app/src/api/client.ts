@@ -216,6 +216,8 @@ export interface SavedImage {
 }
 
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
+import type { ReactionSummary } from "@/lib/reactions";
+
 export interface PinnedInfo {
   id: string;
   sender_username: string;
@@ -877,6 +879,17 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/admins/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId, action }) });
     return res.json();
   },
+  /** Поставить или снять реакцию на сообщение. Повторное нажатие снимает.
+   *  409 — упёрлись в предел разных реакций на человека. */
+  reactToMessage: async (messageId: string, emoji: string): Promise<{ reactions: ReactionSummary[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/react/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ emoji }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Не удалось поставить реакцию");
+    return data;
+  },
+
   reactToPost: async (msgId: string, value: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/react/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ value }) });
     return res.json();
