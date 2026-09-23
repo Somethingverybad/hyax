@@ -28,8 +28,20 @@ URL_ONLY_RE = re.compile(r'^\s*(https?://[^\s<>"\']+)\s*$', re.IGNORECASE)
 # Тип определяем по сигнатуре самого файла, а не по расширению в ссылке и не
 # по Content-Type: его многие отдают как application/octet-stream (наш же
 # nginx на /apk/ — тоже), и строгая проверка заголовка отбрасывала картинки.
-MAX_BYTES = 25 * 1024 * 1024
+# Видео с Pinterest бывает тяжелее картинки, но это всё ещё короткий ролик.
+MAX_BYTES = 60 * 1024 * 1024
 TIMEOUT = (8, 25)  # соединение, чтение
+
+# Страницы, из которых сама медиа достаётся разбором: ссылка ведёт на
+# страницу, а не на файл. Pinterest отдаёт адрес картинки или видео в
+# метатегах Open Graph — ими же пользуются мессенджеры для предпросмотра.
+PAGE_HOSTS = ("pinterest.com", "pinterest.ru", "pin.it", "pinterest.co.uk", "pinterest.fr", "pinterest.de")
+
+VIDEO_TYPES = {
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
+}
 
 IMAGE_TYPES = {
     "image/jpeg": ".jpg",
@@ -50,6 +62,12 @@ def sniff(head: bytes):
         return "image/gif", ".gif"
     if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
         return "image/webp", ".webp"
+    # Видео: с Pinterest приходит mp4, и показать его надо так же, как
+    # присланный файлом, — иначе в переписке осталась бы голая ссылка.
+    if head[4:8] == b"ftyp":
+        return "video/mp4", ".mp4"
+    if head.startswith(b"\x1aE\xdf\xa3"):
+        return "video/webm", ".webm"
     return None
 
 
@@ -57,6 +75,46 @@ def image_url_in(content):
     """Ссылка, если всё сообщение — это она; иначе None."""
     m = URL_ONLY_RE.match(content or "")
     return m.group(1) if m else None
+
+
+def _is_page(url) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in PAGE_HOSTS)
+
+
+def _media_from_page(url):
+    """Адрес картинки или видео со страницы Pinterest — или None.
+
+    Берём из метатегов Open Graph: это то же, что читают мессенджеры для
+    предпросмотра, и не требует ни ключей, ни разбора вёрстки. Видео важнее
+    картинки: у видео-пина og:image — всего лишь обложка.
+    """
+    import requests
+    try:
+        r = requests.get(
+            url, timeout=TIMEOUT, allow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; hyax-link-preview/1.0)"},
+        )
+        if r.status_code != 200:
+            return None
+        html = r.text[:400000]
+    except Exception:
+        logger.exception("link-image: страница не открылась")
+        return None
+
+    for prop in ("og:video:secure_url", "og:video:url", "og:video", "og:image"):
+        m = re.search(
+            r'<meta[^>]+(?:property|name)=["\']' + re.escape(prop) + r'["\'][^>]+content=["\']([^"\']+)',
+            html, re.IGNORECASE)
+        if not m:
+            m = re.search(
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']' + re.escape(prop) + r'["\']',
+                html, re.IGNORECASE)
+        if m:
+            found = m.group(1).strip()
+            if found.startswith("http"):
+                return found
+    return None
 
 
 def _public_host(url) -> bool:
@@ -91,6 +149,15 @@ def fetch_image(message_id, url):
         logger.info("link-image: непубличный адрес, пропускаю")
         return
 
+    # Ссылка на страницу (Pinterest) — сперва достаём из неё адрес файла.
+    if _is_page(url):
+        found = _media_from_page(url)
+        if not found or not _public_host(found):
+            logger.info("link-image: со страницы нечего забрать: %s", url[:80])
+            return
+        logger.info("link-image: со страницы %s → %s", url[:60], found[:80])
+        url = found
+
     tmp_path = None
     try:
         r = requests.get(url, timeout=TIMEOUT, stream=True, allow_redirects=True,
@@ -104,7 +171,7 @@ def fetch_image(message_id, url):
         if not kind:
             # Сигнатура не картиночная — доверяем заголовку, только если он
             # прямо называет тип из нашего списка.
-            ext = IMAGE_TYPES.get(header_ctype)
+            ext = IMAGE_TYPES.get(header_ctype) or VIDEO_TYPES.get(header_ctype)
             if not ext:
                 return
             kind = (header_ctype, ext)

@@ -381,6 +381,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Двойной тап считаем сами: событие dblclick в WKWebView до нас не доходит —
   // экран уже слушает касания для свайпа и удержания.
   const lastTapRef = useRef<{ id: string; at: number } | null>(null);
+  // Касание это было или мышь: на касании двойной тап считаем сами, а
+  // системное событие двойного щелчка на iPhone приходит следом — без этой
+  // метки реакция ставилась и тут же снималась двумя запросами подряд.
+  const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -1008,7 +1012,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Жесты — только для пальца/стилуса. Мышью меню открывает правая кнопка
     // (onContextMenu); раньше зажатая кнопка через 450 мс запускала «долгое
     // нажатие» и подменяла меню у курсора нижней шторкой во весь экран.
-    if (e.pointerType === "mouse") return;
+    if (e.pointerType === "mouse") { touchInputRef.current = false; return; }
+    touchInputRef.current = true;
     swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
     swipeActiveRef.current = false;
     swipeTimeRef.current = performance.now();
@@ -2073,7 +2078,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       }}
                       // Двойной тап ставит сердце — как в мессенджерах;
                       // остальные реакции в меню сообщения.
-                      onDoubleClick={() => { if (!message.pending) toggleReaction(message, DEFAULT_REACTION); }}
+                      // Мышью двойной щелчок ловим системным событием; на
+                      // касании его игнорируем — там считаем тапы сами.
+                      onDoubleClick={() => {
+                        if (touchInputRef.current || message.pending) return;
+                        toggleReaction(message, DEFAULT_REACTION);
+                      }}
                       className={cn(
                       "relative",
                       !bareBubble && "px-4 py-3 rounded-lg",

@@ -1065,3 +1065,53 @@ class PlaylistShareTests(TestCase):
 
     def test_only_owner_shares(self):
         self.assertEqual(client_for(self.other).post(f"/api/playlists/{self.pl.id}/share/").status_code, 404)
+
+
+
+class LinkMediaTests(TestCase):
+    """Разбор ссылок: страница Pinterest и определение типа по сигнатуре."""
+
+    def test_page_hosts(self):
+        from chat.linkimage import _is_page
+        for url in ("https://pin.it/abc123", "https://ru.pinterest.com/pin/12345/",
+                    "https://www.pinterest.com/pin/9/"):
+            self.assertTrue(_is_page(url), url)
+        for url in ("https://example.com/a.jpg", "https://pinterest.com.evil.ru/x"):
+            self.assertFalse(_is_page(url), url)
+
+    def test_sniff_knows_video_and_images(self):
+        from chat.linkimage import sniff
+        self.assertEqual(sniff(b"\xff\xd8\xff\xe0")[1], ".jpg")
+        self.assertEqual(sniff(b"\x00\x00\x00 ftypisom")[1], ".mp4")
+        self.assertIsNone(sniff(b"<!DOCTYPE html>"))
+
+    def test_media_from_page_prefers_video(self):
+        from unittest.mock import patch
+        from chat.linkimage import _media_from_page
+        html = (
+            '<meta property="og:image" content="https://i.pinimg.com/cover.jpg">'
+            '<meta property="og:video" content="https://v.pinimg.com/clip.mp4">'
+        )
+
+        class R:
+            status_code = 200
+            text = html
+
+        with patch("requests.get", return_value=R()):
+            self.assertEqual(_media_from_page("https://pin.it/x"), "https://v.pinimg.com/clip.mp4")
+
+    def test_media_from_page_falls_back_to_image(self):
+        from unittest.mock import patch
+        from chat.linkimage import _media_from_page
+
+        class R:
+            status_code = 200
+            text = '<meta content="https://i.pinimg.com/p.jpg" property="og:image">'
+
+        with patch("requests.get", return_value=R()):
+            self.assertEqual(_media_from_page("https://pin.it/x"), "https://i.pinimg.com/p.jpg")
+
+    def test_url_only_message(self):
+        from chat.linkimage import image_url_in
+        self.assertEqual(image_url_in("  https://pin.it/x  "), "https://pin.it/x")
+        self.assertIsNone(image_url_in("смотри https://pin.it/x"))
