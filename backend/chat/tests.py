@@ -925,3 +925,58 @@ class PlaylistTests(TestCase):
         r = client_for(self.me).delete(f"/api/playlists/{pl.id}/tracks/{added.data['track']['id']}/")
         self.assertEqual(r.status_code, 204)
         self.assertEqual(pl.tracks.count(), 0)
+
+
+
+class ButtonTests(TestCase):
+    """Кнопки под сообщением: ставит только бот, нажать может участник."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.stranger = make_user("stranger")
+        bot_user = User.objects.create_user(username="botty")
+        self.bot = Profile.objects.create(user=bot_user, username="botty", is_bot=True,
+                                          bot_owner=self.me, bot_token="tok-123")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.bot):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.rows = [[{"text": "Первый", "data": "pick:1"}, {"text": "Второй", "data": "pick:2"}]]
+
+    def bot_client(self):
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION="Bot tok-123")
+        return c
+
+    def test_bot_sends_buttons(self):
+        r = self.bot_client().post("/api/messages/",
+                                   {"chat": str(self.chat.id), "content": "Выберите", "buttons": self.rows},
+                                   format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["buttons"], self.rows)
+
+    def test_person_cannot_fake_buttons(self):
+        r = client_for(self.me).post("/api/messages/",
+                                     {"chat": str(self.chat.id), "content": "я бот", "buttons": self.rows},
+                                     format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_press_known_button(self):
+        msg = self.bot_client().post("/api/messages/",
+                                     {"chat": str(self.chat.id), "content": "Выберите", "buttons": self.rows},
+                                     format="json").data
+        r = client_for(self.me).post(f"/api/messages/{msg['id']}/press/", {"data": "pick:2"}, format="json")
+        self.assertEqual(r.status_code, 200)
+
+    def test_press_unknown_button_rejected(self):
+        msg = self.bot_client().post("/api/messages/",
+                                     {"chat": str(self.chat.id), "content": "Выберите", "buttons": self.rows},
+                                     format="json").data
+        r = client_for(self.me).post(f"/api/messages/{msg['id']}/press/", {"data": "pick:99"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_outsider_cannot_press(self):
+        msg = self.bot_client().post("/api/messages/",
+                                     {"chat": str(self.chat.id), "content": "Выберите", "buttons": self.rows},
+                                     format="json").data
+        r = client_for(self.stranger).post(f"/api/messages/{msg['id']}/press/", {"data": "pick:1"}, format="json")
+        self.assertEqual(r.status_code, 403)

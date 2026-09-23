@@ -102,13 +102,19 @@ def fetch(url: str, mode: str = "720", out_dir: str | None = None) -> Media:
     везде без перекодирования — а перекодировать час видео на сервере дорого.
     """
     out_dir = out_dir or tempfile.mkdtemp(prefix="media-bot-")
+    # YouTube с куками сейчас отвечает «страницу нужно перезагрузить» и не даёт
+    # ничего, а без них отдаёт нормальные 720p. Поэтому для него сначала
+    # пробуем без кук, а с куками — только если без них не вышло (возрастные и
+    # приватные ролики). На других площадках наоборот: там куки и нужны.
+    first, second = (False, True) if _platform(url) == "youtube" else (True, False)
     try:
-        return _fetch(url, mode, out_dir, use_cookies=True)
+        return _fetch(url, mode, out_dir, use_cookies=first)
     except Exception as e:
-        if not _cookies_for(url) or not _looks_like_cookie_problem(e):
+        if not _cookies_for(url):
             raise
-        log.warning("куки не приняты (%s) — повторяю без них", str(e)[:80])
-        return _fetch(url, mode, out_dir, use_cookies=False)
+        log.warning("не вышло (%s) — пробую %s кук", str(e)[:70],
+                    "с" if second else "без")
+        return _fetch(url, mode, out_dir, use_cookies=second)
 
 
 def _fetch(url: str, mode: str, out_dir: str, use_cookies: bool) -> Media:
@@ -135,12 +141,14 @@ def _fetch(url: str, mode: str, out_dir: str, use_cookies: bool) -> Media:
         return Media(path=path, title=title, is_audio=True, duration=dur)
 
     cap = LONG_CAP.get(int(mode), 720)
-    fmt = (
-        f"bestvideo[height<={cap}][width<={cap}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
-        f"bestvideo[height<={cap}][width<={cap}]+bestaudio/"
-        f"best[height<={cap}][width<={cap}]/best"
-    )
+    # Раньше здесь стояло ещё и ограничение по ширине с жёстким требованием
+    # avc1+mp4a — под него подходил только старый совмещённый поток, и вместо
+    # запрошенных 720p приходило 360p. Теперь ограничение по высоте, а H.264
+    # и AAC — предпочтение через сортировку: их играют все устройства, но если
+    # их нет, лучше отдать другой кодек, чем уронить качество.
+    fmt = f"bestvideo[height<={cap}]+bestaudio/best[height<={cap}]/best"
     opts = {"format": fmt, "merge_output_format": "mp4", "outtmpl": outtmpl,
+            "format_sort": [f"res:{cap}", "vcodec:h264", "acodec:aac"],
             "noplaylist": True, "quiet": True}
     if cookies:
         opts["cookiefile"] = cookies
@@ -158,3 +166,35 @@ def safe_name(title: str, ext: str) -> str:
     """Имя файла из заголовка: без слэшей и прочего, что ломает пути."""
     clean = re.sub(r"[^\w\s.,()\[\]-]", "", title, flags=re.U).strip() or "media"
     return f"{clean[:80]}{ext}"
+
+
+def search(query: str, limit: int = 5) -> list[dict]:
+    """Поиск по YouTube: [{title, url, uploader, duration}].
+
+    Только перечень, без загрузки: ссылки берём и качаем потом, когда человек
+    выберет строку. Куки здесь не нужны — выдача поиска открыта.
+    """
+    opts = {"quiet": True, "skip_download": True, "extract_flat": True, "noplaylist": True}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    out = []
+    for e in (info.get("entries") or []):
+        if not e:
+            continue
+        vid = e.get("id") or ""
+        out.append({
+            "url": e.get("url") or f"https://www.youtube.com/watch?v={vid}",
+            "title": e.get("title") or "Без названия",
+            "uploader": e.get("uploader") or e.get("channel") or "",
+            "duration": e.get("duration") or 0,
+        })
+    return out
+
+
+def fmt_duration(seconds) -> str:
+    s = int(seconds or 0)
+    if s <= 0:
+        return ""
+    h, rest = divmod(s, 3600)
+    m, sec = divmod(rest, 60)
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"

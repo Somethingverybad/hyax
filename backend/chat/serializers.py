@@ -338,6 +338,37 @@ class MessageSerializer(serializers.ModelSerializer):
     sender = MessageSenderSerializer(read_only=True)
     reactions = serializers.SerializerMethodField()
 
+    def validate_buttons(self, value):
+        """Кнопки ставит только бот и только в допустимом виде.
+
+        Иначе любой мог бы прислать сообщение, неотличимое от бота, и увести
+        человека по чужому действию. Форма: строки рядов, в ряду — кнопки
+        {text, data}; data уходит обратно боту при нажатии.
+        """
+        me = getattr(getattr(self.context.get("request"), "user", None), "profile", None)
+        if not value:
+            return []
+        if not me or not me.is_bot:
+            raise serializers.ValidationError("Кнопки может ставить только бот")
+        if not isinstance(value, list) or len(value) > 8:
+            raise serializers.ValidationError("Не больше восьми рядов кнопок")
+        rows = []
+        for row in value:
+            if not isinstance(row, list) or len(row) > 4:
+                raise serializers.ValidationError("В ряду не больше четырёх кнопок")
+            out = []
+            for btn in row:
+                if not isinstance(btn, dict):
+                    raise serializers.ValidationError("Кнопка — это объект")
+                text = str(btn.get("text") or "").strip()[:64]
+                data = str(btn.get("data") or "").strip()[:128]
+                if not text or not data:
+                    raise serializers.ValidationError("У кнопки нужны text и data")
+                out.append({"text": text, "data": data})
+            if out:
+                rows.append(out)
+        return rows
+
     def get_reactions(self, obj):
         me = getattr(getattr(self.context.get("request"), "user", None), "profile", None)
         return reactions_payload(obj, me.id if me else None)
@@ -350,7 +381,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'reactions']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'reactions', 'buttons']
         read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title']
 
     def get_forwarded_from(self, obj):

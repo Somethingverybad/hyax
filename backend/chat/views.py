@@ -781,6 +781,47 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Response({"pinned_message": pinned_payload(chat.pinned_message)})
 
     @action(detail=True, methods=['post'])
+    def press(self, request, pk=None):
+        """Нажатие на кнопку под сообщением: {data} уходит боту-автору.
+
+        В историю не пишем — это сигнал, а не сообщение: бот сам решит, что
+        ответить. Нажать может только тот, кто видит чат.
+        """
+        msg = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        if not _can_see_chat(msg.chat, profile):
+            return Response({"error": "Нет доступа к сообщению"}, status=403)
+        data = str(request.data.get('data') or '').strip()[:128]
+        allowed = {b.get('data') for row in (msg.buttons or []) for b in row}
+        if not data or data not in allowed:
+            return Response({"error": "Такой кнопки нет"}, status=400)
+        if not msg.sender or not msg.sender.is_bot:
+            return Response({"error": "Эти кнопки никому не адресованы"}, status=400)
+
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(
+                f'user_{msg.sender_id}',
+                {
+                    'type': 'notification',
+                    'data': {
+                        'type': 'button',
+                        'chat_id': str(msg.chat_id),
+                        'message_id': str(msg.id),
+                        'data': data,
+                        'from_id': str(profile.id),
+                        'from_username': profile.username,
+                    },
+                },
+            )
+        return Response({"ok": True})
+
+    @action(detail=True, methods=['post'])
     def react(self, request, pk=None):
         """Поставить или снять реакцию: {emoji}. Повторное нажатие снимает.
 

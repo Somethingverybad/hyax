@@ -64,6 +64,8 @@ interface Message {
   id: string;
   /** Сводка реакций: эмодзи, сколько и моя ли. */
   reactions?: ReactionSummary[];
+  /** Кнопки под сообщением — их ставит бот; нажатие уходит ему. */
+  buttons?: { text: string; data: string }[][];
   content: string | null;
   file_url: string | null;
   file_name: string | null;
@@ -243,6 +245,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [recPressed, setRecPressed] = useState(false);
   // Сообщение, для которого открыт выбор реакции, и раскрыт ли полный набор.
   const [reactFor, setReactFor] = useState<Message | null>(null);
+  // Какая кнопка сейчас нажата: пока ответ не ушёл, повторное нажатие не пускаем.
+  const [pressing, setPressing] = useState<string | null>(null);
   // Сообщение с музыкой, для которого выбирают плейлист.
   const [playlistFor, setPlaylistFor] = useState<Message | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
@@ -1363,6 +1367,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       : m)));
   }, [reactionEvent?.at, chatId, userId]);
 
+  /** Нажатие на кнопку бота: сигнал уходит ему, в историю ничего не пишем. */
+  const pressButton = async (message: Message, data: string) => {
+    const key = `${message.id}:${data}`;
+    if (pressing) return;
+    setPressing(key);
+    try {
+      await api.pressButton(message.id, data);
+    } catch (e: any) {
+      toast.error(e?.message || "Кнопка не сработала");
+    } finally {
+      setPressing(null);
+    }
+  };
+
   /** Поставить или снять реакцию. Логика общая с каналами (Reactions.tsx). */
   const toggleReaction = (message: Message, emoji: string) => {
     setReactFor(null);
@@ -2214,6 +2232,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         </div>
                       )}
                     </div>
+
+                    {/* Кнопки бота: ряд за рядом, во всю ширину пузыря. */}
+                    {!!message.buttons?.length && (
+                      <div className="mt-1.5 space-y-1.5">
+                        {message.buttons.map((row, ri) => (
+                          <div key={ri} className="flex gap-1.5">
+                            {row.map((b) => (
+                              <button
+                                key={b.data}
+                                type="button"
+                                disabled={pressing === `${message.id}:${b.data}`}
+                                onClick={(e) => { e.stopPropagation(); void pressButton(message, b.data); }}
+                                className="flex-1 min-h-10 px-3 rounded-md bg-surface-4 border border-border text-small font-medium active:opacity-70 disabled:opacity-50"
+                              >
+                                {b.text}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Реакции — под пузырём, как в тайллисте. */}
                     <ReactionBar

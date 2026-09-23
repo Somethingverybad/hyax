@@ -189,6 +189,10 @@ class Message(models.Model):
     forwarded_title = models.CharField(max_length=120, blank=True, default="")
     # Редактирование и удаление.
     is_edited = models.BooleanField(default=False)
+    # Кнопки под сообщением: [[{"text": "...", "data": "..."}], ...] — строки
+    # по рядам. Ставит только бот (см. MessageSerializer.validate_buttons):
+    # иначе любой мог бы подделать вид сообщения от бота.
+    buttons = models.JSONField(default=list, blank=True)
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех
     # Момент последнего изменения (текст, удаление у всех). По нему клиент
     # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,

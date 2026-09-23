@@ -900,6 +900,16 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/admins/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId, action }) });
     return res.json();
   },
+  /** Нажать кнопку под сообщением бота: data уходит боту событием. */
+  pressButton: async (messageId: string, data: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/press/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ data }),
+    });
+    if (!res.ok) {
+      throw new Error((await res.json().catch(() => ({})))?.error || "Кнопка не сработала");
+    }
+  },
+
   /** Поставить или снять реакцию на сообщение. Повторное нажатие снимает.
    *  409 — упёрлись в предел разных реакций на человека. */
   reactToMessage: async (messageId: string, emoji: string): Promise<{ reactions: ReactionSummary[] }> => {
