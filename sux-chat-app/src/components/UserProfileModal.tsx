@@ -6,7 +6,8 @@ import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
 import { api, mediaUrl } from "@/api/client";
 import { lastSeenText } from "@/lib/lastSeen";
-import { shareProfile } from "@/lib/share";
+import { shareProfile, profileLink } from "@/lib/share";
+import ShareToChat from "@/components/ShareToChat";
 import { toast } from "sonner";
 
 interface UserProfile {
@@ -37,6 +38,8 @@ const UserProfileModal = ({
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  // Профиль собеседника можно переслать прямо в хуяксе, не уходя наружу.
+  const [shareOpen, setShareOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   // Заблокирован ли этот человек мной — кнопка переключается между
   // «Заблокировать» и «Разблокировать».
@@ -134,11 +137,7 @@ const UserProfileModal = ({
               )}
               <button
                 type="button"
-                onClick={async () => {
-                  const r = await shareProfile(profile.username);
-                  if (r === "copied") toast.success("Профиль скопирован");
-                  else if (r === "error") toast.error("Не удалось поделиться");
-                }}
+                onClick={() => setShareOpen(true)}
                 className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
               >
                 <Share2 className="w-4 h-4" />
@@ -219,6 +218,19 @@ const UserProfileModal = ({
           </div>
         )}
       </div>
+      {profile && (
+        <ShareToChat
+          open={shareOpen}
+          title={`Отправить профиль ${profile.username}`}
+          text={profileLink(profile.username)}
+          onClose={() => setShareOpen(false)}
+          onShareOutside={async () => {
+            const r = await shareProfile(profile.username);
+            if (r === "copied") toast.success("Ссылка скопирована");
+            else if (r === "error") toast.error("Не удалось поделиться");
+          }}
+        />
+      )}
       {galleryOpen && profile && (
         <SavedGallery profileId={profile.id} own={false} title={`Сохранёнки ${profile.username}`} onClose={() => setGalleryOpen(false)} />
       )}

@@ -7,7 +7,8 @@ import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
-import { shareProfile } from "@/lib/share";
+import { shareProfile, profileLink } from "@/lib/share";
+import ShareToChat from "@/components/ShareToChat";
 import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
@@ -160,6 +161,9 @@ const ProfilePage = () => {
   // Сохранёнки: на экране только счётчик, сама сетка — в галерее.
   const [saved, setSaved] = useState<{ count: number } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  // «Поделиться профилем»: сперва предлагаем отправить внутри хуякса, а уже
+  // потом системное окно — раньше был только выход наружу.
+  const [shareOpen, setShareOpen] = useState(false);
   const loadSaved = () =>
     api.listSavedImages(undefined, 1).then((r) => setSaved({ count: r.count })).catch(() => setSaved({ count: 0 }));
   useEffect(() => { void loadSaved(); }, []);
@@ -306,12 +310,7 @@ const ProfilePage = () => {
 
           <button
             type="button"
-            onClick={async () => {
-              if (!profile?.username) return;
-              const r = await shareProfile(profile.username);
-              if (r === "copied") toast.success("Профиль скопирован");
-              else if (r === "error") toast.error("Не удалось поделиться");
-            }}
+            onClick={() => { if (profile?.username) setShareOpen(true); }}
             className="shrink-0 h-10 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"
           >
             <Share2 className="w-4 h-4" />
@@ -426,6 +425,19 @@ const ProfilePage = () => {
           </div>
         </div>
       </div>
+
+      <ShareToChat
+        open={shareOpen}
+        title="Отправить профиль"
+        text={profile?.username ? profileLink(profile.username) : ""}
+        onClose={() => setShareOpen(false)}
+        onShareOutside={async () => {
+          if (!profile?.username) return;
+          const r = await shareProfile(profile.username);
+          if (r === "copied") toast.success("Ссылка скопирована");
+          else if (r === "error") toast.error("Не удалось поделиться");
+        }}
+      />
 
       {cropping && (
         <ImageCropper

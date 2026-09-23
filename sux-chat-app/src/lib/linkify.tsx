@@ -51,6 +51,13 @@ export function packLinkKind(raw: string): { kind: "sound" | "sticker" | "theme"
   return { kind: m[1] === "sp" ? "sound" : m[1] === "stp" ? "sticker" : "theme", id: m[2] };
 }
 
+/** Ник из ссылки на профиль /u/<ник> — для карточки профиля в сообщении. */
+export function profileLinkName(raw: string): string | null {
+  const m = /^\/u\/([^/?]+)/.exec(internalPath(raw) || "");
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
 export const openExternal = (url: string) => {
   const href = url.startsWith("http") ? url : `https://${url}`;
   const w = window as unknown as { electronAPI?: { openExternal?: (u: string) => void } };

@@ -19,8 +19,9 @@ import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/comp
 import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
-import { Linkify, packLinkKind } from "@/lib/linkify";
+import { Linkify, packLinkKind, profileLinkName } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
+import ProfileLinkCard from "./ProfileLinkCard";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
@@ -1951,9 +1952,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
           {feedRows.map((message, index) => {
             const isOwn = message.sender?.id === userId;
-            // Ссылка на пак или тему разворачивается карточкой (PackLinkCard),
-            // и в тексте её уже не показываем.
-            const packLink = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u)) || null;
+            // Ссылка на пак, тему или профиль разворачивается карточкой
+            // (PackLinkCard / ProfileLinkCard), и в тексте её уже не показываем.
+            const packLink = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u)) || null;
             const shownText = packLink
               // Схлопываем пробелы, оставшиеся от вырезанной ссылки, но переносы строк храним.
               ? (message.content || "").replace(packLink, "").replace(/[ \t]{2,}/g, " ").trim()
@@ -2205,7 +2206,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           разворачивается в плитку с кнопкой «Добавить себе».
                           Саму ссылку из текста убираем — длинный адрес рядом с
                           карточкой только загромождал пузырь. */}
-                      {packLink && <PackLinkCard url={packLink} own={isOwn && !bareBubble} />}
+                      {packLink && (profileLinkName(packLink)
+                        ? <ProfileLinkCard url={packLink} own={isOwn && !bareBubble} />
+                        : <PackLinkCard url={packLink} own={isOwn && !bareBubble} />)}
 
                       {/* Текст сообщения */}
                       {message.content && (

@@ -195,6 +195,22 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const openChatFromStateRef = useRef<{ chatId: string; kind?: string; title?: string } | null>(
     (location.state as any)?.chatId ? { chatId: (location.state as any).chatId, kind: (location.state as any).kind, title: (location.state as any).title } : null);
 
+  // А это повторные переходы в /chat с chatId, когда мы уже здесь: «Написать»
+  // на карточке профиля в сообщении. Экран не пересоздаётся, и начальное
+  // чтение выше их не видит — ловим по смене location.key. Чат мог быть только
+  // что создан, поэтому список подтягиваем заново.
+  const firstLocationKeyRef = useRef(location.key);
+  useEffect(() => {
+    if (location.key === firstLocationKeyRef.current) return;
+    const st = location.state as { chatId?: string; kind?: string; title?: string } | null;
+    if (!st?.chatId) return;
+    setSelectedChatId(st.chatId);
+    setSelectedKind(st.kind);
+    if (st.title) setSelectedChatTitle(st.title);
+    void refreshChats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+
   // При открытии чата помечаем его прочитанным на сервере и гасим бейдж.
   useEffect(() => {
     if (!selectedChatId) return;
