@@ -448,6 +448,88 @@ textarea,
   .route-transition, .screen-push, .screen-pop { animation: none !important; }
 }
 
+/* ── Стекло ────────────────────────────────────────────────────────────────
+   data-shape="glass" — поверхности полупрозрачные, фон за ними размыт, акцент
+   светится. Числа из стайлгайда: размытие 20, непрозрачность поверхности 60%.
+   Правила ни к одной теме по имени не привязаны: цвета берутся из переменных,
+   поэтому своя тема со стилем «стекло» получает тот же вид. */
+[data-shape="glass"] {
+  --glass-blur: 20px;
+  --glass-fill: 0.6;        /* непрозрачность самой поверхности */
+  --glass-line: 0.1;        /* яркость тонкой грани по краю */
+  --glass-glow: 0 0 28px -6px hsl(var(--primary) / 0.45);
+}
+[data-shape="glass"][data-base="light"] { --glass-edge: 255 255 255; --glass-shade: 11 11 12; }
+[data-shape="glass"][data-base="dark"] { --glass-edge: 255 255 255; --glass-shade: 0 0 0; --glass-line: 0.14; }
+
+/* Подсветки за стеклом: без них размывать нечего и поверхность выглядит
+   просто полупрозрачной. Фиксированные — фон не едет за прокруткой. */
+/* Те же подсветки — и на полноэкранных подложках: размытие показывает то, что
+   нарисовано под элементом, а страницы залиты плотным фоном, и без этого
+   стекло размывало бы ровную заливку. Привязка к окну (fixed) совмещает
+   рисунок на всех слоях. */
+[data-shape="glass"] body,
+[data-shape="glass"] .bg-background {
+  background-image:
+    radial-gradient(60% 45% at 12% 0%, hsl(var(--primary) / 0.22), transparent 70%),
+    radial-gradient(55% 40% at 95% 12%, hsl(var(--success) / 0.18), transparent 70%),
+    radial-gradient(70% 50% at 50% 100%, hsl(var(--primary) / 0.10), transparent 75%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Карточки, шапки, панель ввода и нижняя навигация — одно и то же стекло. */
+[data-shape="glass"] :is(.ui-card, .ui-bottom-nav, .chat-compose, .pad-safe-top, .ui-status-chip) {
+  background-color: hsl(var(--surface-2) / var(--glass-fill));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+}
+[data-shape="glass"] .ui-card {
+  border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+  box-shadow: 0 8px 24px -12px rgb(var(--glass-shade) / 0.35);
+}
+[data-shape="glass"] :is(.ui-bottom-nav, .pad-safe-top) {
+  border-color: rgb(var(--glass-edge) / var(--glass-line));
+}
+
+/* Поля ввода — то же стекло, но тоньше, чтобы текст читался. */
+[data-shape="glass"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea):not(.bg-transparent) {
+  background-color: hsl(var(--surface-3) / 0.55);
+  border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Акцентные кнопки светятся — «inner glow» из стайлгайда. */
+[data-shape="glass"] :is(button, a, [role="button"], label):is(.bg-primary, .ui-btn) {
+  box-shadow: var(--glass-glow);
+}
+[data-shape="glass"] :is(button, a, [role="button"], label):is(.bg-primary, .ui-btn):active:not(:disabled) {
+  box-shadow: none;
+}
+/* Активная вкладка нижней навигации — тоже со свечением. */
+[data-shape="glass"] .ui-nav-on { text-shadow: 0 0 18px hsl(var(--primary) / 0.5); }
+
+/* Входящий пузырь — стекло, свой остаётся плотным акцентом со свечением:
+   так переписка читается и поверх подсветок. */
+[data-shape="glass"] .bubble-in {
+  background-color: hsl(var(--bubble-in) / 0.62);
+  border: 1px solid rgb(var(--glass-edge) / var(--glass-line));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+[data-shape="glass"] .bubble-own { box-shadow: var(--glass-glow); }
+
+/* Размытие — самая дорогая часть картинки. Кому анимации и эффекты мешают,
+   тому оставляем плотные поверхности. */
+@media (prefers-reduced-transparency: reduce) {
+  [data-shape="glass"] :is(.ui-card, .ui-bottom-nav, .chat-compose, .pad-safe-top, .bubble-in) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: hsl(var(--surface-2));
+  }
+}
+
 /* Прыжок к закреплённому сообщению: короткая подсветка, чтобы глаз нашёл его в ленте. */
 .msg-flash {
   animation: msg-flash 1.2s ease-out;
