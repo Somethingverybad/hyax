@@ -20,7 +20,7 @@ import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { App as CapApp } from "@capacitor/app";
 import PublicProfile from "./pages/PublicProfile";
 import PublicChannel from "./pages/PublicChannel";
@@ -51,16 +51,27 @@ const closeWindow = () => {
   }
 };
 
-// Переход между экранами: лёгкий фейд со сдвигом. Ключ по пути
-// перемонтирует обёртку, и CSS-анимация входа (см. index.css) запускается
-// заново. Только opacity и transform — их считает композитор, раскладка не
-// пересчитывается, поэтому переход не дёргается даже на слабых устройствах.
+// Переход между экранами. Ключ по пути перемонтирует обёртку, и CSS-анимация
+// входа (см. index.css) запускается заново. Только opacity и transform — их
+// считает композитор, раскладка не пересчитывается, поэтому переход не
+// дёргается даже на слабых устройствах.
+//
+// Направление: назад — когда браузер (или системная кнопка «назад») отматывает
+// историю, а также когда путь стал короче; вглубь — когда длиннее. Переход
+// между вкладками одного уровня направления не имеет, там прежнее проявление.
+const routeDepth = (path: string) => path.split("/").filter(Boolean).length;
+
 const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  const navType = useNavigationType();
+  const prevPath = useRef(location.pathname);
+  const step = routeDepth(location.pathname) - routeDepth(prevPath.current);
+  const dir = navType === "POP" ? "screen-pop" : step > 0 ? "screen-push" : step < 0 ? "screen-pop" : "";
   // Переходы — в лог баг-репорта: по ним видно, на каком экране что случилось.
   useEffect(() => { applog.info(`route ${location.pathname}`); }, [location.pathname]);
+  useEffect(() => { prevPath.current = location.pathname; }, [location.pathname]);
   return (
-    <div key={location.pathname} className="route-transition h-full">
+    <div key={location.pathname} className={`route-transition h-full ${dir}`}>
       <Routes location={location}>{children}</Routes>
     </div>
   );

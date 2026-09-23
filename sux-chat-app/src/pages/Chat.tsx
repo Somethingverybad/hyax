@@ -70,6 +70,11 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // списке chats (пока не подписан), поэтому храним kind отдельно.
   const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  // Список чатов «приезжает» слева только как возврат из переписки: при
+  // запуске приложения он просто на месте.
+  const hadChatOpenRef = useRef(false);
+  useEffect(() => { if (selectedChatId) hadChatOpenRef.current = true; }, [selectedChatId]);
+
   // Чат «Избранное» — узнаём у сервера один раз; в списке chats его нет.
   // Из кеша он берётся сразу, поэтому вкладка открывается с сообщениями, а не
   // с «Загрузка…»; ответ сервера потом только подтверждает id.
@@ -819,7 +824,12 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             <BottomNav />
           </>
         ) : selectedChatId ? (
-          isChannelOpen ? (
+          // Смены маршрута тут нет — список и переписка живут на одном экране,
+          // поэтому движение задаём сами: переписка въезжает справа, список
+          // возвращается слева. Ключ по чату перезапускает анимацию при
+          // переходе из чата в чат.
+          <div key={selectedChatId} className="flex-1 min-w-0 min-h-0 flex screen-push">
+          {isChannelOpen ? (
             <ChannelView
               channelId={selectedChatId}
               userId={user.id}
@@ -842,12 +852,13 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onBack={() => setSelectedChatId(null)}
             title={chatHeaderTitle}
           />
-          )
+          )}
+          </div>
         ) : (
           <>
           {/* Обёртка растягивает список на всю высоту — иначе бар прилипал
               к последней строке, а под ним оставалась пустота. */}
-          <div className="flex-1 min-h-0 flex">
+          <div className={`flex-1 min-h-0 flex${hadChatOpenRef.current ? " screen-pop" : ""}`}>
           <ChatSidebar
             userId={user.id}
             username={user.username}

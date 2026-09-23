@@ -420,7 +420,32 @@ textarea,
 }
 
 .route-transition {
-  animation: route-in 160ms ease-out;
+  animation: route-in 170ms ease-out;
+}
+
+/* Переходы между экранами: вглубь экран въезжает справа, назад — слева, между
+   вкладками — прежнее мягкое проявление. Кривая как у системных переходов:
+   резвый старт, мягкая остановка. Двигаем только opacity и transform — их
+   считает композитор, раскладка не пересчитывается. */
+@keyframes screen-push {
+  from { opacity: 0.55; transform: translateX(22px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes screen-pop {
+  from { opacity: 0.55; transform: translateX(-22px); }
+  to { opacity: 1; transform: none; }
+}
+
+.screen-push { animation: screen-push 220ms cubic-bezier(0.32, 0.72, 0, 1); }
+.screen-pop { animation: screen-pop 220ms cubic-bezier(0.32, 0.72, 0, 1); }
+.route-transition.screen-push,
+.route-transition.screen-pop { animation-duration: 220ms; }
+
+/* «Плавнее» не значит «дольше»: кому анимации мешают — системная настройка
+   их отключает. */
+@media (prefers-reduced-motion: reduce) {
+  .route-transition, .screen-push, .screen-pop { animation: none !important; }
 }
 
 /* Прыжок к закреплённому сообщению: короткая подсветка, чтобы глаз нашёл его в ленте. */
