@@ -5,6 +5,7 @@ import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery
 import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
 import { api, mediaUrl } from "@/api/client";
+import { lastSeenText } from "@/lib/lastSeen";
 import { shareProfile } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -13,6 +14,8 @@ interface UserProfile {
   username: string;
   avatar_url?: string | null;
   cover_url?: string | null;
+  is_online?: boolean;
+  last_seen?: string | null;
   bio?: string | null;
   created_at?: string | null;
 }
@@ -111,7 +114,10 @@ const UserProfileModal = ({
               <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
               <div className="min-w-0">
                 <h2 className="text-[24px] leading-tight font-semibold text-foreground truncate">{profile.username}</h2>
-                <p className="mt-2 text-body text-subtle truncate">{profile.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
+                <p className={`mt-1 text-small truncate ${profile.is_online ? "text-online" : "text-subtle"}`}>
+                  {profile.is_online ? "в сети" : lastSeenText(profile.last_seen)}
+                </p>
+                <p className="mt-1 text-body text-subtle truncate">{profile.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
               </div>
             </div>
 

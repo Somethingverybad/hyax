@@ -22,6 +22,10 @@ class Profile(models.Model):
     # Статус «Скрыт»: собеседники видят «не в сети», даже когда человек в
     # приложении (см. presence.shown_online).
     hide_online = models.BooleanField(default=False)
+    # Когда человек последний раз был на связи. Показывается собеседникам как
+    # «в сети 5 минут назад», если он это не выключил и не скрыл сам статус.
+    last_seen = models.DateTimeField(null=True, blank=True)
+    show_last_seen = models.BooleanField(default=True)
     # Кто видит «сохранёнки» в профиле: all — все, selected — только те, кого
     # владелец добавил (SavedViewer), none — никто, кроме него самого.
     SAVED_VISIBILITY = [("all", "Все"), ("selected", "Избранные"), ("none", "Никто")]

@@ -714,6 +714,36 @@ class PresenceTests(TestCase):
         r = client_for(self.friend).get(f"/api/profiles/{self.me.id}/")
         self.assertNotIn("hide_online", r.data)
 
+    def test_last_seen_shown_and_hidden(self):
+        """Время последнего входа: видно, пока не выключено и не скрыт статус."""
+        from django.utils import timezone
+        from chat.presence import shown_last_seen
+        self.me.last_seen = timezone.now()
+        self.me.save()
+        self.assertIsNotNone(shown_last_seen(self.me))
+
+        self.me.show_last_seen = False
+        self.me.save()
+        self.assertIsNone(shown_last_seen(self.me), "выключено — не показываем")
+
+        self.me.show_last_seen = True
+        self.me.hide_online = True
+        self.me.save()
+        self.assertIsNone(shown_last_seen(self.me), "«Скрыт» прячет и время")
+
+    def test_last_seen_in_chat_list(self):
+        from django.utils import timezone
+        self.me.last_seen = timezone.now()
+        self.me.save()
+        chats = client_for(self.friend).get("/api/chats/").data
+        chats = chats.get("results", chats) if isinstance(chats, dict) else chats
+        row = [p for c in chats for p in c["participants"] if p["id"] == str(self.me.id)][0]
+        self.assertIsNotNone(row["last_seen"])
+
+    def test_show_last_seen_is_private(self):
+        r = client_for(self.friend).get(f"/api/profiles/{self.me.id}/")
+        self.assertNotIn("show_last_seen", r.data)
+
     def test_peers_are_direct_chats_only(self):
         self.assertEqual(self.presence.presence_peers(self.me.id), [str(self.friend.id)])
 

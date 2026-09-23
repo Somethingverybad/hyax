@@ -45,6 +45,20 @@ const ProfilePrivacy = () => {
     }
   };
 
+  /** Переключатель в профиле: рисуем сразу, при ошибке возвращаем как было. */
+  const setFlag = async (key: "show_last_seen", value: boolean) => {
+    if (!profile) return;
+    const prev = profile;
+    const next = { ...profile, [key]: value };
+    setProfile(next); writeCache("user", next);
+    try {
+      await api.updateProfile(prev.id, { [key]: value } as any);
+    } catch {
+      toast.error("Не удалось сохранить");
+      setProfile(prev); writeCache("user", prev);
+    }
+  };
+
   const setHidden = async (value: boolean) => {
     if (!profile) return;
     const prev = profile;
@@ -113,6 +127,30 @@ const ProfilePrivacy = () => {
             onClick={() => navigate("/profile/saved-access")}
           />
         </SettingsCard>
+
+        <SettingsCard>
+          <SettingsRow
+            label="Показывать время последнего входа"
+            hint={profile?.show_last_seen === false
+              ? "Собеседники не увидят, когда вы заходили"
+              : "Собеседники видят «в сети 5 минут назад»"}
+            trailing={
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                aria-label="Показывать время последнего входа"
+                checked={profile?.show_last_seen !== false}
+                disabled={!profile || !!profile?.hide_online}
+                onChange={(e) => setFlag("show_last_seen", e.target.checked)}
+              />
+            }
+          />
+        </SettingsCard>
+        {profile?.hide_online && (
+          <p className="px-1 text-caption text-subtle">
+            Пока включено «Скрыть, что я в сети», время последнего входа не показывается никому.
+          </p>
+        )}
 
         <p className="px-1 pt-2 text-small text-subtle">Контент</p>
         <SettingsCard>

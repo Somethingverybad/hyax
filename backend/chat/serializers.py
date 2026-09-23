@@ -13,6 +13,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     # «В сети» — живой статус из presence; у «Скрыт» всегда False.
     is_online = serializers.SerializerMethodField()
+    # Когда был на связи; None — показывать нельзя (скрыт или выключено).
+    last_seen = serializers.SerializerMethodField()
     # Видны ли смотрящему сохранёнки этого человека (см. can_see_saved).
     saved_visible = serializers.SerializerMethodField()
 
@@ -29,9 +31,14 @@ class ProfileSerializer(serializers.ModelSerializer):
         from .presence import shown_online
         return shown_online(obj)
 
+    def get_last_seen(self, obj):
+        from .presence import shown_last_seen
+        when = shown_last_seen(obj)
+        return when.isoformat() if when else None
+
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
@@ -57,7 +64,7 @@ class OwnProfileSerializer(ProfileSerializer):
     незачем. Базовый сериализатор уходит в участников чата и отправителей
     сообщений, поэтому 18+ и отметка о принятии правил живут только здесь."""
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility']
+        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
 

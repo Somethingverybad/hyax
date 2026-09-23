@@ -265,12 +265,15 @@ const ChatSidebar = ({
     }
 
     try {
-      // Каталога людей нет: в личном режиме ищем только каналы, а знакомятся
-      // по ссылке «Поделиться профилем». В группу участника добавляют по
-      // точному нику — сервер отдаёт только полное совпадение.
+      // Каталога людей нет: сервер отдаёт только точное совпадение ника, по
+      // букве перебрать никого нельзя. Поэтому в личном режиме ищем и людей
+      // (иначе бота или собеседника по нику было не найти вовсе), и каналы.
       if (mode === "user") {
-        const chans = await api.discoverChannels(query).catch(() => []);
-        setSearchResults([]);
+        const [people, chans] = await Promise.all([
+          api.searchUsers(query).catch(() => []),
+          api.discoverChannels(query).catch(() => []),
+        ]);
+        setSearchResults(Array.isArray(people) ? people : []);
         setChannelResults(Array.isArray(chans) ? chans : []);
         return;
       }
@@ -599,6 +602,9 @@ const ChatSidebar = ({
                               </AvatarFallback>
                             </Avatar>
                             <span className="font-medium">{user.username}</span>
+                            {(user as any).is_bot && (
+                              <span className="text-caption text-subtle uppercase tracking-wide">бот</span>
+                            )}
                           </div>
                           {groupMode && groupMembers.some((m) => m.id === user.id) ? (
                             <Check className="w-4 h-4 text-primary" />

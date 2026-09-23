@@ -98,6 +98,8 @@ def is_online(profile_id) -> bool:
 STALE = 75
 
 _conns: dict[str, tuple[str, bool, float]] = {}  # channel → (profile, на экране, пинг)
+# Когда в последний раз писали last_seen: чаще раза в минуту в базу не ходим.
+_last_seen_write: dict[str, float] = {}
 
 
 def _active_locked(key: str, now: float) -> bool:
@@ -147,6 +149,31 @@ def is_active(profile_id) -> bool:
 def shown_online(profile) -> bool:
     """Что видят собеседники: «Скрыт» выглядит как «не в сети»."""
     return not getattr(profile, 'hide_online', False) and is_active(profile.id)
+
+
+def shown_last_seen(profile):
+    """Когда собеседник был на связи — или None, если показывать нельзя.
+
+    «Скрыт» прячет и время: иначе настройка была бы половинчатой — человек
+    вроде не в сети, а по времени видно, что только что заходил.
+    """
+    if getattr(profile, 'hide_online', False) or not getattr(profile, 'show_last_seen', True):
+        return None
+    return getattr(profile, 'last_seen', None)
+
+
+def touch_last_seen(profile_id) -> None:
+    """Отметить, что человек на связи. Пишем не чаще раза в минуту: иначе
+    каждый пинг раз в 30 секунд бил бы в базу по строке на каждое устройство."""
+    from django.utils import timezone
+    from .models import Profile
+    key = str(profile_id)
+    now = time.monotonic()
+    with _lock:
+        if now - _last_seen_write.get(key, 0) < 60:
+            return
+        _last_seen_write[key] = now
+    Profile.objects.filter(id=profile_id).update(last_seen=timezone.now())
 
 
 def presence_peers(profile_id) -> list[str]:

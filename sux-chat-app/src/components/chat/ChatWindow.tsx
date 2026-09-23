@@ -14,6 +14,7 @@ import Identicon from "@/components/Identicon";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { DEFAULT_REACTION, type ReactionSummary } from "@/lib/reactions";
+import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
@@ -144,7 +145,7 @@ interface ChatWindowProps {
   chatId: string | null;
   userId: string;
   /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
-  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; is_bot?: boolean } | null;
+  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; is_bot?: boolean; last_seen?: string | null } | null;
   onCall?: () => void;
   /** Метаданные группы (если это групповой чат) — для настроек и прав админа. */
   group?: ChatInfo | null;
@@ -1814,7 +1815,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <span className="text-small text-muted-foreground truncate">
                   {!peer.is_bot && (
                     <span className={peer.is_online ? "text-online" : undefined}>
-                      {peer.is_online ? "в сети" : "не в сети"}
+                      {peer.is_online ? "в сети" : lastSeenText(peer.last_seen)}
                     </span>
                   )}
                   {!peer.is_bot && " · "}@{peer.username}

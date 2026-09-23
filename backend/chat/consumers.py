@@ -566,8 +566,9 @@ class UserConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
-            from .presence import add_connection, conn_open
+            from .presence import add_connection, conn_open, touch_last_seen
             add_connection(profile.id)
+            await database_sync_to_async(touch_last_seen)(profile.id)
             await self.accept()
             if conn_open(self.channel_name, profile.id):
                 await self.broadcast_presence(profile)
@@ -585,6 +586,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                 from .presence import clear as clear_viewing, drop_connection
                 clear_viewing(profile.id)
                 drop_connection(profile.id)
+                from .presence import touch_last_seen
+                await database_sync_to_async(touch_last_seen)(profile.id)
                 from .presence import conn_close
                 if conn_close(self.channel_name, profile.id):
                     await self.broadcast_presence(profile)
@@ -606,7 +609,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                 }))
                 profile = await self.get_user_profile(self.user)
                 if profile:
-                    from .presence import conn_ping
+                    from .presence import conn_ping, touch_last_seen
+                    await database_sync_to_async(touch_last_seen)(profile.id)
                     if conn_ping(self.channel_name, profile.id):
                         await self.broadcast_presence(profile)
                 return

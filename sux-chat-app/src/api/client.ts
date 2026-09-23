@@ -156,6 +156,10 @@ export interface Profile {
   is_online?: boolean;
   /** Статус «Скрыт»: собеседники видят «не в сети». Только в своём профиле. */
   hide_online?: boolean;
+  /** Когда был на связи; null — показывать нельзя (скрыт или выключено). */
+  last_seen?: string | null;
+  /** Показывать время последнего входа. Только в своём профиле. */
+  show_last_seen?: boolean;
   /** Кто видит сохранёнки: all | selected | none. Только в своём профиле. */
   saved_visibility?: "all" | "selected" | "none";
   /** Видны ли смотрящему сохранёнки этого человека. */
@@ -1420,7 +1424,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
