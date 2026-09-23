@@ -97,7 +97,9 @@ def _media_from_page(url):
         )
         if r.status_code != 200:
             return None
-        html = r.text[:400000]
+        # Страница Pinterest весит больше мегабайта, и метатеги бывают
+        # дальше первых сотен тысяч символов — режем с большим запасом.
+        html = r.text[:2_000_000]
     except Exception:
         logger.exception("link-image: страница не открылась")
         return None
