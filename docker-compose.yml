@@ -81,7 +81,9 @@ services:
       HYAX_PARALLEL: ${MEDIA_BOT_PARALLEL:-2}
       COOKIES_DIR: /cookies
     volumes:
-      - ./bots/media-bot/cookies:/cookies:ro
+      # Не только на чтение: yt-dlp продлевает сессию и переписывает файл —
+      # иначе куки протухают за считаные дни.
+      - ./bots/media-bot/cookies:/cookies
     depends_on:
       - api
     networks:
