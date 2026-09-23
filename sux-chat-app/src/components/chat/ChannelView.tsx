@@ -875,7 +875,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
               const cur = viewer.items[viewer.index];
               if (!cur) return;
-              try { const r = await api.addSavedImage(cur.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки видны всем в твоём профиле" }); }
+              try { const r = await api.addSavedImage(cur.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки лежат в профиле — кому они видны, настраивается в разделе «Конфиденциальность»" }); }
               catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
             } },
             { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {

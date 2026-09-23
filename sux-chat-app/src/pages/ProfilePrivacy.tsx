@@ -7,7 +7,9 @@ import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
-import { Ban, Lock, FileText, ShieldCheck, Trash2 } from "lucide-react";
+import { Ban, Lock, FileText, ShieldCheck, Trash2, Images } from "lucide-react";
+
+const SAVED_ACCESS: Record<string, string> = { all: "Все", selected: "Избранные", none: "Никто" };
 
 type Blocked = { id: string; username: string; avatar_url?: string | null };
 
@@ -100,6 +102,15 @@ const ProfilePrivacy = () => {
                 onChange={(e) => setHidden(e.target.checked)}
               />
             }
+          />
+        </SettingsCard>
+
+        <SettingsCard>
+          <SettingsRow
+            icon={Images}
+            label="Кто видит сохранёнки"
+            value={SAVED_ACCESS[profile?.saved_visibility || "all"]}
+            onClick={() => navigate("/profile/saved-access")}
           />
         </SettingsCard>
 

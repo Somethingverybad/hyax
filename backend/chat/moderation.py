@@ -154,6 +154,22 @@ def blocked_ids(profile):
     return set(Block.objects.filter(blocker=profile).values_list("blocked_id", flat=True))
 
 
+def can_see_saved(owner_id, viewer_id) -> bool:
+    """Видит ли viewer сохранёнки owner'а. Своё видно всегда; «все» — любому
+    вошедшему, «избранные» — только из списка SavedViewer, «никто» — никому.
+    Правило одно на все точки выдачи: и список в профиле, и сама картинка по
+    подписанной ссылке (см. SavedImagesView, MediaSignView)."""
+    from .models import Profile, SavedViewer
+    if str(owner_id) == str(viewer_id):
+        return True
+    mode = Profile.objects.filter(id=owner_id).values_list("saved_visibility", flat=True).first()
+    if mode is None or mode == "all":
+        return True
+    if mode == "none":
+        return False
+    return SavedViewer.objects.filter(owner_id=owner_id, viewer_id=viewer_id).exists()
+
+
 def blocked_either_way(a_id, b_id):
     """Есть ли блокировка между двумя людьми в любую сторону: личку в таком
     случае не открываем — иначе заблокированный писал бы в пустоту, а

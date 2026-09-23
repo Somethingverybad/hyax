@@ -154,6 +154,10 @@ export interface Profile {
   is_online?: boolean;
   /** Статус «Скрыт»: собеседники видят «не в сети». Только в своём профиле. */
   hide_online?: boolean;
+  /** Кто видит сохранёнки: all | selected | none. Только в своём профиле. */
+  saved_visibility?: "all" | "selected" | "none";
+  /** Видны ли смотрящему сохранёнки этого человека. */
+  saved_visible?: boolean;
   /** Выбранная тема: dark | light | neo либо uuid темы с сервера. */
   active_theme?: string;
   /** Когда приняты правила. null — ещё не приняты (экран согласия);
@@ -1332,7 +1336,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; notify_sound_id?: string | null }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
@@ -1390,6 +1394,27 @@ export const api = {
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
       throw new Error(msg);
     }
+  },
+
+  /** Кому открыты мои сохранёнки при настройке «избранные люди». */
+  listSavedViewers: async (): Promise<{ id: string; username: string; avatar_url?: string | null }[]> => {
+    const res = await fetchWithAuth(`${API_URL}/saved-viewers/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить список");
+    return (await res.json()).viewers || [];
+  },
+
+  addSavedViewer: async (profileId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/saved-viewers/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не удалось добавить");
+  },
+
+  removeSavedViewer: async (profileId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/saved-viewers/`, {
+      method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
+    });
+    if (!res.ok) throw new Error("Не удалось убрать");
   },
 
   listBlocks: async (): Promise<{ id: string; username: string; avatar_url?: string | null }[]> => {

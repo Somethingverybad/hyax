@@ -13,6 +13,14 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     # «В сети» — живой статус из presence; у «Скрыт» всегда False.
     is_online = serializers.SerializerMethodField()
+    # Видны ли смотрящему сохранёнки этого человека (см. can_see_saved).
+    saved_visible = serializers.SerializerMethodField()
+
+    def get_saved_visible(self, obj):
+        from .moderation import can_see_saved
+        me = getattr(self.context.get('request'), 'user', None)
+        me_profile = getattr(me, 'profile', None) if me else None
+        return bool(me_profile) and can_see_saved(obj.id, me_profile.id)
 
     def get_notify_sound(self, obj):
         return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
@@ -23,7 +31,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
@@ -49,7 +57,7 @@ class OwnProfileSerializer(ProfileSerializer):
     незачем. Базовый сериализатор уходит в участников чата и отправителей
     сообщений, поэтому 18+ и отметка о принятии правил живут только здесь."""
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online']
+        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
 
@@ -81,9 +89,19 @@ class OwnProfileSerializer(ProfileSerializer):
 class PublicProfileSerializer(serializers.ModelSerializer):
     """Карточка по ссылке /u/<ник>: только то, что и так видно в чате.
     Без call_status, push_preview и прочих приватных настроек."""
+    # Видны ли смотрящему сохранёнки владельца: клиент по этому флагу прячет
+    # раздел целиком, не делая лишнего запроса.
+    saved_visible = serializers.SerializerMethodField()
+
+    def get_saved_visible(self, obj):
+        from .moderation import can_see_saved
+        me = getattr(self.context.get('request'), 'user', None)
+        me_profile = getattr(me, 'profile', None) if me else None
+        return bool(me_profile) and can_see_saved(obj.id, me_profile.id)
+
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'bio', 'is_bot', 'created_at']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'bio', 'is_bot', 'created_at', 'saved_visible']
         read_only_fields = fields
 
 

@@ -22,6 +22,10 @@ class Profile(models.Model):
     # Статус «Скрыт»: собеседники видят «не в сети», даже когда человек в
     # приложении (см. presence.shown_online).
     hide_online = models.BooleanField(default=False)
+    # Кто видит «сохранёнки» в профиле: all — все, selected — только те, кого
+    # владелец добавил (SavedViewer), none — никто, кроме него самого.
+    SAVED_VISIBILITY = [("all", "Все"), ("selected", "Избранные"), ("none", "Никто")]
+    saved_visibility = models.CharField(max_length=10, choices=SAVED_VISIBILITY, default="all")
     # Показывать паки звуков и стикеров с пометкой 18+. По умолчанию выключено:
     # такие паки не попадают в пикер и не открываются по ссылке, пока человек
     # сам не включит настройку и не подтвердит возраст.
@@ -538,6 +542,22 @@ class MusicTrack(models.Model):
 
     def __str__(self):
         return f"{self.artist} — {self.title}" if self.artist else self.title
+
+
+class SavedViewer(models.Model):
+    """Кому владелец открыл свои сохранёнки при настройке «избранные люди».
+    Список-разрешение, зеркало Block: тот же смысл, обратный знак."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="saved_viewers")
+    viewer = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="can_see_saved_of")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("owner", "viewer")
+        indexes = [models.Index(fields=["owner", "viewer"], name="chat_savedviewer_idx")]
+
+    def __str__(self):
+        return f"{self.owner.username} → {self.viewer.username}"
 
 
 class Block(models.Model):

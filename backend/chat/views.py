@@ -115,7 +115,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
             profile = candidates[0] if len(candidates) == 1 else None
         if not profile:
             return Response({"error": "Пользователь не найден"}, status=404)
-        return Response(PublicProfileSerializer(profile).data)
+        return Response(PublicProfileSerializer(profile, context={'request': request}).data)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def me(self, request):
@@ -1929,9 +1929,12 @@ class MediaSignView(APIView):
             return Response({"error": "Profile not found"}, status=400)
 
         marker = f's3://{key}'
-        # Сохранёнки видны в профиле всем (как в референсе) — картинка из них
-        # доступна любому вошедшему, даже если он не в исходном чате.
-        if not SavedImage.objects.filter(file_url=marker).exists():
+        # Картинка из чужих сохранёнок открывается, только если их владелец
+        # открыл сохранёнки этому человеку: иначе прямая ссылка обходила бы
+        # настройку доступа (см. can_see_saved).
+        from .moderation import can_see_saved
+        saved_owners = SavedImage.objects.filter(file_url=marker).values_list('owner_id', flat=True)
+        if not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
             # в два чата. Право на скачивание — если он виден хотя бы в одном чате,
             # где человек участник. Раньше брали first() (порядок по UUID —
@@ -2739,6 +2742,10 @@ class SavedImagesView(APIView):
         if profile is None:
             return Response({"error": "Profile not found"}, status=400)
         owner_id = request.query_params.get('profile') or profile.id
+        # Настройка владельца: «все», «избранные» или «никто» (см. can_see_saved).
+        from .moderation import can_see_saved
+        if not can_see_saved(owner_id, profile.id):
+            return Response({"count": 0, "items": [], "hidden": True})
         qs = SavedImage.objects.filter(owner_id=owner_id)
         total = qs.count()
         try:
@@ -3077,6 +3084,44 @@ class ReportView(APIView):
         )
         deliver(report)
         return Response({"ok": True, "id": str(report.id)}, status=201)
+
+
+class SavedViewersView(APIView):
+    """Кому открыты мои сохранёнки при настройке «избранные люди».
+    GET — список, POST {profile_id} — добавить, DELETE {profile_id} — убрать."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _me(self, request):
+        return getattr(request.user, "profile", None)
+
+    def get(self, request):
+        me = self._me(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        rows = SavedViewer.objects.filter(owner=me).select_related("viewer")
+        return Response({"viewers": [
+            {"id": str(r.viewer.id), "username": r.viewer.username, "avatar_url": r.viewer.avatar_url}
+            for r in rows
+        ]})
+
+    def post(self, request):
+        me = self._me(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        other = Profile.objects.filter(id=str(request.data.get("profile_id") or "")).first()
+        if not other:
+            return Response({"error": "Пользователь не найден"}, status=404)
+        if other.id == me.id:
+            return Response({"error": "Свои сохранёнки и так видны"}, status=400)
+        SavedViewer.objects.get_or_create(owner=me, viewer=other)
+        return Response({"ok": True})
+
+    def delete(self, request):
+        me = self._me(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        SavedViewer.objects.filter(owner=me, viewer_id=str(request.data.get("profile_id") or "")).delete()
+        return Response({"ok": True})
 
 
 class BlockView(APIView):

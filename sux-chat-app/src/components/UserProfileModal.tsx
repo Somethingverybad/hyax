@@ -4,7 +4,7 @@ import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
-import { api } from "@/api/client";
+import { api, mediaUrl } from "@/api/client";
 import { shareProfile } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -12,6 +12,7 @@ interface UserProfile {
   id: string;
   username: string;
   avatar_url?: string | null;
+  cover_url?: string | null;
   bio?: string | null;
   created_at?: string | null;
 }
@@ -100,6 +101,12 @@ const UserProfileModal = ({
           <div className="py-10 text-center text-small text-subtle">Загрузка…</div>
         ) : profile ? (
           <div className="space-y-6">
+            {/* Обложка — такая же, как человек видит у себя в профиле. */}
+            {profile.cover_url && (
+              <div className="-mx-6 md:-mx-5 -mt-6 md:-mt-5 h-28 bg-surface-3 overflow-hidden md:rounded-t-lg">
+                <img src={mediaUrl(profile.cover_url)} alt="" className="w-full h-full object-cover" />
+              </div>
+            )}
             <div className="flex items-center gap-5 pr-8">
               <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
               <div className="min-w-0">

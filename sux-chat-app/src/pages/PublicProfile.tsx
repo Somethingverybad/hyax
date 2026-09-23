@@ -5,7 +5,7 @@ import { MessageSquare, Share2, ArrowLeft, Copy, ChevronRight } from "lucide-rea
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
-import { api, type SavedImage } from "@/api/client";
+import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { shareProfile, PUBLIC_ORIGIN } from "@/lib/share";
 
 /**
@@ -17,7 +17,7 @@ import { shareProfile, PUBLIC_ORIGIN } from "@/lib/share";
  * же страница плюс ссылка на установку. Без сессии уводим на вход и
  * возвращаемся сюда через ?next=.
  */
-type Card = { id: string; username: string; avatar_url?: string | null; bio?: string | null; is_bot?: boolean; created_at?: string | null };
+type Card = { id: string; username: string; avatar_url?: string | null; cover_url?: string | null; bio?: string | null; is_bot?: boolean; created_at?: string | null };
 
 const PublicProfile = () => {
   const { username = "" } = useParams();
@@ -104,6 +104,12 @@ const PublicProfile = () => {
 
         {state === "ok" && card && (
           <div className="mt-4 space-y-5 max-w-md mx-auto">
+            {/* Обложка — как в самом профиле; без неё карточка начинается с аватара. */}
+            {card.cover_url && (
+              <div className="-mx-4 h-32 bg-surface-3 overflow-hidden">
+                <img src={mediaUrl(card.cover_url)} alt="" className="w-full h-full object-cover" />
+              </div>
+            )}
             <div className="flex items-center gap-5">
               <Identicon id={card.id} avatarUrl={card.avatar_url || null} className="w-[104px] h-[104px] rounded-lg shrink-0" />
               <div className="min-w-0">

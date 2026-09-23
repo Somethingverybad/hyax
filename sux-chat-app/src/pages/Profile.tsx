@@ -12,6 +12,9 @@ import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
+import CoverCropper from "@/components/CoverCropper";
+
+const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
@@ -31,6 +34,8 @@ export interface Profile {
   notify_sound?: NotificationSoundInfo | null;
   /** Статус «Скрыт» (Конфиденциальность). */
   hide_online?: boolean;
+  /** Кто видит сохранёнки: all | selected | none. */
+  saved_visibility?: "all" | "selected" | "none";
 }
 
 /**
@@ -52,6 +57,8 @@ const ProfilePage = () => {
   const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
+  // Выбранная, но ещё не кадрированная обложка: пока она здесь, открыт кадратор.
+  const [coverFile, setCoverFile] = useState<File | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -85,8 +92,16 @@ const ProfilePage = () => {
     }
   };
 
+  // Выбранный файл сначала кадрируем: в баннер 3:1 иначе улетал
+  // полноразмерный снимок, и человек не управлял тем, что попадёт в кадр.
+  const pickCover = (file: File | null) => {
+    if (coverRef.current) coverRef.current.value = "";
+    if (file) setCoverFile(file);
+  };
+
   const changeCover = async (file: File | null) => {
     if (!file) return;
+    setCoverFile(null);
     setUploading("cover");
     try {
       const res = await api.uploadCover(file);
@@ -101,7 +116,6 @@ const ProfilePage = () => {
       toast.error(e?.message || "Не удалось загрузить обложку");
     } finally {
       setUploading(null);
-      if (coverRef.current) coverRef.current.value = "";
     }
   };
 
@@ -223,7 +237,7 @@ const ProfilePage = () => {
           <input ref={avatarRef} type="file" accept="image/*" className="hidden"
                  onChange={(e) => changeAvatar(e.target.files?.[0] || null)} />
           <input ref={coverRef} type="file" accept="image/*" className="hidden"
-                 onChange={(e) => changeCover(e.target.files?.[0] || null)} />
+                 onChange={(e) => pickCover(e.target.files?.[0] || null)} />
 
           {/* Обложка во всю ширину, аватар свешивается с её нижнего края —
               поэтому блок выходит за горизонтальные отступы прокрутки. */}
@@ -347,6 +361,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Images}
               label="Сохранёнки"
+              hint={`Видят: ${SAVED_ACCESS[profile?.saved_visibility || "all"]}`}
               value={saved ? pluralPhotos(saved.count) : "…"}
               onClick={() => setGalleryOpen(true)}
             />
@@ -411,6 +426,14 @@ const ProfilePage = () => {
           </div>
         </div>
       </div>
+
+      {coverFile && (
+        <CoverCropper
+          file={coverFile}
+          onCancel={() => setCoverFile(null)}
+          onDone={(cropped) => void changeCover(cropped)}
+        />
+      )}
 
       {galleryOpen && (
         <SavedGallery own onClose={() => { setGalleryOpen(false); void loadSaved(); }} />

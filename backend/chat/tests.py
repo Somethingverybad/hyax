@@ -5,8 +5,8 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import (
-    Chat, ChatParticipant, Message, NotificationSound, Profile, SoundPack,
-    Sticker, StickerPack, UserSoundPack, UserStickerPack,
+    Chat, ChatParticipant, Message, NotificationSound, Profile, SavedImage,
+    SoundPack, Sticker, StickerPack, UserSoundPack, UserStickerPack,
 )
 
 
@@ -715,3 +715,64 @@ class PresenceTests(TestCase):
 
     def test_peers_are_direct_chats_only(self):
         self.assertEqual(self.presence.presence_peers(self.me.id), [str(self.friend.id)])
+
+
+class SavedVisibilityTests(TestCase):
+    """Сохранёнки: видны всем, избранным или никому — и в профиле, и по ссылке
+    на сам файл."""
+
+    def setUp(self):
+        self.me = make_user("keeper")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=chat, user=p)
+        msg = Message.objects.create(chat=chat, sender=self.friend,
+                                     content="", file_url="s3://media/pic.jpg", file_name="pic.jpg")
+        self.item = SavedImage.objects.create(owner=self.me, file_url=msg.file_url,
+                                              file_name="pic.jpg", source_message=msg)
+
+    def seen_by(self, who):
+        r = client_for(who).get(f"/api/saved-images/?profile={self.me.id}")
+        return r.data["count"]
+
+    def set_mode(self, mode):
+        r = client_for(self.me).patch(f"/api/profiles/{self.me.id}/", {"saved_visibility": mode}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+
+    def test_default_is_visible_to_everyone(self):
+        self.assertEqual(self.seen_by(self.stranger), 1)
+
+    def test_none_hides_from_everyone_but_owner(self):
+        self.set_mode("none")
+        self.assertEqual(self.seen_by(self.stranger), 0)
+        self.assertEqual(self.seen_by(self.friend), 0)
+        self.assertEqual(self.seen_by(self.me), 1)
+
+    def test_selected_shows_only_to_listed(self):
+        self.set_mode("selected")
+        self.assertEqual(self.seen_by(self.friend), 0)
+        c = client_for(self.me)
+        self.assertEqual(c.post("/api/saved-viewers/", {"profile_id": str(self.friend.id)}, format="json").status_code, 200)
+        self.assertEqual(self.seen_by(self.friend), 1)
+        self.assertEqual(self.seen_by(self.stranger), 0)
+        self.assertEqual([v["username"] for v in c.get("/api/saved-viewers/").data["viewers"]], ["friend"])
+        c.delete("/api/saved-viewers/", {"profile_id": str(self.friend.id)}, format="json")
+        self.assertEqual(self.seen_by(self.friend), 0)
+
+    def test_public_card_tells_whether_saved_are_visible(self):
+        self.set_mode("none")
+        r = client_for(self.stranger).get(f"/api/profiles/by-username/{self.me.username}/")
+        self.assertFalse(r.data["saved_visible"])
+        self.set_mode("all")
+        r = client_for(self.stranger).get(f"/api/profiles/by-username/{self.me.username}/")
+        self.assertTrue(r.data["saved_visible"])
+
+    def test_visibility_is_private_to_owner(self):
+        r = client_for(self.stranger).get(f"/api/profiles/{self.me.id}/")
+        self.assertNotIn("saved_visibility", r.data)
+
+    def test_cannot_add_viewers_for_someone_else(self):
+        r = client_for(self.stranger).patch(f"/api/profiles/{self.me.id}/", {"saved_visibility": "none"}, format="json")
+        self.assertEqual(r.status_code, 403)

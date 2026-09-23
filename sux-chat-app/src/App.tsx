@@ -3,6 +3,7 @@ import ProfilePage from "./pages/Profile";
 import ProfileEdit from "./pages/ProfileEdit";
 import ProfileNotifications from "./pages/ProfileNotifications";
 import ProfilePrivacy from "./pages/ProfilePrivacy";
+import ProfileSavedAccess from "@/pages/ProfileSavedAccess";
 import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
@@ -155,6 +156,7 @@ const App = () => {
               <Route path="/profile/edit" element={<ProfileEdit />} />
               <Route path="/profile/notifications" element={<ProfileNotifications />} />
               <Route path="/profile/privacy" element={<ProfilePrivacy />} />
+              <Route path="/profile/saved-access" element={<ProfileSavedAccess />} />
               <Route path="/profile/appearance" element={<ProfileAppearance />} />
               <Route path="/profile/bugreport" element={<ProfileBugReport />} />
               <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />

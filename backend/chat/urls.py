@@ -38,6 +38,7 @@ urlpatterns = [
     path('cover/upload/', CoverUploadView.as_view(), name='cover-upload'),
     path('reports/', ReportView.as_view(), name='reports'),
     path('blocks/', BlockView.as_view(), name='blocks'),
+    path('saved-viewers/', SavedViewersView.as_view(), name='saved-viewers'),
     path('bugreports/', BugReportView.as_view(), name='bugreports'),
     path('push/register/', PushRegisterView.as_view(), name='push-register'),
     path('saved-images/', SavedImagesView.as_view(), name='saved-images'),
