@@ -155,7 +155,12 @@ const ChatSidebar = ({
       document.documentElement.style.removeProperty("--player-top");
     };
   }, [isCollapsed]);
-  const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>({});
+  // Участники — сразу из кеша, ещё до первой отрисовки: иначе при каждом
+  // переходе между вкладками на мгновение показывались служебные названия
+  // вида «Чат 32aec835…» — имя собеседника ещё не успевало прочитаться.
+  const [chatParticipants, setChatParticipants] = useState<{[chatId: string]: Profile[]}>(
+    () => readParticipantsCache()
+  );
   const [loadingParticipants, setLoadingParticipants] = useState<{[chatId: string]: boolean}>({});
   const [deletingChats, setDeletingChats] = useState<{[chatId: string]: boolean}>({});
   // Удаление чата: десктоп — меню по правому клику у курсора; телефон —
@@ -745,7 +750,11 @@ const ChatSidebar = ({
             }).map((chat) => {
               console.log("Rendering chat:", chat);
               
-              const participants = getChatParticipants(chat.id);
+              // Два источника имён: отдельный кеш участников и сам список чатов
+              // (сервер кладёт участников прямо в него, и он тоже кешируется).
+              // Без второго при первом запуске мелькало «Чат 32aec835…».
+              const cachedPeople = getChatParticipants(chat.id);
+              const participants = cachedPeople.length ? cachedPeople : (chat.participants || []);
               const isLoading = isLoadingParticipants(chat.id);
               const isDeleting = isDeletingChat(chat.id);
               const otherParticipants = participants.filter(p => p.id !== currentUser?.id);
