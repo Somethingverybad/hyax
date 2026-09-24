@@ -824,6 +824,18 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/saved-images/${id}/`, { method: "DELETE", headers: authHeaders() });
     if (!res.ok && res.status !== 404) throw new Error("Не удалось удалить");
   },
+  /** Несколько сообщений одним пакетом: копии получают общий album_id и в
+   *  ленте получателя склеиваются в один пузырь. */
+  forwardMany: async (messageIds: string[], chatId: string): Promise<{ messages: any[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/forward_many/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ message_ids: messageIds, chat_id: chatId }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось переслать");
+    return res.json();
+  },
+
   forwardMessage: async (messageId: string, chatId: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/forward/`, {
       method: "POST",
