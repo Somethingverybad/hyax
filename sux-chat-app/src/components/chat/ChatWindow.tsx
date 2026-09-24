@@ -117,7 +117,7 @@ interface Message {
    *  запись (голос/кружок) лежит в _rec — раньше пузырь просто исчезал и
    *  снятое пропадало. */
   _failed?: boolean;
-  _rec?: VoiceRecording & { mirror: boolean };
+  _rec?: VoiceRecording & { mirror: boolean; replyToId?: string };
   /** Вложение, которое не доехало, — для кнопки «Повторить». */
   _att?: Attach;
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
@@ -593,6 +593,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (sc && pinnedRef.current) {
       sc.scrollTop = sc.scrollHeight;
       logFeed(`compose ${before}→${el.offsetHeight}`);
+    }
+    // В лог баг-репорта — где лента и панель после роста поля: на телефоне
+    // история при наборе уезжала под панель, а в симуляторе — нет.
+    if (sc) {
+      const last = feedRef.current?.lastElementChild as HTMLElement | null;
+      const cs = composeRef.current;
+      applog.info(`compose ta=${before}→${el.offsetHeight} pinned=${pinnedRef.current ? 1 : 0} top=${Math.round(sc.scrollTop)} max=${Math.round(sc.scrollHeight - sc.clientHeight)} last=${last ? Math.round(last.getBoundingClientRect().bottom) : -1} panel=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} vvTop=${Math.round(window.visualViewport?.offsetTop ?? 0)} vvH=${Math.round(window.visualViewport?.height ?? 0)} winY=${Math.round(window.scrollY)}`);
     }
   };
   /** Поставить текст в поле программно: редактирование, отмена, возврат после ошибки. */
@@ -1544,6 +1551,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const localUrl = URL.createObjectURL(result.file);
     const mirror = facing === "user";
+    // Ответ голосовым или кружком: цитата из панели ответа уходит вместе с
+    // записью — раньше она просто терялась, и запись улетала обычным сообщением.
+    const reply = replyTo;
+    setReplyTo(null);
     const optimistic: Message = {
       id: tempId,
       content: null,
@@ -1555,10 +1566,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       ...(result.kind === "video"
         ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror }
         : { voice_url: localUrl, voice_duration: result.seconds }),
+      reply_to: reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
       pending: true,
       _key: tempId,
       _progress: 0,
-      _rec: { ...result, mirror },
+      _rec: { ...result, mirror, replyToId: reply?.id },
     };
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
@@ -1568,7 +1580,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   /** Отправка записи из пузыря tempId; повтор после ошибки — та же функция. */
-  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean }) => {
+  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean; replyToId?: string }) => {
     if (!chatId) return;
     setUploading(true);
     const isVideo = result.kind === "video";
@@ -1583,11 +1595,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         setProgressFor(tempId, 100);
         // Фронтальная камера снимается в зеркальном (селфи) виде — помечаем,
         // чтобы воспроизведение в чате отразилось так же. Сам файл не меняем.
-        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror);
+        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror, result.replyToId);
       } else {
         const uploaded = await api.uploadVoice(result.file, (p) => setProgressFor(tempId, p));
         setProgressFor(tempId, 100);
-        sent = await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds);
+        sent = await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds, result.replyToId);
       }
       setMessages(prev =>
         prev.some(m => m.id === sent.id)

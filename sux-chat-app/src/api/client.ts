@@ -1187,11 +1187,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number): Promise<any> => {
+  sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number, replyToId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration }),
+      body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration, reply_to_id: replyToId || undefined }),
     });
     if (!res.ok) throw new Error("Не удалось отправить голосовое");
     return res.json();
@@ -1239,11 +1239,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number, mirror?: boolean): Promise<any> => {
+  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number, mirror?: boolean, replyToId?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration, video_mirror: mirror ? "1" : undefined }),
+      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration, video_mirror: mirror ? "1" : undefined, reply_to_id: replyToId || undefined }),
     });
     if (!res.ok) throw new Error("Не удалось отправить видео-сообщение");
     return res.json();

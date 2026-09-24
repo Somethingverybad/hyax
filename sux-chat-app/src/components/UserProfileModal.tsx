@@ -90,7 +90,10 @@ const UserProfileModal = ({
           колонка профиля в референсе. Поверхности: панель surface-2, карточки и
           вторичные кнопки surface-4, чтобы читались на панели. */}
       <div
-        className="w-full md:w-[400px] md:max-h-full md:overflow-y-auto bg-surface-2 md:bg-surface-1 rounded-t-[16px] md:rounded-lg md:border md:border-border p-6 md:p-5 pb-[calc(var(--sab)+24px)] md:pb-5 relative"
+        // На телефоне шторка не выше 85% экрана: с сохранёнками и длинным
+        // «О себе» она раньше вырастала во весь экран. Лишнее прокручивается
+        // внутри, шапка с аватаром остаётся под пальцем.
+        className="w-full md:w-[400px] max-h-[85vh] md:max-h-full overflow-y-auto overscroll-contain bg-surface-2 md:bg-surface-1 rounded-t-[16px] md:rounded-lg md:border md:border-border p-6 md:p-5 pb-[calc(var(--sab)+24px)] md:pb-5 relative"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="md:hidden absolute top-2 left-1/2 -translate-x-1/2 w-9 h-1 rounded-full bg-foreground/20" aria-hidden />

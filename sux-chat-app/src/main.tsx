@@ -254,7 +254,11 @@ if (Cap.isNativePlatform()) {
     const KeyboardSync = registerPlugin<{
       addListener(e: "change", cb: (d: { height: number; duration: number; curve: number; ts: number }) => void): Promise<PluginListenerHandle>;
     }>("KeyboardSync");
-    KeyboardSync.addListener("change", iosKeyboard)
+    // Сами кадры приходят окном-событием прямо из evaluateJavaScript (см.
+    // KeyboardSyncPlugin.swift) — так быстрее, чем через слушатель плагина.
+    // Подписка на слушатель нужна лишь как проверка, что плагин в сборке есть.
+    window.addEventListener("hyax:kbframe", (e) => iosKeyboard((e as CustomEvent<{ height: number; ts: number }>).detail));
+    KeyboardSync.addListener("change", () => {})
       .then(() => { iosSync = true; root.style.setProperty("--kb-sab", "var(--sab)"); })
       .catch(() => { /* старая нативная сборка без плагина — остаётся штатный путь */ });
   }
