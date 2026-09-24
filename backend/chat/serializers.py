@@ -169,7 +169,8 @@ class ChatSerializer(serializers.ModelSerializer):
                 text = 'Файл'
             else:
                 text = 'Сообщение'
-        return {'text': text[:120], 'sender_id': str(sender_id)}
+        # read — прочитал ли кто-то кроме автора: вторая галка в списке чатов.
+        return {'text': text[:120], 'sender_id': str(sender_id), 'read': bool(getattr(obj, 'last_read_a', False))}
 
 def message_preview(m):
     """Короткое описание сообщения для цитат, закрепа и списка чатов."""

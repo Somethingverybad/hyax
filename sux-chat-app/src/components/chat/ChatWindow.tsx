@@ -5,7 +5,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2 } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2 } from "lucide-react";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
@@ -100,8 +100,10 @@ interface Message {
   created_at: string;
   /** Сообщение отредактировано. */
   is_edited?: boolean;
+  /** Кто прочитал: вторая галочка — если здесь есть кто-то кроме автора. */
+  read_by?: { id: string; username?: string; read_at: string }[];
   /** Клиентские поля оптимистичной отправки: pending — сервер ещё не
-   *  подтвердил (одна галочка), _key — стабильный ключ рендера, чтобы
+   *  подтвердил (часики), _key — стабильный ключ рендера, чтобы
    *  подмена временного сообщения настоящим не перемонтировала DOM,
    *  _dims — размеры картинки, замеренные до вставки пузыря: место
    *  резервируется сразу, и лента не дёргается при декодировании. */
@@ -169,6 +171,9 @@ interface ChatWindowProps {
   chats?: ChatPick[];
   savedChatId?: string;
 }
+
+/** Вторая галочка: сообщение прочитал кто-то кроме автора (в группе — хоть один). */
+const readByOthers = (m: Message) => (m.read_by || []).some((r) => r.id !== (m.sender?.id || m.sender_id));
 
 const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
@@ -644,6 +649,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
     const incoming = newMessages.filter(m => m.sender?.id !== userId);
     if (primedRef.current && incoming.length) setFreshIds(new Set(incoming.map(m => m.id)));
+    // Пришло, пока смотрим на низ ленты, — прочитано сейчас, а не при выходе
+    // из чата: у автора вторая галочка загорается сразу.
+    if (incoming.length && pinnedRef.current) markReadSoon();
     // Своё сообщение всегда ведёт вниз. Чужое — только если лента и так у низа;
     // отлистал вверх — остаёмся на месте и считаем пришедшее.
     if (incoming.length < newMessages.length || pinnedRef.current) goBottom(primedRef.current);
@@ -1414,6 +1422,42 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       toast.error("Не удалось расшифровать");
     }
   };
+
+  // Прочтение. Отметку шлём с задержкой: пачка входящих — один запрос.
+  // Только когда приложение на экране: в фоне сообщение пришло, но не прочитано.
+  const markReadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const markReadSoon = () => {
+    if (!chatId || document.visibilityState !== "visible") return;
+    if (markReadTimer.current) clearTimeout(markReadTimer.current);
+    const id = chatId;
+    markReadTimer.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
+  };
+  useEffect(() => {
+    // Вернулись в приложение с открытой перепиской — всё на экране прочитано.
+    const onVisible = () => { if (document.visibilityState === "visible") markReadSoon(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (markReadTimer.current) clearTimeout(markReadTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  // Собеседник прочитал (событие «read» из Chat.tsx): свои сообщения до
+  // этого момента получают вторую галочку без перезагрузки ленты.
+  useEffect(() => {
+    const onRead = (e: Event) => {
+      const d = (e as CustomEvent<{ chat_id: string; reader_id: string; read_at: string }>).detail;
+      if (!d || d.chat_id !== chatId || d.reader_id === userId) return;
+      const upTo = Date.parse(d.read_at) || Date.now();
+      setMessages((prev) => prev.map((m) => (
+        m.sender?.id === userId && !m.pending && !readByOthers(m) && (Date.parse(m.created_at) || 0) <= upTo
+          ? { ...m, read_by: [...(m.read_by || []), { id: d.reader_id, read_at: d.read_at }] }
+          : m)));
+    };
+    window.addEventListener("hyax:read", onRead);
+    return () => window.removeEventListener("hyax:read", onRead);
+  }, [chatId, userId]);
 
   // Реакция от собеседника: своё «mine» считаем сами — в событии приходят
   // те, кто поставил, а не персональная сводка на каждого.
@@ -2218,7 +2262,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {isOwn && !bareBubble && (
                             <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
                               {message.is_edited ? "изм. " : ""}{formatTime(message.created_at)}
-                              {message.pending ? <Check className="w-3.5 h-3.5" /> : <CheckCheck className="w-3.5 h-3.5" />}
+                              {message.pending ? <Clock className="w-3.5 h-3.5" /> : readByOthers(message) ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                             </span>
                           )}
                         </p>
@@ -2344,8 +2388,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         </span>
                         {isOwn && (
                           message.pending
-                            ? <Check className="w-3.5 h-3.5 text-subtle" />
-                            : <CheckCheck className="w-3.5 h-3.5 text-primary" />
+                            ? <Clock className="w-3.5 h-3.5 text-subtle" />
+                            : readByOthers(message)
+                              ? <CheckCheck className="w-3.5 h-3.5 text-primary" />
+                              : <Check className="w-3.5 h-3.5 text-subtle" />
                         )}
                       </div>
                     )}

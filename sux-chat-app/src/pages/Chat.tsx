@@ -423,6 +423,15 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           // Реакции приходят событием: обычная синхронизация их не приносит —
           // само сообщение при этом не меняется.
           setReactionEvent({ ...msg.data, at: Date.now() });
+        } else if (msg?.data?.type === "read") {
+          // Собеседник прочитал: вторая галочка у последнего сообщения в списке
+          // и у своих сообщений в открытой переписке (ChatWindow слушает событие).
+          const chatId = String(msg.data.chat_id);
+          setChats((prev) => prev.map((c: any) =>
+            c.id === chatId && c.last_message && !c.last_message.read && String(msg.data.reader_id) !== c.last_message.sender_id
+              ? { ...c, last_message: { ...c.last_message, read: true } }
+              : c));
+          window.dispatchEvent(new CustomEvent("hyax:read", { detail: msg.data }));
         } else if (msg?.data?.type === "presence") {
           // Собеседник зашёл или вышел: правим его в участниках чатов — оттуда
           // статус читают и список, и шапка переписки.

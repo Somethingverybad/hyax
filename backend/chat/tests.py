@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import (
-    Chat, ChatParticipant, Message, NotificationSound, Playlist, PlaylistTrack,
+    Chat, ChatParticipant, Message, MessageReadStatus, NotificationSound, Playlist, PlaylistTrack,
     PostReaction, Profile, SavedImage, SoundPack, Sticker, StickerPack,
     UserSoundPack, UserStickerPack,
 )
@@ -1115,3 +1115,63 @@ class LinkMediaTests(TestCase):
         from chat.linkimage import image_url_in
         self.assertEqual(image_url_in("  https://pin.it/x  "), "https://pin.it/x")
         self.assertIsNone(image_url_in("смотри https://pin.it/x"))
+
+
+class ReadReceiptTests(TestCase):
+    """Галочки: вторая — когда сообщение прочитал кто-то кроме автора."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.msg = Message.objects.create(chat=self.chat, sender=self.me, content="привет")
+
+    def last_message(self, who):
+        r = client_for(who).get("/api/chats/")
+        rows = r.data.get("results", r.data) if isinstance(r.data, dict) else r.data
+        return next(c["last_message"] for c in rows if c["id"] == str(self.chat.id))
+
+    def mark(self, who, chat_id=None):
+        return client_for(who).post("/api/messages/mark_chat_as_read/", {"chat_id": str(chat_id or self.chat.id)}, format="json")
+
+    def test_list_shows_read_after_peer_reads(self):
+        self.assertFalse(self.last_message(self.me)["read"])
+        # собственная отметка автора не считается
+        MessageReadStatus.objects.create(message=self.msg, user=self.me)
+        self.assertFalse(self.last_message(self.me)["read"])
+        self.assertEqual(self.mark(self.friend).status_code, 200)
+        self.assertTrue(self.last_message(self.me)["read"])
+
+    def test_read_by_in_feed(self):
+        self.mark(self.friend)
+        r = client_for(self.me).get(f"/api/messages/?chat={self.chat.id}")
+        rows = r.data.get("results", r.data) if isinstance(r.data, dict) else r.data
+        row = next(m for m in rows if m["id"] == str(self.msg.id))
+        self.assertEqual([x["id"] for x in row["read_by"]], [str(self.friend.id)])
+
+    def test_broadcast_only_when_something_new(self):
+        from unittest import mock
+        with mock.patch("chat.views.broadcast_read") as b:
+            self.mark(self.friend)
+            self.assertEqual(b.call_count, 1)
+            self.assertEqual(b.call_args[0][1], self.friend)
+            # второй раз читать нечего — и рассылки нет
+            self.mark(self.friend)
+            self.assertEqual(b.call_count, 1)
+
+    def test_reply_marks_read(self):
+        # ответил — значит, видел: входящие помечаются прочитанными и автору уходит событие
+        from unittest import mock
+        with mock.patch("chat.views.broadcast_read") as b:
+            r = client_for(self.friend).post("/api/messages/", {"chat": str(self.chat.id), "content": "ответ"}, format="json")
+            self.assertIn(r.status_code, (200, 201))
+            self.assertTrue(b.called)
+        self.assertTrue(MessageReadStatus.objects.filter(message=self.msg, user=self.friend).exists())
+
+    def test_stranger_cannot_mark(self):
+        r = self.mark(self.stranger)
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(MessageReadStatus.objects.filter(user=self.stranger).exists())

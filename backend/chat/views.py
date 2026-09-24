@@ -165,7 +165,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             # prefetch обязателен: сериализатор теперь отдаёт участников, и без
             # него на каждый чат уходил бы отдельный запрос к базе — ровно та
             # проблема, которую мы убираем с клиента.
-            from django.db.models import OuterRef, Subquery
+            from django.db.models import Exists, OuterRef, Subquery
             # Превью последнего сообщения не должно показывать удалённые:
             # ни удалённые у всех, ни спрятанные текущим пользователем «у себя».
             last = (
@@ -187,6 +187,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_video_a=Subquery(last.values('video_url')[:1]),
                     last_file_a=Subquery(last.values('file_url')[:1]),
                     last_at_a=Subquery(last.values('created_at')[:1]),
+                    last_id_a=Subquery(last.values('id')[:1]),
                     # Моё закрепление: у каждого участника своё.
                     my_pinned_at=Subquery(
                         ChatParticipant.objects
@@ -194,6 +195,13 @@ class ChatViewSet(viewsets.ModelViewSet):
                         .values('pinned_at')[:1]
                     ),
                 )
+                # Прочитал ли последнее сообщение кто-то кроме автора — для
+                # второй галки в списке чатов.
+                .annotate(last_read_a=Exists(
+                    MessageReadStatus.objects
+                    .filter(message_id=OuterRef('last_id_a'))
+                    .exclude(user_id=OuterRef('last_sender_id_a'))
+                ))
                 .select_related('pinned_message__sender')
                 # Закреплённые сверху (позже закреплённый выше), остальные — по
                 # времени последнего сообщения. Пустой чат опускается на время
@@ -487,17 +495,42 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import MessageReadStatus
 
+def broadcast_read(chat_id, reader):
+    """Сообщить остальным участникам, что reader прочитал чат: у авторов
+    сообщений вторая галка загорается сразу, без перезагрузки ленты. Шлётся в
+    личные группы user_<id>, как реакции, — сокет конкретного чата открыт не
+    всегда, а галка в списке чатов тоже должна обновиться."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if not layer:
+            return
+        data = {
+            'type': 'read',
+            'chat_id': str(chat_id),
+            'reader_id': str(reader.id),
+            'read_at': timezone.now().isoformat(),
+        }
+        for uid in ChatParticipant.objects.filter(chat_id=chat_id).exclude(user=reader).values_list('user_id', flat=True):
+            async_to_sync(layer.group_send)(f'user_{uid}', {'type': 'notification', 'data': data})
+    except Exception:
+        logger.exception("прочтение: рассылка не удалась")
+
+
 def _mark_chat_read_for(chat, profile):
     """Помечает прочитанными все чужие сообщения чата для profile. Вызывается,
     когда человек сам пишет в чат: раз ответил — значит, видел. Иначе входящие,
     пришедшие пока чат был открыт, оставались «непрочитанными» и в списке чатов
     висел бейдж поверх собственного последнего сообщения."""
     try:
-        unread = Message.objects.filter(chat=chat).exclude(Q(read_statuses__user=profile) | Q(sender=profile))
+        unread = list(Message.objects.filter(chat=chat).exclude(Q(read_statuses__user=profile) | Q(sender=profile)))
         now = timezone.now()
         MessageReadStatus.objects.bulk_create(
             [MessageReadStatus(message=m, user=profile, read_at=now) for m in unread], ignore_conflicts=True,
         )
+        if unread:
+            broadcast_read(chat.id, profile)
     except Exception:
         logger.exception("mark_chat_read_for failed")
 
@@ -1045,6 +1078,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         if not created:
             read_status.read_at = timezone.now()
             read_status.save()
+        elif message.sender_id != profile.id:
+            broadcast_read(message.chat_id, profile)
         
         return Response({
             "status": "success", 
@@ -1067,6 +1102,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
         
+        # Только свой чат: иначе можно было бы пометить прочитанной чужую
+        # переписку и разослать её участникам ложное «прочитано».
+        if not ChatParticipant.objects.filter(chat_id=chat_id, user=profile).exists():
+            return Response({"error": "Chat not found"}, status=404)
+
         # Находим все непрочитанные сообщения в чате (кроме своих)
         unread_messages = Message.objects.filter(
             chat_id=chat_id
@@ -1089,6 +1129,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         if read_statuses:
             # Используем bulk_create для эффективности
             MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
+            broadcast_read(chat_id, profile)
         
         return Response({
             "status": "success",

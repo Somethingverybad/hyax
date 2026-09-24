@@ -922,7 +922,10 @@ const ChatSidebar = ({
                             return (
                               <span className="text-caption text-subtle shrink-0 inline-flex items-center gap-1">
                                 {(chat as any).last_message?.sender_id === currentUser?.id && (
-                                  <CheckCheckIcon className="w-4 h-4 text-primary" />
+                                  // Одна галочка — ушло, две — прочитано.
+                                  (chat as any).last_message?.read
+                                    ? <CheckCheckIcon className="w-4 h-4 text-primary" />
+                                    : <Check className="w-4 h-4 text-subtle" />
                                 )}
                                 {label}
                               </span>
