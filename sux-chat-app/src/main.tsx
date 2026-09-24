@@ -51,7 +51,7 @@ document.addEventListener(
 // анимации и несут её высоту и длительность, поэтому панель ввода едет вместе
 // с клавиатурой, а не догоняет её рывком после ресайза WebView.
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
-import { Capacitor as Cap } from "@capacitor/core";
+import { Capacitor as Cap, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { screenBelowWebView, watchSafeArea, imeOverlap, onInsetsChange, refreshSafeArea, webViewHeight } from "./lib/safeArea";
 
 watchSafeArea();
@@ -89,6 +89,9 @@ if (Cap.isNativePlatform()) {
   // страница ужалась сама — разность нулевая и двигать нечего; когда не
   // ужалась — разность равна высоте клавиатуры. Одна формула на все случаи.
   let keyboardHeight = 0;
+  // iOS: кадр клавиатуры приходит из своего плагина KeyboardSync — тогда
+  // штатный путь ниже только пишет лог.
+  let iosSync = false;
   let lastOffset = -1;
   let lastTrace = "";
 
@@ -137,6 +140,7 @@ if (Cap.isNativePlatform()) {
     // Отступ под полосу навигации, пока клавиатура открыта, не нужен: полоса за
     // ней. Иначе внутри панели ввода оставалась пустая полка в её высоту.
     const keyboardUp = keyboardHeight > 0 || offset > 0 || (window.visualViewport?.height ?? window.innerHeight) < window.innerHeight - 40;
+    if (iosSync) return; // на iOS кадр клавиатуры ведёт KeyboardSync (ниже)
     root.style.setProperty("--kb-sab", keyboardUp ? "0px" : "var(--sab)");
     syncPan();
     if (offset === lastOffset) return;
@@ -206,7 +210,57 @@ if (Cap.isNativePlatform()) {
   // Инсеты приходят из нативного плагина асинхронно — пересчитываем по ответу.
   onInsetsChange(settle);
 
+  // ── iOS: панель ввода едет вместе с клавиатурой ─────────────────────────
+  // Кривые и длительности измерены по видео симулятора (кадры клавиатуры
+  // iOS 26): системная анимация — пружина, и cubic-bezier её повторяет с
+  // точностью до пикселя. Штатные 250 мс и «средняя» кривая давали панель,
+  // которая стартовала поздно и приезжала раньше клавиатуры.
+  //
+  // Опоздание моста (событие доходит до JS через 2–4 кадра после старта
+  // клавиатуры) снимаем отрицательной задержкой перехода: анимация стартует
+  // «с середины», там, где клавиатура уже находится.
+  //
+  // Нижний отступ панели под home-индикатор здесь не обнуляется, как в
+  // штатном пути: это меняло раскладку в нулевом кадре, и панель дёргалась.
+  // Вместо этого подъём — на высоту клавиатуры минус этот отступ (--kb-lift):
+  // итог тот же, но двигается только transform.
+  const IOS_OPEN = { ms: 375, ease: "cubic-bezier(0.38, 0.8, 0.125, 1)" };
+  const IOS_CLOSE = { ms: 425, ease: "cubic-bezier(0.3, 1, 0.3, 1)" };
+  const iosKeyboard = (d: { height: number; ts: number }) => {
+    const h = Math.max(0, Math.round(d.height));
+    if (h === lastOffset) return;
+    const a = h > Math.max(0, lastOffset) ? IOS_OPEN : IOS_CLOSE;
+    const late = Math.min(Math.max(0, Date.now() - d.ts), a.ms - 16);
+    lastOffset = h;
+    keyboardHeight = h;
+    applog.info(`kbsync h=${h} late=${Math.round(late)}ms`);
+    // Стиль — прямо на панели ввода и ленте, а не переменными на :root.
+    // Переменная на корне наследуется всем деревом: браузер пересчитывал
+    // стили всего документа со всеми сообщениями ленты, и первый кадр после
+    // события рисовался 75–170 мс — панель стояла, пока клавиатура уезжала.
+    const lift = `max(0px, calc(${h}px - var(--sab)))`;
+    const tr = `transform ${a.ms}ms ${a.ease} ${-Math.round(late)}ms`;
+    // Событие — до смены отступа: лента замеряет, где стоит сейчас (ChatWindow).
+    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: h, duration: a.ms, ease: a.ease, ts: d.ts } }));
+    document.querySelectorAll<HTMLElement>(".pad-safe-bottom").forEach((el) => {
+      el.style.transition = tr;
+      el.style.transform = h ? `translateY(calc(-1 * ${lift}))` : "translateY(0)";
+    });
+    document.querySelectorAll<HTMLElement>(".chat-scroll").forEach((el) => {
+      el.style.paddingBottom = h ? lift : "";
+    });
+  };
+  if (isIOS) {
+    const KeyboardSync = registerPlugin<{
+      addListener(e: "change", cb: (d: { height: number; duration: number; curve: number; ts: number }) => void): Promise<PluginListenerHandle>;
+    }>("KeyboardSync");
+    KeyboardSync.addListener("change", iosKeyboard)
+      .then(() => { iosSync = true; root.style.setProperty("--kb-sab", "var(--sab)"); })
+      .catch(() => { /* старая нативная сборка без плагина — остаётся штатный путь */ });
+  }
+
   Keyboard.addListener("keyboardWillShow", (info) => {
+    if (iosSync) { applog.info(`kb show h=${Math.round(info.keyboardHeight)}`); return; }
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = info.keyboardHeight;
     vvAtShow = Math.round(window.visualViewport?.height ?? window.innerHeight);
@@ -220,6 +274,7 @@ if (Cap.isNativePlatform()) {
   });
 
   Keyboard.addListener("keyboardWillHide", () => {
+    if (iosSync) { applog.info("kb hide"); return; }
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = 0;
     vvAtShow = -1; vvTopAtShow = -1;

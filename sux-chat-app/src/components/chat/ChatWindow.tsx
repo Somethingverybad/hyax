@@ -788,7 +788,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const onKb = (ev: Event) => {
       const el = scrollRef.current, feed = feedRef.current;
       if (!el) return;
-      const { height, duration } = (ev as CustomEvent<{ height: number; duration: number }>).detail;
+      const { height, duration, ease, ts } = (ev as CustomEvent<{ height: number; duration: number; ease?: string; ts?: number }>).detail;
       if (height === kbShiftRef.current) return;
       kbShiftRef.current = height;
       // Событие приходит до того, как поменяется отступ под клавиатуру
@@ -820,9 +820,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         feed.style.transition = "none";
         feed.style.transform = `translateY(${moved}px)`;
         void feed.offsetHeight; // зафиксировать стартовое положение до перехода
-        feed.style.transition = `transform ${duration}ms cubic-bezier(0.17, 0.59, 0.4, 1)`;
+        // Та же кривая и та же поправка на опоздание, что у панели ввода
+        // (main.tsx): лента и панель стоят вровень на каждом кадре.
+        const late = ts ? Math.min(Math.max(0, Date.now() - ts), duration - 16) : 0;
+        feed.style.transition = `transform ${duration}ms ${ease || "cubic-bezier(0.17, 0.59, 0.4, 1)"} ${-Math.round(late)}ms`;
         feed.style.transform = "translateY(0)";
-        cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; }, duration + 60);
+        cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; }, duration - late + 60);
       });
     };
     window.addEventListener("hyax:keyboard", onKb);

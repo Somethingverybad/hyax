@@ -16,6 +16,7 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		6039706E2F0589C7952D4939 /* PushSecretPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */; };
+		7B3C1E9A2F4D5A6B8C9D0E1F /* KeyboardSyncPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		A1C0FFEE2026081800000001 /* receive.caf in Resources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2026081800000002 /* receive.caf */; };
 		B0B0CA110026082200000001 /* VoipPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000002 /* VoipPlugin.swift */; };
@@ -68,6 +69,7 @@
 		5395E2DF04D075E1915E7055 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7287D95575A8CE03C0F28767 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PushSecretPlugin.swift; sourceTree = "<group>"; };
+		7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardSyncPlugin.swift; sourceTree = "<group>"; };
 		A1C0FFEE2026081800000002 /* receive.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = receive.caf; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 				9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */,
+				7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */,
 				20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */,
 			);
 			path = App;
@@ -333,6 +336,7 @@
 				C0DE00032026082200000001 /* NativeCallAudio.swift in Sources */,
 				B0B0CA110026082200000003 /* CallViewController.swift in Sources */,
 				6039706E2F0589C7952D4939 /* PushSecretPlugin.swift in Sources */,
+				7B3C1E9A2F4D5A6B8C9D0E1F /* KeyboardSyncPlugin.swift in Sources */,
 				FA16F02EBAD904FA7EBA2ABE /* RovHapticsPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -359,9 +359,12 @@ textarea:focus {
    уезжает вверх трансформом: его считает композитор, не трогая layout.
    Высота остаётся прежней, а лента и так прокручена вниз, поэтому скрытая
    клавиатурой часть не видна. */
+/* --kb-lift/--kb-ease/--kb-delay ставит iOS-путь в main.tsx (подъём без
+   отступа под home-индикатор, измеренная кривая клавиатуры, отрицательная
+   задержка на опоздание моста); без них — прежнее поведение (Android). */
 .pad-safe-bottom {
-  transform: translateY(calc(-1 * var(--kb-height)));
-  transition: transform var(--kb-duration) cubic-bezier(0.17, 0.59, 0.4, 1);
+  transform: translateY(calc(-1 * var(--kb-lift, var(--kb-height))));
+  transition: transform var(--kb-duration) var(--kb-ease, cubic-bezier(0.17, 0.59, 0.4, 1)) var(--kb-delay, 0ms);
   will-change: transform;
 }
 
@@ -384,7 +387,7 @@ textarea,
 /* Лента ужимается на высоту клавиатуры без анимации: перестановка происходит
    в первом кадре, пока её перекрывает выезжающая клавиатура. */
 .chat-scroll {
-  padding-bottom: var(--kb-height);
+  padding-bottom: var(--kb-lift, var(--kb-height));
 }
 
 
