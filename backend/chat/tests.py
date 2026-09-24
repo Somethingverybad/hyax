@@ -1175,3 +1175,106 @@ class ReadReceiptTests(TestCase):
         r = self.mark(self.stranger)
         self.assertEqual(r.status_code, 404)
         self.assertFalse(MessageReadStatus.objects.filter(user=self.stranger).exists())
+
+
+
+class ChannelPostDeleteTests(TestCase):
+    """Удаление постов в канале: владелец и админ — у всех, подписчик — нет."""
+
+    def setUp(self):
+        self.owner = make_user("owner")
+        self.admin = make_user("admin")
+        self.sub = make_user("sub")
+        self.ch = Chat.objects.create(kind="channel", name="Новости", is_public=True)
+        ChatParticipant.objects.create(chat=self.ch, user=self.owner, role="owner")
+        ChatParticipant.objects.create(chat=self.ch, user=self.admin, role="admin")
+        ChatParticipant.objects.create(chat=self.ch, user=self.sub, role="subscriber")
+        self.post = Message.objects.create(chat=self.ch, sender=self.admin, content="пост")
+
+    def remove(self, who, scope="all"):
+        return client_for(who).post(f"/api/messages/{self.post.id}/remove/", {"scope": scope}, format="json")
+
+    def test_owner_deletes_admins_post(self):
+        self.assertEqual(self.remove(self.owner).status_code, 200)
+        self.post.refresh_from_db()
+        self.assertTrue(self.post.deleted_for_all)
+
+    def test_admin_deletes_own_post(self):
+        self.assertEqual(self.remove(self.admin).status_code, 200)
+
+    def test_subscriber_cannot_delete_for_all(self):
+        self.assertEqual(self.remove(self.sub).status_code, 403)
+        self.post.refresh_from_db()
+        self.assertFalse(self.post.deleted_for_all)
+
+    def test_deleted_reaches_subscribers_sync(self):
+        before = client_for(self.sub).get(f"/api/channels/{self.ch.id}/posts/")
+        self.assertEqual(before.status_code, 200)
+        now = before.data["now"]
+        self.remove(self.owner)
+        after = client_for(self.sub).get(f"/api/channels/{self.ch.id}/posts/", {"since": now})
+        self.assertIn(str(self.post.id), after.data["deleted"])
+
+    def test_group_message_not_deletable_by_others(self):
+        # В обычной группе правило прежнее: у всех удаляет только автор.
+        g = Chat.objects.create(kind="group", is_group=True, name="Группа")
+        for p, r in ((self.owner, "owner"), (self.admin, "member")):
+            ChatParticipant.objects.create(chat=g, user=p, role=r)
+        m = Message.objects.create(chat=g, sender=self.admin, content="x")
+        r = client_for(self.owner).post(f"/api/messages/{m.id}/remove/", {"scope": "all"}, format="json")
+        self.assertEqual(r.status_code, 403)
+
+
+
+class ForwardManyTests(TestCase):
+    """Пакетная пересылка: один album_id на пакет, порядок по времени, доступ."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        self.src = Chat.objects.create(kind="direct")
+        self.dst = Chat.objects.create(kind="direct")
+        for p in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=self.src, user=p)
+        ChatParticipant.objects.create(chat=self.dst, user=self.me)
+        self.m1 = Message.objects.create(chat=self.src, sender=self.friend, content="раз")
+        self.m2 = Message.objects.create(chat=self.src, sender=self.me, content="два")
+        self.m3 = Message.objects.create(chat=self.src, sender=self.friend, content="три")
+
+    def fwd(self, who, ids, chat=None):
+        return client_for(who).post("/api/messages/forward_many/", {"message_ids": [str(i) for i in ids], "chat_id": str((chat or self.dst).id)}, format="json")
+
+    def test_batch_shares_album_and_keeps_order(self):
+        r = self.fwd(self.me, [self.m3.id, self.m1.id, self.m2.id])
+        self.assertEqual(r.status_code, 201)
+        rows = r.data["messages"]
+        self.assertEqual([m["content"] for m in rows], ["раз", "два", "три"])
+        albums = {m["album_id"] for m in rows}
+        self.assertEqual(len(albums), 1)
+        self.assertIsNotNone(albums.pop())
+        self.assertEqual(rows[0]["forwarded_title"], "friend")
+        self.assertEqual(rows[1]["forwarded_title"], "me")
+
+    def test_single_has_no_album(self):
+        r = self.fwd(self.me, [self.m1.id])
+        self.assertEqual(r.status_code, 201)
+        self.assertIsNone(r.data["messages"][0]["album_id"])
+
+    def test_stranger_cannot_forward_from_chat(self):
+        other = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=other, user=self.stranger)
+        r = self.fwd(self.stranger, [self.m1.id], chat=other)
+        self.assertEqual(r.status_code, 403)
+
+    def test_cannot_forward_into_foreign_chat(self):
+        foreign = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=foreign, user=self.stranger)
+        r = self.fwd(self.me, [self.m1.id], chat=foreign)
+        self.assertEqual(r.status_code, 403)
+
+    def test_missing_message_rejected(self):
+        import uuid as _uuid
+        r = self.fwd(self.me, [self.m1.id, _uuid.uuid4()])
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(Message.objects.filter(chat=self.dst).count(), 0)

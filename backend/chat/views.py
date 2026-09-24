@@ -535,6 +535,55 @@ def _mark_chat_read_for(chat, profile):
         logger.exception("mark_chat_read_for failed")
 
 
+def _forward_copy(src, target, profile, album_id=None):
+    """Копия сообщения в другой чат. Копируем содержимое, а не ссылаемся на
+    оригинал: удаление исходника пересланное не трогает. Заголовок «от кого» —
+    первоисточник, цепочку пересылок не наращиваем, как и мессенджеры."""
+    origin = src.forwarded_from or src.sender
+    title = src.forwarded_title
+    if not title:
+        if src.chat.kind == "channel" and not (src.chat.sign_posts and src.sender):
+            title = src.chat.name or "Канал"
+            origin = None
+        else:
+            title = origin.username if origin else "Неизвестный"
+    return Message.objects.create(
+        chat=target,
+        sender=profile,
+        content=src.content,
+        file_url=src.file_url,
+        file_name=src.file_name,
+        file_size=src.file_size,
+        file_width=getattr(src, 'file_width', None),
+        file_height=getattr(src, 'file_height', None),
+        sticker=src.sticker,
+        voice_url=src.voice_url,
+        voice_duration=src.voice_duration,
+        video_url=src.video_url,
+        video_duration=src.video_duration,
+        video_mirror=src.video_mirror,
+        download_only=src.download_only,
+        album_id=album_id,
+        forwarded_from=origin,
+        forwarded_title=title[:120],
+    )
+
+
+def _socket_new_message(message, request):
+    """Только в сокет чата, без пуша — для остальных сообщений пакета."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(
+                f'chat_{message.chat.id}',
+                {'type': 'chat_message', 'message': MessageSerializer(message, context={'request': request}).data},
+            )
+    except Exception:
+        logger.exception("пакетная пересылка: сокет не ответил")
+
+
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
     """Разослать новое сообщение: в сокет чата, пуш остальным участникам и
@@ -748,7 +797,10 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Profile not found"}, status=400)
         scope = (request.data.get('scope') or 'me').lower()
         if scope == 'all':
-            if msg.sender_id != profile.id:
+            # У всех — автор; в канале ещё владелец и админы: пост чужого
+            # админа или уволенного автора иначе было бы не убрать. Подписчикам
+            # удаление доедет обычной синхронизацией — save() двигает updated_at.
+            if msg.sender_id != profile.id and not (msg.chat.kind == "channel" and _can_post_to(msg.chat, profile)):
                 return Response({"error": "Удалить у всех может только автор"}, status=403)
             msg.deleted_for_all = True
             msg.save(update_fields=['deleted_for_all', 'updated_at'])
@@ -915,37 +967,47 @@ class MessageViewSet(viewsets.ModelViewSet):
         if not _can_post_to(target, profile):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
 
-        # Заголовок «от кого»: цепочку пересылок не наращиваем — сохраняем
-        # первоисточник, как и мессенджеры.
-        origin = src.forwarded_from or src.sender
-        title = src.forwarded_title
-        if not title:
-            if src.chat.kind == "channel" and not (src.chat.sign_posts and src.sender):
-                title = src.chat.name or "Канал"
-                origin = None
-            else:
-                title = origin.username if origin else "Неизвестный"
-
-        message = Message.objects.create(
-            chat=target,
-            sender=profile,
-            content=src.content,
-            file_url=src.file_url,
-            file_name=src.file_name,
-            file_size=src.file_size,
-            sticker=src.sticker,
-            voice_url=src.voice_url,
-            voice_duration=src.voice_duration,
-            video_url=src.video_url,
-            video_duration=src.video_duration,
-            video_mirror=src.video_mirror,
-            download_only=src.download_only,
-            forwarded_from=origin,
-            forwarded_title=title[:120],
-        )
+        message = _forward_copy(src, target, profile)
         Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
         _notify_new_message(message, profile, request)
         return Response(MessageSerializer(message, context={'request': request}).data, status=201)
+
+    @action(detail=False, methods=['post'])
+    def forward_many(self, request):
+        """Переслать несколько сообщений одним пакетом ({message_ids, chat_id}).
+        Копии получают общий album_id — клиент склеивает их в один пузырь,
+        как альбом фотографий. Порядок — по времени исходников, а не по тому,
+        в каком порядке их отметили."""
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        ids = request.data.get('message_ids') or []
+        if not isinstance(ids, list) or not ids or len(ids) > 50:
+            return Response({"error": "Нужно от 1 до 50 сообщений"}, status=400)
+        target = Chat.objects.filter(id=request.data.get('chat_id')).first()
+        if not target:
+            return Response({"error": "Чат не найден"}, status=404)
+        if not _can_post_to(target, profile):
+            return Response({"error": "В этот чат нельзя написать"}, status=403)
+        sources = list(Message.objects.filter(id__in=ids, deleted_for_all=False).select_related('chat', 'sender', 'forwarded_from').order_by('created_at'))
+        if len(sources) != len(set(ids)):
+            return Response({"error": "Часть сообщений не найдена"}, status=404)
+        # Доступ проверяем по каждому чату-источнику: в пакет могли попасть
+        # сообщения только одного чата, но полагаться на это нельзя.
+        for chat in {m.chat for m in sources}:
+            if not _can_see_chat(chat, profile):
+                return Response({"error": "Нет доступа к исходному сообщению"}, status=403)
+        album = uuid.uuid4() if len(sources) > 1 else None
+        created = [_forward_copy(src, target, profile, album_id=album) for src in sources]
+        Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
+        # Уведомление — одно на пакет, по последнему сообщению: иначе получатель
+        # ловил бы по пушу на каждое. В сокет чата остальные уходят отдельно,
+        # без пуша — лента получателя должна увидеть каждое.
+        for m in created[:-1]:
+            _socket_new_message(m, request)
+        _notify_new_message(created[-1], profile, request)
+        return Response({"messages": MessageSerializer(created, many=True, context={'request': request}).data}, status=201)
 
     @action(detail=False, methods=['get'])
     def sync(self, request):

@@ -153,6 +153,38 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   };
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  // Удаление поста — как сообщений в чате: пост сразу исчезает, пять секунд
+  // висит «Отменить», и только потом уходит запрос. Пока висит — пост лишь
+  // спрятан (hiddenIds), чтобы отмена вернула его на место без перезагрузки.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set());
+  const [undoBar, setUndoBar] = useState<Post | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commitDelete = (id: string) => {
+    api.removeMessage(id, "all").catch(() => toast.error("Не удалось удалить пост"));
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+    setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  };
+  const startDelete = (post: Post) => {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
+    if (undoBar) commitDelete(undoBar.id);
+    setHiddenIds((prev) => new Set(prev).add(post.id));
+    setUndoBar(post);
+    deleteTimerRef.current = setTimeout(() => {
+      commitDelete(post.id);
+      setUndoBar(null);
+      deleteTimerRef.current = null;
+    }, 5000);
+  };
+  const undoDelete = () => {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
+    if (undoBar) setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+    setUndoBar(null);
+  };
+  // Ушли из канала с висящей «Отменить» — удаление доводим до конца.
+  useEffect(() => () => {
+    if (deleteTimerRef.current && undoBar) { clearTimeout(deleteTimerRef.current); api.removeMessage(undoBar.id, "all").catch(() => {}); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -577,7 +609,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   }
   const albumTail = new Set<string>();
   albumsById.forEach((list) => list.slice(1).forEach((p) => albumTail.add(p.id)));
-  const feedPosts = posts.filter((p) => !albumTail.has(p.id));
+  const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id));
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -695,6 +727,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   <MessageCircle className="w-4 h-4" />
                   {post.comments_count ?? 0}
                 </button>
+                {isAdmin && !post._pending && (
+                  <button
+                    type="button"
+                    onClick={() => startDelete(post)}
+                    aria-label="Удалить пост"
+                    className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground active:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -704,6 +746,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       {/* Композер (админ) или кнопка подписки */}
       {isAdmin ? (
         <div className="pad-safe-bottom px-3 py-2 shrink-0">
+          {undoBar && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
+              <span className="text-sm">Пост удалён</span>
+              <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
+            </div>
+          )}
           {sound && (
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               <Music2 className="w-3.5 h-3.5" /> Звук пуша: <b className="text-foreground">{sound.name}</b>
