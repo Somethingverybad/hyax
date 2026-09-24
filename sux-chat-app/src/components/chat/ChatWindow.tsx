@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
@@ -289,7 +289,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Закреплённое сообщение чата (одно) — полоса под шапкой.
   const [pinned, setPinned] = useState<PinnedInfo | null>(null);
   // Сообщение, для которого открыт выбор чата пересылки.
-  const [forwardFor, setForwardFor] = useState<Message | null>(null);
+  const [forwardFor, setForwardFor] = useState<Message[] | null>(null);
+  // Режим выбора: несколько сообщений — переслать или в избранное одним
+  // пакетом. null — обычный режим. Входим из меню сообщения («Выбрать»).
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+  const toggleSelected = (id: string) => setSelected((prev) => {
+    const n = new Set(prev || []);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const selectedMessages = () => (selected ? messages.filter((m) => selected.has(m.id) && !m.pending) : []);
   const [forwardQuery, setForwardQuery] = useState("");
 
   const loadPinned = async () => {
@@ -354,10 +363,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => el!.classList.remove("msg-flash"), 1200);
   };
 
-  const forwardTo = async (m: Message, targetId: string, label: string) => {
+  const forwardTo = async (list: Message[], targetId: string, label: string) => {
+    if (!list.length) return;
     try {
-      await api.forwardMessage(m.id, targetId);
+      // Порядок — по времени: отмечать могли в любом порядке.
+      const ordered = [...list].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+      if (ordered.length === 1) await api.forwardMessage(ordered[0].id, targetId);
+      else await api.forwardMany(ordered.map((m) => m.id), targetId);
       toast.success(label);
+      setSelected(null);
       if (targetId === chatId) syncSince();
     } catch (e: any) {
       toast.error(e?.message || "Не удалось переслать");
@@ -370,7 +384,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!id) {
       try { id = (await api.getSavedChat()).id; } catch { toast.error("Избранное недоступно"); return; }
     }
-    await forwardTo(m, id, "Добавлено в избранное");
+    await forwardTo([m], id, "Добавлено в избранное");
+  };
+  /** Пакет из режима выбора — в избранное. */
+  const selectionToSaved = async () => {
+    const list = selectedMessages();
+    let id = savedChatId;
+    if (!id) {
+      try { id = (await api.getSavedChat()).id; } catch { toast.error("Избранное недоступно"); return; }
+    }
+    await forwardTo(list, id, list.length > 1 ? `В избранное: ${list.length}` : "Добавлено в избранное");
   };
 
   /** Название чата для списка пересылки. */
@@ -393,7 +416,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState("");
+  // Текст поля ввода — в ref, а не в состоянии: иначе каждая клавиша
+  // перерисовывала всё окно вместе с лентой из полусотни сообщений (разбор
+  // ссылок, альбомов, реакций на каждое) — на телефоне набор шёл с запинками.
+  // В состоянии только «есть ли текст» — от него зависит кнопка отправки.
+  const draftRef = useRef("");
+  const [hasDraft, setHasDraft] = useState(false);
   // Вложения композера: можно выбрать несколько фото/видео разом (уйдут
   // альбомом), добавить музыку или файл, и убрать лишнее до отправки.
   const [attachments, setAttachments] = useState<Attach[]>([]);
@@ -511,6 +539,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // смену чата от прихода новых сообщений.
   const soundChatRef = useRef<string | null>(null);
   const lastSendTimeRef = useRef<number>(0);
+  // Момент отправки касанием — чтобы возможный click вслед за touchend не отправил второй раз.
+  const touchSentRef = useRef<number>(0);
 
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
 
@@ -548,12 +578,31 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Высоту пересчитываем на каждое изменение текста: сначала сбрасываем,
   // иначе поле умеет только расти и не сжимается после отправки.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
+  const fitTextarea = () => {
     const el = textareaRef.current;
     if (!el) return;
+    const before = el.offsetHeight;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 104)}px`;
-  }, [newMessage]);
+    if (el.offsetHeight === before) return;
+    // Поле подросло — панель ввода стала выше, лента ужалась снизу. Прижатую
+    // ленту возвращаем к низу здесь же, синхронно: ResizeObserver, который
+    // обычно это делает, на iOS срабатывал не всегда, и последнее сообщение
+    // уезжало под панель ввода при наборе многострочного текста.
+    const sc = scrollRef.current;
+    if (sc && pinnedRef.current) {
+      sc.scrollTop = sc.scrollHeight;
+      logFeed(`compose ${before}→${el.offsetHeight}`);
+    }
+  };
+  /** Поставить текст в поле программно: редактирование, отмена, возврат после ошибки. */
+  const setDraft = (text: string) => {
+    draftRef.current = text;
+    const el = textareaRef.current;
+    if (el && el.value !== text) el.value = text;
+    setHasDraft(!!text.trim());
+    fitTextarea();
+  };
 
   // Открытие чата: сначала кэш (мгновенно), потом синхронизация с сервера —
   // только то, что изменилось после последней синхронизации. Без кэша —
@@ -573,6 +622,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setFreshIds(new Set());
     setHasMore(false);
     setMessages([]);
+    setSelected(null);
 
     (async () => {
       const cached = await readMessages(chatId);
@@ -649,9 +699,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
     const incoming = newMessages.filter(m => m.sender?.id !== userId);
     if (primedRef.current && incoming.length) setFreshIds(new Set(incoming.map(m => m.id)));
-    // Пришло, пока смотрим на низ ленты, — прочитано сейчас, а не при выходе
-    // из чата: у автора вторая галочка загорается сразу.
-    if (incoming.length && pinnedRef.current) markReadSoon();
     // Своё сообщение всегда ведёт вниз. Чужое — только если лента и так у низа;
     // отлистал вверх — остаёмся на месте и считаем пришедшее.
     if (incoming.length < newMessages.length || pinnedRef.current) goBottom(primedRef.current);
@@ -1018,6 +1065,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   }, []);
 
   const msgPointerDown = (e: React.PointerEvent, message: Message) => {
+    if (selected) return; // режим выбора: тап ловит оверлей строки
     // Жесты — только для пальца/стилуса. Мышью меню открывает правая кнопка
     // (onContextMenu); раньше зажатая кнопка через 450 мс запускала «долгое
     // нажатие» и подменяла меню у курсора нижней шторкой во весь экран.
@@ -1115,9 +1163,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     closeMenu();
     setReplyTo(null);
     setEditing(message);
-    setNewMessage(message.content || "");
+    setDraft(message.content || "");
   };
-  const cancelEdit = () => { setEditing(null); setNewMessage(""); };
+  const cancelEdit = () => { setEditing(null); setDraft(""); };
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
@@ -1168,32 +1216,32 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const sendMessage = async () => {
     // Звук — самостоятельное сообщение: пузырь с одним аудио-стикером,
     // который получатель может проиграть. Текст для этого не нужен.
-    if (!chatId || (!newMessage.trim() && !attachments.length && !selectedSound)) return;
+    if (!chatId || (!draftRef.current.trim() && !attachments.length && !selectedSound)) return;
 
     // Режим редактирования: не создаём новое, а меняем текст существующего.
     if (editing) {
-      const newText = newMessage.trim();
+      const newText = draftRef.current.trim();
       const target = editing;
       if (!newText) { cancelEdit(); return; }
       setEditing(null);
-      setNewMessage("");
+      setDraft("");
       try {
         const upd = await api.editMessage(target.id, newText);
         setMessages((prev) => prev.map((m) =>
           m.id === target.id ? { ...m, ...upd, content: newText, is_edited: true, _key: m._key, _dims: m._dims } : m));
       } catch {
         toast.error("Не удалось изменить сообщение");
-        setEditing(target); setNewMessage(newText);
+        setEditing(target); setDraft(newText);
       }
       return;
     }
 
-    const text = newMessage.trim();
+    const text = draftRef.current.trim();
     const list = attachments;
     const sound = selectedSound;
     const reply = replyTo;
 
-    setNewMessage("");
+    setDraft("");
     setAttachments([]);
     setSelectedSound(null);
     setReplyTo(null);
@@ -1233,7 +1281,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         console.error("Error sending message:", error);
         toast.error("Ошибка отправки: " + (error?.message || "Неизвестная ошибка"));
         setMessages(prev => prev.filter(m => m.id !== tempId));
-        setNewMessage(text);
+        setDraft(text);
         setSelectedSound(sound);
         setReplyTo(reply);
       }
@@ -1423,24 +1471,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
-  // Прочтение. Отметку шлём с задержкой: пачка входящих — один запрос.
-  // Только когда приложение на экране: в фоне сообщение пришло, но не прочитано.
-  const markReadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const markReadSoon = () => {
-    if (!chatId || document.visibilityState !== "visible") return;
-    if (markReadTimer.current) clearTimeout(markReadTimer.current);
-    const id = chatId;
-    markReadTimer.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
-  };
+  // Вернулись в приложение с открытой перепиской — то, что на экране,
+  // прочитано: пока приложение было в фоне, syncSince отметку не ставил.
   useEffect(() => {
-    // Вернулись в приложение с открытой перепиской — всё на экране прочитано.
-    const onVisible = () => { if (document.visibilityState === "visible") markReadSoon(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      if (markReadTimer.current) clearTimeout(markReadTimer.current);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !chatId) return;
+      const id = chatId;
+      clearTimeout(markReadTimerRef.current);
+      markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [chatId]);
 
   // Собеседник прочитал (событие «read» из Chat.tsx): свои сообщения до
@@ -1804,7 +1845,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: "Реакция", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
         { label: "В плейлист", show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
         { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
-        { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardQuery(""); setForwardFor(menuMessage); closeMenu(); } },
+        { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardQuery(""); setForwardFor([menuMessage]); closeMenu(); } },
+        { label: "Выбрать", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
         { label: "В избранное", show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
         { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
         { label: "Копировать текст", show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
@@ -1817,17 +1859,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // Соседние сообщения одного альбома показываем одной сеткой: группу рисуем
   // на первом её сообщении, остальные из ленты убираем.
-  const visibleMessages = messages.filter((m) => !hiddenIds.has(m.id));
-  const albumsById = new Map<string, Message[]>();
-  for (const m of visibleMessages) {
-    if (!m.album_id) continue;
-    const list = albumsById.get(m.album_id) || [];
-    list.push(m);
-    albumsById.set(m.album_id, list);
-  }
-  const albumTail = new Set<string>();
-  albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
-  const feedRows = visibleMessages.filter((m) => !albumTail.has(m.id));
+  const { albumsById, feedRows } = useMemo(() => {
+    const visible = messages.filter((m) => !hiddenIds.has(m.id));
+    const albumsById = new Map<string, Message[]>();
+    for (const m of visible) {
+      // Стикеры, голосовые и видео-кружки в общий пузырь не складываем: у них
+      // своя форма, а в пакете пересылки они идут отдельными сообщениями.
+      if (!m.album_id || m.sticker?.file_url || m.voice_url || m.video_url) continue;
+      const list = albumsById.get(m.album_id) || [];
+      list.push(m);
+      albumsById.set(m.album_id, list);
+    }
+    const albumTail = new Set<string>();
+    albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
+    return { albumsById, feedRows: visible.filter((m) => !albumTail.has(m.id)) };
+  }, [messages, hiddenIds]);
 
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -2011,7 +2057,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // музыка и файлы — строками под ней, всё в одном пузыре.
             const albumMedia = isAlbum ? album!.filter((m) => !m.download_only && (isImageFile(m.file_name, m.file_url) || isVideoFile(m.file_name, m.file_url)) && !isAudioFile(m.file_name, m.file_url)) : [];
             const albumAudio = isAlbum ? album!.filter((m) => isAudioFile(m.file_name, m.file_url)) : [];
-            const albumRest = isAlbum ? album!.filter((m) => !albumMedia.includes(m) && !albumAudio.includes(m)) : [];
+            // Пересланный пакет: текстовые сообщения — абзацами в одном пузыре.
+            const albumText = isAlbum ? album!.filter((m) => !m.file_url && (m.content || "").trim()) : [];
+            const albumRest = isAlbum ? album!.filter((m) => !!m.file_url && !albumMedia.includes(m) && !albumAudio.includes(m)) : [];
+            // Если авторы в пакете разные — подписываем каждый элемент.
+            const originOf = (m: Message) => m.forwarded_from?.username || m.forwarded_title || "";
+            const mixedOrigins = isAlbum && new Set(album!.map(originOf)).size > 1;
             const hasImage =
               !!message.file_url &&
               !message.download_only &&
@@ -2019,7 +2070,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               !imageLoadErrors.has(message.id);
             // Картинка без текста — сама себе пузырь: без цветной рамки-паспарту,
             // которая раздувала сообщение на пол-экрана.
-            const imageOnly = (hasImage || (isAlbum && !albumAudio.length && !albumRest.length)) && !message.content && !message.sticker?.file_url && !message.sound;
+            const imageOnly = (hasImage || (isAlbum && !albumAudio.length && !albumRest.length && !albumText.length)) && !message.content && !message.sticker?.file_url && !message.sound;
             // Видео-«треугольник» без текста/цитаты — тоже без прямоугольного
             // пузыря: обводку несёт сам треугольник (см. VideoNote).
             const videoOnly = !!message.video_url && !message.content && !message.sticker?.file_url && !message.sound && !message.reply_to;
@@ -2055,11 +2106,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <div
                   className={cn(
                     "relative flex gap-3 group",
-                    isOwn && "flex-row-reverse"
+                    isOwn && "flex-row-reverse",
+                    selected && "rounded-lg -mx-2 px-2 py-1 transition-colors",
+                    selected?.has(message.id) && "bg-primary/15"
                   )}
                   onPointerDown={(e) => msgPointerDown(e, message)}
                   onPointerMove={(e) => msgPointerMove(e, message, isOwn)}
                   onPointerUp={(e) => msgPointerUp(e, message, isOwn)}
+                  data-selected={selected?.has(message.id) ? "1" : undefined}
                   onPointerCancel={msgPointerCancel}
                   // pan-y: вертикальную прокрутку оставляем браузеру, горизонтальный
                   // жест — наш. Без этого iOS на первом же миллиметре по вертикали
@@ -2072,6 +2126,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       : { transition: "transform 150ms" }),
                   }}
                 >
+                  {/* Режим выбора: строку целиком накрывает кнопка — тап
+                      переключает отметку, а картинки, ссылки и реакции под ней
+                      не срабатывают. */}
+                  {selected && (
+                    <button
+                      type="button"
+                      aria-label={selected.has(message.id) ? "Снять выбор" : "Выбрать сообщение"}
+                      onClick={() => toggleSelected(message.id)}
+                      className="absolute inset-0 z-10 rounded-lg"
+                    >
+                      <span className={cn(
+                        "absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 flex items-center justify-center",
+                        isOwn ? "right-1" : "left-1",
+                        selected.has(message.id) ? "bg-primary border-primary text-primary-foreground" : "border-foreground/40 bg-background/60"
+                      )}>
+                        {selected.has(message.id) && <Check className="w-3.5 h-3.5" />}
+                      </span>
+                    </button>
+                  )}
                   {/* Иконка ответа при свайпе */}
                   {swipe?.id === message.id && Math.abs(swipe.dx) > 6 && (
                     <span
@@ -2147,7 +2220,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <div className="mb-1 flex items-center gap-1 text-xs opacity-80 min-w-0">
                           <Forward className="w-3 h-3 shrink-0" />
                           <span className="line-clamp-1 break-all">
-                            Переслано от {message.forwarded_from?.username || message.forwarded_title}
+                            {mixedOrigins ? `Переслано ${album!.length} сообщений` : `Переслано от ${message.forwarded_from?.username || message.forwarded_title}`}
                           </span>
                         </div>
                       )}
@@ -2254,8 +2327,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         ? <ProfileLinkCard url={packLink} own={isOwn && !bareBubble} />
                         : <PackLinkCard url={packLink} own={isOwn && !bareBubble} />)}
 
+                      {/* Тексты пересланного пакета — абзацами; время у последнего. */}
+                      {albumText.map((m, i) => (
+                        <div key={m.id} className={cn(i > 0 && "mt-2")}>
+                          {mixedOrigins && <p className="text-caption opacity-70 leading-tight">{originOf(m)}</p>}
+                          <p className="text-body break-words whitespace-pre-wrap">
+                            <Linkify text={m.content || ""} />
+                            {i === albumText.length - 1 && isOwn && !bareBubble && !albumMedia.length && !albumAudio.length && !albumRest.length && (
+                              <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
+                                {formatTime(message.created_at)}
+                                {message.pending ? <Clock className="w-3.5 h-3.5" /> : readByOthers(message) ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      ))}
                       {/* Текст сообщения */}
-                      {message.content && (
+                      {message.content && !albumText.length && (
                         <p className="text-body break-words whitespace-pre-wrap">
                           <Linkify text={shownText} />
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
@@ -2426,6 +2514,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 {newBelow > 99 ? "99+" : newBelow}
               </span>
             )}
+          </button>
+        </div>
+      )}
+
+      {/* Режим выбора: панель действий поверх поля ввода. Поле не размонтируем —
+          в нём живёт черновик. */}
+      {selected && (
+        <div className="absolute bottom-0 inset-x-0 z-30 bg-surface-2 border-t border-border px-3 pt-2 pb-[calc(var(--sab)+8px)] flex items-center gap-2">
+          <button type="button" onClick={() => setSelected(null)} className="p-2 -ml-2" aria-label="Отменить выбор"><X className="w-5 h-5" /></button>
+          <span className="text-body font-medium flex-1">{selected.size ? `Выбрано: ${selected.size}` : "Выберите сообщения"}</span>
+          {!saved && (
+            <button
+              type="button"
+              disabled={!selected.size}
+              onClick={() => void selectionToSaved()}
+              className="h-10 px-3 rounded-md bg-surface-4 text-body flex items-center gap-1.5 disabled:opacity-40"
+            >
+              <Bookmark className="w-4 h-4" /> В избранное
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!selected.size}
+            onClick={() => { const list = selectedMessages(); if (list.length) { setForwardQuery(""); setForwardFor(list); } }}
+            className="h-10 px-3 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center gap-1.5 disabled:opacity-40"
+          >
+            <Forward className="w-4 h-4" /> Переслать
           </button>
         </div>
       )}
@@ -2627,10 +2742,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <textarea
                 ref={textareaRef}
                 placeholder="Сообщение..."
-                value={newMessage}
+                defaultValue=""
                 rows={1}
                 onPaste={onPasteFile}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={(e) => {
+                  draftRef.current = e.target.value;
+                  // setState с тем же значением React пропускает — перерисовка
+                  // только на границе «пусто ↔ есть текст».
+                  setHasDraft(!!e.target.value.trim());
+                  fitTextarea();
+                }}
                 onKeyDown={(e) => {
                   // На телефоне Enter — перенос строки (отправка кнопкой), на
                   // десктопе — отправка, Shift+Enter — перенос.
@@ -2645,10 +2766,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               />
             </div>
             
-            {newMessage.trim() || attachments.length || selectedSound ? (
+            {hasDraft || attachments.length || selectedSound ? (
               <Button
-                onClick={sendMessage}
-                onPointerDown={(e) => e.preventDefault()}
+                // Тап по кнопке не должен снимать фокус с поля: иначе клавиатура
+                // прячется и тут же возвращается (focus() ниже), а обработчик
+                // клавиатуры дважды дёргает ленту — в баг-репорте это «клавиатура
+                // моргает» и «артефакты при отправке». На iOS preventDefault на
+                // pointerdown фокус не удерживает — только на touch-событиях;
+                // отменённый touchstart заодно гасит синтетический click, поэтому
+                // на касании отправляем из touchend, а onClick остаётся мыши.
+                onClick={() => { if (Date.now() - touchSentRef.current > 500) sendMessage(); }}
+                onMouseDown={(e) => e.preventDefault()}
+                onTouchStart={(e) => e.preventDefault()}
+                onTouchEnd={(e) => { e.preventDefault(); if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
                 disabled={uploading}
                 className="h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
                 size="icon"
@@ -2873,6 +3003,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {groupOpen && group && (
         <GroupSettingsModal
           chatId={group.id}
+          userId={userId}
           isAdmin={isGroupAdmin}
           initialName={headerTitle || group.name || "Группа"}
           initialAvatar={group.avatar_url}
@@ -2902,7 +3033,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <div className="w-full md:max-w-md bg-card border-t-2 md:border-2 border-border max-h-[80%] flex flex-col pb-[var(--sab)]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
               <Forward className="w-4 h-4 text-primary" />
-              <span className="font-semibold flex-1">Переслать</span>
+              <span className="font-semibold flex-1">{forwardFor.length > 1 ? `Переслать ${forwardFor.length}` : "Переслать"}</span>
               <button type="button" onClick={() => setForwardFor(null)} className="p-1" aria-label="Закрыть"><X className="w-5 h-5" /></button>
             </div>
             <input
@@ -2913,7 +3044,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             />
             <div className="overflow-y-auto">
               {!saved && savedChatId && (
-                <button type="button" onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, savedChatId, "Добавлено в избранное"); }} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary">
+                <button type="button" onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, savedChatId, m.length > 1 ? `В избранное: ${m.length}` : "Добавлено в избранное"); }} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary">
                   <span className="w-10 h-10 shrink-0 bg-primary flex items-center justify-center"><Bookmark className="w-5 h-5 text-primary-foreground" /></span>
                   <span className="font-medium">Избранное</span>
                 </button>
@@ -2925,7 +3056,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, c.id, `Переслано: ${chatLabel(c)}`); }}
+                    onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, c.id, m.length > 1 ? `Переслано ${m.length}: ${chatLabel(c)}` : `Переслано: ${chatLabel(c)}`); }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary"
                   >
                     {c.kind === "channel" ? (
@@ -2956,7 +3087,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               const cur = viewer.items[viewer.index];
               const m = messages.find((x) => x.id === cur?.messageId);
               setViewer(null);
-              if (m) { setForwardQuery(""); setForwardFor(m); }
+              if (m) { setForwardQuery(""); setForwardFor([m]); }
             } },
             { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
               const cur = viewer.items[viewer.index];

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Camera, UserPlus, Users, Check } from "lucide-react";
 import Identicon from "@/components/Identicon";
+import UserProfileModal from "@/components/UserProfileModal";
 import { api, mediaUrl } from "@/api/client";
 import { toast } from "sonner";
 
@@ -12,6 +13,7 @@ interface Person { id: string; username: string; avatar_url?: string | null }
  */
 const GroupSettingsModal = ({
   chatId,
+  userId,
   isAdmin,
   initialName,
   initialAvatar,
@@ -19,6 +21,8 @@ const GroupSettingsModal = ({
   onUpdated,
 }: {
   chatId: string;
+  /** Свой id — свою строку в списке не открываем карточкой. */
+  userId?: string;
   isAdmin: boolean;
   initialName: string;
   initialAvatar?: string | null;
@@ -33,6 +37,8 @@ const GroupSettingsModal = ({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Person[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Тап по участнику открывает его карточку — ту же, что из шапки личного чата.
+  const [profileFor, setProfileFor] = useState<string | null>(null);
 
   useEffect(() => {
     api.getChatParticipants(chatId).then(setMembers).catch(() => {});
@@ -184,14 +190,28 @@ const GroupSettingsModal = ({
 
           <div className="space-y-1">
             {members.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 px-2 py-1.5">
+              <button
+                key={m.id}
+                type="button"
+                disabled={m.id === userId}
+                onClick={() => setProfileFor(m.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left active:bg-surface-3 disabled:active:bg-transparent"
+              >
                 <Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" />
-                <span className="text-sm truncate">{m.username}</span>
-              </div>
+                <span className="text-sm truncate flex-1">{m.username}</span>
+                {m.id === userId && <span className="text-caption text-subtle">вы</span>}
+              </button>
             ))}
           </div>
         </div>
       </div>
+      {/* Карточка поверх настроек. Клики внутри неё не должны доходить до
+          подложки настроек — иначе тап мимо карточки закрыл бы и настройки. */}
+      {profileFor && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <UserProfileModal userId={profileFor} onClose={() => setProfileFor(null)} />
+        </div>
+      )}
     </div>
   );
 };
