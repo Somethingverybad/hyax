@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import lottie, { type AnimationItem } from "lottie-web";
-import { inflate } from "pako";
+import type { AnimationItem } from "lottie-web";
 import { mediaUrl } from "@/api/client";
 
 /**
@@ -8,12 +7,18 @@ import { mediaUrl } from "@/api/client";
  * (телеграмовские видеостикеры); .tgs — анимация Lottie в gzip (телеграмовские
  * анимированные), распаковываем pako и крутим lottie-web на canvas.
  * Анимация играет только пока стикер на экране — в пикере их десятки.
+ *
+ * lottie-web и pako подгружаются при первом .tgs, а не при старте: вместе они
+ * тянули на треть главного бандла, а нужны только тем, у кого есть
+ * анимированные стикеры.
  */
+const loadLottie = () => import("lottie-web").then((m) => m.default);
 const tgsCache = new Map<string, Promise<object>>();
 const loadTgs = (url: string) => {
   let p = tgsCache.get(url);
   if (!p) {
-    p = fetch(url).then((r) => r.arrayBuffer()).then((buf) => JSON.parse(new TextDecoder().decode(inflate(new Uint8Array(buf)))));
+    p = Promise.all([fetch(url).then((r) => r.arrayBuffer()), import("pako")])
+      .then(([buf, { inflate }]) => JSON.parse(new TextDecoder().decode(inflate(new Uint8Array(buf)))));
     tgsCache.set(url, p);
   }
   return p;
@@ -32,7 +37,7 @@ const StickerView = ({ url, alt, className, loop = true }: { url: string; alt?: 
     let anim: AnimationItem | null = null;
     let alive = true;
     const el = box.current;
-    loadTgs(src).then((data) => {
+    Promise.all([loadLottie(), loadTgs(src)]).then(([lottie, data]) => {
       if (!alive) return;
       anim = lottie.loadAnimation({ container: el, renderer: "canvas", loop, autoplay: false, animationData: data });
       const io = new IntersectionObserver(([e]) => { if (!anim) return; e.isIntersecting ? anim.play() : anim.pause(); }, { threshold: 0.1 });

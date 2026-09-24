@@ -142,15 +142,24 @@ const ChatSidebar = ({
   // а здесь шапка выше (см. components/MiniPlayer.tsx).
   const topRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    let last = "";
     const set = () => {
       const h = topRef.current?.getBoundingClientRect().bottom;
-      if (h) document.documentElement.style.setProperty("--player-top", `${Math.round(h)}px`);
+      if (!h) return;
+      const v = `${Math.round(h)}px`;
+      // Одно и то же значение не переписываем: setProperty на <html> заставляет
+      // пересчитать стили всего дерева.
+      if (v !== last) { last = v; document.documentElement.style.setProperty("--player-top", v); }
     };
     set();
-    const id = setInterval(set, 1000);  // список фильтров появляется не сразу
+    // Раньше тут был таймер раз в секунду (фильтры появляются не сразу) — и
+    // каждую секунду принудительный пересчёт раскладки. ResizeObserver
+    // срабатывает ровно тогда, когда верхний блок меняет высоту.
+    const ro = typeof ResizeObserver !== "undefined" && topRef.current ? new ResizeObserver(set) : null;
+    if (ro && topRef.current) ro.observe(topRef.current);
     window.addEventListener("resize", set);
     return () => {
-      clearInterval(id);
+      ro?.disconnect();
       window.removeEventListener("resize", set);
       document.documentElement.style.removeProperty("--player-top");
     };
@@ -860,7 +869,7 @@ const ChatSidebar = ({
                   >
                     {isChannel ? (
                       (chat as any).avatar_url ? (
-                        <img src={mediaUrl((chat as any).avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover" />
+                        <img src={mediaUrl((chat as any).avatar_url)} alt="" loading="lazy" decoding="async" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover" />
                       ) : (
                         <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
                           <Radio className="w-6 h-6 md:w-5 md:h-5 text-primary" />
@@ -869,6 +878,8 @@ const ChatSidebar = ({
                     ) : chat.is_group ? (
                       (chat as any).avatar_url ? (
                         <img
+                          loading="lazy"
+                          decoding="async"
                           src={mediaUrl((chat as any).avatar_url)}
                           alt=""
                           className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover"

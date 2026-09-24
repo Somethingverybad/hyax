@@ -654,13 +654,15 @@ textarea,
 /* Активная вкладка нижней навигации — тоже со свечением. */
 [data-shape="glass"] .ui-nav-on { text-shadow: 0 0 18px hsl(var(--primary) / 0.5); }
 
-/* Входящий пузырь — стекло, свой остаётся плотным акцентом со свечением:
-   так переписка читается и поверх подсветок. */
+/* Входящий пузырь — полупрозрачный с гранью, свой остаётся плотным акцентом
+   со свечением: так переписка читается и поверх подсветок. Размытия фона у
+   пузырей нет: каждый backdrop-filter внутри прокручиваемой ленты — отдельный
+   слой, который WebKit пересчитывает на каждом кадре скролла; на iPhone с
+   двумя десятками таких пузырей лента шла рывками. Плотность поднята, чтобы
+   без размытия текст не терялся на пёстром фоне. */
 [data-shape="glass"] .bubble-in {
-  background-color: hsl(var(--bubble-in) / 0.62);
+  background-color: hsl(var(--bubble-in) / 0.8);
   border: 1px solid rgb(var(--glass-border));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
 }
 [data-shape="glass"] .bubble-own { box-shadow: var(--glass-glow); }
 
@@ -909,12 +911,13 @@ textarea,
      фона. Идут после общих правил, иначе те перекрыли бы их плотной заливкой. */
   /* Один левый край у поиска, фильтров и карточек: было 16 против 12. */
   [data-shape="glass"] .chat-row { margin: 0 16px 8px; }
+  /* Без размытия — по той же причине, что и пузыри (см. .bubble-in): строк
+     в списке десятки, и каждая с blur делала прокрутку списка чатов рваной.
+     Вуаль поверхности и грань дают тот же стеклянный вид. */
   [data-shape="glass"] .chat-row-card {
     background: var(--glass-surface);
     border: 1px solid rgb(var(--glass-border));
     border-radius: var(--radius);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
     box-shadow: 0 10px 26px -14px rgb(var(--glass-shade) / 0.55);
   }
   /* Под строкой лежат «закрепить» и «удалить»: сквозь стекло они просвечивали

@@ -65,6 +65,10 @@ const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) =
         alt=""
         className={`${className} ${avatarUrl ? "rounded-md" : "rounded-full"} object-cover shrink-0 select-none`}
         draggable={false}
+        // Списки на десятки строк: без этого все аватары декодировались на
+        // главном потоке разом при открытии, и первая прокрутка запиналась.
+        loading="lazy"
+        decoding="async"
       />
     );
   }
