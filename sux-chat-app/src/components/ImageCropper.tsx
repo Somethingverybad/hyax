@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Check, ZoomIn } from "lucide-react";
 
 /**
@@ -136,7 +137,10 @@ const ImageCropper = ({ file, aspect, outWidth, onCancel, onDone }: {
     }
   };
 
-  return (
+  // Порталом на body: кадратор открывают и из панели ввода чата, а у неё
+  // transform под клавиатуру — fixed внутри неё считается от панели, и
+  // кадратор уезжал за нижний край экрана.
+  return createPortal(
     <div className="fixed inset-0 z-[80] bg-black/90 flex flex-col">
       {/* pad-safe-top: иначе кнопки уезжают под строку состояния и островок. */}
       <div className="flex items-center justify-between px-4 min-h-14 pad-safe-top shrink-0">
@@ -188,7 +192,8 @@ const ImageCropper = ({ file, aspect, outWidth, onCancel, onDone }: {
           aria-label="Масштаб"
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

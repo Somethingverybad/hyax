@@ -29,7 +29,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { takePendingShare } from "@/lib/shareInbox";
-import { loadStickerIndex, matchStickers, lastToken, type IndexedSticker } from "@/lib/stickerIndex";
+import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, type IndexedSticker } from "@/lib/stickerIndex";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, TRIANGLE, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
@@ -1249,6 +1249,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
    *  анимацией, а ответ сервера подменяет временное сообщение. Раньше он ждал
    *  ответа и перезагружал всю ленту — стикер возникал рывком и не по месту. */
   const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }) => {
+    noteStickerUsed(sticker.id); // частые — первыми в подсказках
     if (!chatId) return;
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: Message = {
@@ -2621,7 +2622,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </div>
           )}
           {stickerHints.length > 0 && (
-            <div className="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Стикеры по макросу">
+            <div className="mb-2 flex gap-1.5 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Стикеры по макросу">
               {stickerHints.map((s) => (
                 <button
                   key={s.id}
@@ -2634,7 +2635,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     setStickerHints([]);
                     void sendSticker({ id: s.id, file_url: s.file_url, emoji: s.emoji });
                   }}
-                  className="shrink-0 w-14 h-14 rounded-lg bg-surface-4 p-1 active:scale-90 transition-transform"
+                  className="shrink-0 snap-start w-14 h-14 rounded-lg bg-surface-4 p-1 active:scale-90 transition-transform"
                 >
                   <StickerView url={s.file_url} alt={s.keyword} className="w-full h-full object-contain" />
                 </button>

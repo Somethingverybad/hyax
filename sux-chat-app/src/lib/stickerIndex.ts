@@ -65,15 +65,33 @@ export function lastToken(text: string): string {
   return m ? m[1] : "";
 }
 
-export function matchStickers(index: IndexedSticker[], typed: string, limit = 8): IndexedSticker[] {
+/** Сколько раз стикер отправляли с этого устройства — частые идут первыми. */
+const USAGE_KEY = "sticker-usage";
+const readUsage = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem(USAGE_KEY) || "{}"); } catch { return {}; } };
+export function noteStickerUsed(id: string) {
+  try {
+    const u = readUsage(); u[id] = (u[id] || 0) + 1;
+    // Держим не больше двухсот записей: старые редкие выкидываем.
+    const keys = Object.keys(u);
+    if (keys.length > 200) for (const k of keys.sort((a, b) => u[a] - u[b]).slice(0, keys.length - 200)) delete u[k];
+    localStorage.setItem(USAGE_KEY, JSON.stringify(u));
+  } catch { /* приватный режим — без счётчика */ }
+}
+
+export function matchStickers(index: IndexedSticker[], typed: string, limit = 24): IndexedSticker[] {
   const w = norm(typed);
   if (!w) return [];
-  const out: IndexedSticker[] = [];
-  for (const s of index) {
-    if ((s.keyword && keywordMatches(s.keyword, w)) || (s.emoji && norm(s.emoji) === w)) {
-      out.push(s);
-      if (out.length >= limit) break;
-    }
-  }
-  return out;
+  const usage = readUsage();
+  // Ранг: точное совпадение выше начала слова, начало — выше опечатки.
+  const rank = (s: IndexedSticker) => {
+    if (s.keyword === w || (s.emoji && norm(s.emoji) === w)) return 3;
+    if (s.keyword.startsWith(w) || w.startsWith(s.keyword)) return 2;
+    return 1;
+  };
+  return index
+    .filter((s) => (s.keyword && keywordMatches(s.keyword, w)) || (s.emoji && norm(s.emoji) === w))
+    .map((s) => ({ s, u: usage[s.id] || 0, r: rank(s) }))
+    .sort((a, b) => b.u - a.u || b.r - a.r)
+    .slice(0, limit)
+    .map((x) => x.s);
 }

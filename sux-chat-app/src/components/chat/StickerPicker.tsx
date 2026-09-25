@@ -1,5 +1,6 @@
 import StickerView from "@/components/chat/StickerView";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
@@ -526,8 +527,10 @@ const StickerPicker = ({
         />
       )}
 
+      {/* Окна — порталом на body: пикер живёт в панели ввода с transform, и
+          fixed внутри неё считался бы от панели, а не от экрана. */}
       {/* Макрос для нового стикера — можно пропустить, тогда он не подсказывается. */}
-      {asking && (
+      {asking && createPortal(
         <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }}>
           <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
             <p className="text-h2">Макрос стикера</p>
@@ -548,11 +551,12 @@ const StickerPicker = ({
             </div>
             {queue.length > 0 && <p className="text-caption text-subtle text-center">Ещё в очереди: {queue.length}</p>}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Правка: макрос и удаление — только автору набора. */}
-      {editing && (
+      {editing && createPortal(
         <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setEditing(null)}>
           <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3">
@@ -570,7 +574,8 @@ const StickerPicker = ({
               <button type="button" disabled={busy} onClick={() => void saveEdit()} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold disabled:opacity-50">Сохранить</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
