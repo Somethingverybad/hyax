@@ -11,6 +11,7 @@ import { playSfx } from "@/lib/sfx";
 import { shareChannel } from "@/lib/share";
 import { Linkify, packLinkKind, profileLinkName } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
+import { saveFileToDevice } from "@/lib/saveFile";
 import ProfileLinkCard from "./ProfileLinkCard";
 import { playQueue, type Track } from "@/lib/player";
 import SoundPickerSheet from "@/components/SoundPicker";
@@ -96,11 +97,11 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
         )}
         {audio.map((p) => (
           <MessageAudioFile key={p.id} raw={p.file_url as string} name={p.file_name || null}
-            isOwn={false} onSave={(url) => window.open(url, "_blank")} onPlay={() => onPlayAudio?.(p)} />
+            isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(p)} />
         ))}
         {rest.map((p) => (
           <MessageFile key={p.id} raw={p.file_url as string} name={p.file_name || null}
-            isOwn={false} onSave={(url) => window.open(url, "_blank")} />
+            isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} />
         ))}
       </div>
     );
@@ -115,14 +116,14 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
   if (!post.file_url) return null;
   if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (isAudioFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url) => window.open(url, "_blank")} onPlay={() => onPlayAudio?.(post)} /></div>;
+    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} /></div>;
   }
   return (
     <div className="mt-2">
-      <MessageFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url) => window.open(url, "_blank")} />
+      <MessageFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} />
     </div>
   );
 };

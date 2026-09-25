@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Download, Trash2 } from "lucide-react";
+import { saveFileToDevice } from "@/lib/saveFile";
 import { toast } from "sonner";
 import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
@@ -86,7 +87,7 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
             { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
               const cur = viewerItems[openIdx];
               const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
-              window.open(url, "_blank");
+              await saveFileToDevice(url, cur.name || "photo.jpg");
             } },
             ...(own ? [{ label: "Удалить из сохранёнок", icon: <Trash2 className="w-5 h-5" />, danger: true, onClick: () => {
               const it = (items || [])[openIdx];

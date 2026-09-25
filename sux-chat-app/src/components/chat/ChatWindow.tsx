@@ -27,6 +27,7 @@ import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
+import { saveFileToDevice } from "@/lib/saveFile";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, TRIANGLE, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
@@ -1809,44 +1810,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return currentDate !== previousDate;
   };
 
-  const safeHost = (u: string) => { try { return new URL(u).host; } catch { return "?"; } };
 
   // Функция для сохранения файла локально (для Electron)
-  const handleSaveFile = async (fileUrl: string, fileName: string) => {
-    // Проверяем, запущено ли приложение в Electron
-    if (typeof window !== 'undefined' && window.electronAPI?.saveFile) {
-      try {
-        const result = await window.electronAPI.saveFile(fileUrl, fileName);
-        if (result.success) {
-          toast.success('Файл сохранен');
-        } else if (result.canceled) {
-          // Пользователь отменил сохранение - ничего не делаем
-        } else {
-          toast.error('Ошибка сохранения файла: ' + (result.error || 'Неизвестная ошибка'));
-        }
-      } catch (error) {
-        console.error('Error saving file:', error);
-        toast.error('Ошибка сохранения файла');
-      }
-    } else if (Capacitor.isNativePlatform()) {
-      // Телефон: подписанная ссылка на чужой origin. window.open — Capacitor
-      // отдаёт такой URL системному браузеру, а тот качает через свой менеджер
-      // загрузок; <a download> в WebView не делает ничего. Так же поступают
-      // сохранёнки и каналы.
-      applog.info(`file save native ${safeHost(fileUrl)} ${fileName}`);
-      window.open(fileUrl, "_blank");
-    } else {
-      // Веб: скачать через ссылку с download.
-      applog.info(`file save web ${safeHost(fileUrl)} ${fileName}`);
-      const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = fileName;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
+  /** Сохранить вложение: на телефоне — системное окно с «Сохранить в Файлы». */
+  const handleSaveFile = (fileUrl: string, fileName: string) => saveFileToDevice(fileUrl, fileName);
 
   // Функция для форматирования даты
   const formatDate = (dateString: string) => {
