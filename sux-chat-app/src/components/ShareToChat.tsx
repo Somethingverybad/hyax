@@ -29,7 +29,7 @@ const toRows = (chats: any[], me?: string): Row[] => chats
   // «Избранное» — первой строкой, как в пересылке сообщений.
   .sort((a, b) => Number(b.kind === "saved") - Number(a.kind === "saved"));
 
-const ShareToChat = ({ open, text, title, onClose, onShareOutside }: {
+const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick }: {
   open: boolean;
   /** Что отправляем: обычно ссылка. */
   text: string;
@@ -38,6 +38,8 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside }: {
   onClose: () => void;
   /** Системное «Поделиться» — если его стоит предложить. */
   onShareOutside?: () => void;
+  /** Только выбрать чат — отправкой займётся вызывающий (вложения из «Поделиться»). */
+  onPick?: (chatId: string, title: string) => void;
 }) => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
@@ -55,6 +57,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside }: {
   if (!open) return null;
 
   const send = async (row: Row) => {
+    if (onPick) { onPick(row.id, row.title); onClose(); return; }
     if (busy || !text) return;
     setBusy(true);
     try {

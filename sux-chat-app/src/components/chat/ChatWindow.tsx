@@ -28,6 +28,7 @@ import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { saveFileToDevice } from "@/lib/saveFile";
+import { takePendingShare } from "@/lib/shareInbox";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, TRIANGLE, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
@@ -651,6 +652,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setHasMore(false);
     setMessages([]);
     setSelected(null);
+    // «Поделиться → WhoYaX» из другого приложения: выбранный чат открыт —
+    // подставляем присланные файлы и текст в поле ввода, отправка за человеком.
+    const shared = takePendingShare();
+    if (shared) {
+      setTimeout(() => {
+        if (shared.files.length) void acceptFiles(shared.files);
+        if (shared.text) setDraft(shared.text);
+      }, 0);
+    }
 
     (async () => {
       const cached = await readMessages(chatId);

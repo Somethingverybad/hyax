@@ -34,7 +34,9 @@ import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 import { Minus, X } from "lucide-react";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
+import ShareToChat from "@/components/ShareToChat";
+import { takeSharedItems, setPendingShare, type SharedPayload } from "@/lib/shareInbox";
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { getTheme } from "@/lib/theme";
@@ -116,6 +118,8 @@ const DeepLinks = () => {
       if (!url) return;
       try {
         const u = new URL(url);
+        // whoyax://share — расширение «Поделиться» положило файлы (lib/shareInbox).
+        if (u.protocol === "whoyax:") { if (u.host === "share") window.dispatchEvent(new CustomEvent("hyax:share-inbox")); return; }
         if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/t/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/")) navRef.current(u.pathname + u.search);
       } catch { /* не URL — игнорируем */ }
     };
@@ -124,6 +128,34 @@ const DeepLinks = () => {
     return () => { sub.then((h) => h.remove()).catch(() => {}); };
   }, []);
   return null;
+};
+
+/** Вложения из «Поделиться → WhoYaX»: спросить, в какой чат, и открыть его. */
+const ShareInboxSheet = () => {
+  const navigate = useNavigate();
+  const [payload, setPayload] = useState<SharedPayload | null>(null);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const check = () => { takeSharedItems().then((p) => { if (p) setPayload(p); }).catch(() => {}); };
+    check(); // холодный старт по whoyax://share — событие могло уйти до подписки
+    window.addEventListener("hyax:share-inbox", check);
+    return () => window.removeEventListener("hyax:share-inbox", check);
+  }, []);
+  if (!payload) return null;
+  const n = payload.files.length;
+  return (
+    <ShareToChat
+      open
+      title={n ? `Отправить ${n === 1 ? "файл" : `${n} файла`} в чат` : "Отправить в чат"}
+      text={payload.text}
+      onClose={() => setPayload(null)}
+      onPick={(chatId, chatTitle) => {
+        setPendingShare(payload);
+        setPayload(null);
+        navigate("/chat", { state: { chatId, title: chatTitle } });
+      }}
+    />
+  );
 };
 
 const App = () => {
@@ -165,6 +197,7 @@ const App = () => {
           
           <BrowserRouter>
             <DeepLinks />
+            <ShareInboxSheet />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
             <MiniPlayer />
             <ThemeFromProfile />

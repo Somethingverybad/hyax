@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00B449806F792351E1D26893 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7287D95575A8CE03C0F28767 /* NotificationService.swift */; };
+		298D928E8414839DF507478D /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3BC41145ECE4C015C9D27E54 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -19,12 +20,15 @@
 		7B3C1E9A2F4D5A6B8C9D0E1F /* KeyboardSyncPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		A1C0FFEE2026081800000001 /* receive.caf in Resources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2026081800000002 /* receive.caf */; };
+		AD531635F6A90AF6E71E6FA0 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA4AE405FE3B886956C80EE /* ShareViewController.swift */; };
 		B0B0CA110026082200000001 /* VoipPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000002 /* VoipPlugin.swift */; };
 		B0B0CA110026082200000003 /* CallViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000004 /* CallViewController.swift */; };
 		B0B0CA110026082200000005 /* call.caf in Resources */ = {isa = PBXBuildFile; fileRef = B0B0CA110026082200000006 /* call.caf */; };
 		B7981E10CE54BD62C6509110 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25B699FA0D7DC8FE07940A44 /* Foundation.framework */; };
 		C0DE00012026082200000001 /* NativeCallPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00022026082200000002 /* NativeCallPlugin.swift */; };
 		C0DE00032026082200000001 /* NativeCallAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00042026082200000002 /* NativeCallAudio.swift */; };
+		E608F6A9ABD29907EA528372 /* ShareInboxPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */; };
+		EC9D80B8E2B04BD284F486E3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25B699FA0D7DC8FE07940A44 /* Foundation.framework */; };
 		F1B2C3D40001000000000002 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1B2C3D40001000000000001 /* GoogleService-Info.plist */; };
 		FA16F02EBAD904FA7EBA2ABE /* RovHapticsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */; };
 		FA909F13C9A6517E730631A9 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5395E2DF04D075E1915E7055 /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -38,6 +42,13 @@
 			remoteGlobalIDString = D4D278797CBD7F0727F28D5B;
 			remoteInfo = NotificationService;
 		};
+		E9B1D927677A2C9BD085FABB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F2BF52D90393273174F4BFE6;
+			remoteInfo = ShareExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -48,6 +59,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				FA909F13C9A6517E730631A9 /* NotificationService.appex in Embed Foundation Extensions */,
+				298D928E8414839DF507478D /* ShareExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -55,9 +67,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		1FC463859E4D4216933A9498 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RovHapticsPlugin.swift; sourceTree = "<group>"; };
 		25B699FA0D7DC8FE07940A44 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		2BA4AE405FE3B886956C80EE /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		3BC41145ECE4C015C9D27E54 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -68,8 +83,9 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		5395E2DF04D075E1915E7055 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7287D95575A8CE03C0F28767 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
-		9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PushSecretPlugin.swift; sourceTree = "<group>"; };
+		744AD230D7DEE2BC6E6EC8E2 /* ShareExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardSyncPlugin.swift; sourceTree = "<group>"; };
+		9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PushSecretPlugin.swift; sourceTree = "<group>"; };
 		A1C0FFEE2026081800000002 /* receive.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = receive.caf; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
@@ -80,6 +96,7 @@
 		C0DE00022026082200000002 /* NativeCallPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallPlugin.swift; sourceTree = "<group>"; };
 		C0DE00042026082200000002 /* NativeCallAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallAudio.swift; sourceTree = "<group>"; };
 		E0112A60FD21FF9929FA85C7 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareInboxPlugin.swift; sourceTree = "<group>"; };
 		F1B2C3D40001000000000001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -98,6 +115,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				B7981E10CE54BD62C6509110 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EA00E8017983682984AD44A9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EC9D80B8E2B04BD284F486E3 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -129,6 +154,7 @@
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
 				A3712210AA1F770BFB2C01EC /* NotificationService */,
+				F251B7238A58B75C8A82162B /* ShareExtension */,
 			);
 			sourceTree = "<group>";
 		};
@@ -137,6 +163,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				5395E2DF04D075E1915E7055 /* NotificationService.appex */,
+				3BC41145ECE4C015C9D27E54 /* ShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -162,6 +189,7 @@
 				9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */,
 				7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */,
 				20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */,
+				ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -186,6 +214,17 @@
 			path = NotificationService;
 			sourceTree = "<group>";
 		};
+		F251B7238A58B75C8A82162B /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				2BA4AE405FE3B886956C80EE /* ShareViewController.swift */,
+				1FC463859E4D4216933A9498 /* Info.plist */,
+				744AD230D7DEE2BC6E6EC8E2 /* ShareExtension.entitlements */,
+			);
+			name = ShareExtension;
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -204,6 +243,7 @@
 			);
 			dependencies = (
 				69DE4F42A6C8E38001A17A80 /* PBXTargetDependency */,
+				0AF0ABBBAE93A052B1BF69BD /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
@@ -225,6 +265,23 @@
 			name = NotificationService;
 			productName = NotificationService;
 			productReference = 5395E2DF04D075E1915E7055 /* NotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		F2BF52D90393273174F4BFE6 /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6CEA6261E1E9CF56B74F6478 /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				D1234CF3BDA04A8D234CE876 /* Sources */,
+				EA00E8017983682984AD44A9 /* Frameworks */,
+				096627330D375398F5052373 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareExtension;
+			productName = ShareExtension;
+			productReference = 3BC41145ECE4C015C9D27E54 /* ShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -259,11 +316,19 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				D4D278797CBD7F0727F28D5B /* NotificationService */,
+				F2BF52D90393273174F4BFE6 /* ShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		096627330D375398F5052373 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3021FED79650016851F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -338,6 +403,7 @@
 				6039706E2F0589C7952D4939 /* PushSecretPlugin.swift in Sources */,
 				7B3C1E9A2F4D5A6B8C9D0E1F /* KeyboardSyncPlugin.swift in Sources */,
 				FA16F02EBAD904FA7EBA2ABE /* RovHapticsPlugin.swift in Sources */,
+				E608F6A9ABD29907EA528372 /* ShareInboxPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -349,9 +415,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1234CF3BDA04A8D234CE876 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD531635F6A90AF6E71E6FA0 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		0AF0ABBBAE93A052B1BF69BD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShareExtension;
+			target = F2BF52D90393273174F4BFE6 /* ShareExtension */;
+			targetProxy = E9B1D927677A2C9BD085FABB /* PBXContainerItemProxy */;
+		};
 		69DE4F42A6C8E38001A17A80 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = NotificationService;
@@ -581,6 +661,49 @@
 			};
 			name = Release;
 		};
+		651B96B5A37E2B4631A7218E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = BTQ69VVHX6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.messenger.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		FAD0EDB1B87712C36D8779B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = BTQ69VVHX6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.messenger.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -607,6 +730,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6CEA6261E1E9CF56B74F6478 /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				651B96B5A37E2B4631A7218E /* Release */,
+				FAD0EDB1B87712C36D8779B5 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
