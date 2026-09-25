@@ -67,6 +67,27 @@ services:
     extra_hosts:
       - "api.telegram.org:2001:67c:4e8:f004::9"
 
+  # Зеркала Telegram-каналов: реальный аккаунт через Telethon (MTProto) вступает
+  # в каналы, которые люди подключили ссылкой, и пересылает посты в WhoYaX в
+  # реальном времени. Тот же образ, что у api, и та же база через Django ORM.
+  # Перед первым запуском — вход: docker compose run --rm -it tg python manage.py tg_login
+  # (TG_API_ID/TG_API_HASH в .env, сессия ляжет в backend/private/tg.session).
+  tg:
+    build: ./backend
+    container_name: sux_chat_tg
+    restart: unless-stopped
+    command: python manage.py tg_mirror
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - api
+    networks:
+      - sux_chat_network
+      - tg_v6  # MTProto по IPv6 — IPv4 Telegram у провайдера глушится (см. api)
+
   # Бот: ссылка в чат — файл в ответ. Ходит во внутренний api по токену бота,
   # поэтому трафик не выходит наружу и шлюз не режет большие файлы.
   media-bot:

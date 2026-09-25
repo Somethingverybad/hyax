@@ -122,6 +122,14 @@ class Chat(models.Model):
     # Звук уведомлений канала: с ним подписчики получают пуши о новых постах,
     # если у самого поста нет аудио-стикера (см. _notify_new_message).
     notify_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Зеркало публичного Telegram-канала (chat/telegram_mirror.py, команда
+    # tg_mirror): tg_username — @канал в Telegram, tg_peer_id — его id для
+    # сверки входящих обновлений, tg_state — pending → active | error.
+    # Постить в такой канал нельзя никому: у него нет владельца.
+    tg_username = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    tg_peer_id = models.BigIntegerField(null=True, blank=True)
+    tg_state = models.CharField(max_length=10, blank=True, default="")
+    tg_error = models.CharField(max_length=300, blank=True, default="")
     # Закреплённое сообщение — одно на чат, показывается полосой под шапкой.
     # SET_NULL: удалили сообщение — открепилось само.
     pinned_message = models.ForeignKey('Message', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
@@ -204,6 +212,9 @@ class Message(models.Model):
     # поле нужно перечислять явно.
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
     deleted_for = models.ManyToManyField(Profile, blank=True, related_name="hidden_messages")  # удалено «у себя»
+    # id поста в Telegram для зеркал каналов: по нему не дублируем при
+    # повторной выборке и находим пост при правке или удалении там.
+    tg_id = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         # Лента читается всегда одинаково: сообщения одного чата по времени.
@@ -211,6 +222,7 @@ class Message(models.Model):
         # — окно вокруг закреплённого сообщения открывалось полторы секунды.
         indexes = [
             models.Index(fields=["chat", "-created_at"], name="msg_chat_created_idx"),
+            models.Index(fields=["chat", "tg_id"], name="msg_chat_tg_idx"),
         ]
 
     

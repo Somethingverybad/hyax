@@ -2734,6 +2734,40 @@ class ChannelsView(APIView):
         return Response({"channel": ChannelSerializer(ch, context={"request": request}).data}, status=201)
 
 
+class TelegramChannelView(APIView):
+    """POST {url} — подключить публичный Telegram-канал как канал WhoYaX.
+
+    Принимаем ссылку t.me/<канал>, @канал или просто имя. Канал создаётся в
+    состоянии pending; воркер tg_mirror (отдельный контейнер с Telethon)
+    вступает в него, забирает название, описание, аватар и последние посты,
+    дальше пересылает новое в реальном времени. Постить в зеркало нельзя
+    никому: владельца у него нет, реакции и комментарии — только наши."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .telegram_mirror import parse_channel_ref
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        username = parse_channel_ref(request.data.get("url") or "")
+        if not username:
+            return Response({"error": "Нужна ссылка вида t.me/канал или @канал"}, status=400)
+        ch = Chat.objects.filter(tg_username__iexact=username).first()
+        created = False
+        if not ch:
+            ch = Chat.objects.create(
+                kind="channel", name=f"@{username}", description="", is_public=True,
+                tg_username=username, tg_state="pending",
+            )
+            created = True
+        cp, sub_created = ChatParticipant.objects.get_or_create(chat=ch, user=me, defaults={"role": "subscriber"})
+        if sub_created:
+            ch.subscribers_count = models.F("subscribers_count") + 1
+            ch.save(update_fields=["subscribers_count"])
+            ch.refresh_from_db(fields=["subscribers_count"])
+        return Response({"channel": ChannelSerializer(ch, context={"request": request}).data}, status=201 if created else 200)
+
+
 class ChannelDiscoverView(APIView):
     """GET ?q= — поиск публичных каналов по названию / @username."""
     permission_classes = [permissions.IsAuthenticated]

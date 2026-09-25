@@ -11,5 +11,7 @@ firebase-admin
 httpx[http2]
 PyJWT
 boto3
+# Зеркала Telegram-каналов: MTProto-клиент под реальным аккаунтом (manage.py tg_mirror)
+telethon>=1.36
 # Расшифровка голосовых локально на CPU (chat/transcribe.py)
 faster-whisper>=1.1.0

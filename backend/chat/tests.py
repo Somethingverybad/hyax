@@ -1315,3 +1315,62 @@ class StickerKeywordTests(TestCase):
     def test_author_deletes(self):
         self.assertEqual(client_for(self.me).delete(f"/api/stickers/{self.st.id}/").status_code, 204)
         self.assertFalse(Sticker.objects.filter(id=self.st.id).exists())
+
+
+class TelegramMirrorTests(TestCase):
+    """Зеркала Telegram-каналов: разбор ссылки, подключение, посты без дублей."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.other = make_user("other")
+
+    def test_parse_channel_ref(self):
+        from chat.telegram_mirror import parse_channel_ref as p
+        for src in ("https://t.me/durov", "t.me/s/durov", "https://telegram.me/durov/", "@durov", "durov", "https://t.me/durov?utm=1"):
+            self.assertEqual(p(src), "durov", src)
+        for bad in ("https://t.me/+AbCdEf", "https://t.me/joinchat/xyz", "https://t.me/durov/123", "https://example.com/durov", "@ab", ""):
+            self.assertIsNone(p(bad), bad)
+
+    def test_connect_creates_pending_and_subscribes(self):
+        r = client_for(self.me).post("/api/channels/from-telegram/", {"url": "https://t.me/durov"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        ch = Chat.objects.get(tg_username="durov")
+        self.assertEqual(ch.kind, "channel"); self.assertEqual(ch.tg_state, "pending"); self.assertEqual(ch.name, "@durov")
+        self.assertTrue(ChatParticipant.objects.filter(chat=ch, user=self.me, role="subscriber").exists())
+        # второй человек подключает тот же канал — канал один, подписчиков двое
+        r2 = client_for(self.other).post("/api/channels/from-telegram/", {"url": "@Durov"}, format="json")
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(Chat.objects.filter(tg_username__iexact="durov").count(), 1)
+        ch.refresh_from_db(); self.assertEqual(ch.subscribers_count, 2)
+        self.assertEqual(r2.data["channel"]["tg_username"], "durov")
+
+    def test_bad_ref_rejected(self):
+        r = client_for(self.me).post("/api/channels/from-telegram/", {"url": "https://t.me/+secret"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_nobody_can_post_to_mirror(self):
+        client_for(self.me).post("/api/channels/from-telegram/", {"url": "t.me/durov"}, format="json")
+        ch = Chat.objects.get(tg_username="durov")
+        r = client_for(self.me).post("/api/messages/", {"chat": str(ch.id), "content": "hi"}, format="json")
+        self.assertIn(r.status_code, (400, 403))
+
+    def test_upsert_post_dedup_and_album(self):
+        from chat.telegram_mirror import upsert_post, album_uuid
+        ch = Chat.objects.create(kind="channel", name="x", tg_username="x", tg_state="active")
+        m1, c1 = upsert_post(ch, 10, text="раз", grouped_id=777)
+        m2, c2 = upsert_post(ch, 10, text="раз")
+        self.assertTrue(c1); self.assertFalse(c2); self.assertEqual(m1.id, m2.id)
+        self.assertEqual(m1.album_id, album_uuid(ch.id, 777)); self.assertIsNone(m1.sender)
+        m3, c3 = upsert_post(ch, 11, text="")  # пусто и без медиа — не сохраняем
+        self.assertIsNone(m3); self.assertFalse(c3)
+        m4, _ = upsert_post(ch, 12, media={"file_url": "/media/a.jpg", "file_name": "a.jpg", "file_size": 5, "dims": (10, 20)})
+        self.assertEqual((m4.file_width, m4.file_height), (10, 20))
+
+    def test_text_from_tg_appends_hidden_links(self):
+        from chat.telegram_mirror import text_from_tg
+        class E: 
+            def __init__(s, o, l, u): s.offset, s.length, s.url = o, l, u
+        class M:
+            message = "читать тут и там"
+            entities = [E(7, 3, "https://a.example"), E(13, 3, "https://b.example")]
+        self.assertEqual(text_from_tg(M()), "читать тут (https://a.example) и там (https://b.example)")

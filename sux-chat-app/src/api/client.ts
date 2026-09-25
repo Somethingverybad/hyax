@@ -865,6 +865,17 @@ export const api = {
     const d = await res.json();
     return d.channels || [];
   },
+  /** Подключить публичный Telegram-канал как канал WhoYaX (зеркало). */
+  addTelegramChannel: async (url: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/from-telegram/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось подключить канал");
+    return (await res.json()).channel;
+  },
+
   createChannel: async (data: { name: string; username?: string; description?: string; sign_posts?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) });
     const d = await res.json();

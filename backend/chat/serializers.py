@@ -155,7 +155,8 @@ class ChatSerializer(serializers.ModelSerializer):
 
     def get_last_message(self, obj):
         sender_id = getattr(obj, 'last_sender_id_a', None)
-        if sender_id is None:
+        # У постов зеркал Telegram отправителя нет — ориентируемся на id поста.
+        if sender_id is None and getattr(obj, 'last_id_a', None) is None:
             return None
         text = (getattr(obj, 'last_text_a', '') or '').strip()
         if not text:
@@ -170,7 +171,7 @@ class ChatSerializer(serializers.ModelSerializer):
             else:
                 text = 'Сообщение'
         # read — прочитал ли кто-то кроме автора: вторая галка в списке чатов.
-        return {'text': text[:120], 'sender_id': str(sender_id), 'read': bool(getattr(obj, 'last_read_a', False))}
+        return {'text': text[:120], 'sender_id': str(sender_id) if sender_id else None, 'read': bool(getattr(obj, 'last_read_a', False))}
 
 def message_preview(m):
     """Короткое описание сообщения для цитат, закрепа и списка чатов."""
@@ -487,7 +488,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         model = Chat
         fields = ['id', 'kind', 'name', 'username', 'description', 'avatar_url',
                   'is_public', 'sign_posts', 'subscribers_count', 'creator',
-                  'my_role', 'notify_sound', 'created_at']
+                  'my_role', 'notify_sound', 'created_at', 'tg_username', 'tg_state']
 
     def get_my_role(self, obj):
         req = self.context.get('request')

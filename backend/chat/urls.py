@@ -60,6 +60,7 @@ urlpatterns = [
     # Каналы
     path('channels/', ChannelsView.as_view(), name='channels'),
     path('channels/discover/', ChannelDiscoverView.as_view(), name='channels-discover'),
+    path('channels/from-telegram/', TelegramChannelView.as_view(), name='channels-from-telegram'),
     path('channels/by-handle/<str:handle>/', ChannelByHandleView.as_view(), name='channel-by-handle'),
     path('channels/<uuid:pk>/', ChannelDetailView.as_view(), name='channel-detail'),
     path('channels/<uuid:pk>/subscribe/', ChannelSubscribeView.as_view(), name='channel-subscribe'),

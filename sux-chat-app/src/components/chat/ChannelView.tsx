@@ -24,6 +24,8 @@ interface Channel {
   id: string; name: string; username?: string | null; description?: string;
   avatar_url?: string | null; subscribers_count?: number; sign_posts?: boolean;
   my_role?: "owner" | "admin" | "subscriber" | null; creator?: string | null;
+  /** Зеркало Telegram-канала: @канал там и состояние подключения. */
+  tg_username?: string | null; tg_state?: "" | "pending" | "active" | "error";
   /** Звук уведомлений канала: с ним подписчики слышат новые посты. */
   notify_sound?: NotificationSoundInfo | null;
   admins?: { id: string; username: string; role: string; is_bot?: boolean }[];
@@ -665,7 +667,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           <p className="text-center text-sm text-muted-foreground py-10">Загрузка…</p>
         ) : posts.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground py-10">
-            {isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
+            {channel?.tg_state === "pending" ? "Подключаем канал из Telegram — посты появятся в течение минуты"
+              : channel?.tg_state === "error" ? "Не удалось подключить канал из Telegram"
+              : isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
           </p>
         ) : (
           feedPosts.map((post) => (
