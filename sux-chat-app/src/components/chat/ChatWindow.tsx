@@ -578,6 +578,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Высоту пересчитываем на каждое изменение текста: сначала сбрасываем,
   // иначе поле умеет только расти и не сжимается после отправки.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /** Высота панели ввода с однострочным полем — от неё считаем «лишнее». */
+  const composeBaseRef = useRef(0);
   const fitTextarea = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -585,21 +587,39 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 104)}px`;
     if (el.offsetHeight === before) return;
-    // Поле подросло — панель ввода стала выше, лента ужалась снизу. Прижатую
-    // ленту возвращаем к низу здесь же, синхронно: ResizeObserver, который
-    // обычно это делает, на iOS срабатывал не всегда, и последнее сообщение
-    // уезжало под панель ввода при наборе многострочного текста.
+    // Подросшая панель не ужимает ленту, а наезжает на неё сверху
+    // (отрицательный margin), лента же отводит под неё место отступом снизу.
+    // Высота прокручиваемого контейнера при этом не меняется: WebKit на iOS
+    // при смене высоты overflow-контейнера откатывал scrollTop к значению на
+    // момент открытия клавиатуры — без всякого нашего кода — и последнее
+    // сообщение уезжало под панель при наборе длинного текста.
+    const cs = composeRef.current;
+    if (cs) {
+      if (composeBaseRef.current === 0 || el.offsetHeight <= 44) composeBaseRef.current = cs.offsetHeight - (el.offsetHeight - Math.min(el.offsetHeight, 44));
+      const extra = Math.max(0, cs.offsetHeight - composeBaseRef.current);
+      cs.style.marginTop = extra ? `-${extra}px` : "";
+      scrollRef.current?.style.setProperty("--compose-extra", `${extra}px`);
+    }
     const sc = scrollRef.current;
     if (sc && pinnedRef.current) {
       sc.scrollTop = sc.scrollHeight;
       logFeed(`compose ${before}→${el.offsetHeight}`);
+      // WebKit на iOS прокручивает overflow-контейнеры асинхронно и при
+      // коммите слоёв с новой высотой возвращал своё прежнее значение —
+      // лента откатывалась к позиции на момент открытия клавиатуры, и
+      // последнее сообщение уезжало под панель. Повторяем прижим после
+      // коммита: кадр спустя и ещё один для надёжности.
+      const repin = () => { const n = scrollRef.current; if (n && pinnedRef.current) n.scrollTop = n.scrollHeight; };
+      requestAnimationFrame(() => { repin(); requestAnimationFrame(repin); });
+      setTimeout(repin, 120);
     }
     // В лог баг-репорта — где лента и панель после роста поля: на телефоне
     // история при наборе уезжала под панель, а в симуляторе — нет.
     if (sc) {
       const last = feedRef.current?.lastElementChild as HTMLElement | null;
       const cs = composeRef.current;
-      applog.info(`compose ta=${before}→${el.offsetHeight} pinned=${pinnedRef.current ? 1 : 0} top=${Math.round(sc.scrollTop)} max=${Math.round(sc.scrollHeight - sc.clientHeight)} last=${last ? Math.round(last.getBoundingClientRect().bottom) : -1} panel=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} vvTop=${Math.round(window.visualViewport?.offsetTop ?? 0)} vvH=${Math.round(window.visualViewport?.height ?? 0)} winY=${Math.round(window.scrollY)}`);
+      const line = `compose ta=${before}→${el.offsetHeight} pinned=${pinnedRef.current ? 1 : 0} top=${Math.round(sc.scrollTop)} max=${Math.round(sc.scrollHeight - sc.clientHeight)} last=${last ? Math.round(last.getBoundingClientRect().bottom) : -1} panel=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} vvTop=${Math.round(window.visualViewport?.offsetTop ?? 0)} vvH=${Math.round(window.visualViewport?.height ?? 0)} winY=${Math.round(window.scrollY)}`;
+      applog.info(line);
     }
   };
   /** Поставить текст в поле программно: редактирование, отмена, возврат после ошибки. */
@@ -899,6 +919,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // лента «отцеплялась» и уезжала от последнего сообщения при каждом входе
     // в чат.
     const byUser = Date.now() - userScrollRef.current < 900;
+    // WebKit на iOS при наборе текста сам откатывает прокрутку ленты к
+    // позиции первого нажатия всякий раз, когда меняется высота содержимого
+    // (растёт поле ввода) — без единого вызова из нашего кода. Прокрутка не
+    // от пальца и не наша (не доезд) при прижатой ленте — это он; возвращаем
+    // низ тут же, в обработчике: событие scroll приходит до отрисовки кадра.
+    if (pinnedRef.current && dist > 2 && !byUser && !jumping && !feedTouchRef.current) {
+      el.scrollTop = el.scrollHeight;
+      logFeed("repin-webkit");
+      return;
+    }
     if (dist < 80) {
       if (!pinnedRef.current) logFeed("repin");
       pinnedRef.current = true;
@@ -2034,13 +2064,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         onKeyDown={markUserScroll}
         onTouchEnd={settleAfterTouch}
         onTouchCancel={settleAfterTouch}
+        style={{ WebkitOverflowScrolling: "touch" }}
         onTouchMove={(e) => {
           // Свайп вниз по ленте при открытой клавиатуре прячет её (как в Telegram).
           const s = kbSwipeRef.current;
           if (!s || s.done || kbShiftRef.current <= 0) return;
           if (e.touches[0].clientY - s.y > 50) { s.done = true; hideKeyboard(); }
         }}
-        style={{ WebkitOverflowScrolling: "touch" }}
+
       >
         <div ref={feedRef} className="max-w-4xl mx-auto space-y-2">
           {hasMore && (
@@ -2759,6 +2790,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 placeholder="Сообщение..."
                 defaultValue=""
                 rows={1}
+                // Явно: без этих атрибутов iOS не включал автоисправление и
+                // подсказки в поле сообщения, хотя по умолчанию они должны быть.
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck
+                enterKeyHint={isTouchDevice() ? "enter" : "send"}
                 onPaste={onPasteFile}
                 onChange={(e) => {
                   draftRef.current = e.target.value;

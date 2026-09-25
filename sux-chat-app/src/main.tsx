@@ -247,7 +247,7 @@ if (Cap.isNativePlatform()) {
       el.style.transform = h ? `translateY(calc(-1 * ${lift}))` : "translateY(0)";
     });
     document.querySelectorAll<HTMLElement>(".chat-scroll").forEach((el) => {
-      el.style.paddingBottom = h ? lift : "";
+      el.style.paddingBottom = h ? `calc(${lift} + var(--compose-extra, 0px))` : "";
     });
   };
   if (isIOS) {
