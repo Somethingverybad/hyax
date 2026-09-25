@@ -1278,3 +1278,40 @@ class ForwardManyTests(TestCase):
         r = self.fwd(self.me, [self.m1.id, _uuid.uuid4()])
         self.assertEqual(r.status_code, 404)
         self.assertEqual(Message.objects.filter(chat=self.dst).count(), 0)
+
+
+
+class StickerKeywordTests(TestCase):
+    """Макрос стикера и права: менять и удалять — только автор набора."""
+
+    def setUp(self):
+        self.me = make_user("me")
+        self.other = make_user("other")
+        self.pack = StickerPack.objects.create(name="Мои", author=self.me)
+        self.st = Sticker.objects.create(pack=self.pack, file_url="/media/s.webp", file_name="s.webp")
+
+    def test_create_with_keyword_trimmed(self):
+        r = client_for(self.me).post("/api/stickers/", {"pack": str(self.pack.id), "file_url": "/m/a.webp", "file_name": "a.webp", "keyword": "  Привет мир "}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["keyword"], "Привет")
+
+    def test_author_updates_keyword(self):
+        r = client_for(self.me).patch(f"/api/stickers/{self.st.id}/", {"keyword": "кот"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.st.refresh_from_db(); self.assertEqual(self.st.keyword, "кот")
+        r = client_for(self.me).patch(f"/api/stickers/{self.st.id}/", {"keyword": ""}, format="json")
+        self.st.refresh_from_db(); self.assertEqual(self.st.keyword, "")
+
+    def test_patch_cannot_move_pack(self):
+        foreign = StickerPack.objects.create(name="Чужой", author=self.other)
+        client_for(self.me).patch(f"/api/stickers/{self.st.id}/", {"pack": str(foreign.id), "file_url": "/x"}, format="json")
+        self.st.refresh_from_db(); self.assertEqual(self.st.pack_id, self.pack.id); self.assertEqual(self.st.file_url, "/media/s.webp")
+
+    def test_stranger_cannot_update_or_delete(self):
+        self.assertEqual(client_for(self.other).patch(f"/api/stickers/{self.st.id}/", {"keyword": "x"}, format="json").status_code, 403)
+        self.assertEqual(client_for(self.other).delete(f"/api/stickers/{self.st.id}/").status_code, 403)
+        self.assertTrue(Sticker.objects.filter(id=self.st.id).exists())
+
+    def test_author_deletes(self):
+        self.assertEqual(client_for(self.me).delete(f"/api/stickers/{self.st.id}/").status_code, 204)
+        self.assertFalse(Sticker.objects.filter(id=self.st.id).exists())

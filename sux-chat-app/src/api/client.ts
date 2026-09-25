@@ -1349,11 +1349,27 @@ export const api = {
     return res.json();
   },
 
-  createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0): Promise<any> => {
+  /** Изменить макрос/эмодзи/порядок стикера — только автор набора. */
+  updateSticker: async (id: string, patch: { keyword?: string; emoji?: string | null; order?: number }): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/stickers/${id}/`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Не удалось изменить стикер");
+    return res.json();
+  },
+
+  deleteSticker: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/stickers/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось удалить стикер");
+  },
+
+  createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0, keyword = ""): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/stickers/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order }),
+      body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order, keyword: keyword || undefined }),
     });
     if (!res.ok) throw new Error("Не удалось добавить стикер");
     return res.json();

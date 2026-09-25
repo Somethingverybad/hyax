@@ -29,6 +29,7 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { takePendingShare } from "@/lib/shareInbox";
+import { loadStickerIndex, matchStickers, lastToken, type IndexedSticker } from "@/lib/stickerIndex";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, TRIANGLE, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
@@ -424,6 +425,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // В состоянии только «есть ли текст» — от него зависит кнопка отправки.
   const draftRef = useRef("");
   const [hasDraft, setHasDraft] = useState(false);
+  // Подсказки стикеров по макросу: последнее слово в поле сверяется с
+  // индексом (lib/stickerIndex), совпадения — плашкой над полем ввода.
+  const [stickerHints, setStickerHints] = useState<IndexedSticker[]>([]);
+  const hintTokenRef = useRef("");
+  const updateStickerHints = (text: string) => {
+    const tok = lastToken(text);
+    hintTokenRef.current = tok;
+    if (tok.length < 2) { if (stickerHints.length) setStickerHints([]); return; }
+    void loadStickerIndex().then((idx) => {
+      if (hintTokenRef.current !== tok) return; // уже набрали дальше
+      const found = matchStickers(idx, tok);
+      setStickerHints((prev) => (prev.length === found.length && prev.every((p, i) => p.id === found[i].id) ? prev : found));
+    });
+  };
   // Вложения композера: можно выбрать несколько фото/видео разом (уйдут
   // альбомом), добавить музыку или файл, и убрать лишнее до отправки.
   const [attachments, setAttachments] = useState<Attach[]>([]);
@@ -631,6 +646,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (el && el.value !== text) el.value = text;
     setHasDraft(!!text.trim());
     fitTextarea();
+    updateStickerHints(text);
   };
 
   // Открытие чата: сначала кэш (мгновенно), потом синхронизация с сервера —
@@ -2604,6 +2620,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             </div>
           )}
+          {stickerHints.length > 0 && (
+            <div className="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Стикеры по макросу">
+              {stickerHints.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    // Слово-макрос из поля убираем: оно было командой, а не текстом.
+                    const t = draftRef.current; const tok = lastToken(t);
+                    setDraft(tok ? t.slice(0, t.length - tok.length).replace(/\s+$/, "") : t);
+                    setStickerHints([]);
+                    void sendSticker({ id: s.id, file_url: s.file_url, emoji: s.emoji });
+                  }}
+                  className="shrink-0 w-14 h-14 rounded-lg bg-surface-4 p-1 active:scale-90 transition-transform"
+                >
+                  <StickerView url={s.file_url} alt={s.keyword} className="w-full h-full object-contain" />
+                </button>
+              ))}
+            </div>
+          )}
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
               <span className="text-sm">Сообщение удалено</span>
@@ -2780,6 +2817,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   // только на границе «пусто ↔ есть текст».
                   setHasDraft(!!e.target.value.trim());
                   fitTextarea();
+                  updateStickerHints(e.target.value);
                 }}
                 onKeyDown={(e) => {
                   // На телефоне Enter — перенос строки (отправка кнопкой), на

@@ -409,6 +409,10 @@ class Sticker(models.Model):
     file_url = models.TextField()  # URL файла стикера
     file_name = models.CharField(max_length=255)
     emoji = models.CharField(max_length=10, blank=True, null=True)  # Эмодзи-ассоциация
+    # Макрос: слово, эмодзи или символ. Набрал его в поле ввода — над полем
+    # всплывает плашка с подходящими стикерами (подбор на клиенте, по началу
+    # слова, с опечатками и склонениями). Пусто — стикер не подсказывается.
+    keyword = models.CharField(max_length=40, blank=True, default="")
     order = models.IntegerField(default=0)  # Порядок в паке
     created_at = models.DateTimeField(default=timezone.now)
     

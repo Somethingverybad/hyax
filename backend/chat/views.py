@@ -1925,6 +1925,12 @@ class StickerPackViewSet(viewsets.ModelViewSet):
 
 
 # ViewSet для стикеров
+def _clean_keyword(value):
+    """Макрос — одно слово без пробелов, до 40 знаков; пусто — не подсказывать."""
+    s = (str(value or '')).strip().split()
+    return (s[0] if s else '')[:40]
+
+
 class StickerViewSet(viewsets.ModelViewSet):
     queryset = Sticker.objects.all()
     serializer_class = StickerSerializer
@@ -1957,11 +1963,31 @@ class StickerViewSet(viewsets.ModelViewSet):
             if pack.author != profile:
                 raise PermissionError("You can only add stickers to your own packs")
             
-            serializer.save()
+            serializer.save(keyword=_clean_keyword(self.request.data.get('keyword')))
         except StickerPack.DoesNotExist:
             raise ValidationError("Sticker pack not found")
         except Profile.DoesNotExist:
             raise ValidationError("Profile not found")
+
+    # Менять и удалять стикер может только автор набора: раньше ModelViewSet
+    # пускал любого вошедшего — чужой пак можно было выпотрошить.
+    def _own(self, sticker):
+        me = getattr(self.request.user, 'profile', None)
+        if not me or sticker.pack.author_id != me.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Стикер можно менять только в своём наборе")
+
+    def perform_update(self, serializer):
+        self._own(serializer.instance)
+        # Пак и файл через PATCH не переносятся: только макрос, эмодзи, порядок.
+        for k in ('pack', 'file_url', 'file_name'):
+            serializer.validated_data.pop(k, None)
+        kw = self.request.data.get('keyword')
+        serializer.save(**({'keyword': _clean_keyword(kw)} if kw is not None else {}))
+
+    def perform_destroy(self, instance):
+        self._own(instance)
+        instance.delete()
 
 
 # Загрузка стикеров

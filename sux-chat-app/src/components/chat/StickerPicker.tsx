@@ -4,7 +4,10 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import ImageCropper from "@/components/ImageCropper";
+import { readCache } from "@/lib/session-cache";
+import { invalidateStickerIndex } from "@/lib/stickerIndex";
 import type { NotificationSoundInfo } from "@/api/client";
 
 interface Sticker {
@@ -14,6 +17,8 @@ interface Sticker {
   file_url: string;
   file_name: string;
   emoji?: string;
+  /** Макрос: слово, эмодзи или символ — по нему стикер подсказывается при наборе. */
+  keyword?: string;
 }
 
 interface UserStickerPack {
@@ -22,6 +27,7 @@ interface UserStickerPack {
     id: string;
     name: string;
     stickers_count: number;
+    author?: { id: string } | string | null;
   };
 }
 
@@ -104,27 +110,77 @@ const StickerPicker = ({
     loadPacks();
   }, []);
 
-  // Файлы грузятся по одному: сервер возвращает ссылку, и стикер привязывается
-  // к набору. Порядок сохраняем по позиции в выборе.
-  const addFiles = async (files: FileList | null) => {
+  // Добавление — по одному файлу: кадрирование (квадрат 512), потом макрос,
+  // потом загрузка. Очередь из выбранных файлов идёт по кругу, пока не кончится.
+  const [queue, setQueue] = useState<File[]>([]);
+  const [cropping, setCropping] = useState<File | null>(null);
+  const [asking, setAsking] = useState<File | null>(null); // кадрированный, ждёт макрос
+  const [keyword, setKeyword] = useState("");
+  const addedRef = useRef(0);
+  const addFiles = (files: FileList | null) => {
     if (!files?.length || !activePackId) return;
-    setBusy(true);
-    let added = 0;
-    for (let i = 0; i < files.length; i++) {
-      try {
-        const up = await api.uploadSticker(files[i]);
-        await api.createSticker(activePackId, up.file_url, up.file_name, i);
-        added += 1;
-      } catch (e: any) {
-        toast.error(e?.message || "Стикер не загрузился");
-      }
-    }
-    if (added) {
-      toast.success(`Добавлено: ${added}`);
-      setStickers((await api.getStickers(activePackId)) || []);
-    }
-    setBusy(false);
+    const list = Array.from(files);
     if (fileRef.current) fileRef.current.value = "";
+    addedRef.current = 0;
+    setQueue(list.slice(1));
+    setCropping(list[0]);
+  };
+  const nextInQueue = async (rest: File[]) => {
+    const [head, ...tail] = rest;
+    setQueue(tail);
+    if (head) { setCropping(head); return; }
+    if (addedRef.current) {
+      toast.success(`Добавлено: ${addedRef.current}`);
+      invalidateStickerIndex();
+      if (activePackId) setStickers((await api.getStickers(activePackId)) || []);
+    }
+  };
+  const uploadOne = async (file: File, kw: string) => {
+    if (!activePackId) return;
+    setBusy(true);
+    try {
+      const up = await api.uploadSticker(file);
+      await api.createSticker(activePackId, up.file_url, up.file_name, stickers.length + addedRef.current, kw);
+      addedRef.current += 1;
+    } catch (e: any) {
+      toast.error(e?.message || "Стикер не загрузился");
+    } finally {
+      setBusy(false);
+    }
+    await nextInQueue(queue);
+  };
+
+  // Автор набора может править макрос и удалять стикеры: режим правки —
+  // карандаш в шапке, тап по стикеру открывает форму вместо отправки.
+  const meId = readCache<{ id: string }>("user")?.id;
+  const activePack = packs.find((p) => p.pack.id === activePackId)?.pack;
+  const authorId = activePack?.author && typeof activePack.author === "object" ? activePack.author.id : (activePack?.author as string | undefined);
+  const isAuthor = !!meId && !!authorId && meId === authorId;
+  const [editMode, setEditMode] = useState(false);
+  const [editing, setEditing] = useState<Sticker | null>(null);
+  const [editKeyword, setEditKeyword] = useState("");
+  const saveEdit = async () => {
+    if (!editing) return;
+    setBusy(true);
+    try {
+      await api.updateSticker(editing.id, { keyword: editKeyword.trim() });
+      setStickers((prev) => prev.map((x) => (x.id === editing.id ? { ...x, keyword: editKeyword.trim() } : x)));
+      invalidateStickerIndex();
+      setEditing(null);
+    } catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+    finally { setBusy(false); }
+  };
+  const deleteEditing = async () => {
+    if (!editing) return;
+    setBusy(true);
+    try {
+      await api.deleteSticker(editing.id);
+      setStickers((prev) => prev.filter((x) => x.id !== editing.id));
+      invalidateStickerIndex();
+      setEditing(null);
+      toast.success("Стикер удалён");
+    } catch (e: any) { toast.error(e?.message || "Не удалось удалить"); }
+    finally { setBusy(false); }
   };
 
   const createPack = async () => {
@@ -381,6 +437,16 @@ const StickerPicker = ({
         >
           <Plus className="w-4 h-4" />
         </button>
+        {isAuthor && (
+          <button
+            type="button"
+            onClick={() => setEditMode((v) => !v)}
+            className={cn("shrink-0 w-8 h-8 rounded-full flex items-center justify-center", editMode ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
+            aria-label={editMode ? "Готово" : "Изменить стикеры"}
+          >
+            {editMode ? <Check className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+          </button>
+        )}
         {packs.map((p) => (
           <button
             key={p.pack.id}
@@ -437,15 +503,75 @@ const StickerPicker = ({
               <button
                 key={s.id}
                 type="button"
-                onClick={() => onSelect(s)}
-                className="aspect-square rounded-lg p-1 active:scale-90 transition-transform"
+                onClick={() => { if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else onSelect(s); }}
+                className={cn("relative aspect-square rounded-lg p-1 active:scale-90 transition-transform", editMode && isAuthor && "ring-1 ring-primary/50")}
               >
                 <StickerView url={s.file_url} alt={s.emoji || ""} className="w-full h-full object-contain" />
+                {s.keyword && (
+                  <span className="absolute bottom-0 left-0 right-0 text-[10px] leading-tight truncate px-1 rounded-b-lg bg-black/45 text-white">{s.keyword}</span>
+                )}
               </button>
             ))}
           </div>
         )}
       </div>
+
+      {cropping && (
+        <ImageCropper
+          file={cropping}
+          aspect={1}
+          outWidth={512}
+          onCancel={() => { setCropping(null); const rest = queue; setQueue([]); if (!rest.length) void nextInQueue([]); else void nextInQueue(rest); }}
+          onDone={(cropped) => { setCropping(null); setKeyword(""); setAsking(cropped); }}
+        />
+      )}
+
+      {/* Макрос для нового стикера — можно пропустить, тогда он не подсказывается. */}
+      {asking && (
+        <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }}>
+          <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
+            <p className="text-h2">Макрос стикера</p>
+            <p className="text-small text-subtle">Слово, эмодзи или символ: наберёшь его в поле — стикер всплывёт подсказкой. Можно оставить пустым.</p>
+            <div className="flex items-center gap-3">
+              <img src={URL.createObjectURL(asking)} alt="" className="w-16 h-16 rounded-md object-contain bg-surface-4" />
+              <input
+                autoFocus
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value.replace(/\s+/g, "").slice(0, 40))}
+                placeholder="привет"
+                className="flex-1 h-11 px-3 rounded-md bg-surface-4 text-body outline-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }} className="flex-1 h-11 rounded-md bg-surface-4 text-body">Без макроса</button>
+              <button type="button" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, keyword); }} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold">Добавить</button>
+            </div>
+            {queue.length > 0 && <p className="text-caption text-subtle text-center">Ещё в очереди: {queue.length}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Правка: макрос и удаление — только автору набора. */}
+      {editing && (
+        <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setEditing(null)}>
+          <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <StickerView url={editing.file_url} className="w-16 h-16 object-contain" />
+              <input
+                autoFocus
+                value={editKeyword}
+                onChange={(e) => setEditKeyword(e.target.value.replace(/\s+/g, "").slice(0, 40))}
+                placeholder="Макрос (пусто — не подсказывать)"
+                className="flex-1 h-11 px-3 rounded-md bg-surface-4 text-body outline-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button type="button" disabled={busy} onClick={() => void deleteEditing()} className="h-11 px-4 rounded-md bg-surface-4 text-destructive text-body flex items-center gap-1.5 disabled:opacity-50"><Trash2 className="w-4 h-4" /> Удалить</button>
+              <button type="button" disabled={busy} onClick={() => void saveEdit()} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold disabled:opacity-50">Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

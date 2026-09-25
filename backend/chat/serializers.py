@@ -254,7 +254,7 @@ class StickerSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Sticker
-        fields = ['id', 'pack', 'pack_name', 'file_url', 'file_name', 'emoji', 'order', 'created_at']
+        fields = ['id', 'pack', 'pack_name', 'file_url', 'file_name', 'emoji', 'keyword', 'order', 'created_at']
         read_only_fields = ['created_at']
 
 
