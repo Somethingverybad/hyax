@@ -1,9 +1,9 @@
 {
   "version": "1.1.11",
-  "build": 356,
+  "build": 369,
   "ios_version": "1.1.11",
   "ios_build": 150,
-  "notes": "Переслать профиль прямо в WhoYaX — в переписке он приходит карточкой с кнопкой «Написать». Ссылки Pinterest — картинкой и видео. «В сети 5 минут назад», поиск людей и ботов",
+  "notes": "Переслать несколько сообщений одним пузырём, профиль в чат карточкой, удаление постов в каналах, галочки «доставлено/прочитано», ответ голосовым с цитатой. Скачивание файлов — в папку. Плавнее списки и набор текста",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
