@@ -2,7 +2,7 @@
   "version": "1.1.11",
   "build": 356,
   "ios_version": "1.1.11",
-  "ios_build": 149,
+  "ios_build": 150,
   "notes": "Переслать профиль прямо в WhoYaX — в переписке он приходит карточкой с кнопкой «Написать». Ссылки Pinterest — картинкой и видео. «В сети 5 минут назад», поиск людей и ботов",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
