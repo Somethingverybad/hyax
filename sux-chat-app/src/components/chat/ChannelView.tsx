@@ -8,10 +8,11 @@ import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
 import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
-import { shareChannel, sharePost } from "@/lib/share";
+import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
-import { Linkify, packLinkKind, profileLinkName } from "@/lib/linkify";
+import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
+import ChannelLinkCard from "./ChannelLinkCard";
 import { saveFileToDevice } from "@/lib/saveFile";
 import ProfileLinkCard from "./ProfileLinkCard";
 import { playQueue, type Track } from "@/lib/player";
@@ -726,9 +727,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 {(() => {
                   // Пак или тема по ссылке в посте — плиткой с «Добавить себе»,
                   // профиль — карточкой с «Написать». Текст поста не трогаем.
-                  const link = (post.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u));
+                  const link = (post.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u) || channelLinkRef(u));
                   if (!link) return null;
-                  return profileLinkName(link) ? <ProfileLinkCard url={link} /> : <PackLinkCard url={link} />;
+                  return profileLinkName(link) ? <ProfileLinkCard url={link} /> : channelLinkRef(link) ? <ChannelLinkCard url={link} /> : <PackLinkCard url={link} />;
                 })()}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
                   onOpenImage={(_url, p) => openViewer(p.id)}
@@ -1085,6 +1086,9 @@ const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
 const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }: {
   channel: Channel; userId: string; onClose: () => void; onLeave: () => void; onDelete: () => void; onChanged: (c: Channel) => void;
 }) => {
+  // «Поделиться каналом» — шторка с чатами (ссылка уходит сообщением и
+  // разворачивается карточкой канала) и кнопка наружу.
+  const [shareOpen, setShareOpen] = useState(false);
   const [muteBusy, setMuteBusy] = useState(false);
   const toggleMute = async () => {
     const next = !channel.muted;
@@ -1224,15 +1228,24 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
           {/* Ссылка на канал — как «Поделиться профилем»: открывается в приложении. */}
           <button
             type="button"
-            onClick={async () => {
-              const r = await shareChannel(channel);
-              if (r === "copied") toast.success("Ссылка скопирована");
-              else if (r === "error") toast.error("Не удалось поделиться");
-            }}
+            onClick={() => setShareOpen(true)}
             className="w-full py-2.5 border border-border font-semibold flex items-center justify-center gap-2"
           >
             <Share2 className="w-4 h-4" /> Поделиться каналом
           </button>
+          {shareOpen && (
+            <ShareToChat
+              open
+              text={channelLink(channel)}
+              title="Поделиться каналом"
+              onClose={() => setShareOpen(false)}
+              onShareOutside={async () => {
+                const r = await shareChannel(channel);
+                if (r === "copied") toast.success("Ссылка скопирована");
+                else if (r === "error") toast.error("Не удалось поделиться");
+              }}
+            />
+          )}
 
           {/* Уведомления — своё у каждого подписчика: посты приходят, пуша и
               звука нет. Владелец их тоже может выключить (боты, зеркала). */}

@@ -58,6 +58,17 @@ export function profileLinkName(raw: string): string | null {
   try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
+/** Канал из ссылки /c/<@ник|id>[?post=<id>] — для карточки канала в сообщении. */
+export function channelLinkRef(raw: string): { handle: string; post?: string } | null {
+  const path = internalPath(raw);
+  const m = path && /^\/c\/([^/?#]+)/.exec(path);
+  if (!m) return null;
+  let handle = m[1];
+  try { handle = decodeURIComponent(handle); } catch { /* оставляем как есть */ }
+  const post = /[?&]post=([^&#]+)/.exec(raw)?.[1];
+  return { handle, post: post ? decodeURIComponent(post) : undefined };
+}
+
 export const openExternal = (url: string) => {
   const href = url.startsWith("http") ? url : `https://${url}`;
   const w = window as unknown as { electronAPI?: { openExternal?: (u: string) => void } };
