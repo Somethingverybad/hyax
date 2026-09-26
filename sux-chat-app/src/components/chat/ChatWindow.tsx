@@ -5,7 +5,8 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye } from "lucide-react";
+import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
@@ -219,6 +220,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [profileOpen, setProfileOpen] = useState(false);
   // Профиль автора пересланного сообщения — по тапу на «Переслано от».
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
+  // «Просмотры и реакции» — поимённый список из меню сообщения.
+  const [viewersFor, setViewersFor] = useState<string | null>(null);
   const navigate = useNavigate();
   const openForwardOrigin = (m: Message) => {
     if (m.forwarded_from) setViewProfileId(m.forwarded_from.id);
@@ -2005,6 +2008,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: "Редактировать", icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
         { label: "В избранное", icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
         { label: "В плейлист", icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
+        { label: "Просмотры и реакции", icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
         { label: "Пожаловаться", icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
         { label: "Удалить у себя", icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
         { label: "Удалить у всех", icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
@@ -3229,6 +3233,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
       {viewProfileId && (
         <UserProfileModal userId={viewProfileId} onClose={() => setViewProfileId(null)} />
+      )}
+      {viewersFor && (
+        <ViewersSheet messageId={viewersFor} onClose={() => setViewersFor(null)} onOpenProfile={(id) => { if (id !== userId) setViewProfileId(id); }} />
       )}
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),

@@ -877,6 +877,32 @@ class MessageViewSet(viewsets.ModelViewSet):
         from .serializers import pinned_payload
         return Response({"pinned_message": pinned_payload(chat.pinned_message)})
 
+    @action(detail=True, methods=['get'])
+    def viewers(self, request, pk=None):
+        """Кто прочитал и кто какие реакции поставил — поимённо.
+
+        Прочитавшие со статусом «Скрыт» (hide_online) в список не попадают:
+        просмотр у них не засчитывается. Реакции — публичное действие, они
+        видны у всех. Сам автор среди прочитавших не показывается."""
+        msg = self.get_object()
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
+        if not _can_see_chat(msg.chat, profile):
+            return Response({"error": "Нет доступа к сообщению"}, status=403)
+        readers = (MessageReadStatus.objects.filter(message=msg)
+                   .exclude(user_id=msg.sender_id).exclude(user__hide_online=True)
+                   .select_related("user").order_by("-read_at")[:200])
+        read_by = [{"id": str(r.user_id), "username": r.user.username, "avatar_url": r.user.avatar_url, "read_at": r.read_at.isoformat()} for r in readers]
+        from .reactions import ALL
+        order = {emoji: i for i, (emoji, _) in enumerate(ALL)}
+        grouped = {}
+        for r in msg.reactions.select_related("user").order_by("created_at"):
+            grouped.setdefault(r.value, []).append({"id": str(r.user_id), "username": r.user.username, "avatar_url": r.user.avatar_url, "at": r.created_at.isoformat()})
+        reactions = [{"emoji": e, "users": u} for e, u in sorted(grouped.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))]
+        return Response({"read_by": read_by, "reactions": reactions})
+
     @action(detail=True, methods=['post'])
     def press(self, request, pk=None):
         """Нажатие на кнопку под сообщением: {data} уходит боту-автору.

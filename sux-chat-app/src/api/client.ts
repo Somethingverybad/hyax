@@ -908,6 +908,16 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
     return res.json();
   },
+  /** Кто прочитал сообщение и кто какие реакции поставил (поимённо). */
+  messageViewers: async (messageId: string): Promise<{
+    read_by: { id: string; username: string; avatar_url?: string | null; read_at: string }[];
+    reactions: { emoji: string; users: { id: string; username: string; avatar_url?: string | null; at: string }[] }[];
+  }> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/viewers/`, { method: "GET", headers: authHeaders() });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Не удалось загрузить");
+    return d;
+  },
   /** Inline-бот: «@бот запрос» в поле ввода → запрос боту; результаты придут в
    *  личный сокет событием inline_results (Chat.tsx → window "hyax:inline"). */
   inlineQuery: async (bot: string, query: string, chatId: string): Promise<{ query_id: string }> => {
