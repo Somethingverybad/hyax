@@ -25,6 +25,7 @@ import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import ShareToChat from "@/components/ShareToChat";
+import PhotoEditor from "@/components/PhotoEditor";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
@@ -444,6 +445,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Вложения композера: можно выбрать несколько фото/видео разом (уйдут
   // альбомом), добавить музыку или файл, и убрать лишнее до отправки.
   const [attachments, setAttachments] = useState<Attach[]>([]);
+  // Редактор фото открыт для этого вложения; результат подменяет файл и превью.
+  const [editFor, setEditFor] = useState<Attach | null>(null);
+  const applyEdit = async (target: Attach, edited: File) => {
+    const url = URL.createObjectURL(edited);
+    const dims = await imageDims(url);
+    setAttachments((prev) => prev.map((x) => x.id === target.id ? { ...x, file: edited, url, dims } : x));
+    URL.revokeObjectURL(target.url);
+    setEditFor(null);
+  };
   const dropAttachment = (id: string) => setAttachments((prev) => {
     const gone = prev.find((a) => a.id === id);
     if (gone?.url) URL.revokeObjectURL(gone.url);
@@ -2666,7 +2676,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               {attachments.map((a) => (
                 <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-secondary border border-border">
                   {a.mode === "photo" ? (
-                    <img src={a.url} alt="" className="w-full h-full object-cover" />
+                    // Тап по фото — редактор: рисовалка, кадр, поворот (PhotoEditor).
+                    <button type="button" onClick={() => setEditFor(a)} className="w-full h-full" aria-label="Редактировать фото">
+                      <img src={a.url} alt="" className="w-full h-full object-cover" />
+                      <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
+                    </button>
                   ) : a.mode === "video" ? (
                     <video src={a.url} muted playsInline className="w-full h-full object-cover" />
                   ) : (
@@ -3062,6 +3076,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           «Избранное» — первой строкой. */}
       {reportFor && (
         <ReportSheet target={{ type: "message", id: reportFor.id }} title="Жалоба на сообщение" onClose={() => setReportFor(null)} />
+      )}
+      {editFor && (
+        <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => void applyEdit(editFor, f)} />
       )}
       {forwardFor && (
         <ShareToChat

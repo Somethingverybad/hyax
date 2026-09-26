@@ -6,13 +6,14 @@ import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
+import PhotoEditor from "@/components/PhotoEditor";
 import { saveFileToDevice } from "@/lib/saveFile";
 import ProfileLinkCard from "./ProfileLinkCard";
 import { playQueue, type Track } from "@/lib/player";
@@ -253,6 +254,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   type AttachMode = "photo" | "video" | "audio" | "file";
   interface Attach { id: string; file: File; mode: AttachMode; url: string }
   const [attachments, setAttachments] = useState<Attach[]>([]);
+  // Редактор фото (рисовалка, кадр, поворот) для вложения поста.
+  const [editFor, setEditFor] = useState<Attach | null>(null);
+  const applyEdit = (target: Attach, edited: File) => {
+    const url = URL.createObjectURL(edited);
+    setAttachments((prev) => prev.map((x) => x.id === target.id ? { ...x, file: edited, url } : x));
+    URL.revokeObjectURL(target.url);
+    setEditFor(null);
+  };
   const dropAttachment = (id: string) => setAttachments((prev) => {
     const gone = prev.find((a) => a.id === id);
     if (gone?.url) URL.revokeObjectURL(gone.url);
@@ -826,7 +835,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               {attachments.map((a) => (
                 <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
                   {a.mode === "photo" ? (
-                    <img src={a.url} alt="" className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label="Редактировать фото">
+                      <img src={a.url} alt="" className="w-full h-full object-cover" />
+                      <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
+                    </button>
                   ) : a.mode === "video" ? (
                     <video src={a.url} muted playsInline className="w-full h-full object-cover" />
                   ) : (
@@ -953,6 +965,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           onDelete={removeChannel}
           onChanged={(c) => setChannel(c)}
         />
+      )}
+      {editFor && (
+        <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => applyEdit(editFor, f)} />
       )}
       {shareFor && (
         <ShareToChat
