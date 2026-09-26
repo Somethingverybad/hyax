@@ -243,6 +243,8 @@ export interface PlaylistTrack {
   /** Исходное сообщение; null — его удалили, трек остался. */
   source?: string | null;
   added_at?: string;
+  /** Из какого плейлиста (в общем списке listAllTracks). */
+  playlist_name?: string;
 }
 
 export interface PinnedInfo {
@@ -1176,6 +1178,8 @@ export const api = {
     height?: number | null;
     /** Кадр-превью видео с сервера (ответ upload). */
     poster_url?: string | null;
+    /** Трек из своего плейлиста: сервер возьмёт файл у него, без загрузки. */
+    playlist_track_id?: string;
     /** Общий id для фото/видео, отправленных одним альбомом. */
     album_id?: string | null;
   }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean): Promise<any> => {
@@ -1191,6 +1195,7 @@ export const api = {
         file_width: fileData.width || undefined,
         file_height: fileData.height || undefined,
         poster_url: fileData.poster_url || undefined,
+        playlist_track_id: fileData.playlist_track_id || undefined,
         album_id: fileData.album_id || undefined,
         sound_id: soundId || undefined,
         reply_to_id: replyToId || undefined,
@@ -1567,6 +1572,13 @@ export const api = {
       method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
     if (!res.ok) throw new Error("Не удалось убрать");
+  },
+
+  /** Вся моя музыка одним списком (все плейлисты, без повторов файла). */
+  listAllTracks: async (q?: string): Promise<PlaylistTrack[]> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/all-tracks/${q ? `?q=${encodeURIComponent(q)}` : ""}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось загрузить музыку");
+    return (await res.json()).tracks || [];
   },
 
   /** Плейлисты: свои, с числом треков. «Моя музыка» заводится сама. */

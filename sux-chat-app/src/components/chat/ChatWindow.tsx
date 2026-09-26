@@ -27,6 +27,8 @@ import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import ShareToChat from "@/components/ShareToChat";
 import PhotoEditor from "@/components/PhotoEditor";
+import TrackPicker from "./TrackPicker";
+import type { PlaylistTrack } from "@/api/client";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
@@ -513,6 +515,37 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [attachments, setAttachments] = useState<Attach[]>([]);
   // Редактор фото открыт для этого вложения; результат подменяет файл и превью.
   const [editFor, setEditFor] = useState<Attach | null>(null);
+  // «Музыка из плейлистов»: трек уже в хранилище — сообщение ссылается на него
+  // по id, без загрузки. Уходит сразу, с текущим текстом как подписью.
+  const [trackPickerOpen, setTrackPickerOpen] = useState(false);
+  const sendTrack = async (t: PlaylistTrack) => {
+    if (!chatId) return;
+    setTrackPickerOpen(false);
+    const forChat = chatId;
+    const text = draftRef.current.trim();
+    const reply = replyTo;
+    setDraft(""); setReplyTo(null);
+    const ext = (t.file_url.split("?")[0].match(/\.[a-z0-9]{2,5}$/i) || [".mp3"])[0];
+    const fileName = `${t.artist ? `${t.artist} — ` : ""}${t.title}${ext}`;
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimistic: Message = {
+      id: tempId, content: text || null, file_url: t.file_url, file_name: fileName,
+      sender_id: userId, sender: { id: userId } as Profile, created_at: new Date().toISOString(),
+      reply_to: reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
+      pending: true, _key: tempId,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setTimeout(() => scrollToBottom(true), 50);
+    void playSfx("/sounds/send.mp3", { volume: 0.3 });
+    try {
+      const sent = await api.sendMessageWithFile(forChat, { file_url: t.file_url, file_name: fileName, file_size: 0, playlist_track_id: t.id }, text || undefined, undefined, reply?.id);
+      if (sent?.error) throw new Error(sent.error);
+      setMessages((prev) => prev.some((m) => m.id === sent.id) ? prev.filter((m) => m.id !== tempId) : prev.map((m) => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m)));
+    } catch (e: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      toast.error(e?.message || "Не удалось отправить трек");
+    }
+  };
   const applyEdit = async (target: Attach, edited: File) => {
     const url = URL.createObjectURL(edited);
     const dims = await imageDims(url);
@@ -2904,7 +2937,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <Paperclip className="w-5 h-5" />
               </Button>
               {attachMenuOpen && (
-                <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
+                <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); photoInputRef.current?.click(); }}>
                     <ImageIcon className="w-4 h-4 text-primary" /> Фото
@@ -2915,7 +2948,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); audioInputRef.current?.click(); }}>
-                    <Music2 className="w-4 h-4 text-primary" /> Музыка
+                    <Music2 className="w-4 h-4 text-primary" /> Музыка с устройства
+                  </button>
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); hideKeyboard(); setTrackPickerOpen(true); }}>
+                    <ListMusic className="w-4 h-4 text-primary" /> Из моей музыки
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
@@ -3202,6 +3239,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {editFor && (
         <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => void applyEdit(editFor, f)} />
       )}
+      {trackPickerOpen && <TrackPicker onPick={(t) => void sendTrack(t)} onClose={() => setTrackPickerOpen(false)} />}
       {forwardFor && (
         <ShareToChat
           open

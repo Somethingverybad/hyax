@@ -43,6 +43,7 @@ urlpatterns = [
     path('playlists/', PlaylistsView.as_view(), name='playlists'),
     path('playlists/<uuid:pk>/', PlaylistView.as_view(), name='playlist'),
     path('playlists/tracks/', PlaylistTracksView.as_view(), name='playlist-tracks-default'),
+    path('playlists/all-tracks/', MyTracksView.as_view(), name='playlist-all-tracks'),
     path('playlists/<uuid:pk>/share/', PlaylistShareView.as_view(), name='playlist-share'),
     path('playlists/shared/<str:token>/', SharedPlaylistView.as_view(), name='playlist-shared'),
     path('playlists/<uuid:pk>/tracks/', PlaylistTracksView.as_view(), name='playlist-tracks'),

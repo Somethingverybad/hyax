@@ -1274,6 +1274,20 @@ class MessageViewSet(viewsets.ModelViewSet):
                 if not _cp or _cp.role not in ('owner', 'admin'):
                     return Response({"error": "Публиковать в канал могут только админы"}, status=403)
 
+        # Музыка из своего плейлиста: файл уже в хранилище — ссылку берём у
+        # трека, ничего не перекачивая. Только свои плейлисты: иначе по id
+        # чужого трека можно было бы разослать чужой файл.
+        track_id = request.data.get('playlist_track_id')
+        if track_id:
+            track = PlaylistTrack.objects.filter(id=track_id, playlist__owner=profile).first()
+            if not track:
+                return Response({"error": "Трек не найден в ваших плейлистах"}, status=404)
+            file_url = track.file_url
+            ext = os.path.splitext(file_url.split('?')[0])[1] or '.mp3'
+            base = f"{track.artist} — {track.title}" if track.artist else track.title
+            file_name = (base[:200] + ext)
+            file_size = None
+
         # Создаем сообщение
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2908,6 +2922,32 @@ class ChannelDetailView(APIView):
             return Response({"error": "Удалить канал может только владелец"}, status=403)
         ch.delete()
         return Response({"ok": True})
+
+
+class MyTracksView(APIView):
+    """GET ?q= — вся моя музыка одним списком (по всем плейлистам, без
+    повторов файла): выбор трека для отправки в чат."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        q = (request.query_params.get("q") or "").strip()
+        qs = PlaylistTrack.objects.filter(playlist__owner=me).select_related("playlist").order_by("-added_at")
+        if q:
+            qs = qs.filter(models.Q(title__icontains=q) | models.Q(artist__icontains=q))
+        seen, out = set(), []
+        for t in qs[:500]:
+            if t.file_url in seen:
+                continue
+            seen.add(t.file_url)
+            d = PlaylistTrackSerializer(t).data
+            d["playlist_name"] = t.playlist.name
+            out.append(d)
+            if len(out) >= 200:
+                break
+        return Response({"tracks": out})
 
 
 class ChannelSubscribeView(APIView):
