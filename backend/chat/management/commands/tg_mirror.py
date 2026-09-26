@@ -39,7 +39,7 @@ class Command(BaseCommand):
         from telethon import TelegramClient, events, utils
         from telethon.tl.functions.channels import JoinChannelRequest, GetFullChannelRequest
         from chat.models import Chat
-        from chat.telegram_mirror import text_from_tg, store_media, upsert_post, notify_mirror_post, MAX_MEDIA_BYTES
+        from chat.telegram_mirror import text_from_tg, store_media, upsert_post, notify_mirror_post, video_poster, MAX_MEDIA_BYTES
 
         client = TelegramClient(session, api_id, api_hash, use_ipv6=os.environ.get("TG_IPV6", "1") == "1")
         await client.connect()
@@ -92,12 +92,14 @@ class Command(BaseCommand):
             path = await client.download_media(msg, file=os.path.join(tmp_dir, name))
             if not path:
                 return None
+            # Постер — пока файл ещё лежит во временной папке: store_media его унесёт.
+            poster_url = await sync_to_async(video_poster)(path) if (ctype or "").startswith("video/") else None
             file_url, got, dims = await sync_to_async(store_media)(path, ctype or "application/octet-stream", name)
             try:
                 os.rmdir(tmp_dir)
             except OSError:
                 pass
-            return {"file_url": file_url, "file_name": name, "file_size": got, "dims": dims}
+            return {"file_url": file_url, "file_name": name, "file_size": got, "dims": dims, "poster_url": poster_url}
 
         async def process(msg, chat_id):
             """Один пост Telegram → сообщение канала + рассылка."""

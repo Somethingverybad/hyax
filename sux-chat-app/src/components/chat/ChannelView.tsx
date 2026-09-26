@@ -37,7 +37,7 @@ interface Channel {
 }
 
 interface Post {
-  id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null;
+  id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null; poster_url?: string | null;
   file_width?: number | null; file_height?: number | null; album_id?: string | null;
   video_url?: string; video_duration?: number | null; video_mirror?: boolean;
   download_only?: boolean; sender?: { id: string; username: string };
@@ -92,6 +92,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
             raw: p.file_url || "",
             name: p.file_name ?? null,
             dims: dimsOf(p.file_width, p.file_height),
+            poster: p.poster_url ?? null,
             pending: p._pending,
             progress: p._progress ?? null,
             failed: p._failed,
@@ -126,7 +127,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
     return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} /></div>;
+    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} poster={post.poster_url} /></div>;
   }
   return (
     <div className="mt-2">
@@ -591,7 +592,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             temp.progress(100);
             temp.confirm(await api.sendMessageWithFile(
               channelId,
-              { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height, album_id: album },
+              { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height, poster_url: uploaded.poster_url ?? null, album_id: album },
               i === 0 ? body || undefined : undefined,
               i === 0 ? snd?.id : undefined,
               undefined,

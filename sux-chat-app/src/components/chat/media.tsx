@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, Download, Play, Pause } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Paperclip, Download, Play, Pause, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
@@ -176,25 +177,91 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   );
 };
 
-export const MessageVideoFile = ({ raw, dims }: { raw: string; dims?: { w: number; h: number } | null }) => {
-  const src = useMediaUrl(raw);
+/** Плеер на весь экран — как в Telegram: тап по превью, а не встроенный
+ *  плеер в пузыре. Порталом на body: пузырь может быть внутри transform. */
+const VideoViewer = ({ src, poster, onClose }: { src: string; poster?: string | null; onClose: () => void }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-[85] bg-black flex items-center justify-center" onClick={onClose}>
+      <video
+        src={src}
+        poster={poster || undefined}
+        controls
+        autoPlay
+        playsInline
+        className="w-full max-h-[100dvh] object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute left-3 w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center active:opacity-70"
+        style={{ top: "calc(var(--sat) + 0.5rem)" }}
+        aria-label="Закрыть"
+      >
+        <X className="w-6 h-6" />
+      </button>
+    </div>,
+    document.body,
+  );
+};
+
+/** Превью видео в ленте: постер с сервера, а без него (старые видео) — первый
+ *  кадр, к которому WebKit нужно подтолкнуть перемоткой: сам он до тапа ничего
+ *  не декодирует, и раньше здесь до тапа висела заглушка. Тап — VideoViewer. */
+const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: string | null; cover?: boolean }) => {
   const [ready, setReady] = useState(false);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLVideoElement>(null);
+  const fit = cover ? "object-cover" : "object-contain";
+  return (
+    <>
+      {!ready && <MediaSkeleton className="absolute inset-0" />}
+      {poster ? (
+        <img src={poster} alt="" onLoad={() => setReady(true)}
+          className={cn("w-full h-full block transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")} />
+      ) : src && (
+        <video
+          ref={ref}
+          src={src}
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={() => { const el = ref.current; if (el && el.currentTime === 0) { try { el.currentTime = 0.05; } catch { /* покажем при просмотре */ } } }}
+          onLoadedData={() => setReady(true)}
+          onSeeked={() => setReady(true)}
+          className={cn("w-full h-full block bg-black transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")}
+        />
+      )}
+      <button
+        type="button"
+        aria-label="Смотреть"
+        disabled={!src}
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        className="absolute inset-0 flex items-center justify-center"
+      >
+        <span className="w-12 h-12 rounded-full bg-black/55 text-white flex items-center justify-center">
+          <Play className="w-6 h-6 ml-0.5" fill="currentColor" />
+        </span>
+      </button>
+      {open && src && <VideoViewer src={src} poster={poster} onClose={() => setOpen(false)} />}
+    </>
+  );
+};
+
+export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { w: number; h: number } | null; poster?: string | null }) => {
+  const src = useMediaUrl(raw);
+  const posterSrc = useMediaUrl(poster || null);
   // Бокс под видео по размерам с сервера (в пределах 280×256), чтобы лента не
   // прыгала, когда плеер узнает размер кадра. Без размеров — как раньше.
   const size = dims ? (() => { const s = Math.min(280 / dims.w, 256 / dims.h, 1); return { width: Math.round(dims.w * s), height: Math.round(dims.h * s) }; })() : { width: 176, height: 112 };
   return (
     <div className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
-      {!ready && <MediaSkeleton className="absolute inset-0" />}
-      {src && (
-        <video
-          src={src}
-          controls
-          playsInline
-          preload="metadata"
-          onLoadedData={() => setReady(true)}
-          className={cn("w-full h-full block bg-black transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
-        />
-      )}
+      <VideoThumb src={src} poster={posterSrc} />
     </div>
   );
 };
@@ -313,6 +380,8 @@ export interface AlbumItem {
   raw: string;
   name: string | null;
   dims?: { w: number; h: number } | null;
+  /** Кадр-превью видео с сервера. */
+  poster?: string | null;
   pending?: boolean;
   progress?: number | null;
   failed?: boolean;
@@ -322,13 +391,14 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
   const localBlob = item.raw.startsWith("blob:") ? item.raw : localMap?.get(item.raw);
   const signed = useMediaUrl(localBlob ? null : item.raw);
   const src = localBlob || signed;
+  const posterSrc = useMediaUrl(item.poster || null);
   const [loaded, setLoaded] = useState(!!localBlob);
   const video = isVideoFile(item.name, item.raw);
   return (
     <div className="relative aspect-square overflow-hidden bg-black/20">
       {!loaded && !video && <MediaSkeleton className="absolute inset-0" />}
       {src && (video ? (
-        <video src={src} controls playsInline preload="metadata" className="w-full h-full object-cover" />
+        <VideoThumb src={src} poster={posterSrc} cover />
       ) : (
         <img src={src} alt={item.name || ""} loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen(src, item.name || "image", item.id)}
           className={cn("w-full h-full object-cover cursor-pointer transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />

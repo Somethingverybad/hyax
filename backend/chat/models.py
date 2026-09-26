@@ -169,6 +169,9 @@ class Message(models.Model):
     sticker = models.ForeignKey('Sticker', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Ссылка на стикер
     # Размеры картинки/видео, снятые ffprobe при загрузке: клиент резервирует
     # место под медиа до загрузки, и лента не «схлопывается».
+    # Кадр-превью видео (jpg рядом с файлом): лента показывает его сразу, а не
+    # ждёт, пока плеер декодирует первый кадр. Делает сервер при загрузке.
+    poster_url = models.TextField(blank=True, null=True)
     file_width = models.IntegerField(blank=True, null=True)
     file_height = models.IntegerField(blank=True, null=True)
     # Альбом: несколько фото/видео, отправленных разом, — отдельные сообщения

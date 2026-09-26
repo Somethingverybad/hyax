@@ -558,6 +558,7 @@ def _forward_copy(src, target, profile, album_id=None):
         file_size=src.file_size,
         file_width=getattr(src, 'file_width', None),
         file_height=getattr(src, 'file_height', None),
+        poster_url=getattr(src, 'poster_url', None),
         sticker=src.sticker,
         voice_url=src.voice_url,
         voice_duration=src.voice_duration,
@@ -1285,6 +1286,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 'file_url': file_url,
                 'file_name': file_name,
                 'file_size': file_size,
+                'poster_url': request.data.get('poster_url') or None,
                 'download_only': str(request.data.get('download_only') or '').lower() in ('1', 'true', 'yes'),
             })
         
@@ -1466,6 +1468,39 @@ def _probe_dims(path):
     return None
 
 
+def _make_poster(video_path, rel_base, local_only=False):
+    """Кадр-превью видео: jpg до 640 px по ширине, рядом с файлом (<имя>.jpg).
+    Без него лента показывала заглушку, пока WebKit не декодирует первый кадр —
+    а он этого до тапа не делает. Возвращает URL (s3:// или /media/…) или None."""
+    import subprocess
+    rel = f"{os.path.splitext(rel_base)[0]}.jpg"
+    full = os.path.join(settings.MEDIA_ROOT, rel)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    ok = False
+    for ss in ("0.5", "0"):  # совсем короткий ролик: кадра на 0.5 с может не быть
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", ss, "-i", video_path, "-frames:v", "1",
+                 "-vf", "scale='trunc(min(640,iw)/2)*2:-2'", "-q:v", "4", full],
+                check=True, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            if os.path.exists(full) and os.path.getsize(full) > 0:
+                ok = True
+                break
+        except Exception:
+            continue
+    if not ok:
+        return None
+    if s3_enabled() and not local_only:
+        try:
+            url = s3_upload(full, rel, "image/jpeg")
+            os.remove(full)
+            return url
+        except Exception:
+            logger.exception("poster: S3 не принял, оставляю локально")
+    return f"/media/{rel}"
+
+
 def _finalize_upload(request, file_path, original_name, out_size, file_extension):
     """Общий хвост загрузки для запроса: см. _finalize_file."""
     compress = (request.data.get('compress') or '').lower()
@@ -1524,6 +1559,7 @@ def _finalize_file(file_path, original_name, out_size, file_extension, compress,
     dims = None
     if is_video or file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'):
         dims = _probe_dims(full_path)
+    poster_url = _make_poster(full_path, file_path, local_only) if is_video else None
     if s3_enabled() and not local_only:
         try:
             url = s3_upload(full_path, file_path)
@@ -1544,6 +1580,7 @@ def _finalize_file(file_path, original_name, out_size, file_extension, compress,
         "file_size": out_size,
         "width": dims[0] if dims else None,
         "height": dims[1] if dims else None,
+        "poster_url": poster_url,
     }
 
 

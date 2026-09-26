@@ -97,6 +97,8 @@ interface Message {
   /** Видео-заметка снята фронталкой — воспроизводить зеркально (как в превью). */
   video_mirror?: boolean;
   /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
+  /** Кадр-превью видео с сервера. */
+  poster_url?: string | null;
   file_width?: number | null;
   file_height?: number | null;
   /** Общий id фото/видео, отправленных одним альбомом. */
@@ -1513,6 +1515,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         file_size: uploadResult.file_size,
         width: uploadResult.width ?? att.dims?.w,
         height: uploadResult.height ?? att.dims?.h,
+        poster_url: uploadResult.poster_url ?? null,
         album_id: opts.albumId ?? null,
       }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file");
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
@@ -2505,6 +2508,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               raw: m.file_url || "",
                               name: m.file_name ?? null,
                               dims: m._dims || dimsOf(m.file_width, m.file_height),
+                              poster: m.poster_url ?? null,
                               pending: m.pending,
                               progress: m._progress ?? null,
                               failed: m._failed,
@@ -2536,7 +2540,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           ) : isAudioFile(message.file_name, message.file_url) ? (
                             <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(message)} />
                           ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
-                            <MessageVideoFile raw={message.file_url} dims={dimsOf(message.file_width, message.file_height)} />
+                            <MessageVideoFile raw={message.file_url} dims={dimsOf(message.file_width, message.file_height)} poster={message.poster_url} />
                           ) : (
                             <MessageFile
                               raw={message.file_url}

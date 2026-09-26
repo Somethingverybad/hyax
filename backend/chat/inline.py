@@ -144,7 +144,7 @@ class InlineFillView(APIView):
     """POST {content?, file_url?, file_name?, file_width?, file_height?} — бот
     заполняет свою заглушку. Полчаса на подготовку, потом заглушка чужая."""
     permission_classes = [permissions.IsAuthenticated]
-    FIELDS = ("content", "file_url", "file_name", "file_width", "file_height", "voice_url", "voice_duration", "video_url", "video_duration", "download_only")
+    FIELDS = ("content", "file_url", "file_name", "poster_url", "file_width", "file_height", "voice_url", "voice_duration", "video_url", "video_duration", "download_only")
 
     def post(self, request, message_id):
         bot = _me(request)

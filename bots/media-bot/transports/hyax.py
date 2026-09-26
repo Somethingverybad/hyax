@@ -96,6 +96,8 @@ class Hyax:
         name = safe_name(media.title, ext)
         up = await self.upload(media.path, name)
         payload = {"content": "", "file_url": up.get("file_url"), "file_name": name}
+        if up.get("poster_url"):
+            payload["poster_url"] = up["poster_url"]
         if not media.is_audio and media.width and media.height:
             payload["file_width"] = media.width
             payload["file_height"] = media.height

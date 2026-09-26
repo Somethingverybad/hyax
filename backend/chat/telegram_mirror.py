@@ -96,6 +96,12 @@ def store_media(tmp_path, ctype, name, subdir="messages", local_only=False):
     return file_url, size, dims
 
 
+def video_poster(tmp_path, local_only=False):
+    """Кадр-превью для видео из Telegram — тем же способом, что у загрузок."""
+    from .views import _make_poster
+    return _make_poster(tmp_path, os.path.join("messages", f"{uuid.uuid4()}.mp4"), local_only)
+
+
 def upsert_post(chat, tg_id, *, text="", created_at=None, grouped_id=None, media=None):
     """Пост Telegram → Message канала. Повторный вызов с тем же tg_id ничего не
     дублирует. media: {"file_url","file_name","file_size","dims"} или None.
@@ -114,7 +120,7 @@ def upsert_post(chat, tg_id, *, text="", created_at=None, grouped_id=None, media
         album_id=album_uuid(chat.id, grouped_id) if grouped_id else None,
     )
     if media:
-        fields.update(file_url=media["file_url"], file_name=media["file_name"][:255], file_size=media.get("file_size"))
+        fields.update(file_url=media["file_url"], file_name=media["file_name"][:255], file_size=media.get("file_size"), poster_url=media.get("poster_url"))
         dims = media.get("dims")
         if dims:
             fields.update(file_width=dims[0], file_height=dims[1])
