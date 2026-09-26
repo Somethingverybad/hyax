@@ -23,6 +23,7 @@ import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/li
 import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
+import ShareToChat from "@/components/ShareToChat";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
@@ -303,7 +304,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return n;
   });
   const selectedMessages = () => (selected ? messages.filter((m) => selected.has(m.id) && !m.pending) : []);
-  const [forwardQuery, setForwardQuery] = useState("");
 
   const loadPinned = async () => {
     if (!chatId) return;
@@ -1885,7 +1885,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: "Реакция", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
         { label: "В плейлист", show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
         { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
-        { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardQuery(""); setForwardFor([menuMessage]); closeMenu(); } },
+        { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
         { label: "Выбрать", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
         { label: "В избранное", show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
         { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
@@ -2580,7 +2580,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <button
             type="button"
             disabled={!selected.size}
-            onClick={() => { const list = selectedMessages(); if (list.length) { setForwardQuery(""); setForwardFor(list); } }}
+            onClick={() => { const list = selectedMessages(); if (list.length) { setForwardFor(list); } }}
             className="h-10 px-3 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center gap-1.5 disabled:opacity-40"
           >
             <Forward className="w-4 h-4" /> Переслать
@@ -3100,50 +3100,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <ReportSheet target={{ type: "message", id: reportFor.id }} title="Жалоба на сообщение" onClose={() => setReportFor(null)} />
       )}
       {forwardFor && (
-        <div className="fixed inset-0 z-[75] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setForwardFor(null)}>
-          <div className="w-full md:max-w-md bg-card border-t-2 md:border-2 border-border max-h-[80%] flex flex-col pb-[var(--sab)]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-              <Forward className="w-4 h-4 text-primary" />
-              <span className="font-semibold flex-1">{forwardFor.length > 1 ? `Переслать ${forwardFor.length}` : "Переслать"}</span>
-              <button type="button" onClick={() => setForwardFor(null)} className="p-1" aria-label="Закрыть"><X className="w-5 h-5" /></button>
-            </div>
-            <input
-              value={forwardQuery}
-              onChange={(e) => setForwardQuery(e.target.value)}
-              placeholder="Поиск по чатам"
-              className="mx-4 my-2 px-3 py-2 bg-secondary outline-none text-sm"
-            />
-            <div className="overflow-y-auto">
-              {!saved && savedChatId && (
-                <button type="button" onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, savedChatId, m.length > 1 ? `В избранное: ${m.length}` : "Добавлено в избранное"); }} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary">
-                  <span className="w-10 h-10 shrink-0 bg-primary flex items-center justify-center"><Bookmark className="w-5 h-5 text-primary-foreground" /></span>
-                  <span className="font-medium">Избранное</span>
-                </button>
-              )}
-              {(chats || [])
-                .filter((c) => c.id !== chatId)
-                .filter((c) => !forwardQuery.trim() || chatLabel(c).toLowerCase().includes(forwardQuery.trim().toLowerCase()))
-                .map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => { const m = forwardFor; setForwardFor(null); forwardTo(m, c.id, m.length > 1 ? `Переслано ${m.length}: ${chatLabel(c)}` : `Переслано: ${chatLabel(c)}`); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary"
-                  >
-                    {c.kind === "channel" ? (
-                      <span className="w-10 h-10 shrink-0 bg-secondary flex items-center justify-center"><Radio className="w-5 h-5 text-primary" /></span>
-                    ) : c.is_group ? (
-                      <span className="w-10 h-10 shrink-0 bg-secondary flex items-center justify-center"><Users className="w-5 h-5 text-primary" /></span>
-                    ) : (
-                      <Identicon id={c.participants?.find((p) => p.id !== userId)?.id || c.id} avatarUrl={c.participants?.find((p) => p.id !== userId)?.avatar_url} className="w-10 h-10" />
-                    )}
-                    <span className="font-medium truncate">{chatLabel(c)}</span>
-                  </button>
-                ))}
-              {(chats || []).length === 0 && <p className="px-4 py-6 text-sm text-muted-foreground text-center">Чатов нет</p>}
-            </div>
-          </div>
-        </div>
+        <ShareToChat
+          open
+          text=""
+          title={forwardFor.length > 1 ? `Переслать ${forwardFor.length}` : "Переслать"}
+          includeChannels
+          excludeChatId={chatId}
+          onClose={() => setForwardFor(null)}
+          onPick={(id, label) => {
+            const m = forwardFor;
+            forwardTo(m, id, label === "Избранное"
+              ? (m.length > 1 ? `В избранное: ${m.length}` : "Добавлено в избранное")
+              : (m.length > 1 ? `Переслано ${m.length}: ${label}` : `Переслано: ${label}`));
+          }}
+          // Наружу — текстом сообщений; вложения через системное «Поделиться»
+          // не уходят, для них есть «Сохранить» у файла.
+          onShareOutside={forwardFor.some((m) => (m.content || "").trim()) ? async () => {
+            const text = forwardFor.map((m) => (m.content || "").trim()).filter(Boolean).join("\n\n");
+            const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
+            if (typeof nav.share === "function") {
+              try { await nav.share({ text }); return; } catch (e: any) { if (e?.name === "AbortError") return; }
+            }
+            try { await navigator.clipboard.writeText(text); toast.success("Текст скопирован"); } catch { toast.error("Не удалось поделиться"); }
+          } : undefined}
+        />
       )}
 
       {viewer && (
@@ -3158,7 +3138,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               const cur = viewer.items[viewer.index];
               const m = messages.find((x) => x.id === cur?.messageId);
               setViewer(null);
-              if (m) { setForwardQuery(""); setForwardFor([m]); }
+              if (m) { setForwardFor([m]); }
             } },
             { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
               const cur = viewer.items[viewer.index];

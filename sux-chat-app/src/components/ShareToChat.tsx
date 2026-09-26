@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bookmark, Share2, Users } from "lucide-react";
+import { Bookmark, Share2, Users, Radio } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { readCache } from "@/lib/session-cache";
@@ -13,15 +13,18 @@ import { readCache } from "@/lib/session-cache";
  * Системный способ — большой кнопкой, закреплённой внизу шторки: список
  * чатов может быть длинным, а выход наружу нужен не реже.
  *
- * Каналы в списке не показываем: писать в них может только владелец, а
+ * Каналы по умолчанию не показываем: писать в них может только владелец, а
  * пересылка ссылки в канал — не то, чего ждут от «поделиться профилем».
+ * Пересылка сообщений (includeChannels) их показывает — своим каналом
+ * делятся постами из переписки.
  */
-type Row = { id: string; title: string; kind: "saved" | "group" | "direct"; peerId?: string; avatar?: string | null };
+type Row = { id: string; title: string; kind: "saved" | "group" | "direct" | "channel"; peerId?: string; avatar?: string | null };
 
-const toRows = (chats: any[], me?: string): Row[] => chats
-  .filter((c) => c.kind !== "channel")
+const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeChatId?: string): Row[] => chats
+  .filter((c) => (includeChannels || c.kind !== "channel") && c.id !== excludeChatId)
   .map((c): Row => {
     if (c.kind === "saved") return { id: c.id, title: "Избранное", kind: "saved" };
+    if (c.kind === "channel") return { id: c.id, title: c.name || "Канал", kind: "channel", avatar: c.avatar_url };
     if (c.is_group) return { id: c.id, title: c.name || "Группа", kind: "group", avatar: c.avatar_url };
     const peer = (c.participants || []).find((p: any) => p.id !== me);
     return { id: c.id, title: peer?.username || c.name || "Чат", kind: "direct", peerId: peer?.id, avatar: peer?.avatar_url };
@@ -29,7 +32,7 @@ const toRows = (chats: any[], me?: string): Row[] => chats
   // «Избранное» — первой строкой, как в пересылке сообщений.
   .sort((a, b) => Number(b.kind === "saved") - Number(a.kind === "saved"));
 
-const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick }: {
+const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, includeChannels, excludeChatId }: {
   open: boolean;
   /** Что отправляем: обычно ссылка. */
   text: string;
@@ -40,6 +43,10 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick }: {
   onShareOutside?: () => void;
   /** Только выбрать чат — отправкой займётся вызывающий (вложения из «Поделиться»). */
   onPick?: (chatId: string, title: string) => void;
+  /** Показывать и каналы (пересылка сообщений). */
+  includeChannels?: boolean;
+  /** Не показывать этот чат (откуда пересылаем). */
+  excludeChatId?: string;
 }) => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
@@ -48,8 +55,9 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick }: {
   useEffect(() => {
     if (!open || rows) return;
     api.getChats()
-      .then((chats) => setRows(toRows(chats, readCache<{ id: string }>("user")?.id)))
+      .then((chats) => setRows(toRows(chats, readCache<{ id: string }>("user")?.id, includeChannels, excludeChatId)))
       .catch(() => setRows([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rows]);
 
   useEffect(() => { if (!open) setQuery(""); }, [open]);
@@ -116,6 +124,10 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick }: {
               {r.kind === "saved" ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-primary flex items-center justify-center">
                   <Bookmark className="w-4 h-4 text-primary-foreground" />
+                </span>
+              ) : r.kind === "channel" && !r.avatar ? (
+                <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">
+                  <Radio className="w-4 h-4 text-primary" />
                 </span>
               ) : r.kind === "group" && !r.avatar ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">
