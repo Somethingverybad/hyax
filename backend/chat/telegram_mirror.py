@@ -64,23 +64,25 @@ def text_from_tg(message):
     return text.strip()
 
 
-def store_media(tmp_path, ctype, name):
-    """Файл из Telegram → наше хранилище (S3 или /media). Возвращает
-    (file_url, size, (w, h) | None)."""
+def store_media(tmp_path, ctype, name, subdir="messages", local_only=False):
+    """Файл из Telegram → наше хранилище. Медиа постов — в S3, как у обычных
+    сообщений (клиент подписывает ссылки s3://); аватар канала — только
+    локально в /media/avatars: аватары клиент не подписывает, а подставляет
+    как есть. Возвращает (file_url, size, (w, h) | None)."""
     from django.conf import settings
     from .s3 import s3_enabled, upload_file as s3_upload
     from .views import _probe_dims
 
     size = os.path.getsize(tmp_path)
     ext = os.path.splitext(name)[1] or os.path.splitext(tmp_path)[1] or ""
-    rel = os.path.join("messages", f"{uuid.uuid4()}{ext}")
+    rel = os.path.join(subdir, f"{uuid.uuid4()}{ext}")
     dims = None
     try:
         dims = _probe_dims(tmp_path)
     except Exception:
         dims = None
     file_url = f"/media/{rel}"
-    if s3_enabled():
+    if s3_enabled() and not local_only:
         try:
             file_url = s3_upload(tmp_path, rel, ctype)
             os.remove(tmp_path)

@@ -135,7 +135,7 @@ class Command(BaseCommand):
                 try:
                     tmp = await client.download_profile_photo(entity, file=os.path.join(tempfile.mkdtemp(prefix="tg-"), "avatar.jpg"))
                     if tmp:
-                        avatar_url, _, _ = await sync_to_async(store_media)(tmp, "image/jpeg", "avatar.jpg")
+                        avatar_url, _, _ = await sync_to_async(store_media)(tmp, "image/jpeg", "avatar.jpg", subdir="avatars", local_only=True)
                 except Exception:
                     logger.exception("аватар %s не скачался", ch.tg_username)
                 await save_channel(
