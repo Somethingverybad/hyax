@@ -116,6 +116,19 @@ class Hyax:
         await self.s.post(f"{API}/bots/inline/messages/{message_id}/", headers=_headers(), json=payload)
 
 
+def human_error(e: Exception) -> str:
+    """Ошибка yt-dlp — человеческим языком. «Please sign in» — ролик доступен
+    только с аккаунта, а куки бота протухли: без владельца тут не починить."""
+    msg = str(e)
+    if "Please sign in" in msg or "Sign in to confirm" in msg:
+        return "YouTube просит войти в аккаунт: у этого ролика ограничение, а куки бота устарели. Владельцу нужно обновить youtube.txt."
+    if "Private video" in msg:
+        return "Это приватное видео."
+    if "Video unavailable" in msg:
+        return "Видео недоступно."
+    return f"Не получилось: {msg.splitlines()[-1][:200]}"
+
+
 def remember(url: str) -> str:
     """Короткий ключ для ссылки: в кнопку помещается 128 символов, а ссылки
     бывают длиннее — и светить их в data незачем."""
@@ -171,7 +184,7 @@ async def download_and_send(hx: Hyax, chat_id: str, url: str, mode: str) -> None
         await hx.send_media(chat_id, media)
     except Exception as e:
         log.exception("не вышло скачать %s", url)
-        await hx.send_text(chat_id, f"Не получилось: {str(e)[:200]}")
+        await hx.send_text(chat_id, human_error(e))
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
 
@@ -224,7 +237,7 @@ async def on_inline_chosen(hx: Hyax, message_id: str, result_id: str) -> None:
         await hx.fill_message(message_id, await hx.media_payload(media))
     except Exception as e:
         log.exception("inline: не вышло скачать %s", url)
-        await hx.fill_message(message_id, {"content": f"Не получилось: {str(e)[:200]}"})
+        await hx.fill_message(message_id, {"content": human_error(e)})
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
 
