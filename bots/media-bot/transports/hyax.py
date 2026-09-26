@@ -34,6 +34,11 @@ TOKEN = os.getenv("HYAX_BOT_TOKEN", "").strip()
 DEFAULT_MODE = os.getenv("HYAX_QUALITY", "720").strip()
 # Сколько ссылок качаем одновременно: yt-dlp и ffmpeg жадны до диска и сети.
 LIMIT = asyncio.Semaphore(int(os.getenv("HYAX_PARALLEL", "2")))
+COOKIES_DIR = os.getenv("COOKIES_DIR", "").strip()
+# Локальные /media/... (без S3) раздаёт nginx, а не api.
+MEDIA = os.getenv("HYAX_MEDIA", "http://nginx/media").rstrip("/")
+#: Владелец по нику — запас на случай, если сервер ещё не отдаёт bot_owner.
+OWNER_USERNAME = os.getenv("HYAX_BOT_OWNER", "").strip().lstrip("@")
 
 HELP = (
     "Пришлите ссылку — предложу, что скачать: mp3 или видео в нужном качестве.\n"
@@ -42,8 +47,14 @@ HELP = (
     "Команды:\n"
     "/audio <ссылка> — сразу mp3, без вопросов\n"
     "/video <ссылка> — сразу видео\n"
-    "/help — это сообщение"
+    "/help — это сообщение\n\n"
+    "Владельцу: пришлите файл кук (Netscape, youtube.txt) — применю сразу; /cookies — что сейчас загружено."
 )
+
+#: Площадка по доменам в файле кук → имя файла в COOKIES_DIR.
+COOKIE_SITES = (("youtube", ("youtube.com", "google.com")), ("instagram", ("instagram.com",)), ("tiktok", ("tiktok.com",)))
+#: Без этих кук YouTube считает, что входа нет (см. «Please sign in»).
+YT_LOGIN_COOKIES = {"SID", "LOGIN_INFO", "__Secure-1PSID"}
 
 #: Что предлагаем кнопками. mp3 первым: чаще всего нужен именно он.
 CHOICES = (("mp3", "🎵 MP3"), ("1080", "1080p"), ("720", "720p"), ("480", "480p"), ("360", "360p"))
@@ -80,6 +91,28 @@ class Hyax:
             payload["buttons"] = buttons
         await self.s.post(f"{API}/messages/", headers=_headers(), json=payload)
 
+    def is_owner(self, sender: dict | None) -> bool:
+        sender = sender or {}
+        oid = self.me.get("bot_owner")
+        if oid and str(sender.get("id")) == str(oid):
+            return True
+        return bool(OWNER_USERNAME) and (sender.get("username") or "").lower() == OWNER_USERNAME.lower()
+
+    async def fetch_file(self, file_url: str, limit: int = 512 * 1024) -> bytes:
+        """Скачать вложение сообщения: S3 — по временной подписи, локальное — у nginx."""
+        if file_url.startswith("s3://"):
+            async with self.s.get(f"{API}/media/sign/", params={"key": file_url[5:]}, headers=_headers()) as r:
+                r.raise_for_status()
+                url = (await r.json())["url"]
+        else:
+            url = f"{MEDIA}/{file_url.split('/media/', 1)[-1]}" if "/media/" in file_url else file_url
+        async with self.s.get(url) as r:
+            r.raise_for_status()
+            data = await r.content.read(limit + 1)
+            if len(data) > limit:
+                raise ValueError("файл слишком большой для кук")
+            return data
+
     async def upload(self, path: str, name: str) -> dict:
         """Загрузить файл и получить его адрес на сервере."""
         data = aiohttp.FormData()
@@ -114,6 +147,82 @@ class Hyax:
     async def fill_message(self, message_id: str, payload: dict) -> None:
         """Заполнить свою заглушку «через @бота» готовым содержимым."""
         await self.s.post(f"{API}/bots/inline/messages/{message_id}/", headers=_headers(), json=payload)
+
+
+def parse_cookies(text: str) -> tuple[list[tuple[str, str]], int]:
+    """Netscape-файл → [(домен, имя)], число строк-кук. Строки #HttpOnly_ — тоже куки."""
+    out, n = [], 0
+    for line in text.splitlines():
+        raw = line[len("#HttpOnly_"):] if line.startswith("#HttpOnly_") else line
+        if not raw.strip() or raw.startswith("#"):
+            continue
+        parts = raw.split("\t")
+        if len(parts) < 7:
+            continue
+        n += 1
+        out.append((parts[0].lstrip(".").lower(), parts[5]))
+    return out, n
+
+
+def cookie_site(entries: list[tuple[str, str]], file_name: str) -> str | None:
+    for site, domains in COOKIE_SITES:
+        if any(any(d.endswith(dom) for dom in domains) for d, _ in entries):
+            return site
+    stem = os.path.splitext(os.path.basename(file_name or ""))[0].lower()
+    return stem if stem in dict(COOKIE_SITES) else None
+
+
+def cookies_status() -> str:
+    if not COOKIES_DIR:
+        return "Папка кук не настроена (COOKIES_DIR)."
+    import datetime as _dt
+    lines = []
+    for site, _ in COOKIE_SITES:
+        p = os.path.join(COOKIES_DIR, f"{site}.txt")
+        if not os.path.exists(p):
+            lines.append(f"• {site}: нет файла")
+            continue
+        try:
+            entries, n = parse_cookies(open(p, encoding="utf-8", errors="ignore").read())
+        except Exception:
+            entries, n = [], 0
+        when = _dt.datetime.fromtimestamp(os.path.getmtime(p)).strftime("%d.%m %H:%M")
+        login = "вход есть ✅" if site != "youtube" or any(name in YT_LOGIN_COOKIES for _, name in entries) else "без входа ⚠️"
+        lines.append(f"• {site}: {n} кук, обновлён {when}, {login}")
+    return "Куки:\n" + "\n".join(lines)
+
+
+async def on_cookies_file(hx: Hyax, chat_id: str, m: dict) -> None:
+    """Владелец прислал файл кук — проверить, понять площадку, положить в COOKIES_DIR."""
+    if not COOKIES_DIR:
+        await hx.send_text(chat_id, "Папка кук не настроена (COOKIES_DIR) — некуда сохранять.")
+        return
+    try:
+        data = await hx.fetch_file(m.get("file_url") or "")
+        text = data.decode("utf-8", errors="ignore")
+    except Exception as e:
+        log.exception("куки: не скачал файл")
+        await hx.send_text(chat_id, f"Не смог скачать файл: {str(e)[:120]}")
+        return
+    entries, n = parse_cookies(text)
+    if n == 0:
+        await hx.send_text(chat_id, "Это не похоже на файл кук в формате Netscape (cookies.txt): нужны строки из 7 полей через табуляцию.")
+        return
+    site = cookie_site(entries, m.get("file_name") or "")
+    if not site:
+        await hx.send_text(chat_id, "Не понял, для какой площадки эти куки: домены не YouTube, Instagram и не TikTok. Назовите файл youtube.txt / instagram.txt / tiktok.txt.")
+        return
+    os.makedirs(COOKIES_DIR, exist_ok=True)
+    dst = os.path.join(COOKIES_DIR, f"{site}.txt")
+    tmp = dst + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text if text.endswith("\n") else text + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, dst)
+    login = ""
+    if site == "youtube":
+        login = " Вход есть ✅." if any(name in YT_LOGIN_COOKIES for _, name in entries) else " ⚠️ Авторизационных кук (SID, LOGIN_INFO) нет — экспортируйте из браузера, где вы вошли в YouTube."
+    await hx.send_text(chat_id, f"Куки для {site} обновлены: {n} записей.{login}")
 
 
 def human_error(e: Exception) -> str:
@@ -260,11 +369,14 @@ async def on_button(hx: Hyax, chat_id: str, data: str) -> None:
         await download_and_send(hx, chat_id, url, parts[1])
 
 
-async def handle(hx: Hyax, chat_id: str, text: str) -> None:
+async def handle(hx: Hyax, chat_id: str, text: str, owner: bool = False) -> None:
     """Разобрать сообщение и ответить файлом."""
     body = (text or "").strip()
     if body in ("/start", "/help"):
         await hx.send_text(chat_id, HELP)
+        return
+    if body == "/cookies":
+        await hx.send_text(chat_id, cookies_status() if owner else "Эта команда только для владельца бота.")
         return
 
     # Команды с явным форматом: без вопросов, сразу качаем.
@@ -321,8 +433,17 @@ async def listen(hx: Hyax) -> None:
             if not sender or sender == me_id:
                 continue  # своё эхо
             chat_id = body.get("chat_id") or m.get("chat")
-            if chat_id:
-                asyncio.create_task(handle(hx, str(chat_id), m.get("content") or ""))
+            if not chat_id:
+                continue
+            owner = hx.is_owner(m.get("sender"))
+            # Файл .txt от владельца — это куки: применяем и отчитываемся.
+            if m.get("file_url") and (m.get("file_name") or "").lower().endswith(".txt"):
+                if owner:
+                    asyncio.create_task(on_cookies_file(hx, str(chat_id), m))
+                else:
+                    asyncio.create_task(hx.send_text(str(chat_id), "Файлы кук принимаю только от владельца бота."))
+                continue
+            asyncio.create_task(handle(hx, str(chat_id), m.get("content") or "", owner))
 
 
 async def main() -> None:

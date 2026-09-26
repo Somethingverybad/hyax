@@ -4,6 +4,12 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import *
 
 class ProfileSerializer(serializers.ModelSerializer):
+    # Владелец бота (id) — только у ботов: бот узнаёт, чьи команды слушать.
+    bot_owner = serializers.SerializerMethodField()
+
+    def get_bot_owner(self, obj):
+        return str(obj.bot_owner_id) if getattr(obj, "is_bot", False) and obj.bot_owner_id else None
+
     # Свой звук уведомлений: читаем вложенным объектом (url для прослушивания),
     # пишем по id (notify_sound_id: null — сбросить).
     notify_sound = serializers.SerializerMethodField()
@@ -38,11 +44,11 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
-        read_only_fields = ['id', 'created_at', 'is_bot']
+        read_only_fields = ['id', 'created_at', 'is_bot', 'bot_owner']
 
     def validate_username(self, value):
         value = (value or "").strip()
