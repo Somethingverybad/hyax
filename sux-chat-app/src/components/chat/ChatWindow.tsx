@@ -5,7 +5,8 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2 } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2 } from "lucide-react";
+import MessageContextMenu from "./MessageContextMenu";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
@@ -1474,6 +1475,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       // Клавиатура закрывает нижнюю половину экрана, и меню сообщения
       // («Ответить», «Редактировать», «Переслать») оказывалось за ней.
       hideKeyboard();
+      recHaptic(false);
       setMenuPos(null);
       setMenuMessage(message);
     }, 450);
@@ -1880,20 +1882,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   }
 
   // Пункты меню сообщения — общий список для шторки и компактного меню.
+  // Порядок — как в Telegram; «Реакция» только в меню у курсора (на
+  // телефоне реакции — рядом над пузырём), «Выбрать» — отделено внизу.
   const menuItems = menuMessage
     ? [
-        { label: "Реакция", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
-        { label: "В плейлист", show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
-        { label: "Ответить", show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
-        { label: "Переслать", show: !menuMessage.pending, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
-        { label: "Выбрать", show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
-        { label: "В избранное", show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
-        { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
-        { label: "Копировать текст", show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
-        { label: "Редактировать", show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
-        { label: "Пожаловаться", show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
-        { label: "Удалить у себя", show: true, onClick: () => startDelete(menuMessage, "me") },
-        { label: "Удалить у всех", show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
+        { label: "Реакция", icon: <Smile className="w-5 h-5" />, show: !menuMessage.pending && !!menuPos, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
+        { label: "Ответить", icon: <Reply className="w-5 h-5" />, show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
+        { label: "Скопировать", icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
+        { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
+        { label: "Переслать", icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
+        { label: "Редактировать", icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
+        { label: "В избранное", icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
+        { label: "В плейлист", icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
+        { label: "Пожаловаться", icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
+        { label: "Удалить у себя", icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
+        { label: "Удалить у всех", icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
+        { label: "Выбрать", icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
       ].filter((i) => i.show)
     : [];
 
@@ -2223,6 +2227,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                     {/* Буббл сообщения */}
                     <div
+                      data-bubble
                       onContextMenu={(e) => {
                         // На десктопе правая кнопка открывает компактное меню
                         // прямо у курсора (позиция → menuPos).
@@ -2999,10 +3004,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 type="button"
                 onClick={it.onClick}
                 className={cn(
-                  "w-full px-4 py-2 text-left text-sm hover:bg-secondary",
+                  "w-full px-4 py-2 text-left text-sm hover:bg-secondary flex items-center gap-3",
                   it.danger && "text-destructive",
                 )}
               >
+                <span className="w-4 h-4 shrink-0 flex items-center justify-center opacity-80 [&>svg]:w-4 [&>svg]:h-4">{it.icon}</span>
                 {it.label}
               </button>
             ))}
@@ -3010,64 +3016,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
 
-      {/* Нижняя шторка (телефон, долгое удержание) */}
+      {/* Телефон, долгое удержание: размытая лента, пузырь с реакциями над
+          ним и меню под ним (см. MessageContextMenu). */}
       {menuMessage && !menuPos && (() => {
-        // Как на референсе: первая карточка — плитки частых действий,
-        // вторая — остальные пункты списком, третья — «Отмена».
-        const tileIcons: Record<string, React.ReactNode> = {
-          "Ответить": <Reply className="w-5 h-5" />,
-          "Переслать": <Forward className="w-5 h-5" />,
-          "В избранное": <Bookmark className="w-5 h-5" />,
-          "Копировать текст": <Copy className="w-5 h-5" />,
-        };
-        const tiles = menuItems.filter((it) => it.label in tileIcons);
-        const rest = menuItems.filter((it) => !(it.label in tileIcons));
+        const anchor = document.querySelector<HTMLElement>(`#msg-${menuMessage.id} [data-bubble]`);
+        if (!anchor) return null;
+        const isOwn = menuMessage.sender?.id === userId;
         return (
-          <div
-            className="fixed inset-0 z-[70] bg-black/60 flex items-end"
-            onClick={closeMenu}
-          >
-            <div
-              className="w-full p-3 space-y-2 pb-[calc(var(--sab)+12px)]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {tiles.length > 0 && (
-                <div className="bg-surface-1 rounded-lg p-3 flex justify-around">
-                  {tiles.map((it, idx) => (
-                    <button key={idx} type="button" onClick={it.onClick} className="flex flex-col items-center gap-1.5 w-16 active:opacity-70">
-                      <span className="w-11 h-11 rounded-md bg-surface-3 flex items-center justify-center">{tileIcons[it.label]}</span>
-                      <span className="text-[11px] leading-tight text-muted-foreground text-center">{it.label === "Копировать текст" ? "Копировать" : it.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {rest.length > 0 && (
-                <div className="bg-surface-1 rounded-lg overflow-hidden">
-                  {rest.map((it, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={it.onClick}
-                      className={cn(
-                        "w-full px-4 py-3.5 text-left text-body active:bg-surface-3 border-b border-border last:border-b-0 flex items-center gap-3",
-                        it.danger ? "text-primary" : "text-foreground",
-                      )}
-                    >
-                      {it.danger && <Trash2 className="w-5 h-5" />}
-                      {it.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={closeMenu}
-                className="w-full bg-surface-1 rounded-lg px-4 py-3.5 text-body text-center text-foreground active:bg-surface-3"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
+          <MessageContextMenu
+            anchor={anchor}
+            isOwn={isOwn}
+            items={menuItems}
+            mine={(menuMessage.reactions || []).filter((r) => r.mine).map((r) => r.emoji)}
+            onReact={(emoji) => { const m = menuMessage; closeMenu(); if (!m.pending) toggleReaction(m, emoji); }}
+            onMoreReactions={() => { const m = menuMessage; closeMenu(); setReactFor(m); }}
+            onClose={closeMenu}
+          />
         );
       })()}
 
