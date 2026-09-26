@@ -1,2 +1,4 @@
 yt-dlp>=2026.8.19
 aiohttp>=3.10
+# Решатель JS-задач YouTube — без него подписи потоков не решаются (см. core/download.py).
+yt-dlp-ejs>=0.8

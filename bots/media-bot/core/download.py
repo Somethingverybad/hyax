@@ -117,12 +117,20 @@ def fetch(url: str, mode: str = "720", out_dir: str | None = None) -> Media:
         return _fetch(url, mode, out_dir, use_cookies=second)
 
 
+#: YouTube подписывает ссылки на потоки JS-задачей; yt-dlp решает её решателем
+#: из пакета yt-dlp-ejs (в образе), а если его вдруг нет — разрешаем скачать
+#: с GitHub. Без этого «Signature solving failed» и «The page needs to be
+#: reloaded» на любых роликах, где нужны куки.
+BASE_OPTS = {"remote_components": ["ejs:github"]}
+
+
 def _fetch(url: str, mode: str, out_dir: str, use_cookies: bool) -> Media:
     outtmpl = os.path.join(out_dir, "%(id)s.%(ext)s")
     cookies = _cookies_for(url) if use_cookies else None
 
     if mode == "audio":
         opts = {
+            **BASE_OPTS,
             "format": "bestaudio/best",
             "outtmpl": outtmpl,
             "noplaylist": True,
@@ -147,7 +155,7 @@ def _fetch(url: str, mode: str, out_dir: str, use_cookies: bool) -> Media:
     # и AAC — предпочтение через сортировку: их играют все устройства, но если
     # их нет, лучше отдать другой кодек, чем уронить качество.
     fmt = f"bestvideo[height<={cap}]+bestaudio/best[height<={cap}]/best"
-    opts = {"format": fmt, "merge_output_format": "mp4", "outtmpl": outtmpl,
+    opts = {**BASE_OPTS, "format": fmt, "merge_output_format": "mp4", "outtmpl": outtmpl,
             "format_sort": [f"res:{cap}", "vcodec:h264", "acodec:aac"],
             "noplaylist": True, "quiet": True}
     if cookies:
