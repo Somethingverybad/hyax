@@ -9,6 +9,7 @@
 import logging
 import os
 import re
+import shutil
 import uuid
 
 from django.utils import timezone
@@ -91,7 +92,7 @@ def store_media(tmp_path, ctype, name, subdir="messages", local_only=False):
             logger.exception("tg-mirror: S3 недоступен, оставляю локально")
     dst = os.path.join(settings.MEDIA_ROOT, rel)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    os.replace(tmp_path, dst)
+    shutil.move(tmp_path, dst)  # /tmp и /app/media — разные ФС, os.replace тут падает
     return file_url, size, dims
 
 
