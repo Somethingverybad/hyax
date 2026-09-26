@@ -65,6 +65,7 @@ urlpatterns = [
     path('channels/<uuid:pk>/', ChannelDetailView.as_view(), name='channel-detail'),
     path('channels/<uuid:pk>/subscribe/', ChannelSubscribeView.as_view(), name='channel-subscribe'),
     path('channels/<uuid:pk>/leave/', ChannelLeaveView.as_view(), name='channel-leave'),
+    path('channels/<uuid:pk>/mute/', ChannelMuteView.as_view(), name='channel-mute'),
     path('channels/<uuid:pk>/admins/', ChannelAdminsView.as_view(), name='channel-admins'),
     path('channels/<uuid:pk>/posts/', ChannelPostsView.as_view(), name='channel-posts'),
     path('posts/<uuid:pk>/react/', PostReactView.as_view(), name='post-react'),

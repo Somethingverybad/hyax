@@ -481,6 +481,9 @@ class ChannelSerializer(serializers.ModelSerializer):
     # меняется через PATCH channels/<id>/ полем notify_sound_id.
     notify_sound = serializers.SerializerMethodField()
 
+    # Пуши канала выключены у текущего пользователя (POST channels/<id>/mute/).
+    muted = serializers.SerializerMethodField()
+
     def get_notify_sound(self, obj):
         return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
 
@@ -488,15 +491,22 @@ class ChannelSerializer(serializers.ModelSerializer):
         model = Chat
         fields = ['id', 'kind', 'name', 'username', 'description', 'avatar_url',
                   'is_public', 'sign_posts', 'subscribers_count', 'creator',
-                  'my_role', 'notify_sound', 'created_at', 'tg_username', 'tg_state']
+                  'my_role', 'muted', 'notify_sound', 'created_at', 'tg_username', 'tg_state']
 
-    def get_my_role(self, obj):
+    def _my_cp(self, obj):
         req = self.context.get('request')
         prof = getattr(getattr(req, 'user', None), 'profile', None) if req else None
         if not prof:
             return None
-        cp = ChatParticipant.objects.filter(chat=obj, user=prof).first()
+        return ChatParticipant.objects.filter(chat=obj, user=prof).first()
+
+    def get_my_role(self, obj):
+        cp = self._my_cp(obj)
         return cp.role if cp else None
+
+    def get_muted(self, obj):
+        cp = self._my_cp(obj)
+        return bool(cp and cp.muted)
 
 
 class PostCommentSerializer(serializers.ModelSerializer):

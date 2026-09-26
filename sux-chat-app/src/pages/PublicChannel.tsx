@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Radio, Share2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +22,7 @@ const pluralSubs = (n: number) => {
 
 const PublicChannel = () => {
   const { handle = "" } = useParams();
+  const [params] = useSearchParams();
   const navigate = useNavigate();
   const [ch, setCh] = useState<Ch | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "missing" | "error">("loading");
@@ -29,7 +30,7 @@ const PublicChannel = () => {
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) {
-      navigate(`/auth?next=${encodeURIComponent(`/c/${handle}`)}`, { replace: true });
+      navigate(`/auth?next=${encodeURIComponent(`/c/${handle}${params.get("post") ? `?post=${params.get("post")}` : ""}`)}`, { replace: true });
       return;
     }
     let alive = true;
@@ -44,6 +45,9 @@ const PublicChannel = () => {
     setBusy(true);
     try {
       if (subscribe && !ch.my_role) await api.subscribeChannel(ch.id);
+      // Ссылка на конкретный пост (?post=): лента канала прокрутит к нему.
+      const post = params.get("post");
+      if (post) { try { sessionStorage.setItem("hyax:openPost", post); } catch { /* приватный режим */ } }
       navigate("/chat", { replace: true, state: { chatId: ch.id, kind: "channel", title: ch.name } });
     } catch {
       toast.error("Не удалось открыть канал");

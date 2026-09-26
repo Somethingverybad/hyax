@@ -131,6 +131,7 @@ def notify_mirror_post(message):
     from .serializers import MessageSerializer, message_preview
     from .fcm import notify_profiles
     from .presence import viewers
+    from .views import _without_muted
 
     try:
         layer = get_channel_layer()
@@ -141,7 +142,7 @@ def notify_mirror_post(message):
         logger.exception("tg-mirror: сокет не ответил")
     try:
         watching = viewers(message.chat.id)
-        recipients = message.chat.participants.all()
+        recipients = _without_muted(message.chat, message.chat.participants.all())
         if watching:
             recipients = recipients.exclude(id__in=watching)
         chat = message.chat

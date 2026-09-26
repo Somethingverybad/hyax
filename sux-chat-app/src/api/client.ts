@@ -906,6 +906,13 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
     return res.json();
   },
+  /** Выключить/включить пуши канала для себя. Возвращает канал с новым muted. */
+  muteChannel: async (id: string, muted: boolean): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/channels/${id}/mute/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ muted }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Не удалось сохранить");
+    return d;
+  },
   leaveChannel: async (id: string): Promise<void> => {
     await fetchWithAuth(`${API_URL}/channels/${id}/leave/`, { method: "POST", headers: authHeaders() });
   },

@@ -611,6 +611,7 @@ def _notify_new_message(message, profile, request):
         recipients = message.chat.participants.exclude(id=profile.id)
         # Кто заблокировал отправителя — пуш о его сообщении не получает.
         recipients = recipients.exclude(blocks__blocked_id=profile.id)
+        recipients = _without_muted(message.chat, recipients)
         if watching:
             recipients = recipients.exclude(id__in=watching)
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
@@ -740,6 +741,13 @@ def _notify_reactions(message):
             )
     except Exception:
         logger.exception("реакции: рассылка не удалась")
+
+
+def _without_muted(chat, recipients):
+    """Убрать тех, кто выключил уведомления этого чата (ChatParticipant.muted):
+    сообщение они увидят в ленте, пуш и звук им не нужны."""
+    muted_ids = ChatParticipant.objects.filter(chat=chat, muted=True).values_list("user_id", flat=True)
+    return recipients.exclude(id__in=muted_ids)
 
 
 def _can_see_chat(chat, profile):
@@ -2875,6 +2883,23 @@ class ChannelSubscribeView(APIView):
             ch.subscribers_count = models.F("subscribers_count") + 1
             ch.save(update_fields=["subscribers_count"])
             ch.refresh_from_db(fields=["subscribers_count"])
+        return Response(ChannelSerializer(ch, context={"request": request}).data)
+
+
+class ChannelMuteView(APIView):
+    """POST {muted: bool} — выключить/включить пуши канала для себя. Посты
+    приходят как прежде, только без уведомления и звука."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        cp = ChatParticipant.objects.filter(chat=ch, user=_prof(request)).first()
+        if not cp:
+            return Response({"error": "Вы не подписаны на канал"}, status=400)
+        cp.muted = bool(request.data.get("muted", True))
+        cp.save(update_fields=["muted"])
         return Response(ChannelSerializer(ch, context={"request": request}).data)
 
 

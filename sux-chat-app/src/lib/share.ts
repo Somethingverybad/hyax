@@ -50,6 +50,17 @@ export const sharePlaylistLink = (name: string, token: string) =>
 export const shareChannel = (ch: { id: string; name: string; username?: string | null }) =>
   shareUrl("WhoYaX", `Канал «${ch.name}» в WhoYaX`, channelLink(ch));
 
+/** Ссылка на пост канала: та же страница канала, ?post= — к какому посту
+ *  прокрутить (см. PublicChannel → ChannelView). */
+export const postLink = (ch: { id: string; username?: string | null }, postId: string) =>
+  `${channelLink(ch)}?post=${encodeURIComponent(postId)}`;
+
+/** Поделиться постом наружу: первая строка текста поста — как подпись. */
+export const sharePost = (ch: { id: string; name: string; username?: string | null }, postId: string, text?: string | null) => {
+  const line = (text || "").trim().split("\n")[0].slice(0, 120);
+  return shareUrl("WhoYaX", line ? `${line} — «${ch.name}» в WhoYaX` : `Пост из канала «${ch.name}» в WhoYaX`, postLink(ch, postId));
+};
+
 export async function shareProfile(username: string): Promise<ShareResult> {
   const url = profileLink(username);
   const text = `Напиши мне в WhoYaX: ${url}`;

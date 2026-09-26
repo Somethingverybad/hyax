@@ -6,9 +6,10 @@ import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
-import { shareChannel } from "@/lib/share";
+import { shareChannel, sharePost } from "@/lib/share";
+import ShareToChat from "@/components/ShareToChat";
 import { Linkify, packLinkKind, profileLinkName } from "@/lib/linkify";
 import PackLinkCard from "./PackLinkCard";
 import { saveFileToDevice } from "@/lib/saveFile";
@@ -28,6 +29,8 @@ interface Channel {
   tg_username?: string | null; tg_state?: "" | "pending" | "active" | "error";
   /** Звук уведомлений канала: с ним подписчики слышат новые посты. */
   notify_sound?: NotificationSoundInfo | null;
+  /** Я выключил уведомления этого канала. */
+  muted?: boolean;
   admins?: { id: string; username: string; role: string; is_bot?: boolean }[];
 }
 
@@ -197,6 +200,47 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [reactPickFor, setReactPickFor] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  // «Поделиться постом»: шторка с чатами (пересылка — весь альбом одним
+  // пузырём, как в переписке) и большая кнопка наружу — ссылкой на пост.
+  const [shareFor, setShareFor] = useState<Post | null>(null);
+  const forwardPost = async (post: Post, chatId: string, title: string) => {
+    const list = post.album_id ? posts.filter((p) => p.album_id === post.album_id) : [post];
+    const ids = list.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map((p) => p.id);
+    try {
+      if (ids.length === 1) await api.forwardMessage(ids[0], chatId);
+      else await api.forwardMany(ids, chatId);
+      toast.success(title === "Избранное" ? "Добавлено в избранное" : `Отправлено: ${title}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось переслать");
+    }
+  };
+  const sharePostOutside = async (post: Post) => {
+    if (!channel) return;
+    const r = await sharePost(channel, post.id, post.content);
+    if (r === "copied") toast.success("Ссылка скопирована");
+    else if (r === "error") toast.error("Не удалось поделиться");
+  };
+  // Пришли по ссылке на пост (PublicChannel положил id в sessionStorage):
+  // после загрузки ленты прокручиваем к нему и подсвечиваем.
+  const openPostRef = useRef<string | null>(null);
+  useEffect(() => {
+    try {
+      const id = sessionStorage.getItem("hyax:openPost");
+      if (id) { openPostRef.current = id; sessionStorage.removeItem("hyax:openPost"); }
+    } catch { /* приватный режим */ }
+  }, [channelId]);
+  useEffect(() => {
+    const id = openPostRef.current;
+    if (!id || !posts.some((p) => p.id === id)) return;
+    openPostRef.current = null;
+    setTimeout(() => {
+      const el = feedRef.current?.querySelector<HTMLElement>(`[data-post-id="${id}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("msg-flash");
+      setTimeout(() => el.classList.remove("msg-flash"), 1200);
+    }, 120);
+  }, [posts]);
 
   // Вложение к посту: фото (сжимаем на месте), видео (пережмёт сервер) или
   // файл (как есть, строкой со скачиванием).
@@ -673,7 +717,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           </p>
         ) : (
           feedPosts.map((post) => (
-            <div key={post._key ?? post.id} className="bg-surface-2 rounded-lg overflow-hidden">
+            <div key={post._key ?? post.id} data-post-id={post.id} className="bg-surface-2 rounded-lg overflow-hidden">
               <div className="px-4 py-3">
                 {channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
@@ -732,6 +776,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                   <MessageCircle className="w-4 h-4" />
                   {post.comments_count ?? 0}
                 </button>
+                {!post._pending && (
+                  <button
+                    type="button"
+                    onClick={() => setShareFor(post)}
+                    aria-label="Поделиться постом"
+                    className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                )}
                 {isAdmin && !post._pending && (
                   <button
                     type="button"
@@ -899,6 +953,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           onChanged={(c) => setChannel(c)}
         />
       )}
+      {shareFor && (
+        <ShareToChat
+          open
+          text=""
+          title="Поделиться постом"
+          onClose={() => setShareFor(null)}
+          onPick={(chatId, title) => void forwardPost(shareFor, chatId, title)}
+          onShareOutside={() => void sharePostOutside(shareFor)}
+        />
+      )}
 
       {viewer && (
         <ImageViewer
@@ -1021,6 +1085,19 @@ const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
 const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }: {
   channel: Channel; userId: string; onClose: () => void; onLeave: () => void; onDelete: () => void; onChanged: (c: Channel) => void;
 }) => {
+  const [muteBusy, setMuteBusy] = useState(false);
+  const toggleMute = async () => {
+    const next = !channel.muted;
+    setMuteBusy(true);
+    onChanged({ ...channel, muted: next });
+    try {
+      await api.muteChannel(channel.id, next);
+      toast.success(next ? "Уведомления выключены" : "Уведомления включены");
+    } catch {
+      toast.error("Не удалось сохранить");
+      onChanged({ ...channel, muted: !next });
+    } finally { setMuteBusy(false); }
+  };
   const isOwner = channel.my_role === "owner";
   const isAdmin = isOwner || channel.my_role === "admin";
   const [name, setName] = useState(channel.name);
@@ -1156,6 +1233,24 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
           >
             <Share2 className="w-4 h-4" /> Поделиться каналом
           </button>
+
+          {/* Уведомления — своё у каждого подписчика: посты приходят, пуша и
+              звука нет. Владелец их тоже может выключить (боты, зеркала). */}
+          {channel.my_role && (
+            <button type="button" onClick={toggleMute} disabled={muteBusy}
+              className="w-full flex items-center gap-3 py-2.5 text-left disabled:opacity-50">
+              {channel.muted ? <BellOff className="w-5 h-5 text-subtle shrink-0" /> : <Bell className="w-5 h-5 text-primary shrink-0" />}
+              <span className="min-w-0 flex-1">
+                <span className="block text-body">Уведомления</span>
+                <span className="block text-caption text-subtle truncate">
+                  {channel.muted ? "Выключены — посты приходят без звука и пуша" : "Включены"}
+                </span>
+              </span>
+              <span className={cn("relative w-11 h-6 rounded-full shrink-0 transition-colors", channel.muted ? "bg-surface-4" : "bg-primary")}>
+                <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left]", channel.muted ? "left-0.5" : "left-[22px]")} />
+              </span>
+            </button>
+          )}
 
           {/* Звук уведомлений канала — как «мой звук» в профиле, только его
               слышат подписчики при новом посте. Менять может админ. */}
