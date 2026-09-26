@@ -423,6 +423,9 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           // Реакции приходят событием: обычная синхронизация их не приносит —
           // само сообщение при этом не меняется.
           setReactionEvent({ ...msg.data, at: Date.now() });
+        } else if (msg?.data?.type === "inline_results") {
+          // Ответ inline-бота на «@бот запрос» — ChatWindow слушает и рисует список.
+          window.dispatchEvent(new CustomEvent("hyax:inline", { detail: msg.data }));
         } else if (msg?.data?.type === "read") {
           // Собеседник прочитал: вторая галочка у последнего сообщения в списке
           // и у своих сообщений в открытой переписке (ChatWindow слушает событие).

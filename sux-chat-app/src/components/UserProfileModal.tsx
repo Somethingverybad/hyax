@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare } from "lucide-react";
 import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
@@ -29,11 +30,30 @@ const UserProfileModal = ({
   userId,
   onClose,
   onCall,
+  hideWrite,
 }: {
   userId: string;
   onClose: () => void;
   onCall?: () => void;
+  /** Профиль открыт из его же переписки — «Написать» там ни к чему. */
+  hideWrite?: boolean;
 }) => {
+  const navigate = useNavigate();
+  const [writing, setWriting] = useState(false);
+  // «Написать» — как на карточке профиля в сообщении: личка (создаём или
+  // находим) и переход в неё. Ботам тоже: с ними общаются в личке.
+  const write = async () => {
+    if (writing) return;
+    setWriting(true);
+    try {
+      let chatId: string;
+      try { chatId = (await api.createDirectChat(userId)).id; }
+      catch (err: any) { if (err?.message === "exists" && err.chatId) chatId = err.chatId; else throw err; }
+      onClose();
+      navigate("/chat", { state: { chatId, title: profile?.username } });
+    } catch { toast.error("Не удалось открыть чат"); }
+    finally { setWriting(false); }
+  };
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
@@ -128,6 +148,17 @@ const UserProfileModal = ({
             </div>
 
             <div className="flex gap-3">
+              {!hideWrite && (
+                <button
+                  type="button"
+                  onClick={write}
+                  disabled={writing}
+                  className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  {writing ? "Открываю…" : "Написать"}
+                </button>
+              )}
               {onCall && (
                 <button
                   type="button"

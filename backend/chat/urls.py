@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
 from .account import AcceptTermsView, DeleteAccountView
+from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
@@ -57,6 +58,11 @@ urlpatterns = [
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
     path('bots/', BotsView.as_view(), name='bots'),
     path('bots/<uuid:pk>/', BotDetailView.as_view(), name='bot-detail'),
+    # Inline-боты (chat/inline.py): запрос → результаты → выбор → заполнение.
+    path('bots/inline/query/', InlineQueryView.as_view(), name='inline-query'),
+    path('bots/inline/<str:query_id>/answer/', InlineAnswerView.as_view(), name='inline-answer'),
+    path('bots/inline/<str:query_id>/choose/', InlineChooseView.as_view(), name='inline-choose'),
+    path('bots/inline/messages/<uuid:message_id>/', InlineFillView.as_view(), name='inline-fill'),
     # Каналы
     path('channels/', ChannelsView.as_view(), name='channels'),
     path('channels/discover/', ChannelDiscoverView.as_view(), name='channels-discover'),

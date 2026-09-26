@@ -5,7 +5,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2 } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot } from "lucide-react";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
@@ -133,6 +133,8 @@ interface Message {
   forwarded_title?: string;
   /** Канал-первоисточник пересланного поста — открывается по тапу на «Переслано от». */
   forwarded_chat?: { id: string; name: string; username?: string | null; avatar_url?: string | null } | null;
+  /** Inline-бот, через которого отправлено («@ytbot mp3 …»). */
+  via_bot?: { id: string; username: string } | null;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -452,6 +454,58 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setStickerHints((prev) => (prev.length === found.length && prev.every((p, i) => p.id === found[i].id) ? prev : found));
     });
   };
+  // Inline-бот: «@бот запрос» в поле → через полсекунды тишины запрос боту
+  // (api.inlineQuery), ответ приходит событием hyax:inline (Chat.tsx ловит его
+  // в личном сокете). Выбор строки — сообщение-заглушка «через @бота», бот
+  // её заполняет сам. Список — панелью над полем ввода, как подсказки стикеров.
+  type InlineResult = { id: string; title: string; description?: string; thumb_url?: string };
+  const [inline, setInline] = useState<{ bot: string; query: string; queryId?: string; results: InlineResult[] | null; error?: string } | null>(null);
+  const inlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineWait = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineQidRef = useRef<string | null>(null);
+  const parseInline = (text: string) => {
+    const m = /^@([A-Za-z0-9_]{2,32})\s+([\s\S]{1,256})$/.exec(text);
+    return m ? { bot: m[1], query: m[2].trim() } : null;
+  };
+  const updateInline = (text: string) => {
+    const p = parseInline(text);
+    if (inlineTimer.current) { clearTimeout(inlineTimer.current); inlineTimer.current = null; }
+    if (!p || !p.query) { inlineQidRef.current = null; setInline((prev) => (prev ? null : prev)); return; }
+    setInline((prev) => (prev && prev.bot === p.bot && prev.query === p.query ? prev : { bot: p.bot, query: p.query, results: null }));
+    inlineTimer.current = setTimeout(async () => {
+      if (!chatId) return;
+      try {
+        const { query_id } = await api.inlineQuery(p.bot, p.query, chatId);
+        inlineQidRef.current = query_id;
+        setInline((prev) => (prev && prev.bot === p.bot ? { ...prev, queryId: query_id } : prev));
+        if (inlineWait.current) clearTimeout(inlineWait.current);
+        inlineWait.current = setTimeout(() => {
+          setInline((prev) => (prev && prev.queryId === query_id && prev.results === null ? { ...prev, error: `@${p.bot} не отвечает` } : prev));
+        }, 12000);
+      } catch (e: any) {
+        setInline((prev) => (prev && prev.bot === p.bot ? { ...prev, error: e?.message || "Бот не найден" } : prev));
+      }
+    }, 450);
+  };
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (!d || d.query_id !== inlineQidRef.current) return;
+      setInline((prev) => (prev ? { ...prev, results: d.results || [], error: undefined } : prev));
+    };
+    window.addEventListener("hyax:inline", on);
+    return () => window.removeEventListener("hyax:inline", on);
+  }, []);
+  useEffect(() => { setInline(null); inlineQidRef.current = null; }, [chatId]);
+  const chooseInline = async (r: InlineResult) => {
+    const qid = inlineQidRef.current;
+    if (!qid) return;
+    setInline(null);
+    inlineQidRef.current = null;
+    setDraft("");
+    try { await api.inlineChoose(qid, r.id); syncSince(); }
+    catch (e: any) { toast.error(e?.message || "Не вышло"); }
+  };
   // Вложения композера: можно выбрать несколько фото/видео разом (уйдут
   // альбомом), добавить музыку или файл, и убрать лишнее до отправки.
   const [attachments, setAttachments] = useState<Attach[]>([]);
@@ -669,6 +723,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setHasDraft(!!text.trim());
     fitTextarea();
     updateStickerHints(text);
+    updateInline(text);
   };
 
   // Открытие чата: сначала кэш (мгновенно), потом синхронизация с сервера —
@@ -2295,6 +2350,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         </div>
                       )}
 
+                      {/* Inline: отправлено человеком через бота — подпись, тап открывает бота. */}
+                      {message.via_bot && (
+                        <div
+                          role="button"
+                          onClick={(e) => { e.stopPropagation(); setViewProfileId(message.via_bot!.id); }}
+                          className="mb-1 flex items-center gap-1 text-xs opacity-80 min-w-0 cursor-pointer active:opacity-60"
+                        >
+                          <Bot className="w-3 h-3 shrink-0" />
+                          <span className="truncate underline decoration-current/40 underline-offset-2">через @{message.via_bot.username}</span>
+                        </div>
+                      )}
+
                       {/* Цитата в одну строку через line-clamp, а не truncate:
                           nowrap делал минимальную ширину пузыря равной всей
                           длине цитаты, и длинный реплай уезжал за край экрана. */}
@@ -2653,7 +2720,39 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             </div>
           )}
-          {stickerHints.length > 0 && (
+          {inline && (
+            <div className="mb-2 rounded-lg bg-surface-2 border border-border overflow-hidden">
+              <div className="px-3 py-1.5 text-caption text-subtle flex items-center gap-1.5">
+                <Bot className="w-3.5 h-3.5" />@{inline.bot}{inline.results === null && !inline.error ? " · ищу…" : ""}
+              </div>
+              {inline.error ? (
+                <p className="px-3 pb-2 text-small text-subtle">{inline.error}</p>
+              ) : inline.results && inline.results.length === 0 ? (
+                <p className="px-3 pb-2 text-small text-subtle">Ничего не нашлось</p>
+              ) : inline.results && (
+                <div className="max-h-64 overflow-y-auto">
+                  {inline.results.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => void chooseInline(r)}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-left active:bg-surface-3 border-t border-border/60"
+                    >
+                      {r.thumb_url
+                        ? <img src={r.thumb_url} alt="" loading="lazy" className="w-14 h-10 rounded object-cover shrink-0 bg-surface-4" />
+                        : <span className="w-14 h-10 rounded bg-surface-4 shrink-0" />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-small font-medium truncate">{r.title}</span>
+                        {r.description && <span className="block text-caption text-subtle truncate">{r.description}</span>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {stickerHints.length > 0 && !inline && (
             <div className="mb-2 flex gap-1.5 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Стикеры по макросу">
               {stickerHints.map((s) => (
                 <button
@@ -2855,6 +2954,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   setHasDraft(!!e.target.value.trim());
                   fitTextarea();
                   updateStickerHints(e.target.value);
+                  updateInline(e.target.value);
                 }}
                 onKeyDown={(e) => {
                   // На телефоне Enter — перенос строки (отправка кнопкой), на
@@ -3083,6 +3183,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           userId={peer.id}
           onClose={() => setProfileOpen(false)}
           onCall={onCall}
+          hideWrite
         />
       )}
       {viewProfileId && (

@@ -388,11 +388,12 @@ class MessageSerializer(serializers.ModelSerializer):
     reply_to = serializers.SerializerMethodField()
     forwarded_from = serializers.SerializerMethodField()
     forwarded_chat = serializers.SerializerMethodField()
+    via_bot = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'reactions', 'buttons']
-        read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title', 'forwarded_chat']
+        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons']
+        read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot']
 
     def get_forwarded_from(self, obj):
         """От кого переслано: профиль, если он есть, — клиент может открыть его."""
@@ -400,6 +401,11 @@ class MessageSerializer(serializers.ModelSerializer):
         if not f:
             return None
         return {"id": str(f.id), "username": f.username, "avatar_url": f.avatar_url}
+
+    def get_via_bot(self, obj):
+        """Бот, через которого отправлено (inline): подпись «через @бот» у пузыря."""
+        b = obj.via_bot
+        return {"id": str(b.id), "username": b.username} if b else None
 
     def get_forwarded_chat(self, obj):
         """Канал-первоисточник пересланного поста — клиент открывает его по тапу."""

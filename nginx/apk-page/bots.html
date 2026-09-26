@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WhoYaX · Боты — документация</title>
+<style>
+  :root{
+    --bg:#0d0d0f; --card:#17171b; --card2:#1e1e24; --line:#2a2a31;
+    --fg:#f2f2f5; --muted:#9a9aa6; --red:#e5352b; --red2:#ff5147; --ok:#37c46b; --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -200px,#1c1216 0,var(--bg) 60%);
+    color:var(--fg);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;padding:env(safe-area-inset-top) 16px 48px}
+  .wrap{max-width:760px;margin:0 auto}
+  header{padding:36px 4px 8px;text-align:center}
+  .logo{font-weight:900;letter-spacing:.5px;font-size:30px}
+  .logo b{color:var(--red2)}
+  .sub{color:var(--muted);margin-top:6px;font-size:14px}
+  nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:18px 0 6px}
+  nav a{color:var(--muted);text-decoration:none;font-size:13px;background:var(--card2);border:1px solid var(--line);
+    border-radius:999px;padding:5px 11px}
+  nav a:hover{color:var(--fg)}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:30px 4px 12px;font-weight:700}
+  h3{font-size:16px;margin:18px 0 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .card + .card{margin-top:12px}
+  p{margin:8px 0}
+  code{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card2);border:1px solid var(--line);
+    border-radius:6px;padding:1px 6px}
+  pre{margin:10px 0;background:#111114;border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#e6e6ee}
+  pre code{background:none;border:0;padding:0}
+  .k{color:#ff9a95}.s{color:#9ad3a5}.c{color:#7c7c8a}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px}
+  .muted{color:var(--muted)}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{position:relative;padding-left:38px;margin:10px 0}
+  .steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:1px;width:26px;height:26px;
+    border-radius:50%;background:linear-gradient(180deg,var(--red2),var(--red));color:#fff;font-weight:800;font-size:13px;
+    display:flex;align-items:center;justify-content:center}
+  .tip{border-left:3px solid var(--ok);padding:8px 12px;background:rgba(55,196,107,.06);border-radius:0 10px 10px 0;margin:10px 0}
+  .warn{border-left:3px solid var(--red2);padding:8px 12px;background:rgba(229,53,43,.07);border-radius:0 10px 10px 0;margin:10px 0}
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:36px}
+  footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">Who<b>YaX</b> · Боты</div>
+    <div class="sub">Тот же API, что у приложения, плюс токен вместо пароля. Отдельного протокола нет.</div>
+  </header>
+
+  <nav>
+    <a href="#start">Начало</a><a href="#auth">Авторизация</a><a href="#events">События</a>
+    <a href="#send">Отправка</a><a href="#buttons">Кнопки</a><a href="#inline">Inline</a>
+    <a href="#example">Пример</a><a href="#limits">Ограничения</a>
+  </nav>
+
+  <h2 id="start">Как устроено</h2>
+  <div class="card">
+    <p>Бот в WhoYaX — обычный аккаунт с пометкой «бот». У него есть профиль, ник, аватар и личка; люди
+      находят его по ссылке <code>https://huyax.e-tree.su/u/&lt;ник&gt;</code>, пишут в личку или
+      добавляют в группы. Бот ходит в то же REST API, что и приложение, а события получает через тот же
+      личный WebSocket. Всё, что умеет приложение, умеет и бот — просто без экрана.</p>
+    <ol class="steps">
+      <li><b>Создайте бота</b> — от своего аккаунта, один запрос. В ответе токен: покажется один раз, храните его как пароль.
+<pre><code><span class="k">POST</span> https://huyax.e-tree.su/api/bots/
+Authorization: Bearer &lt;ваш JWT&gt;
+
+{"username": "mybot", "bio": "Что умеет бот"}
+
+<span class="c">→ 201</span> {"bot": {"id": "…", "username": "mybot", "token": "<span class="s">Xy…</span>"}}</code></pre></li>
+      <li><b>Подключитесь к сокету</b> и слушайте события (<a href="#events">ниже</a>).</li>
+      <li><b>Отвечайте</b> обычными сообщениями: текст, файл, кнопки под сообщением.</li>
+    </ol>
+    <p class="muted">Свои боты: <code>GET /api/bots/</code> (с токенами). Перевыпустить токен:
+      <code>POST /api/bots/&lt;id&gt;/</code>. Удалить: <code>DELETE /api/bots/&lt;id&gt;/</code>.</p>
+  </div>
+
+  <h2 id="auth">Авторизация</h2>
+  <div class="card">
+    <p>Каждый запрос — с заголовком <code>Authorization: Bot &lt;token&gt;</code> (или <code>X-Bot-Token: &lt;token&gt;</code>).
+      В WebSocket токен передаётся параметром <code>?token=</code>.</p>
+<pre><code><span class="k">GET</span> /api/profiles/current/
+Authorization: Bot Xy…
+
+<span class="c">→</span> {"id": "&lt;bot_id&gt;", "username": "mybot", "is_bot": true, …}</code></pre>
+    <p class="muted">Свой <code>id</code> нужен для адреса сокета — возьмите его отсюда при старте.</p>
+  </div>
+
+  <h2 id="events">События: личный сокет</h2>
+  <div class="card">
+    <p>Адрес: <code>wss://huyax.e-tree.su/ws/user/&lt;bot_id&gt;/?token=&lt;token&gt;</code>. Сообщения — JSON вида
+      <code>{"type": "notification", "data": {…}}</code>; смотрите на <code>data.type</code>:</p>
+    <table>
+      <tr><th>data.type</th><th>Когда</th><th>Поля</th></tr>
+      <tr><td><code>new_message</code></td><td>Новое сообщение в любом чате бота (личка, группа, канал, где он админ)</td>
+        <td><code>chat_id</code>, <code>message</code> — объект сообщения: <code>id</code>, <code>content</code>, <code>sender {id, username}</code>, <code>file_url</code>, <code>file_name</code>, <code>reply_to</code>…</td></tr>
+      <tr><td><code>button</code></td><td>Нажали кнопку под сообщением бота</td>
+        <td><code>chat_id</code>, <code>message_id</code>, <code>data</code> (строка кнопки), <code>from_id</code>, <code>from_username</code></td></tr>
+      <tr><td><code>inline_query</code></td><td>Человек набрал <code>@mybot запрос</code> в любом чате</td>
+        <td><code>query_id</code>, <code>query</code>, <code>chat_id</code>, <code>from_id</code>, <code>from_username</code></td></tr>
+      <tr><td><code>inline_chosen</code></td><td>Человек выбрал один из ваших inline-результатов</td>
+        <td><code>query_id</code>, <code>result_id</code>, <code>chat_id</code>, <code>message_id</code> — заглушка, которую нужно заполнить</td></tr>
+    </table>
+    <div class="tip">Свои сообщения тоже приходят в сокет — отсекайте по <code>message.sender.id == bot_id</code>.
+      Сокет может рваться: переподключайтесь с паузой, а пропущенное подтягивайте
+      <code>GET /api/messages/sync/?chat=&lt;id&gt;&amp;since=&lt;ISO&gt;</code>.</div>
+  </div>
+
+  <h2 id="send">Отправка</h2>
+  <div class="card">
+    <h3>Текст</h3>
+<pre><code><span class="k">POST</span> /api/messages/
+{"chat": "&lt;chat_id&gt;", "content": "Привет!"}</code></pre>
+    <h3>Файл</h3>
+    <p>Сначала загрузка, потом сообщение с адресом файла. Картинки покажутся картинкой, mp3 — плеером, mp4 — видео, остальное — файлом.</p>
+<pre><code><span class="k">POST</span> /api/upload/          <span class="c">multipart/form-data, поле file</span>
+<span class="c">→</span> {"file_url": "s3://…", …}
+
+<span class="k">POST</span> /api/messages/
+{"chat": "&lt;chat_id&gt;", "content": "", "file_url": "s3://…", "file_name": "track.mp3",
+ "file_width": 1280, "file_height": 720}          <span class="c">размеры — для видео и картинок</span></code></pre>
+    <h3>Ответ на сообщение</h3>
+<pre><code>{"chat": "&lt;chat_id&gt;", "content": "Вот", "reply_to_id": "&lt;message_id&gt;"}</code></pre>
+    <p class="muted">Писать бот может туда, где он участник: в свою личку с человеком, в группу, куда его добавили, в канал, где он админ.
+      Личку с человеком создаёт человек — бот сам никому не пишет первым.</p>
+  </div>
+
+  <h2 id="buttons">Кнопки под сообщением</h2>
+  <div class="card">
+    <p>Ставить кнопки может только бот. <code>buttons</code> — ряды кнопок; в каждой <code>text</code> (подпись) и
+      <code>data</code> (до 128 символов, вернётся вам событием <code>button</code>). Нажатие в историю не пишется — вы сами решаете, что ответить.</p>
+<pre><code>{"chat": "&lt;chat_id&gt;", "content": "Что скачать?",
+ "buttons": [[{"text": "🎵 MP3", "data": "dl|mp3|k1"}],
+             [{"text": "720p", "data": "dl|720|k1"}, {"text": "1080p", "data": "dl|1080|k1"}]]}</code></pre>
+    <div class="warn">Не кладите в <code>data</code> ссылки и секреты: держите у себя словарь «короткий ключ → значение», как в примере.</div>
+  </div>
+
+  <h2 id="inline">Inline-режим</h2>
+  <div class="card">
+    <p>Человек пишет <code>@mybot запрос</code> в <b>любом</b> чате — не обязательно в личке с ботом. Через полсекунды
+      после последнего символа приложение шлёт запрос, вам приходит <code>inline_query</code>. Вы отвечаете списком,
+      он появляется над полем ввода; человек тапает строку — в чат от его имени уходит сообщение с подписью
+      «через @mybot», а вам приходит <code>inline_chosen</code> с <code>message_id</code>. Заполните это сообщение содержимым.</p>
+    <ol class="steps">
+      <li><b>Получили <code>inline_query</code></b> → ответьте списком (до 20 строк). Ответ должен быть быстрым: приложение ждёт
+        до 12 секунд, поэтому inline годится для поиска и подсказок, а тяжёлую работу делайте после выбора.
+<pre><code><span class="k">POST</span> /api/bots/inline/&lt;query_id&gt;/answer/
+{"results": [
+  {"id": "mp3|k1", "title": "Linkin Park — Numb", "description": "MP3 · 3:07 · Linkin Park",
+   "thumb_url": "https://i.ytimg.com/vi/kXYiU_JCYtU/mqdefault.jpg"},
+  {"id": "mp3|k2", "title": "…", "description": "…"}
+]}</code></pre>
+        <table>
+          <tr><th>Поле</th><th></th></tr>
+          <tr><td><code>id</code></td><td>до 64 символов, вернётся в <code>inline_chosen</code></td></tr>
+          <tr><td><code>title</code></td><td>до 120 символов, обязательно</td></tr>
+          <tr><td><code>description</code></td><td>до 200 символов, вторая строка</td></tr>
+          <tr><td><code>thumb_url</code></td><td>https-картинка для превью, необязательно</td></tr>
+        </table>
+        <p class="muted">Пустой список — приложение покажет «Ничего не нашлось».</p></li>
+      <li><b>Получили <code>inline_chosen</code></b> → в чате уже висит заглушка «⏳ &lt;title&gt;» от имени человека.
+        Подготовьте содержимое и заполните её — текстом, файлом или обоими. На это есть 30 минут.
+<pre><code><span class="k">POST</span> /api/bots/inline/messages/&lt;message_id&gt;/
+{"content": "", "file_url": "s3://…", "file_name": "Numb.mp3"}
+
+<span class="c">или, если не вышло:</span>
+{"content": "Не получилось: видео недоступно"}</code></pre>
+        <p class="muted">Поля те же, что у обычного сообщения: <code>content</code>, <code>file_url</code>, <code>file_name</code>,
+          <code>file_width</code>, <code>file_height</code>, <code>video_url</code>, <code>voice_url</code>. Не переданный <code>content</code> станет пустым.</p></li>
+    </ol>
+    <div class="tip">Разбор запроса — ваше дело. У <code>@ytbot</code> первое слово — формат (<code>mp3</code>, <code>1080</code>, <code>720</code>, <code>480</code>, <code>360</code>),
+      остальное — название или ссылка; без формата — mp3. Придумывайте свой синтаксис, но описывайте его в «О себе» бота.</div>
+  </div>
+
+  <h2 id="example">Пример: минимальный бот на Python</h2>
+  <div class="card">
+    <p>Эхо в личке, одна кнопка и inline-поиск по своему списку. Нужен только <code>aiohttp</code>.</p>
+<pre><code><span class="k">import</span> asyncio, json, os, aiohttp
+
+API = <span class="s">"https://huyax.e-tree.su/api"</span>
+WS  = <span class="s">"wss://huyax.e-tree.su/ws"</span>
+TOKEN = os.environ[<span class="s">"BOT_TOKEN"</span>]
+H = {<span class="s">"Authorization"</span>: <span class="s">f"Bot {TOKEN}"</span>}
+ITEMS = {<span class="s">"1"</span>: <span class="s">"Первый ответ"</span>, <span class="s">"2"</span>: <span class="s">"Второй ответ"</span>}
+
+<span class="k">async def</span> main():
+    <span class="k">async with</span> aiohttp.ClientSession() <span class="k">as</span> s:
+        me = <span class="k">await</span> (<span class="k">await</span> s.get(<span class="s">f"{API}/profiles/current/"</span>, headers=H)).json()
+        <span class="k">async with</span> s.ws_connect(<span class="s">f"{WS}/user/{me['id']}/?token={TOKEN}"</span>, heartbeat=30) <span class="k">as</span> ws:
+            <span class="k">async for</span> raw <span class="k">in</span> ws:
+                d = json.loads(raw.data).get(<span class="s">"data"</span>) <span class="k">or</span> {}
+                t = d.get(<span class="s">"type"</span>)
+                <span class="k">if</span> t == <span class="s">"new_message"</span> <span class="k">and</span> d[<span class="s">"message"</span>][<span class="s">"sender"</span>][<span class="s">"id"</span>] != me[<span class="s">"id"</span>]:
+                    <span class="k">await</span> s.post(<span class="s">f"{API}/messages/"</span>, headers=H, json={
+                        <span class="s">"chat"</span>: d[<span class="s">"chat_id"</span>], <span class="s">"content"</span>: <span class="s">f"Вы написали: {d['message'].get('content') or '…'}"</span>,
+                        <span class="s">"buttons"</span>: [[{<span class="s">"text"</span>: <span class="s">"Ещё раз"</span>, <span class="s">"data"</span>: <span class="s">"again"</span>}]]})
+                <span class="k">elif</span> t == <span class="s">"button"</span>:
+                    <span class="k">await</span> s.post(<span class="s">f"{API}/messages/"</span>, headers=H, json={<span class="s">"chat"</span>: d[<span class="s">"chat_id"</span>], <span class="s">"content"</span>: <span class="s">"И снова здравствуйте"</span>})
+                <span class="k">elif</span> t == <span class="s">"inline_query"</span>:
+                    q = d[<span class="s">"query"</span>].lower()
+                    res = [{<span class="s">"id"</span>: k, <span class="s">"title"</span>: v} <span class="k">for</span> k, v <span class="k">in</span> ITEMS.items() <span class="k">if</span> q <span class="k">in</span> v.lower()]
+                    <span class="k">await</span> s.post(<span class="s">f"{API}/bots/inline/{d['query_id']}/answer/"</span>, headers=H, json={<span class="s">"results"</span>: res})
+                <span class="k">elif</span> t == <span class="s">"inline_chosen"</span>:
+                    <span class="k">await</span> s.post(<span class="s">f"{API}/bots/inline/messages/{d['message_id']}/"</span>, headers=H,
+                                 json={<span class="s">"content"</span>: ITEMS.get(d[<span class="s">"result_id"</span>], <span class="s">"?"</span>)})
+
+asyncio.run(main())</code></pre>
+    <p class="muted">Полный рабочий бот с загрузкой файлов — <code>bots/media-bot</code> в репозитории (это и есть @ytbot).</p>
+  </div>
+
+  <h2 id="limits">Ограничения и правила</h2>
+  <div class="card">
+    <table>
+      <tr><td>Кнопки</td><td><code>data</code> ≤ 128 символов; ставит только бот</td></tr>
+      <tr><td>Inline-результаты</td><td>≤ 20 строк; <code>id</code> ≤ 64, <code>title</code> ≤ 120, <code>description</code> ≤ 200 символов; запрос живёт 10 минут</td></tr>
+      <tr><td>Заполнение заглушки</td><td>30 минут после выбора; только своя заглушка</td></tr>
+      <tr><td>Куда писать</td><td>Только в чаты, где бот участник; первым в личку не пишет</td></tr>
+      <tr><td>Файлы</td><td>Лимита на размер нет, но большие файлы грузите одним запросом рядом с сервером или кусками</td></tr>
+    </table>
+    <div class="warn">Спам, рассылки без согласия и подмена чужих сообщений — повод отключить бота. Пишите в «О себе», что бот делает и как им пользоваться.</div>
+  </div>
+
+  <footer><a href="studio.html">← Creative Space</a> · <a href="index.html">WhoYaX</a></footer>
+</div>
+</body>
+</html>

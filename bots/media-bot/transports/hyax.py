@@ -53,6 +53,11 @@ CHOICES = (("mp3", "🎵 MP3"), ("1080", "1080p"), ("720", "720p"), ("480", "480
 LINKS: dict[str, str] = {}
 LINKS_MAX = 500
 
+#: Inline: первое слово запроса — формат. «@ytbot mp3 название», «@ytbot 720
+#: название»; без формата — mp3. Дальше — название для поиска или ссылка.
+INLINE_MODES = {"mp3": "mp3", "audio": "mp3", "музыка": "mp3", "1080": "1080", "720": "720", "480": "480", "360": "360", "video": None, "видео": None}
+MODE_LABEL = {"mp3": "MP3", "1080": "1080p", "720": "720p", "480": "480p", "360": "360p"}
+
 
 def _headers() -> dict:
     return {"Authorization": f"Bot {TOKEN}"}
@@ -85,20 +90,28 @@ class Hyax:
                 r.raise_for_status()
                 return await r.json()
 
-    async def send_media(self, chat_id: str, media: Media) -> None:
+    async def media_payload(self, media: Media) -> dict:
+        """Загрузить файл и собрать поля сообщения с ним."""
         ext = ".mp3" if media.is_audio else ".mp4"
         name = safe_name(media.title, ext)
         up = await self.upload(media.path, name)
-        payload = {
-            "chat": chat_id,
-            "content": "",
-            "file_url": up.get("file_url"),
-            "file_name": name,
-        }
+        payload = {"content": "", "file_url": up.get("file_url"), "file_name": name}
         if not media.is_audio and media.width and media.height:
             payload["file_width"] = media.width
             payload["file_height"] = media.height
+        return payload
+
+    async def send_media(self, chat_id: str, media: Media) -> None:
+        payload = {"chat": chat_id, **(await self.media_payload(media))}
         await self.s.post(f"{API}/messages/", headers=_headers(), json=payload)
+
+    # ---- inline (см. backend/chat/inline.py) ----
+    async def answer_inline(self, query_id: str, results: list[dict]) -> None:
+        await self.s.post(f"{API}/bots/inline/{query_id}/answer/", headers=_headers(), json={"results": results})
+
+    async def fill_message(self, message_id: str, payload: dict) -> None:
+        """Заполнить свою заглушку «через @бота» готовым содержимым."""
+        await self.s.post(f"{API}/bots/inline/messages/{message_id}/", headers=_headers(), json=payload)
 
 
 def remember(url: str) -> str:
@@ -157,6 +170,59 @@ async def download_and_send(hx: Hyax, chat_id: str, url: str, mode: str) -> None
     except Exception as e:
         log.exception("не вышло скачать %s", url)
         await hx.send_text(chat_id, f"Не получилось: {str(e)[:200]}")
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+
+def parse_inline(query: str) -> tuple[str, str]:
+    """«mp3 название» → ("mp3", "название"); без формата — mp3."""
+    words = (query or "").strip().split(None, 1)
+    if words and words[0].lower() in INLINE_MODES:
+        mode = INLINE_MODES[words[0].lower()] or DEFAULT_MODE
+        return mode, (words[1] if len(words) > 1 else "").strip()
+    return "mp3", (query or "").strip()
+
+
+async def on_inline_query(hx: Hyax, query_id: str, query: str) -> None:
+    """«@ytbot mp3 название» — список находок; ссылка — варианты формата."""
+    mode, rest = parse_inline(query)
+    words = (query or "").split()
+    explicit = bool(words) and words[0].lower() in INLINE_MODES
+    url = find_url(rest)
+    results: list[dict] = []
+    if url:
+        key = remember(url)
+        for m in ([mode] if explicit else [c[0] for c in CHOICES]):
+            results.append({"id": f"{m}|{key}", "title": f"{MODE_LABEL.get(m, m)} по ссылке", "description": url[:120]})
+    elif len(rest) >= 2:
+        try:
+            found = await asyncio.to_thread(search, rest, 8)
+        except Exception:
+            log.exception("inline: поиск не удался")
+            found = []
+        for item in found:
+            dur = fmt_duration(item["duration"])
+            desc = " · ".join(x for x in (MODE_LABEL.get(mode, mode), dur, item.get("uploader", "")) if x)
+            results.append({"id": f"{mode}|{remember(item['url'])}", "title": item["title"][:120], "description": desc[:200], "thumb_url": item.get("thumb") or ""})
+    await hx.answer_inline(query_id, results)
+
+
+async def on_inline_chosen(hx: Hyax, message_id: str, result_id: str) -> None:
+    """Выбрали строку: качаем и заполняем заглушку файлом (или текстом ошибки)."""
+    parts = result_id.split("|")
+    url = LINKS.get(parts[1]) if len(parts) == 2 else None
+    if not url:
+        await hx.fill_message(message_id, {"content": "Эта находка устарела — поищите заново."})
+        return
+    mode = parts[0]
+    out_dir = tempfile.mkdtemp(prefix="media-bot-")
+    try:
+        async with LIMIT:
+            media = await asyncio.to_thread(fetch, url, "audio" if mode == "mp3" else mode, out_dir)
+        await hx.fill_message(message_id, await hx.media_payload(media))
+    except Exception as e:
+        log.exception("inline: не вышло скачать %s", url)
+        await hx.fill_message(message_id, {"content": f"Не получилось: {str(e)[:200]}"})
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
 
@@ -222,6 +288,12 @@ async def listen(hx: Hyax) -> None:
             except ValueError:
                 continue
             body = data.get("data") or {}
+            if body.get("type") == "inline_query":
+                asyncio.create_task(on_inline_query(hx, str(body.get("query_id")), body.get("query") or ""))
+                continue
+            if body.get("type") == "inline_chosen":
+                asyncio.create_task(on_inline_chosen(hx, str(body.get("message_id")), body.get("result_id") or ""))
+                continue
             if body.get("type") == "button":
                 chat_id = body.get("chat_id")
                 if chat_id:

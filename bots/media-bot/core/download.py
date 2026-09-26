@@ -187,6 +187,8 @@ def search(query: str, limit: int = 5) -> list[dict]:
             "title": e.get("title") or "Без названия",
             "uploader": e.get("uploader") or e.get("channel") or "",
             "duration": e.get("duration") or 0,
+            # Превью YouTube по id — стабильнее, чем список thumbnails в flat-выдаче.
+            "thumb": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg" if vid else "",
         })
     return out
 

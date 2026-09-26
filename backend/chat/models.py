@@ -202,6 +202,9 @@ class Message(models.Model):
     # Канал-первоисточник, если пост переслан из канала: клиент открывает его
     # по тапу на «Переслано от». Для личных сообщений пусто.
     forwarded_chat = models.ForeignKey(Chat, on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
+    # Inline-режим: сообщение отправил человек, но содержимое дал бот
+    # («@ytbot mp3 …» → выбранный результат). Заполняет его бот, см. chat/inline.py.
+    via_bot = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
     # Редактирование и удаление.
     is_edited = models.BooleanField(default=False)
     # Кнопки под сообщением: [[{"text": "...", "data": "..."}], ...] — строки

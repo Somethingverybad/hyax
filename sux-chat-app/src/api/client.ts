@@ -906,6 +906,21 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
     return res.json();
   },
+  /** Inline-бот: «@бот запрос» в поле ввода → запрос боту; результаты придут в
+   *  личный сокет событием inline_results (Chat.tsx → window "hyax:inline"). */
+  inlineQuery: async (bot: string, query: string, chatId: string): Promise<{ query_id: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/bots/inline/query/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ bot, query, chat_id: chatId }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Бот не отвечает");
+    return d;
+  },
+  /** Выбор результата: в чат уходит сообщение-заглушка «через @бота», бот её заполнит. */
+  inlineChoose: async (queryId: string, resultId: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/bots/inline/${queryId}/choose/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ result_id: resultId }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Не вышло");
+    return d;
+  },
   /** Выключить/включить пуши канала для себя. Возвращает канал с новым muted. */
   muteChannel: async (id: string, muted: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/mute/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ muted }) });
