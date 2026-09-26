@@ -48,7 +48,7 @@ HELP = (
     "/audio <ссылка> — сразу mp3, без вопросов\n"
     "/video <ссылка> — сразу видео\n"
     "/help — это сообщение\n\n"
-    "Владельцу: пришлите файл кук (Netscape, youtube.txt) — применю сразу; /cookies — что сейчас загружено."
+    "Владельцу: пришлите куки (файлом youtube.txt или просто текстом cookies.txt в сообщении) — применю сразу; /cookies — что загружено."
 )
 
 #: Площадка по доменам в файле кук → имя файла в COOKIES_DIR.
@@ -149,19 +149,32 @@ class Hyax:
         await self.s.post(f"{API}/bots/inline/messages/{message_id}/", headers=_headers(), json=payload)
 
 
-def parse_cookies(text: str) -> tuple[list[tuple[str, str]], int]:
-    """Netscape-файл → [(домен, имя)], число строк-кук. Строки #HttpOnly_ — тоже куки."""
-    out, n = [], 0
+def parse_cookies(text: str) -> tuple[list[tuple[str, str]], int, str]:
+    """Netscape-куки → ([(домен, имя)], число кук, нормализованный текст).
+
+    Принимаем и файл, и текст, вставленный в сообщение: там табуляции
+    могли превратиться в пробелы — тогда делим по пробелам (значение куки
+    пробелов не содержит) и собираем строку обратно через табуляции, как
+    требует yt-dlp. Строки #HttpOnly_ — тоже куки.
+    """
+    out, n, lines = [], 0, ["# Netscape HTTP Cookie File"]
     for line in text.splitlines():
+        line = line.rstrip("\r")
         raw = line[len("#HttpOnly_"):] if line.startswith("#HttpOnly_") else line
         if not raw.strip() or raw.startswith("#"):
             continue
         parts = raw.split("\t")
         if len(parts) < 7:
-            continue
+            parts = raw.split()
+            if len(parts) < 6:
+                continue
+            if len(parts) == 6:  # пустое значение
+                parts.append("")
+            parts = parts[:6] + [" ".join(parts[6:])]
         n += 1
         out.append((parts[0].lstrip(".").lower(), parts[5]))
-    return out, n
+        lines.append(("#HttpOnly_" if line.startswith("#HttpOnly_") else "") + "\t".join(parts[:7]))
+    return out, n, "\n".join(lines) + "\n"
 
 
 def cookie_site(entries: list[tuple[str, str]], file_name: str) -> str | None:
@@ -183,7 +196,7 @@ def cookies_status() -> str:
             lines.append(f"• {site}: нет файла")
             continue
         try:
-            entries, n = parse_cookies(open(p, encoding="utf-8", errors="ignore").read())
+            entries, n, _ = parse_cookies(open(p, encoding="utf-8", errors="ignore").read())
         except Exception:
             entries, n = [], 0
         when = _dt.datetime.fromtimestamp(os.path.getmtime(p)).strftime("%d.%m %H:%M")
@@ -192,11 +205,35 @@ def cookies_status() -> str:
     return "Куки:\n" + "\n".join(lines)
 
 
-async def on_cookies_file(hx: Hyax, chat_id: str, m: dict) -> None:
-    """Владелец прислал файл кук — проверить, понять площадку, положить в COOKIES_DIR."""
+async def apply_cookies(hx: Hyax, chat_id: str, text: str, file_name: str = "") -> bool:
+    """Текст кук (из файла или прямо из сообщения) → COOKIES_DIR/<площадка>.txt.
+    Возвращает False, если это не куки — вызывающий решит, что делать дальше."""
+    entries, n, normalized = parse_cookies(text)
+    if n == 0:
+        return False
     if not COOKIES_DIR:
         await hx.send_text(chat_id, "Папка кук не настроена (COOKIES_DIR) — некуда сохранять.")
-        return
+        return True
+    site = cookie_site(entries, file_name)
+    if not site:
+        await hx.send_text(chat_id, "Не понял, для какой площадки эти куки: домены не YouTube, Instagram и не TikTok.")
+        return True
+    os.makedirs(COOKIES_DIR, exist_ok=True)
+    dst = os.path.join(COOKIES_DIR, f"{site}.txt")
+    tmp = dst + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(normalized)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, dst)
+    login = ""
+    if site == "youtube":
+        login = " Вход есть ✅." if any(name in YT_LOGIN_COOKIES for _, name in entries) else " ⚠️ Авторизационных кук (SID, LOGIN_INFO) нет — экспортируйте из браузера, где вы вошли в YouTube."
+    await hx.send_text(chat_id, f"Куки для {site} обновлены: {n} записей.{login}")
+    return True
+
+
+async def on_cookies_file(hx: Hyax, chat_id: str, m: dict) -> None:
+    """Владелец прислал файл кук."""
     try:
         data = await hx.fetch_file(m.get("file_url") or "")
         text = data.decode("utf-8", errors="ignore")
@@ -204,25 +241,8 @@ async def on_cookies_file(hx: Hyax, chat_id: str, m: dict) -> None:
         log.exception("куки: не скачал файл")
         await hx.send_text(chat_id, f"Не смог скачать файл: {str(e)[:120]}")
         return
-    entries, n = parse_cookies(text)
-    if n == 0:
-        await hx.send_text(chat_id, "Это не похоже на файл кук в формате Netscape (cookies.txt): нужны строки из 7 полей через табуляцию.")
-        return
-    site = cookie_site(entries, m.get("file_name") or "")
-    if not site:
-        await hx.send_text(chat_id, "Не понял, для какой площадки эти куки: домены не YouTube, Instagram и не TikTok. Назовите файл youtube.txt / instagram.txt / tiktok.txt.")
-        return
-    os.makedirs(COOKIES_DIR, exist_ok=True)
-    dst = os.path.join(COOKIES_DIR, f"{site}.txt")
-    tmp = dst + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write(text if text.endswith("\n") else text + "\n")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, dst)
-    login = ""
-    if site == "youtube":
-        login = " Вход есть ✅." if any(name in YT_LOGIN_COOKIES for _, name in entries) else " ⚠️ Авторизационных кук (SID, LOGIN_INFO) нет — экспортируйте из браузера, где вы вошли в YouTube."
-    await hx.send_text(chat_id, f"Куки для {site} обновлены: {n} записей.{login}")
+    if not await apply_cookies(hx, chat_id, text, m.get("file_name") or ""):
+        await hx.send_text(chat_id, "Это не похоже на файл кук в формате Netscape (cookies.txt).")
 
 
 def human_error(e: Exception) -> str:
@@ -377,6 +397,9 @@ async def handle(hx: Hyax, chat_id: str, text: str, owner: bool = False) -> None
         return
     if body == "/cookies":
         await hx.send_text(chat_id, cookies_status() if owner else "Эта команда только для владельца бота.")
+        return
+    # Владелец вставил куки прямо в сообщение (строки Netscape) — применяем.
+    if owner and "\n" in body and await apply_cookies(hx, chat_id, body):
         return
 
     # Команды с явным форматом: без вопросов, сразу качаем.
