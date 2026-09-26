@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2 } from "lucide-react";
 import MessageContextMenu from "./MessageContextMenu";
+import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
@@ -130,6 +131,8 @@ interface Message {
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
   forwarded_from?: { id: string; username: string; avatar_url?: string | null } | null;
   forwarded_title?: string;
+  /** Канал-первоисточник пересланного поста — открывается по тапу на «Переслано от». */
+  forwarded_chat?: { id: string; name: string; username?: string | null; avatar_url?: string | null } | null;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -208,6 +211,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const soundStopRef = useRef<(() => void) | null>(null);
   // Просмотр профиля собеседника (тап по имени в шапке, только 1:1).
   const [profileOpen, setProfileOpen] = useState(false);
+  // Профиль автора пересланного сообщения — по тапу на «Переслано от».
+  const [viewProfileId, setViewProfileId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const openForwardOrigin = (m: Message) => {
+    if (m.forwarded_from) setViewProfileId(m.forwarded_from.id);
+    else if (m.forwarded_chat) navigate("/chat", { state: { chatId: m.forwarded_chat.id, kind: "channel", title: m.forwarded_chat.name } });
+  };
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   // Редактирование своего текстового сообщения.
@@ -2273,9 +2283,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Цитируемое сообщение (реплай). */}
                       {/* Пересланное: от кого пришло изначально. */}
                       {(message.forwarded_title || message.forwarded_from) && (
-                        <div className="mb-1 flex items-center gap-1 text-xs opacity-80 min-w-0">
+                        <div
+                          role={!mixedOrigins && (message.forwarded_from || message.forwarded_chat) ? "button" : undefined}
+                          onClick={(e) => { if (mixedOrigins || !(message.forwarded_from || message.forwarded_chat)) return; e.stopPropagation(); openForwardOrigin(message); }}
+                          className={cn("mb-1 flex items-center gap-1 text-xs opacity-80 min-w-0", !mixedOrigins && (message.forwarded_from || message.forwarded_chat) && "cursor-pointer active:opacity-60")}
+                        >
                           <Forward className="w-3 h-3 shrink-0" />
-                          <span className="line-clamp-1 break-all">
+                          <span className={cn("line-clamp-1 break-all", !mixedOrigins && (message.forwarded_from || message.forwarded_chat) && "underline decoration-current/40 underline-offset-2")}>
                             {mixedOrigins ? `Переслано ${album!.length} сообщений` : `Переслано от ${message.forwarded_from?.username || message.forwarded_title}`}
                           </span>
                         </div>
@@ -3070,6 +3084,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onClose={() => setProfileOpen(false)}
           onCall={onCall}
         />
+      )}
+      {viewProfileId && (
+        <UserProfileModal userId={viewProfileId} onClose={() => setViewProfileId(null)} />
       )}
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),

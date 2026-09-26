@@ -199,6 +199,9 @@ class Message(models.Model):
     # сам канал, а профиль там ни при чём.
     forwarded_from = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
     forwarded_title = models.CharField(max_length=120, blank=True, default="")
+    # Канал-первоисточник, если пост переслан из канала: клиент открывает его
+    # по тапу на «Переслано от». Для личных сообщений пусто.
+    forwarded_chat = models.ForeignKey(Chat, on_delete=models.SET_NULL, blank=True, null=True, related_name="+")
     # Редактирование и удаление.
     is_edited = models.BooleanField(default=False)
     # Кнопки под сообщением: [[{"text": "...", "data": "..."}], ...] — строки

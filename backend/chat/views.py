@@ -541,10 +541,12 @@ def _forward_copy(src, target, profile, album_id=None):
     первоисточник, цепочку пересылок не наращиваем, как и мессенджеры."""
     origin = src.forwarded_from or src.sender
     title = src.forwarded_title
+    fchat = src.forwarded_chat
     if not title:
         if src.chat.kind == "channel" and not (src.chat.sign_posts and src.sender):
             title = src.chat.name or "Канал"
             origin = None
+            fchat = src.chat
         else:
             title = origin.username if origin else "Неизвестный"
     return Message.objects.create(
@@ -566,6 +568,7 @@ def _forward_copy(src, target, profile, album_id=None):
         album_id=album_id,
         forwarded_from=origin,
         forwarded_title=title[:120],
+        forwarded_chat=fchat,
     )
 
 
