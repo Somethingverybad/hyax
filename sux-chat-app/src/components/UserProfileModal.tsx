@@ -10,6 +10,7 @@ import { lastSeenText } from "@/lib/lastSeen";
 import { shareProfile, profileLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { toast } from "sonner";
+import { useSwipeDismiss } from "@/lib/useSwipeDismiss";
 
 interface UserProfile {
   id: string;
@@ -39,6 +40,8 @@ const UserProfileModal = ({
   hideWrite?: boolean;
 }) => {
   const navigate = useNavigate();
+  // Свайп вниз по шторке закрывает её — и мы снова там, откуда открыли профиль.
+  const swipe = useSwipeDismiss(onClose);
   const [writing, setWriting] = useState(false);
   // «Написать» — как на карточке профиля в сообщении: личка (создаём или
   // находим) и переход в неё. Ботам тоже: с ними общаются в личке.
@@ -113,6 +116,8 @@ const UserProfileModal = ({
         // На телефоне шторка не выше 85% экрана: с сохранёнками и длинным
         // «О себе» она раньше вырастала во весь экран. Лишнее прокручивается
         // внутри, шапка с аватаром остаётся под пальцем.
+        ref={swipe.ref}
+        {...swipe.handlers}
         className="w-full md:w-[400px] max-h-[85vh] md:max-h-full overflow-y-auto overscroll-contain bg-surface-2 md:bg-surface-1 rounded-t-[16px] md:rounded-lg md:border md:border-border p-6 md:p-5 pb-[calc(var(--sab)+24px)] md:pb-5 relative"
         onClick={(e) => e.stopPropagation()}
       >
