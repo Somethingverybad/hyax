@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Закрыть шторку свайпом вниз — как в системных шитах iOS.
@@ -6,46 +6,67 @@ import { useRef } from "react";
  * Вешается на прокручиваемый корень шторки: тянуть можно, только когда
  * содержимое у самого верха (иначе жест — обычная прокрутка). Шторка едет за
  * пальцем; отпустили дальше порога или резко — уезжает вниз и закрывается,
- * иначе возвращается на место. Мышь и широкие экраны (боковая панель) не
- * трогаем.
+ * иначе возвращается на место.
+ *
+ * Слушаем touch-события нативно и не пассивно: если содержимое длиннее шторки,
+ * iOS на первом же движении запускает свою прокрутку и обрывает жест
+ * (pointercancel) — с Pointer Events шторка «тянулась и возвращалась».
+ * preventDefault на touchmove у верхней кромки прокрутку не пускает.
+ * Широкие экраны (боковая панель) не трогаем.
  */
 export function useSwipeDismiss<T extends HTMLElement = HTMLDivElement>(onClose: () => void, threshold = 120) {
   const ref = useRef<T>(null);
-  const drag = useRef<{ y: number; t: number; active: boolean; id: number } | null>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
-  const onPointerDown = (e: React.PointerEvent) => {
+  useEffect(() => {
     const el = ref.current;
-    if (!el || e.pointerType === "mouse" || window.innerWidth >= 768) return;
-    if (el.scrollTop > 0) return;
-    drag.current = { y: e.clientY, t: performance.now(), active: false, id: e.pointerId };
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current, el = ref.current;
-    if (!d || !el || e.pointerId !== d.id) return;
-    const dy = e.clientY - d.y;
-    if (!d.active) {
-      if (dy < -6 || el.scrollTop > 0) { drag.current = null; return; } // это прокрутка вверх
-      if (dy < 8) return;
-      d.active = true;
-      el.style.transition = "none";
-    }
-    el.style.transform = `translateY(${Math.max(0, dy)}px)`;
-  };
-  const finish = (e: React.PointerEvent) => {
-    const d = drag.current, el = ref.current;
-    if (!d || e.pointerId !== d.id) return;
-    drag.current = null;
-    if (!el || !d.active) return;
-    const dy = e.clientY - d.y;
-    const speed = dy / Math.max(1, performance.now() - d.t); // px/мс
-    el.style.transition = "transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1)";
-    if (dy > threshold || speed > 0.7) {
-      el.style.transform = "translateY(110%)";
-      setTimeout(onClose, 170);
-    } else {
-      el.style.transform = "";
-    }
-  };
+    if (!el) return;
+    let drag: { y: number; t: number; active: boolean } | null = null;
 
-  return { ref, handlers: { onPointerDown, onPointerMove, onPointerUp: finish, onPointerCancel: finish } };
+    const start = (e: TouchEvent) => {
+      if (window.innerWidth >= 768 || e.touches.length !== 1 || el.scrollTop > 0) { drag = null; return; }
+      drag = { y: e.touches[0].clientY, t: performance.now(), active: false };
+    };
+    const move = (e: TouchEvent) => {
+      if (!drag || e.touches.length !== 1) return;
+      const dy = e.touches[0].clientY - drag.y;
+      if (!drag.active) {
+        if (dy < -4 || el.scrollTop > 0) { drag = null; return; } // прокрутка вверх — не наше
+        if (dy < 6) return;
+        drag.active = true;
+        el.style.transition = "none";
+      }
+      e.preventDefault(); // иначе iOS начнёт прокрутку и оборвёт жест
+      el.style.transform = `translateY(${Math.max(0, dy)}px)`;
+    };
+    const finish = (e: TouchEvent) => {
+      const d = drag;
+      drag = null;
+      if (!d || !d.active) return;
+      const y = e.changedTouches[0]?.clientY ?? d.y;
+      const dy = y - d.y;
+      const speed = dy / Math.max(1, performance.now() - d.t); // px/мс
+      el.style.transition = "transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+      if (dy > threshold || speed > 0.7) {
+        el.style.transform = "translateY(110%)";
+        setTimeout(() => closeRef.current(), 170);
+      } else {
+        el.style.transform = "";
+      }
+    };
+
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", finish);
+    el.addEventListener("touchcancel", finish);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", finish);
+      el.removeEventListener("touchcancel", finish);
+    };
+  }, [threshold]);
+
+  return { ref };
 }
