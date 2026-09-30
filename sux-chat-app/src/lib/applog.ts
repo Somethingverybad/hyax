@@ -31,6 +31,10 @@ export function redact(s: string): string {
 
 function push(l: Level, m: string) {
   buf.push({ t: Date.now(), l, m: redact(String(m)).slice(0, 600) });
+  // Дублируем в консоль: в нативной сборке Capacitor пробрасывает её в
+  // logcat / Xcode — трассу клавиатуры видно с подключённого устройства или
+  // эмулятора, не дожидаясь баг-репорта.
+  try { console.debug(`[applog:${l}] ${m}`); } catch { /* консоли нет */ }
   if (buf.length > MAX) buf.splice(0, buf.length - MAX);
 }
 
