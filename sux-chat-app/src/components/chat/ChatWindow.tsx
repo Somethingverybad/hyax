@@ -715,8 +715,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const el = textareaRef.current;
     if (!el) return;
     const before = el.offsetHeight;
+    // Измерение через height:auto — это промежуточный лейаут, в котором
+    // панель на миг ниже, а соседняя лента выше: Chrome на Android в этот
+    // момент подрезал scrollTop ленты, после возврата высоты она оказывалась
+    // на несколько px выше низа, и прижим возвращал её назад — на каждом
+    // нажатии, кадр туда-сюда («трясётся чат», баг-репорт c6faf176).
+    // Поэтому на время измерения фиксируем высоту панели: лента не меняется.
+    const panel = composeRef.current;
+    if (panel) panel.style.height = `${panel.offsetHeight}px`;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 104)}px`;
+    if (panel) panel.style.height = "";
     if (el.offsetHeight === before) return;
     // Подросшая панель не ужимает ленту, а наезжает на неё сверху
     // (отрицательный margin), лента же отводит под неё место отступом снизу.
