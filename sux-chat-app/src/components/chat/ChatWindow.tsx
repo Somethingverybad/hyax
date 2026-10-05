@@ -2151,7 +2151,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {(onBack || title || peer || isGroup) && (
-        <div ref={headerRef} className="shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
+        <div ref={headerRef} className="relative z-20 shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
           {onBack && (
             <button
               type="button"
@@ -2258,11 +2258,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {/* Лента и полоса закрепления в одном слое: полоса лежит ПОВЕРХ
           переписки и не меняет её высоту — раньше её появление укорачивало
           ленту уже после доводки, и сообщения дёргались. */}
-      <div className="relative flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-0 flex flex-col isolate">
       {/* Обои: слой под лентой на весь экран чата; видео крутится, если
           анимация не выключена в настройках, иначе — его постер. */}
       {wallpaper && (wallpaperSrc || wallpaperPoster) && (
-        <div className="absolute inset-0 z-0 overflow-hidden" aria-hidden>
+        <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden>
           {wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
             <video src={wallpaperSrc} poster={wallpaperPoster || undefined} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" />
           ) : (
@@ -2303,7 +2303,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <div
         ref={scrollRef}
         onScroll={onFeedScroll}
-        className={cn("relative z-[1] flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6", wallpaper && "!bg-transparent")}
+        className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6", wallpaper && "!bg-transparent")}
         onTouchStart={(e) => { feedTouchRef.current = true; markUserScroll(); kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
         onTouchMoveCapture={markUserScroll}
         onWheel={markUserScroll}
