@@ -30,6 +30,9 @@ export function useMediaRecorder() {
   const startedAtRef = useRef(0);
   const resolveRef = useRef<((r: VoiceRecording | null) => void) | null>(null);
   const cancelledRef = useRef(false);
+  // Запись дошла до лимита и остановилась сама: отдаём результат сюда — иначе
+  // при закреплённой записи (палец уже отпущен) файл было некому забрать.
+  const autoStopRef = useRef<((r: VoiceRecording | null) => void) | null>(null);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -47,10 +50,12 @@ export function useMediaRecorder() {
       kind === "video"
         ? {
             audio: true,
+            // Треугольник в чате — 160–280 px, снимать больше 360 нет смысла:
+            // файл втрое легче, отправка заметно быстрее.
             video: {
               facingMode: facing,
-              width: { ideal: 480 },
-              height: { ideal: 480 },
+              width: { ideal: 360 },
+              height: { ideal: 360 },
               frameRate: { ideal: 24 },
             },
           }
@@ -69,9 +74,14 @@ export function useMediaRecorder() {
     }
   };
 
-  const start = useCallback(async (kind: RecordKind = "audio", facing: "user" | "environment" = "user"): Promise<boolean> => {
+  const start = useCallback(async (
+    kind: RecordKind = "audio",
+    facing: "user" | "environment" = "user",
+    onAutoStop?: (r: VoiceRecording | null) => void,
+  ): Promise<boolean> => {
     if (recorderRef.current) return false;
     kindRef.current = kind;
+    autoStopRef.current = onAutoStop ?? null;
     try {
       const media = await acquire(kind, facing);
       const candidates =
@@ -79,7 +89,14 @@ export function useMediaRecorder() {
           ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
           : ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"];
       const mime = candidates.find((c) => MediaRecorder.isTypeSupported(c)) || "";
-      const recorder = mime ? new MediaRecorder(media, { mimeType: mime }) : new MediaRecorder(media);
+      // Битрейт пониже: минутный треугольник ~5 МБ вместо 15, голос — ~0.4 МБ.
+      const options: MediaRecorderOptions = kind === "video"
+        ? { videoBitsPerSecond: 700_000, audioBitsPerSecond: 64_000 }
+        : { audioBitsPerSecond: 48_000 };
+      if (mime) options.mimeType = mime;
+      let recorder: MediaRecorder;
+      try { recorder = new MediaRecorder(media, options); }
+      catch { recorder = mime ? new MediaRecorder(media, { mimeType: mime }) : new MediaRecorder(media); }
       const stream = media;
 
       chunksRef.current = [];
@@ -99,8 +116,9 @@ export function useMediaRecorder() {
             : "webm";
         const blob = new Blob(chunksRef.current, { type });
         const elapsed = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
-        const done = resolveRef.current;
+        const done = resolveRef.current ?? autoStopRef.current;
         resolveRef.current = null;
+        autoStopRef.current = null;
         cleanup();
         // Слишком короткое нажатие — это промах по кнопке, а не сообщение.
         if (cancelledRef.current || blob.size < 1200 || elapsed < 1) {

@@ -5,7 +5,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square } from "lucide-react";
 import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
@@ -276,6 +276,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   //  finishing — палец отпущен, запись закрывается перед отправкой.
   const [recPhase, setRecPhase] = useState<"idle" | "starting" | "finishing">("idle");
   const [recPressed, setRecPressed] = useState(false);
+  // Запись закреплена свайпом вверх: палец отпущен, запись идёт; тап по
+  // кнопке — отправить, корзина в плашке — отменить (как в Telegram).
+  const [recLocked, setRecLocked] = useState(false);
+  const recLockedRef = useRef(false);
+  const lockGestureRef = useRef(false); // палец ещё лежит после закрепления
+  // Расшифровки, свёрнутые обратно по «Свернуть»: показываем снова «Аа».
+  const [hiddenTranscripts, setHiddenTranscripts] = useState<Set<string>>(() => new Set());
   // Сообщение, для которого открыт выбор реакции, и раскрыт ли полный набор.
   const [reactFor, setReactFor] = useState<Message | null>(null);
   // Какая кнопка сейчас нажата: пока ответ не ушёл, повторное нажатие не пускаем.
@@ -1820,6 +1827,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   const beginRecording = (e: React.PointerEvent) => {
     if (uploading) return;
+    if (recLockedRef.current) { setRecPressed(true); return; } // тап по закреплённой — отправка на pointerup
     pressStartedAtRef.current = Date.now();
     setRecPressed(true);
     // Забираем указатель себе: иначе движение пальца уходит странице как
@@ -1846,7 +1854,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       startingRef.current = true;
       setRecPhase("starting");
       recHaptic(false);
-      const ok = await startRec(recordKind as RecordKind, facing);
+      const ok = await startRec(recordKind as RecordKind, facing, (auto) => {
+        // Минута вышла, запись остановилась сама — отправляем, что есть.
+        startedRef.current = false;
+        recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
+        cancelArmedRef.current = false; setCancelArmed(false);
+        setRecPhase("idle");
+        if (auto) recHaptic(false);
+        void processRecording(auto);
+      });
       startingRef.current = false;
       if (!ok) {
         setRecPhase("idle");
@@ -1872,11 +1888,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const moveRecording = (e: React.PointerEvent) => {
     const from = holdStartRef.current;
-    if (!from) return;
-    // Увод влево или вверх — жест отмены, как в мессенджерах.
-    const armed = from.x - e.clientX > 70 || from.y - e.clientY > 70;
+    if (!from || recLockedRef.current) return;
+    // Влево — отмена, вверх — закрепить (палец можно отпустить), как в Telegram.
+    if (from.y - e.clientY > 70 && startedRef.current && recordKind !== "rov") {
+      recLockedRef.current = true; setRecLocked(true); lockGestureRef.current = true;
+      cancelArmedRef.current = false; setCancelArmed(false);
+      recHaptic(true);
+      return;
+    }
+    const armed = from.x - e.clientX > 70;
     cancelArmedRef.current = armed;
     setCancelArmed(armed);
+  };
+
+  /** Закреплённая запись: отправить (тап по кнопке) или отменить (корзина). */
+  const finishLocked = async (cancel: boolean) => {
+    if (!recLockedRef.current) return;
+    recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
+    startedRef.current = false;
+    cancelArmedRef.current = false; setCancelArmed(false);
+    if (!cancel) setRecPhase("finishing");
+    const result = await stopRec(cancel);
+    setRecPhase("idle");
+    if (!cancel) recHaptic(false);
+    await processRecording(result);
   };
 
   const finishRecording = async (forceCancel = false) => {
@@ -1884,6 +1919,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
+    }
+    // Закреплено: палец после свайпа вверх отпускаем — запись продолжается;
+    // следующий тап по кнопке — отправка.
+    if (recLockedRef.current) {
+      holdStartRef.current = null;
+      if (lockGestureRef.current) { lockGestureRef.current = false; return; }
+      if (!forceCancel) await finishLocked(false);
+      return;
     }
     const cancel = forceCancel || cancelArmedRef.current;
     holdStartRef.current = null;
@@ -2479,13 +2522,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               own={isOwn}
                             />
                             {/* «Аа» — расшифровать; пока pending крутится, готовый текст ниже. */}
-                            {!message.pending && message.transcript_status !== "done" && (
+                            {!message.pending && (message.transcript_status !== "done" || hiddenTranscripts.has(message.id)) && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); transcribeVoice(message); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Расшифровка уже есть, но свёрнута — просто раскрываем.
+                                  if (message.transcript_status === "done") setHiddenTranscripts((prev) => { const n = new Set(prev); n.delete(message.id); return n; });
+                                  else transcribeVoice(message);
+                                }}
                                 disabled={message.transcript_status === "pending"}
                                 className="w-8 h-8 shrink-0 rounded-md bg-black/20 text-xs font-semibold disabled:opacity-50"
-                                title="Расшифровать"
+                                title={message.transcript_status === "done" ? "Показать расшифровку" : "Расшифровать"}
                               >
                                 {message.transcript_status === "pending" ? "…" : "Аа"}
                               </button>
@@ -2497,10 +2545,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {message.transcript_status === "error" && (
                             <p className="mt-1 text-xs opacity-70">Не удалось расшифровать — попробуй ещё раз.</p>
                           )}
-                          {message.transcript_status === "done" && message.voice_transcript && (
-                            <p className="mt-1.5 text-body break-words whitespace-pre-wrap opacity-90 border-t border-white/15 pt-1.5">
-                              {message.voice_transcript}
-                            </p>
+                          {message.transcript_status === "done" && message.voice_transcript && !hiddenTranscripts.has(message.id) && (
+                            <div className="mt-1.5 border-t border-white/15 pt-1.5">
+                              <p className="text-body break-words whitespace-pre-wrap opacity-90">{message.voice_transcript}</p>
+                              <div className="mt-1 flex items-center gap-3 text-xs opacity-75">
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(message.voice_transcript || ""); toast.success("Текст скопирован"); } catch { toast.error("Не удалось скопировать"); } }} className="inline-flex items-center gap-1 active:opacity-60">
+                                  <Copy className="w-3.5 h-3.5" /> Скопировать
+                                </button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setHiddenTranscripts((prev) => new Set(prev).add(message.id)); }} className="inline-flex items-center gap-1 active:opacity-60">
+                                  <ChevronUp className="w-3.5 h-3.5" /> Свернуть
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
                       )}
@@ -2887,6 +2943,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             )}>
               {recPhase !== "idle" ? (
                 <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+              ) : recLocked ? (
+                <Lock className="w-4 h-4 text-primary shrink-0" />
               ) : (
                 <span className="w-2.5 h-2.5 bg-primary animate-pulse shrink-0" />
               )}
@@ -2901,13 +2959,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   ? (recordKind === "video" ? "Включаю камеру… держите кнопку" : "Включаю микрофон… держите кнопку")
                   : recPhase === "finishing"
                     ? (cancelArmed ? "Отменяю…" : "Готовлю к отправке…")
-                    : cancelArmed
-                      ? "Отпустите — запись отменится"
-                      : recordKind === "video"
-                        ? "Снимаем треугольник · влево для отмены"
-                        : "Ведите влево, чтобы отменить"}
+                    : recLocked
+                      ? "Запись закреплена · до минуты · кнопка — отправить"
+                      : cancelArmed
+                        ? "Отпустите — запись отменится"
+                        : recordKind === "video"
+                          ? "Треугольник · влево — отмена, вверх — закрепить"
+                          : "Влево — отмена, вверх — закрепить"}
               </span>
               {cancelArmed && <Trash2 className="w-4 h-4 text-primary shrink-0" />}
+              {recLocked && recPhase === "idle" && (
+                <button type="button" onClick={() => void finishLocked(true)} className="w-8 h-8 shrink-0 rounded-md bg-surface-3 text-primary flex items-center justify-center active:opacity-70" aria-label="Отменить запись">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           )}
 
@@ -3094,6 +3159,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   }
                 >
                   {uploading ? <Loader2 className="w-5 h-5 animate-spin" />
+                    : recLocked ? <Send className="w-5 h-5" />
                     : recordKind === "video" ? <Video className="w-5 h-5" />
                     : recordKind === "rov" ? <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />
                     : <Mic className="w-5 h-5" />}
@@ -3323,9 +3389,21 @@ const WAVE_BARS = 40;
 // Запасная «дорожка», пока волна грузится или если кодек не декодируется.
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
 
+// Скорость воспроизведения голосовых — одна на все сообщения, как в Telegram:
+// выбрал 1.5× — следующее голосовое тоже пойдёт на 1.5×.
+const VOICE_RATES = [1, 1.5, 2, 0.5];
+let voiceRate = 1;
+
 const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [rate, setRate] = useState(voiceRate);
+  const cycleRate = () => {
+    const next = VOICE_RATES[(VOICE_RATES.indexOf(voiceRate) + 1) % VOICE_RATES.length];
+    voiceRate = next;
+    setRate(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  };
   const [progress, setProgress] = useState(0); // 0..1 по времени воспроизведения
   const [peaks, setPeaks] = useState<number[] | null>(null);
 
@@ -3352,6 +3430,7 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
       audioRef.current = audio;
     }
     const audio = audioRef.current;
+    audio.playbackRate = voiceRate;
     if (playing) {
       audio.pause();
       setPlaying(false);
@@ -3365,7 +3444,8 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
   const playedBars = Math.round(progress * wave.length);
 
   return (
-    <button type="button" onClick={toggle} className="flex items-center gap-2 py-1 min-w-[11rem]">
+    <div className="flex items-center gap-2 py-1 min-w-[11rem]">
+    <button type="button" onClick={toggle} className="flex items-center gap-2 flex-1 min-w-0">
       <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20">
         {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </span>
@@ -3385,6 +3465,16 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
       </span>
       <span className="text-xs opacity-80 shrink-0">{label}</span>
     </button>
+    {/* Скорость: 1× → 1.5× → 2× → 0.5× — по кругу, общая для всех голосовых. */}
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); cycleRate(); }}
+      className={cn("h-7 min-w-[2.4rem] px-1.5 shrink-0 rounded-md text-[11px] font-semibold tabular-nums", rate === 1 ? "bg-black/15 opacity-80" : "bg-black/30")}
+      aria-label={`Скорость ${rate}×`}
+    >
+      {rate}×
+    </button>
+    </div>
   );
 };
 
