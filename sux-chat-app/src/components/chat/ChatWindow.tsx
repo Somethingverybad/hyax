@@ -501,20 +501,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  // Пришли в чат, где лежит свежий «глюк-стикер» от собеседника, который на
-  // этом устройстве ещё не разыгрывался — разыгрываем один раз (память по id
-  // в localStorage). Не привязываемся к «прочитано»: его могли прочитать с
-  // другого устройства, а эффект должен отработать при первом открытии здесь.
+  // Пришли в чат, где лежат свежие (до суток) «глюк-стикеры» от собеседника,
+  // ещё не разыгранные на этом устройстве: играет только самый последний,
+  // остальные помечаются сыгранными — чтобы при открытии не сыпалось всё
+  // накопившееся разом. Память по id в localStorage; к «прочитано» не
+  // привязываемся — прочитать могли с другого устройства.
   useEffect(() => {
     if (!chatId) return;
-    const fresh = Date.now() - 48 * 3600 * 1000;
-    const cand = [...messages].reverse().find((m) =>
+    const fresh = Date.now() - 24 * 3600 * 1000;
+    const pending = messages.filter((m) =>
       m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending
       && (Date.parse(m.created_at) || 0) > fresh && !playedBursts.has(m.id));
-    if (!cand) return;
-    playedBursts.add(cand.id);
+    if (!pending.length) return;
+    pending.forEach((m) => playedBursts.add(m.id));
     try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
-    setBurst({ url: cand.sticker!.file_url, key: Date.now() });
+    const last = pending.reduce((a, b) => ((Date.parse(a.created_at) || 0) >= (Date.parse(b.created_at) || 0) ? a : b));
+    setBurst({ url: last.sticker!.file_url, key: Date.now() });
   }, [messages, chatId, userId]);
   // Текст поля ввода — в ref, а не в состоянии: иначе каждая клавиша
   // перерисовывала всё окно вместе с лентой из полусотни сообщений (разбор
