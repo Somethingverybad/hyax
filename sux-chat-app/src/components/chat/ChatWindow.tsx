@@ -2267,13 +2267,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           анимация не выключена в настройках, иначе — его постер. */}
       {wallpaper && (wallpaperSrc || wallpaperPoster) && (
         <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden>
-          {wallpaper.kind === "video" && wallpaperAnim && wallpaperAnimSrc ? (
-            <>
-              {wallpaperPoster && <img src={wallpaperPoster} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-              <img src={wallpaperAnimSrc} alt="" className="absolute inset-0 w-full h-full object-cover" />
-            </>
-          ) : wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
-            <WallpaperVideo src={wallpaperSrc} poster={wallpaperPoster} />
+          {wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
+            <WallpaperVideo src={wallpaperSrc} poster={wallpaperPoster} anim={wallpaperAnimSrc || null} />
           ) : (
             <img src={(wallpaper.kind === "video" ? wallpaperPoster : wallpaperSrc) || wallpaperSrc || undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
           )}
@@ -3506,34 +3501,30 @@ const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 3
 
 const chatInfoCache = new Map<string, ChatFull>();
 
-/** Видео-обои. Пока видео реально не играет, его не видно вовсе (opacity 0) —
- *  вместе с системной кнопкой «play», которую WebKit рисует, если автозапуск
- *  запрещён (режим энергосбережения iOS). Сверху лежит постер — первый кадр, —
- *  так что фон есть сразу. React не пишет атрибут muted в DOM, а автозапуск
- *  разрешён только немому видео с атрибутом — ставим руками; не пустили —
- *  запускаем при первом касании экрана. */
-const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }) => {
+/** Видео-обои. Основной путь — <video>: аппаратно, плавно. Пока оно реально
+ *  не играет, его не видно (opacity 0 прячет и системную кнопку «play»), снизу
+ *  лежит постер. Если iOS отказала в автозапуске (энергосбережение), вместо
+ *  видео крутится анимированный WebP того же ролика, а по первому касанию
+ *  экрана пробуем снова запустить видео — и возвращаемся к нему. */
+const WallpaperVideo = ({ src, poster, anim }: { src: string; poster?: string | null; anim?: string | null }) => {
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [denied, setDenied] = useState(false);
   const [broken, setBroken] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    setBroken(false);
-    setPlaying(false);
+    setBroken(false); setPlaying(false); setDenied(false);
     el.muted = true;
     el.defaultMuted = true;
     el.setAttribute("muted", "");
     el.setAttribute("playsinline", "");
     let gestureBound = false;
-    const onGesture = () => {
-      window.removeEventListener("touchend", onGesture);
-      window.removeEventListener("pointerdown", onGesture);
-      gestureBound = false;
-      el.play().catch(() => {});
-    };
+    const unbind = () => { window.removeEventListener("touchend", onGesture); window.removeEventListener("pointerdown", onGesture); gestureBound = false; };
+    const onGesture = () => { unbind(); el.play().catch(() => {}); };
     const tryPlay = () => {
       el.play().catch(() => {
+        setDenied(true);
         if (gestureBound) return;
         gestureBound = true;
         window.addEventListener("touchend", onGesture, { passive: true });
@@ -3541,15 +3532,13 @@ const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }
       });
     };
     if (el.readyState >= 2) tryPlay(); else el.addEventListener("loadeddata", tryPlay, { once: true });
-    return () => {
-      el.removeEventListener("loadeddata", tryPlay);
-      window.removeEventListener("touchend", onGesture);
-      window.removeEventListener("pointerdown", onGesture);
-    };
+    return () => { el.removeEventListener("loadeddata", tryPlay); unbind(); };
   }, [src]);
+  const showAnim = denied && !playing && !!anim;
   return (
     <>
       {poster && <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+      {showAnim && <img src={anim!} alt="" className="absolute inset-0 w-full h-full object-cover" />}
       {!broken && (
         <video
           ref={ref}
@@ -3560,7 +3549,7 @@ const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }
           playsInline
           preload="auto"
           disablePictureInPicture
-          onPlaying={() => setPlaying(true)}
+          onPlaying={() => { setPlaying(true); setDenied(false); }}
           onPause={() => setPlaying(false)}
           onError={() => setBroken(true)}
           className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"

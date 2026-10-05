@@ -3022,8 +3022,8 @@ def _make_wallpaper(src_path, ext):
         anim_full = os.path.join(settings.MEDIA_ROOT, anim_rel)
         try:
             subprocess.run(["ffmpeg", "-y", "-t", "10", "-i", out_full, "-an",
-                            "-vf", "scale='trunc(min(480,iw)/2)*2:-2',fps=15",
-                            "-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "65", "-compression_level", "4", "-loop", "0", anim_full],
+                            "-vf", "scale='trunc(min(432,iw)/2)*2:-2',fps=24",
+                            "-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "60", "-compression_level", "4", "-loop", "0", anim_full],
                            check=True, timeout=240, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if s3_enabled():
                 anim = s3_upload(anim_full, anim_rel, "image/webp")
