@@ -3495,18 +3495,21 @@ const WAVE_BARS = 40;
 // Запасная «дорожка», пока волна грузится или если кодек не декодируется.
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
 
-/** Видео-обои. React не пишет атрибут muted в DOM, а WebKit разрешает
- *  автозапуск только немому видео с атрибутом — ставим его руками. Если
- *  автозапуск всё равно запрещён (режим энергосбережения iOS), системную
- *  кнопку «play» прячем (CSS .wallpaper-video), показываем постер и
- *  запускаем видео при первом касании экрана — жест WebKit устраивает. */
+/** Видео-обои. Пока видео реально не играет, его не видно вовсе (opacity 0) —
+ *  вместе с системной кнопкой «play», которую WebKit рисует, если автозапуск
+ *  запрещён (режим энергосбережения iOS). Сверху лежит постер — первый кадр, —
+ *  так что фон есть сразу. React не пишет атрибут muted в DOM, а автозапуск
+ *  разрешён только немому видео с атрибутом — ставим руками; не пустили —
+ *  запускаем при первом касании экрана. */
 const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }) => {
   const ref = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
   const [broken, setBroken] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     setBroken(false);
+    setPlaying(false);
     el.muted = true;
     el.defaultMuted = true;
     el.setAttribute("muted", "");
@@ -3520,7 +3523,6 @@ const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }
     };
     const tryPlay = () => {
       el.play().catch(() => {
-        // Без жеста нельзя — ждём первое касание и пробуем снова.
         if (gestureBound) return;
         gestureBound = true;
         window.addEventListener("touchend", onGesture, { passive: true });
@@ -3534,21 +3536,27 @@ const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }
       window.removeEventListener("pointerdown", onGesture);
     };
   }, [src]);
-  if (broken && poster) return <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />;
   return (
-    <video
-      ref={ref}
-      src={src}
-      poster={poster || undefined}
-      autoPlay
-      loop
-      muted
-      playsInline
-      preload="auto"
-      disablePictureInPicture
-      onError={() => setBroken(true)}
-      className="wallpaper-video absolute inset-0 w-full h-full object-cover"
-    />
+    <>
+      {poster && <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+      {!broken && (
+        <video
+          ref={ref}
+          src={src}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          disablePictureInPicture
+          onPlaying={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onError={() => setBroken(true)}
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
+          style={{ opacity: playing ? 1 : 0 }}
+        />
+      )}
+    </>
   );
 };
 
