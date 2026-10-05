@@ -2335,7 +2335,13 @@ class MediaSignView(APIView):
         if not in_my_playlist:
             in_my_playlist = PlaylistTrack.objects.filter(file_url=marker).exclude(
                 playlist__share_token="").exists()
-        if not in_my_playlist and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
+        # Обои чата: ключ wallpapers/… подписываем участнику чата, у которого
+        # они стоят (общие или личные), — это не сообщение, в Message их нет.
+        is_wallpaper = key.startswith('wallpapers/') and (
+            Chat.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker), participants=profile).exists()
+            or ChatParticipant.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker), user=profile).exists()
+        )
+        if not is_wallpaper and not in_my_playlist and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
             # в два чата. Право на скачивание — если он виден хотя бы в одном чате,
             # где человек участник. Раньше брали first() (порядок по UUID —
