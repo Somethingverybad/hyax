@@ -501,17 +501,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  // Пришли в чат, где лежат свежие (до суток) «глюк-стикеры» от собеседника,
-  // ещё не разыгранные на этом устройстве: играет только самый последний,
+  // Пришли в чат, где лежат «глюк-стикеры» от собеседника, ещё не разыгранные
+  // на этом устройстве: играет только самый последний,
   // остальные помечаются сыгранными — чтобы при открытии не сыпалось всё
   // накопившееся разом. Память по id в localStorage; к «прочитано» не
   // привязываемся — прочитать могли с другого устройства.
   useEffect(() => {
     if (!chatId) return;
-    const fresh = Date.now() - 24 * 3600 * 1000;
     const pending = messages.filter((m) =>
-      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending
-      && (Date.parse(m.created_at) || 0) > fresh && !playedBursts.has(m.id));
+      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending && !playedBursts.has(m.id));
     if (!pending.length) return;
     pending.forEach((m) => playedBursts.add(m.id));
     try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
