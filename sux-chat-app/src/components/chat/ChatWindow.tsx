@@ -146,6 +146,8 @@ interface Message {
   via_bot?: { id: string; username: string } | null;
   /** Эффект получения: burst — стикер высыпается по экрану. */
   effect?: string;
+  /** Прочитано ли мной (с сервера). */
+  is_read?: boolean;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -233,19 +235,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
   // отправителя, и у получателя — по событию из сокета, см. Chat.tsx).
   const [burst, setBurst] = useState<{ url: string; key: number } | null>(null);
-  // Пришли в чат, где лежит непрочитанный «глюк-стикер» — разыгрываем один
-  // раз (по id, с памятью в localStorage), не ждём живого события.
-  useEffect(() => {
-    if (!chatId) return;
-    const fresh = Date.now() - 48 * 3600 * 1000;
-    const cand = [...messages].reverse().find((m) =>
-      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.is_read && !m.pending
-      && (Date.parse(m.created_at) || 0) > fresh && !playedBursts.has(m.id));
-    if (!cand) return;
-    playedBursts.add(cand.id);
-    try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
-    setBurst({ url: cand.sticker!.file_url, key: Date.now() });
-  }, [messages, chatId, userId]);
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent).detail;
@@ -512,6 +501,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Пришли в чат, где лежит непрочитанный «глюк-стикер» — разыгрываем один
+  // раз (по id, с памятью в localStorage), не ждём живого события.
+  useEffect(() => {
+    if (!chatId) return;
+    const fresh = Date.now() - 48 * 3600 * 1000;
+    const cand = [...messages].reverse().find((m) =>
+      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.is_read && !m.pending
+      && (Date.parse(m.created_at) || 0) > fresh && !playedBursts.has(m.id));
+    if (!cand) return;
+    playedBursts.add(cand.id);
+    try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
+    setBurst({ url: cand.sticker!.file_url, key: Date.now() });
+  }, [messages, chatId, userId]);
   // Текст поля ввода — в ref, а не в состоянии: иначе каждая клавиша
   // перерисовывала всё окно вместе с лентой из полусотни сообщений (разбор
   // ссылок, альбомов, реакций на каждое) — на телефоне набор шёл с запинками.
