@@ -1,9 +1,9 @@
 {
-  "version": "1.1.11",
-  "build": 400,
-  "ios_version": "1.1.11",
-  "ios_build": 153,
-  "notes": "Android: клавиатура больше не сдвигает и не трясёт чат при наборе (Android 15 edge-to-edge и прошивки с ресайзом). Плюс всё из 388: inline-боты, меню сообщения, редактор фото, превью видео, зеркала Telegram-каналов",
+  "version": "1.1.12",
+  "build": 417,
+  "ios_version": "1.1.12",
+  "ios_build": 154,
+  "notes": "Обои чата (фото, gif, видео — общие и свои), «глюк-стикер» долгим удержанием, закрепление записи свайпом вверх, скорость голосовых и копирование расшифровки, редактор фото, зум, inline-боты (@ytbot), меню сообщения как в Telegram, бот Обновлямбус с новостями релизов. Android: клавиатура больше не дёргает чат",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",

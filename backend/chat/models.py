@@ -73,6 +73,9 @@ class Profile(models.Model):
     # Боты — отдельный класс пользователей: не логинятся паролем, ходят в API
     # по bot_token, у каждого есть владелец-создатель.
     is_bot = models.BooleanField(default=False)
+    # Бот «только чтение»: ему нельзя писать — это канал объявлений
+    # (Обновлямбус рассылает заметки о релизах, см. announce_update).
+    readonly_bot = models.BooleanField(default=False)
     bot_owner = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, related_name='bots')
     bot_token = models.CharField(max_length=64, blank=True, default="", db_index=True)
 

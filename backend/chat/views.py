@@ -1300,6 +1300,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         _chat_id = request.data.get('chat')
         if _chat_id:
             _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name').first()
+            # Бот «только чтение» (Обновлямбус): в его личку писать нельзя.
+            if _ch and _ch.kind == 'direct' and not profile.is_bot and \
+                    Profile.objects.filter(chatparticipant__chat=_ch, is_bot=True, readonly_bot=True).exists():
+                return Response({"error": "Этому боту нельзя писать — он только рассылает"}, status=403)
             if _ch and _ch.kind == 'channel':
                 _cp = ChatParticipant.objects.filter(chat=_ch, user=profile).first()
                 if not _cp or _cp.role not in ('owner', 'admin'):

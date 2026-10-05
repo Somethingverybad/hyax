@@ -173,7 +173,7 @@ interface ChatWindowProps {
   chatId: string | null;
   userId: string;
   /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
-  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; is_bot?: boolean; last_seen?: string | null } | null;
+  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; is_bot?: boolean; readonly_bot?: boolean; last_seen?: string | null } | null;
   onCall?: () => void;
   /** Метаданные группы (если это групповой чат) — для настроек и прав админа. */
   group?: ChatInfo | null;
@@ -2898,6 +2898,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
 
       {/* Поле ввода */}
+      {peer?.readonly_bot ? (
+        <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">
+          Это канал обновлений — только чтение
+        </div>
+      ) : (
       <div ref={composeRef} className="chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0">
         {/* На десктопе композер — панель с обводкой, как в референсе; отступ снизу
             даём панели (pad-safe-bottom перебивает padding контейнера). */}
@@ -3298,6 +3303,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           </div>
         </div>
       </div>
+      )}
 
       <PlaylistPicker
         message={playlistFor}
