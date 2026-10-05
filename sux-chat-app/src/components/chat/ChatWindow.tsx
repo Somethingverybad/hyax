@@ -226,7 +226,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [profileOpen, setProfileOpen] = useState(false);
   // Обои: чат целиком (с wallpaper/my_wallpaper) подтягиваем отдельно и
   // перечитываем по событию от собеседника. Меню «⋮» — профиль/настройки и обои.
-  const [chatInfo, setChatInfo] = useState<ChatFull | null>(null);
+  // Кеш чатов между входами: обои видны сразу, без пустого кадра на перечитывании.
+  const [chatInfo, setChatInfo] = useState<ChatFull | null>(() => (chatId && chatInfoCache.get(chatId)) || null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
   // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
@@ -243,9 +244,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [wallpaperAnim, setWallpaperAnim] = useState(() => getSetting("wallpaper_anim"));
   const loadChatInfo = useCallback(() => {
     if (!chatId) return;
-    api.getChat(chatId).then((c) => setChatInfo(c)).catch(() => {});
+    api.getChat(chatId).then((c) => { if (c && c.id) { chatInfoCache.set(chatId, c); setChatInfo(c); } }).catch(() => {});
   }, [chatId]);
-  useEffect(() => { setChatInfo(null); loadChatInfo(); }, [loadChatInfo]);
+  useEffect(() => { setChatInfo(chatId ? chatInfoCache.get(chatId) || null : null); loadChatInfo(); }, [loadChatInfo, chatId]);
   useEffect(() => {
     const onWp = (e: Event) => { if ((e as CustomEvent).detail?.chat_id === chatId) loadChatInfo(); };
     const onSetting = (e: Event) => { if ((e as CustomEvent).detail?.key === "wallpaper_anim") setWallpaperAnim((e as CustomEvent).detail.value); };
@@ -262,6 +263,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   })();
   const wallpaperSrc = useMediaUrl(wallpaper?.url || null);
   const wallpaperPoster = useMediaUrl(wallpaper?.poster || null);
+  // На iOS <video> без жеста не стартует (энергосбережение) — там анимацию
+  // крутит WebP-картинка того же ролика: ей автозапуск не нужен.
+  const wallpaperAnimSrc = useMediaUrl(Capacitor.getPlatform() === "ios" ? wallpaper?.anim || null : null);
   // Профиль автора пересланного сообщения — по тапу на «Переслано от».
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
   // «Просмотры и реакции» — поимённый список из меню сообщения.
@@ -2263,7 +2267,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           анимация не выключена в настройках, иначе — его постер. */}
       {wallpaper && (wallpaperSrc || wallpaperPoster) && (
         <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden>
-          {wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
+          {wallpaper.kind === "video" && wallpaperAnim && wallpaperAnimSrc ? (
+            <>
+              {wallpaperPoster && <img src={wallpaperPoster} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+              <img src={wallpaperAnimSrc} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            </>
+          ) : wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
             <WallpaperVideo src={wallpaperSrc} poster={wallpaperPoster} />
           ) : (
             <img src={(wallpaper.kind === "video" ? wallpaperPoster : wallpaperSrc) || wallpaperSrc || undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -3494,6 +3503,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 const WAVE_BARS = 40;
 // Запасная «дорожка», пока волна грузится или если кодек не декодируется.
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
+
+const chatInfoCache = new Map<string, ChatFull>();
 
 /** Видео-обои. Пока видео реально не играет, его не видно вовсе (opacity 0) —
  *  вместе с системной кнопкой «play», которую WebKit рисует, если автозапуск

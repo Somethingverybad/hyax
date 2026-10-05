@@ -148,19 +148,19 @@ class ChatSerializer(serializers.ModelSerializer):
     def get_wallpaper(self, obj):
         if not obj.wallpaper_url:
             return None
-        return {"url": obj.wallpaper_url, "kind": obj.wallpaper_kind or "image", "poster": obj.wallpaper_poster}
+        return {"url": obj.wallpaper_url, "kind": obj.wallpaper_kind or "image", "poster": obj.wallpaper_poster, "anim": obj.wallpaper_anim}
 
     def get_my_wallpaper(self, obj):
         if hasattr(obj, 'my_wp_kind'):
-            kind, url, poster = obj.my_wp_kind, getattr(obj, 'my_wp_url', None), getattr(obj, 'my_wp_poster', None)
+            kind, url, poster, anim = obj.my_wp_kind, getattr(obj, 'my_wp_url', None), getattr(obj, 'my_wp_poster', None), getattr(obj, 'my_wp_anim', None)
         else:
             req = self.context.get('request')
             prof = getattr(getattr(req, 'user', None), 'profile', None) if req else None
-            cp = ChatParticipant.objects.filter(chat=obj, user=prof).only('wallpaper_kind', 'wallpaper_url', 'wallpaper_poster').first() if prof else None
-            kind, url, poster = (cp.wallpaper_kind, cp.wallpaper_url, cp.wallpaper_poster) if cp else ("", None, None)
+            cp = ChatParticipant.objects.filter(chat=obj, user=prof).only('wallpaper_kind', 'wallpaper_url', 'wallpaper_poster', 'wallpaper_anim').first() if prof else None
+            kind, url, poster, anim = (cp.wallpaper_kind, cp.wallpaper_url, cp.wallpaper_poster, cp.wallpaper_anim) if cp else ("", None, None, None)
         if not kind:
             return None
-        return {"url": url, "kind": kind, "poster": poster}
+        return {"url": url, "kind": kind, "poster": poster, "anim": anim}
 
     class Meta:
         model = Chat

@@ -198,6 +198,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     my_wp_kind=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_kind')[:1]),
                     my_wp_url=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_url')[:1]),
                     my_wp_poster=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_poster')[:1]),
+                    my_wp_anim=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_anim')[:1]),
                 )
                 # Прочитал ли последнее сообщение кто-то кроме автора — для
                 # второй галки в списке чатов.
@@ -2338,8 +2339,8 @@ class MediaSignView(APIView):
         # Обои чата: ключ wallpapers/… подписываем участнику чата, у которого
         # они стоят (общие или личные), — это не сообщение, в Message их нет.
         is_wallpaper = key.startswith('wallpapers/') and (
-            Chat.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker), participants=profile).exists()
-            or ChatParticipant.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker), user=profile).exists()
+            Chat.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker) | Q(wallpaper_anim=marker), participants=profile).exists()
+            or ChatParticipant.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker) | Q(wallpaper_anim=marker), user=profile).exists()
         )
         if not is_wallpaper and not in_my_playlist and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
@@ -3013,12 +3014,30 @@ def _make_wallpaper(src_path, ext):
         cmd = ["ffmpeg", "-y", "-i", src_path, "-frames:v", "1", "-vf", "scale='trunc(min(1600,iw)/2)*2:-2'", "-q:v", "3", out_full]
     subprocess.run(cmd, check=True, timeout=240, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     poster = _make_poster(out_full, out_rel) if is_video else None
+    # Анимированный WebP того же ролика (≤480 px, 15 к/с, ≤10 с): картинке
+    # не нужен автозапуск — iOS в энергосбережении <video> без тапа не играет.
+    anim = None
+    if is_video:
+        anim_rel = f"{key}.webp"
+        anim_full = os.path.join(settings.MEDIA_ROOT, anim_rel)
+        try:
+            subprocess.run(["ffmpeg", "-y", "-t", "10", "-i", out_full, "-an",
+                            "-vf", "scale='trunc(min(480,iw)/2)*2:-2',fps=15",
+                            "-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "65", "-compression_level", "4", "-loop", "0", anim_full],
+                           check=True, timeout=240, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if s3_enabled():
+                anim = s3_upload(anim_full, anim_rel, "image/webp")
+                os.remove(anim_full)
+            else:
+                anim = f"/media/{anim_rel}"
+        except Exception:
+            logger.exception("wallpaper: webp не получился — останется только mp4")
     if s3_enabled():
         url = s3_upload(out_full, out_rel, "video/mp4" if is_video else "image/jpeg")
         os.remove(out_full)
     else:
         url = f"/media/{out_rel}"
-    return url, ("video" if is_video else "image"), poster
+    return url, ("video" if is_video else "image"), poster, anim
 
 
 class ChatWallpaperView(APIView):
@@ -3074,7 +3093,7 @@ class ChatWallpaperView(APIView):
             for chunk in f.chunks():
                 tmp.write(chunk)
             tmp.close()
-            url, kind, poster = _make_wallpaper(tmp.name, ext)
+            url, kind, poster, anim = _make_wallpaper(tmp.name, ext)
         except Exception:
             logger.exception("wallpaper: конвертация не удалась")
             return Response({"error": "Не удалось обработать файл"}, status=400)
@@ -3084,13 +3103,13 @@ class ChatWallpaperView(APIView):
             except Exception:
                 pass
         if scope == "me":
-            cp.wallpaper_url, cp.wallpaper_kind, cp.wallpaper_poster = url, kind, poster
-            cp.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+            cp.wallpaper_url, cp.wallpaper_kind, cp.wallpaper_poster, cp.wallpaper_anim = url, kind, poster, anim
+            cp.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster", "wallpaper_anim"])
         else:
-            chat.wallpaper_url, chat.wallpaper_kind, chat.wallpaper_poster = url, kind, poster
-            chat.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+            chat.wallpaper_url, chat.wallpaper_kind, chat.wallpaper_poster, chat.wallpaper_anim = url, kind, poster, anim
+            chat.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster", "wallpaper_anim"])
             self._notify(chat, request)
-        return Response({"url": url, "kind": kind, "poster": poster, "scope": scope})
+        return Response({"url": url, "kind": kind, "poster": poster, "anim": anim, "scope": scope})
 
     def delete(self, request, pk):
         chat, cp, err = self._chat(request, pk)
@@ -3100,13 +3119,13 @@ class ChatWallpaperView(APIView):
         if scope == "me":
             # hide=1 — у меня без обоев, даже если у чата они есть; иначе — как у чата.
             hide = str(request.query_params.get("hide") or "").lower() in ("1", "true", "yes")
-            cp.wallpaper_url, cp.wallpaper_kind, cp.wallpaper_poster = None, ("none" if hide else ""), None
-            cp.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+            cp.wallpaper_url, cp.wallpaper_kind, cp.wallpaper_poster, cp.wallpaper_anim = None, ("none" if hide else ""), None, None
+            cp.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster", "wallpaper_anim"])
             return Response({"ok": True, "scope": "me", "kind": cp.wallpaper_kind})
         if chat.kind == "channel" and cp.role not in ("owner", "admin"):
             return Response({"error": "Обои канала меняет админ"}, status=403)
-        chat.wallpaper_url, chat.wallpaper_kind, chat.wallpaper_poster = None, "", None
-        chat.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+        chat.wallpaper_url, chat.wallpaper_kind, chat.wallpaper_poster, chat.wallpaper_anim = None, "", None, None
+        chat.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster", "wallpaper_anim"])
         self._notify(chat, request)
         return Response({"ok": True, "scope": "chat"})
 

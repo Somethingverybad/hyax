@@ -253,7 +253,7 @@ export interface PinnedInfo {
   preview: string;
 }
 
-export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null }
+export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null; anim?: string | null }
 
 export interface Chat {
   id: string;

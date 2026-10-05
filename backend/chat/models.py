@@ -124,6 +124,9 @@ class Chat(models.Model):
     wallpaper_url = models.TextField(blank=True, null=True)
     wallpaper_kind = models.CharField(max_length=8, blank=True, default="")
     wallpaper_poster = models.TextField(blank=True, null=True)
+    # Анимированный WebP того же видео: картинка не подчиняется запрету
+    # автозапуска WebKit (iOS в энергосбережении не пускает <video>).
+    wallpaper_anim = models.TextField(blank=True, null=True)
     default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     # Звук уведомлений канала: с ним подписчики получают пуши о новых постах,
     # если у самого поста нет аудио-стикера (см. _notify_new_message).
@@ -161,6 +164,7 @@ class ChatParticipant(models.Model):
     wallpaper_url = models.TextField(blank=True, null=True)
     wallpaper_kind = models.CharField(max_length=8, blank=True, default="")
     wallpaper_poster = models.TextField(blank=True, null=True)
+    wallpaper_anim = models.TextField(blank=True, null=True)
 
     class Meta:
         unique_together = ("chat", "user")
