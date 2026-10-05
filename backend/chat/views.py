@@ -194,6 +194,10 @@ class ChatViewSet(viewsets.ModelViewSet):
                         .filter(chat=OuterRef('pk'), user=profile)
                         .values('pinned_at')[:1]
                     ),
+                    # Мои личные обои (см. ChatSerializer.get_my_wallpaper).
+                    my_wp_kind=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_kind')[:1]),
+                    my_wp_url=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_url')[:1]),
+                    my_wp_poster=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_poster')[:1]),
                 )
                 # Прочитал ли последнее сообщение кто-то кроме автора — для
                 # второй галки в списке чатов.
@@ -2974,6 +2978,127 @@ class MyTracksView(APIView):
             if len(out) >= 200:
                 break
         return Response({"tracks": out})
+
+
+def _make_wallpaper(src_path, ext):
+    """Обои из загруженного файла → (url, kind, poster_url).
+
+    Картинки ужимаем до 1600 px по длинной стороне (jpg); gif и видео
+    превращаем в беззвучный mp4 ≤720p, ≤30 с, 24 к/с — gif в браузере на весь
+    экран ест процессор и память, mp4 в loop играет аппаратно. У видео делаем
+    постер — его показывают те, кто выключил анимацию обоев.
+    """
+    import subprocess
+    ext = (ext or "").lower()
+    is_video = ext in ('.gif', '.mp4', '.mov', '.webm', '.m4v', '.mkv')
+    key = f"wallpapers/{uuid.uuid4()}"
+    out_rel = f"{key}.mp4" if is_video else f"{key}.jpg"
+    out_full = os.path.join(settings.MEDIA_ROOT, out_rel)
+    os.makedirs(os.path.dirname(out_full), exist_ok=True)
+    if is_video:
+        cmd = ["ffmpeg", "-y", "-t", "30", "-i", src_path, "-an",
+               "-vf", "scale='trunc(min(720,iw)/2)*2:trunc(min(1280,ih)/2)*2:force_original_aspect_ratio=decrease',fps=24",
+               "-c:v", "libx264", "-crf", "30", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_full]
+    else:
+        cmd = ["ffmpeg", "-y", "-i", src_path, "-frames:v", "1", "-vf", "scale='trunc(min(1600,iw)/2)*2:-2'", "-q:v", "3", out_full]
+    subprocess.run(cmd, check=True, timeout=240, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    poster = _make_poster(out_full, out_rel) if is_video else None
+    if s3_enabled():
+        url = s3_upload(out_full, out_rel, "video/mp4" if is_video else "image/jpeg")
+        os.remove(out_full)
+    else:
+        url = f"/media/{out_rel}"
+    return url, ("video" if is_video else "image"), poster
+
+
+class ChatWallpaperView(APIView):
+    """Обои чата. POST multipart {file, scope=chat|me}; DELETE ?scope=chat|me
+    (scope=me при DELETE с ?hide=1 — «без обоев только у меня»).
+
+    Общие обои видят оба собеседника; личные — только их владелец и поверх
+    общих. В канале общие ставит только админ."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _chat(self, request, pk):
+        me = _prof(request)
+        chat = Chat.objects.filter(pk=pk).first()
+        if not me or not chat:
+            return None, None, Response({"error": "Чат не найден"}, status=404)
+        cp = ChatParticipant.objects.filter(chat=chat, user=me).first()
+        if not cp:
+            return None, None, Response({"error": "Вы не участник чата"}, status=403)
+        return chat, cp, None
+
+    def _notify(self, chat, request):
+        """Собеседникам — событие: обои сменились, пусть перечитают чат."""
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            layer = get_channel_layer()
+            if not layer:
+                return
+            for pid in chat.participants.values_list('id', flat=True):
+                async_to_sync(layer.group_send)(f"user_{pid}", {"type": "notification", "data": {"type": "wallpaper", "chat_id": str(chat.id)}})
+        except Exception:
+            logger.exception("wallpaper: сокет не ответил")
+
+    def post(self, request, pk):
+        chat, cp, err = self._chat(request, pk)
+        if err:
+            return err
+        scope = (request.data.get("scope") or "chat").lower()
+        if scope == "chat" and chat.kind == "channel" and cp.role not in ("owner", "admin"):
+            return Response({"error": "Обои канала меняет админ"}, status=403)
+        f = request.FILES.get("file")
+        if not f:
+            return Response({"error": "Нет файла"}, status=400)
+        if f.size > 60 * 1024 * 1024:
+            return Response({"error": "Файл больше 60 МБ"}, status=400)
+        import tempfile, shutil
+        ext = os.path.splitext(f.name or "")[1].lower() or (".mp4" if (f.content_type or "").startswith("video/") else ".jpg")
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.gif', '.mp4', '.mov', '.webm', '.m4v', '.mkv'):
+            return Response({"error": "Нужна картинка, gif или видео"}, status=400)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        try:
+            for chunk in f.chunks():
+                tmp.write(chunk)
+            tmp.close()
+            url, kind, poster = _make_wallpaper(tmp.name, ext)
+        except Exception:
+            logger.exception("wallpaper: конвертация не удалась")
+            return Response({"error": "Не удалось обработать файл"}, status=400)
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+        if scope == "me":
+            cp.wallpaper_url, cp.wallpaper_kind, cp.wallpaper_poster = url, kind, poster
+            cp.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+        else:
+            chat.wallpaper_url, chat.wallpaper_kind, chat.wallpaper_poster = url, kind, poster
+            chat.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+            self._notify(chat, request)
+        return Response({"url": url, "kind": kind, "poster": poster, "scope": scope})
+
+    def delete(self, request, pk):
+        chat, cp, err = self._chat(request, pk)
+        if err:
+            return err
+        scope = (request.query_params.get("scope") or "chat").lower()
+        if scope == "me":
+            # hide=1 — у меня без обоев, даже если у чата они есть; иначе — как у чата.
+            hide = str(request.query_params.get("hide") or "").lower() in ("1", "true", "yes")
+            cp.wallpaper_url, cp.wallpaper_kind, cp.wallpaper_poster = None, ("none" if hide else ""), None
+            cp.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+            return Response({"ok": True, "scope": "me", "kind": cp.wallpaper_kind})
+        if chat.kind == "channel" and cp.role not in ("owner", "admin"):
+            return Response({"error": "Обои канала меняет админ"}, status=403)
+        chat.wallpaper_url, chat.wallpaper_kind, chat.wallpaper_poster = None, "", None
+        chat.save(update_fields=["wallpaper_url", "wallpaper_kind", "wallpaper_poster"])
+        self._notify(chat, request)
+        return Response({"ok": True, "scope": "chat"})
 
 
 class ChannelSubscribeView(APIView):

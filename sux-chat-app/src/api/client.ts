@@ -253,9 +253,14 @@ export interface PinnedInfo {
   preview: string;
 }
 
-interface Chat {
+export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null }
+
+export interface Chat {
   id: string;
   participants: Profile[];
+  /** Общие обои чата и моя личная замена (kind "none" — скрыть у себя). */
+  wallpaper?: ChatWallpaper | null;
+  my_wallpaper?: ChatWallpaper | null;
   created_at?: string;
   is_group?: boolean;
   /** direct · group · channel · saved («Избранное»). */
@@ -907,6 +912,20 @@ export const api = {
   subscribeChannel: async (id: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
     return res.json();
+  },
+  /** Обои чата: файл (фото/gif/видео) → сервер ужмёт; scope chat — для всех, me — только мне. */
+  setChatWallpaper: async (chatId: string, file: File, scope: "chat" | "me"): Promise<ChatWallpaper> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("scope", scope);
+    const res = await fetchWithAuthMultipart(`${API_URL}/chats/${chatId}/wallpaper/`, { method: "POST", body: fd });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Не удалось поставить обои");
+    return d;
+  },
+  clearChatWallpaper: async (chatId: string, scope: "chat" | "me", hide = false): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/wallpaper/?scope=${scope}${hide ? "&hide=1" : ""}`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не вышло");
   },
   /** Кто прочитал сообщение и кто какие реакции поставил (поимённо). */
   messageViewers: async (messageId: string): Promise<{

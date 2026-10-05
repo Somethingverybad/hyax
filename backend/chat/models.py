@@ -118,6 +118,12 @@ class Chat(models.Model):
     is_public = models.BooleanField(default=True)   # в MVP всегда True (в общем поиске)
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
     subscribers_count = models.IntegerField(default=0)
+    # Обои чата — общие для всех участников (ставит любой участник, в канале —
+    # админ). kind: image | video; у видео есть постер для тех, кто выключил
+    # анимацию. Личная замена — в ChatParticipant.
+    wallpaper_url = models.TextField(blank=True, null=True)
+    wallpaper_kind = models.CharField(max_length=8, blank=True, default="")
+    wallpaper_poster = models.TextField(blank=True, null=True)
     default_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     # Звук уведомлений канала: с ним подписчики получают пуши о новых постах,
     # если у самого поста нет аудио-стикера (см. _notify_new_message).
@@ -150,6 +156,11 @@ class ChatParticipant(models.Model):
     # Постить в канал могут только owner/admin.
     role = models.CharField(max_length=12, default="member")
     muted = models.BooleanField(default=False)  # подписчик отключил пуши канала
+    # Свои обои только для себя: kind "" — как у чата, "none" — без обоев,
+    # image/video — свой файл.
+    wallpaper_url = models.TextField(blank=True, null=True)
+    wallpaper_kind = models.CharField(max_length=8, blank=True, default="")
+    wallpaper_poster = models.TextField(blank=True, null=True)
 
     class Meta:
         unique_together = ("chat", "user")

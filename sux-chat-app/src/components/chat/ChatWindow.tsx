@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
@@ -29,6 +29,9 @@ import ChannelLinkCard from "./ChannelLinkCard";
 import ShareToChat from "@/components/ShareToChat";
 import PhotoEditor from "@/components/PhotoEditor";
 import TrackPicker from "./TrackPicker";
+import WallpaperSheet from "./WallpaperSheet";
+import { getSetting } from "@/lib/settings";
+import type { Chat as ChatFull } from "@/api/client";
 import type { PlaylistTrack } from "@/api/client";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
@@ -218,6 +221,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const soundStopRef = useRef<(() => void) | null>(null);
   // Просмотр профиля собеседника (тап по имени в шапке, только 1:1).
   const [profileOpen, setProfileOpen] = useState(false);
+  // Обои: чат целиком (с wallpaper/my_wallpaper) подтягиваем отдельно и
+  // перечитываем по событию от собеседника. Меню «⋮» — профиль/настройки и обои.
+  const [chatInfo, setChatInfo] = useState<ChatFull | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [wallpaperOpen, setWallpaperOpen] = useState(false);
+  const [wallpaperAnim, setWallpaperAnim] = useState(() => getSetting("wallpaper_anim"));
+  const loadChatInfo = useCallback(() => {
+    if (!chatId) return;
+    api.getChat(chatId).then((c) => setChatInfo(c)).catch(() => {});
+  }, [chatId]);
+  useEffect(() => { setChatInfo(null); loadChatInfo(); }, [loadChatInfo]);
+  useEffect(() => {
+    const onWp = (e: Event) => { if ((e as CustomEvent).detail?.chat_id === chatId) loadChatInfo(); };
+    const onSetting = (e: Event) => { if ((e as CustomEvent).detail?.key === "wallpaper_anim") setWallpaperAnim((e as CustomEvent).detail.value); };
+    window.addEventListener("hyax:wallpaper", onWp);
+    window.addEventListener("hyax:setting", onSetting);
+    return () => { window.removeEventListener("hyax:wallpaper", onWp); window.removeEventListener("hyax:setting", onSetting); };
+  }, [chatId, loadChatInfo]);
+  // Действующие обои: личные перекрывают общие; "none" — скрыты у меня.
+  const wallpaper = (() => {
+    const my = chatInfo?.my_wallpaper, shared = chatInfo?.wallpaper;
+    if (my?.kind === "none") return null;
+    const w = my?.url ? my : shared;
+    return w?.url ? w : null;
+  })();
+  const wallpaperSrc = useMediaUrl(wallpaper?.url || null);
+  const wallpaperPoster = useMediaUrl(wallpaper?.poster || null);
   // Профиль автора пересланного сообщения — по тапу на «Переслано от».
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
   // «Просмотры и реакции» — поимённый список из меню сообщения.
@@ -2184,14 +2214,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </button>
           )}
           {(peer || isGroup) && (
-            <button
-              type="button"
-              onClick={() => (peer ? setProfileOpen(true) : setGroupOpen(true))}
-              className="p-2 -mr-2 text-foreground active:text-primary"
-              aria-label={peer ? "Профиль" : "Настройки группы"}
-            >
-              <MoreVertical className="w-5 h-5" />
-            </button>
+            <span className="relative">
+              <button
+                type="button"
+                onClick={() => setHeaderMenuOpen((v) => !v)}
+                className="p-2 -mr-2 text-foreground active:text-primary"
+                aria-label="Меню чата"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+              {headerMenuOpen && (
+                <>
+                  <span className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
+                  <span className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg bg-surface-1 border border-border shadow-xl py-1 flex flex-col">
+                    <button type="button" onClick={() => { setHeaderMenuOpen(false); peer ? setProfileOpen(true) : setGroupOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                      {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? "Профиль" : "Настройки группы"}
+                    </button>
+                    <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                      <ImageIcon className="w-5 h-5 text-foreground/80" />Обои чата
+                    </button>
+                  </span>
+                </>
+              )}
+            </span>
           )}
         </div>
       )}
@@ -2199,6 +2244,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           переписки и не меняет её высоту — раньше её появление укорачивало
           ленту уже после доводки, и сообщения дёргались. */}
       <div className="relative flex-1 min-h-0 flex flex-col">
+      {/* Обои: слой под лентой на весь экран чата; видео крутится, если
+          анимация не выключена в настройках, иначе — его постер. */}
+      {wallpaper && (wallpaperSrc || wallpaperPoster) && (
+        <div className="absolute inset-0 z-0 overflow-hidden" aria-hidden>
+          {wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
+            <video src={wallpaperSrc} poster={wallpaperPoster || undefined} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <img src={(wallpaper.kind === "video" ? wallpaperPoster : wallpaperSrc) || wallpaperSrc || undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          )}
+          <div className="absolute inset-0 bg-black/20" />
+        </div>
+      )}
       {jumping && (
         <div className="absolute top-0 left-0 right-0 z-30 h-0.5 bg-primary/30 overflow-hidden" aria-hidden>
           <div className="h-full w-1/3 bg-primary animate-[msg-in_0.9s_ease-in-out_infinite_alternate]" />
@@ -2231,7 +2288,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <div
         ref={scrollRef}
         onScroll={onFeedScroll}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6"
+        className={cn("relative z-[1] flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6", wallpaper && "!bg-transparent")}
         onTouchStart={(e) => { feedTouchRef.current = true; markUserScroll(); kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
         onTouchMoveCapture={markUserScroll}
         onWheel={markUserScroll}
@@ -3341,6 +3398,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
       {viewersFor && (
         <ViewersSheet messageId={viewersFor} onClose={() => setViewersFor(null)} onOpenProfile={(id) => { if (id !== userId) setViewProfileId(id); }} />
+      )}
+      {wallpaperOpen && chatInfo && (
+        <WallpaperSheet chat={chatInfo} onClose={() => setWallpaperOpen(false)} onChanged={loadChatInfo} />
       )}
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),

@@ -140,10 +140,31 @@ class ChatSerializer(serializers.ModelSerializer):
     # Время последнего сообщения — по нему клиент сортирует список. updated_at
     # у чата меняется и от переименования, и от смены аватара.
     last_message_at = serializers.SerializerMethodField()
+    # Обои: общие у чата и моя личная замена (аннотации my_wp_* из get_queryset,
+    # иначе — запрос по участнику).
+    wallpaper = serializers.SerializerMethodField()
+    my_wallpaper = serializers.SerializerMethodField()
+
+    def get_wallpaper(self, obj):
+        if not obj.wallpaper_url:
+            return None
+        return {"url": obj.wallpaper_url, "kind": obj.wallpaper_kind or "image", "poster": obj.wallpaper_poster}
+
+    def get_my_wallpaper(self, obj):
+        if hasattr(obj, 'my_wp_kind'):
+            kind, url, poster = obj.my_wp_kind, getattr(obj, 'my_wp_url', None), getattr(obj, 'my_wp_poster', None)
+        else:
+            req = self.context.get('request')
+            prof = getattr(getattr(req, 'user', None), 'profile', None) if req else None
+            cp = ChatParticipant.objects.filter(chat=obj, user=prof).only('wallpaper_kind', 'wallpaper_url', 'wallpaper_poster').first() if prof else None
+            kind, url, poster = (cp.wallpaper_kind, cp.wallpaper_url, cp.wallpaper_poster) if cp else ("", None, None)
+        if not kind:
+            return None
+        return {"url": url, "kind": kind, "poster": poster}
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper']
 
     def get_pinned_at(self, obj):
         v = getattr(obj, 'my_pinned_at', None)
