@@ -5,7 +5,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen } from "lucide-react";
 import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
@@ -279,6 +279,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Запись закреплена свайпом вверх: палец отпущен, запись идёт; тап по
   // кнопке — отправить, корзина в плашке — отменить (как в Telegram).
   const [recLocked, setRecLocked] = useState(false);
+  // Насколько палец ушёл вверх к закреплению (0..1): замок над кнопкой
+  // поднимается вместе с ним и захлопывается на единице.
+  const [lockProgress, setLockProgress] = useState(0);
   const recLockedRef = useRef(false);
   const lockGestureRef = useRef(false); // палец ещё лежит после закрепления
   // Расшифровки, свёрнутые обратно по «Свернуть»: показываем снова «Аа».
@@ -1890,8 +1893,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const from = holdStartRef.current;
     if (!from || recLockedRef.current) return;
     // Влево — отмена, вверх — закрепить (палец можно отпустить), как в Telegram.
-    if (from.y - e.clientY > 70 && startedRef.current && recordKind !== "rov") {
+    const up = from.y - e.clientY;
+    if (startedRef.current && recordKind !== "rov") setLockProgress(Math.max(0, Math.min(1, up / 70)));
+    if (up > 70 && startedRef.current && recordKind !== "rov") {
       recLockedRef.current = true; setRecLocked(true); lockGestureRef.current = true;
+      setLockProgress(1);
       cancelArmedRef.current = false; setCancelArmed(false);
       recHaptic(true);
       return;
@@ -1905,6 +1911,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const finishLocked = async (cancel: boolean) => {
     if (!recLockedRef.current) return;
     recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
+    setLockProgress(0);
     startedRef.current = false;
     cancelArmedRef.current = false; setCancelArmed(false);
     if (!cancel) setRecPhase("finishing");
@@ -1928,6 +1935,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (!forceCancel) await finishLocked(false);
       return;
     }
+    setLockProgress(0);
     const cancel = forceCancel || cancelArmedRef.current;
     holdStartRef.current = null;
 
@@ -3133,6 +3141,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <SwitchCamera className="w-5 h-5" />
                   </button>
                 )}
+                <span className="relative shrink-0 md:ml-3">
+                {/* Замок над кнопкой: пока держишь — открытый, поднимается за
+                    пальцем; на закреплении захлопывается с «подпрыгиванием». */}
+                {(recLocked || (recording && recPhase === "idle" && recordKind !== "rov")) && (
+                  <span
+                    className="pointer-events-none absolute left-1/2 bottom-full flex flex-col items-center gap-1"
+                    style={{
+                      transform: `translate(-50%, ${-(14 + (recLocked ? 1 : lockProgress) * 28)}px)`,
+                      transition: lockProgress === 0 || recLocked ? "transform 180ms ease-out" : "none",
+                    }}
+                    aria-hidden
+                  >
+                    {!recLocked && <ChevronUp className="w-4 h-4 text-muted-foreground" style={{ opacity: 1 - lockProgress }} />}
+                    <span className={cn(
+                      "w-9 h-9 rounded-full flex items-center justify-center shadow-md border",
+                      recLocked ? "bg-primary text-primary-foreground border-primary lock-pop" : "bg-surface-2 text-foreground border-border",
+                    )}>
+                      {recLocked ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" style={{ transform: `rotate(${-lockProgress * 12}deg)` }} />}
+                    </span>
+                  </span>
+                )}
                 <button
                   type="button"
                   onPointerDown={beginRecording}
@@ -3142,7 +3171,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   disabled={uploading}
                   style={{ touchAction: "none" }}
                   className={cn(
-                    "h-11 w-11 shrink-0 md:ml-3 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
+                    "h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
                     // Вдавливается сразу на касание — до того, как проснётся микрофон.
                     recPressed && "scale-90",
                     recording || roving || recPhase !== "idle" ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
@@ -3164,6 +3193,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     : recordKind === "rov" ? <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />
                     : <Mic className="w-5 h-5" />}
                 </button>
+                </span>
               </>
             )}
           </div>
@@ -3391,18 +3421,37 @@ const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 3
 
 // Скорость воспроизведения голосовых — одна на все сообщения, как в Telegram:
 // выбрал 1.5× — следующее голосовое тоже пойдёт на 1.5×.
-const VOICE_RATES = [1, 1.5, 2, 0.5];
+const VOICE_RATES = [1, 1.5, 2, 0.5];            // короткий тап — по кругу
+const VOICE_RATES_ALL = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]; // долгое нажатие — список
 let voiceRate = 1;
 
 const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(voiceRate);
-  const cycleRate = () => {
-    const next = VOICE_RATES[(VOICE_RATES.indexOf(voiceRate) + 1) % VOICE_RATES.length];
+  const [rateMenu, setRateMenu] = useState(false);
+  const rateHold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rateHeld = useRef(false);
+  const applyRate = (next: number) => {
     voiceRate = next;
     setRate(next);
     if (audioRef.current) audioRef.current.playbackRate = next;
+  };
+  const cycleRate = () => {
+    const i = VOICE_RATES.indexOf(voiceRate);
+    applyRate(VOICE_RATES[(i + 1) % VOICE_RATES.length]);
+  };
+  // Кнопка скорости: короткий тап — следующая по кругу, долгое нажатие — список.
+  const rateDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    rateHeld.current = false;
+    if (rateHold.current) clearTimeout(rateHold.current);
+    rateHold.current = setTimeout(() => { rateHeld.current = true; setRateMenu(true); }, 380);
+  };
+  const rateUp = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (rateHold.current) { clearTimeout(rateHold.current); rateHold.current = null; }
+    if (!rateHeld.current) cycleRate();
   };
   const [progress, setProgress] = useState(0); // 0..1 по времени воспроизведения
   const [peaks, setPeaks] = useState<number[] | null>(null);
@@ -3465,15 +3514,40 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
       </span>
       <span className="text-xs opacity-80 shrink-0">{label}</span>
     </button>
-    {/* Скорость: 1× → 1.5× → 2× → 0.5× — по кругу, общая для всех голосовых. */}
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); cycleRate(); }}
-      className={cn("h-7 min-w-[2.4rem] px-1.5 shrink-0 rounded-md text-[11px] font-semibold tabular-nums", rate === 1 ? "bg-black/15 opacity-80" : "bg-black/30")}
-      aria-label={`Скорость ${rate}×`}
-    >
-      {rate}×
-    </button>
+    {/* Скорость: тап — 1× → 1.5× → 2× → 0.5× по кругу, долгое нажатие —
+        список от 0.5 до 2; выбор общий для всех голосовых. */}
+    <span className="relative shrink-0">
+      <button
+        type="button"
+        onPointerDown={rateDown}
+        onPointerUp={rateUp}
+        onPointerCancel={() => { if (rateHold.current) clearTimeout(rateHold.current); }}
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setRateMenu(true); }}
+        onClick={(e) => e.stopPropagation()}
+        style={{ touchAction: "none" }}
+        className={cn("h-7 min-w-[2.4rem] px-1.5 rounded-md text-[11px] font-semibold tabular-nums select-none", rate === 1 ? "bg-black/15 opacity-80" : "bg-black/30")}
+        aria-label={`Скорость ${rate}×`}
+      >
+        {rate}×
+      </button>
+      {rateMenu && (
+        <>
+          <span className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setRateMenu(false); }} aria-hidden />
+          <span className="absolute z-50 bottom-full right-0 mb-1 w-20 rounded-lg bg-surface-1 border border-border shadow-xl py-1 flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {VOICE_RATES_ALL.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={(e) => { e.stopPropagation(); applyRate(r); setRateMenu(false); }}
+                className={cn("h-8 px-3 text-left text-small tabular-nums active:bg-surface-3", r === rate ? "text-primary font-semibold" : "text-foreground")}
+              >
+                {r}×
+              </button>
+            ))}
+          </span>
+        </>
+      )}
+    </span>
     </div>
   );
 };

@@ -8,6 +8,8 @@
  * поэтому короткие звуки не «захватывают» локскрин.
  */
 
+import { getSetting } from "./settings";
+
 let ctx: AudioContext | null = null;
 const cache = new Map<string, Promise<AudioBuffer>>();
 
@@ -69,6 +71,8 @@ export async function playSfx(
   url: string,
   opts: { volume?: number; loop?: boolean; onEnded?: () => void; tap?: boolean } = {}
 ): Promise<() => void> {
+  // Звук отправки выключен в настройках — молчим (локальная настройка устройства).
+  if (url.includes("/sounds/send") && !getSetting("sfx_send")) return () => {};
   const c = context();
   if (!c) return () => {};
   let tapActive = false;

@@ -5,6 +5,7 @@ import { api } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 import SoundPicker from "@/components/SoundPicker";
 import { toast } from "sonner";
 import { Music2, Library } from "lucide-react";
@@ -59,11 +60,30 @@ const ProfileNotifications = () => {
     }
   };
 
+  // Звук отправки — локально на устройстве, без сервера.
+  const [sfxSend, setSfxSend] = useState(() => getSetting("sfx_send"));
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title="Уведомления" />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        <SettingsCard>
+          <SettingsRow
+            label="Звук отправки сообщений"
+            hint={sfxSend ? "Короткий звук при каждой отправке" : "Отправка без звука"}
+            trailing={
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                aria-label="Звук отправки сообщений"
+                checked={sfxSend}
+                onChange={(e) => { setSfxSend(e.target.checked); setSetting("sfx_send", e.target.checked); }}
+              />
+            }
+          />
+        </SettingsCard>
+
         {profile && (
           <SettingsCard>
             {/* «Мой звук»: собеседники получают пуши о моих сообщениях с этим
