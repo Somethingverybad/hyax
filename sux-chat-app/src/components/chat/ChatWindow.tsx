@@ -233,6 +233,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
   // отправителя, и у получателя — по событию из сокета, см. Chat.tsx).
   const [burst, setBurst] = useState<{ url: string; key: number } | null>(null);
+  // Пришли в чат, где лежит непрочитанный «глюк-стикер» — разыгрываем один
+  // раз (по id, с памятью в localStorage), не ждём живого события.
+  useEffect(() => {
+    if (!chatId) return;
+    const fresh = Date.now() - 48 * 3600 * 1000;
+    const cand = [...messages].reverse().find((m) =>
+      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.is_read && !m.pending
+      && (Date.parse(m.created_at) || 0) > fresh && !playedBursts.has(m.id));
+    if (!cand) return;
+    playedBursts.add(cand.id);
+    try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
+    setBurst({ url: cand.sticker!.file_url, key: Date.now() });
+  }, [messages, chatId, userId]);
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent).detail;
@@ -1069,11 +1082,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   }, []);
 
   /** Приращение с сервера: всё, что менялось после последней синхронизации. */
+  // Текущий чат для проверок после await: closure-переменная chatId в
+  // syncSince — это чат на момент создания функции, и сравнение с ней было
+  // всегда истинным. Так ответ синхронизации одного чата вливался в ленту
+  // другого (баг-репорт b9b8cf14: стикер из чата EvilTree в чате с peer).
+  const chatIdRef = useRef(chatId);
+  chatIdRef.current = chatId;
   const syncSince = async (id: string | null = chatId) => {
     if (!id) return;
     try {
       const r = await api.syncMessages(id, syncedAtRef.current ? { since: syncedAtRef.current } : { limit: 50 });
-      if (id !== chatId) return; // чат успели переключить
+      if (id !== chatIdRef.current) return; // чат успели переключить
       syncedAtRef.current = r.now;
       if (r.messages.length || r.deleted.length) applyBatch(r.messages, r.deleted);
       // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
@@ -1103,7 +1122,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setLoadingOlder(true);
     try {
       const r = await api.syncMessages(id, { before: first.created_at, limit: 50 });
-      if (id !== chatId) return false;
+      if (id !== chatIdRef.current) return false;
       const el = scrollRef.current;
       if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
       setHasMore(r.has_more);
@@ -3500,6 +3519,8 @@ const WAVE_BARS = 40;
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
 
 const chatInfoCache = new Map<string, ChatFull>();
+// Уже разыгранные «глюк-стикеры» — чтобы при каждом входе не сыпалось заново.
+const playedBursts = new Set<string>((() => { try { return JSON.parse(localStorage.getItem("hyax:bursts") || "[]"); } catch { return []; } })());
 
 /** Видео-обои. Основной путь — <video>: аппаратно, плавно. Пока оно реально
  *  не играет, его не видно (opacity 0 прячет и системную кнопку «play»), снизу
