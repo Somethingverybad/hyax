@@ -33,7 +33,8 @@ interface UserStickerPack {
 }
 
 interface StickerPickerProps {
-  onSelect: (sticker: Sticker) => void;
+  /** burst — стикер выбрали долгим удержанием: у получателя он «высыплется» по экрану. */
+  onSelect: (sticker: Sticker, burst?: boolean) => void;
   /** Аудио-стикеры живут в этой же панели: отдельная кнопка рядом со
    *  стикерами дробила один и тот же сценарий «отправить что-то забавное». */
   sounds?: NotificationSoundInfo[];
@@ -55,6 +56,9 @@ const StickerPicker = ({
   onSelectSound,
 }: StickerPickerProps) => {
   const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
+  // Долгое удержание стикера (burst): таймер и флаг, чтобы click после него не сработал.
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdFiredRef = useRef(false);
   const [soundView, setSoundView] = useState<string | null>(() => {
     try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
   });
@@ -504,8 +508,20 @@ const StickerPicker = ({
               <button
                 key={s.id}
                 type="button"
-                onClick={() => { if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else onSelect(s); }}
-                className={cn("relative aspect-square rounded-lg p-1 active:scale-90 transition-transform", editMode && isAuthor && "ring-1 ring-primary/50")}
+                // Долгое удержание (450 мс) — отправить «глюком»; обычный тап — как всегда.
+                onPointerDown={() => {
+                  if (editMode) return;
+                  holdFiredRef.current = false;
+                  if (holdRef.current) clearTimeout(holdRef.current);
+                  holdRef.current = setTimeout(() => { holdFiredRef.current = true; onSelect(s, true); }, 450);
+                }}
+                onPointerUp={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+                onPointerLeave={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+                onPointerCancel={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => { if (holdFiredRef.current) { holdFiredRef.current = false; return; } if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else onSelect(s); }}
+                style={{ touchAction: "pan-y" }}
+                className={cn("relative aspect-square rounded-lg p-1 active:scale-90 transition-transform select-none", editMode && isAuthor && "ring-1 ring-primary/50")}
               >
                 <StickerView url={s.file_url} alt={s.emoji || ""} className="w-full h-full object-contain" />
                 {s.keyword && (

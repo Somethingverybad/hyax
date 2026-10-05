@@ -225,6 +225,9 @@ class Message(models.Model):
     # по рядам. Ставит только бот (см. MessageSerializer.validate_buttons):
     # иначе любой мог бы подделать вид сообщения от бота.
     buttons = models.JSONField(default=list, blank=True)
+    # Эффект при получении: "" — нет, "burst" — стикер «высыпается» по экрану
+    # получателя (долгое удержание стикера при отправке).
+    effect = models.CharField(max_length=16, blank=True, default="")
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех
     # Момент последнего изменения (текст, удаление у всех). По нему клиент
     # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,

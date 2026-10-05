@@ -457,6 +457,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           const m = msg?.data?.message ?? msg?.message;
           const chatId = msg?.data?.chat_id ?? m?.chat;
           const senderId = m?.sender?.id;
+          // «Глюк-стикер» от собеседника: открытый чат разыграет эффект.
+          if (m?.effect === "burst" && m?.sticker?.file_url && senderId && senderId !== user?.id) {
+            window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url } }));
+          }
           const active = document.visibilityState === "visible" &&
             chatId && String(chatId) === selectedChatIdRef.current;
           // Открытая переписка обновляется сразу, даже если вкладка в фоне:

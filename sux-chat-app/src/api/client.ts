@@ -1380,7 +1380,7 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string): Promise<any> => {
+  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: "burst"): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
@@ -1389,6 +1389,7 @@ export const api = {
         content: content || null,
         sticker_id: stickerId,
         reply_to_id: replyToId || undefined,
+        effect: effect || undefined,
       }),
     });
     if (!res.ok) throw new Error("Failed to send sticker");

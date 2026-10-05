@@ -1340,6 +1340,10 @@ class MessageViewSet(viewsets.ModelViewSet):
                 save_kwargs['sticker'] = sticker
             except Sticker.DoesNotExist:
                 return Response({"error": "Sticker not found"}, status=400)
+            # Эффект получения — только у стикеров и только из известного набора.
+            effect = str(request.data.get('effect') or '')
+            if effect in ('burst',):
+                save_kwargs['effect'] = effect
 
         # Аудио-стикер: звук, который прозвучит у получателя.
         sound_id = request.data.get('sound_id')

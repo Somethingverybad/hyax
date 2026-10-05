@@ -30,6 +30,7 @@ import ShareToChat from "@/components/ShareToChat";
 import PhotoEditor from "@/components/PhotoEditor";
 import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
+import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
 import type { PlaylistTrack } from "@/api/client";
@@ -143,6 +144,8 @@ interface Message {
   forwarded_chat?: { id: string; name: string; username?: string | null; avatar_url?: string | null } | null;
   /** Inline-бот, через которого отправлено («@ytbot mp3 …»). */
   via_bot?: { id: string; username: string } | null;
+  /** Эффект получения: burst — стикер высыпается по экрану. */
+  effect?: string;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -226,6 +229,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [chatInfo, setChatInfo] = useState<ChatFull | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
+  // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
+  // отправителя, и у получателя — по событию из сокета, см. Chat.tsx).
+  const [burst, setBurst] = useState<{ url: string; key: number } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.chat_id === chatId && d?.url) setBurst({ url: d.url, key: Date.now() });
+    };
+    window.addEventListener("hyax:burst", on);
+    return () => window.removeEventListener("hyax:burst", on);
+  }, [chatId]);
   const [wallpaperAnim, setWallpaperAnim] = useState(() => getSetting("wallpaper_anim"));
   const loadChatInfo = useCallback(() => {
     if (!chatId) return;
@@ -1412,8 +1426,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   /** Стикер уходит так же, как текст: появляется в ленте сразу, с той же
    *  анимацией, а ответ сервера подменяет временное сообщение. Раньше он ждал
    *  ответа и перезагружал всю ленту — стикер возникал рывком и не по месту. */
-  const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }) => {
+  const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }, burstMode = false) => {
     noteStickerUsed(sticker.id); // частые — первыми в подсказках
+    if (burstMode) setBurst({ url: sticker.file_url, key: Date.now() }); // отправитель видит глюк у себя тоже
     if (!chatId) return;
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: Message = {
@@ -1433,7 +1448,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
     try {
-      const sent = await api.sendMessageWithSticker(chatId, sticker.id);
+      const sent = await api.sendMessageWithSticker(chatId, sticker.id, undefined, undefined, burstMode ? "burst" : undefined);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id)
           ? prev.filter((m) => m.id !== tempId)
@@ -3054,7 +3069,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {stickersOpen && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
-                onSelect={(sticker) => { setStickersOpen(false); void sendSticker(sticker); }}
+                onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
@@ -3402,6 +3417,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {wallpaperOpen && chatInfo && (
         <WallpaperSheet chat={chatInfo} onClose={() => setWallpaperOpen(false)} onChanged={loadChatInfo} />
       )}
+      {burst && <StickerBurst key={burst.key} url={burst.url} onDone={() => setBurst(null)} />}
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),
           «Избранное» — первой строкой. */}
