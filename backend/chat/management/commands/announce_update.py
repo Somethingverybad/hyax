@@ -1,9 +1,9 @@
-"""Обновлямбус — бот-рассылка заметок об обновлении.
+"""Фуфелшмерц Пакость Инкорпорейтед — бот-рассылка заметок об обновлении.
 
     python manage.py announce_update "Текст заметки"
     python manage.py announce_update --from-manifest   # notes из nginx/apk-page/version.json
 
-Бот создаётся при первом запуске (username obnovlyambus, readonly_bot=True —
+Бот создаётся при первом запуске (имя в чате — BOT_USERNAME, readonly_bot=True —
 писать ему нельзя, MessageViewSet.create отбивает). Каждому живому
 пользователю (не боту) — личка с ботом (создаётся, если нет) и одно
 сообщение; дальше обычный путь: сокет чата, пуш, личные уведомления.
@@ -18,12 +18,13 @@ from django.utils import timezone
 
 from chat.models import Chat, ChatParticipant, Message, Profile
 
-BOT_USERNAME = "obnovlyambus"
-BOT_BIO = "Обновлямбус. Рассказываю, что нового в WhoYaX. Писать мне бесполезно — я только читаю релиз-ноты вслух."
+BOT_USERNAME = "Фуфелшмерц Пакость Инкорпорейтед"   # имя в чате (Profile.username)
+BOT_LOGIN = "doofenshmirtz_evil_inc"                 # учётка Django — латиницей, никому не видна
+BOT_BIO = "Доктор Хайнц Фуфелшмерц. Изобретаю обновляторы для WhoYaX и рассказываю о них. Писать мне бесполезно — я только вещать."
 
 
 class Command(BaseCommand):
-    help = "Разослать всем пользователям заметку об обновлении от бота Обновлямбус"
+    help = "Разослать всем пользователям заметку об обновлении от бота Фуфелшмерц Пакость Инкорпорейтед"
 
     def add_arguments(self, parser):
         parser.add_argument("text", nargs="?", default="")
@@ -43,7 +44,7 @@ class Command(BaseCommand):
         bot = Profile.objects.filter(username=BOT_USERNAME).first()
         if not bot:
             User = get_user_model()
-            user = User.objects.create(username=BOT_USERNAME, email=f"{BOT_USERNAME}@bot.local", is_active=True)
+            user = User.objects.create(username=BOT_LOGIN, email=f"{BOT_LOGIN}@bot.local", is_active=True)
             user.set_unusable_password()
             user.save()
             bot = Profile.objects.create(user=user, username=BOT_USERNAME, is_bot=True, readonly_bot=True,
