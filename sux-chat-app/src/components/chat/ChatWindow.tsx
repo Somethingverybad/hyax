@@ -3496,24 +3496,45 @@ const WAVE_BARS = 40;
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
 
 /** Видео-обои. React не пишет атрибут muted в DOM, а WebKit разрешает
- *  автозапуск только немому видео с атрибутом — ставим его руками и
- *  запускаем сами; не вышло (режим энергосбережения) — показываем постер. */
+ *  автозапуск только немому видео с атрибутом — ставим его руками. Если
+ *  автозапуск всё равно запрещён (режим энергосбережения iOS), системную
+ *  кнопку «play» прячем (CSS .wallpaper-video), показываем постер и
+ *  запускаем видео при первом касании экрана — жест WebKit устраивает. */
 const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }) => {
   const ref = useRef<HTMLVideoElement>(null);
-  const [failed, setFailed] = useState(false);
+  const [broken, setBroken] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    setFailed(false);
+    setBroken(false);
     el.muted = true;
     el.defaultMuted = true;
     el.setAttribute("muted", "");
     el.setAttribute("playsinline", "");
-    const tryPlay = () => el.play().catch(() => setFailed(true));
+    let gestureBound = false;
+    const onGesture = () => {
+      window.removeEventListener("touchend", onGesture);
+      window.removeEventListener("pointerdown", onGesture);
+      gestureBound = false;
+      el.play().catch(() => {});
+    };
+    const tryPlay = () => {
+      el.play().catch(() => {
+        // Без жеста нельзя — ждём первое касание и пробуем снова.
+        if (gestureBound) return;
+        gestureBound = true;
+        window.addEventListener("touchend", onGesture, { passive: true });
+        window.addEventListener("pointerdown", onGesture, { passive: true });
+      });
+    };
     if (el.readyState >= 2) tryPlay(); else el.addEventListener("loadeddata", tryPlay, { once: true });
-    return () => el.removeEventListener("loadeddata", tryPlay);
+    return () => {
+      el.removeEventListener("loadeddata", tryPlay);
+      window.removeEventListener("touchend", onGesture);
+      window.removeEventListener("pointerdown", onGesture);
+    };
   }, [src]);
-  if (failed && poster) return <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />;
+  if (broken && poster) return <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />;
   return (
     <video
       ref={ref}
@@ -3524,8 +3545,9 @@ const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }
       muted
       playsInline
       preload="auto"
-      onError={() => setFailed(true)}
-      className="absolute inset-0 w-full h-full object-cover"
+      disablePictureInPicture
+      onError={() => setBroken(true)}
+      className="wallpaper-video absolute inset-0 w-full h-full object-cover"
     />
   );
 };
