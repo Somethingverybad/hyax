@@ -2264,7 +2264,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {wallpaper && (wallpaperSrc || wallpaperPoster) && (
         <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden>
           {wallpaper.kind === "video" && wallpaperAnim && wallpaperSrc ? (
-            <video src={wallpaperSrc} poster={wallpaperPoster || undefined} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+            <WallpaperVideo src={wallpaperSrc} poster={wallpaperPoster} />
           ) : (
             <img src={(wallpaper.kind === "video" ? wallpaperPoster : wallpaperSrc) || wallpaperSrc || undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
           )}
@@ -3494,6 +3494,41 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 const WAVE_BARS = 40;
 // Запасная «дорожка», пока волна грузится или если кодек не декодируется.
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
+
+/** Видео-обои. React не пишет атрибут muted в DOM, а WebKit разрешает
+ *  автозапуск только немому видео с атрибутом — ставим его руками и
+ *  запускаем сами; не вышло (режим энергосбережения) — показываем постер. */
+const WallpaperVideo = ({ src, poster }: { src: string; poster?: string | null }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setFailed(false);
+    el.muted = true;
+    el.defaultMuted = true;
+    el.setAttribute("muted", "");
+    el.setAttribute("playsinline", "");
+    const tryPlay = () => el.play().catch(() => setFailed(true));
+    if (el.readyState >= 2) tryPlay(); else el.addEventListener("loadeddata", tryPlay, { once: true });
+    return () => el.removeEventListener("loadeddata", tryPlay);
+  }, [src]);
+  if (failed && poster) return <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />;
+  return (
+    <video
+      ref={ref}
+      src={src}
+      poster={poster || undefined}
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+      onError={() => setFailed(true)}
+      className="absolute inset-0 w-full h-full object-cover"
+    />
+  );
+};
 
 // Скорость воспроизведения голосовых — одна на все сообщения, как в Telegram:
 // выбрал 1.5× — следующее голосовое тоже пойдёт на 1.5×.
