@@ -501,13 +501,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  // Пришли в чат, где лежит непрочитанный «глюк-стикер» — разыгрываем один
-  // раз (по id, с памятью в localStorage), не ждём живого события.
+  // Пришли в чат, где лежит свежий «глюк-стикер» от собеседника, который на
+  // этом устройстве ещё не разыгрывался — разыгрываем один раз (память по id
+  // в localStorage). Не привязываемся к «прочитано»: его могли прочитать с
+  // другого устройства, а эффект должен отработать при первом открытии здесь.
   useEffect(() => {
     if (!chatId) return;
     const fresh = Date.now() - 48 * 3600 * 1000;
     const cand = [...messages].reverse().find((m) =>
-      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.is_read && !m.pending
+      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending
       && (Date.parse(m.created_at) || 0) > fresh && !playedBursts.has(m.id));
     if (!cand) return;
     playedBursts.add(cand.id);
