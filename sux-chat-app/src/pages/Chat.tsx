@@ -6,7 +6,7 @@ import { getPushSecret } from "@/lib/pushSecret";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate, useLocation } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import ChatWindow from "@/components/chat/ChatWindow";
+import ChatWindow, { type LatestMessage } from "@/components/chat/ChatWindow";
 import ChannelView from "@/components/chat/ChannelView";
 import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
@@ -41,9 +41,11 @@ interface ChatType {
   /** Закрепление (личное) и время последнего сообщения — порядок списка. */
   pinned_at?: string | null;
   last_message_at?: string | null;
-  last_message?: { text: string; sender_id: string } | null;
+  last_message?: { text: string; sender_id: string; read?: boolean } | null;
   unread_count?: number;
 }
+
+const ts = (s?: string | null) => (s ? Date.parse(s) || 0 : 0);
 
 interface ProfileType {
   id: string;
@@ -219,7 +221,12 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0 } : c))
     );
     // И при уходе из чата: всё, что пришло, пока он был открыт, тоже прочитано.
-    return () => { api.markChatAsRead(selectedChatId).catch(() => {}); };
+    // Несколько секунд считаем его прочитанным и в списке (см. mergeUnread),
+    // пока сервер не применил отметку, — иначе бейдж мигал бы.
+    return () => {
+      leftChatRef.current = { id: selectedChatId, until: Date.now() + 8000 };
+      api.markChatAsRead(selectedChatId).catch(() => {});
+    };
   }, [selectedChatId]);
 
   // 🔔 Проверка аутентификации и получение профиля + инициализация уведомлений
@@ -769,19 +776,53 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     try {
       const u = await api.getUnreadCount();
       const openId = selectedChatIdRef.current;
+      // Только что закрытый чат тоже прочитан: отметка «прочитано» уходит при
+      // выходе, и ответ счётчика, собранный до неё, на миг вернул бы бейдж.
+      const left = leftChatRef.current;
+      const leftId = left && Date.now() < left.until ? left.id : null;
       return list.map((c) => ({
         ...c,
-        unread_count: c.id === openId ? 0 : (u.unread_by_chat?.[c.id] || 0),
+        unread_count: c.id === openId || c.id === leftId ? 0 : (u.unread_by_chat?.[c.id] || 0),
       }));
     } catch {
       return list;
     }
   };
 
+  // Последнее сообщение, которое уже видела открытая переписка: ответ опроса
+  // /chats/, отправленный раньше, не должен откатывать строку назад.
+  const latestRef = useRef<Record<string, LatestMessage>>({});
+  const leftChatRef = useRef<{ id: string; until: number } | null>(null);
+
+  const withLatest = (list: ChatType[]): ChatType[] => list.map((c) => {
+    const l = latestRef.current[c.id];
+    if (!l || ts(l.created_at) < ts(c.last_message_at)) return c;
+    return {
+      ...c,
+      last_message: { text: l.text, sender_id: l.sender_id, read: l.read || !!c.last_message?.read },
+      last_message_at: l.created_at,
+    };
+  });
+
+  const sortChats = (list: ChatType[]) => [...list].sort((x, y) => {
+    const px = ts(x.pinned_at), py = ts(y.pinned_at);
+    if (px || py) return py - px;
+    return ts(y.last_message_at || y.created_at) - ts(x.last_message_at || x.created_at);
+  });
+
+  const handleLatest = (chatId: string, latest: LatestMessage) => {
+    latestRef.current[chatId] = latest;
+    setChats((prev) => {
+      const next = sortChats(withLatest(prev).map((c) => (c.id === chatId ? { ...c, unread_count: 0 } : c)));
+      writeCache("chats", next);
+      return next;
+    });
+  };
+
   const refreshChats = async () => {
     if (!user) return;
     try {
-      const userChats = await mergeUnread(await api.getChats());
+      const userChats = withLatest(await mergeUnread(await api.getChats()));
       if (JSON.stringify(userChats) !== JSON.stringify(chats)) {
         setChats(userChats);
         writeCache("chats", userChats);
@@ -859,6 +900,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
                   chats={listChats}
                   savedChatId={savedChat?.id}
                   messagePing={messagePing}
+            onLatest={handleLatest}
           reactionEvent={reactionEvent}
             reactionEvent={reactionEvent}
                   reactionEvent={reactionEvent}
@@ -896,6 +938,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onGroupUpdated={refreshChats}
             onCall={startCall}
             messagePing={messagePing}
+            onLatest={handleLatest}
           reactionEvent={reactionEvent}
             reactionEvent={reactionEvent}
             onBack={() => setSelectedChatId(null)}
@@ -983,6 +1026,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           onGroupUpdated={refreshChats}
           onCall={startCall}
           messagePing={messagePing}
+            onLatest={handleLatest}
           reactionEvent={reactionEvent}
           title={chatHeaderTitle}
         />

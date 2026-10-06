@@ -195,12 +195,29 @@ interface ChatWindowProps {
   /** Список чатов для пересылки и id «Избранного» для пункта «В избранное». */
   chats?: ChatPick[];
   savedChatId?: string;
+  /** Последнее сообщение открытой переписки — строка этого чата в списке
+   *  обновляется сразу, а не через 5 с опроса /chats/ (иначе при выходе из
+   *  чата список на миг показывал старое превью и бейдж). */
+  onLatest?: (chatId: string, latest: LatestMessage) => void;
+}
+
+export interface LatestMessage { id: string; text: string; sender_id: string; created_at: string; read: boolean }
+
+/** Тот же текст превью, что строит сервер (ChatSerializer.get_last_message). */
+function previewText(m: { content?: string | null; sticker?: unknown; video_url?: string | null; voice_url?: string | null; file_url?: string | null }): string {
+  const t = (m.content || "").trim();
+  if (t) return t.slice(0, 120);
+  if (m.sticker) return "Стикер";
+  if (m.video_url) return "Видео-сообщение";
+  if (m.voice_url) return "Голосовое сообщение";
+  if (m.file_url) return "Файл";
+  return "Сообщение";
 }
 
 /** Вторая галочка: сообщение прочитал кто-то кроме автора (в группе — хоть один). */
 const readByOthers = (m: Message) => (m.read_by || []).some((r) => r.id !== (m.sender?.id || m.sender_id));
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId, onLatest }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -501,6 +518,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Список чатов узнаёт о последнем сообщении отсюда же, без ожидания своего
+  // опроса. Шлём только при смене (id, текст, прочитанность).
+  const onLatestRef = useRef(onLatest);
+  onLatestRef.current = onLatest;
+  const latestKeyRef = useRef("");
+  useEffect(() => {
+    if (!chatId) return;
+    const last = messages[messages.length - 1];
+    // В первый рендер после переключения чата в ленте ещё сообщения прошлого —
+    // серверные несут поле chat, по нему их и отсекаем.
+    const lastChat = (last as { chat?: string } | undefined)?.chat;
+    if (!last || (lastChat && String(lastChat) !== chatId)) return;
+    const read = last.sender_id === userId
+      ? !!(last.is_read || last.read_by?.some((r) => r.id !== userId))
+      : true;
+    const latest: LatestMessage = {
+      id: String(last.id), text: previewText(last), sender_id: String(last.sender_id),
+      created_at: last.created_at, read,
+    };
+    const key = `${chatId}|${latest.id}|${latest.text}|${read}`;
+    if (key === latestKeyRef.current) return;
+    latestKeyRef.current = key;
+    onLatestRef.current?.(chatId, latest);
+  }, [messages, chatId, userId]);
   // Пришли в чат, где лежат «глюк-стикеры» от собеседника, ещё не разыгранные
   // на этом устройстве: играет только самый последний,
   // остальные помечаются сыгранными — чтобы при открытии не сыпалось всё
