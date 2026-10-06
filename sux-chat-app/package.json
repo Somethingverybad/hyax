@@ -1,7 +1,7 @@
 {
   "name": "hyax-messenger",
   "private": true,
-  "version": "1.1.12",
+  "version": "1.1.13",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "WhoYaX эсемэсэнджер",

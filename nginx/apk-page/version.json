@@ -1,9 +1,9 @@
 {
-  "version": "1.1.12",
-  "build": 417,
-  "ios_version": "1.1.12",
-  "ios_build": 154,
-  "notes": "Обои чата (фото, gif, видео — общие и свои), «глюк-стикер» долгим удержанием, закрепление записи свайпом вверх, скорость голосовых и копирование расшифровки, редактор фото, зум, inline-боты (@ytbot), меню сообщения как в Telegram, бот Обновлямбус с новостями релизов. Android: клавиатура больше не дёргает чат",
+  "version": "1.1.13",
+  "build": 422,
+  "ios_version": "1.1.13",
+  "ios_build": 155,
+  "notes": "Список чатов больше не показывает старые сообщения и не мигает бейджем после выхода из переписки; тема не откатывается сама. Linux: обновление из приложения для установки из .deb. Windows: один установщик для x64 и ARM",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
