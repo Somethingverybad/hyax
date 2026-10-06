@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { useTheme } from "@/lib/theme";
-import { checkForUpdate, startUpdate } from "@/lib/updateCheck";
+import { checkForUpdate, startUpdate, describeUpdateError } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import ImageCropper from "@/components/ImageCropper";
@@ -186,8 +186,10 @@ const ProfilePage = () => {
         return;
       }
       const r = await startUpdate(found);
-      if (r === "installer") toast.success(`Версия ${found.version}: установщик запущен`);
-      else if (r === "error") toast.error("Не удалось скачать обновление");
+      if (r.result === "installer") toast.success(`Версия ${found.version}: установщик запущен`);
+      else if (r.result === "restart") toast.success(`Версия ${found.version} установлена — перезапускаюсь`);
+      else if (r.result === "cancelled") toast("Установка отменена");
+      else if (r.result === "error") toast.error(describeUpdateError(r), { duration: 12000 });
       else toast.success(`Доступна версия ${found.version} — открываю загрузку`);
     } catch {
       toast.error("Не удалось проверить обновления");

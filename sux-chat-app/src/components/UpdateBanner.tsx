@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Download, RefreshCw } from "lucide-react";
-import { checkForUpdate, startUpdate, type UpdateInfo } from "@/lib/updateCheck";
+import { checkForUpdate, startUpdate, describeUpdateError, type UpdateInfo } from "@/lib/updateCheck";
 import { toast } from "sonner";
 
 const DISMISS_KEY = "update_dismissed_version";
@@ -113,8 +113,10 @@ const UpdateBanner = () => {
     setBusy(true);
     try {
       const r = await startUpdate(info);
-      if (r === "installer") toast.success("Установщик запущен — следуй подсказкам");
-      else if (r === "error") toast.error("Не удалось скачать обновление");
+      if (r.result === "installer") toast.success("Установщик запущен — следуй подсказкам");
+      else if (r.result === "restart") toast.success("Обновление установлено — перезапускаюсь");
+      else if (r.result === "cancelled") toast("Установка отменена");
+      else if (r.result === "error") toast.error(describeUpdateError(r), { duration: 12000 });
     } finally {
       setBusy(false);
     }

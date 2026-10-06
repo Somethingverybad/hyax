@@ -179,16 +179,45 @@ ipcMain.handle('save-file', async (_event, fileUrl, fileName) => {
   }
 });
 
-// Обновление изнутри: скачиваем установщик во временную папку и открываем его
-// (mac — монтирует DMG, win — запускает NSIS-инсталлятор, linux — AppImage).
+// Установка скачанного .deb: xdg-open на нём обычно ничего не делает (или
+// открывает архиватор), а пользователь видел «установщик запущен». Ставим сами
+// через pkexec — системный диалог пароля — и перезапускаемся. Код 126/127 —
+// отменил или не прошёл авторизацию.
+const installDeb = (file) => new Promise((resolve) => {
+  const { spawn } = require('child_process');
+  const script = 'dpkg -i "$1" || (apt-get -y -f install && dpkg -i "$1")';
+  let p;
+  try { p = spawn('pkexec', ['/bin/sh', '-c', script, 'sh', file], { stdio: 'ignore' }); }
+  catch (e) { return resolve({ ok: false, error: `pkexec: ${e.message}`, file }); }
+  p.on('error', (e) => resolve({ ok: false, error: `pkexec: ${e.message}`, file }));
+  p.on('exit', (code) => {
+    logLine('deb install exit', code);
+    if (code === 0) {
+      resolve({ ok: true, restart: true });
+      setTimeout(() => { app.relaunch(); app.quit(); }, 500);
+    } else {
+      resolve({ ok: false, error: code === 126 || code === 127 ? 'cancelled' : `dpkg exit ${code}`, file });
+    }
+  });
+});
+
+// Обновление изнутри (запасной путь, когда electron-updater недоступен):
+// скачиваем установщик во временную папку и открываем его (mac — монтирует
+// DMG, win — запускает NSIS-инсталлятор, linux — AppImage или .deb через pkexec).
 ipcMain.handle('install-update', async (_e, url, fileName) => {
   try {
     const resp = await net.fetch(url);
     if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
     const tmp = path.join(app.getPath('temp'), fileName || 'hyax-update');
     fs.writeFileSync(tmp, Buffer.from(await resp.arrayBuffer()));
-    if (process.platform === 'linux') { try { fs.chmodSync(tmp, 0o755); } catch {} }
-    await shell.openPath(tmp);
+    if (process.platform === 'linux') {
+      try { fs.chmodSync(tmp, 0o755); } catch {}
+      if (/\.deb$/i.test(tmp)) return await installDeb(tmp);
+    }
+    // openPath возвращает пустую строку при успехе и текст ошибки иначе —
+    // раньше он игнорировался, и сбой выглядел как «установщик запущен».
+    const err = await shell.openPath(tmp);
+    if (err) { logLine('openPath failed', err); return { ok: false, error: err, file: tmp }; }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -225,21 +254,29 @@ autoUpdater.on('error', (err) => sendUpdate({ state: 'error', message: String((e
 
 const updaterEnabled = () => app.isPackaged || !!process.env.HYAX_UPDATE_URL;
 
-// Как установлено приложение на Linux. electron-updater умеет обновлять только
-// AppImage (подменяет файл, на который указывает $APPIMAGE); пакет из .deb
-// лежит в /opt и обновляется только новым .deb. Страница шлёт deb-пользователю
-// ссылку на .deb, а не на AppImage, — и апдейтер на нём не дёргаем, иначе он
-// падал бы с «APPIMAGE env is not defined» при каждой проверке.
+// Как установлено приложение на Linux. AppImage апдейтер подменяет файл, на
+// который указывает $APPIMAGE. Для .deb electron-builder кладёт в пакет
+// resources/package-type, и electron-updater (с 6.x) по нему берёт DebUpdater:
+// качает .deb из latest-linux.yml и ставит через pkexec dpkg -i. Старые deb без
+// этого файла и tar.gz (где угодно в $HOME) апдейтер не осилит — у них
+// запасной путь через манифест version.json (см. install-update). До 1.1.12
+// апдейтер для deb не включали вовсе — думали, он умеет только AppImage.
 const installKind = () => {
   if (process.platform !== 'linux') return 'native';
   if (process.env.APPIMAGE) return 'appimage';
   return /^\/(opt|usr)\//.test(process.execPath) ? 'deb' : 'other';
 };
+const updaterSupported = () => {
+  const k = installKind();
+  if (k === 'native' || k === 'appimage') return true;
+  if (k === 'deb') { try { return fs.existsSync(path.join(process.resourcesPath, 'package-type')); } catch { return false; } }
+  return false;
+};
 ipcMain.handle('install-kind', () => installKind());
 
 ipcMain.handle('update-check', async () => {
   if (!updaterEnabled()) return { ok: false, reason: 'dev' };
-  if (installKind() === 'deb' || installKind() === 'other') return { ok: false, reason: installKind() };
+  if (!updaterSupported()) return { ok: false, reason: installKind() };
   try {
     const r = await autoUpdater.checkForUpdates();
     return { ok: true, version: r && r.updateInfo ? r.updateInfo.version : null };
@@ -255,7 +292,7 @@ ipcMain.handle('update-download', async () => {
 // Linux замена AppImage. Откладываем на тик, чтобы ответ IPC успел уйти.
 ipcMain.on('update-apply', () => { setImmediate(() => autoUpdater.quitAndInstall(false, true)); });
 // Плюс проверка раз в час: приложение на десктопе живёт неделями.
-setInterval(() => { if (updaterEnabled()) autoUpdater.checkForUpdates().catch(() => {}); }, 60 * 60 * 1000);
+setInterval(() => { if (updaterEnabled() && updaterSupported()) autoUpdater.checkForUpdates().catch(() => {}); }, 60 * 60 * 1000);
 
 ipcMain.handle('app-version', () => app.getVersion());
 ipcMain.on('minimize-window', () => mainWindow?.minimize());

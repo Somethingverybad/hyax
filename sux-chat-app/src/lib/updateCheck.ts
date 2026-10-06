@@ -103,20 +103,42 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
  * файл или на страницу загрузок. Вынесено из плашки, чтобы кнопка «Проверить
  * обновления» в профиле вела себя ровно так же.
  */
-export async function startUpdate(info: UpdateInfo): Promise<"installer" | "opened" | "error"> {
+export type StartUpdateResult =
+  /** Установщик открыт (mac/win/AppImage). */
+  | { result: "installer" }
+  /** Пакет поставлен, приложение сейчас перезапустится (Linux .deb через pkexec). */
+  | { result: "restart" }
+  /** Ушли на страницу загрузок или файл (телефон, веб). */
+  | { result: "opened" }
+  /** Пользователь закрыл диалог пароля (Linux). */
+  | { result: "cancelled" }
+  | { result: "error"; error?: string; file?: string };
+
+export async function startUpdate(info: UpdateInfo): Promise<StartUpdateResult> {
   const api = (window as any).electronAPI;
   if (info.desktop && info.fileUrl && api?.installUpdate) {
     try {
       const r = await api.installUpdate(info.fileUrl, info.fileName || "hyax-update");
-      return r?.ok ? "installer" : "error";
-    } catch {
-      return "error";
+      if (r?.ok) return { result: r.restart ? "restart" : "installer" };
+      if (r?.error === "cancelled") return { result: "cancelled" };
+      return { result: "error", error: r?.error, file: r?.file };
+    } catch (e) {
+      return { result: "error", error: String((e as Error)?.message || e) };
     }
   }
   const url = info.fileUrl || "https://huyax.e-tree.su/apk/";
   if (api?.openExternal) api.openExternal(url);
   else window.open(url, "_blank");
-  return "opened";
+  return { result: "opened" };
+}
+
+/** Текст для тоста, когда установка не удалась: что случилось и где лежит файл. */
+export function describeUpdateError(r: Extract<StartUpdateResult, { result: "error" }>): string {
+  const base = r.error ? `Не удалось установить обновление: ${r.error}` : "Не удалось скачать обновление";
+  if (!r.file) return base;
+  return /\.deb$/i.test(r.file)
+    ? `${base}. Файл сохранён: ${r.file} — установи вручную: sudo dpkg -i "${r.file}"`
+    : `${base}. Файл сохранён: ${r.file}`;
 }
 
 /** Обновления iOS приходят через TestFlight — своей ссылки у них обычно нет. */
