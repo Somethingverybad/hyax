@@ -43,8 +43,26 @@ if (!ENV_ORIGIN && typeof window !== "undefined") {
 /** fetch с откатом: сетевая ошибка на CDN-адресе → повтор того же запроса напрямую. */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Антикэш для чтения через CDN. 2026-10-06 CDN начал отдавать GET /api/chats/,
+ * /api/profiles/current/ и /api/messages/unread_count/ из своего кэша, не
+ * глядя на Cache-Control: no-store от сервера. У этих запросов постоянный URL
+ * и один и тот же токен, поэтому ключ кэша не менялся часами: список чатов
+ * показывал старые превью, тема откатывалась на сохранённую в кэше, а
+ * открытая переписка жила — у sync каждый раз новый since в URL. Уникальный
+ * параметр делает каждый GET промахом кэша на любом CDN, который учитывает
+ * строку запроса (этот учитывает: запросы с параметрами доходили до сервера).
+ */
+function bustCache(url: string, method: string): string {
+  if (method !== "GET" && method !== "HEAD") return url;
+  if (!url.includes("/api/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}_=${Date.now().toString(36)}`;
+}
+
 async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  const url = typeof input === "string" ? input : (input as Request).url;
+  const rawUrl = typeof input === "string" ? input : (input as Request).url;
+  const url = bustCache(rawUrl, (init?.method || "GET").toUpperCase());
+  if (url !== rawUrl) { input = url; init = { ...init, cache: "no-store" }; }
   // В лог баг-репорта: метод, путь без query, код и длительность. Ни тел, ни
   // заголовков — там токены и переписка (см. lib/applog.ts).
   const method = (init?.method || "GET").toUpperCase();
