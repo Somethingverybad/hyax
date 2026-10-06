@@ -197,7 +197,10 @@ export default function AdminMetrics() {
   const tFmt = timeFmt(range);
   const live = data?.live;
   const tot = data?.totals;
-  const hasSamples = !!data?.timeline.some((p) => p.online_avg != null);
+  const samplePoints = data?.timeline.filter((p) => p.online_avg != null).length ?? 0;
+  const hasSamples = samplePoints >= 2;
+  // Пока точек мало, линия из одной-двух точек не видна — рисуем их кружками.
+  const sparseDot = samplePoints < 12 ? { r: 3, strokeWidth: 0 } : false;
   const hasDailyPeaks = !!data?.daily.some((p) => p.peak_online != null);
   const sampling = live?.sampling_since ? `Снимки онлайна и нагрузки идут с ${timeAt(live.sampling_since)}` : "Снимки онлайна и нагрузки ещё не начались";
 
@@ -252,7 +255,7 @@ export default function AdminMetrics() {
                   sub={<>за 7 дней {fmt(tot.seen_7d)} · за 30 дней {fmt(tot.seen_30d)}</>} />
                 <Tile icon={MessageSquare} label="Сообщений за сутки" value={fmt(tot.messages_24h)}
                   sub={<>всего {fmt(tot.messages)}</>} />
-                <Tile icon={Activity} label="Пик онлайна за сутки" value={fmt(tot.peak_24h)}
+                <Tile icon={Activity} label="Пик за сутки" value={fmt(tot.peak_24h)}
                   sub={tot.peak_all != null ? <>рекорд {fmt(tot.peak_all)} · {timeAt(tot.peak_all_at)}</> : "снимков пока нет"} />
                 <Tile icon={Radio} label="Чаты" value={fmt(tot.chats_direct + tot.chats_group)}
                   sub={<>личных {fmt(tot.chats_direct)} · групп {fmt(tot.chats_group)} · каналов {fmt(tot.channels)}</>} />
@@ -281,16 +284,16 @@ export default function AdminMetrics() {
                   <Legend items={[{ color: pal.s1, label: "в среднем" }, { color: pal.s2, label: "пик" }]} />
                   <div className="relative h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: -18 }}>
+                      <ComposedChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
                         {grid}
                         <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tFmt} minTickGap={28} {...axis} />
-                        <YAxis allowDecimals={false} width={44} {...axis} />
+                        <YAxis allowDecimals={false} width={36} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={tFmt} />} cursor={{ stroke: pal.axis, strokeWidth: 1 }} />
-                        <Area name="в среднем" dataKey="online_avg" type="monotone" stroke={pal.s1} strokeWidth={2} fill={pal.s1} fillOpacity={0.16} connectNulls={false} isAnimationActive={false} />
-                        <Line name="пик" dataKey="online_max" type="monotone" stroke={pal.s2} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} connectNulls={false} isAnimationActive={false} />
+                        <Area name="в среднем" dataKey="online_avg" type="monotone" stroke={pal.s1} strokeWidth={2} fill={pal.s1} fillOpacity={0.16} dot={sparseDot && { ...sparseDot, fill: pal.s1 }} connectNulls={false} isAnimationActive={false} />
+                        <Line name="пик" dataKey="online_max" type="monotone" stroke={pal.s2} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s2 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} connectNulls={false} isAnimationActive={false} />
                       </ComposedChart>
                     </ResponsiveContainer>
-                    {!hasSamples && <Empty>Снимков за этот период ещё нет — точки появляются раз в минуту.</Empty>}
+                    {!hasSamples && <Empty>{samplePoints ? "Снимки только начали копиться — линия появится со следующей точкой." : "Снимков за этот период ещё нет — точки появляются раз в минуту."}</Empty>}
                   </div>
                 </Card>
 
@@ -299,16 +302,16 @@ export default function AdminMetrics() {
                   <Legend items={[{ color: pal.s1, label: "процессор" }, { color: pal.s2, label: "память" }]} />
                   <div className="relative h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: -18 }}>
+                      <LineChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
                         {grid}
                         <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tFmt} minTickGap={28} {...axis} />
-                        <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} width={44} unit="%" {...axis} />
+                        <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} width={46} tickFormatter={(v: number) => `${v}%`} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={tFmt} unit="%" />} cursor={{ stroke: pal.axis, strokeWidth: 1 }} />
-                        <Line name="процессор" dataKey="cpu" type="monotone" stroke={pal.s1} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
-                        <Line name="память" dataKey="mem" type="monotone" stroke={pal.s2} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
+                        <Line name="процессор" dataKey="cpu" type="monotone" stroke={pal.s1} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s1 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
+                        <Line name="память" dataKey="mem" type="monotone" stroke={pal.s2} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s2 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
-                    {!hasSamples && <Empty>Нагрузка пишется вместе со снимками онлайна.</Empty>}
+                    {!hasSamples && <Empty>{samplePoints ? "Нагрузка пишется вместе со снимками онлайна — линия появится со следующей точкой." : "Нагрузка пишется вместе со снимками онлайна."}</Empty>}
                   </div>
                 </Card>
 
@@ -316,10 +319,10 @@ export default function AdminMetrics() {
                 <Card title="Сообщения" sub="Отправлено за шаг, без удалённых у всех">
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: -18 }} barCategoryGap={2}>
+                      <BarChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap={2}>
                         {grid}
                         <XAxis dataKey="t" tickFormatter={tFmt} minTickGap={28} {...axis} />
-                        <YAxis allowDecimals={false} width={44} {...axis} />
+                        <YAxis allowDecimals={false} width={36} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={tFmt} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
                         <Bar name="сообщений" dataKey="messages" fill={pal.s1} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />
                       </BarChart>
@@ -331,10 +334,10 @@ export default function AdminMetrics() {
                 <Card title="Активность по часам" sub="Сообщения за 30 дней по часу суток, ваше время">
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={data.hours} margin={{ top: 6, right: 6, bottom: 0, left: -18 }} barCategoryGap={2}>
+                      <BarChart data={data.hours} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap={2}>
                         {grid}
                         <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}`} interval={2} {...axis} />
-                        <YAxis allowDecimals={false} width={44} {...axis} />
+                        <YAxis allowDecimals={false} width={36} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={(h) => `${String(h).padStart(2, "0")}:00–${String((h + 1) % 24).padStart(2, "0")}:00`} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
                         <Bar name="сообщений" dataKey="messages" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                       </BarChart>
@@ -353,10 +356,10 @@ export default function AdminMetrics() {
                   <Card key={c.key} title={c.title} sub={`${c.sub}, 30 дней`}>
                     <div className="relative h-44">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={data.daily} margin={{ top: 6, right: 4, bottom: 0, left: -22 }} barCategoryGap={2}>
+                        <BarChart data={data.daily} margin={{ top: 6, right: 4, bottom: 0, left: 0 }} barCategoryGap={2}>
                           {grid}
                           <XAxis dataKey="t" tickFormatter={dayFmt} minTickGap={22} {...axis} />
-                          <YAxis allowDecimals={false} width={40} {...axis} />
+                          <YAxis allowDecimals={false} width={32} {...axis} />
                           <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
                           <Bar name={c.title.toLowerCase()} dataKey={c.key} fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                         </BarChart>
@@ -367,7 +370,7 @@ export default function AdminMetrics() {
                 ))}
               </div>
 
-              <p className="text-caption text-subtle text-center pb-4">
+              <p className="text-caption text-subtle pb-4">
                 «В сети» — приложение открыто на экране; «на связи» — сокет открыт, в том числе свёрнутым приложением. Боты не считаются.
               </p>
             </>
