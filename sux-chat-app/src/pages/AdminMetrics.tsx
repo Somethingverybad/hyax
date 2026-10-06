@@ -161,7 +161,13 @@ function ChartTip({ active, payload, label, labelFmt, unit }: {
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="absolute inset-0 flex items-center justify-center text-center px-6 text-small text-subtle pointer-events-none">{children}</div>;
+  // Отступ слева — под колонку подписей оси Y; подложка — чтобы текст не
+  // сливался с сеткой и подписями, через которые проходит.
+  return (
+    <div className="absolute inset-y-0 left-12 right-2 flex items-center justify-center text-center pointer-events-none">
+      <span className="rounded-md bg-surface-2/90 px-2.5 py-1.5 text-small text-subtle">{children}</span>
+    </div>
+  );
 }
 
 // ---------- страница ----------
