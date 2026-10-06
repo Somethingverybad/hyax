@@ -896,13 +896,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // оборачивают выделение разметкой (или снимают её), выделение остаётся на
   // том же тексте — можно нажать «жирный» и «курсив» подряд.
   const [fmtOpen, setFmtOpen] = useState(false);
+  // iOS-приложение показывает форматирование в системном меню выделения
+  // (CallViewController.buildMenu) — веб-панель там лежала бы под этим меню.
+  // Нативу сообщаем, есть ли выделение в поле, а он вызывает __hyaxFormat.
+  const nativeFmt = (window as unknown as { webkit?: { messageHandlers?: { hyaxComposeSel?: { postMessage: (v: number) => void } } } })
+    .webkit?.messageHandlers?.hyaxComposeSel;
   useEffect(() => {
+    let last = false;
     const onSel = () => {
       const ta = textareaRef.current;
-      setFmtOpen(!!ta && document.activeElement === ta && ta.selectionStart !== ta.selectionEnd);
+      const sel = !!ta && document.activeElement === ta && ta.selectionStart !== ta.selectionEnd;
+      setFmtOpen(sel && !nativeFmt);
+      if (nativeFmt && sel !== last) { last = sel; try { nativeFmt.postMessage(sel ? 1 : 0); } catch { /* нет моста */ } }
     };
     document.addEventListener("selectionchange", onSel);
     return () => document.removeEventListener("selectionchange", onSel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const applyFormat = (type: EntityType) => {
     const ta = textareaRef.current;
@@ -912,6 +921,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     ta.focus();
     ta.setSelectionRange(r.start, r.end);
   };
+  const applyFormatRef = useRef(applyFormat);
+  applyFormatRef.current = applyFormat;
+  useEffect(() => {
+    const w = window as unknown as { __hyaxFormat?: (t: string) => void };
+    w.__hyaxFormat = (t: string) => applyFormatRef.current(t as EntityType);
+    return () => { delete w.__hyaxFormat; };
+  }, []);
   const fmtTouchRef = useRef(0);
 
   // Открытие чата: сначала кэш (мгновенно), потом синхронизация с сервера —
