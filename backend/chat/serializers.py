@@ -3,6 +3,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import *
 
+
+def is_admin_profile(profile):
+    """Админ мессенджера: роль «Администратор» или суперпользователь Django."""
+    if not profile:
+        return False
+    return getattr(profile, 'role', '') == 'admin' or bool(getattr(getattr(profile, 'user', None), 'is_superuser', False))
+
 class ProfileSerializer(serializers.ModelSerializer):
     # Владелец бота (id) — только у ботов: бот узнаёт, чьи команды слушать.
     bot_owner = serializers.SerializerMethodField()
@@ -69,8 +76,15 @@ class OwnProfileSerializer(ProfileSerializer):
     """Свой профиль: то же плюс личные настройки, которые собеседникам знать
     незачем. Базовый сериализатор уходит в участников чата и отправителей
     сообщений, поэтому 18+ и отметка о принятии правил живут только здесь."""
+    # Видит ли человек админские разделы (мониторинг). Только в своём
+    # профиле: собеседникам это знать незачем.
+    is_admin = serializers.SerializerMethodField()
+
+    def get_is_admin(self, obj):
+        return is_admin_profile(obj)
+
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
 

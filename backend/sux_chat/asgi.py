@@ -25,6 +25,11 @@ def get_websocket_urlpatterns():
     from chat import routing
     return routing.websocket_urlpatterns
 
+# Снимки онлайна и нагрузки для панели мониторинга — поток в этом процессе:
+# онлайн живёт в его памяти (chat/presence.py). Только здесь, не в manage.py.
+from chat.metrics import start_sampler  # noqa: E402
+start_sampler()
+
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AuthMiddlewareStack(

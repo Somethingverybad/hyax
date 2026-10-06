@@ -4143,3 +4143,21 @@ class AddedSoundPacksView(APIView):
         if not me.allow_adult:
             rows = rows.exclude(pack__is_adult=True)
         return Response({"packs": [_pack_payload(r.pack, me) for r in rows]})
+
+
+
+class AdminMetricsView(APIView):
+    """GET /api/admin/metrics/?range=24h|7d|30d&tz=<минуты к UTC> — панель
+    мониторинга. Только админам (роль «Администратор» или суперпользователь)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .serializers import is_admin_profile
+        from .metrics import summary
+        if not is_admin_profile(getattr(request.user, 'profile', None)):
+            return Response({"error": "Только для администраторов"}, status=403)
+        try:
+            tz = max(-840, min(840, int(request.query_params.get('tz') or 0)))
+        except ValueError:
+            tz = 0
+        return Response(summary(request.query_params.get('range') or '24h', tz))

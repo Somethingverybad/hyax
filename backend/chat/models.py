@@ -825,3 +825,21 @@ class UserTheme(models.Model):
     class Meta:
         unique_together = ("user", "theme")
         ordering = ["added_at"]
+
+
+class MetricSample(models.Model):
+    """Снимок раз в минуту для панели мониторинга (chat/metrics.py).
+
+    Только то, что задним числом не восстановить: онлайн по сокетам и
+    нагрузку хоста. Сообщения, регистрации и прочее считаются из базы.
+    """
+    ts = models.DateTimeField(db_index=True)
+    online = models.PositiveIntegerField(default=0)      # приложение на экране
+    connected = models.PositiveIntegerField(default=0)   # сокет открыт (в т.ч. в фоне)
+    sockets = models.PositiveIntegerField(default=0)
+    cpu = models.FloatField(null=True, blank=True)       # % хоста за минуту
+    mem = models.FloatField(null=True, blank=True)       # % памяти хоста
+    load1 = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["ts"]

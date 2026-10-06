@@ -20,6 +20,7 @@ router.register(r'stickers', StickerViewSet, basename='sticker')
 urlpatterns = [
     # Кастомные маршруты ДО роутера
     path('profiles/current/', get_current_user_profile, name='current-profile'),
+    path('admin/metrics/', AdminMetricsView.as_view(), name='admin-metrics'),
     path('auth/register/', register_user, name='register'),
     path('auth/login/', login_user, name='login'),
     path('auth/logout/', logout_user, name='logout'),
