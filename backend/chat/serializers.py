@@ -185,7 +185,8 @@ class ChatSerializer(serializers.ModelSerializer):
         # У постов зеркал Telegram отправителя нет — ориентируемся на id поста.
         if sender_id is None and getattr(obj, 'last_id_a', None) is None:
             return None
-        text = (getattr(obj, 'last_text_a', '') or '').strip()
+        from .formatting import mask_preview
+        text = mask_preview(getattr(obj, 'last_text_a', '') or '', getattr(obj, 'last_entities_a', None)).strip()
         if not text:
             if getattr(obj, 'last_sticker_a', None):
                 text = 'Стикер'
@@ -202,7 +203,8 @@ class ChatSerializer(serializers.ModelSerializer):
 
 def message_preview(m):
     """Короткое описание сообщения для цитат, закрепа и списка чатов."""
-    text = (m.content or "").strip()
+    from .formatting import mask_preview
+    text = mask_preview(m.content or "", getattr(m, "entities", None)).strip()
     if text:
         return text
     if m.sticker_id:
@@ -374,6 +376,17 @@ class MessageSerializer(serializers.ModelSerializer):
     sender = MessageSenderSerializer(read_only=True)
     reactions = serializers.SerializerMethodField()
 
+    def validate(self, attrs):
+        # Оформление проверяем по тексту этого же запроса (или текущему при
+        # частичном обновлении): чужие типы и выход за границы отбрасываются.
+        if 'entities' in attrs:
+            from .formatting import clean_entities
+            text = attrs.get('content')
+            if text is None and self.instance is not None:
+                text = self.instance.content
+            attrs['entities'] = clean_entities(attrs.get('entities'), text or '')
+        return super().validate(attrs)
+
     def validate_buttons(self, value):
         """Кнопки ставит только бот и только в допустимом виде.
 
@@ -419,7 +432,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect']
         read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot']
 
     def get_forwarded_from(self, obj):
@@ -447,7 +460,8 @@ class MessageSerializer(serializers.ModelSerializer):
         r = obj.reply_to
         if not r:
             return None
-        preview = (r.content or "").strip()
+        from .formatting import mask_preview
+        preview = mask_preview(r.content or "", getattr(r, "entities", None)).strip()
         if not preview:
             if r.sticker_id:
                 preview = "Стикер"

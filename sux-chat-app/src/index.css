@@ -1059,3 +1059,60 @@ textarea,
 .wallpaper-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
 .wallpaper-video::-webkit-media-controls-overlay-play-button { display: none !important; }
 .wallpaper-video::-webkit-media-controls { display: none !important; }
+
+/* ===== Форматирование текста сообщений (lib/format.tsx) ===== */
+.fmt-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  padding: 0.05em 0.35em;
+  border-radius: 0.35em;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  cursor: pointer;
+}
+.fmt-pre {
+  display: block;
+  margin: 0.25em 0;
+  padding: 0.5em 0.7em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  border-radius: 0.5em;
+  border-left: 3px solid color-mix(in srgb, currentColor 45%, transparent);
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  cursor: pointer;
+}
+/* Спойлер: текст прозрачный, поверх — мерцающая россыпь точек цветом текста. */
+.fmt-spoiler {
+  cursor: pointer;
+  border-radius: 0.3em;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background-image:
+    radial-gradient(circle, currentColor 0.7px, transparent 1.1px),
+    radial-gradient(circle, currentColor 0.6px, transparent 1px);
+  background-size: 5px 5px, 7px 7px;
+  background-position: 0 0, 2px 3px;
+  animation: fmt-spoiler-drift 1.6s linear infinite;
+}
+.fmt-spoiler-text { color: transparent; }
+.fmt-spoiler-open { animation: fmt-spoiler-reveal 260ms ease-out; }
+@keyframes fmt-spoiler-drift {
+  0% { background-position: 0 0, 2px 3px; opacity: 0.85; }
+  50% { opacity: 1; }
+  100% { background-position: 5px 5px, -5px 10px; opacity: 0.85; }
+}
+@keyframes fmt-spoiler-reveal { from { filter: blur(4px); opacity: 0.4; } to { filter: none; opacity: 1; } }
+/* Зальго: «волосы» диакритики не режем, но и строку не раздуваем. */
+.fmt-zalgo { line-height: inherit; }
+/* Перемешанное: пунктир подсказывает, что по нему можно нажать. */
+.fmt-scramble {
+  cursor: pointer;
+  text-decoration: underline dashed;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fmt-spoiler, .fmt-spoiler-open { animation: none; }
+}

@@ -1111,11 +1111,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessage: async (chatId: string, content: string, soundId?: string, replyToId?: string): Promise<any> => {
+  sendMessage: async (chatId: string, content: string, soundId?: string, replyToId?: string, entities?: { type: string; offset: number; length: number }[]): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined, reply_to_id: replyToId || undefined }),
+      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined, reply_to_id: replyToId || undefined, entities: entities?.length ? entities : undefined }),
     });
     return res.json();
   },
@@ -1231,6 +1231,8 @@ export const api = {
     playlist_track_id?: string;
     /** Общий id для фото/видео, отправленных одним альбомом. */
     album_id?: string | null;
+    /** Оформление подписи (см. lib/format.tsx). */
+    entities?: { type: string; offset: number; length: number }[];
   }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
@@ -1246,6 +1248,7 @@ export const api = {
         poster_url: fileData.poster_url || undefined,
         playlist_track_id: fileData.playlist_track_id || undefined,
         album_id: fileData.album_id || undefined,
+        entities: content && fileData.entities?.length ? fileData.entities : undefined,
         sound_id: soundId || undefined,
         reply_to_id: replyToId || undefined,
         download_only: downloadOnly ? "1" : undefined
@@ -1321,9 +1324,9 @@ export const api = {
     if (!res.ok) throw new Error("Не удалось удалить");
   },
 
-  editMessage: async (messageId: string, content: string): Promise<any> => {
+  editMessage: async (messageId: string, content: string, entities?: { type: string; offset: number; length: number }[]): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/edit/`, {
-      method: "POST", headers: authHeaders(), body: JSON.stringify({ content }),
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ content, entities: entities || [] }),
     });
     if (!res.ok) throw new Error("Не удалось изменить");
     return res.json();

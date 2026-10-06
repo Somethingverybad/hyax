@@ -11,6 +11,7 @@ import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
+import { FormattedText, type TextEntity } from "@/lib/format";
 import PackLinkCard from "./PackLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import PhotoEditor from "@/components/PhotoEditor";
@@ -733,7 +734,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                 {channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
-                {post.content && <p className="text-body whitespace-pre-wrap break-words"><Linkify text={post.content} /></p>}
+                {post.content && <p className="text-body whitespace-pre-wrap break-words"><FormattedText text={post.content} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} /></p>}
                 {(() => {
                   // Пак или тема по ссылке в посте — плиткой с «Добавить себе»,
                   // профиль — карточкой с «Написать». Текст поста не трогаем.

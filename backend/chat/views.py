@@ -181,6 +181,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 .prefetch_related('participants')
                 .annotate(
                     last_text_a=Subquery(last.values('content')[:1]),
+                    last_entities_a=Subquery(last.values('entities')[:1]),
                     last_sender_id_a=Subquery(last.values('sender_id')[:1]),
                     last_sticker_a=Subquery(last.values('sticker_id')[:1]),
                     last_voice_a=Subquery(last.values('voice_url')[:1]),
@@ -558,6 +559,7 @@ def _forward_copy(src, target, profile, album_id=None):
         chat=target,
         sender=profile,
         content=src.content,
+        entities=getattr(src, 'entities', None) or [],
         file_url=src.file_url,
         file_name=src.file_name,
         file_size=src.file_size,
@@ -624,7 +626,8 @@ def _notify_new_message(message, profile, request):
         if watching:
             recipients = recipients.exclude(id__in=watching)
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
-        preview = (message.content or "").strip()
+        from .formatting import mask_preview
+        preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
         if not preview:
             if message.sticker_id:
                 preview = "Стикер"
@@ -690,7 +693,8 @@ def _push_reaction(message, reactor, emoji):
             return
         if str(author.id) in viewers(message.chat_id):
             return
-        preview = (message.content or "").strip()
+        from .formatting import mask_preview
+        preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
         if not preview:
             preview = ("Стикер" if message.sticker_id else
                        "Видео-сообщение" if getattr(message, "video_url", None) else
@@ -839,8 +843,12 @@ class MessageViewSet(viewsets.ModelViewSet):
         if not content:
             return Response({"error": "Пустой текст"}, status=400)
         msg.content = content
+        # Оформление присылают вместе с текстом; без поля — снимаем старое,
+        # его диапазоны к новому тексту уже не подходят.
+        from .formatting import clean_entities
+        msg.entities = clean_entities(request.data.get('entities'), content)
         msg.is_edited = True
-        msg.save(update_fields=['content', 'is_edited', 'updated_at'])
+        msg.save(update_fields=['content', 'entities', 'is_edited', 'updated_at'])
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])

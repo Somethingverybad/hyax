@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle } from "lucide-react";
 import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
@@ -23,6 +23,7 @@ import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
+import { FormattedText, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
 import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
@@ -148,6 +149,8 @@ interface Message {
   effect?: string;
   /** Прочитано ли мной (с сервера). */
   is_read?: boolean;
+  /** Оформление текста (жирный, спойлер, зальго…) — см. lib/format.tsx. */
+  entities?: TextEntity[] | null;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -204,8 +207,8 @@ interface ChatWindowProps {
 export interface LatestMessage { id: string; text: string; sender_id: string; created_at: string; read: boolean }
 
 /** Тот же текст превью, что строит сервер (ChatSerializer.get_last_message). */
-function previewText(m: { content?: string | null; sticker?: unknown; video_url?: string | null; voice_url?: string | null; file_url?: string | null }): string {
-  const t = (m.content || "").trim();
+function previewText(m: { content?: string | null; entities?: TextEntity[] | null; sticker?: unknown; video_url?: string | null; voice_url?: string | null; file_url?: string | null }): string {
+  const t = maskPreview(m.content || "", m.entities).trim();
   if (t) return t.slice(0, 120);
   if (m.sticker) return "Стикер";
   if (m.video_url) return "Видео-сообщение";
@@ -889,6 +892,28 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     updateInline(text);
   };
 
+  // Панель форматирования: видна, пока в поле выделен текст. Кнопки
+  // оборачивают выделение разметкой (или снимают её), выделение остаётся на
+  // том же тексте — можно нажать «жирный» и «курсив» подряд.
+  const [fmtOpen, setFmtOpen] = useState(false);
+  useEffect(() => {
+    const onSel = () => {
+      const ta = textareaRef.current;
+      setFmtOpen(!!ta && document.activeElement === ta && ta.selectionStart !== ta.selectionEnd);
+    };
+    document.addEventListener("selectionchange", onSel);
+    return () => document.removeEventListener("selectionchange", onSel);
+  }, []);
+  const applyFormat = (type: EntityType) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const r = toggleMarker(ta.value, ta.selectionStart, ta.selectionEnd, type);
+    setDraft(r.value);
+    ta.focus();
+    ta.setSelectionRange(r.start, r.end);
+  };
+  const fmtTouchRef = useRef(0);
+
   // Открытие чата: сначала кэш (мгновенно), потом синхронизация с сервера —
   // только то, что изменилось после последней синхронизации. Без кэша —
   // последние 50 сообщений; старое подгружается при прокрутке вверх.
@@ -1476,13 +1501,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     closeMenu();
     setReplyTo(null);
     setEditing(message);
-    setDraft(message.content || "");
+    setDraft(toMarkup(message.content || "", message.entities));
   };
   const cancelEdit = () => { setEditing(null); setDraft(""); };
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
-    const t = (m.content || "").trim();
+    const t = maskPreview(m.content || "", m.entities).trim();
     if (t) return t;
     if (m.sticker?.file_url) return "Стикер";
     if (m.video_url) return "Видео-сообщение";
@@ -1535,23 +1560,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
     // Режим редактирования: не создаём новое, а меняем текст существующего.
     if (editing) {
-      const newText = draftRef.current.trim();
+      const raw = draftRef.current.trim();
+      const { text: newText, entities: newEntities } = parseMarkup(raw);
       const target = editing;
-      if (!newText) { cancelEdit(); return; }
+      if (!newText.trim()) { cancelEdit(); return; }
       setEditing(null);
       setDraft("");
       try {
-        const upd = await api.editMessage(target.id, newText);
+        const upd = await api.editMessage(target.id, newText, newEntities);
         setMessages((prev) => prev.map((m) =>
-          m.id === target.id ? { ...m, ...upd, content: newText, is_edited: true, _key: m._key, _dims: m._dims } : m));
+          m.id === target.id ? { ...m, ...upd, content: newText, entities: newEntities, is_edited: true, _key: m._key, _dims: m._dims } : m));
       } catch {
         toast.error("Не удалось изменить сообщение");
-        setEditing(target); setDraft(newText);
+        setEditing(target); setDraft(raw);
       }
       return;
     }
 
-    const text = draftRef.current.trim();
+    // Разметка (**жирный**, ||спойлер||…) уходит отдельно от текста: сервер
+    // хранит чистый текст и диапазоны оформления (lib/format.tsx).
+    const rawText = draftRef.current.trim();
+    const { text, entities } = parseMarkup(rawText);
     const list = attachments;
     const sound = selectedSound;
     const reply = replyTo;
@@ -1571,6 +1600,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const optimistic: Message = {
         id: tempId,
         content: text || null,
+        entities,
         file_url: null,
         file_name: null,
         sender_id: userId,
@@ -1586,7 +1616,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages(prev => [...prev, optimistic]);
       setTimeout(() => scrollToBottom(true), 50);
       try {
-        const sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id);
+        const sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities);
         setMessages(prev =>
           prev.some(m => m.id === sent.id)
             ? prev.filter(m => m.id !== tempId)
@@ -1596,7 +1626,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         console.error("Error sending message:", error);
         toast.error("Ошибка отправки: " + (error?.message || "Неизвестная ошибка"));
         setMessages(prev => prev.filter(m => m.id !== tempId));
-        setDraft(text);
+        setDraft(rawText);
         setSelectedSound(sound);
         setReplyTo(reply);
       }
@@ -1619,6 +1649,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const optimistic: Message = {
         id: tempId,
         content: first ? (text || null) : null,
+        entities: first ? entities : null,
         file_url: att.url,
         file_name: att.file.name,
         sender_id: userId,
@@ -1638,7 +1669,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         _progress: -1,
         _att: att,
       };
-      return { tempId, att, optimistic, content: first ? text : "", soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, albumId };
+      return { tempId, att, optimistic, content: first ? text : "", entities: first ? entities : undefined, soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, albumId };
       });
     });
 
@@ -1650,7 +1681,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => scrollToBottom(true), 50);
 
     for (const j of jobs) {
-      await sendAttachment(j.tempId, j.att, { content: j.content, soundId: j.soundId, replyId: j.replyId, albumId: j.albumId });
+      await sendAttachment(j.tempId, j.att, { content: j.content, entities: j.entities, soundId: j.soundId, replyId: j.replyId, albumId: j.albumId });
     }
   };
 
@@ -1658,7 +1689,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const sendAttachment = async (
     tempId: string,
     att: Attach,
-    opts: { content?: string; soundId?: string; replyId?: string; albumId?: string | null } = {},
+    opts: { content?: string; entities?: TextEntity[]; soundId?: string; replyId?: string; albumId?: string | null } = {},
   ) => {
     if (!chatId) return;
     // Чат запоминаем на старте: пока идёт загрузка, человек мог перейти в
@@ -1685,6 +1716,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         height: uploadResult.height ?? att.dims?.h,
         poster_url: uploadResult.poster_url ?? null,
         album_id: opts.albumId ?? null,
+        entities: opts.entities,
       }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file");
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
       // размеры — DOM не перемонтируется, картинка не мигает. Если
@@ -2724,7 +2756,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <div key={m.id} className={cn(i > 0 && "mt-2")}>
                           {mixedOrigins && <p className="text-caption opacity-70 leading-tight">{originOf(m)}</p>}
                           <p className="text-body break-words whitespace-pre-wrap">
-                            <Linkify text={m.content || ""} />
+                            <FormattedText text={m.content || ""} entities={m.entities} seed={m.id} />
                             {i === albumText.length - 1 && isOwn && !bareBubble && !albumMedia.length && !albumAudio.length && !albumRest.length && (
                               <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
                                 {formatTime(message.created_at)}
@@ -2737,7 +2769,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Текст сообщения */}
                       {message.content && !albumText.length && (
                         <p className="text-body break-words whitespace-pre-wrap">
-                          <Linkify text={shownText} />
+                          {/* Карточка вырезала ссылку из текста — диапазоны оформления к нему
+                              уже не подходят, такой текст рисуем без них. */}
+                          {shownText === (message.content || "")
+                            ? <FormattedText text={shownText} entities={message.entities} seed={message.id} />
+                            : <Linkify text={shownText} />}
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
                             <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
@@ -2809,7 +2845,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">Повторить</button>
                           )}
                           {message._att && (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendAttachment(message.id, message._att!, { content: message.content || undefined, albumId: message.album_id }); }} className="underline">Повторить</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendAttachment(message.id, message._att!, { content: message.content || undefined, entities: message.entities || undefined, albumId: message.album_id }); }} className="underline">Повторить</button>
                           )}
                           <button type="button" onClick={(e) => { e.stopPropagation(); discardFailed(message); }} className="underline opacity-80">Удалить</button>
                         </div>
@@ -2948,6 +2984,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         {/* На десктопе композер — панель с обводкой, как в референсе; отступ снизу
             даём панели (pad-safe-bottom перебивает padding контейнера). */}
         <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-2">
+          {fmtOpen && (
+            <div className="mb-2 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="toolbar" aria-label="Форматирование">
+              {([
+                ["bold", <Bold key="b" className="w-4 h-4" />, "Жирный"],
+                ["italic", <Italic key="i" className="w-4 h-4" />, "Курсив"],
+                ["underline", <Underline key="u" className="w-4 h-4" />, "Подчёркнутый"],
+                ["strike", <Strikethrough key="s" className="w-4 h-4" />, "Зачёркнутый"],
+                ["code", <Code key="c" className="w-4 h-4" />, "Моноширинный"],
+                ["spoiler", <EyeOff key="sp" className="w-4 h-4" />, "Спойлер"],
+                ["zalgo", <span key="z" className="text-sm font-semibold leading-none">Z&#x0337;&#x0354;&#x0350;</span>, "Зальго"],
+                ["scramble", <Shuffle key="sc" className="w-4 h-4" />, "Перемешать буквы"],
+              ] as [EntityType, ReactNode, string][]).map(([type, icon, label]) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-label={label}
+                  title={label}
+                  // Как у кнопки отправки: тап не должен снимать фокус и
+                  // выделение с поля, иначе применять было бы нечему.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onTouchStart={(e) => e.preventDefault()}
+                  onTouchEnd={(e) => { e.preventDefault(); fmtTouchRef.current = Date.now(); applyFormat(type); }}
+                  onClick={() => { if (Date.now() - fmtTouchRef.current > 500) applyFormat(type); }}
+                  className="h-9 min-w-9 px-2 shrink-0 inline-flex items-center justify-center rounded-md border border-border bg-surface-2 text-foreground hover:bg-surface-3 active:bg-surface-3"
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+          )}
           {editing && (
             <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary px-3 py-2">
               <div className="flex-1 min-w-0">
@@ -3229,6 +3295,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   updateInline(e.target.value);
                 }}
                 onKeyDown={(e) => {
+                  // Форматирование с клавиатуры: ⌘/Ctrl+B, I, U; с Shift: X —
+                  // зачёркнутый, M — моноширинный, P — спойлер.
+                  if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+                    const k = e.key.toLowerCase();
+                    const map: Record<string, EntityType> = e.shiftKey
+                      ? { x: "strike", m: "code", p: "spoiler", ч: "strike", ь: "code", з: "spoiler" }
+                      : { b: "bold", i: "italic", u: "underline", и: "bold", ш: "italic", г: "underline" };
+                    const t = map[k];
+                    const ta = textareaRef.current;
+                    if (t && ta && ta.selectionStart !== ta.selectionEnd) {
+                      e.preventDefault();
+                      applyFormat(t);
+                      return;
+                    }
+                  }
                   // На телефоне Enter — перенос строки (отправка кнопкой), на
                   // десктопе — отправка, Shift+Enter — перенос.
                   if (e.key === "Enter" && !e.shiftKey && !isTouchDevice()) {
