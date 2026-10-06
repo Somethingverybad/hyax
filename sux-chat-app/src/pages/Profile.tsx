@@ -19,7 +19,7 @@ const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "изб�
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
-  Sticker,
+  Sticker, Activity,
 } from "lucide-react";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -37,6 +37,8 @@ export interface Profile {
   hide_online?: boolean;
   /** Кто видит сохранёнки: all | selected | none. */
   saved_visibility?: "all" | "selected" | "none";
+  /** Видит админские разделы (мониторинг) — приходит только в своём профиле. */
+  is_admin?: boolean;
 }
 
 /**
@@ -413,6 +415,17 @@ const ProfilePage = () => {
               trailing={<span />}
             />
           </SettingsCard>
+
+          {profile?.is_admin && (
+            <SettingsCard>
+              <SettingsRow
+                icon={Activity}
+                label="Мониторинг"
+                hint="Онлайн, пользователи, нагрузка сервера"
+                onClick={() => navigate("/admin/metrics")}
+              />
+            </SettingsCard>
+          )}
 
           <SettingsCard>
             <SettingsRow icon={LogOut} label="Выйти" danger onClick={logout} trailing={<span />} />

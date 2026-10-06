@@ -151,6 +151,31 @@ interface AuthResponse {
   user_id?: string;
 }
 
+/** Сводка мониторинга (GET /api/admin/metrics/, только админам). */
+export interface AdminMetrics {
+  now: string;
+  range: "24h" | "7d" | "30d";
+  step_s: number;
+  live: {
+    online: number; connected: number; sockets: number;
+    cpu: number | null; load: number[] | null; cores: number | null;
+    mem_used: number | null; mem_total: number | null;
+    disk_used: number | null; disk_total: number | null;
+    rss: number | null; db_size: number | null; uptime_s: number;
+    sampling_since: string | null;
+  };
+  totals: {
+    users: number; users_24h: number; users_7d: number;
+    seen_24h: number; seen_7d: number; seen_30d: number; bots: number;
+    messages: number; messages_24h: number;
+    chats_direct: number; chats_group: number; channels: number; calls_24h: number;
+    peak_24h: number | null; peak_24h_at: string | null; peak_all: number | null; peak_all_at: string | null;
+  };
+  timeline: { t: number; online_avg: number | null; online_max: number | null; cpu: number | null; mem: number | null; messages: number }[];
+  daily: { t: number; registrations: number; writers: number; messages: number; peak_online: number | null }[];
+  hours: { hour: number; messages: number }[];
+}
+
 export interface Profile {
   id: string;
   username: string;
@@ -189,6 +214,8 @@ export interface Profile {
   /** Когда приняты правила. null — ещё не приняты (экран согласия);
    *  undefined — сервер поля не знает или это чужой профиль. */
   terms_accepted_at?: string | null;
+  /** Только в своём профиле: видит админские разделы (мониторинг). */
+  is_admin?: boolean;
 }
 
 /** Пак звуков — карточка по ссылке /sp/<id> и список добавленных. */
@@ -1137,6 +1164,13 @@ export const api = {
       body: JSON.stringify({ chat_id: chatId }),
     });
     if (!res.ok) throw new Error("Failed to mark chat as read");
+    return res.json();
+  },
+
+  getAdminMetrics: async (range: string, tzOffsetMin: number): Promise<AdminMetrics> => {
+    const res = await fetchWithAuth(`${API_URL}/admin/metrics/?range=${encodeURIComponent(range)}&tz=${tzOffsetMin}`, { method: "GET", headers: authHeaders() });
+    if (res.status === 403) throw new Error("403");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
 
