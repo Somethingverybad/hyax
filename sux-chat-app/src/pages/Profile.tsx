@@ -422,7 +422,7 @@ const ProfilePage = () => {
                 icon={Activity}
                 label="Мониторинг"
                 hint="Онлайн, пользователи, нагрузка сервера"
-                onClick={() => navigate("/admin/metrics")}
+                onClick={() => navigate("/monitoring")}
               />
             </SettingsCard>
           )}
