@@ -671,7 +671,20 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const isChannelOpen = selectedKind === "channel" || (selectedChat as any)?.kind === "channel";
   const isSavedOpen = !!selectedChatId && (selectedKind === "saved" || (selectedChat as any)?.kind === "saved");
   // «Избранное» живёт на своей вкладке — из общего списка его убираем.
-  const listChats = chats.filter((c) => (c as any).kind !== "saved");
+  // «Долгий ящик» — своя строка наверху списка (ChatSidebar), в общем списке его нет.
+  const listChats = chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox");
+  const ideaboxChat = chats.find((c) => (c as any).kind === "ideabox") || null;
+  const openIdeabox = async () => {
+    try {
+      const id = ideaboxChat?.id || (await api.getIdeabox()).id;
+      if (!ideaboxChat) await refreshChats();
+      setSelectedChatId(id);
+      setSelectedKind("ideabox");
+      setSelectedChatTitle("Долгий ящик");
+    } catch (e) {
+      toast.error((e as Error).message || "Не удалось открыть");
+    }
+  };
   // В группе «собеседника» нет: find(!= me) вернул бы первого участника, и
   // шапка шла бы по ветке 1:1 (профиль) вместо настроек группы. Поэтому для
   // групп peer всегда null.
@@ -961,6 +974,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
               к последней строке, а под ним оставалась пустота. */}
           <div className={`flex-1 min-h-0 flex${hadChatOpenRef.current ? " screen-pop" : ""}`}>
           <ChatSidebar
+            ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0 } : null}
+            onOpenIdeabox={openIdeabox}
             userId={user.id}
             username={user.username}
             chats={listChats}
@@ -997,6 +1012,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       <div className="flex-1 flex min-h-0">
       {callUi}
       <ChatSidebar
+            ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0 } : null}
+            onOpenIdeabox={openIdeabox}
         userId={user.id}
         chats={listChats}
         savedChatId={savedChat?.id}

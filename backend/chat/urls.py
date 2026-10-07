@@ -5,6 +5,7 @@ from .account import AcceptTermsView, DeleteAccountView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
+from .ideabox import IdeaboxView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path('profiles/current/', get_current_user_profile, name='current-profile'),
     path('admin/metrics/', AdminMetricsView.as_view(), name='admin-metrics'),
     path('secret-chats/', SecretChatCreateView.as_view(), name='secret-create'),
+    path('ideabox/', IdeaboxView.as_view(), name='ideabox'),
     path('secret-chats/<uuid:chat_id>/accept/', SecretChatAcceptView.as_view(), name='secret-accept'),
     path('secret-chats/<uuid:chat_id>/decline/', SecretChatDeclineView.as_view(), name='secret-decline'),
     path('auth/register/', register_user, name='register'),

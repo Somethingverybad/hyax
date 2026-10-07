@@ -1430,6 +1430,11 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         _notify_new_message(message, profile, request)
 
+        # «Долгий ящик»: идею — к разработчику (chat/ideabox.py).
+        if getattr(message.chat, 'kind', '') == 'ideabox' and not profile.is_bot:
+            from .ideabox import deliver_idea
+            deliver_idea(message, profile)
+
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)
         

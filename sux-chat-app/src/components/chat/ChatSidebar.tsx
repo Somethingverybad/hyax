@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Share2, Pin, Lock } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb } from "lucide-react";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
 import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
@@ -73,6 +73,9 @@ interface ChatSidebarProps {
    *  своя вкладка, и пропсы не передаются). */
   savedChatId?: string;
   onOpenSaved?: () => void;
+  /** «Долгий ящик»: чат с ботом идей (если уже есть) и открытие. */
+  ideabox?: { id: string; unread: number } | null;
+  onOpenIdeabox?: () => void;
 }
 
 // Кеш участников переживает перезапуск приложения: имена в списке чатов
@@ -112,6 +115,8 @@ const ChatSidebar = ({
   onChatCreated,
   savedChatId,
   onOpenSaved,
+  ideabox,
+  onOpenIdeabox,
 }: ChatSidebarProps) => {
   const isMobileLayout = useIsMobile();
   const listRef = useRef<HTMLDivElement>(null);
@@ -780,6 +785,31 @@ const ChatSidebar = ({
           списком, и без отступа накрывал бы первую строку. */}
       <ScrollArea className="flex-1">
         <div style={{ paddingTop: "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
+          {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
+          {onOpenIdeabox && !isCollapsed && (
+            <button
+              type="button"
+              onClick={onOpenIdeabox}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 ${
+                ideabox && selectedChatId === ideabox.id ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
+              }`}
+            >
+              <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
+                <Lightbulb className="w-6 h-6 md:w-5 md:h-5 text-amber" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-h2 md:text-[15px] truncate">Долгий ящик</p>
+                <p className="text-small text-subtle truncate">Идеи и предложения разработчику</p>
+              </div>
+              {ideabox && ideabox.unread > 0 ? (
+                <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-caption font-semibold flex items-center justify-center">
+                  {ideabox.unread > 99 ? "99+" : ideabox.unread}
+                </span>
+              ) : (
+                <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
+              )}
+            </button>
+          )}
           {onOpenSaved && !isCollapsed && (
             <button
               type="button"

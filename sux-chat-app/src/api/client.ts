@@ -1173,6 +1173,13 @@ export const api = {
     return res.json();
   },
 
+  /** «Долгий ящик» — чат с ботом для идей (создаётся при первом заходе). */
+  getIdeabox: async (): Promise<Chat> => {
+    const res = await fetchWithAuth(`${API_URL}/ideabox/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось открыть долгий ящик");
+    return res.json();
+  },
+
   /** Секретный чат: создать (своя открытая половина ключа) и принять/отклонить. */
   createSecretChat: async (peerId: string, pub: string, deviceId: string): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/secret-chats/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ peer_id: peerId, pub, device_id: deviceId }) });
