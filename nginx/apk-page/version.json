@@ -1,9 +1,9 @@
 {
-  "version": "1.1.13",
-  "build": 422,
-  "ios_version": "1.1.13",
-  "ios_build": 155,
-  "notes": "Список чатов больше не показывает старые сообщения и не мигает бейджем после выхода из переписки; тема не откатывается сама. Linux: обновление из приложения для установки из .deb. Windows: один установщик для x64 и ARM",
+  "version": "1.1.14",
+  "build": 432,
+  "ios_version": "1.1.14",
+  "ios_build": 156,
+  "notes": "Форматирование текста: жирный, курсив, подчёркнутый, зачёркнутый, код, спойлер, зальго и перемешанные буквы, которые собираются по нажатию. Исправления списка чатов",
   "files": {
     "mac": "https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg",
     "win": "https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe",
