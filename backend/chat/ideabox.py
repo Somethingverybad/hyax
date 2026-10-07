@@ -33,9 +33,16 @@ IDEAS_CHAT_NAME = "Идеи"
 REPLY_EVERY = timedelta(minutes=10)
 
 WELCOME = (
+    "Привет! Это долгий ящик — временный бот на период тестирования WhoYaX.\n\n"
+    "Сюда можно бросать идеи и предложения: что добавить, что поменять, что бесит. "
+    "Текстом, голосом, картинкой — как удобно. Всё попадает прямо к разработчику. "
+    "Ответ не обещаю, но каждую идею прочитаю."
+)
+# Прежние приветствия — обновляем их на текущее (manage.py ideabox_seed).
+OLD_WELCOMES = (
     "Привет! Это долгий ящик — сюда можно бросать идеи и предложения: что добавить, "
     "что поменять, что бесит. Текстом, голосом, картинкой — как удобно.\n\n"
-    "Всё попадает прямо к разработчику. Ответ не обещаю, но каждую идею прочитаю."
+    "Всё попадает прямо к разработчику. Ответ не обещаю, но каждую идею прочитаю.",
 )
 THANKS = "Положил в долгий ящик 📦 Спасибо! Если вспомнится ещё что-то — пиши сюда же."
 
@@ -82,8 +89,8 @@ def deliver_idea(message: Message, author: Profile) -> None:
         logger.exception("Идея %s сохранена, но не доставлена в «Идеи»", message.id)
     try:
         box_bot = ideabox_bot()
-        last_reply = (Message.objects.filter(chat=message.chat, sender=box_bot)
-                      .exclude(content=WELCOME).order_by("-created_at").values_list("created_at", flat=True).first())
+        last_reply = (Message.objects.filter(chat=message.chat, sender=box_bot, content=THANKS)
+                      .order_by("-created_at").values_list("created_at", flat=True).first())
         if not last_reply or timezone.now() - last_reply > REPLY_EVERY:
             reply = Message.objects.create(chat=message.chat, sender=box_bot, content=THANKS)
             Chat.objects.filter(id=message.chat_id).update(updated_at=timezone.now())

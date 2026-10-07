@@ -1466,10 +1466,16 @@ def register_user(request):
         # Старые сборки поля не знают — их не отбиваем, а правила покажем
         # отдельным экраном после обновления (terms_accepted_at пуст).
         accepted = str(request.data.get('accept_terms', '')).lower() in ('1', 'true', 'on')
-        Profile.objects.create(
+        new_profile = Profile.objects.create(
             user=user, username=username,
             terms_accepted_at=timezone.now() if accepted else None,
         )
+        # «Долгий ящик» — у каждого с первого входа (chat/ideabox.py).
+        try:
+            from .ideabox import user_chat
+            user_chat(new_profile)
+        except Exception:
+            logger.exception("ideabox: не создан чат для %s", username)
         
         return Response({
             'message': 'Пользователь создан',
