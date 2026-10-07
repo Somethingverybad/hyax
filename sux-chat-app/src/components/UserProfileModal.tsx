@@ -5,6 +5,7 @@ import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
+import { Aura, DEFAULT_AURA } from "@/components/Aura";
 import { api, mediaUrl } from "@/api/client";
 import { lastSeenText } from "@/lib/lastSeen";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -20,6 +21,8 @@ interface UserProfile {
   is_online?: boolean;
   last_seen?: string | null;
   bio?: string | null;
+  aura_color?: string | null;
+  aura_text?: string | null;
   created_at?: string | null;
 }
 
@@ -141,12 +144,22 @@ const UserProfileModal = ({
               </div>
             )}
             <div className="flex items-center gap-5 pr-8">
-              <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
+              <Aura active={!!profile.is_online} owner={profile} size={104}>
+                <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
+              </Aura>
               <div className="min-w-0">
                 <h2 className="text-[24px] leading-tight font-semibold text-foreground truncate">{profile.username}</h2>
                 <p className={`mt-1 text-small truncate ${profile.is_online ? "text-online" : "text-subtle"}`}>
                   {profile.is_online ? "в сети" : lastSeenText(profile.last_seen)}
                 </p>
+                {/* Значение ауры — здесь его видно и на телефоне, где нет наведения. */}
+                {profile.aura_text && (
+                  <p className="mt-1 text-small text-foreground flex items-center gap-1.5 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: profile.aura_color || DEFAULT_AURA, opacity: profile.is_online ? 1 : 0.45 }} aria-hidden />
+                    <span className="truncate">{profile.aura_text}</span>
+                  </p>
+                )}
                 <p className="mt-1 text-body text-subtle truncate">{profile.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
               </div>
             </div>

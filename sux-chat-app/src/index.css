@@ -1116,3 +1116,62 @@ textarea,
 @media (prefers-reduced-motion: reduce) {
   .fmt-spoiler, .fmt-spoiler-open { animation: none; }
 }
+
+/* ===== Аура вокруг аватара (components/Aura.tsx) =====
+   Три слоя пламени цвета --aura под аватаром:
+   tongues — «языки» по кругу (конический градиент с прорехами), медленно
+             вращаются и мерцают;
+   rise    — всполохи сверху, тянутся вверх, как у огня;
+   core    — ровное свечение вплотную к краю аватара.
+   Анимируются только transform/opacity: размытие считается один раз. */
+.aura-wrap { position: relative; display: inline-flex; flex-shrink: 0; isolation: isolate; }
+.aura-wrap > :not(.aura-flame) { position: relative; z-index: 1; }
+.aura-flame {
+  position: absolute;
+  inset: -24%;
+  z-index: 0;
+  pointer-events: none;
+}
+.aura-flame > span { position: absolute; border-radius: 50%; will-change: transform, opacity; }
+.aura-tongues {
+  inset: 0;
+  background: conic-gradient(from 0deg,
+    var(--aura) 0 5%, transparent 9% 12%, var(--aura) 16% 22%, transparent 26% 30%,
+    var(--aura) 33% 41%, transparent 45% 49%, var(--aura) 52% 58%, transparent 62% 66%,
+    var(--aura) 69% 77%, transparent 81% 85%, var(--aura) 88% 100%);
+  -webkit-mask: radial-gradient(closest-side, #000 52%, rgba(0,0,0,.55) 74%, transparent 100%);
+          mask: radial-gradient(closest-side, #000 52%, rgba(0,0,0,.55) 74%, transparent 100%);
+  filter: blur(var(--aura-blur, 3px));
+  opacity: .8;
+  animation: aura-spin 7s linear infinite, aura-flicker 1.9s ease-in-out infinite alternate;
+}
+.aura-rise {
+  inset: -14% 6% 30% 6%;
+  background:
+    radial-gradient(ellipse 22% 42% at 50% 62%, var(--aura), transparent 72%),
+    radial-gradient(ellipse 16% 34% at 30% 70%, var(--aura), transparent 72%),
+    radial-gradient(ellipse 16% 34% at 70% 70%, var(--aura), transparent 72%);
+  filter: blur(var(--aura-blur, 3px));
+  opacity: .7;
+  transform-origin: 50% 100%;
+  animation: aura-rise 1.35s ease-in-out infinite alternate;
+}
+.aura-core {
+  inset: 17%;
+  box-shadow: 0 0 calc(var(--aura-blur, 3px) * 2.4) calc(var(--aura-blur, 3px) * .7) var(--aura);
+  opacity: .9;
+  animation: aura-breathe 2.6s ease-in-out infinite alternate;
+}
+@keyframes aura-spin { to { transform: rotate(360deg); } }
+@keyframes aura-flicker {
+  0% { opacity: .65; } 35% { opacity: .9; } 60% { opacity: .72; } 100% { opacity: .95; }
+}
+@keyframes aura-rise {
+  0% { transform: translateY(4%) scaleY(.85); opacity: .5; }
+  50% { opacity: .8; }
+  100% { transform: translateY(-6%) scaleY(1.15); opacity: .65; }
+}
+@keyframes aura-breathe { from { opacity: .7; transform: scale(.98); } to { opacity: 1; transform: scale(1.03); } }
+@media (prefers-reduced-motion: reduce) {
+  .aura-flame > span { animation: none; }
+}

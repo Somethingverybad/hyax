@@ -51,11 +51,21 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
         read_only_fields = ['id', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner']
+
+    def validate_aura_color(self, value):
+        import re
+        value = (value or "").strip()
+        if value and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            raise serializers.ValidationError("Цвет ауры — в виде #rrggbb")
+        return value.lower()
+
+    def validate_aura_text(self, value):
+        return " ".join((value or "").split())[:60]
 
     def validate_username(self, value):
         value = (value or "").strip()
@@ -80,11 +90,23 @@ class OwnProfileSerializer(ProfileSerializer):
     # профиле: собеседникам это знать незачем.
     is_admin = serializers.SerializerMethodField()
 
+    def validate_aura_presets(self, value):
+        import re
+        out = []
+        for p in (value if isinstance(value, list) else [])[:12]:
+            if not isinstance(p, dict):
+                continue
+            color = str(p.get("color") or "").strip().lower()
+            if not re.fullmatch(r"#[0-9a-f]{6}", color):
+                continue
+            out.append({"color": color, "text": " ".join(str(p.get("text") or "").split())[:60]})
+        return out
+
     def get_is_admin(self, obj):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'allow_adult', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
 
@@ -128,7 +150,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'bio', 'is_bot', 'created_at', 'saved_visible']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'bio', 'is_bot', 'created_at', 'saved_visible', 'aura_color', 'aura_text']
         read_only_fields = fields
 
 

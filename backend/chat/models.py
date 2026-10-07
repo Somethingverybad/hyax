@@ -22,6 +22,13 @@ class Profile(models.Model):
     # Статус «Скрыт»: собеседники видят «не в сети», даже когда человек в
     # приложении (см. presence.shown_online).
     hide_online = models.BooleanField(default=False)
+    # Аура — свечение вокруг аватара, пока человек в сети (как статусы ICQ):
+    # цвет «#rrggbb» и своё значение («работаю», «злой»…). Пусто — свечение
+    # цвета по умолчанию без подписи. aura_presets — сохранённые ауры для
+    # быстрого выбора, видны только владельцу: [{"color": "#ff6a00", "text": "…"}].
+    aura_color = models.CharField(max_length=7, blank=True, default="")
+    aura_text = models.CharField(max_length=60, blank=True, default="")
+    aura_presets = models.JSONField(default=list, blank=True)
     # Когда человек последний раз был на связи. Показывается собеседникам как
     # «в сети 5 минут назад», если он это не выключил и не скрыл сам статус.
     last_seen = models.DateTimeField(null=True, blank=True)

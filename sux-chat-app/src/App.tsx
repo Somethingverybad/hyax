@@ -11,6 +11,7 @@ import { readCache } from "@/lib/session-cache";
 import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import AdminMetrics from "./pages/AdminMetrics";
+import ProfileAura from "./pages/ProfileAura";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
 import Legal from "./pages/Legal";
@@ -230,6 +231,7 @@ const App = () => {
               <Route path="/profile/saved-access" element={<ProfileSavedAccess />} />
               <Route path="/profile/appearance" element={<ProfileAppearance />} />
               <Route path="/profile/bugreport" element={<ProfileBugReport />} />
+              <Route path="/profile/aura" element={<ProfileAura />} />
               <Route path="/monitoring" element={<AdminMetrics />} />
               <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
               {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}

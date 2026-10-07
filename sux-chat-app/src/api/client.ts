@@ -1584,7 +1584,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[] }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
@@ -1594,7 +1594,7 @@ export const api = {
       let msg = "Не удалось сохранить профиль";
       try {
         const body = await res.json();
-        msg = body.username?.[0] || body.bio?.[0] || body.error || msg;
+        msg = body.username?.[0] || body.bio?.[0] || body.aura_color?.[0] || body.error || msg;
       } catch { /* тело не JSON */ }
       throw new Error(msg);
     }

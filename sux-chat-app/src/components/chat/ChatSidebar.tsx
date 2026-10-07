@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
+import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Share2, Pin } from "lucide-react";
 import { shareProfile } from "@/lib/share";
@@ -35,6 +36,8 @@ interface Profile {
   avatar_url?: string;
   is_online?: boolean;
   hide_online?: boolean;
+  aura_color?: string | null;
+  aura_text?: string | null;
 }
 
 interface Chat {
@@ -916,20 +919,20 @@ const ChatSidebar = ({
                         </div>
                       )
                     ) : (
-                      <span className="relative shrink-0">
-                        <Identicon
-                          id={displayParticipants[0]?.id || chat.id}
-                          avatarUrl={displayParticipants[0]?.avatar_url}
-                          className="w-[46px] h-[46px] md:w-9 md:h-9"
-                        />
-                        {/* Статус — из общего списка чатов: его обновляет сокет. */}
-                        {chat.participants?.some((p) => p.id !== currentUser?.id && p.is_online) && (
-                          <span
-                            className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-online border-2 border-background"
-                            aria-label="В сети"
-                          />
-                        )}
-                      </span>
+                      // «В сети» — аурой вокруг аватара (components/Aura.tsx). Статус —
+                      // из общего списка чатов: его обновляет сокет.
+                      (() => {
+                        const other = chat.participants?.find((p) => p.id !== currentUser?.id);
+                        return (
+                          <Aura active={!!other?.is_online} owner={other} size={46}>
+                            <Identicon
+                              id={displayParticipants[0]?.id || chat.id}
+                              avatarUrl={displayParticipants[0]?.avatar_url}
+                              className="w-[46px] h-[46px] md:w-9 md:h-9"
+                            />
+                          </Aura>
+                        );
+                      })()
                     )}
 
                     {!isCollapsed && (

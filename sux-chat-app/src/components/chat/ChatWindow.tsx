@@ -14,6 +14,7 @@ import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
+import { Aura } from "@/components/Aura";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { DEFAULT_REACTION, type ReactionSummary } from "@/lib/reactions";
@@ -176,7 +177,7 @@ interface ChatWindowProps {
   chatId: string | null;
   userId: string;
   /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
-  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; is_bot?: boolean; readonly_bot?: boolean; last_seen?: string | null } | null;
+  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; aura_color?: string | null; aura_text?: string | null; is_bot?: boolean; readonly_bot?: boolean; last_seen?: string | null } | null;
   onCall?: () => void;
   /** Метаданные группы (если это групповой чат) — для настроек и прав админа. */
   group?: ChatInfo | null;
@@ -2285,7 +2286,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               className="flex items-center gap-3 flex-1 min-w-0 text-left"
               title="Профиль собеседника"
             >
-              <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11" />
+              <Aura active={!peer.is_bot && !!peer.is_online} owner={peer} size={42}>
+                <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11" />
+              </Aura>
               <span className="min-w-0 flex flex-col">
                 <span className="text-h1 truncate leading-tight">{headerTitle || peer.username || "Чат"}</span>
                 <span className="text-small text-muted-foreground truncate">
@@ -2567,11 +2570,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   )}
                   {/* Аватар (только для чужих сообщений) */}
                   {!isOwn && (
-                    <Identicon
-                      id={message.sender?.id || "?"}
-                      avatarUrl={message.sender?.avatar_url}
-                      className="w-9 h-9"
-                    />
+                    <Aura active={!!peer?.is_online && message.sender?.id === peer.id} owner={peer} size={36}>
+                      <Identicon
+                        id={message.sender?.id || "?"}
+                        avatarUrl={message.sender?.avatar_url}
+                        className="w-9 h-9"
+                      />
+                    </Aura>
                   )}
 
                   {/* Контент сообщения */}

@@ -13,13 +13,14 @@ import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate, describeUpdateError } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
+import { Aura, DEFAULT_AURA } from "@/components/Aura";
 import ImageCropper from "@/components/ImageCropper";
 
 const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
-  Sticker, Activity,
+  Sticker, Activity, Flame,
 } from "lucide-react";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -39,6 +40,8 @@ export interface Profile {
   saved_visibility?: "all" | "selected" | "none";
   /** Видит админские разделы (мониторинг) — приходит только в своём профиле. */
   is_admin?: boolean;
+  aura_color?: string | null;
+  aura_text?: string | null;
 }
 
 /**
@@ -285,13 +288,15 @@ const ProfilePage = () => {
               className="absolute -bottom-8 left-4 w-[88px] h-[88px] rounded-lg bg-surface-3 border-4 border-background disabled:opacity-60"
               aria-label="Сменить аватар"
             >
-              {profile?.avatar_url ? (
-                <img src={mediaUrl(profile.avatar_url)} alt="" className="w-full h-full rounded-[6px] object-cover" />
-              ) : (
-                <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
-                  {(profile?.username || "?")[0]?.toUpperCase()}
-                </span>
-              )}
+              <Aura active={online} owner={profile} size={88} className="w-full h-full">
+                {profile?.avatar_url ? (
+                  <img src={mediaUrl(profile.avatar_url)} alt="" className="w-full h-full rounded-[6px] object-cover" />
+                ) : (
+                  <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
+                    {(profile?.username || "?")[0]?.toUpperCase()}
+                  </span>
+                )}
+              </Aura>
               <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center">
                 <Camera className="w-3.5 h-3.5" />
               </span>
@@ -342,6 +347,13 @@ const ProfilePage = () => {
               label="О себе"
               value={bio || "Не указано"}
               onClick={() => navigate("/profile/edit")}
+            />
+            <SettingsRow
+              icon={Flame}
+              label="Аура"
+              value={profile?.aura_text || (profile?.aura_color ? "без подписи" : "по умолчанию")}
+              trailing={<span className="w-3 h-3 rounded-full shrink-0" style={{ background: profile?.aura_color || DEFAULT_AURA }} aria-hidden />}
+              onClick={() => navigate("/profile/aura")}
             />
             <SettingsRow
               icon={AtSign}

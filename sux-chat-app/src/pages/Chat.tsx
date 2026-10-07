@@ -54,6 +54,9 @@ interface ProfileType {
   status?: string;
   /** «В сети» — живой статус, обновляется по сокету (событие presence). */
   is_online?: boolean;
+  /** Аура — свечение вокруг аватара в сети (components/Aura.tsx). */
+  aura_color?: string | null;
+  aura_text?: string | null;
   /** null — правила ещё не приняты (см. TermsGate). */
   terms_accepted_at?: string | null;
 }
