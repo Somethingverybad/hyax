@@ -47,7 +47,7 @@ export function Aura({
   const text = (owner?.aura_text || "").trim();
   const style = {
     "--aura": color,
-    "--aura-blur": `${Math.max(2, Math.round(size * 0.07))}px`,
+    "--aura-blur": `${Math.max(1.5, Math.round(size * 0.045 * 10) / 10)}px`,
   } as CSSProperties;
 
   const body = (
@@ -55,6 +55,7 @@ export function Aura({
       {active && (
         <span className="aura-flame" aria-hidden>
           <span className="aura-tongues" />
+          <span className="aura-tongues aura-tongues-2" />
           <span className="aura-rise" />
           <span className="aura-core" />
         </span>
@@ -69,7 +70,7 @@ export function Aura({
   return (
     <Tooltip delayDuration={250}>
       <TooltipTrigger asChild>{body}</TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[240px]">
+      <TooltipContent side="top" className="max-w-[240px]">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
           {text}

@@ -2569,14 +2569,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     </span>
                   )}
                   {/* Аватар (только для чужих сообщений) */}
+                  {/* Без ауры: у сообщений подряд свечения сливались в одну полосу —
+                      «в сети» видно по шапке и списку чатов. */}
                   {!isOwn && (
-                    <Aura active={!!peer?.is_online && message.sender?.id === peer.id} owner={peer} size={36}>
-                      <Identicon
-                        id={message.sender?.id || "?"}
-                        avatarUrl={message.sender?.avatar_url}
-                        className="w-9 h-9"
-                      />
-                    </Aura>
+                    <Identicon
+                      id={message.sender?.id || "?"}
+                      avatarUrl={message.sender?.avatar_url}
+                      className="w-9 h-9"
+                    />
                   )}
 
                   {/* Контент сообщения */}
