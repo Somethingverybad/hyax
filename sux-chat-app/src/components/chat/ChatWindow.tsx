@@ -25,7 +25,7 @@ import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
 import { FormattedText, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
-import { chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, type SecretInfo, type SecretMedia, type SecretPayload } from "@/lib/secret";
+import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
@@ -624,10 +624,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Секретный чат: расшифровываем пришедшее. Результат запоминаем по id —
   // синхронизация приносит сообщения заново (с пустым content), второй раз
   // не расшифровываем. Не вышло (чужой ключ, порча) — честная пометка.
-  const plainRef = useRef(new Map<string, { cipher: string; p: SecretPayload | null }>());
-  // Готовые расшифрованные вложения: id → поля сообщения с blob-ссылкой.
-  // Синхронизация приносит сообщение заново — подставляем без повторной загрузки.
-  const blobRef = useRef(new Map<string, Partial<Message>>());
+  // Кэши уровня модуля, а не экрана: вышли из чата и вернулись — всё уже
+  // готово, без повторной загрузки и расшифровки (см. secretPlain ниже).
+  const plainRef = useRef(secretPlain);
+  const blobRef = useRef(secretBlobs);
   const inflightRef = useRef(new Set<string>());
   /** Поля пузыря для расшифрованного файла — как у обычного сообщения того же вида. */
   const secretMediaFields = (m: SecretMedia, url: string): Partial<Message> => {
@@ -644,10 +644,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (inflightRef.current.has(id)) return;
     inflightRef.current.add(id);
     try {
-      const url = serverUrl.startsWith("s3://") ? await api.signMedia(serverUrl) : mediaUrl(serverUrl);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await decryptFile(await res.arrayBuffer(), m);
+      // Шифротекст с устройства, если уже качали; иначе с сервера — и в кэш.
+      let data = await cachedCipherFile(serverUrl);
+      if (!data) {
+        const url = serverUrl.startsWith("s3://") ? await api.signMedia(serverUrl) : mediaUrl(serverUrl);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.arrayBuffer();
+        void storeCipherFile(serverUrl, data.slice(0));
+      }
+      const blob = await decryptFile(data, m);
       const fields = secretMediaFields(m, URL.createObjectURL(blob));
       blobRef.current.set(id, fields);
       setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, ...fields, _ready: true, _sm: null } : x)));
@@ -677,7 +683,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages((prev) => prev.map((m) => {
         if (m.content != null || !out.has(m.id)) return m;
         const p = out.get(m.id);
-        if (!p) return { ...m, content: "🔒 Не удалось расшифровать", _ready: true };
+        if (!p) return { ...m, content: "🔒 Сообщение не открывается на этом устройстве", _ready: true };
         const base = { ...m, content: p.t, entities: (p.e as TextEntity[] | undefined) ?? null };
         if (!p.m) return { ...base, _ready: true };
         const ready = blobRef.current.get(m.id);
@@ -1105,6 +1111,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
 
     (async () => {
+      // Секретный чат уже открывали в этой сессии — лента готова в памяти.
+      const sess = secretSession.get(chatId);
+      if (sess && sess.messages.length) {
+        syncedAtRef.current = sess.syncedAt;
+        setHasMore(sess.hasMore);
+        setMessages(sess.messages);
+        scrollToBottomOnOpen();
+        await syncSince(chatId);
+        primedRef.current = true;
+        return;
+      }
       const cached = await readMessages(chatId);
       if (!alive) return;
       if (cached && cached.messages.length) {
@@ -1119,7 +1136,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           if (!alive) return;
           syncedAtRef.current = r.now;
           setHasMore(r.has_more);
-          setMessages(r.messages);
+          setMessages(r.messages.map(prefillSecret));
           void writeMessages(chatId, r.messages, r.now, r.has_more);
           scrollToBottomOnOpen();
         } catch {
@@ -1325,7 +1342,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const r = await api.syncMessages(id, syncedAtRef.current ? { since: syncedAtRef.current } : { limit: 50 });
       if (id !== chatIdRef.current) return; // чат успели переключить
       syncedAtRef.current = r.now;
-      if (r.messages.length || r.deleted.length) applyBatch(r.messages, r.deleted);
+      if (r.messages.length || r.deleted.length) applyBatch(r.messages.map(prefillSecret), r.deleted);
       // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
       // Иначе бейдж в списке чатов оставался, хотя человек всё видел и ответил.
       if (r.messages.some((m) => m.sender?.id !== userId) && (typeof document === "undefined" || document.visibilityState === "visible")) {
@@ -1713,6 +1730,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       toast.error("Не удалось отправить стикер");
     }
   };
+
+  useEffect(() => {
+    if (!isSecret || !chatId) return;
+    const done = messages.filter((m) => !m.pending);
+    if (done.length) secretSession.set(chatId, { messages: done, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
+  }, [messages, isSecret, chatId]);
 
   // ---- Секретные вложения: шифруем файл на устройстве, грузим шифротекст ----
   const SECRET_MAX = 50 * 1024 * 1024;
@@ -2629,6 +2652,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           переписки и не меняет её высоту — раньше её появление укорачивало
           ленту уже после доводки, и сообщения дёргались. */}
       <div className="relative flex-1 min-h-0 flex flex-col isolate">
+        {/* Приглашение в секретный чат — на всю ленту, с прокруткой: в панели
+            ввода плашка уезжала за край экрана вместе с кнопками. */}
+        {isSecret && !skey && secretInfo?.state === "pending" && secretInfo.initiator_id !== userId && (
+          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 py-5 flex">
+            <div className="m-auto w-full">
+              <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
+                onConfirm={acceptSecret} onDecline={declineSecret} />
+            </div>
+          </div>
+        )}
       {/* Обои: слой под лентой на весь экран чата; видео крутится, если
           анимация не выключена в настройках, иначе — его постер. */}
       {wallpaper && (wallpaperSrc || wallpaperPoster) && (
@@ -2992,7 +3025,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             )}
                           </div>
                           {message.transcript_status === "pending" && (
-                            <p className="mt-1 text-xs opacity-70">Расшифровываю…</p>
+                            <p className="mt-1 text-xs opacity-70">Распознаю…</p>
                           )}
                           {message.transcript_status === "error" && (
                             <p className="mt-1 text-xs opacity-70">Не удалось расшифровать — попробуй ещё раз.</p>
@@ -3044,13 +3077,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             ? <img src={`data:image/jpeg;base64,${message._sm.th}`} alt="" className="w-20 h-20 rounded-md object-cover shrink-0" />
                             : <span className="w-12 h-12 rounded-md bg-black/20 flex items-center justify-center shrink-0"><Lock className="w-5 h-5" /></span>}
                           <span className="min-w-0">
-                            <span className="block text-small">{message._sm.state === "error" ? "Не удалось расшифровать файл" : "🔒 Расшифровываю…"}</span>
+                            <span className="block text-small">{message._sm.state === "error" ? "Не удалось открыть файл" : "Загружаю…"}</span>
                             <span className="block text-caption opacity-70 truncate">{message._sm.name} · {Math.max(1, Math.round(message._sm.size / 1024))} КБ</span>
                           </span>
                         </div>
                       )}
                       {message.cipher && message.content == null && (
-                        <p className="text-body italic opacity-70">🔒 {skey ? "Расшифровываю…" : "Зашифровано — ключ на другом устройстве"}</p>
+                        <p className="text-body italic opacity-70">{skey ? "…" : "🔒 Сообщение доступно на другом устройстве"}</p>
                       )}
                       {/* Текст сообщения */}
                       {message.content && !albumText.length && (
@@ -3272,8 +3305,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           ) : secretInfo.state === "declined" ? (
             <p className="text-center text-small text-subtle">Секретный чат отклонён.</p>
           ) : secretInfo.state === "pending" && secretInfo.initiator_id !== userId ? (
-            <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
-              onConfirm={acceptSecret} onDecline={declineSecret} />
+            <p className="text-center text-small text-subtle">Примите или отклоните секретный чат выше.</p>
           ) : secretInfo.state === "pending" ? (
             <p className="text-center text-small text-subtle">
               {hasHalf
@@ -3985,6 +4017,22 @@ const WAVE_BARS = 40;
 const FALLBACK_WAVE = Array.from({ length: WAVE_BARS }, (_, i) => 0.25 + ((i * 37) % 16) / 24);
 
 const chatInfoCache = new Map<string, ChatFull>();
+/** Секретные чаты, кэш на время работы приложения (не на диске): расшифрованное
+ *  содержимое по id и готовые поля вложений с blob-ссылками, плюс последняя
+ *  лента каждого чата — повторный вход открывает её сразу. */
+const secretPlain = new Map<string, { cipher: string; p: SecretPayload | null }>();
+const secretBlobs = new Map<string, Partial<Message>>();
+const secretSession = new Map<string, { messages: Message[]; syncedAt: string | null; hasMore: boolean }>();
+/** Пришедшее с сервера сообщение — сразу в готовом виде, если уже расшифровано. */
+function prefillSecret<T extends Message>(m: T): T {
+  if (!m.cipher) return m;
+  const rec = secretPlain.get(m.id);
+  if (!rec || rec.cipher !== m.cipher || !rec.p) return m;
+  const base = { ...m, content: rec.p.t, entities: (rec.p.e as TextEntity[] | undefined) ?? null };
+  if (!rec.p.m) return { ...base, _ready: true };
+  const f = secretBlobs.get(m.id);
+  return f ? { ...base, ...f, _ready: true, _sm: null } : m;
+}
 // Уже разыгранные «глюк-стикеры» — чтобы при каждом входе не сыпалось заново.
 const playedBursts = new Set<string>((() => { try { return JSON.parse(localStorage.getItem("hyax:bursts") || "[]"); } catch { return []; } })());
 

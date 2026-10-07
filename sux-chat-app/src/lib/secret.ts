@@ -54,10 +54,20 @@ export function deviceId(): string {
 
 // ---------- IndexedDB ----------
 
+const FILES = "files";       // шифротекст вложений, как пришёл с сервера
+const FILES_AT = "filesAt";  // когда брали — для вытеснения старых
+const FILES_MAX = 300;
+const FILE_CACHE_MAX = 25 * 1024 * 1024;
+
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: "chatId" });
+    const r = indexedDB.open(DB, 2);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: "chatId" });
+      if (!d.objectStoreNames.contains(FILES)) d.createObjectStore(FILES);
+      if (!d.objectStoreNames.contains(FILES_AT)) d.createObjectStore(FILES_AT);
+    };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
@@ -76,6 +86,55 @@ const putEntry = (e: Entry) => tx("readwrite", (s) => s.put(e));
 
 export async function wipeSecretKeys(): Promise<void> {
   try { await tx("readwrite", (s) => s.clear()); } catch { /* нечего стирать */ }
+  try {
+    const d = await db();
+    await new Promise<void>((resolve) => {
+      const t = d.transaction([FILES, FILES_AT], "readwrite");
+      t.objectStore(FILES).clear(); t.objectStore(FILES_AT).clear();
+      t.oncomplete = () => resolve(); t.onerror = () => resolve();
+    });
+  } catch { /* нечего стирать */ }
+}
+
+/** Шифротекст вложения с этого устройства (ключ — адрес файла на сервере).
+ *  Хранится зашифрованным: без ключа чата из него ничего не достать. */
+export async function cachedCipherFile(url: string): Promise<ArrayBuffer | null> {
+  try {
+    const d = await db();
+    return await new Promise((resolve) => {
+      const t = d.transaction([FILES, FILES_AT], "readwrite");
+      const req = t.objectStore(FILES).get(url);
+      req.onsuccess = () => {
+        if (req.result) t.objectStore(FILES_AT).put(Date.now(), url);
+        resolve((req.result as ArrayBuffer) || null);
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function storeCipherFile(url: string, data: ArrayBuffer): Promise<void> {
+  if (data.byteLength > FILE_CACHE_MAX) return;
+  try {
+    const d = await db();
+    await new Promise<void>((resolve) => {
+      const t = d.transaction([FILES, FILES_AT], "readwrite");
+      t.objectStore(FILES).put(data, url);
+      t.objectStore(FILES_AT).put(Date.now(), url);
+      // Больше FILES_MAX — убираем самые давние.
+      const keys = t.objectStore(FILES_AT).getAllKeys();
+      const vals = t.objectStore(FILES_AT).getAll();
+      vals.onsuccess = () => {
+        const ks = keys.result as string[], vs = vals.result as number[];
+        if (ks.length <= FILES_MAX) return;
+        ks.map((k, i) => [k, vs[i]] as const).sort((a, b) => a[1] - b[1]).slice(0, ks.length - FILES_MAX)
+          .forEach(([k]) => { t.objectStore(FILES).delete(k); t.objectStore(FILES_AT).delete(k); });
+      };
+      t.oncomplete = () => resolve(); t.onerror = () => resolve();
+    });
+  } catch { /* без кэша — просто скачаем снова */ }
 }
 
 // ---------- ключи ----------

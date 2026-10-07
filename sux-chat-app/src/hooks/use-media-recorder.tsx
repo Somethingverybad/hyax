@@ -87,7 +87,12 @@ export function useMediaRecorder() {
       const candidates =
         kind === "video"
           ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
-          : ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"];
+          // WebKit (iPhone, Safari) пишет WebM/Opus, но из памяти (blob:) его
+          // не играет и волну по нему не строит — секретные голосовые были
+          // немыми. MP4/AAC он играет откуда угодно, остальные — тоже.
+          : /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Electron/.test(navigator.userAgent)
+            ? ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
+            : ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"];
       const mime = candidates.find((c) => MediaRecorder.isTypeSupported(c)) || "";
       // Битрейт пониже: минутный треугольник ~5 МБ вместо 15, голос — ~0.4 МБ.
       const options: MediaRecorderOptions = kind === "video"
