@@ -477,11 +477,14 @@ const ChatSidebar = ({
                 className="flex items-center gap-3 flex-1 min-w-0 text-left"
                 title="Профиль"
               >
-                <Identicon
-                  id={currentUser?.id || "?"}
-                  avatarUrl={currentUser?.avatar_url}
-                  className="ui-me-avatar w-10 h-10"
-                />
+                {/* Свой статус — аурой вокруг аватара, как у собеседников; «Скрыт» — без неё. */}
+                <Aura active={!!currentUser && !currentUser.hide_online} owner={currentUser} size={40}>
+                  <Identicon
+                    id={currentUser?.id || "?"}
+                    avatarUrl={currentUser?.avatar_url}
+                    className="ui-me-avatar w-10 h-10"
+                  />
+                </Aura>
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 text-h2 md:text-[15px]">
                     <span className="truncate">{currentUser?.username || "Загрузка…"}</span>
@@ -499,9 +502,13 @@ const ChatSidebar = ({
                       </span>
                     )}
                   </span>
-                  <span className={cn("ui-status-chip inline-block text-small", currentUser?.hide_online ? "text-subtle" : "text-online")}>
-                    {currentUser?.hide_online ? "Скрыт" : "В сети"}
-                  </span>
+                  {/* Вместо «В сети» — значение своей ауры; «Скрыт» остаётся подписью:
+                      ауры при нём нет, и без подписи было бы непонятно почему. */}
+                  {currentUser?.hide_online ? (
+                    <span className="ui-status-chip inline-block text-small text-subtle">Скрыт</span>
+                  ) : currentUser?.aura_text ? (
+                    <span className="block text-small text-subtle truncate">{currentUser.aura_text}</span>
+                  ) : null}
                 </span>
               </button>
               <button
