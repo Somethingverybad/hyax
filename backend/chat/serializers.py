@@ -427,6 +427,17 @@ class MessageSerializer(serializers.ModelSerializer):
     sender = MessageSenderSerializer(read_only=True)
     reactions = serializers.SerializerMethodField()
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Расшифровку голосового видит только тот, кто её просил.
+        if data.get('voice_transcript') or data.get('transcript_status'):
+            req = self.context.get('request')
+            me = getattr(getattr(req, 'user', None), 'profile', None) if req else None
+            if not me or str(me.id) not in (getattr(instance, 'transcript_for', None) or []):
+                data['voice_transcript'] = None
+                data['transcript_status'] = ''
+        return data
+
     def validate(self, attrs):
         # Оформление проверяем по тексту этого же запроса (или текущему при
         # частичном обновлении): чужие типы и выход за границы отбрасываются.

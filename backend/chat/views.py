@@ -877,9 +877,19 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Нет доступа"}, status=403)
         if not msg.voice_url:
             return Response({"error": "Это не голосовое"}, status=400)
-        if msg.transcript_status != 'done' and not (msg.transcript_status == 'pending'):
+        # Расшифровка личная: запоминаем, кто попросил, — остальным текст не
+        # показываем (MessageSerializer.to_representation).
+        me = str(profile.id)
+        update = []
+        if me not in (msg.transcript_for or []):
+            msg.transcript_for = [*(msg.transcript_for or []), me]
+            update.append('transcript_for')
+        if msg.transcript_status not in ('done', 'pending'):
             msg.transcript_status = 'pending'
-            msg.save(update_fields=['transcript_status', 'updated_at'])
+            update.append('transcript_status')
+        if update:
+            msg.save(update_fields=[*update, 'updated_at'])
+        if 'transcript_status' in update:
             transcribe_async(msg.id)
         return Response(MessageSerializer(msg, context={'request': request}).data)
 

@@ -208,6 +208,9 @@ class Message(models.Model):
     # состояние — '', 'pending', 'done', 'error'. По требованию, кнопкой в чате.
     voice_transcript = models.TextField(blank=True, null=True)
     transcript_status = models.CharField(max_length=10, blank=True, default='')
+    # Кто просил расшифровку (id профилей): текст видят только они. Распознаём
+    # один раз — следующий попросивший получает готовое сразу.
+    transcript_for = models.JSONField(default=list, blank=True)
     # Видео-сообщение — наш ответ «кружкам»: короткое видео с фронтальной
     # камеры, которое в переписке показывается треугольником.
     video_url = models.TextField(blank=True, null=True)
