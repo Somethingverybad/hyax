@@ -200,8 +200,8 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
                   {u.role === "support" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">поддержка</span>}
                   {u.hidden && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle" title="Прячет «в сети» от собеседников">скрыт</span>}
                 </span>
-                <span className="block text-caption text-subtle truncate">
-                  {u.active ? "приложение на экране" : "в фоне"}
+                <span className="block text-caption text-subtle leading-snug">
+                  {u.active ? "на экране" : "в фоне"}
                   {u.devices > 1 ? ` · ${u.devices} устройства` : ""}
                   {u.online_s != null ? ` · ${duration(u.online_s)}` : ""}
                 </span>
