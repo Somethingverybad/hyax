@@ -924,7 +924,7 @@ const ChatSidebar = ({
                       (() => {
                         const other = chat.participants?.find((p) => p.id !== currentUser?.id);
                         return (
-                          <Aura active={!!other?.is_online} owner={other} size={46}>
+                          <Aura active={!!other?.is_online} owner={other} size={40}>
                             <Identicon
                               id={displayParticipants[0]?.id || chat.id}
                               avatarUrl={displayParticipants[0]?.avatar_url}

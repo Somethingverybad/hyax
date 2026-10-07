@@ -47,7 +47,8 @@ export function Aura({
   const text = (owner?.aura_text || "").trim();
   const style = {
     "--aura": color,
-    "--aura-blur": `${Math.max(1.5, Math.round(size * 0.045 * 10) / 10)}px`,
+    // Маленьким аватарам — меньше размытия: иначе языки сливаются в ровный ореол.
+    "--aura-blur": `${Math.max(1, Math.round(size * (size < 60 ? 0.03 : 0.045) * 10) / 10)}px`,
   } as CSSProperties;
 
   const body = (
