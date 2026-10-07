@@ -2655,8 +2655,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         {/* Приглашение в секретный чат — на всю ленту, с прокруткой: в панели
             ввода плашка уезжала за край экрана вместе с кнопками. */}
         {isSecret && !skey && secretInfo?.state === "pending" && secretInfo.initiator_id !== userId && (
-          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 py-5 flex">
-            <div className="m-auto w-full">
+          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-5 flex">
+            <div className="m-auto w-full pb-4">
               <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
                 onConfirm={acceptSecret} onDecline={declineSecret} />
             </div>

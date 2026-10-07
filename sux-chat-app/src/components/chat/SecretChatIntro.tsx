@@ -74,7 +74,9 @@ export default function SecretChatIntro({
         Ключ можно сверить с собеседником в меню чата — «Ключ шифрования».
       </p>
 
-      <div className="mt-5 flex flex-col gap-2">
+      {/* Кнопки прилипают к низу прокрутки: плашка выше экрана телефона, а
+          «Принять» должно быть видно сразу. */}
+      <div className="sticky bottom-0 -mx-5 -mb-5 mt-5 px-5 pb-5 pt-3 bg-surface-2 rounded-b-lg flex flex-col gap-2">
         <button type="button" onClick={onConfirm} disabled={busy}
           className="h-11 rounded-md bg-primary text-primary-foreground text-body font-medium active:opacity-90 disabled:opacity-50">
           {busy ? "Создаю ключи…" : mode === "create" ? "Понятно, создать секретный чат" : "Принять на этом устройстве"}
