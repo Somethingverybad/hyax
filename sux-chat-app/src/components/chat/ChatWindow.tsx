@@ -25,7 +25,7 @@ import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
 import { FormattedText, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
-import { chatKey, decryptPayload, deviceId, encryptPayload, fingerprintEmoji, hasLocalHalf, newKeyPair, rememberPending, secretSupported, type SecretInfo } from "@/lib/secret";
+import { chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, type SecretInfo, type SecretMedia, type SecretPayload } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
@@ -124,6 +124,11 @@ interface Message {
   /** Секретный чат: base64(iv ‖ шифротекст); content приходит пустым и
    *  заполняется на устройстве после расшифровки (lib/secret.ts). */
   cipher?: string | null;
+  file_size?: number | null;
+  /** Секретный чат: сообщение расшифровано и (если есть файл) он уже готов. */
+  _ready?: boolean;
+  /** Секретное вложение, пока качается и расшифровывается. */
+  _sm?: (SecretMedia & { state: "loading" | "error" }) | null;
   /** Кто прочитал: вторая галочка — если здесь есть кто-то кроме автора. */
   read_by?: { id: string; username?: string; read_at: string }[];
   /** Клиентские поля оптимистичной отправки: pending — сервер ещё не
@@ -619,30 +624,71 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Секретный чат: расшифровываем пришедшее. Результат запоминаем по id —
   // синхронизация приносит сообщения заново (с пустым content), второй раз
   // не расшифровываем. Не вышло (чужой ключ, порча) — честная пометка.
-  const plainRef = useRef(new Map<string, { cipher: string; t: string | null; e: TextEntity[] | null }>());
+  const plainRef = useRef(new Map<string, { cipher: string; p: SecretPayload | null }>());
+  // Готовые расшифрованные вложения: id → поля сообщения с blob-ссылкой.
+  // Синхронизация приносит сообщение заново — подставляем без повторной загрузки.
+  const blobRef = useRef(new Map<string, Partial<Message>>());
+  const inflightRef = useRef(new Set<string>());
+  /** Поля пузыря для расшифрованного файла — как у обычного сообщения того же вида. */
+  const secretMediaFields = (m: SecretMedia, url: string): Partial<Message> => {
+    switch (m.k) {
+      case "image": return { file_url: url, file_name: m.name || "photo.jpg", file_width: m.w ?? null, file_height: m.h ?? null, download_only: false };
+      case "video": return { file_url: url, file_name: /\.(mp4|mov|m4v|webm)$/i.test(m.name) ? m.name : "video.mp4", download_only: false, poster_url: m.th ? `data:image/jpeg;base64,${m.th}` : null };
+      case "audio": return { file_url: url, file_name: m.name || "audio.mp3", download_only: false };
+      case "voice": return { voice_url: url, voice_duration: m.dur ?? null, file_url: null };
+      case "round": return { video_url: url, video_duration: m.dur ?? null, video_mirror: !!m.mi, file_url: null };
+      default: return { file_url: url, file_name: m.name || "file", file_size: m.size, download_only: true };
+    }
+  };
+  const fetchSecretMedia = async (id: string, serverUrl: string, m: SecretMedia) => {
+    if (inflightRef.current.has(id)) return;
+    inflightRef.current.add(id);
+    try {
+      const url = serverUrl.startsWith("s3://") ? await api.signMedia(serverUrl) : mediaUrl(serverUrl);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await decryptFile(await res.arrayBuffer(), m);
+      const fields = secretMediaFields(m, URL.createObjectURL(blob));
+      blobRef.current.set(id, fields);
+      setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, ...fields, _ready: true, _sm: null } : x)));
+    } catch {
+      setMessages((prev) => prev.map((x) => (x.id === id && x._sm ? { ...x, _sm: { ...x._sm, state: "error" } } : x)));
+    } finally {
+      inflightRef.current.delete(id);
+    }
+  };
   useEffect(() => {
     if (!skey) return;
     const todo = messages.filter((m) => m.cipher && m.content == null);
     if (!todo.length) return;
     let off = false;
     (async () => {
-      const out = new Map<string, { t: string | null; e: TextEntity[] | null }>();
+      const out = new Map<string, SecretPayload | null>();
       for (const m of todo) {
         let rec = plainRef.current.get(m.id);
         if (!rec || rec.cipher !== m.cipher) {
-          const p = await decryptPayload(skey.key, m.cipher!);
-          rec = { cipher: m.cipher!, t: p ? p.t : null, e: (p?.e as TextEntity[] | undefined) ?? null };
+          rec = { cipher: m.cipher!, p: await decryptPayload(skey.key, m.cipher!) };
           plainRef.current.set(m.id, rec);
         }
-        out.set(m.id, rec);
+        out.set(m.id, rec.p);
       }
       if (off) return;
+      const downloads: [string, string, SecretMedia][] = [];
       setMessages((prev) => prev.map((m) => {
-        const r = m.content == null ? out.get(m.id) : undefined;
-        return r ? { ...m, content: r.t ?? "🔒 Не удалось расшифровать", entities: r.e } : m;
+        if (m.content != null || !out.has(m.id)) return m;
+        const p = out.get(m.id);
+        if (!p) return { ...m, content: "🔒 Не удалось расшифровать", _ready: true };
+        const base = { ...m, content: p.t, entities: (p.e as TextEntity[] | undefined) ?? null };
+        if (!p.m) return { ...base, _ready: true };
+        const ready = blobRef.current.get(m.id);
+        if (ready) return { ...base, ...ready, _ready: true, _sm: null };
+        if (m.file_url) downloads.push([m.id, m.file_url, p.m]);
+        return { ...base, _ready: false, _sm: { ...p.m, state: "loading" as const } };
       }));
+      for (const [id, url, mm] of downloads) void fetchSecretMedia(id, url, mm);
     })();
     return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, skey]);
   // Пришли в чат, где лежат «глюк-стикеры» от собеседника, ещё не разыгранные
   // на этом устройстве: играет только самый последний,
@@ -1668,6 +1714,65 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  // ---- Секретные вложения: шифруем файл на устройстве, грузим шифротекст ----
+  const SECRET_MAX = 50 * 1024 * 1024;
+  const sendSecretFile = async (
+    file: Blob, meta: Omit<SecretMedia, "key" | "iv" | "size">, caption: { t: string; e: TextEntity[] } | null,
+    replyId: string | undefined, onProgress: (p: number) => void,
+  ): Promise<Message> => {
+    if (!skey || !chatId) throw new Error("Нет ключа");
+    if (file.size > SECRET_MAX) throw new Error("В секретный чат — файлы до 50 МБ");
+    const enc = await encryptFile(file);
+    const up = await api.uploadFile(new File([enc.blob], "secret.bin", { type: "application/octet-stream" }), undefined, onProgress);
+    const payload: SecretPayload = { t: caption?.t || "", e: caption?.e || [], m: { ...meta, key: enc.key, iv: enc.iv, size: file.size } };
+    return api.sendSecretMessage(chatId, await encryptPayload(skey.key, payload), replyId, { file_url: up.file_url, file_size: up.file_size });
+  };
+  const secretKindOf = (att: Attach): SecretMedia["k"] =>
+    att.mode === "photo" && att.file.type.startsWith("image/") ? "image"
+      : att.mode === "video" || (att.mode === "photo" && att.file.type.startsWith("video/")) ? "video"
+      : att.mode === "audio" ? "audio" : "file";
+  const sendSecretAttachments = async (list: Attach[], text: string, entities: TextEntity[], reply: Message | null) => {
+    // Каждое вложение — своё сообщение, без альбома: до расшифровки сервер не
+    // знает, что внутри, и склеивать нечего.
+    const jobs = list.map((att, i) => {
+      const kind = secretKindOf(att);
+      const tempId = `pending-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`;
+      const name = att.file.name || (kind === "image" ? "photo.jpg" : kind === "video" ? "video.mp4" : "file");
+      const local: Partial<Message> =
+        kind === "image" ? { file_url: att.url, file_name: name, file_width: att.dims?.w ?? null, file_height: att.dims?.h ?? null, download_only: false }
+        : kind === "video" || kind === "audio" ? { file_url: att.url, file_name: name, download_only: false }
+        : { file_url: att.url, file_name: name, file_size: att.file.size, download_only: true };
+      const first = i === 0;
+      const optimistic: Message = {
+        id: tempId, content: first ? (text || null) : null, entities: first ? entities : null,
+        file_url: null, file_name: null, sender_id: userId, sender: { id: userId } as Profile,
+        created_at: new Date(Date.now() + i).toISOString(),
+        reply_to: first && reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
+        pending: true, _key: tempId, _progress: 0, _ready: true, _dims: att.dims ?? null, ...local,
+      } as Message;
+      return { att, kind, tempId, local, name, first, optimistic };
+    });
+    setMessages((prev) => [...prev, ...jobs.map((j) => j.optimistic)]);
+    setTimeout(() => scrollToBottom(true), 50);
+    for (const j of jobs) {
+      try {
+        const th = j.kind === "image" ? await imageThumb(j.att.url) : null;
+        const sent = await sendSecretFile(j.att.file, {
+          k: j.kind, mime: j.att.file.type || "application/octet-stream", name: j.name,
+          w: th?.w ?? j.att.dims?.w ?? null, h: th?.h ?? j.att.dims?.h ?? null, th: th?.th ?? null,
+        }, j.first ? { t: text, e: entities } : null, j.first ? reply?.id : undefined,
+        (p) => setMessages((prev) => prev.map((m) => (m.id === j.tempId ? { ...m, _progress: p } : m))));
+        blobRef.current.set(sent.id, j.local);
+        setMessages((prev) => prev.some((m) => m.id === sent.id)
+          ? prev.filter((m) => m.id !== j.tempId)
+          : prev.map((m) => (m.id === j.tempId ? { ...m, ...sent, ...j.local, content: m.content ?? "", entities: m.entities, pending: false, _progress: null, _ready: true, _key: j.tempId } : m)));
+      } catch (e) {
+        toast.error((e as Error).message || "Не удалось отправить файл");
+        setMessages((prev) => prev.filter((m) => m.id !== j.tempId));
+      }
+    }
+  };
+
   const sendMessage = async () => {
     // Звук — самостоятельное сообщение: пузырь с одним аудио-стикером,
     // который получатель может проиграть. Текст для этого не нужен.
@@ -1696,8 +1801,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
     // Разметка (**жирный**, ||спойлер||…) уходит отдельно от текста: сервер
     // хранит чистый текст и диапазоны оформления (lib/format.tsx).
-    if (isSecret && (!skey || attachments.length || selectedSound)) {
-      toast.error(!skey ? "Ключ этого секретного чата не на этом устройстве" : "В секретном чате пока только текст");
+    if (isSecret && (!skey || selectedSound)) {
+      toast.error(!skey ? "Ключ этого секретного чата не на этом устройстве" : "Звуки в секретный чат не отправляются");
       return;
     }
     const rawText = draftRef.current.trim();
@@ -1742,7 +1847,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         const sent = isSecret
           ? await api.sendSecretMessage(chatId, await encryptPayload(skey!.key, { t: text, e: entities }), reply?.id)
           : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities);
-        if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, t: text, e: entities });
+        if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, p: { t: text, e: entities } });
         setMessages(prev =>
           prev.some(m => m.id === sent.id)
             ? prev.filter(m => m.id !== tempId)
@@ -1758,6 +1863,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       }
       return;
     }
+
+    if (isSecret) { await sendSecretAttachments(list, text, entities, reply); return; }
 
     // Вложения: каждое едет своим сообщением, но выбранные разом получают
     // общий album_id и показываются как одно — фото, видео и музыка вместе.
@@ -2053,6 +2160,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: 0 } : m)));
     try {
       let sent: Message;
+      if (isSecret) {
+        sent = await sendSecretFile(result.file, {
+          k: isVideo ? "round" : "voice", mime: result.file.type || (isVideo ? "video/mp4" : "audio/webm"),
+          name: isVideo ? "round.mp4" : "voice", dur: result.seconds, mi: mirror,
+        }, null, result.replyToId, (p) => setProgressFor(tempId, p));
+        setMessages(prev => {
+          const local = prev.find((m) => m.id === tempId);
+          const keep: Partial<Message> = isVideo
+            ? { video_url: local?.video_url, video_duration: local?.video_duration, video_mirror: local?.video_mirror, file_url: null }
+            : { voice_url: local?.voice_url, voice_duration: local?.voice_duration, file_url: null };
+          blobRef.current.set(sent.id, keep);
+          return prev.some(m => m.id === sent.id)
+            ? prev.filter(m => m.id !== tempId)
+            : prev.map(m => (m.id === tempId ? { ...m, ...sent, ...keep, content: "", pending: false, _key: tempId, _progress: null, _ready: true } : m));
+        });
+        return;
+      }
       if (isVideo) {
         applog.info(`recording upload start video ${Math.round(result.file.size / 1024)}KB`);
         const uploaded = await api.uploadFile(result.file, undefined, (p) => setProgressFor(tempId, p));
@@ -2338,7 +2462,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: "Переслать", icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
         { label: "Редактировать", icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
         { label: "В избранное", icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
-        { label: "В плейлист", icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
+        { label: "В плейлист", icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && !isSecret && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
         { label: "Просмотры и реакции", icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
         { label: "Пожаловаться", icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
         { label: "Удалить у себя", icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
@@ -2350,7 +2474,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Соседние сообщения одного альбома показываем одной сеткой: группу рисуем
   // на первом её сообщении, остальные из ленты убираем.
   const { albumsById, feedRows } = useMemo(() => {
-    const visible = messages.filter((m) => !hiddenIds.has(m.id));
+    // Секретный чат: пока сообщение не расшифровано, его файл — шифротекст;
+    // такие поля пузырю не отдаём (иначе мелькнул бы «файл .bin»).
+    const src = isSecret
+      ? messages.map((m) => (m.cipher && !m._ready ? { ...m, file_url: null, voice_url: null, video_url: null, download_only: false, album_id: null } : m))
+      : messages;
+    const visible = src.filter((m) => !hiddenIds.has(m.id));
     const albumsById = new Map<string, Message[]>();
     for (const m of visible) {
       // Стикеры, голосовые и видео-кружки в общий пузырь не складываем: у них
@@ -2363,7 +2492,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const albumTail = new Set<string>();
     albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
     return { albumsById, feedRows: visible.filter((m) => !albumTail.has(m.id)) };
-  }, [messages, hiddenIds]);
+  }, [messages, hiddenIds, isSecret]);
 
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -2845,7 +2974,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               own={isOwn}
                             />
                             {/* «Аа» — расшифровать; пока pending крутится, готовый текст ниже. */}
-                            {!message.pending && (message.transcript_status !== "done" || hiddenTranscripts.has(message.id)) && (
+                            {!message.pending && !isSecret && (message.transcript_status !== "done" || hiddenTranscripts.has(message.id)) && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2909,6 +3038,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           </p>
                         </div>
                       ))}
+                      {message._sm && !message._ready && (
+                        <div className="flex items-center gap-3 min-w-[200px] py-1">
+                          {message._sm.th
+                            ? <img src={`data:image/jpeg;base64,${message._sm.th}`} alt="" className="w-20 h-20 rounded-md object-cover shrink-0" />
+                            : <span className="w-12 h-12 rounded-md bg-black/20 flex items-center justify-center shrink-0"><Lock className="w-5 h-5" /></span>}
+                          <span className="min-w-0">
+                            <span className="block text-small">{message._sm.state === "error" ? "Не удалось расшифровать файл" : "🔒 Расшифровываю…"}</span>
+                            <span className="block text-caption opacity-70 truncate">{message._sm.name} · {Math.max(1, Math.round(message._sm.size / 1024))} КБ</span>
+                          </span>
+                        </div>
+                      )}
                       {message.cipher && message.content == null && (
                         <p className="text-body italic opacity-70">🔒 {skey ? "Расшифровываю…" : "Зашифровано — ключ на другом устройстве"}</p>
                       )}
@@ -3389,7 +3529,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => handlePick(e, "audio")} />
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handlePick(e, "file")} />
 
-            {!isSecret && (
             <div className="relative shrink-0">
               <Button
                 variant="outline"
@@ -3415,10 +3554,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     onClick={() => { setAttachMenuOpen(false); audioInputRef.current?.click(); }}>
                     <Music2 className="w-4 h-4 text-primary" /> Музыка с устройства
                   </button>
+                  {!isSecret && (
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); hideKeyboard(); setTrackPickerOpen(true); }}>
                     <ListMusic className="w-4 h-4 text-primary" /> Из моей музыки
                   </button>
+                  )}
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
                     <FileText className="w-4 h-4 text-primary" /> Файл
@@ -3426,7 +3567,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 </div>
               )}
             </div>
-            )}
 
             {!isSecret && (
             <Button
@@ -3517,7 +3657,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   <Send className="w-4 h-4" />
                 )}
               </Button>
-            ) : isSecret ? null : (
+            ) : (
               <>
                 {recordKind === "video" && !recording && (
                   <button
@@ -3832,7 +3972,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
               handleSaveFile(url, cur.name);
             } },
-          ]}
+          ].filter((a) => !isSecret || a.label === "Скачать")}
         />
       )}
     </div>

@@ -150,7 +150,58 @@ export async function hasLocalHalf(chatId: string): Promise<boolean> {
 
 // ---------- сообщения ----------
 
-export interface SecretPayload { t: string; e?: unknown[] }
+/** Вложение секретного сообщения. Файл на сервере — шифротекст своим
+ *  случайным ключом; ключ, iv и всё, что о файле нужно знать, — здесь, внутри
+ *  зашифрованного сообщения. */
+export interface SecretMedia {
+  k: "image" | "video" | "audio" | "file" | "voice" | "round";
+  key: string;        // AES-256-GCM ключ файла, base64
+  iv: string;         // base64
+  mime: string;
+  name: string;
+  size: number;
+  w?: number | null;
+  h?: number | null;
+  dur?: number | null;
+  mi?: boolean;       // кружок с фронтальной камеры — зеркалить
+  th?: string | null; // миниатюра JPEG, base64 — пока файл качается
+}
+export interface SecretPayload { t: string; e?: unknown[]; m?: SecretMedia }
+
+/** Шифруем файл своим случайным ключом (не ключом чата): так ключ одного
+ *  файла не раскрывает другие, а утечка файла без сообщения бесполезна. */
+export async function encryptFile(file: Blob): Promise<{ blob: Blob; key: string; iv: string }> {
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const k = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt"]);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k, await file.arrayBuffer());
+  return { blob: new Blob([ct], { type: "application/octet-stream" }), key: b64(raw), iv: b64(iv) };
+}
+
+export async function decryptFile(data: ArrayBuffer, m: SecretMedia): Promise<Blob> {
+  const k = await crypto.subtle.importKey("raw", unb64(m.key), "AES-GCM", false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(m.iv) }, k, data);
+  return new Blob([pt], { type: m.mime || "application/octet-stream" });
+}
+
+/** Миниатюра фото (до 240 px, JPEG): уходит внутри шифротекста сообщения. */
+export async function imageThumb(url: string): Promise<{ th: string; w: number; h: number } | null> {
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    await img.decode();
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const scale = Math.min(1, 240 / Math.max(w, h));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * scale));
+    c.height = Math.max(1, Math.round(h * scale));
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    return { th: c.toDataURL("image/jpeg", 0.6).split(",")[1], w, h };
+  } catch {
+    return null;
+  }
+}
 
 export async function encryptPayload(key: CryptoKey, p: SecretPayload): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));

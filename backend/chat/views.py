@@ -870,6 +870,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         готовый текст приезжает через /messages/sync/ (updated_at)."""
         from .transcribe import transcribe_async
         msg = self.get_object()
+        if msg.chat.kind == 'secret':
+            return Response({"error": "Голосовые секретного чата сервер не расшифрует"}, status=400)
         profile = getattr(request.user, 'profile', None)
         if profile is None or not _can_see_chat(msg.chat, profile):
             return Response({"error": "Нет доступа"}, status=403)

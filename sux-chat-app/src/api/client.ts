@@ -1188,8 +1188,8 @@ export const api = {
     await fetchWithAuth(`${API_URL}/secret-chats/${chatId}/decline/`, { method: "POST", headers: authHeaders() });
   },
   /** Сообщение в секретный чат — только шифротекст (lib/secret.ts). */
-  sendSecretMessage: async (chatId: string, cipher: string, replyToId?: string): Promise<any> => {
-    const res = await fetchWithAuth(`${API_URL}/messages/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ chat: chatId, cipher, reply_to_id: replyToId || undefined }) });
+  sendSecretMessage: async (chatId: string, cipher: string, replyToId?: string, file?: { file_url: string; file_size: number }): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ chat: chatId, cipher, reply_to_id: replyToId || undefined, ...(file || {}) }) });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.error || "Не удалось отправить");
     return d;
