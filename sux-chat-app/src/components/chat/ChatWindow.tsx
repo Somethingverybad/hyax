@@ -4101,6 +4101,10 @@ const VOICE_RATES = [1, 1.5, 2, 0.5];            // короткий тап — 
 const VOICE_RATES_ALL = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]; // долгое нажатие — список
 let voiceRate = 1;
 
+/** Голосовое, которое играет сейчас: новое останавливает предыдущее —
+ *  одновременно звучит только последнее запущенное. */
+let activeVoice: HTMLAudioElement | null = null;
+
 const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -4141,7 +4145,10 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
     return () => { alive = false; };
   }, [url]);
 
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(() => () => {
+    audioRef.current?.pause();
+    if (activeVoice === audioRef.current) activeVoice = null;
+  }, []);
 
   const toggle = () => {
     if (!audioRef.current) {
@@ -4161,6 +4168,8 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
       setPlaying(false);
       return;
     }
+    if (activeVoice && activeVoice !== audio) activeVoice.pause();
+    activeVoice = audio;
     audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
   };
 
@@ -4169,14 +4178,16 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
   const playedBars = Math.round(progress * wave.length);
 
   return (
-    <div className="flex items-center gap-2 py-1 min-w-[11rem]">
+    <div className="flex items-center gap-2 py-1 min-w-[15rem]">
     <button type="button" onClick={toggle} className="flex items-center gap-2 flex-1 min-w-0">
       <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20">
         {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </span>
       {/* Настоящая амплитуда: высота столбика = пик громкости интервала;
           уже проигранная часть ярче. */}
-      <span className="flex-1 flex items-center gap-[2px] h-6">
+      {/* Своя ширина у волны: с кнопкой скорости остаток места сжимался до
+          нуля, и столбики с зазорами исчезали совсем. */}
+      <span className="flex-1 min-w-[6.5rem] flex items-center gap-px h-6">
         {wave.map((v, i) => (
           <span
             key={i}

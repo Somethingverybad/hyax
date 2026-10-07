@@ -225,17 +225,20 @@ const ChatSidebar = ({
   };
   const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
 
+  // Свой профиль — при входе, а не на каждое обновление списка: раньше это
+  // был запрос раз в 5 секунд (в баг-репорте — 436 за 54 минуты).
   useEffect(() => {
-    console.log("ChatSidebar mounted, userId:", userId);
     fetchCurrentUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+  useEffect(() => {
     loadChatParticipants(chats);
-  }, [userId, chats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats]);
 
   const fetchCurrentUser = async () => {
     try {
-      console.log("Fetching current user profile...");
       const profile = await api.getCurrentUser();
-      console.log("Current user profile:", profile);
       
       if (profile && profile.id) {
         setCurrentUser(profile);
@@ -849,7 +852,6 @@ const ChatSidebar = ({
               if ((chat.name || "").toLowerCase().includes(q)) return true;
               return getChatParticipants(chat.id).some((p) => (p.username || "").toLowerCase().includes(q));
             }).map((chat) => {
-              console.log("Rendering chat:", chat);
               
               // Два источника имён: отдельный кеш участников и сам список чатов
               // (сервер кладёт участников прямо в него, и он тоже кешируется).

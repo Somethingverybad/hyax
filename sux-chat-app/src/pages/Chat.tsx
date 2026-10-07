@@ -843,7 +843,11 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     if (!user) return;
     try {
       const userChats = withLatest(await mergeUnread(await api.getChats()));
-      if (JSON.stringify(userChats) !== JSON.stringify(chats)) {
+      // Сравниваем с тем, что на экране сейчас (chatsRef), а не с chats из
+      // замыкания: опрос живёт в эффекте с первого рендера, и там chats —
+      // давний снимок. Сравнение было всегда «изменилось», и каждые 5 с
+      // перерисовывалось всё, включая открытую переписку на сотни сообщений.
+      if (JSON.stringify(userChats) !== JSON.stringify(chatsRef.current)) {
         setChats(userChats);
         writeCache("chats", userChats);
       }
