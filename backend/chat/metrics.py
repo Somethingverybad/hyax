@@ -117,6 +117,41 @@ def presence_counts():
     return len(active), len(connected), sockets
 
 
+def online_users(limit=300):
+    """Кто сейчас на связи: ник, аватар, приложение на экране или в фоне,
+    сколько устройств и сколько минут подряд. «Скрытые» тоже в списке —
+    это панель админа, — но с пометкой. Боты не считаются."""
+    from . import presence
+    from .models import Profile
+    now = time.monotonic()
+    with presence._lock:
+        conns = [(ch, p, act, ts, presence._opened.get(ch)) for ch, (p, act, ts) in presence._conns.items()]
+    per = {}
+    for ch, p, act, ts, opened in conns:
+        if now - ts >= presence.STALE:
+            continue
+        u = per.setdefault(p, {"active": False, "devices": 0, "since": None})
+        u["active"] = u["active"] or act
+        u["devices"] += 1
+        if opened is not None:
+            u["since"] = opened if u["since"] is None else min(u["since"], opened)
+    if not per:
+        return []
+    rows = Profile.objects.filter(id__in=list(per), is_bot=False).values("id", "username", "avatar_url", "hide_online", "role")
+    out = []
+    for r in rows:
+        u = per[str(r["id"])]
+        out.append({
+            "id": str(r["id"]), "username": r["username"], "avatar_url": r["avatar_url"],
+            "hidden": r["hide_online"], "role": r["role"],
+            "active": u["active"], "devices": u["devices"],
+            "online_s": int(now - u["since"]) if u["since"] is not None else None,
+        })
+    # На экране — выше, внутри — кто дольше в сети.
+    out.sort(key=lambda x: (not x["active"], -(x["online_s"] or 0), x["username"].lower()))
+    return out[:limit]
+
+
 # ── сэмплер ──────────────────────────────────────────────────────────────────
 
 def _loop():
@@ -279,6 +314,7 @@ def summary(range_key="24h", tz_offset_min=0):
             "rss": process_rss(), "db_size": db_size(),
             "uptime_s": int(time.time() - _t0),
             "sampling_since": first_sample.isoformat() if first_sample else None,
+            "users_online": online_users(),
         },
         "totals": {
             "users": humans.count(),

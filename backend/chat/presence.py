@@ -100,6 +100,8 @@ STALE = 75
 _conns: dict[str, tuple[str, bool, float]] = {}  # channel → (profile, на экране, пинг)
 # Когда в последний раз писали last_seen: чаще раза в минуту в базу не ходим.
 _last_seen_write: dict[str, float] = {}
+# Когда открылось соединение — для мониторинга («в сети 15 мин»).
+_opened: dict[str, float] = {}
 
 
 def _active_locked(key: str, now: float) -> bool:
@@ -120,6 +122,8 @@ def _update_conn(channel, profile_id, active) -> bool:
 
 
 def conn_open(channel, profile_id) -> bool:
+    with _lock:
+        _opened[channel] = time.monotonic()
     return _update_conn(channel, profile_id, True)
 
 
@@ -134,6 +138,8 @@ def conn_ping(channel, profile_id) -> bool:
 
 
 def conn_close(channel, profile_id) -> bool:
+    with _lock:
+        _opened.pop(channel, None)
     return _update_conn(channel, profile_id, None)
 
 

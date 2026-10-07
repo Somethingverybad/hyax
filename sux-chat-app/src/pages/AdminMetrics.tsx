@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import Identicon from "@/components/Identicon";
 import {
   Area, Bar, BarChart, CartesianGrid, ComposedChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -170,6 +172,53 @@ function Empty({ children }: { children: ReactNode }) {
   );
 }
 
+type OnlineUser = AdminMetrics["live"]["users_online"][number];
+
+/** Кто сейчас на связи: сначала с приложением на экране, потом в фоне. */
+function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeof usePalette> }) {
+  const navigate = useNavigate();
+  const [all, setAll] = useState(false);
+  const LIMIT = 12;
+  if (!users.length) return <p className="text-small text-subtle">Сейчас никого нет.</p>;
+  const shown = all ? users : users.slice(0, LIMIT);
+  return (
+    <>
+      <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-4">
+        {shown.map((u) => (
+          <li key={u.id}>
+            <button type="button" onClick={() => navigate(`/u/${encodeURIComponent(u.username)}`)}
+              className="w-full flex items-center gap-3 py-2 text-left rounded-md active:bg-surface-3 hover:bg-surface-3/60 -mx-1 px-1">
+              <span className="relative shrink-0">
+                <Identicon id={u.id} avatarUrl={u.avatar_url} className="w-9 h-9" />
+                <span className="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full border-2 border-[hsl(var(--surface-2))]"
+                  style={{ background: u.active ? pal.good : pal.axis }} aria-hidden />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-body text-foreground truncate">{u.username}</span>
+                  {u.role === "admin" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">админ</span>}
+                  {u.role === "support" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">поддержка</span>}
+                  {u.hidden && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle" title="Прячет «в сети» от собеседников">скрыт</span>}
+                </span>
+                <span className="block text-caption text-subtle truncate">
+                  {u.active ? "приложение на экране" : "в фоне"}
+                  {u.devices > 1 ? ` · ${u.devices} устройства` : ""}
+                  {u.online_s != null ? ` · ${duration(u.online_s)}` : ""}
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {users.length > LIMIT && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-small text-primary active:opacity-60">
+          {all ? "Свернуть" : `Показать всех (${users.length})`}
+        </button>
+      )}
+    </>
+  );
+}
+
 // ---------- страница ----------
 
 export default function AdminMetrics() {
@@ -269,6 +318,12 @@ export default function AdminMetrics() {
                 <Tile icon={Database} label="База данных" value={bytes(live.db_size)}
                   sub={<>процесс API {bytes(live.rss)} · работает {duration(live.uptime_s)}</>} />
               </div>
+
+              {/* ---- кто в сети ---- */}
+              <Card title={`Сейчас в сети · ${fmt(live.users_online?.length ?? 0)}`}
+                sub="Зелёная точка — приложение открыто на экране, серая — свёрнуто, но соединение живо">
+                <OnlineList users={live.users_online || []} pal={pal} />
+              </Card>
 
               {/* ---- сервер ---- */}
               <Card title="Сервер" sub={`${live.cores ?? "?"} ядер · нагрузка ${live.load ? live.load.map((x) => x.toFixed(2)).join(" / ") : "—"} (1 / 5 / 15 мин)`}>

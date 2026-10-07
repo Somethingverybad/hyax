@@ -163,6 +163,10 @@ export interface AdminMetrics {
     disk_used: number | null; disk_total: number | null;
     rss: number | null; db_size: number | null; uptime_s: number;
     sampling_since: string | null;
+    users_online: {
+      id: string; username: string; avatar_url: string | null; hidden: boolean; role: string;
+      active: boolean; devices: number; online_s: number | null;
+    }[];
   };
   totals: {
     users: number; users_24h: number; users_7d: number;
