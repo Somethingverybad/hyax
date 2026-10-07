@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Share2, Pin } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock } from "lucide-react";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
 import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
@@ -178,6 +178,26 @@ const ChatSidebar = ({
   // Удаление чата: десктоп — меню по правому клику у курсора; телефон —
   // свайп влево открывает красную кнопку.
   const [chatMenu, setChatMenu] = useState<{ x: number; y: number; chatId: string; title: string } | null>(null);
+  // Секретные чаты: превью у сервера — шифротекст. Расшифровываем на этом
+  // устройстве, если ключ здесь; иначе — нейтральная подпись.
+  const [secretPreview, setSecretPreview] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let off = false;
+    (async () => {
+      const { chatKey, decryptPayload } = await import("@/lib/secret");
+      const next: Record<string, string> = {};
+      for (const c of chats as any[]) {
+        const cipher = c.kind === "secret" ? c.last_message?.cipher : null;
+        if (!cipher) continue;
+        const k = await chatKey(c.id, c.secret, currentUser.id).catch(() => null);
+        const p = k ? await decryptPayload(k.key, cipher) : null;
+        if (p) next[c.id + cipher.slice(0, 16)] = p.t;
+      }
+      if (!off) setSecretPreview(next);
+    })();
+    return () => { off = true; };
+  }, [chats, currentUser?.id]);
   // Свайп влево открывает удаление, вправо — закрепление.
   const [swipedChatId, setSwipedChatId] = useState<string | null>(null);
   const [pinSwipedId, setPinSwipedId] = useState<string | null>(null);
@@ -948,6 +968,7 @@ const ChatSidebar = ({
                           <p className="text-h2 md:text-[15px] truncate min-w-0 flex items-center gap-1.5">
                             {pinnedAt(chat) && <Pin className="w-3.5 h-3.5 text-amber shrink-0" aria-label="Закреплён" />}
                             {isChannel && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
+                            {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label="Секретный чат" />}
                             <span className="truncate">{chatTitle}</span>
                           </p>
                           {(() => {
@@ -983,8 +1004,15 @@ const ChatSidebar = ({
                           <p className="text-body md:text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
                             {isLoading
                               ? "Загрузка…"
+                              : (chat as any).kind === "secret" && !(chat as any).last_message
+                                ? ((chat as any).secret?.state === "pending"
+                                    ? ((chat as any).secret?.initiator_id === currentUser?.id ? "Ждём, когда собеседник примет" : "Приглашение в секретный чат")
+                                    : (chat as any).secret?.state === "declined" ? "Секретный чат отклонён" : "Секретный чат")
                               : (chat as any).last_message
-                                ? `${(chat as any).last_message.sender_id === currentUser?.id ? "Вы: " : ""}${(chat as any).last_message.text}`
+                                ? `${(chat as any).last_message.sender_id === currentUser?.id ? "Вы: " : ""}${
+                                    (chat as any).last_message.cipher
+                                      ? (secretPreview[chat.id + (chat as any).last_message.cipher.slice(0, 16)] ?? "🔒 Зашифрованное сообщение")
+                                      : (chat as any).last_message.text}`
                                 : "Сообщений пока нет"}
                           </p>
                           {!!chat.unread_count && chat.unread_count > 0 && (

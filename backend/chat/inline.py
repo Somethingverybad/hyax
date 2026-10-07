@@ -82,7 +82,7 @@ class InlineQueryView(APIView):
             return Response({"error": "Бот не найден"}, status=404)
         chat = Chat.objects.filter(id=request.data.get("chat_id")).first()
         from .views import _can_post_to
-        if not chat or not _can_post_to(chat, me):
+        if not chat or chat.kind == "secret" or not _can_post_to(chat, me):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
         _prune()
         qid = secrets.token_urlsafe(12)
@@ -128,7 +128,7 @@ class InlineChooseView(APIView):
         chat = Chat.objects.filter(id=q["chat_id"]).first()
         bot = Profile.objects.filter(id=q["bot_id"], is_bot=True).first()
         from .views import _can_post_to, _notify_new_message
-        if not chat or not bot or not _can_post_to(chat, me):
+        if not chat or not bot or chat.kind == "secret" or not _can_post_to(chat, me):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
         msg = Message.objects.create(chat=chat, sender=me, via_bot=bot, content=f"⏳ {res['title']}")
         Chat.objects.filter(id=chat.id).update(updated_at=timezone.now())

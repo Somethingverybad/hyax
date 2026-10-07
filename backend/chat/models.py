@@ -246,6 +246,10 @@ class Message(models.Model):
     # offset/length в UTF-16 (как в JS). Текст в content остаётся чистым.
     # Типы и проверка — chat/formatting.py.
     entities = models.JSONField(default=list, blank=True)
+    # Секретный чат (chat/secret.py): base64(iv ‖ шифротекст AES-GCM) с
+    # {"t": текст, "e": оформление} внутри. content при этом пустой —
+    # сервер текста не видит и расшифровать не может.
+    cipher = models.TextField(blank=True, null=True)
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех
     # Момент последнего изменения (текст, удаление у всех). По нему клиент
     # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,
@@ -850,3 +854,27 @@ class MetricSample(models.Model):
 
     class Meta:
         ordering = ["ts"]
+
+
+class SecretChat(models.Model):
+    """Рукопожатие секретного чата (Chat.kind == "secret").
+
+    Ключ шифрования знают только два устройства: каждое делает пару ECDH
+    P-256, сюда кладёт открытую половину, общий ключ AES-256-GCM вычисляет
+    у себя (ECDH → HKDF, соль — id чата). Сервер хранит только открытые ключи
+    и шифротекст. Чат привязан к устройствам: на других устройствах тех же
+    людей переписку не прочитать (как секретные чаты Telegram).
+    """
+    STATE_PENDING = "pending"
+    STATE_ACTIVE = "active"
+    STATE_DECLINED = "declined"
+
+    chat = models.OneToOneField(Chat, on_delete=models.CASCADE, related_name="secret")
+    initiator = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    initiator_device = models.CharField(max_length=64)
+    initiator_pub = models.TextField()
+    responder_device = models.CharField(max_length=64, blank=True, default="")
+    responder_pub = models.TextField(blank=True, default="")
+    state = models.CharField(max_length=10, default=STATE_PENDING)
+    created_at = models.DateTimeField(default=timezone.now)
+    accepted_at = models.DateTimeField(null=True, blank=True)

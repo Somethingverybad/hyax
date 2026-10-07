@@ -320,6 +320,8 @@ export interface Chat {
   avatar_url?: string | null;
   creator?: string | null;
   pinned_message?: PinnedInfo | null;
+  /** Секретный чат: состояние и открытые ключи сторон (lib/secret.ts). */
+  secret?: import("@/lib/secret").SecretInfo | null;
 }
 
 export interface ChatInfo {
@@ -1168,6 +1170,33 @@ export const api = {
       body: JSON.stringify({ chat_id: chatId }),
     });
     if (!res.ok) throw new Error("Failed to mark chat as read");
+    return res.json();
+  },
+
+  /** Секретный чат: создать (своя открытая половина ключа) и принять/отклонить. */
+  createSecretChat: async (peerId: string, pub: string, deviceId: string): Promise<Chat> => {
+    const res = await fetchWithAuth(`${API_URL}/secret-chats/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ peer_id: peerId, pub, device_id: deviceId }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Не удалось создать секретный чат");
+    return d;
+  },
+  acceptSecretChat: async (chatId: string, pub: string, deviceId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/secret-chats/${chatId}/accept/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ pub, device_id: deviceId }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не удалось принять");
+  },
+  declineSecretChat: async (chatId: string): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/secret-chats/${chatId}/decline/`, { method: "POST", headers: authHeaders() });
+  },
+  /** Сообщение в секретный чат — только шифротекст (lib/secret.ts). */
+  sendSecretMessage: async (chatId: string, cipher: string, replyToId?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ chat: chatId, cipher, reply_to_id: replyToId || undefined }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "Не удалось отправить");
+    return d;
+  },
+  editSecretMessage: async (messageId: string, cipher: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/edit/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ cipher }) });
+    if (!res.ok) throw new Error("Не удалось изменить");
     return res.json();
   },
 

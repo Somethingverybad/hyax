@@ -5,7 +5,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound } from "lucide-react";
 import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
@@ -25,6 +25,8 @@ import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
 import { FormattedText, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
+import { chatKey, decryptPayload, deviceId, encryptPayload, fingerprintEmoji, hasLocalHalf, newKeyPair, rememberPending, secretSupported, type SecretInfo } from "@/lib/secret";
+import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
@@ -119,6 +121,9 @@ interface Message {
   created_at: string;
   /** Сообщение отредактировано. */
   is_edited?: boolean;
+  /** Секретный чат: base64(iv ‖ шифротекст); content приходит пустым и
+   *  заполняется на устройстве после расшифровки (lib/secret.ts). */
+  cipher?: string | null;
   /** Кто прочитал: вторая галочка — если здесь есть кто-то кроме автора. */
   read_by?: { id: string; username?: string; read_at: string }[];
   /** Клиентские поля оптимистичной отправки: pending — сервер ещё не
@@ -277,6 +282,70 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     window.addEventListener("hyax:setting", onSetting);
     return () => { window.removeEventListener("hyax:wallpaper", onWp); window.removeEventListener("hyax:setting", onSetting); };
   }, [chatId, loadChatInfo]);
+
+  // ---- Секретный чат (lib/secret.ts, backend/chat/secret.py) ----
+  // Ключ живёт только на устройстве. Нет ключа — читать и писать нельзя:
+  // вместо поля ввода плашка (принять / ждём собеседника / другое устройство).
+  const isSecret = chatInfo?.kind === "secret";
+  const secretInfo = (chatInfo?.secret ?? null) as SecretInfo | null;
+  const [skey, setSkey] = useState<{ key: CryptoKey; fp: string } | null>(null);
+  const [hasHalf, setHasHalf] = useState(false);
+  const [secretBusy, setSecretBusy] = useState(false);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [secretIntroOpen, setSecretIntroOpen] = useState(false);
+  useEffect(() => {
+    let off = false;
+    setSkey(null);
+    if (!isSecret || !chatId) return;
+    chatKey(chatId, secretInfo, userId).then((k) => { if (!off) setSkey(k); }).catch(() => {});
+    hasLocalHalf(chatId).then((h) => { if (!off) setHasHalf(h); });
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, isSecret, secretInfo?.state, secretInfo?.responder_pub, userId]);
+  useEffect(() => {
+    // Собеседник принял или отклонил — перечитываем чат (событие из Chat.tsx).
+    const on = (e: Event) => { if ((e as CustomEvent).detail?.chat_id === chatId) loadChatInfo(); };
+    window.addEventListener("hyax:secret", on);
+    return () => window.removeEventListener("hyax:secret", on);
+  }, [chatId, loadChatInfo]);
+  const acceptSecret = async () => {
+    if (!chatId || secretBusy) return;
+    if (!secretSupported()) { toast.error("Это устройство не поддерживает шифрование"); return; }
+    setSecretBusy(true);
+    try {
+      const { priv, pub } = await newKeyPair();
+      await rememberPending(chatId, priv, pub);
+      await api.acceptSecretChat(chatId, pub, deviceId());
+      setHasHalf(true);
+      loadChatInfo();
+    } catch (e) {
+      toast.error((e as Error).message || "Не удалось принять");
+    } finally {
+      setSecretBusy(false);
+    }
+  };
+  const declineSecret = async () => {
+    if (!chatId) return;
+    await api.declineSecretChat(chatId).catch(() => {});
+    loadChatInfo();
+  };
+  // Новый секретный чат с собеседником этого (обычного) чата.
+  const createSecret = async () => {
+    if (!peer || secretBusy) return;
+    if (!secretSupported()) { toast.error("Это устройство не поддерживает шифрование"); return; }
+    setSecretBusy(true);
+    try {
+      const { priv, pub } = await newKeyPair();
+      const chat = await api.createSecretChat(peer.id, pub, deviceId());
+      await rememberPending(chat.id, priv, pub);
+      setSecretIntroOpen(false);
+      navigate("/chat", { state: { chatId: chat.id, kind: "secret", title: peer.username } });
+    } catch (e) {
+      toast.error((e as Error).message || "Не удалось создать");
+    } finally {
+      setSecretBusy(false);
+    }
+  };
   // Действующие обои: личные перекрывают общие; "none" — скрыты у меня.
   const wallpaper = (() => {
     const my = chatInfo?.my_wallpaper, shared = chatInfo?.wallpaper;
@@ -546,6 +615,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     latestKeyRef.current = key;
     onLatestRef.current?.(chatId, latest);
   }, [messages, chatId, userId]);
+
+  // Секретный чат: расшифровываем пришедшее. Результат запоминаем по id —
+  // синхронизация приносит сообщения заново (с пустым content), второй раз
+  // не расшифровываем. Не вышло (чужой ключ, порча) — честная пометка.
+  const plainRef = useRef(new Map<string, { cipher: string; t: string | null; e: TextEntity[] | null }>());
+  useEffect(() => {
+    if (!skey) return;
+    const todo = messages.filter((m) => m.cipher && m.content == null);
+    if (!todo.length) return;
+    let off = false;
+    (async () => {
+      const out = new Map<string, { t: string | null; e: TextEntity[] | null }>();
+      for (const m of todo) {
+        let rec = plainRef.current.get(m.id);
+        if (!rec || rec.cipher !== m.cipher) {
+          const p = await decryptPayload(skey.key, m.cipher!);
+          rec = { cipher: m.cipher!, t: p ? p.t : null, e: (p?.e as TextEntity[] | undefined) ?? null };
+          plainRef.current.set(m.id, rec);
+        }
+        out.set(m.id, rec);
+      }
+      if (off) return;
+      setMessages((prev) => prev.map((m) => {
+        const r = m.content == null ? out.get(m.id) : undefined;
+        return r ? { ...m, content: r.t ?? "🔒 Не удалось расшифровать", entities: r.e } : m;
+      }));
+    })();
+    return () => { off = true; };
+  }, [messages, skey]);
   // Пришли в чат, где лежат «глюк-стикеры» от собеседника, ещё не разыгранные
   // на этом устройстве: играет только самый последний,
   // остальные помечаются сыгранными — чтобы при открытии не сыпалось всё
@@ -595,7 +693,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return m ? { bot: m[1], query: m[2].trim() } : null;
   };
   const updateInline = (text: string) => {
-    const p = parseInline(text);
+    const p = isSecret ? null : parseInline(text);
     if (inlineTimer.current) { clearTimeout(inlineTimer.current); inlineTimer.current = null; }
     if (!p || !p.query) { inlineQidRef.current = null; setInline((prev) => (prev ? null : prev)); return; }
     setInline((prev) => (prev && prev.bot === p.bot && prev.query === p.query ? prev : { bot: p.bot, query: p.query, results: null }));
@@ -1584,7 +1682,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setEditing(null);
       setDraft("");
       try {
-        const upd = await api.editMessage(target.id, newText, newEntities);
+        const upd = isSecret
+          ? (skey ? await api.editSecretMessage(target.id, await encryptPayload(skey.key, { t: newText, e: newEntities })) : Promise.reject(new Error("no key")))
+          : await api.editMessage(target.id, newText, newEntities);
         setMessages((prev) => prev.map((m) =>
           m.id === target.id ? { ...m, ...upd, content: newText, entities: newEntities, is_edited: true, _key: m._key, _dims: m._dims } : m));
       } catch {
@@ -1596,6 +1696,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
     // Разметка (**жирный**, ||спойлер||…) уходит отдельно от текста: сервер
     // хранит чистый текст и диапазоны оформления (lib/format.tsx).
+    if (isSecret && (!skey || attachments.length || selectedSound)) {
+      toast.error(!skey ? "Ключ этого секретного чата не на этом устройстве" : "В секретном чате пока только текст");
+      return;
+    }
     const rawText = draftRef.current.trim();
     const { text, entities } = parseMarkup(rawText);
     const list = attachments;
@@ -1633,11 +1737,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages(prev => [...prev, optimistic]);
       setTimeout(() => scrollToBottom(true), 50);
       try {
-        const sent = await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities);
+        // Секретный чат: на сервер уходит только шифротекст; у себя оставляем
+        // открытый текст оптимистичного сообщения.
+        const sent = isSecret
+          ? await api.sendSecretMessage(chatId, await encryptPayload(skey!.key, { t: text, e: entities }), reply?.id)
+          : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities);
+        if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, t: text, e: entities });
         setMessages(prev =>
           prev.some(m => m.id === sent.id)
             ? prev.filter(m => m.id !== tempId)
-            : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m))
+            : prev.map(m => (m.id === tempId ? { ...m, ...sent, ...(isSecret ? { content: text, entities } : {}), pending: false, _key: tempId } : m))
         );
       } catch (error: any) {
         console.error("Error sending message:", error);
@@ -2226,7 +2335,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: "Ответить", icon: <Reply className="w-5 h-5" />, show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
         { label: "Скопировать", icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
         { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
-        { label: "Переслать", icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
+        { label: "Переслать", icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
         { label: "Редактировать", icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
         { label: "В избранное", icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
         { label: "В плейлист", icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
@@ -2290,7 +2399,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11" />
               </Aura>
               <span className="min-w-0 flex flex-col">
-                <span className="text-h1 truncate leading-tight">{headerTitle || peer.username || "Чат"}</span>
+                <span className="text-h1 truncate leading-tight flex items-center gap-1.5">
+                  {isSecret && <Lock className="w-4 h-4 shrink-0 text-online" aria-label="Секретный чат" />}
+                  <span className="truncate">{headerTitle || peer.username || "Чат"}</span>
+                </span>
                 <span className="text-small text-muted-foreground truncate">
                   {!peer.is_bot && (
                     <span className={peer.is_online ? "text-online" : undefined}>
@@ -2367,6 +2479,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       <ImageIcon className="w-5 h-5 text-foreground/80" />Обои чата
                     </button>
+                    {isSecret && skey && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setKeyOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <KeyRound className="w-5 h-5 text-foreground/80" />Ключ шифрования
+                      </button>
+                    )}
+                    {!isSecret && peer && !peer.is_bot && !saved && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setSecretIntroOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Lock className="w-5 h-5 text-online" />Секретный чат
+                      </button>
+                    )}
                   </span>
                 </>
               )}
@@ -2674,7 +2796,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             {message.reply_to.sender_username}
                           </div>
                           <div className="line-clamp-1 break-all opacity-75">
-                            {message.reply_to.preview}
+                            {isSecret ? (messages.find((x) => x.id === message.reply_to!.id)?.content || "Сообщение") : message.reply_to.preview}
                           </div>
                         </div>
                       )}
@@ -2787,6 +2909,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           </p>
                         </div>
                       ))}
+                      {message.cipher && message.content == null && (
+                        <p className="text-body italic opacity-70">🔒 {skey ? "Расшифровываю…" : "Зашифровано — ключ на другом устройстве"}</p>
+                      )}
                       {/* Текст сообщения */}
                       {message.content && !albumText.length && (
                         <p className="text-body break-words whitespace-pre-wrap">
@@ -2999,6 +3124,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {peer?.readonly_bot ? (
         <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">
           Это канал обновлений — только чтение
+        </div>
+      ) : isSecret && !skey ? (
+        <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 max-h-[75vh] overflow-y-auto">
+          {!secretInfo ? (
+            <p className="text-center text-small text-subtle">Загружаю секретный чат…</p>
+          ) : secretInfo.state === "declined" ? (
+            <p className="text-center text-small text-subtle">Секретный чат отклонён.</p>
+          ) : secretInfo.state === "pending" && secretInfo.initiator_id !== userId ? (
+            <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
+              onConfirm={acceptSecret} onDecline={declineSecret} />
+          ) : secretInfo.state === "pending" ? (
+            <p className="text-center text-small text-subtle">
+              {hasHalf
+                ? `Ждём, когда ${peer?.username || "собеседник"} примет секретный чат на своём устройстве.`
+                : "Этот секретный чат создан на другом вашем устройстве."}
+            </p>
+          ) : (
+            <p className="text-center text-small text-subtle">
+              {hasHalf ? "Готовлю ключ…" : "Этот секретный чат открыт на другом устройстве — здесь его не прочитать и не написать."}
+            </p>
+          )}
         </div>
       ) : (
       <div ref={composeRef} className="chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0">
@@ -3243,6 +3389,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => handlePick(e, "audio")} />
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handlePick(e, "file")} />
 
+            {!isSecret && (
             <div className="relative shrink-0">
               <Button
                 variant="outline"
@@ -3279,7 +3426,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 </div>
               )}
             </div>
+            )}
 
+            {!isSecret && (
             <Button
               variant="outline"
               size="icon"
@@ -3289,6 +3438,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             >
               <Smile className="w-5 h-5" />
             </Button>
+            )}
 
             <div className="flex-1 relative">
               {/* Поле растёт под текст до четырёх строк: раньше это был
@@ -3367,7 +3517,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   <Send className="w-4 h-4" />
                 )}
               </Button>
-            ) : (
+            ) : isSecret ? null : (
               <>
                 {recordKind === "video" && !recording && (
                   <button
@@ -3594,6 +3744,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <WallpaperSheet chat={chatInfo} onClose={() => setWallpaperOpen(false)} onChanged={loadChatInfo} />
       )}
       {burst && <StickerBurst key={burst.key} url={burst.url} onDone={() => setBurst(null)} />}
+      {secretIntroOpen && peer && (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={() => !secretBusy && setSecretIntroOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+            <SecretChatIntro mode="create" peerName={peer.username} busy={secretBusy}
+              onConfirm={createSecret} onCancel={() => setSecretIntroOpen(false)} />
+          </div>
+        </div>
+      )}
+      {keyOpen && skey && (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={() => setKeyOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="ui-card rounded-lg bg-surface-2 border border-border p-5 w-full max-w-sm text-center">
+            <KeyRound className="w-7 h-7 mx-auto text-online" />
+            <p className="mt-2 text-h2 text-foreground">Ключ шифрования</p>
+            <p className="mt-3 text-[28px] leading-snug tracking-wider">{fingerprintEmoji(skey.fp)}</p>
+            <p className="mt-3 font-mono text-small text-foreground break-words">{skey.fp}</p>
+            <p className="mt-3 text-caption text-subtle leading-relaxed">
+              Если у {peer?.username || "собеседника"} на экране то же самое — переписку никто не подменил.
+              Сверьте голосом или при встрече.
+            </p>
+            <button type="button" onClick={() => setKeyOpen(false)} className="mt-4 h-10 w-full rounded-md border border-border text-body active:bg-surface-3">Закрыть</button>
+          </div>
+        </div>
+      )}
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),
           «Избранное» — первой строкой. */}

@@ -74,6 +74,10 @@ const strip = (m: any) => {
 };
 
 export async function writeMessages(chatId: string, messages: any[], syncedAt: string, hasMore: boolean): Promise<void> {
+  // Секретный чат на диск не пишем: в ленте лежит расшифрованный текст, а
+  // кеш читается без ключа. Такая переписка всегда приходит с сервера и
+  // расшифровывается заново (lib/secret.ts).
+  if (messages.some((m) => m?.cipher)) return;
   const db = await open();
   if (!db) return;
   try {

@@ -433,6 +433,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           // Реакции приходят событием: обычная синхронизация их не приносит —
           // само сообщение при этом не меняется.
           setReactionEvent({ ...msg.data, at: Date.now() });
+        } else if (msg?.data?.type === "secret_chat") {
+          // Секретный чат создан, принят или отклонён — список и открытая переписка перечитываются.
+          refreshChats();
+          window.dispatchEvent(new CustomEvent("hyax:secret", { detail: msg.data }));
         } else if (msg?.data?.type === "wallpaper") {
           // Собеседник сменил обои чата — открытая переписка перечитает чат.
           window.dispatchEvent(new CustomEvent("hyax:wallpaper", { detail: msg.data }));
@@ -837,6 +841,8 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
 
   const handleLogout = async () => {
     clearSessionCache();
+    // Ключи секретных чатов живут только на устройстве — после выхода их нет.
+    void import("@/lib/secret").then((m) => m.wipeSecretKeys());
     void clearMessageCache();
     try {
       // 🔔 Удаляем listeners при выходе

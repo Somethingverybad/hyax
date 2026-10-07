@@ -141,6 +141,7 @@ const ProfilePage = () => {
 
   const logout = async () => {
     clearSessionCache();
+    void import("@/lib/secret").then((m) => m.wipeSecretKeys());
     await api.logout();
     navigate("/auth", { replace: true });
   };

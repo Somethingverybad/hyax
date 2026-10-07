@@ -182,6 +182,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                 .annotate(
                     last_text_a=Subquery(last.values('content')[:1]),
                     last_entities_a=Subquery(last.values('entities')[:1]),
+                    last_cipher_a=Subquery(last.values('cipher')[:1]),
                     last_sender_id_a=Subquery(last.values('sender_id')[:1]),
                     last_sticker_a=Subquery(last.values('sticker_id')[:1]),
                     last_voice_a=Subquery(last.values('voice_url')[:1]),
@@ -208,7 +209,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     .filter(message_id=OuterRef('last_id_a'))
                     .exclude(user_id=OuterRef('last_sender_id_a'))
                 ))
-                .select_related('pinned_message__sender')
+                .select_related('pinned_message__sender', 'secret')
                 # Закреплённые сверху (позже закреплённый выше), остальные — по
                 # времени последнего сообщения. Пустой чат опускается на время
                 # создания: иначе он висел бы наверху вечно.
@@ -628,6 +629,8 @@ def _notify_new_message(message, profile, request):
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
         from .formatting import mask_preview
         preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
+        if getattr(message.chat, "kind", "") == "secret":
+            preview = "Новое сообщение в секретном чате"
         if not preview:
             if message.sticker_id:
                 preview = "Стикер"
@@ -839,6 +842,16 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Profile not found"}, status=400)
         if msg.sender_id != profile.id:
             return Response({"error": "Редактировать может только автор"}, status=403)
+        # Секретный чат: новый шифротекст вместо текста.
+        if msg.chat.kind == 'secret':
+            import re as _re
+            cipher = str(request.data.get('cipher') or '')
+            if not cipher or len(cipher) > 64 * 1024 or not _re.fullmatch(r"[A-Za-z0-9+/=]+", cipher):
+                return Response({"error": "Нет шифротекста"}, status=400)
+            msg.cipher = cipher
+            msg.is_edited = True
+            msg.save(update_fields=['cipher', 'is_edited', 'updated_at'])
+            return Response(MessageSerializer(msg, context={'request': request}).data)
         content = (request.data.get('content') or '').strip()
         if not content:
             return Response({"error": "Пустой текст"}, status=400)
@@ -1015,6 +1028,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         target = Chat.objects.filter(id=request.data.get('chat_id')).first()
         if not target:
             return Response({"error": "Чат не найден"}, status=404)
+        if src.chat.kind == 'secret' or target.kind == 'secret':
+            return Response({"error": "Секретные сообщения не пересылаются"}, status=403)
         if not _can_post_to(target, profile):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
 
@@ -1049,6 +1064,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         for chat in {m.chat for m in sources}:
             if not _can_see_chat(chat, profile):
                 return Response({"error": "Нет доступа к исходному сообщению"}, status=403)
+            if chat.kind == 'secret':
+                return Response({"error": "Секретные сообщения не пересылаются"}, status=403)
+        if target.kind == 'secret':
+            return Response({"error": "В секретный чат не пересылается"}, status=403)
         album = uuid.uuid4() if len(sources) > 1 else None
         created = [_forward_copy(src, target, profile, album_id=album) for src in sources]
         Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
@@ -1308,6 +1327,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         _chat_id = request.data.get('chat')
         if _chat_id:
             _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name').first()
+            # Секретный чат: сервер принимает только шифротекст (chat/secret.py).
+            if _ch and _ch.kind == 'secret':
+                from .secret import create_secret_message
+                return create_secret_message(request, profile, _ch)
             # Бот «только чтение» (Обновлямбус): в его личку писать нельзя.
             if _ch and _ch.kind == 'direct' and not profile.is_bot and \
                     Profile.objects.filter(chatparticipant__chat=_ch, is_bot=True, readonly_bot=True).exists():

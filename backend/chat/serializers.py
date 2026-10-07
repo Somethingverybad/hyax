@@ -181,6 +181,15 @@ class ChatSerializer(serializers.ModelSerializer):
     wallpaper = serializers.SerializerMethodField()
     my_wallpaper = serializers.SerializerMethodField()
 
+    secret = serializers.SerializerMethodField()
+
+    def get_secret(self, obj):
+        """Секретный чат: состояние и открытые ключи сторон (chat/secret.py)."""
+        if getattr(obj, 'kind', '') != 'secret':
+            return None
+        from .secret import secret_info
+        return secret_info(obj)
+
     def get_wallpaper(self, obj):
         if not obj.wallpaper_url:
             return None
@@ -200,7 +209,7 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret']
 
     def get_pinned_at(self, obj):
         v = getattr(obj, 'my_pinned_at', None)
@@ -235,7 +244,13 @@ class ChatSerializer(serializers.ModelSerializer):
             else:
                 text = 'Сообщение'
         # read — прочитал ли кто-то кроме автора: вторая галка в списке чатов.
-        return {'text': text[:120], 'sender_id': str(sender_id) if sender_id else None, 'read': bool(getattr(obj, 'last_read_a', False))}
+        out = {'text': text[:120], 'sender_id': str(sender_id) if sender_id else None, 'read': bool(getattr(obj, 'last_read_a', False))}
+        # Секретный чат: текста у сервера нет — превью расшифрует устройство с ключом.
+        cipher = getattr(obj, 'last_cipher_a', None)
+        if cipher:
+            out['text'] = 'Зашифрованное сообщение'
+            out['cipher'] = cipher
+        return out
 
 def message_preview(m):
     """Короткое описание сообщения для цитат, закрепа и списка чатов."""
@@ -468,7 +483,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect']
         read_only_fields = ['sender', 'created_at', 'file_size', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot']
 
     def get_forwarded_from(self, obj):
