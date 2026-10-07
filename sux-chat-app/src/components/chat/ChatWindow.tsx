@@ -510,6 +510,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Прокрутка к закреплённому: сообщение есть в ленте — едем к нему.
   const jumpToMessage = async (id: string) => {
     let el = document.getElementById(`msg-${id}`);
+    if (!el && messagesListRef.current.some((m) => m.id === id)) {
+      setRenderLimit(1_000_000);
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
+      el = document.getElementById(`msg-${id}`);
+    }
     // Цели нет в загруженной части — просим у сервера окно вокруг неё одним
     // запросом. Раньше клиент листал страницы по одной: полтора десятка
     // запросов и около десяти секунд до закреплённого сообщения.
@@ -929,6 +934,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Лента показывает окно вокруг старого сообщения, а не хвост переписки:
   // кнопка «вниз» должна не прокручивать, а перезагрузить последние сообщения.
   const windowedRef = useRef(false);
+  // Окно отрисовки: из кэша приходит до 600 сообщений, и рисовать их все при
+  // входе — это полсекунды на десктопе в большой группе (баг-репорт: 369
+  // пузырей при каждом открытии). Рисуем хвост, остальное — порциями при
+  // прокрутке вверх, с удержанием позиции (как подгрузка старых с сервера).
+  const RENDER_STEP = 60;
+  const [renderLimit, setRenderLimit] = useState(RENDER_STEP);
+  const hiddenRowsRef = useRef(0);
+  const expandingRef = useRef(false);
   const [jumping, setJumping] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   // Входящие, пришедшие при открытом чате, — им анимация появления (msg-in).
@@ -1094,6 +1107,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     primedRef.current = false;
     pinnedRef.current = true;
     windowedRef.current = false;
+    setRenderLimit(RENDER_STEP);
     setNewBelow(0);
     setAwayFromBottom(false);
     setFreshIds(new Set());
@@ -1240,8 +1254,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const el = scrollRef.current;
     if (!a || !el) return;
     scrollAdjustRef.current = null;
+    expandingRef.current = false;
     el.scrollTop = a.top + (el.scrollHeight - a.height);
-  }, [messages]);
+  }, [messages, renderLimit]);
 
   /** Слить ответ сервера в ленту: обновить по id, убрать удалённые,
    *  добавить новые. Локальные поля (ключ рендера, размеры, pending) не
@@ -1375,7 +1390,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
       setHasMore(r.has_more);
       hasMoreRef.current = r.has_more;
-      if (r.messages.length) applyBatch(r.messages, [], "prepend");
+      if (r.messages.length) { applyBatch(r.messages, [], "prepend"); setRenderLimit((l) => l + r.messages.length); }
       return r.messages.length > 0;
     } catch {
       return false;
@@ -1418,7 +1433,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (away !== awayFromBottom) setAwayFromBottom(away);
     // Старые страницы тянем заранее, за полтора экрана до верха: пока человек
     // долистает, они уже в ленте, и вставка не приходится на край под пальцем.
-    if (el.scrollTop < Math.max(600, el.clientHeight * 1.5) && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
+    if (el.scrollTop < Math.max(600, el.clientHeight * 1.5)) {
+      if (hiddenRowsRef.current > 0) {
+        if (!expandingRef.current) {
+          expandingRef.current = true;
+          scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
+          setRenderLimit((l) => l + RENDER_STEP);
+        }
+      } else if (hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
+    }
   };
 
   /** Вернуться к последним сообщениям из окна вокруг старого. */
@@ -2516,6 +2539,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
     return { albumsById, feedRows: visible.filter((m) => !albumTail.has(m.id)) };
   }, [messages, hiddenIds, isSecret]);
+  const hiddenRows = Math.max(0, feedRows.length - renderLimit);
+  hiddenRowsRef.current = hiddenRows;
+  const shownRows = hiddenRows ? feedRows.slice(hiddenRows) : feedRows;
 
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -2735,7 +2761,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             </div>
           )}
-          {feedRows.map((message, index) => {
+          {shownRows.map((message, index) => {
             const isOwn = message.sender?.id === userId;
             // Ссылка на пак, тему или профиль разворачивается карточкой
             // (PackLinkCard / ProfileLinkCard), и в тексте её уже не показываем.
@@ -2773,7 +2799,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // У аудио-стикера пузырь остаётся: там есть строка воспроизведения.
             const stickerOnly = !!message.sticker?.file_url && !message.content && !message.sound && !message.reply_to;
             const bareBubble = imageOnly || videoOnly || stickerOnly;
-            const previousMessage = index > 0 ? feedRows[index - 1] : null;
+            const previousMessage = index > 0 ? shownRows[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || "Неизвестный";
             // Серия одного автора идёт плотно (8 px), смена автора или даты — 16 px.
