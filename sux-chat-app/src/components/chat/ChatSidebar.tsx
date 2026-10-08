@@ -74,7 +74,7 @@ interface ChatSidebarProps {
   savedChatId?: string;
   onOpenSaved?: () => void;
   /** «Долгий ящик»: чат с ботом идей (если уже есть) и открытие. */
-  ideabox?: { id: string; unread: number } | null;
+  ideabox?: { id: string; unread: number; avatar_url?: string | null } | null;
   onOpenIdeabox?: () => void;
 }
 
@@ -810,9 +810,13 @@ const ChatSidebar = ({
                 ideabox && selectedChatId === ideabox.id ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
               }`}
             >
-              <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
-                <Lightbulb className="w-6 h-6 md:w-5 md:h-5 text-amber" />
-              </div>
+              {ideabox?.avatar_url ? (
+                <img src={mediaUrl(ideabox.avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover bg-surface-1" />
+              ) : (
+                <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
+                  <Lightbulb className="w-6 h-6 md:w-5 md:h-5 text-amber" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-h2 md:text-[15px] truncate">Долгий ящик</p>
                 <p className="text-small text-subtle truncate">Идеи и предложения разработчику</p>

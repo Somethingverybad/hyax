@@ -981,7 +981,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
               к последней строке, а под ним оставалась пустота. */}
           <div className={`flex-1 min-h-0 flex${hadChatOpenRef.current ? " screen-pop" : ""}`}>
           <ChatSidebar
-            ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0 } : null}
+            ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
             userId={user.id}
             username={user.username}
@@ -1019,7 +1019,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       <div className="flex-1 flex min-h-0">
       {callUi}
       <ChatSidebar
-            ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0 } : null}
+            ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
         userId={user.id}
         chats={listChats}
