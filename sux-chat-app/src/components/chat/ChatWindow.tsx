@@ -1563,6 +1563,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     unreadOpenRef.current = 0;
     if (!n) { setAnchoring(false); return; }
     const frames = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
+    // Ленту только что положили через setMessages — ждём отрисовки: до неё
+    // messagesListRef и hasMoreRef ещё старые.
+    await frames();
+    if (id !== chatIdRef.current) return;
     const incoming = () => messagesListRef.current.filter((m) => !m.pending && (m.sender?.id ?? m.sender_id) !== userId);
     for (let i = 0; i < 10 && incoming().length < n && hasMoreRef.current; i++) {
       if (!(await loadOlder())) break;
