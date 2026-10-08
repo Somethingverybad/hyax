@@ -109,7 +109,14 @@ export default function ProfileIdeas() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Долгий ящик" />
+      <ScreenHeader
+        title="Долгий ящик"
+        right={vibe !== null ? (
+          <span className="shrink-0 min-w-10 h-10 px-1 inline-flex items-center justify-end gap-1 text-small text-subtle tabular-nums" title="Ваш вайбометр">
+            <Sparkles className="w-4 h-4 text-primary" />{vibe}
+          </span>
+        ) : undefined}
+      />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-xl mx-auto px-4 py-4 space-y-3">
           <section className="ui-card rounded-lg bg-surface-2 border border-border p-4">
@@ -120,10 +127,10 @@ export default function ProfileIdeas() {
               placeholder="Что добавить, что поменять, что бесит?"
               className="w-full resize-none bg-background border border-border rounded-md px-3 py-2.5 text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
             />
-            <div className="mt-2 flex items-center gap-3">
-              <p className="flex-1 text-caption text-subtle leading-snug">
-                Идею увидят все — без вашего имени. Голос за чужую идею: +5 к вайбометру, лайк вашей: +10 вам.
-              </p>
+            <p className="mt-2 text-caption text-subtle leading-snug">
+              Идею увидят все — без вашего имени. Голос за чужую идею: +5 к вайбометру, лайк вашей: +10 вам.
+            </p>
+            <div className="mt-2 flex justify-end">
               <button type="button" onClick={submit} disabled={sending || draft.trim().length < 3}
                 className="shrink-0 h-10 px-4 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center gap-2 active:opacity-90 disabled:opacity-50">
                 <Send className="w-4 h-4" />{sending ? "Отправляю…" : "Предложить"}
@@ -131,22 +138,15 @@ export default function ProfileIdeas() {
             </div>
           </section>
 
-          <div className="flex items-center gap-2">
-            <div className="flex-1 flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
+          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
               {TABS.map((t) => (
                 <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
                   onClick={() => setParams({ tab: t.id }, { replace: true })}
-                  className={cn("shrink-0 h-9 px-3.5 rounded-full text-small font-medium border",
+                  className={cn("shrink-0 h-9 px-3 rounded-full text-small font-medium border",
                     tab === t.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-foreground active:bg-surface-3")}>
                   {t.label}
                 </button>
               ))}
-            </div>
-            {vibe !== null && (
-              <span className="shrink-0 inline-flex items-center gap-1 text-small text-subtle tabular-nums" title="Ваш вайбометр">
-                <Sparkles className="w-4 h-4 text-primary" />{vibe}
-              </span>
-            )}
           </div>
 
           {items === null ? (
