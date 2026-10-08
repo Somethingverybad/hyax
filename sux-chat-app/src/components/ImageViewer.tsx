@@ -67,7 +67,10 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
   const imgRef = useRef<HTMLImageElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ dist: number; mid: { x: number; y: number }; t: { s: number; x: number; y: number } } | null>(null);
-  const pan = useRef<{ p: { x: number; y: number }; t: { x: number; y: number }; moved: boolean } | null>(null);
+  const pan = useRef<{ p: { x: number; y: number }; t: { x: number; y: number }; moved: boolean; at: number; axis?: "x" | "y" } | null>(null);
+  // Свайп вниз при масштабе 1 закрывает просмотр: картинка едет за пальцем,
+  // фон светлеет; не дотянули — возвращается на место.
+  const [drag, setDrag] = useState(0);
   const lastTap = useRef<{ at: number; x: number; y: number } | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_S = 5;
@@ -92,7 +95,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
     return clampT({ s, x: p.x - (p.x - from.x) * k, y: p.y - (p.y - from.y) * k });
   };
   const resetZoom = () => setT({ s: 1, x: 0, y: 0 });
-  useEffect(() => { resetZoom(); }, [index]);
+  useEffect(() => { resetZoom(); setDrag(0); }, [index]);
 
   const go = (step: number) => {
     const next = index + step;
@@ -130,9 +133,10 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
       const [a, b] = [...pointers.current.values()];
       gesture.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, mid: rel((a.x + b.x) / 2, (a.y + b.y) / 2), t: tRef.current };
       pan.current = null;
+      setDrag(0);
       if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
     } else if (pointers.current.size === 1) {
-      pan.current = { p: { x: e.clientX, y: e.clientY }, t: { x: tRef.current.x, y: tRef.current.y }, moved: false };
+      pan.current = { p: { x: e.clientX, y: e.clientY }, t: { x: tRef.current.x, y: tRef.current.y }, moved: false, at: performance.now() };
     }
   };
   const onMove = (e: React.PointerEvent) => {
@@ -151,7 +155,10 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
     if (!p) return;
     const dx = e.clientX - p.p.x, dy = e.clientY - p.p.y;
     if (Math.hypot(dx, dy) > 6) p.moved = true;
-    if (tRef.current.s > 1) setT(clampT({ s: tRef.current.s, x: p.t.x + dx, y: p.t.y + dy }));
+    if (tRef.current.s > 1) { setT(clampT({ s: tRef.current.s, x: p.t.x + dx, y: p.t.y + dy })); return; }
+    // Направление решаем один раз, на первых пикселях: дальше вбок — листание, вниз — закрытие.
+    if (!p.axis && Math.hypot(dx, dy) > 10) p.axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+    if (p.axis === "y") setDrag(Math.max(0, dy));
   };
   const onUp = (e: React.PointerEvent) => {
     const had = pointers.current.has(e.pointerId);
@@ -163,6 +170,12 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
     pan.current = null;
     if (!p) return;
     const dx = e.clientX - p.p.x, dy = e.clientY - p.p.y;
+    if (p.axis === "y" && tRef.current.s === 1) {
+      const speed = dy / Math.max(1, performance.now() - p.at);
+      if (dy > 110 || (dy > 40 && speed > 0.6)) { onClose(); return; }
+      setDrag(0);
+      return;
+    }
     // Свайп при масштабе 1 — листание.
     if (tRef.current.s === 1 && Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy)) { go(dx < 0 ? 1 : -1); return; }
     if (p.moved) return;
@@ -195,8 +208,12 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
 
   return (
     <div
-      className="fixed inset-0 z-[80] bg-black flex items-center justify-center"
-      style={{ paddingTop: "var(--sat)", paddingBottom: "var(--sab)" }}
+      className="fixed inset-0 z-[80] flex items-center justify-center"
+      style={{
+        paddingTop: "var(--sat)", paddingBottom: "var(--sab)",
+        backgroundColor: `rgba(0,0,0,${1 - Math.min(drag / 450, 0.7)})`,
+        transition: drag && pointers.current.size ? "none" : "background-color 180ms ease-out",
+      }}
     >
       {/* Сцена с жестами: тапы, щипок и сдвиг обрабатываем сами (см. onUp). */}
       <div
@@ -217,7 +234,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
             className="max-h-full max-w-full object-contain select-none"
             draggable={false}
             style={{
-              transform: `translate(${t.x}px, ${t.y}px) scale(${t.s})`,
+              transform: `translate(${t.x}px, ${t.y + drag}px) scale(${t.s * (1 - Math.min(drag / 1600, 0.15))})`,
               transition: pointers.current.size ? "none" : "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)",
             }}
           />
@@ -227,8 +244,8 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
       </div>
 
       <div
-        className="absolute inset-x-0 z-10 flex items-center justify-between px-3"
-        style={{ top: "calc(var(--sat) + 0.5rem)" }}
+        className="absolute inset-x-0 z-10 flex items-center justify-between px-3 transition-opacity"
+        style={{ top: "calc(var(--sat) + 0.5rem)", opacity: drag ? Math.max(0, 1 - drag / 120) : 1 }}
         onClick={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={onClose} className={chrome} aria-label="Закрыть">
