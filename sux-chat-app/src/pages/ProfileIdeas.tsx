@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send, Flag } from "lucide-react";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type IdeaItem } from "@/api/client";
@@ -92,6 +92,15 @@ export default function ProfileIdeas() {
     } finally { setBusyId(null); }
   };
 
+  const report = async (idea: IdeaItem) => {
+    if (busyId) return;
+    if (!window.confirm("Пожаловаться на эту идею? Её проверит модератор.")) return;
+    setBusyId(idea.id);
+    try { await api.ideaAction(idea.id, "report"); toast.success("Жалоба отправлена — спасибо"); }
+    catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    finally { setBusyId(null); }
+  };
+
   const submit = async () => {
     const text = draft.trim();
     if (sending || text.length < 3) return;
@@ -171,6 +180,12 @@ export default function ProfileIdeas() {
                   <div className="mt-2.5 flex flex-wrap items-center gap-2">
                     <VoteBtn up count={idea.likes} chosen={idea.my_vote > 0} disabled={idea.mine || !!idea.my_vote || busyId === idea.id} onClick={() => vote(idea, 1)} />
                     <VoteBtn count={idea.dislikes} chosen={idea.my_vote < 0} disabled={idea.mine || !!idea.my_vote || busyId === idea.id} onClick={() => vote(idea, -1)} />
+                    {!idea.mine && !admin && (
+                      <button type="button" onClick={() => report(idea)} disabled={busyId === idea.id} aria-label="Пожаловаться"
+                        className="ml-auto h-9 w-9 rounded-md text-subtle flex items-center justify-center active:bg-surface-3 disabled:opacity-50">
+                        <Flag className="w-4 h-4" />
+                      </button>
+                    )}
                     {admin && (
                       <span className="ml-auto flex gap-2">
                         <button type="button" onClick={() => adminAct(idea, "done")} disabled={busyId === idea.id}

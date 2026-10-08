@@ -479,13 +479,42 @@ class IdeasListView(APIView):
 
 
 class IdeaActionView(APIView):
-    """POST /api/ideas/<id>/<vote|done|hide>/ — голос ({value: 1|-1}) или действие админа."""
+    """POST /api/ideas/<id>/<vote|done|hide|report>/ — голос ({value: 1|-1}),
+    жалоба (в чат «Жалобы», как на сообщения) или действие админа."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, idea_id, act):
         me = _me(request)
         if not me:
             return Response({"error": "Нет профиля"}, status=403)
+        if act == "report":
+            idea = Idea.objects.filter(id=idea_id).exclude(status="hidden").select_related("author").first()
+            if not idea:
+                return Response({"error": "Идея не найдена"}, status=404)
+            if idea.author_id == me.id:
+                return Response({"error": "Это ваша идея"}, status=400)
+            try:
+                from .moderation import sync_staff_membership, system_bot
+                from .views import _notify_new_message
+                chat = sync_staff_membership()
+                bot = system_bot()
+                reason = " ".join(str(request.data.get("reason") or "").split())[:300]
+                text = "\n".join(filter(None, [
+                    f"🚩 Жалоба на идею в «Долгом ящике» от {me.username}",
+                    f"Причина: {reason}" if reason else None,
+                    f"Автор: {idea.author.username if idea.author else 'удалён'}",
+                    "",
+                    f"«{_clip(idea.text, 1000)}»",
+                    "",
+                    f"Убрать — кнопка 🗑 в Профиль → Долгий ящик. id: {idea.id}",
+                ]))
+                m = Message.objects.create(chat=chat, sender=bot, content=text)
+                Chat.objects.filter(id=chat.id).update(updated_at=timezone.now())
+                _notify_new_message(m, bot, None)
+            except Exception:
+                logger.exception("Жалоба на идею %s не доставлена", idea_id)
+                return Response({"error": "Не удалось отправить жалобу"}, status=500)
+            return Response({"ok": True})
         if act == "vote":
             idea, err = vote(idea_id, me, request.data.get("value") or 1)
             if not idea:

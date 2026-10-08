@@ -1133,7 +1133,7 @@ export const api = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
-  ideaAction: async (ideaId: string, act: "vote" | "done" | "hide", value?: 1 | -1): Promise<{ idea?: IdeaItem; my_vibe?: number; ok?: boolean }> => {
+  ideaAction: async (ideaId: string, act: "vote" | "done" | "hide" | "report", value?: 1 | -1): Promise<{ idea?: IdeaItem; my_vibe?: number; ok?: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/ideas/${ideaId}/${act}/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify(value ? { value } : {}),
     });
