@@ -2183,7 +2183,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (pressing) return;
     setPressing(key);
     try {
-      await api.pressButton(message.id, data);
+      const r = await api.pressButton(message.id, data);
+      // Наши боты отвечают сразу: правка сообщения, подсказка, переход.
+      if (r?.message?.id) setMessages((prev) => prev.map((m) => (m.id === r.message.id ? { ...m, ...r.message } : m)));
+      if (r?.toast) (r.toast_kind === "error" ? toast.error : toast.success)(r.toast);
+      if (r?.open && r.open.startsWith("/")) navigate(r.open);
     } catch (e: any) {
       toast.error(e?.message || "Кнопка не сработала");
     } finally {

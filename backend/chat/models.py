@@ -29,6 +29,9 @@ class Profile(models.Model):
     aura_color = models.CharField(max_length=7, blank=True, default="")
     aura_text = models.CharField(max_length=60, blank=True, default="")
     aura_presets = models.JSONField(default=list, blank=True)
+    # Вайбометр: +1 от каждого, кто «поднял вайб» в профиле (раз на человека),
+    # +5 за голос за идею, +10 автору за каждый лайк его идеи (chat/ideabox.py).
+    vibe = models.IntegerField(default=0)
     # Когда человек последний раз был на связи. Показывается собеседникам как
     # «в сети 5 минут назад», если он это не выключил и не скрыл сам статус.
     last_seen = models.DateTimeField(null=True, blank=True)
@@ -883,3 +886,39 @@ class SecretChat(models.Model):
     state = models.CharField(max_length=10, default=STATE_PENDING)
     created_at = models.DateTimeField(default=timezone.now)
     accepted_at = models.DateTimeField(null=True, blank=True)
+
+
+class VibeVote(models.Model):
+    """«Поднять вайб» в чужом профиле: один раз от одного человека."""
+    voter = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    target = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="vibe_votes")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["voter", "target"], name="vibe_vote_once")]
+
+
+class Idea(models.Model):
+    """Идея из «Долгого ящика»: текст сообщения человека боту. Список общий,
+    авторы в нём не показываются. status: "" — открыта, done — реализована,
+    hidden — убрана админом."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    author = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="ideas")
+    message = models.ForeignKey(Message, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    text = models.TextField()
+    likes = models.IntegerField(default=0)
+    dislikes = models.IntegerField(default=0)
+    status = models.CharField(max_length=8, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+
+
+class IdeaVote(models.Model):
+    """Голос за идею: +1 или -1, один раз и без смены."""
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="votes")
+    voter = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    value = models.SmallIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["idea", "voter"], name="idea_vote_once")]

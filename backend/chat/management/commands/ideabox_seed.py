@@ -8,7 +8,9 @@
 """
 from django.core.management.base import BaseCommand
 
-from chat.ideabox import KIND, OLD_WELCOMES, WELCOME, ideabox_bot, user_chat
+from django.utils import timezone
+
+from chat.ideabox import KIND, MENU, OLD_WELCOMES, THANKS, WELCOME, ideabox_bot, user_chat
 from chat.models import Chat, Message, Profile
 
 
@@ -30,5 +32,7 @@ class Command(BaseCommand):
             return
         for p in todo:
             user_chat(p)
-        old.update(content=WELCOME)
+        old.update(content=WELCOME, buttons=MENU, updated_at=timezone.now())
+        # Текущему приветствию и «спасибо» — кнопки списка идей.
+        Message.objects.filter(chat__kind=KIND, sender=bot, content__in=(WELCOME, THANKS), buttons=[]).update(buttons=MENU, updated_at=timezone.now())
         self.stdout.write(self.style.SUCCESS(f"готово: создано {len(todo)}"))

@@ -20,8 +20,9 @@ const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "изб�
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
-  Sticker, Activity, Flame,
+  Sticker, Activity, Flame, Lightbulb,
 } from "lucide-react";
+import Vibometer from "@/components/Vibometer";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
 export interface Profile {
@@ -327,6 +328,8 @@ const ProfilePage = () => {
             Поделиться профилем
           </button>
 
+          {profile?.id && <Vibometer profileId={profile.id} own initial={(profile as { vibe?: number }).vibe} />}
+
           <SettingsCard>
             <SettingsRow
               icon={Tag}
@@ -426,6 +429,15 @@ const ProfilePage = () => {
               onClick={clearCache}
               danger={confirmClear}
               trailing={<span />}
+            />
+          </SettingsCard>
+
+          <SettingsCard>
+            <SettingsRow
+              icon={Lightbulb}
+              label="Долгий ящик"
+              hint="Идеи для WhoYaX: предложить, голосовать, что уже сделано"
+              onClick={() => navigate("/profile/ideas")}
             />
           </SettingsCard>
 

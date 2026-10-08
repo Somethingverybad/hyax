@@ -12,6 +12,7 @@ import { shareProfile, profileLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { toast } from "sonner";
 import { useSwipeDismiss } from "@/lib/useSwipeDismiss";
+import Vibometer from "@/components/Vibometer";
 
 interface UserProfile {
   id: string;
@@ -218,6 +219,8 @@ const UserProfileModal = ({
             </div>
 
             <div className="border-t border-border" />
+
+            {!(profile as { is_bot?: boolean }).is_bot && <Vibometer profileId={profile.id} initial={(profile as { vibe?: number }).vibe} />}
 
             {profile.bio && (
               <div className="rounded-lg bg-surface-4 p-4">

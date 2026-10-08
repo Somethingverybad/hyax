@@ -344,6 +344,16 @@ export interface NotificationSoundInfo {
   updated_at: string;
 }
 
+export interface VibeState { vibe: number; voted: boolean; can_vote: boolean }
+export interface IdeaItem {
+  id: string; text: string; likes: number; dislikes: number; status: "" | "done" | "hidden";
+  created_at: string; done_at: string | null; mine: boolean; my_vote: number;
+}
+export interface IdeasPage {
+  sort: string; page: number; pages: number; count: number; is_admin: boolean; my_vibe: number;
+  points: { vote: number; like: number }; items: IdeaItem[];
+}
+
 interface UnreadCountResponse {
   total_unread: number;
   unread_by_chat: Record<string, number>;
@@ -1074,13 +1084,49 @@ export const api = {
   },
 
   /** Нажать кнопку под сообщением бота: data уходит боту событием. */
-  pressButton: async (messageId: string, data: string): Promise<void> => {
+  /** Нажатие на кнопку бота. Наши боты («Долгий ящик») отвечают сразу:
+   *  обновлённым сообщением, подсказкой или ссылкой. */
+  pressButton: async (messageId: string, data: string): Promise<{ message?: any; toast?: string; toast_kind?: "success" | "error"; open?: string }> => {
+    // caps: что умеет этот клиент — «Бездна» из чата бота открывает экран.
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/press/`, {
-      method: "POST", headers: authHeaders(), body: JSON.stringify({ data }),
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ data, caps: ["ideas_screen"] }),
     });
     if (!res.ok) {
       throw new Error((await res.json().catch(() => ({})))?.error || "Кнопка не сработала");
     }
+    return res.json().catch(() => ({}));
+  },
+
+  // ===== ВАЙБОМЕТР И ИДЕИ (chat/ideabox.py) =====
+  getVibe: async (profileId: string): Promise<VibeState> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  raiseVibe: async (profileId: string): Promise<VibeState> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { const e: any = new Error(body?.error || "Не получилось"); if ("vibe" in body) e.state = body; throw e; }
+    return body;
+  },
+  createIdea: async (text: string): Promise<{ idea: IdeaItem }> => {
+    const res = await fetchWithAuth(`${API_URL}/ideas/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ text }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось отправить");
+    return body;
+  },
+  getIdeas: async (sort: "top" | "new" | "done" | "mine", page: number, size = 20): Promise<IdeasPage> => {
+    const res = await fetchWithAuth(`${API_URL}/ideas/?sort=${sort}&page=${page}&size=${size}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  ideaAction: async (ideaId: string, act: "vote" | "done" | "hide", value?: 1 | -1): Promise<{ idea?: IdeaItem; my_vibe?: number; ok?: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/ideas/${ideaId}/${act}/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify(value ? { value } : {}),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    return body;
   },
 
   /** Поставить или снять реакцию на сообщение. Повторное нажатие снимает.

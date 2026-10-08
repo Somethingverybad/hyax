@@ -51,11 +51,11 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
-        read_only_fields = ['id', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner']
+        read_only_fields = ['id', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'vibe']
 
     def validate_aura_color(self, value):
         import re

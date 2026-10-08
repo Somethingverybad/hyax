@@ -963,6 +963,12 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Такой кнопки нет"}, status=400)
         if not msg.sender or not msg.sender.is_bot:
             return Response({"error": "Эти кнопки никому не адресованы"}, status=400)
+        # «Долгий ящик» — наш бот: кнопки обрабатываем здесь же, а не сокетом.
+        if msg.chat.kind == 'ideabox':
+            from .ideabox import handle_press
+            caps = request.data.get('caps') or []
+            out = handle_press(msg, profile, data, request, caps if isinstance(caps, list) else [])
+            return Response(out, status=400 if out.get("error") else 200)
 
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
