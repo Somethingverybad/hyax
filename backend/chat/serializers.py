@@ -232,6 +232,8 @@ class ChatSerializer(serializers.ModelSerializer):
             return None
         from .formatting import mask_preview
         text = mask_preview(getattr(obj, 'last_text_a', '') or '', getattr(obj, 'last_entities_a', None)).strip()
+        if getattr(obj, 'last_geo_a', None) is not None:
+            text = GEO_PREVIEW
         if not text:
             if getattr(obj, 'last_sticker_a', None):
                 text = 'Стикер'
@@ -252,9 +254,14 @@ class ChatSerializer(serializers.ModelSerializer):
             out['cipher'] = cipher
         return out
 
+GEO_PREVIEW = "📍 Геопозиция"
+
+
 def message_preview(m):
     """Короткое описание сообщения для цитат, закрепа и списка чатов."""
     from .formatting import mask_preview
+    if getattr(m, "geo_lat", None) is not None:
+        return GEO_PREVIEW
     text = mask_preview(m.content or "", getattr(m, "entities", None)).strip()
     if text:
         return text
@@ -494,8 +501,8 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'mentions', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect']
-        read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect']
+        read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot']
 
     def get_forwarded_from(self, obj):
         """От кого переслано: профиль, если он есть, — клиент может открыть его."""

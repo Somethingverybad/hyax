@@ -36,6 +36,7 @@
     "@capacitor/cli": "^7.4.4",
     "@capacitor/core": "^7.4.4",
     "@capacitor/filesystem": "^7.1.8",
+    "@capacitor/geolocation": "^7.1.8",
     "@capacitor/haptics": "^7.0.2",
     "@capacitor/ios": "^7.4.4",
     "@capacitor/keyboard": "^7.0.3",
@@ -177,7 +178,9 @@
       "darkModeSupport": true,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Микрофон нужен для звонков и голосовых сообщений.",
-        "NSCameraUsageDescription": "Камера нужна для видеозвонков."
+        "NSCameraUsageDescription": "Камера нужна для видеозвонков.",
+        "NSLocationUsageDescription": "Геопозиция нужна, чтобы отправить её в чат, — только когда вы сами выбираете «Геопозиция».",
+        "NSLocationWhenInUseUsageDescription": "Геопозиция нужна, чтобы отправить её в чат, — только когда вы сами выбираете «Геопозиция»."
       },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,

@@ -162,7 +162,13 @@ const ShareInboxSheet = () => {
 };
 
 const App = () => {
-  
+  // Первый запуск после установки: заранее спрашиваем доступ к геопозиции
+  // (один раз; дальше — при каждой попытке отправить, см. lib/geo.ts).
+  useEffect(() => {
+    const t = setTimeout(() => { void import("@/lib/geo").then((g) => g.askGeoOnFirstLaunch()); }, 2500);
+    return () => clearTimeout(t);
+  }, []);
+
   // Внутри компонента App добавьте:
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {

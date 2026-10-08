@@ -1533,6 +1533,17 @@ export const api = {
     return res.json();
   },
 
+  /** Геопозиция: текст и ссылку на карту сервер подставит сам. */
+  sendLocation: async (chatId: string, lat: number, lng: number, replyToId?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ chat: chatId, geo_lat: lat, geo_lng: lng, reply_to_id: replyToId || undefined }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось отправить");
+    return res.json();
+  },
+
   sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: "burst"): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",

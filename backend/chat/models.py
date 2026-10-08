@@ -254,6 +254,10 @@ class Message(models.Model):
     entities = models.JSONField(default=list, blank=True)
     # Упоминания участников группы: [{"id", "offset", "length"}] — см. chat/mentions.py.
     mentions = models.JSONField(default=list, blank=True)
+    # Геопозиция: точка на карте. content при этом — «📍 Геопозиция» и ссылка
+    # на карту: старые версии приложения покажут хотя бы её.
+    geo_lat = models.FloatField(null=True, blank=True)
+    geo_lng = models.FloatField(null=True, blank=True)
     # Секретный чат (chat/secret.py): base64(iv ‖ шифротекст AES-GCM) с
     # {"t": текст, "e": оформление} внутри. content при этом пустой —
     # сервер текста не видит и расшифровать не может.

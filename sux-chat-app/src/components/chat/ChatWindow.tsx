@@ -5,7 +5,9 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin } from "lucide-react";
+import { LocationSheet, GeoCard } from "./LocationSheet";
+import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
@@ -164,6 +166,9 @@ interface Message {
   entities?: TextEntity[] | null;
   /** Упоминания участников группы (сервер, chat/mentions.py). */
   mentions?: Mention[] | null;
+  /** Геопозиция: точка на карте (content — запасной текст со ссылкой). */
+  geo_lat?: number | null;
+  geo_lng?: number | null;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -220,7 +225,8 @@ interface ChatWindowProps {
 export interface LatestMessage { id: string; text: string; sender_id: string; created_at: string; read: boolean }
 
 /** Тот же текст превью, что строит сервер (ChatSerializer.get_last_message). */
-function previewText(m: { content?: string | null; entities?: TextEntity[] | null; sticker?: unknown; video_url?: string | null; voice_url?: string | null; file_url?: string | null }): string {
+function previewText(m: { content?: string | null; entities?: TextEntity[] | null; sticker?: unknown; video_url?: string | null; voice_url?: string | null; file_url?: string | null; geo_lat?: number | null }): string {
+  if (m.geo_lat != null) return "📍 Геопозиция";
   const t = maskPreview(m.content || "", m.entities).trim();
   if (t) return t.slice(0, 120);
   if (m.sticker) return "Стикер";
@@ -1748,6 +1754,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
+    if (m.geo_lat != null) return "📍 Геопозиция";
     const t = maskPreview(m.content || "", m.entities).trim();
     if (t) return t;
     if (m.sticker?.file_url) return "Стикер";
@@ -1760,6 +1767,37 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   /** Стикер уходит так же, как текст: появляется в ленте сразу, с той же
    *  анимацией, а ответ сервера подменяет временное сообщение. Раньше он ждал
    *  ответа и перезагружал всю ленту — стикер возникал рывком и не по месту. */
+  /** Геопозиция: как стикер — сразу в ленте, ответ сервера подменяет. */
+  const [geoOpen, setGeoOpen] = useState(false);
+  const sendLocation = async (fix: GeoFix) => {
+    setGeoOpen(false);
+    if (!chatId) return;
+    const reply = replyTo;
+    setReplyTo(null);
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimistic: Message = {
+      id: tempId, content: null, file_url: null, file_name: null,
+      sender_id: userId, sender: { id: userId } as Profile,
+      created_at: new Date().toISOString(), geo_lat: fix.lat, geo_lng: fix.lng,
+      pending: true, _key: tempId,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    lastSendTimeRef.current = Date.now();
+    setTimeout(() => scrollToBottom(true), 50);
+    void playSfx("/sounds/send.mp3", { volume: 0.3 });
+    try {
+      const sent = await api.sendLocation(chatId, fix.lat, fix.lng, reply?.id);
+      setMessages((prev) =>
+        prev.some((m) => m.id === sent.id)
+          ? prev.filter((m) => m.id !== tempId)
+          : prev.map((m) => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m))
+      );
+    } catch (e: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      toast.error(e?.message || "Не удалось отправить геопозицию");
+    }
+  };
+
   const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }, burstMode = false) => {
     noteStickerUsed(sticker.id); // частые — первыми в подсказках
     if (burstMode) setBurst({ url: sticker.file_url, key: Date.now() }); // отправитель видит глюк у себя тоже
@@ -3155,8 +3193,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {message.cipher && message.content == null && (
                         <p className="text-body italic opacity-70">{skey ? "…" : "🔒 Сообщение доступно на другом устройстве"}</p>
                       )}
+                      {message.geo_lat != null && message.geo_lng != null && (
+                        <div>
+                          <GeoCard lat={message.geo_lat} lng={message.geo_lng} />
+                          {isOwn && !bareBubble && (
+                            <span className="float-right -mt-4 ml-3 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
+                              {formatTime(message.created_at)}
+                              {message.pending ? <Clock className="w-3.5 h-3.5" /> : readByOthers(message) ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {/* Текст сообщения */}
-                      {message.content && !albumText.length && (
+                      {message.content && !albumText.length && message.geo_lat == null && (
                         <p className="text-body break-words whitespace-pre-wrap">
                           {/* Карточка вырезала ссылку из текста — диапазоны оформления к нему
                               уже не подходят, такой текст рисуем без них. */}
@@ -3686,6 +3735,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
                     <FileText className="w-4 h-4 text-primary" /> Файл
                   </button>
+                  {!isSecret && (
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); hideKeyboard(); setGeoOpen(true); }}>
+                    <MapPin className="w-4 h-4 text-primary" /> Геопозиция
+                  </button>
+                  )}
                 </div>
               )}
             </div>
@@ -4012,6 +4067,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           hideWrite
         />
       )}
+      {geoOpen && <LocationSheet onSend={(f) => void sendLocation(f)} onClose={() => setGeoOpen(false)} />}
       {viewProfileId && (
         <UserProfileModal userId={viewProfileId} onClose={() => setViewProfileId(null)} />
       )}

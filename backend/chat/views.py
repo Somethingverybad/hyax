@@ -183,6 +183,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_text_a=Subquery(last.values('content')[:1]),
                     last_entities_a=Subquery(last.values('entities')[:1]),
                     last_cipher_a=Subquery(last.values('cipher')[:1]),
+                    last_geo_a=Subquery(last.values('geo_lat')[:1]),
                     last_sender_id_a=Subquery(last.values('sender_id')[:1]),
                     last_sticker_a=Subquery(last.values('sticker_id')[:1]),
                     last_voice_a=Subquery(last.values('voice_url')[:1]),
@@ -629,6 +630,8 @@ def _notify_new_message(message, profile, request):
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
         from .formatting import mask_preview
         preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
+        if getattr(message, "geo_lat", None) is not None:
+            preview = "📍 Геопозиция"
         if getattr(message.chat, "kind", "") == "secret":
             preview = "Новое сообщение в секретном чате"
         if not preview:
@@ -1389,12 +1392,28 @@ class MessageViewSet(viewsets.ModelViewSet):
             file_name = (base[:200] + ext)
             file_size = None
 
+        # Геопозиция: координаты, текст и ссылку на карту ставим сами.
+        geo = None
+        if request.data.get('geo_lat') is not None or request.data.get('geo_lng') is not None:
+            try:
+                lat, lng = float(request.data.get('geo_lat')), float(request.data.get('geo_lng'))
+            except (TypeError, ValueError):
+                return Response({"error": "Неверные координаты"}, status=400)
+            if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+                return Response({"error": "Неверные координаты"}, status=400)
+            geo = (round(lat, 6), round(lng, 6))
+
         # Создаем сообщение
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         # Подготавливаем данные для сохранения
         save_kwargs = {'sender': profile}
+        if geo:
+            save_kwargs.update({
+                'geo_lat': geo[0], 'geo_lng': geo[1], 'entities': [],
+                'content': f"📍 Геопозиция\nhttps://yandex.ru/maps/?pt={geo[1]},{geo[0]}&z=16&l=map",
+            })
         
         if file_url:
             save_kwargs.update({

@@ -80,6 +80,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Видео-сообщения снимаются фронтальной камерой -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Геопозиция в чат — только по нажатию «Геопозиция». GPS необязателен:
+         без него приложение не прячется в Google Play от таких устройств. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />

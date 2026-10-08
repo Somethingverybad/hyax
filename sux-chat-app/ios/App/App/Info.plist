@@ -40,6 +40,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Геопозиция нужна, чтобы отправить её в чат, — только когда вы сами выбираете «Геопозиция».</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна для видео-сообщений и фото в переписке.</string>
 	<key>NSMicrophoneUsageDescription</key>

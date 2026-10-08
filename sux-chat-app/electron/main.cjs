@@ -154,7 +154,7 @@ function attachContextMenu(win) {
 // Микрофон/камера для звонков и уведомления — разрешаем без лишних вопросов
 // от Chromium (системный запрос macOS всё равно покажется один раз).
 function allowMediaPermissions() {
-  const allowed = new Set(['media', 'notifications', 'clipboard-read', 'clipboard-sanitized-write']);
+  const allowed = new Set(['media', 'notifications', 'clipboard-read', 'clipboard-sanitized-write', 'geolocation']);
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(allowed.has(permission));
   });
