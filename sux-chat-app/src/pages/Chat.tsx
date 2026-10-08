@@ -43,6 +43,8 @@ interface ChatType {
   last_message_at?: string | null;
   last_message?: { text: string; sender_id: string; read?: boolean } | null;
   unread_count?: number;
+  /** Непрочитанное упоминание или ответ на моё — «@» в списке. */
+  unread_mention?: boolean;
 }
 
 const ts = (s?: string | null) => (s ? Date.parse(s) || 0 : 0);
@@ -221,7 +223,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     if (!selectedChatId) return;
     api.markChatAsRead(selectedChatId).catch(() => {});
     setChats((prev) =>
-      prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0 } : c))
+      prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0, unread_mention: false } : c))
     );
     // И при уходе из чата: всё, что пришло, пока он был открыт, тоже прочитано.
     // Несколько секунд считаем его прочитанным и в списке (см. mergeUnread),
@@ -803,6 +805,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       return list.map((c) => ({
         ...c,
         unread_count: c.id === openId || c.id === leftId ? 0 : (u.unread_by_chat?.[c.id] || 0),
+        unread_mention: c.id === openId || c.id === leftId ? false : !!u.mention_by_chat?.[c.id],
       }));
     } catch {
       return list;
@@ -833,7 +836,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const handleLatest = (chatId: string, latest: LatestMessage) => {
     latestRef.current[chatId] = latest;
     setChats((prev) => {
-      const next = sortChats(withLatest(prev).map((c) => (c.id === chatId ? { ...c, unread_count: 0 } : c)));
+      const next = sortChats(withLatest(prev).map((c) => (c.id === chatId ? { ...c, unread_count: 0, unread_mention: false } : c)));
       writeCache("chats", next);
       return next;
     });

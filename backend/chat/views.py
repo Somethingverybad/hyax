@@ -862,6 +862,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         msg.entities = clean_entities(request.data.get('entities'), content)
         msg.is_edited = True
         msg.save(update_fields=['content', 'entities', 'is_edited', 'updated_at'])
+        from .mentions import store_mentions
+        store_mentions(msg)
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
@@ -1311,9 +1313,24 @@ class MessageViewSet(viewsets.ModelViewSet):
             for item in unread_by_chat
         }
         
+        # Где меня упомянули или ответили на моё — и я ещё не прочитал: «@» в
+        # списке чатов. Только группы: в личке любое сообщение и так мне.
+        mention_chats = (
+            Message.objects
+            .filter(chat__participants=profile, chat__is_group=True)
+            .exclude(chat__kind__in=('channel', 'secret'))
+            .exclude(sender=profile)
+            .exclude(deleted_for_all=True)
+            .exclude(read_statuses__user=profile)
+            .filter(Q(mentions__contains=[{"id": str(profile.id)}]) | Q(reply_to__sender=profile))
+            .values_list('chat_id', flat=True)
+            .distinct()
+        )
+
         return Response({
             "total_unread": unread_count,
-            "unread_by_chat": unread_by_chat_dict
+            "unread_by_chat": unread_by_chat_dict,
+            "mention_by_chat": {str(c): True for c in mention_chats},
         })
 
     def create(self, request, *args, **kwargs):
@@ -1429,6 +1446,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)
+        if message.content and message.chat.is_group:
+            from .mentions import store_mentions
+            store_mentions(message)
 
         # Сообщение — одна ссылка на картинку: забираем её к себе и показываем
         # картинкой (в фоне; клиент получит подмену обычной синхронизацией).

@@ -249,6 +249,8 @@ class Message(models.Model):
     # offset/length в UTF-16 (как в JS). Текст в content остаётся чистым.
     # Типы и проверка — chat/formatting.py.
     entities = models.JSONField(default=list, blank=True)
+    # Упоминания участников группы: [{"id", "offset", "length"}] — см. chat/mentions.py.
+    mentions = models.JSONField(default=list, blank=True)
     # Секретный чат (chat/secret.py): base64(iv ‖ шифротекст AES-GCM) с
     # {"t": текст, "e": оформление} внутри. content при этом пустой —
     # сервер текста не видит и расшифровать не может.

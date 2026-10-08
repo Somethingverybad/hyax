@@ -234,19 +234,30 @@ const copyCode = (text: string) => {
  * Текст сообщения с оформлением и кликабельными ссылками.
  * seed — id сообщения: зальго и перемешивание у всех выглядят одинаково.
  */
-export function FormattedText({ text, entities, seed }: { text: string; entities?: TextEntity[] | null; seed: string }) {
-  const list = useMemo(
-    () => (entities || []).filter((e) => e && MARK_OF[e.type] && e.length > 0 && e.offset >= 0 && e.offset < text.length),
-    [entities, text],
-  );
+/** Упоминание участника группы (с сервера, chat/mentions.py). */
+export interface Mention { id: string; offset: number; length: number }
+type RenderEntity = { type: EntityType | "mention"; offset: number; length: number; id?: string };
+type Ctx = { myId?: string; onMention?: (id: string) => void };
+
+export function FormattedText({ text, entities, seed, mentions, myId, onMention }: {
+  text: string; entities?: TextEntity[] | null; seed: string;
+  mentions?: Mention[] | null; myId?: string; onMention?: (id: string) => void;
+}) {
+  const list = useMemo<RenderEntity[]>(() => {
+    const ok = (e: { offset: number; length: number }) => e.length > 0 && e.offset >= 0 && e.offset < text.length;
+    return [
+      ...(entities || []).filter((e) => e && MARK_OF[e.type] && ok(e)),
+      ...(mentions || []).filter((m) => m && m.id && ok(m)).map((m) => ({ type: "mention" as const, offset: m.offset, length: m.length, id: m.id })),
+    ];
+  }, [entities, mentions, text]);
   if (!list.length) return <Linkify text={text} />;
   const baseSeed = hashSeed(seed);
-  return <>{renderRange(text, list, 0, text.length, baseSeed)}</>;
+  return <>{renderRange(text, list, 0, text.length, baseSeed, { myId, onMention })}</>;
 }
 
 /** Рекурсивно: внешние диапазоны оборачивают внутренние. Пересекающиеся
  *  (так бывает только у ботов) режем по границе внешнего. */
-function renderRange(text: string, entities: TextEntity[], from: number, to: number, seed: number): ReactNode[] {
+function renderRange(text: string, entities: RenderEntity[], from: number, to: number, seed: number, ctx: Ctx): ReactNode[] {
   const nodes: ReactNode[] = [];
   const inside = entities
     .map((e) => ({ ...e, s: Math.max(from, e.offset), t: Math.min(to, e.offset + e.length) }))
@@ -258,8 +269,8 @@ function renderRange(text: string, entities: TextEntity[], from: number, to: num
     const top = inside[k];
     if (top.s < pos) { k++; continue; }
     if (top.s > pos) nodes.push(<Linkify key={`t${pos}`} text={text.slice(pos, top.s)} />);
-    const rest = inside.slice(k + 1).filter((e) => e.s >= top.s && e.s < top.t).map((e) => ({ type: e.type, offset: e.s, length: Math.min(e.t, top.t) - e.s }));
-    nodes.push(wrap(top.type, text, rest, top.s, top.t, seed, `${top.type}${top.s}`));
+    const rest = inside.slice(k + 1).filter((e) => e.s >= top.s && e.s < top.t).map((e) => ({ type: e.type, offset: e.s, length: Math.min(e.t, top.t) - e.s, id: e.id }));
+    nodes.push(wrap(top, text, rest, top.s, top.t, seed, `${top.type}${top.s}`, ctx));
     pos = top.t;
     k++;
     while (k < inside.length && inside[k].s < pos) k++;
@@ -268,10 +279,20 @@ function renderRange(text: string, entities: TextEntity[], from: number, to: num
   return nodes;
 }
 
-function wrap(type: EntityType, text: string, inner: TextEntity[], s: number, t: number, seed: number, key: string): ReactNode {
+function wrap(ent: RenderEntity, text: string, inner: RenderEntity[], s: number, t: number, seed: number, key: string, ctx: Ctx): ReactNode {
   const slice = text.slice(s, t);
-  const kids = () => renderRange(text, inner, s, t, seed);
-  switch (type) {
+  const kids = () => renderRange(text, inner, s, t, seed, ctx);
+  switch (ent.type) {
+    case "mention": {
+      const id = ent.id || "";
+      return (
+        <span key={key} role="link" tabIndex={-1}
+          className={`fmt-mention${id && id === ctx.myId ? " fmt-mention-me" : ""}`}
+          onClick={(e) => { if (!ctx.onMention || !id) return; e.stopPropagation(); ctx.onMention(id); }}>
+          {kids()}
+        </span>
+      );
+    }
     case "bold": return <strong key={key} className="font-semibold">{kids()}</strong>;
     case "italic": return <em key={key}>{kids()}</em>;
     case "underline": return <u key={key} className="underline-offset-2">{kids()}</u>;

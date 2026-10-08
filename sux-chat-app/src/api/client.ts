@@ -347,6 +347,8 @@ export interface NotificationSoundInfo {
 interface UnreadCountResponse {
   total_unread: number;
   unread_by_chat: Record<string, number>;
+  /** Группы, где меня упомянули или ответили мне, а я не прочитал. */
+  mention_by_chat?: Record<string, boolean>;
 }
 
 async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {

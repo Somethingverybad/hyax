@@ -24,7 +24,7 @@ import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
-import { FormattedText, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
+import { FormattedText, type Mention, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
 import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
@@ -162,6 +162,8 @@ interface Message {
   is_read?: boolean;
   /** Оформление текста (жирный, спойлер, зальго…) — см. lib/format.tsx. */
   entities?: TextEntity[] | null;
+  /** Упоминания участников группы (сервер, chat/mentions.py). */
+  mentions?: Mention[] | null;
 }
 
 /** Чат для выбора при пересылке — минимум полей из списка чатов. */
@@ -365,6 +367,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const wallpaperAnimSrc = useMediaUrl(Capacitor.getPlatform() === "ios" ? wallpaper?.anim || null : null);
   // Профиль автора пересланного сообщения — по тапу на «Переслано от».
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
+  const openMention = useCallback((id: string) => { if (id !== userId) setViewProfileId(id); }, [userId]);
   // «Просмотры и реакции» — поимённый список из меню сообщения.
   const [viewersFor, setViewersFor] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -779,6 +782,43 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => window.removeEventListener("hyax:inline", on);
   }, []);
   useEffect(() => { setInline(null); inlineQidRef.current = null; }, [chatId]);
+
+  // Упоминания: «@ни» перед курсором в группе → участники, чей ник так
+  // начинается (потом — содержит). Только участники этого чата. Выбор
+  // подставляет «@ник » целиком: ник бывает с пробелами, руками его не добить.
+  const [mentionHints, setMentionHints] = useState<Profile[]>([]);
+  const [mentionIdx, setMentionIdx] = useState(0);
+  const mentionAtRef = useRef<{ start: number; end: number } | null>(null);
+  const updateMentions = () => {
+    const ta = textareaRef.current;
+    const people = (group?.participants || []).filter((p) => p.id !== userId && p.username);
+    const close = () => { mentionAtRef.current = null; setMentionHints((prev) => (prev.length ? [] : prev)); };
+    if (!ta || !isGroup || isSecret || !people.length || ta.selectionStart !== ta.selectionEnd) return close();
+    const caret = ta.selectionStart;
+    const m = /(^|\s)@([^\s@]{0,32})$/.exec(ta.value.slice(0, caret));
+    if (!m) return close();
+    const q = m[2].toLowerCase();
+    const starts = people.filter((p) => p.username.toLowerCase().startsWith(q));
+    const has = q ? people.filter((p) => !p.username.toLowerCase().startsWith(q) && p.username.toLowerCase().includes(q)) : [];
+    const found = [...starts, ...has].slice(0, 8);
+    if (!found.length) return close();
+    mentionAtRef.current = { start: caret - m[2].length - 1, end: caret };
+    setMentionIdx(0);
+    setMentionHints((prev) => (prev.length === found.length && prev.every((p, i) => p.id === found[i].id) ? prev : found));
+  };
+  const chooseMention = (p: Profile) => {
+    const at = mentionAtRef.current;
+    const ta = textareaRef.current;
+    if (!at || !ta) return;
+    const v = ta.value;
+    const insert = `@${p.username} `;
+    setDraft(v.slice(0, at.start) + insert + v.slice(at.end).replace(/^ /, ""));
+    const pos = at.start + insert.length;
+    mentionAtRef.current = null;
+    setMentionHints([]);
+    requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
+  };
+  useEffect(() => { mentionAtRef.current = null; setMentionHints([]); }, [chatId]);
   const chooseInline = async (r: InlineResult) => {
     const qid = inlineQidRef.current;
     if (!qid) return;
@@ -3087,7 +3127,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <div key={m.id} className={cn(i > 0 && "mt-2")}>
                           {mixedOrigins && <p className="text-caption opacity-70 leading-tight">{originOf(m)}</p>}
                           <p className="text-body break-words whitespace-pre-wrap">
-                            <FormattedText text={m.content || ""} entities={m.entities} seed={m.id} />
+                            <FormattedText text={m.content || ""} entities={m.entities} seed={m.id} mentions={m.mentions} myId={userId} onMention={openMention} />
                             {i === albumText.length - 1 && isOwn && !bareBubble && !albumMedia.length && !albumAudio.length && !albumRest.length && (
                               <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
                                 {formatTime(message.created_at)}
@@ -3117,7 +3157,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {/* Карточка вырезала ссылку из текста — диапазоны оформления к нему
                               уже не подходят, такой текст рисуем без них. */}
                           {shownText === (message.content || "")
-                            ? <FormattedText text={shownText} entities={message.entities} seed={message.id} />
+                            ? <FormattedText text={shownText} entities={message.entities} seed={message.id} mentions={message.mentions} myId={userId} onMention={openMention} />
                             : <Linkify text={shownText} />}
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
@@ -3410,6 +3450,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             </div>
           )}
+          {mentionHints.length > 0 && !inline && (
+            <div className="mb-2 rounded-lg bg-surface-2 border border-border overflow-hidden max-h-64 overflow-y-auto" role="listbox" aria-label="Упомянуть участника">
+              {mentionHints.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="option"
+                  aria-selected={i === mentionIdx}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => chooseMention(p)}
+                  onMouseEnter={() => setMentionIdx(i)}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2 text-left active:bg-surface-3", i > 0 && "border-t border-border/60", i === mentionIdx && !isTouchDevice() && "bg-surface-3")}
+                >
+                  <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 shrink-0" />
+                  <span className="min-w-0 flex-1 text-small font-medium truncate">@{p.username}</span>
+                  {(p as { is_bot?: boolean }).is_bot && <Bot className="w-3.5 h-3.5 text-subtle shrink-0" />}
+                </button>
+              ))}
+            </div>
+          )}
           {inline && (
             <div className="mb-2 rounded-lg bg-surface-2 border border-border overflow-hidden">
               <div className="px-3 py-1.5 text-caption text-subtle flex items-center gap-1.5">
@@ -3442,7 +3502,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               )}
             </div>
           )}
-          {stickerHints.length > 0 && !inline && (
+          {stickerHints.length > 0 && !inline && !mentionHints.length && (
             <div className="mb-2 flex gap-1.5 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Стикеры по макросу">
               {stickerHints.map((s) => (
                 <button
@@ -3662,8 +3722,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   fitTextarea();
                   updateStickerHints(e.target.value);
                   updateInline(e.target.value);
+                  updateMentions();
                 }}
+                onSelect={() => { if (mentionHints.length || mentionAtRef.current) updateMentions(); }}
                 onKeyDown={(e) => {
+                  if (mentionHints.length) {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const n = mentionHints.length;
+                      setMentionIdx((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+                      return;
+                    }
+                    if ((e.key === "Enter" && !e.shiftKey && !isTouchDevice()) || e.key === "Tab") {
+                      e.preventDefault();
+                      chooseMention(mentionHints[Math.min(mentionIdx, mentionHints.length - 1)]);
+                      return;
+                    }
+                    if (e.key === "Escape") { e.preventDefault(); mentionAtRef.current = null; setMentionHints([]); return; }
+                  }
                   // Форматирование с клавиатуры: ⌘/Ctrl+B, I, U; с Shift: X —
                   // зачёркнутый, M — моноширинный, P — спойлер.
                   if ((e.metaKey || e.ctrlKey) && !e.altKey) {

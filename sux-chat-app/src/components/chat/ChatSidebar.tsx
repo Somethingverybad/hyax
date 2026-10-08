@@ -1073,6 +1073,12 @@ const ChatSidebar = ({
                                       : (chat as any).last_message.text}`
                                 : "Сообщений пока нет"}
                           </p>
+                          {(chat as any).unread_mention && (
+                            <span aria-label="Вас упомянули" title="Вас упомянули или ответили вам"
+                              className="shrink-0 w-[22px] h-[22px] rounded-full bg-primary text-primary-foreground text-[13px] font-bold leading-none flex items-center justify-center">
+                              @
+                            </span>
+                          )}
                           {!!chat.unread_count && chat.unread_count > 0 && (
                             <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-caption font-semibold flex items-center justify-center">
                               {chat.unread_count > 99 ? "99+" : chat.unread_count}
