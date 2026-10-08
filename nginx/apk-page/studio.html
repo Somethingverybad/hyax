@@ -6,7 +6,7 @@
 <title>WhoYaX · Creative Space</title>
 <style>
   :root{
-    --bg:#0d0d0f; --card:#17171b; --card2:#1e1e24; --line:#2a2a31;
+    --bg:#0d0d0f; --card:#17171b; --card2:#1e1e24; --card3:#26262e; --line:#2a2a31;
     --fg:#f2f2f5; --muted:#9a9aa6; --red:#e5352b; --red2:#ff5147;
     --ok:#37c46b; --radius:16px;
   }
@@ -14,13 +14,15 @@
   body{margin:0;background:radial-gradient(1200px 600px at 50% -200px,#1c1216 0,var(--bg) 60%);
     color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     min-height:100vh;padding:env(safe-area-inset-top) 16px 40px}
-  .wrap{max-width:720px;margin:0 auto}
-  header{padding:36px 4px 8px;text-align:center}
-  .logo{font-weight:900;letter-spacing:.5px;font-size:30px}
+  .wrap{max-width:880px;margin:0 auto}
+  header{padding:30px 4px 4px;text-align:center}
+  .logo{font-weight:900;letter-spacing:.5px;font-size:28px}
   .logo b{color:var(--red2)}
-  .sub{color:var(--muted);margin-top:6px;font-size:14px}
-  h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+  .sub{color:var(--muted);margin-top:4px;font-size:14px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
     margin:26px 4px 12px;font-weight:700;display:flex;align-items:center;gap:8px}
+  h2 .cnt{background:var(--card2);border-radius:999px;padding:0 8px;font-size:12px;letter-spacing:0}
+  h2 .sp{flex:1}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
   .card + .card{margin-top:12px}
   .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
@@ -34,50 +36,82 @@
   .badge{align-self:flex-start;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;
     background:#2a2a31;color:var(--muted);border-radius:999px;padding:2px 8px;margin-top:auto}
   .tile.active .badge{background:rgba(55,196,107,.15);color:var(--ok)}
-  label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
-  input[type=text],input[type=password]{width:100%;background:var(--card2);border:1px solid var(--line);
-    color:var(--fg);border-radius:12px;padding:12px 14px;font-size:15px;outline:none}
+  label.lbl{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px}
+  input[type=text],input[type=password],input[type=search]{width:100%;background:var(--card2);border:1px solid var(--line);
+    color:var(--fg);border-radius:12px;padding:11px 14px;font-size:15px;outline:none}
   input:focus{border-color:var(--red)}
-  .row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-  .row .name{flex:1}
-  .file{position:relative;overflow:hidden;flex-shrink:0}
-  .file input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
-  .btn{border:0;border-radius:12px;padding:12px 16px;font-weight:700;font-size:15px;cursor:pointer;
-    background:var(--card2);color:var(--fg);border:1px solid var(--line)}
+  .btn{border-radius:12px;padding:11px 16px;font-weight:700;font-size:15px;cursor:pointer;
+    background:var(--card2);color:var(--fg);border:1px solid var(--line);white-space:nowrap;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px}
   .btn.wide{width:100%}
-  .btn.sm{padding:8px 12px;font-size:13.5px}
+  .btn.sm{padding:7px 12px;font-size:13.5px;border-radius:10px}
   .btn.primary{background:linear-gradient(180deg,var(--red2),var(--red));color:#fff;border:0}
-  .btn.primary:disabled{opacity:.5;cursor:default}
+  .btn:disabled{opacity:.5;cursor:default}
   .btn.ghost{background:transparent}
   .btn.danger{color:#ff9a95;border-color:rgba(229,53,43,.4)}
-  .btn.icon{padding:12px 13px}
-  .filelabel{font-size:12.5px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;
-    white-space:nowrap}
-  .filelabel.set{color:var(--fg)}
+  .file{position:relative;overflow:hidden}
+  .file input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
   .mt{margin-top:14px}
   .field{margin-bottom:16px}
   .hint{color:var(--muted);font-size:12.5px;margin-top:8px}
   .prog{height:8px;border-radius:6px;background:var(--card2);overflow:hidden;margin-top:14px;display:none}
   .prog > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red2),var(--red));transition:width .2s}
-  .result{margin-top:16px;display:none;border-radius:12px;padding:14px;font-size:14px}
+  .result{margin-top:14px;display:none;border-radius:12px;padding:14px;font-size:14px}
   .result.ok{display:block;background:rgba(55,196,107,.1);border:1px solid rgba(55,196,107,.35)}
   .result.err{display:block;background:rgba(229,53,43,.1);border:1px solid rgba(229,53,43,.4)}
-  .result ul{margin:8px 0 0;padding-left:18px}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:30px}
   a{color:var(--red2)}
   .who{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .who b{color:var(--fg)}
-  .packhead{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-  .packhead input{flex:1}
-  .sound{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
-  .sound input{flex:1}
-  .play{width:38px;height:38px;flex:0 0 38px;border-radius:10px;border:1px solid var(--line);
-    background:var(--card2);color:var(--fg);cursor:pointer;font-size:15px}
   .muted{color:var(--muted)}
   [hidden]{display:none!important}
   .spin{opacity:.6;pointer-events:none}
-  /* стикеры */
-  .sticks{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px;margin-top:12px}
+
+  /* папки паков */
+  .folders{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .folder{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;cursor:pointer;
+    display:flex;flex-direction:column;text-align:left;color:inherit;padding:0;font:inherit;transition:transform .12s,border-color .12s}
+  .folder:hover{border-color:#3a3a44;transform:translateY(-1px)}
+  .folder:active{transform:scale(.98)}
+  .folder .cov{aspect-ratio:1;background:var(--card2);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .folder .cov img.full{width:100%;height:100%;object-fit:cover}
+  .folder .cov .ph{font-size:44px;opacity:.85}
+  .folder .cov .mosaic{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:100%;height:100%;gap:2px;padding:10px}
+  .folder .cov .mosaic > *{width:100%;height:100%;object-fit:contain;display:flex;align-items:center;justify-content:center;font-size:22px;min-width:0;min-height:0}
+  .folder .tag{position:absolute;top:8px;left:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;border-radius:999px;padding:2px 7px;background:rgba(0,0,0,.6)}
+  .folder .tag.adult{left:auto;right:8px;color:#ffb4af}
+  .folder .meta{padding:10px 12px 12px}
+  .folder .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .folder .ct{color:var(--muted);font-size:12.5px}
+  .folder.new .cov{background:transparent;border-bottom:1px dashed var(--line)}
+  .folder.new{border-style:dashed;background:transparent}
+  .folder.new .ph{font-size:38px;color:var(--muted)}
+  .empty{grid-column:1/-1}
+
+  /* экран пака */
+  .back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;background:none;border:0;font:inherit;padding:18px 2px 6px}
+  .back:hover{color:var(--fg)}
+  .phead{display:flex;gap:16px;align-items:flex-start}
+  .phead .bigcov{width:112px;height:112px;flex:0 0 112px;border-radius:16px;background:var(--card2);overflow:hidden;
+    display:flex;align-items:center;justify-content:center;font-size:48px;position:relative}
+  .phead .bigcov img{width:100%;height:100%;object-fit:cover}
+  .phead .info{flex:1;min-width:0}
+  .phead .title{font-size:22px;font-weight:800;line-height:1.2;word-break:break-word}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+  .renm{display:flex;gap:8px;margin-top:10px}
+  .chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;color:var(--muted);font-size:13.5px;
+    border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+  @media (max-width:520px){ .phead{flex-direction:column} .phead .bigcov{width:96px;height:96px;flex-basis:96px} }
+
+  .sound{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+  .sound:first-child{border-top:0}
+  .sound input{flex:1;min-width:0}
+  .play{width:40px;height:40px;flex:0 0 40px;border-radius:10px;border:1px solid var(--line);
+    background:var(--card2);color:var(--fg);cursor:pointer;font-size:14px}
+  .play.on{background:var(--red);border-color:var(--red)}
+  .dur{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;min-width:38px;text-align:right}
+
+  .sticks{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
   .stick{position:relative;aspect-ratio:1;background:var(--card2);border:1px solid var(--line);
     border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
   .stick img,.stick video,.stick .lot{width:100%;height:100%;object-fit:contain}
@@ -85,116 +119,201 @@
   .stick .em{position:absolute;right:3px;bottom:2px;font-size:12px;text-shadow:0 1px 3px #000}
   .stick .anim{position:absolute;left:3px;top:3px;font-size:9px;letter-spacing:.4px;background:rgba(0,0,0,.55);
     color:var(--muted);border-radius:6px;padding:1px 4px}
+
+  /* аудиоредактор */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center;z-index:50;padding:0}
+  @media (min-width:640px){ .modal{align-items:center;padding:20px} }
+  .sheet{background:var(--card);border:1px solid var(--line);border-radius:18px 18px 0 0;width:100%;max-width:640px;
+    padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:100vh;overflow:auto}
+  @media (min-width:640px){ .sheet{border-radius:18px} }
+  .sheet h3{margin:0 0 4px;font-size:18px}
+  .wavebox{position:relative;height:150px;margin-top:14px;border-radius:12px;background:var(--card2);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+  .wavebox canvas{position:absolute;inset:0;width:100%;height:100%}
+  .sel{position:absolute;top:0;bottom:0;background:rgba(255,81,71,.14);border-left:2px solid var(--red2);border-right:2px solid var(--red2);cursor:grab}
+  .handle{position:absolute;top:0;bottom:0;width:28px;margin-left:-14px;cursor:ew-resize;z-index:2;display:flex;align-items:center;justify-content:center}
+  .handle::after{content:"";width:6px;height:44px;border-radius:4px;background:var(--red2);box-shadow:0 0 0 3px rgba(0,0,0,.35)}
+  .playhead{position:absolute;top:0;bottom:0;width:2px;background:#fff;opacity:.9;pointer-events:none;display:none}
+  .shade{position:absolute;top:0;bottom:0;background:rgba(0,0,0,.45);pointer-events:none}
+  .times{display:flex;justify-content:space-between;color:var(--muted);font-size:12.5px;margin-top:6px;font-variant-numeric:tabular-nums}
+  .times b{color:var(--fg)}
+  .opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .nudge{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .rowbtns{display:flex;gap:8px;margin-top:16px}
+  .rowbtns .btn{flex:1}
+  .queue{color:var(--muted);font-size:12.5px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="logo">ХУ<b>Я</b>КС · Creative Space</div>
-    <div class="sub">Мастерская контента: паки звуков и стикеры из Telegram.</div>
+    <div class="logo">Who<b>Ya</b>X · Creative Space</div>
+    <div class="sub">Мастерская контента: паки звуков уведомлений и стикеры.</div>
   </header>
-
-  <h2>Инструменты</h2>
-  <div class="tiles">
-    <div class="tile active">
-      <div class="ico">🔊</div><div class="t">Пак звуков</div>
-      <div class="d">Создание и правка паков</div><span class="badge">доступно</span>
-    </div>
-    <div class="tile soon">
-      <div class="ico">😍</div><div class="t">Реакции</div>
-      <div class="d">Свои реакции на сообщения</div><span class="badge">скоро</span>
-    </div>
-    <div class="tile active">
-      <div class="ico">🎨</div><div class="t">Стикеры</div>
-      <div class="d">Импорт паков из Telegram</div><span class="badge">доступно</span>
-    </div>
-    <a class="tile active" href="bots.html">
-      <div class="ico">🤖</div><div class="t">Боты</div>
-      <div class="d">API и inline-режим — документация</div><span class="badge">доступно</span>
-    </a>
-  </div>
 
   <!-- ВХОД -->
   <div id="loginBlock" hidden>
     <h2>Вход</h2>
     <div class="card">
-      <div class="field"><label>Логин</label><input id="username" type="text" autocomplete="username" placeholder="ваш логин в WhoYaX"></div>
-      <div class="field" style="margin-bottom:12px"><label>Пароль</label><input id="password" type="password" autocomplete="current-password" placeholder="пароль"></div>
+      <div class="field"><label class="lbl">Логин</label><input id="username" type="text" autocomplete="username" placeholder="ваш логин в WhoYaX"></div>
+      <div class="field" style="margin-bottom:12px"><label class="lbl">Пароль</label><input id="password" type="password" autocomplete="current-password" placeholder="пароль"></div>
       <button class="btn primary wide" id="loginBtn" type="button">Войти</button>
       <div class="result" id="loginResult"></div>
     </div>
   </div>
 
-  <!-- РАБОЧАЯ ОБЛАСТЬ -->
-  <div id="studioBlock" hidden>
-    <h2>Аккаунт</h2>
-    <div class="card who">
+  <!-- ГЛАВНАЯ: папки паков -->
+  <div id="homeView" hidden>
+    <h2>Инструменты</h2>
+    <div class="tiles">
+      <div class="tile active"><div class="ico">🔊</div><div class="t">Звуки уведомлений</div>
+        <div class="d">Паки и редактор с обрезкой</div><span class="badge">доступно</span></div>
+      <div class="tile active"><div class="ico">🎨</div><div class="t">Стикеры</div>
+        <div class="d">Импорт паков из Telegram</div><span class="badge">доступно</span></div>
+      <a class="tile active" href="bots.html"><div class="ico">🤖</div><div class="t">Боты</div>
+        <div class="d">API и inline-режим — документация</div><span class="badge">доступно</span></a>
+      <div class="tile soon"><div class="ico">😍</div><div class="t">Реакции</div>
+        <div class="d">Свои реакции на сообщения</div><span class="badge">скоро</span></div>
+    </div>
+
+    <div class="card who mt">
       <div>Вы вошли как <b id="whoName">—</b></div>
       <button class="btn ghost sm" id="logoutBtn" type="button">Выйти</button>
     </div>
 
-    <h2>Мои паки</h2>
-    <div id="myPacks"></div>
-    <div class="card muted" id="noPacks" hidden>Пока нет паков. Создайте первый ниже.</div>
+    <div class="mt"><input id="filter" type="search" placeholder="Найти пак по названию" autocomplete="off"></div>
 
-    <h2>Новый пак</h2>
+    <h2>Паки звуков <span class="cnt" id="spCount">0</span></h2>
+    <div class="folders" id="soundFolders"></div>
+
+    <h2>Стикерпаки <span class="cnt" id="stpCount">0</span></h2>
+    <div class="folders" id="stickerFolders"></div>
+  </div>
+
+  <!-- ПАК ЗВУКОВ -->
+  <div id="soundView" hidden>
+    <button class="back" type="button" data-back>← Все паки</button>
     <div class="card">
-      <div class="field"><label>Название пака</label><input id="packName" type="text" placeholder="Например: Мемы 2026"></div>
-      <label>Звуки</label>
-      <div id="rows"></div>
-      <button class="btn ghost mt" id="addRow" type="button">+ Добавить звук</button>
+      <div class="phead">
+        <div class="bigcov" id="spCover">🔊</div>
+        <div class="info">
+          <div class="title" id="spTitle">—</div>
+          <div class="muted" id="spMeta"></div>
+          <div class="renm"><input id="spName" type="text" placeholder="Название пака"><button class="btn sm" id="spRename" type="button">Сохранить</button></div>
+          <div class="actions" id="spActions"></div>
+        </div>
+      </div>
+    </div>
+    <h2>Звуки <span class="sp"></span>
+      <label class="btn sm primary file" style="text-transform:none;letter-spacing:0">+ Добавить звук<input id="spAdd" type="file" multiple accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3"></label>
+    </h2>
+    <div class="card" id="spSounds"></div>
+  </div>
+
+  <!-- НОВЫЙ ПАК ЗВУКОВ -->
+  <div id="newView" hidden>
+    <button class="back" type="button" data-back>← Все паки</button>
+    <h2>Новый пак звуков</h2>
+    <div class="card">
+      <div class="field"><label class="lbl">Название пака</label><input id="packName" type="text" placeholder="Например: Мемы 2026"></div>
+      <label class="lbl">Звуки</label>
+      <div id="draftList"></div>
+      <label class="btn file mt">+ Добавить звук<input id="draftAdd" type="file" multiple accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3"></label>
       <button class="btn primary wide mt" id="submit" type="button">Создать пак</button>
       <div class="prog" id="prog"><i></i></div>
       <div class="result" id="result"></div>
-      <div class="hint mt">Каждый звук конвертируется в mp3 и обрезается до 30 секунд. Форматы: mp3, m4a, wav, ogg, caf и др.</div>
+      <div class="hint mt">Каждый звук открывается в редакторе: выберите кусок до 30 секунд, при желании — плавное начало и конец. Форматы: mp3, m4a, wav, ogg и др.</div>
     </div>
+  </div>
 
+  <!-- СТИКЕРПАК -->
+  <div id="stickerView" hidden>
+    <button class="back" type="button" data-back>← Все паки</button>
+    <div class="card">
+      <div class="phead">
+        <div class="bigcov" id="stpCover">🎨</div>
+        <div class="info">
+          <div class="title" id="stpTitle">—</div>
+          <div class="muted" id="stpMeta"></div>
+          <div class="actions" id="stpActions"></div>
+        </div>
+      </div>
+    </div>
+    <h2>Стикеры</h2>
+    <div class="sticks" id="stpGrid"></div>
+  </div>
+
+  <!-- ИМПОРТ СТИКЕРОВ -->
+  <div id="importView" hidden>
+    <button class="back" type="button" data-back>← Все паки</button>
     <h2>Стикеры из Telegram</h2>
     <div class="card">
-      <div class="field"><label>Ссылка на пак</label>
+      <div class="field"><label class="lbl">Ссылка на пак</label>
         <input id="tgUrl" type="text" placeholder="https://t.me/addstickers/…" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <button class="btn primary wide" id="tgImport" type="button">Импортировать пак</button>
       <div class="prog" id="tgProg"><i></i></div>
       <div class="result" id="tgResult"></div>
-      <div class="hint mt">Анимированные (.tgs) и видео (.webm) стикеры сохраняются как есть — в приложении они играют так же, как в Telegram.</div>
+      <div class="hint mt">Анимированные (.tgs) и видео (.webm) стикеры сохраняются как есть — в приложении они играют так же.</div>
     </div>
-
-    <h2>Мои стикерпаки</h2>
-    <div id="myStickerPacks"></div>
-    <div class="card muted" id="noStickerPacks" hidden>Пока нет паков. Импортируйте первый выше.</div>
-
   </div>
 
   <div class="foot">WhoYaX Creative Space</div>
+</div>
+
+<!-- АУДИОРЕДАКТОР -->
+<div class="modal" id="editor" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <h3 id="edTitle">Звук уведомления</h3>
+    <div class="queue" id="edQueue"></div>
+    <div class="wavebox" id="wave">
+      <canvas id="waveCanvas"></canvas>
+      <div class="shade" id="shadeL"></div><div class="shade" id="shadeR"></div>
+      <div class="sel" id="sel"></div>
+      <div class="handle" id="hL" aria-label="Начало"></div>
+      <div class="handle" id="hR" aria-label="Конец"></div>
+      <div class="playhead" id="playhead"></div>
+    </div>
+    <div class="times"><span id="tStart">0:00.0</span><span>выбрано <b id="tLen">0.0 с</b> · макс. 30 с</span><span id="tEnd">0:00.0</span></div>
+    <div class="nudge">
+      <button class="btn sm" type="button" data-nudge="s,-0.1">⇤ −0.1</button>
+      <button class="btn sm" type="button" data-nudge="s,0.1">⇤ +0.1</button>
+      <span class="sp" style="flex:1"></span>
+      <button class="btn sm" type="button" data-nudge="e,-0.1">−0.1 ⇥</button>
+      <button class="btn sm" type="button" data-nudge="e,0.1">+0.1 ⇥</button>
+    </div>
+    <div class="opts">
+      <button class="btn sm primary" id="edPlay" type="button">▶ Слушать</button>
+      <label class="chk"><input type="checkbox" id="edFadeIn"> Плавное начало</label>
+      <label class="chk"><input type="checkbox" id="edFadeOut" checked> Плавный конец</label>
+      <label class="chk"><input type="checkbox" id="edNorm" checked> Выровнять громкость</label>
+    </div>
+    <div class="field mt" style="margin-bottom:0"><label class="lbl">Название звука</label><input id="edName" type="text" maxlength="60"></div>
+    <div class="result" id="edErr"></div>
+    <div class="rowbtns">
+      <button class="btn" id="edCancel" type="button">Отмена</button>
+      <button class="btn primary" id="edDone" type="button">Готово</button>
+    </div>
+    <div class="hint" id="edRaw" hidden></div>
+  </div>
 </div>
 
 <script>
 (function(){
   var TOKEN_URL="/api/token/", REFRESH_URL="/api/token/refresh/";
   var CREATE_URL="/api/sounds/pack/", MINE_URL="/api/sounds/mine/";
-  // Ссылка на пак: по ней пак добавляют себе в приложении (звуки — /sp/, стикеры — /stp/).
-  function copyLink(path, btn){
-    var url=location.origin+path;
-    var done=function(){ var t=btn.textContent; btn.textContent="Скопировано"; setTimeout(function(){ btn.textContent=t; },1500); };
-    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done, function(){ prompt("Ссылка на пак:", url); }); }
-    else prompt("Ссылка на пак:", url);
-  }
-  var loginBlock=el("loginBlock"), studioBlock=el("studioBlock");
-  var access="", refresh="", uname="";
-  try{ access=localStorage.getItem("studio_access")||""; refresh=localStorage.getItem("studio_refresh")||""; uname=localStorage.getItem("studio_uname")||""; }catch(e){}
+  var TG_IMPORT_URL="/api/sticker-packs/import-telegram/", MY_PACKS_URL="/api/sticker-packs/my_packs/";
+  var MAX_SEC=30, MIN_SEC=0.2;
 
   function el(id){return document.getElementById(id);}
-  function saveTokens(){try{localStorage.setItem("studio_access",access);localStorage.setItem("studio_refresh",refresh);localStorage.setItem("studio_uname",uname);}catch(e){}}
-  function clearTokens(){access="";refresh="";uname="";try{localStorage.removeItem("studio_access");localStorage.removeItem("studio_refresh");localStorage.removeItem("studio_uname");}catch(e){}}
   function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+  function plural(n,a,b,c){var m=n%10,h=n%100;return n+" "+(m===1&&h!==11?a:(m>=2&&m<=4&&(h<12||h>14)?b:c));}
+  function fmtT(t){t=Math.max(0,t);var m=Math.floor(t/60),s=t-m*60;return m+":"+(s<10?"0":"")+s.toFixed(1);}
 
-  function showAuthState(){
-    if(access){ loginBlock.hidden=true; studioBlock.hidden=false; el("whoName").textContent=uname||"—";
-      loadMine(); loadStickerPacks(); }
-    else { studioBlock.hidden=true; loginBlock.hidden=false; }
-  }
+  // ── вход и запросы ──
+  var access="", refresh="", uname="", meId="";
+  try{ access=localStorage.getItem("studio_access")||""; refresh=localStorage.getItem("studio_refresh")||""; uname=localStorage.getItem("studio_uname")||""; }catch(e){}
+  function saveTokens(){try{localStorage.setItem("studio_access",access);localStorage.setItem("studio_refresh",refresh);localStorage.setItem("studio_uname",uname);}catch(e){}}
+  function clearTokens(){access="";refresh="";uname="";meId="";try{localStorage.removeItem("studio_access");localStorage.removeItem("studio_refresh");localStorage.removeItem("studio_uname");}catch(e){}}
 
-  // fetch с Bearer + авто-refresh один раз при 401
   function authFetch(url, opts, retry){
     opts=opts||{}; opts.headers=opts.headers||{};
     opts.headers["Authorization"]="Bearer "+access;
@@ -203,190 +322,15 @@
         return fetch(REFRESH_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh:refresh})})
           .then(function(rr){ if(!rr.ok) throw {auth:true}; return rr.json(); })
           .then(function(d){ access=d.access; saveTokens(); return authFetch(url,opts,true); })
-          .catch(function(){ clearTokens(); showAuthState(); throw {auth:true}; });
+          .catch(function(){ clearTokens(); route(); throw {auth:true}; });
       }
       return r;
     });
   }
   function authJson(url, method, body){
     return authFetch(url,{method:method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined})
-      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,status:r.status,data:d}; }); });
+      .then(function(r){ return r.json().catch(function(){return {};}).then(function(d){ return {ok:r.ok,status:r.status,data:d}; }); });
   }
-
-  // ── ВХОД ──
-  el("loginBtn").addEventListener("click", function(){
-    var u=el("username").value.trim(), p=el("password").value;
-    var res=el("loginResult"); res.className="result";
-    if(!u||!p){ res.className="result err"; res.textContent="Введите логин и пароль."; return; }
-    this.disabled=true; this.textContent="Вход…"; var btn=this;
-    fetch(TOKEN_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})})
-      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
-      .then(function(x){
-        btn.disabled=false; btn.textContent="Войти";
-        if(!x.ok){ res.className="result err"; res.textContent=x.d.detail||"Неверный логин или пароль."; return; }
-        access=x.d.access; refresh=x.d.refresh; uname=u; saveTokens();
-        el("password").value=""; showAuthState();
-      })
-      .catch(function(){ btn.disabled=false; btn.textContent="Войти"; res.className="result err"; res.textContent="Сеть недоступна."; });
-  });
-  el("logoutBtn").addEventListener("click", function(){ clearTokens(); showAuthState(); });
-
-  // ── МОИ ПАКИ ──
-  function loadMine(){
-    var box=el("myPacks"); box.innerHTML='<div class="card muted">Загрузка…</div>';
-    authJson(MINE_URL,"GET").then(function(x){
-      if(!x.ok){ box.innerHTML='<div class="card err result" style="display:block">Не удалось загрузить: '+esc(x.data.error||x.status)+'</div>'; return; }
-      renderPacks(x.data.packs||[]);
-    }).catch(function(e){ if(!(e&&e.auth)) box.innerHTML='<div class="card muted">Ошибка сети.</div>'; });
-  }
-
-  function renderPacks(packs){
-    var box=el("myPacks"); box.innerHTML="";
-    el("noPacks").hidden = packs.length>0;
-    packs.forEach(function(p){ box.appendChild(packCard(p)); });
-  }
-
-  // Галочка «18+» на карточке пака: пак с ней видят только те, кто включил
-  // «Показывать 18+» в приложении. Ошибка (чужой пак, сеть) — откатываем.
-  function adultToggle(url, checked){
-    var lab=document.createElement("label"); lab.className="muted"; lab.style.cssText="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap";
-    var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!checked;
-    lab.appendChild(cb); lab.appendChild(document.createTextNode("18+"));
-    lab.title="Пак для взрослых: скрыт у тех, кто не включил «Показывать 18+»";
-    cb.addEventListener("change", function(){
-      cb.disabled=true;
-      authJson(url,"PATCH",{is_adult:cb.checked}).then(function(x){
-        cb.disabled=false;
-        if(!x.ok){ cb.checked=!cb.checked; alert((x.data&&(x.data.error||x.data.detail))||"Не удалось сохранить"); }
-      }).catch(function(){ cb.disabled=false; cb.checked=!cb.checked; });
-    });
-    return lab;
-  }
-
-  // Обложка пака: показываем миниатюру, меняем и убираем. Без обложки
-  // приложение рисует свою картинку под тему оформления.
-  function coverBox(p){
-    var wrap=document.createElement("label");
-    wrap.className="btn sm file"; wrap.style.cssText="display:inline-flex;align-items:center;gap:8px;white-space:nowrap";
-    var img=document.createElement("img");
-    img.style.cssText="width:28px;height:28px;border-radius:6px;object-fit:cover;background:var(--line);display:"+(p.cover_url?"block":"none");
-    if(p.cover_url) img.src=p.cover_url;
-    var cap=document.createElement("span"); cap.textContent=p.cover_url?"Обложка":"+ Обложка";
-    var input=document.createElement("input"); input.type="file"; input.accept="image/*";
-    wrap.appendChild(img); wrap.appendChild(cap); wrap.appendChild(input);
-    input.addEventListener("change", function(){
-      if(!input.files.length) return;
-      var fd=new FormData(); fd.append("file", input.files[0]);
-      cap.textContent="Загрузка…";
-      authUpload("/api/sounds/pack/"+p.id+"/cover/", fd, null).then(function(x){
-        if(x.ok && x.data && x.data.cover_url){
-          p.cover_url=x.data.cover_url; img.src=x.data.cover_url+"?t="+Date.now(); img.style.display="block"; cap.textContent="Обложка";
-        } else { cap.textContent="+ Обложка"; alert((x.data&&x.data.error)||"Не удалось загрузить"); }
-        input.value="";
-      }).catch(function(){ cap.textContent="+ Обложка"; input.value=""; });
-    });
-    var del=document.createElement("button"); del.className="btn sm"; del.textContent="Убрать обложку";
-    del.style.display = p.cover_url ? "" : "none";
-    del.addEventListener("click", function(e){
-      e.preventDefault();
-      authJson("/api/sounds/pack/"+p.id+"/cover/","DELETE").then(function(x){
-        if(x.ok){ p.cover_url=null; img.style.display="none"; cap.textContent="+ Обложка"; del.style.display="none"; }
-        else alert((x.data&&x.data.error)||"Ошибка");
-      }).catch(function(){});
-    });
-    var box=document.createDocumentFragment(); box.appendChild(wrap); box.appendChild(del);
-    // Кнопку «убрать» показываем только когда обложка есть.
-    wrap.addEventListener("cover", function(){ del.style.display = p.cover_url ? "" : "none"; });
-    return box;
-  }
-
-  function packCard(p){
-    var card=document.createElement("div"); card.className="card";
-    var head=document.createElement("div"); head.className="packhead";
-    var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=p.name;
-    var save=document.createElement("button"); save.className="btn sm"; save.textContent="Переименовать";
-    var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить пак";
-    var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
-    link.addEventListener("click", function(){ copyLink("/sp/"+p.id, link); });
-    head.appendChild(nameIn); head.appendChild(save); head.appendChild(link); head.appendChild(coverBox(p)); head.appendChild(adultToggle("/api/sounds/pack/"+p.id+"/", p.is_adult)); head.appendChild(del);
-    card.appendChild(head);
-
-    save.addEventListener("click", function(){
-      var nm=nameIn.value.trim(); if(!nm) return;
-      card.classList.add("spin");
-      authJson("/api/sounds/pack/"+p.id+"/","PATCH",{name:nm}).then(function(x){
-        card.classList.remove("spin");
-        if(x.ok){ save.textContent="Готово ✓"; setTimeout(function(){save.textContent="Переименовать";},1200); }
-        else alert(x.data.error||"Ошибка");
-      }).catch(function(){card.classList.remove("spin");});
-    });
-    del.addEventListener("click", function(){
-      if(!confirm('Удалить пак «'+p.name+'» со всеми звуками?')) return;
-      card.classList.add("spin");
-      authJson("/api/sounds/pack/"+p.id+"/","DELETE").then(function(x){
-        card.classList.remove("spin");
-        if(x.ok) card.remove(); else alert(x.data.error||"Ошибка");
-      }).catch(function(){card.classList.remove("spin");});
-    });
-
-    (p.sounds||[]).forEach(function(s){ card.appendChild(soundRow(p,s)); });
-
-    // добавить звуки в пак
-    var add=document.createElement("div"); add.className="row mt"; add.style.borderTop="1px solid var(--line)"; add.style.paddingTop="12px";
-    var fbtn=document.createElement("button"); fbtn.className="btn sm file"; fbtn.innerHTML='<span>+ Добавить звуки</span><input type="file" multiple accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3">';
-    var fin=fbtn.querySelector("input");
-    fin.addEventListener("change", function(){
-      if(!fin.files.length) return;
-      var fd=new FormData();
-      Array.prototype.forEach.call(fin.files, function(f){
-        fd.append("files", f); fd.append("names", f.name.replace(/\.[^.]+$/,""));
-      });
-      card.classList.add("spin"); fbtn.querySelector("span").textContent="Загрузка…";
-      authUpload("/api/sounds/pack/"+p.id+"/sounds/", fd, null).then(function(x){
-        card.classList.remove("spin");
-        if(x.ok){ // перерисуем этот пак
-          var fresh=x.data.pack; var nc=packCard(fresh); card.replaceWith(nc);
-        } else { fbtn.querySelector("span").textContent="+ Добавить звуки"; alert((x.data&&x.data.error)||"Ошибка"); }
-      }).catch(function(){card.classList.remove("spin");fbtn.querySelector("span").textContent="+ Добавить звуки";});
-    });
-    add.appendChild(fbtn);
-    card.appendChild(add);
-    return card;
-  }
-
-  var current=null;
-  function soundRow(p,s){
-    var row=document.createElement("div"); row.className="sound";
-    var play=document.createElement("button"); play.className="play"; play.textContent="▶";
-    var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=s.name;
-    var save=document.createElement("button"); save.className="btn sm ghost"; save.textContent="✓";
-    var del=document.createElement("button"); del.className="btn sm ghost danger"; del.textContent="✕";
-    row.appendChild(play); row.appendChild(nameIn); row.appendChild(save); row.appendChild(del);
-
-    play.addEventListener("click", function(){
-      if(current){ current.pause(); current=null; }
-      if(s.url){ current=new Audio(s.url); current.play().catch(function(){}); }
-    });
-    save.addEventListener("click", function(){
-      var nm=nameIn.value.trim(); if(!nm) return;
-      row.classList.add("spin");
-      authJson("/api/sounds/sound/"+s.id+"/","PATCH",{name:nm}).then(function(x){
-        row.classList.remove("spin");
-        if(x.ok){ save.textContent="✓✓"; setTimeout(function(){save.textContent="✓";},1000);} else alert(x.data.error||"Ошибка");
-      }).catch(function(){row.classList.remove("spin");});
-    });
-    del.addEventListener("click", function(){
-      if(!confirm('Удалить звук «'+s.name+'»?')) return;
-      row.classList.add("spin");
-      authJson("/api/sounds/sound/"+s.id+"/","DELETE").then(function(x){
-        row.classList.remove("spin");
-        if(x.ok) row.remove(); else alert(x.data.error||"Ошибка");
-      }).catch(function(){row.classList.remove("spin");});
-    });
-    return row;
-  }
-
-  // upload с прогрессом + Bearer + refresh-retry
   function authUpload(url, fd, onProg, retry){
     return new Promise(function(resolve,reject){
       var xhr=new XMLHttpRequest();
@@ -399,7 +343,7 @@
           fetch(REFRESH_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh:refresh})})
             .then(function(rr){if(!rr.ok)throw 0;return rr.json();})
             .then(function(d){access=d.access;saveTokens();return authUpload(url,fd,onProg,true);})
-            .then(resolve).catch(function(){clearTokens();showAuthState();reject({auth:true});});
+            .then(resolve).catch(function(){clearTokens();route();reject({auth:true});});
           return;
         }
         resolve({ok:xhr.status>=200&&xhr.status<300,status:xhr.status,data:data});
@@ -408,66 +352,334 @@
       xhr.send(fd);
     });
   }
-
-  // ── СОЗДАНИЕ НОВОГО ПАКА ──
-  var rowsEl=el("rows"), result=el("result"), prog=el("prog"), progBar=prog.querySelector("i");
-  function addRow(){
-    var row=document.createElement("div"); row.className="row";
-    row.innerHTML='<input class="name" type="text" placeholder="название звука">'+
-      '<button class="btn icon file" type="button"><span class="filelabel">файл…</span>'+
-      '<input type="file" accept="audio/*,.caf,.m4a,.aac,.wav,.ogg,.mp3"></button>'+
-      '<button class="btn icon ghost del" type="button" title="Удалить">✕</button>';
-    var fileInput=row.querySelector('input[type=file]'), fileLabel=row.querySelector('.filelabel'), nameInput=row.querySelector('.name');
-    fileInput.addEventListener("change",function(){
-      if(fileInput.files[0]){ fileLabel.textContent=fileInput.files[0].name; fileLabel.classList.add("set");
-        if(!nameInput.value.trim()) nameInput.value=fileInput.files[0].name.replace(/\.[^.]+$/,""); }
-    });
-    row.querySelector(".del").addEventListener("click",function(){ row.remove(); if(!rowsEl.children.length) addRow(); });
-    rowsEl.appendChild(row);
+  function copyLink(path, btn){
+    var url=location.origin+path;
+    var done=function(){ var t=btn.textContent; btn.textContent="Скопировано"; setTimeout(function(){ btn.textContent=t; },1500); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done, function(){ prompt("Ссылка на пак:", url); }); }
+    else prompt("Ссылка на пак:", url);
   }
-  el("addRow").addEventListener("click",addRow); addRow();
 
-  function showRes(cls,html){ result.className="result "+cls; result.innerHTML=html; }
-  el("submit").addEventListener("click", function(){
-    var btn=this, packName=el("packName").value.trim(); result.className="result";
-    if(!packName){ showRes("err","Введи название пака."); return; }
-    var fd=new FormData(); fd.append("pack_name",packName); var count=0;
-    Array.prototype.forEach.call(rowsEl.children,function(row){
-      var f=row.querySelector('input[type=file]').files[0]; if(!f) return;
-      var nm=row.querySelector('.name').value.trim()||f.name.replace(/\.[^.]+$/,"");
-      fd.append("files",f); fd.append("names",nm); count++;
-    });
-    if(!count){ showRes("err","Добавь хотя бы один звук с файлом."); return; }
-    prog.style.display="block"; progBar.style.width="0%"; btn.disabled=true; btn.textContent="Загрузка…";
-    authUpload(CREATE_URL, fd, function(e){ if(e.lengthComputable) progBar.style.width=Math.round(e.loaded/e.total*90)+"%"; })
+  el("loginBtn").addEventListener("click", function(){
+    var u=el("username").value.trim(), p=el("password").value;
+    var res=el("loginResult"); res.className="result";
+    if(!u||!p){ res.className="result err"; res.textContent="Введите логин и пароль."; return; }
+    var btn=this; btn.disabled=true; btn.textContent="Вход…";
+    fetch(TOKEN_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
       .then(function(x){
-        progBar.style.width="100%"; btn.disabled=false; btn.textContent="Создать пак";
+        btn.disabled=false; btn.textContent="Войти";
+        if(!x.ok){ res.className="result err"; res.textContent=x.d.detail||"Неверный логин или пароль."; return; }
+        access=x.d.access; refresh=x.d.refresh; uname=u; saveTokens();
+        el("password").value=""; route();
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent="Войти"; res.className="result err"; res.textContent="Сеть недоступна."; });
+  });
+  el("password").addEventListener("keydown", function(e){ if(e.key==="Enter") el("loginBtn").click(); });
+  el("logoutBtn").addEventListener("click", function(){ clearTokens(); location.hash=""; route(); });
+
+  // ── данные ──
+  var soundPacks=null, stickerPacks=null;
+  function loadSoundPacks(){
+    return authJson(MINE_URL,"GET").then(function(x){ if(x.ok) soundPacks=x.data.packs||[]; else throw new Error(x.data.error||x.status); return soundPacks; });
+  }
+  function loadStickerPacks(){
+    return authJson(MY_PACKS_URL,"GET").then(function(x){
+      if(!x.ok) throw new Error("packs");
+      var rows=Array.isArray(x.data)?x.data:(x.data.results||[]);
+      stickerPacks=rows.map(function(r){ return r.pack||r; }).filter(Boolean);
+      return stickerPacks;
+    });
+  }
+  function loadMe(){
+    if(meId) return Promise.resolve(meId);
+    return authJson("/api/profiles/current/","GET").then(function(x){ if(x.ok){ meId=x.data.id; uname=x.data.username||uname; saveTokens(); } return meId; }).catch(function(){ return ""; });
+  }
+  function isMine(pack){ var a=pack.author; return !!meId && (a===meId || (a&&a.id===meId)); }
+
+  // ── маршруты: #/sp/<id>, #/stp/<id>, #/new, #/import ──
+  var VIEWS=["loginBlock","homeView","soundView","newView","stickerView","importView"];
+  function show(id){ VIEWS.forEach(function(v){ el(v).hidden = v!==id; }); window.scrollTo(0,0); }
+  function go(h){ if(location.hash===h) route(); else location.hash=h; }
+  Array.prototype.forEach.call(document.querySelectorAll("[data-back]"), function(b){ b.addEventListener("click", function(){ stopAudio(); go("#/"); }); });
+  window.addEventListener("hashchange", route);
+
+  function route(){
+    stopAudio();
+    if(!access){ show("loginBlock"); return; }
+    var h=location.hash.replace(/^#\/?/,""), parts=h.split("/");
+    loadMe().then(function(){
+      if(parts[0]==="sp" && parts[1]) return openSoundPack(parts[1]);
+      if(parts[0]==="stp" && parts[1]) return openStickerPack(parts[1]);
+      if(parts[0]==="new") return openNew();
+      if(parts[0]==="import") { show("importView"); return; }
+      openHome();
+    });
+  }
+
+  // ── главная ──
+  function folder(opts){
+    var b=document.createElement("button"); b.type="button"; b.className="folder"+(opts.isNew?" new":"");
+    var cov=document.createElement("div"); cov.className="cov";
+    if(opts.cover){ var im=document.createElement("img"); im.className="full"; im.src=opts.cover; im.loading="lazy"; im.alt=""; cov.appendChild(im); }
+    else if(opts.mosaic && opts.mosaic.length){
+      var m=document.createElement("div"); m.className="mosaic";
+      opts.mosaic.slice(0,4).forEach(function(u){ m.appendChild(mosaicItem(u)); });
+      cov.appendChild(m);
+    } else { cov.innerHTML='<span class="ph">'+(opts.icon||"📁")+'</span>'; }
+    if(opts.tag){ var t=document.createElement("span"); t.className="tag"; t.textContent=opts.tag; cov.appendChild(t); }
+    if(opts.adult){ var a=document.createElement("span"); a.className="tag adult"; a.textContent="18+"; cov.appendChild(a); }
+    var meta=document.createElement("div"); meta.className="meta";
+    meta.innerHTML='<div class="nm">'+esc(opts.name)+'</div><div class="ct">'+esc(opts.count||"")+'</div>';
+    b.appendChild(cov); b.appendChild(meta);
+    b.addEventListener("click", opts.onClick);
+    b.dataset.name=(opts.name||"").toLowerCase();
+    return b;
+  }
+  function mosaicItem(url){
+    var ext=(String(url).split("?")[0].split(".").pop()||"").toLowerCase();
+    if(ext==="tgs"){ var s=document.createElement("span"); s.textContent="🎞"; return s; }
+    if(ext==="webm"||ext==="mp4"){ var s2=document.createElement("span"); s2.textContent="🎬"; return s2; }
+    var im=document.createElement("img"); im.src=url; im.loading="lazy"; im.alt=""; return im;
+  }
+
+  function openHome(){
+    show("homeView");
+    el("whoName").textContent=uname||"—";
+    var sf=el("soundFolders"), tf=el("stickerFolders");
+    if(soundPacks===null) sf.innerHTML='<div class="muted empty">Загрузка…</div>';
+    if(stickerPacks===null) tf.innerHTML='<div class="muted empty">Загрузка…</div>';
+    renderHome();
+    Promise.all([loadSoundPacks().catch(function(){}), loadStickerPacks().catch(function(){})]).then(renderHome);
+  }
+  function renderHome(){
+    var sf=el("soundFolders"), tf=el("stickerFolders");
+    if(soundPacks!==null){
+      sf.innerHTML="";
+      sf.appendChild(folder({isNew:true,name:"Новый пак",count:"звуки с обрезкой",icon:"＋",onClick:function(){ go("#/new"); }}));
+      soundPacks.forEach(function(p){
+        var n=(p.sounds_count!=null?p.sounds_count:(p.sounds||[]).length);
+        sf.appendChild(folder({name:p.name,count:plural(n,"звук","звука","звуков"),cover:p.cover_url,icon:"🔊",adult:p.is_adult,
+          onClick:function(){ go("#/sp/"+p.id); }}));
+      });
+      el("spCount").textContent=soundPacks.length;
+    }
+    if(stickerPacks!==null){
+      tf.innerHTML="";
+      tf.appendChild(folder({isNew:true,name:"Импорт",count:"пак из Telegram",icon:"＋",onClick:function(){ go("#/import"); }}));
+      stickerPacks.forEach(function(p){
+        tf.appendChild(folder({name:p.name,count:plural(p.stickers_count||0,"стикер","стикера","стикеров"),mosaic:p.preview,icon:"🎨",
+          adult:p.is_adult,tag:isMine(p)?"":"сохранён",onClick:function(){ go("#/stp/"+p.id); }}));
+      });
+      el("stpCount").textContent=stickerPacks.length;
+    }
+    applyFilter();
+  }
+  function applyFilter(){
+    var q=el("filter").value.trim().toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll("#homeView .folder:not(.new)"), function(f){
+      f.hidden = !!q && f.dataset.name.indexOf(q)<0;
+    });
+  }
+  el("filter").addEventListener("input", applyFilter);
+
+  // Галочка «18+»: пак с ней видят только те, кто включил «Показывать 18+».
+  function adultToggle(url, pack){
+    var lab=document.createElement("label"); lab.className="chk"; lab.title="Пак для взрослых: скрыт у тех, кто не включил «Показывать 18+»";
+    var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!pack.is_adult;
+    lab.appendChild(cb); lab.appendChild(document.createTextNode("18+"));
+    cb.addEventListener("change", function(){
+      cb.disabled=true;
+      authJson(url,"PATCH",{is_adult:cb.checked}).then(function(x){
+        cb.disabled=false;
+        if(!x.ok){ cb.checked=!cb.checked; alert((x.data&&(x.data.error||x.data.detail))||"Не удалось сохранить"); }
+        else pack.is_adult=cb.checked;
+      }).catch(function(){ cb.disabled=false; cb.checked=!cb.checked; });
+    });
+    return lab;
+  }
+
+  // ── пак звуков ──
+  var curPack=null;
+  function findSoundPack(id){ return (soundPacks||[]).filter(function(p){ return String(p.id)===id; })[0]; }
+  function openSoundPack(id){
+    show("soundView");
+    var p=findSoundPack(id);
+    if(p) renderSoundPack(p);
+    else el("spSounds").innerHTML='<div class="muted">Загрузка…</div>';
+    loadSoundPacks().then(function(){ var f=findSoundPack(id); if(!f){ el("spSounds").innerHTML='<div class="muted">Пак не найден.</div>'; return; } renderSoundPack(f); })
+      .catch(function(){});
+  }
+  function renderSoundPack(p){
+    curPack=p;
+    el("spTitle").textContent=p.name;
+    var n=(p.sounds||[]).length;
+    el("spMeta").textContent=plural(n,"звук","звука","звуков");
+    el("spName").value=p.name;
+    var cov=el("spCover"); cov.innerHTML = p.cover_url ? '<img alt="" src="'+esc(p.cover_url)+'">' : "🔊";
+    var act=el("spActions"); act.innerHTML="";
+    var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
+    link.addEventListener("click", function(){ copyLink("/sp/"+p.id, link); });
+    var cl=document.createElement("label"); cl.className="btn sm file"; cl.textContent=p.cover_url?"Сменить обложку":"+ Обложка";
+    var ci=document.createElement("input"); ci.type="file"; ci.accept="image/*"; cl.appendChild(ci);
+    ci.addEventListener("change", function(){
+      if(!ci.files.length) return;
+      var fd=new FormData(); fd.append("file", ci.files[0]); cl.firstChild.textContent="Загрузка…";
+      authUpload("/api/sounds/pack/"+p.id+"/cover/", fd, null).then(function(x){
+        if(x.ok && x.data && x.data.cover_url){ p.cover_url=x.data.cover_url+"?t="+Date.now(); renderSoundPack(p); }
+        else { alert((x.data&&x.data.error)||"Не удалось загрузить"); renderSoundPack(p); }
+      }).catch(function(){ renderSoundPack(p); });
+    });
+    act.appendChild(link); act.appendChild(cl);
+    if(p.cover_url){
+      var rc=document.createElement("button"); rc.className="btn sm"; rc.textContent="Убрать обложку";
+      rc.addEventListener("click", function(){
+        authJson("/api/sounds/pack/"+p.id+"/cover/","DELETE").then(function(x){ if(x.ok){ p.cover_url=null; renderSoundPack(p); } else alert((x.data&&x.data.error)||"Ошибка"); });
+      });
+      act.appendChild(rc);
+    }
+    act.appendChild(adultToggle("/api/sounds/pack/"+p.id+"/", p));
+    var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить пак";
+    del.addEventListener("click", function(){
+      if(!confirm('Удалить пак «'+p.name+'» со всеми звуками?')) return;
+      authJson("/api/sounds/pack/"+p.id+"/","DELETE").then(function(x){
+        if(x.ok){ soundPacks=(soundPacks||[]).filter(function(q){ return q.id!==p.id; }); go("#/"); }
+        else alert(x.data.error||"Ошибка");
+      });
+    });
+    act.appendChild(del);
+
+    var box=el("spSounds"); box.innerHTML="";
+    if(!n) box.innerHTML='<div class="muted">В паке пока нет звуков — добавьте первый.</div>';
+    (p.sounds||[]).forEach(function(s){ box.appendChild(soundRow(p,s)); });
+  }
+  el("spRename").addEventListener("click", function(){
+    var p=curPack, nm=el("spName").value.trim(); if(!p||!nm) return;
+    var btn=this; btn.disabled=true;
+    authJson("/api/sounds/pack/"+p.id+"/","PATCH",{name:nm}).then(function(x){
+      btn.disabled=false;
+      if(x.ok){ p.name=nm; el("spTitle").textContent=nm; btn.textContent="Готово ✓"; setTimeout(function(){btn.textContent="Сохранить";},1200); }
+      else alert(x.data.error||"Ошибка");
+    }).catch(function(){ btn.disabled=false; });
+  });
+  el("spAdd").addEventListener("change", function(){
+    var input=this, files=Array.prototype.slice.call(input.files); input.value="";
+    if(!files.length||!curPack) return;
+    var pack=curPack;
+    editQueue(files, function(results){
+      if(!results.length) return;
+      var fd=new FormData();
+      results.forEach(function(r){ fd.append("files", r.file); fd.append("names", r.name); });
+      var box=el("spSounds"); box.classList.add("spin");
+      authUpload("/api/sounds/pack/"+pack.id+"/sounds/", fd, null).then(function(x){
+        box.classList.remove("spin");
+        if(x.ok && x.data.pack){
+          var fresh=x.data.pack; soundPacks=(soundPacks||[]).map(function(q){ return q.id===fresh.id?fresh:q; });
+          if(curPack && curPack.id===fresh.id) renderSoundPack(fresh);
+          var fail=(x.data.failed||[]);
+          if(fail.length) alert("Не обработаны: "+fail.map(function(f){return f.name;}).join(", "));
+        } else alert((x.data&&x.data.error)||"Ошибка");
+      }).catch(function(){ box.classList.remove("spin"); alert("Сеть недоступна."); });
+    });
+  });
+
+  // одно звучание за раз
+  var current=null, currentBtn=null;
+  function stopAudio(){ if(current){ current.pause(); current=null; } if(currentBtn){ currentBtn.classList.remove("on"); currentBtn.textContent="▶"; currentBtn=null; } edStop(); }
+  function playUrl(url, btn){
+    var same=currentBtn===btn; stopAudio(); if(same) return;
+    current=new Audio(url); currentBtn=btn; btn.classList.add("on"); btn.textContent="■";
+    current.onended=function(){ stopAudio(); };
+    current.play().catch(function(){ stopAudio(); });
+  }
+  function soundRow(p,s){
+    var row=document.createElement("div"); row.className="sound";
+    var play=document.createElement("button"); play.className="play"; play.type="button"; play.textContent="▶";
+    var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=s.name;
+    var save=document.createElement("button"); save.className="btn sm ghost"; save.title="Сохранить название"; save.textContent="✓";
+    var del=document.createElement("button"); del.className="btn sm ghost danger"; del.title="Удалить звук"; del.textContent="✕";
+    row.appendChild(play); row.appendChild(nameIn); row.appendChild(save); row.appendChild(del);
+    play.addEventListener("click", function(){ if(s.url) playUrl(s.url, play); });
+    save.addEventListener("click", function(){
+      var nm=nameIn.value.trim(); if(!nm) return;
+      row.classList.add("spin");
+      authJson("/api/sounds/sound/"+s.id+"/","PATCH",{name:nm}).then(function(x){
+        row.classList.remove("spin");
+        if(x.ok){ s.name=nm; save.textContent="✓✓"; setTimeout(function(){save.textContent="✓";},1000);} else alert(x.data.error||"Ошибка");
+      }).catch(function(){row.classList.remove("spin");});
+    });
+    del.addEventListener("click", function(){
+      if(!confirm('Удалить звук «'+s.name+'»?')) return;
+      row.classList.add("spin");
+      authJson("/api/sounds/sound/"+s.id+"/","DELETE").then(function(x){
+        row.classList.remove("spin");
+        if(x.ok){ p.sounds=(p.sounds||[]).filter(function(q){ return q.id!==s.id; }); p.sounds_count=p.sounds.length; renderSoundPack(p); }
+        else alert(x.data.error||"Ошибка");
+      }).catch(function(){row.classList.remove("spin");});
+    });
+    return row;
+  }
+
+  // ── новый пак ──
+  var drafts=[];
+  function openNew(){ show("newView"); renderDrafts(); }
+  function renderDrafts(){
+    var box=el("draftList"); box.innerHTML="";
+    if(!drafts.length){ box.innerHTML='<div class="muted">Пока пусто — добавьте звук.</div>'; return; }
+    drafts.forEach(function(d,i){
+      var row=document.createElement("div"); row.className="sound";
+      var play=document.createElement("button"); play.className="play"; play.type="button"; play.textContent="▶";
+      var nameIn=document.createElement("input"); nameIn.type="text"; nameIn.value=d.name;
+      nameIn.addEventListener("input", function(){ d.name=nameIn.value; });
+      var dur=document.createElement("span"); dur.className="dur"; dur.textContent=d.duration?d.duration.toFixed(1)+" с":"";
+      var edit=document.createElement("button"); edit.className="btn sm ghost"; edit.textContent="✂"; edit.title="Обрезать заново";
+      var del=document.createElement("button"); del.className="btn sm ghost danger"; del.textContent="✕";
+      play.addEventListener("click", function(){ playUrl(d.url, play); });
+      edit.addEventListener("click", function(){
+        stopAudio();
+        editQueue([d.source], function(res){ if(res.length){ URL.revokeObjectURL(d.url); drafts[i]=mkDraft(res[0], d.source); renderDrafts(); } }, d.name, d.range);
+      });
+      del.addEventListener("click", function(){ stopAudio(); URL.revokeObjectURL(d.url); drafts.splice(i,1); renderDrafts(); });
+      row.appendChild(play); row.appendChild(nameIn); row.appendChild(dur); row.appendChild(edit); row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+  function mkDraft(r, source){ return {file:r.file,name:r.name,duration:r.duration,range:r.range,source:source,url:URL.createObjectURL(r.file)}; }
+  el("draftAdd").addEventListener("change", function(){
+    var input=this, files=Array.prototype.slice.call(input.files); input.value="";
+    if(!files.length) return;
+    editQueue(files, function(results, sources){
+      results.forEach(function(r,i){ drafts.push(mkDraft(r, sources[i])); });
+      renderDrafts();
+    });
+  });
+  function showRes(cls,html){ var r=el("result"); r.className="result "+cls; r.innerHTML=html; }
+  el("submit").addEventListener("click", function(){
+    var btn=this, packName=el("packName").value.trim(); el("result").className="result";
+    if(!packName){ showRes("err","Введите название пака."); return; }
+    if(!drafts.length){ showRes("err","Добавьте хотя бы один звук."); return; }
+    var fd=new FormData(); fd.append("pack_name",packName);
+    drafts.forEach(function(d){ fd.append("files", d.file); fd.append("names", (d.name||"").trim()||"звук"); });
+    var prog=el("prog"), bar=prog.querySelector("i");
+    prog.style.display="block"; bar.style.width="0%"; btn.disabled=true; btn.textContent="Загрузка…"; stopAudio();
+    authUpload(CREATE_URL, fd, function(e){ if(e.lengthComputable) bar.style.width=Math.round(e.loaded/e.total*90)+"%"; })
+      .then(function(x){
+        bar.style.width="100%"; btn.disabled=false; btn.textContent="Создать пак";
         setTimeout(function(){prog.style.display="none";},600);
         if(x.ok){
-          var made=(x.data.created||[]).map(function(s){return "<li>"+esc(s.name)+"</li>";}).join("");
-          var fail=(x.data.failed||[]).length?'<div style="margin-top:8px;color:#ff9a95">Не обработаны: '+x.data.failed.map(function(f){return esc(f.name);}).join(", ")+'</div>':"";
-          showRes("ok","<b>Пак создан.</b> Звуков: "+(x.data.created||[]).length+"<ul>"+made+"</ul>"+fail);
-          el("packName").value=""; rowsEl.innerHTML=""; addRow(); loadMine();
-        } else {
-          showRes("err",(x.data.error||("Ошибка "+x.status)));
-        }
+          var fail=(x.data.failed||[]);
+          drafts.forEach(function(d){ URL.revokeObjectURL(d.url); }); drafts=[]; el("packName").value="";
+          var id=x.data.pack&&x.data.pack.id;
+          if(fail.length) alert("Не обработаны: "+fail.map(function(f){return f.name;}).join(", "));
+          soundPacks=null;
+          go(id?"#/sp/"+id:"#/");
+        } else showRes("err",esc(x.data.error||("Ошибка "+x.status)));
       })
       .catch(function(e){ btn.disabled=false; btn.textContent="Создать пак"; prog.style.display="none"; if(!(e&&e.auth)) showRes("err","Сеть недоступна."); });
   });
 
-  // ── СТИКЕРЫ ИЗ TELEGRAM ──
-  var TG_IMPORT_URL="/api/sticker-packs/import-telegram/", MY_PACKS_URL="/api/sticker-packs/my_packs/";
-  var tgProg=el("tgProg"), tgProgBar=tgProg.querySelector("i"), tgResult=el("tgResult");
-
-  // lottie + pako тянем с CDN только когда встретился первый .tgs; не загрузились — падаем на заглушку
+  // ── стикерпак ──
   var libs=null;
-  function loadScript(src){
-    return new Promise(function(res,rej){
-      var s=document.createElement("script"); s.src=src;
-      s.onload=res; s.onerror=function(){rej(new Error(src));};
-      document.head.appendChild(s);
-    });
-  }
+  function loadScript(src){ return new Promise(function(res,rej){ var s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=function(){rej(new Error(src));}; document.head.appendChild(s); }); }
   function loadLibs(){
     if(libs) return libs;
     libs=Promise.all([
@@ -476,7 +688,6 @@
     ]).then(function(){ if(!window.pako||!window.lottie) throw new Error("libs"); });
     return libs;
   }
-
   function stickerTile(s){
     var box=document.createElement("div"); box.className="stick";
     var url=s.file_url||"";
@@ -490,8 +701,7 @@
           var json=JSON.parse(window.pako.inflate(new Uint8Array(buf),{to:"string"}));
           box.innerHTML=""; box.appendChild(host);
           window.lottie.loadAnimation({container:host,renderer:"svg",loop:true,autoplay:true,animationData:json});
-        })
-        .catch(function(){ /* заглушка 🎞 уже стоит — в приложении стикер играет */ });
+        }).catch(function(){});
     } else if(ext==="webm"||ext==="mp4"){
       var v=document.createElement("video");
       v.src=url; v.autoplay=true; v.loop=true; v.muted=true; v.playsInline=true;
@@ -504,86 +714,60 @@
     if(s.emoji){ var e=document.createElement("span"); e.className="em"; e.textContent=s.emoji; box.appendChild(e); }
     return box;
   }
-
-  function stickerPackCard(pack){
-    var card=document.createElement("div"); card.className="card";
-    var head=document.createElement("div"); head.className="who";
-    var title=document.createElement("div");
-    title.innerHTML="<b>"+esc(pack.name)+"</b> <span class='muted'>· "+(pack.stickers_count||0)+" шт.</span>";
-    var btns=document.createElement("div"); btns.style.display="flex"; btns.style.gap="8px";
-    var show=document.createElement("button"); show.className="btn sm"; show.textContent="Показать";
-    var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить";
-    var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
-    link.addEventListener("click", function(){ copyLink("/stp/"+pack.id, link); });
-    btns.appendChild(show); btns.appendChild(link); btns.appendChild(adultToggle("/api/sticker-packs/"+pack.id+"/", pack.is_adult)); btns.appendChild(del);
-    head.appendChild(title); head.appendChild(btns);
-    card.appendChild(head);
-
-    var grid=document.createElement("div"); grid.className="sticks"; grid.hidden=true;
-    card.appendChild(grid);
-    var loaded=false;
-    show.addEventListener("click", function(){
-      if(loaded){ grid.hidden=!grid.hidden; show.textContent=grid.hidden?"Показать":"Свернуть"; return; }
-      show.disabled=true; show.textContent="Загрузка…";
-      authJson("/api/stickers/?pack="+encodeURIComponent(pack.id),"GET").then(function(x){
-        show.disabled=false;
-        if(!x.ok){ show.textContent="Показать"; alert((x.data&&x.data.error)||("Ошибка "+x.status)); return; }
-        var items=Array.isArray(x.data)?x.data:(x.data.results||[]);
-        grid.innerHTML="";
-        items.forEach(function(s){ grid.appendChild(stickerTile(s)); });
-        if(!items.length) grid.innerHTML='<div class="muted">Пусто — возможно, импорт ещё идёт.</div>';
-        loaded=true; grid.hidden=false; show.textContent="Свернуть";
-      }).catch(function(e){ show.disabled=false; show.textContent="Показать"; if(!(e&&e.auth)) alert("Сеть недоступна."); });
-    });
-    del.addEventListener("click", function(){
-      if(!confirm('Удалить пак «'+pack.name+'»?')) return;
-      card.classList.add("spin");
-      authJson("/api/sticker-packs/"+pack.id+"/","DELETE").then(function(x){
-        card.classList.remove("spin");
-        if(x.ok) { card.remove(); loadStickerPacks(); }
-        else alert((x.data&&(x.data.error||x.data.detail))||"Пак можно удалить только своим автором.");
-      }).catch(function(){ card.classList.remove("spin"); });
-    });
-    return card;
+  function openStickerPack(id){
+    show("stickerView");
+    var grid=el("stpGrid"); grid.innerHTML='<div class="muted">Загрузка…</div>';
+    var have=(stickerPacks||[]).filter(function(p){ return String(p.id)===id; })[0];
+    (have?Promise.resolve(have):loadStickerPacks().then(function(){ return (stickerPacks||[]).filter(function(p){ return String(p.id)===id; })[0]; }))
+      .then(function(pack){
+        if(!pack){ grid.innerHTML='<div class="muted">Пак не найден.</div>'; return; }
+        el("stpTitle").textContent=pack.name;
+        el("stpMeta").textContent=plural(pack.stickers_count||0,"стикер","стикера","стикеров")+(isMine(pack)?"":" · сохранён из чужих");
+        var cov=el("stpCover"); cov.innerHTML="";
+        if(pack.preview&&pack.preview.length){ var t=stickerTile({file_url:pack.preview[0]}); t.style.cssText="border:0;width:100%;height:100%;border-radius:0"; cov.appendChild(t); } else cov.textContent="🎨";
+        var act=el("stpActions"); act.innerHTML="";
+        var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
+        link.addEventListener("click", function(){ copyLink("/stp/"+pack.id, link); });
+        act.appendChild(link);
+        if(isMine(pack)) act.appendChild(adultToggle("/api/sticker-packs/"+pack.id+"/", pack));
+        var del=document.createElement("button"); del.className="btn sm danger"; del.textContent=isMine(pack)?"Удалить пак":"Убрать из моих";
+        del.addEventListener("click", function(){
+          if(!confirm(isMine(pack)?'Удалить пак «'+pack.name+'»?':'Убрать пак «'+pack.name+'» из своих?')) return;
+          var req = isMine(pack) ? authJson("/api/sticker-packs/"+pack.id+"/","DELETE") : authJson("/api/sticker-packs/"+pack.id+"/unsave/","POST");
+          req.then(function(x){
+            if(x.ok){ stickerPacks=null; go("#/"); }
+            else alert((x.data&&(x.data.error||x.data.detail))||"Не получилось");
+          });
+        });
+        act.appendChild(del);
+        return authJson("/api/stickers/?pack="+encodeURIComponent(pack.id),"GET").then(function(x){
+          if(!x.ok){ grid.innerHTML='<div class="muted">Не удалось загрузить стикеры.</div>'; return; }
+          var items=Array.isArray(x.data)?x.data:(x.data.results||[]);
+          grid.innerHTML="";
+          items.forEach(function(s){ grid.appendChild(stickerTile(s)); });
+          if(!items.length) grid.innerHTML='<div class="muted">Пусто — возможно, импорт ещё идёт.</div>';
+        });
+      }).catch(function(){ grid.innerHTML='<div class="muted">Ошибка сети.</div>'; });
   }
 
-  function loadStickerPacks(){
-    var box=el("myStickerPacks"); box.innerHTML='<div class="card muted">Загрузка…</div>';
-    authJson(MY_PACKS_URL,"GET").then(function(x){
-      if(!x.ok){ box.innerHTML='<div class="card muted">Не удалось загрузить паки.</div>'; return; }
-      var rows=Array.isArray(x.data)?x.data:(x.data.results||[]);
-      var packs=rows.map(function(r){ return r.pack||r; }).filter(Boolean);
-      box.innerHTML="";
-      el("noStickerPacks").hidden = packs.length>0;
-      packs.forEach(function(p){ box.appendChild(stickerPackCard(p)); });
-    }).catch(function(e){ if(!(e&&e.auth)) box.innerHTML='<div class="card muted">Ошибка сети.</div>'; });
-  }
-
+  // ── импорт ──
+  var tgProg=el("tgProg"), tgProgBar=tgProg.querySelector("i"), tgResult=el("tgResult");
   function tgRes(cls,html){ tgResult.className="result "+cls; tgResult.innerHTML=html; }
   el("tgImport").addEventListener("click", function(){
     var btn=this, url=el("tgUrl").value.trim();
     tgResult.className="result";
-    if(!url){ tgRes("err","Вставь ссылку вида t.me/addstickers/название."); return; }
+    if(!url){ tgRes("err","Вставьте ссылку вида t.me/addstickers/название."); return; }
     btn.disabled=true; btn.textContent="Импорт…";
     tgProg.style.display="block"; tgProgBar.style.width="5%";
     authJson(TG_IMPORT_URL,"POST",{url:url}).then(function(x){
-      if(!x.ok){
-        btn.disabled=false; btn.textContent="Импортировать пак"; tgProg.style.display="none";
-        tgRes("err",esc((x.data&&x.data.error)||("Ошибка "+x.status)));
-        return;
-      }
-      var packId=x.data.pack_id, total=x.data.total||0;
-      var extra=[];
+      if(!x.ok){ btn.disabled=false; btn.textContent="Импортировать пак"; tgProg.style.display="none"; tgRes("err",esc((x.data&&x.data.error)||("Ошибка "+x.status))); return; }
+      var packId=x.data.pack_id, total=x.data.total||0, extra=[];
       if(x.data.animated) extra.push(x.data.animated+" анимированных");
       if(x.data.video) extra.push(x.data.video+" видео");
       tgRes("ok","<b>"+esc(x.data.name)+"</b> — качаю "+total+" стикеров"+(extra.length?" ("+extra.join(", ")+")":"")+"…");
       pollImport(packId, total, btn);
-    }).catch(function(e){
-      btn.disabled=false; btn.textContent="Импортировать пак"; tgProg.style.display="none";
-      if(!(e&&e.auth)) tgRes("err","Сеть недоступна.");
-    });
+    }).catch(function(e){ btn.disabled=false; btn.textContent="Импортировать пак"; tgProg.style.display="none"; if(!(e&&e.auth)) tgRes("err","Сеть недоступна."); });
   });
-
   function pollImport(packId, total, btn){
     var tries=0;
     (function tick(){
@@ -595,24 +779,242 @@
         if(p.finished){
           var msg="<b>Пак импортирован.</b> Стикеров: "+(p.done||0);
           if(p.failed) msg+=' <span style="color:#ff9a95">· не скачалось: '+p.failed+"</span>";
-          finish(msg,true);
-          return;
+          finish(msg,true); return;
         }
-        if(tries>150){ finish("Импорт идёт дольше обычного — обнови страницу позже."); return; }
+        if(tries>150){ finish("Импорт идёт дольше обычного — обновите страницу позже."); return; }
         setTimeout(tick,2000);
       }).catch(function(){ finish("Связь потеряна, но импорт мог продолжиться на сервере."); });
     })();
-
     function finish(msg,ok){
       btn.disabled=false; btn.textContent="Импортировать пак";
-      tgProgBar.style.width="100%";
-      setTimeout(function(){ tgProg.style.display="none"; },600);
+      tgProgBar.style.width="100%"; setTimeout(function(){ tgProg.style.display="none"; },600);
       tgRes(ok?"ok":"err",msg);
-      if(ok){ el("tgUrl").value=""; loadStickerPacks(); }
+      if(ok){ el("tgUrl").value=""; stickerPacks=null; setTimeout(function(){ go("#/stp/"+packId); }, 900); }
     }
   }
 
-  showAuthState();
+  // ═══════════ АУДИОРЕДАКТОР ═══════════
+  // Файл декодируется в браузере, выбранный кусок (до 30 с) с плавным
+  // началом/концом и выравниванием громкости собирается в WAV — его сервер
+  // переводит в mp3 для уведомлений.
+  var actx=null;
+  function ctx(){ if(!actx){ var C=window.AudioContext||window.webkitAudioContext; actx=new C(); } return actx; }
+  function decode(file){
+    return file.arrayBuffer().then(function(buf){
+      return new Promise(function(res,rej){
+        var p=ctx().decodeAudioData(buf, res, rej);
+        if(p&&p.then) p.then(res,rej);
+      });
+    });
+  }
+
+  var ed={buf:null,s:0,e:0,peaks:null,src:null,raf:0,startedAt:0,onDone:null,file:null};
+  var wave=el("wave"), canvas=el("waveCanvas"), sel=el("sel"), hL=el("hL"), hR=el("hR"), ph=el("playhead"), shL=el("shadeL"), shR=el("shadeR");
+
+  // Очередь: файлы по одному, в конце — onAll(results, sources).
+  function editQueue(files, onAll, presetName, presetRange){
+    var results=[], sources=[], i=0;
+    (function next(){
+      if(i>=files.length){ onAll(results, sources); return; }
+      var f=files[i];
+      openEditor(f, i, files.length, presetName, presetRange, function(r){
+        if(r){ results.push(r); sources.push(f); }
+        i++; next();
+      });
+    })();
+  }
+
+  function openEditor(file, idx, total, presetName, presetRange, cb){
+    stopAudio();
+    ed.file=file; ed.onDone=cb; ed.buf=null;
+    el("edQueue").textContent = total>1 ? ("Файл "+(idx+1)+" из "+total+" · "+file.name) : file.name;
+    el("edName").value = presetName || file.name.replace(/\.[^.]+$/,"").slice(0,60);
+    el("edErr").className="result"; el("edRaw").hidden=true;
+    el("edDone").disabled=true; el("edPlay").disabled=true;
+    el("editor").hidden=false;
+    drawEmpty("Открываю…");
+    decode(file).then(function(buf){
+      ed.buf=buf;
+      ed.s = presetRange ? presetRange[0] : 0;
+      ed.e = presetRange ? presetRange[1] : Math.min(buf.duration, MAX_SEC);
+      computePeaks(); layout(); el("edDone").disabled=false; el("edPlay").disabled=false;
+    }).catch(function(){
+      drawEmpty("Этот формат браузер не открывает");
+      var er=el("edErr"); er.className="result err";
+      er.innerHTML="Не получилось открыть файл в редакторе. Можно загрузить как есть — сервер обрежет его до первых 30 секунд.";
+      var raw=el("edDone"); raw.disabled=false; ed.buf=null;
+    });
+  }
+  function closeEditor(result){
+    edStop(); el("editor").hidden=true;
+    var cb=ed.onDone; ed.onDone=null; ed.buf=null; ed.peaks=null;
+    if(cb) cb(result);
+  }
+  el("edCancel").addEventListener("click", function(){ closeEditor(null); });
+  el("editor").addEventListener("click", function(e){ if(e.target===el("editor")) closeEditor(null); });
+  document.addEventListener("keydown", function(e){
+    if(el("editor").hidden) return;
+    if(e.key==="Escape") closeEditor(null);
+    else if(e.key===" " && document.activeElement!==el("edName")){ e.preventDefault(); el("edPlay").click(); }
+  });
+
+  function computePeaks(){
+    var buf=ed.buf, n=1200, len=buf.length, step=Math.max(1,Math.floor(len/n));
+    var peaks=new Float32Array(n), chs=[];
+    for(var c=0;c<buf.numberOfChannels;c++) chs.push(buf.getChannelData(c));
+    for(var i=0;i<n;i++){
+      var m=0, from=i*step, to=Math.min(len,from+step);
+      for(var k=0;k<chs.length;k++){ var d=chs[k]; for(var j=from;j<to;j+=4){ var v=d[j]<0?-d[j]:d[j]; if(v>m) m=v; } }
+      peaks[i]=m;
+    }
+    ed.peaks=peaks;
+  }
+  function drawEmpty(text){
+    var w=wave.clientWidth, h=wave.clientHeight, dpr=window.devicePixelRatio||1;
+    canvas.width=w*dpr; canvas.height=h*dpr;
+    var g=canvas.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+    g.fillStyle="#9a9aa6"; g.font="14px -apple-system,sans-serif"; g.textAlign="center"; g.fillText(text,w/2,h/2+5);
+    [sel,hL,hR,shL,shR].forEach(function(x){ x.style.display="none"; });
+  }
+  function drawWave(){
+    var w=wave.clientWidth, h=wave.clientHeight, dpr=window.devicePixelRatio||1;
+    canvas.width=w*dpr; canvas.height=h*dpr;
+    var g=canvas.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+    var p=ed.peaks, n=p.length, max=0; for(var i=0;i<n;i++) if(p[i]>max) max=p[i];
+    var k=max>0?1/max:1, mid=h/2, bars=Math.floor(w/3);
+    for(var b=0;b<bars;b++){
+      var from=Math.floor(b/bars*n), to=Math.max(from+1,Math.floor((b+1)/bars*n)), m=0;
+      for(var q=from;q<to;q++) if(p[q]>m) m=p[q];
+      var bh=Math.max(1.5,m*k*(h*0.42)), x=b*3;
+      var t=b/bars*ed.buf.duration, inside=t>=ed.s&&t<=ed.e;
+      g.fillStyle=inside?"#ff6a61":"#5a5a66";
+      g.fillRect(x,mid-bh,2,bh*2);
+    }
+  }
+  function layout(){
+    if(!ed.buf) return;
+    var w=wave.clientWidth, D=ed.buf.duration;
+    var xs=ed.s/D*w, xe=ed.e/D*w;
+    [sel,hL,hR,shL,shR].forEach(function(x){ x.style.display=""; });
+    sel.style.left=xs+"px"; sel.style.width=Math.max(2,xe-xs)+"px";
+    hL.style.left=xs+"px"; hR.style.left=xe+"px";
+    shL.style.left="0"; shL.style.width=xs+"px";
+    shR.style.left=xe+"px"; shR.style.width=Math.max(0,w-xe)+"px";
+    el("tStart").textContent=fmtT(ed.s); el("tEnd").textContent=fmtT(ed.e);
+    el("tLen").textContent=(ed.e-ed.s).toFixed(1)+" с";
+    drawWave();
+  }
+  window.addEventListener("resize", function(){ if(!el("editor").hidden && ed.buf) layout(); });
+
+  function clampRange(s,e,which){
+    var D=ed.buf.duration;
+    s=Math.max(0,Math.min(s,D)); e=Math.max(0,Math.min(e,D));
+    if(e-s<MIN_SEC){ if(which==="s") s=Math.max(0,e-MIN_SEC); else e=Math.min(D,s+MIN_SEC); }
+    if(e-s>MAX_SEC){ if(which==="s") e=s+MAX_SEC; else s=e-MAX_SEC; }
+    return [s,e];
+  }
+  // Перетаскивание: ручки — края, середина — весь отрезок, тап вне — перенос к точке.
+  var drag=null;
+  function tAt(clientX){ var r=wave.getBoundingClientRect(); return Math.max(0,Math.min(1,(clientX-r.left)/r.width))*ed.buf.duration; }
+  wave.addEventListener("pointerdown", function(e){
+    if(!ed.buf) return;
+    wave.setPointerCapture(e.pointerId);
+    var t=tAt(e.clientX);
+    if(e.target===hL) drag={k:"s"};
+    else if(e.target===hR) drag={k:"e"};
+    else if(e.target===sel) drag={k:"m",off:t-ed.s,len:ed.e-ed.s};
+    else {
+      // тап вне выделения — сдвигаем ближайший край
+      if(Math.abs(t-ed.s)<Math.abs(t-ed.e)) drag={k:"s"}; else drag={k:"e"};
+    }
+    move(e);
+  });
+  wave.addEventListener("pointermove", function(e){ if(drag) move(e); });
+  function endDrag(){ if(drag){ drag=null; if(ed.src) edPlay(); } }
+  wave.addEventListener("pointerup", endDrag); wave.addEventListener("pointercancel", endDrag);
+  function move(e){
+    var t=tAt(e.clientX), r;
+    if(drag.k==="s") r=clampRange(t,ed.e,"s");
+    else if(drag.k==="e") r=clampRange(ed.s,t,"e");
+    else { var s=Math.max(0,Math.min(ed.buf.duration-drag.len,t-drag.off)); r=[s,s+drag.len]; }
+    ed.s=r[0]; ed.e=r[1]; layout();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("[data-nudge]"), function(b){
+    b.addEventListener("click", function(){
+      if(!ed.buf) return;
+      var a=b.getAttribute("data-nudge").split(","), d=parseFloat(a[1]), r;
+      r = a[0]==="s" ? clampRange(ed.s+d,ed.e,"s") : clampRange(ed.s,ed.e+d,"e");
+      ed.s=r[0]; ed.e=r[1]; layout(); if(ed.src) edPlay();
+    });
+  });
+
+  // Прослушивание — уже с эффектами: так, как прозвучит уведомление.
+  function edStop(){
+    if(ed.src){ try{ ed.src.onended=null; ed.src.stop(); }catch(e){} ed.src=null; }
+    cancelAnimationFrame(ed.raf); ph.style.display="none"; el("edPlay").textContent="▶ Слушать";
+  }
+  function edPlay(){
+    edStop(); if(!ed.buf) return;
+    var out=renderSelection(), c=ctx();
+    if(c.state==="suspended") c.resume();
+    var src=c.createBufferSource(); src.buffer=out; src.connect(c.destination);
+    src.onended=function(){ if(ed.src===src) edStop(); };
+    src.start(); ed.src=src; ed.startedAt=c.currentTime;
+    el("edPlay").textContent="■ Стоп"; ph.style.display="block";
+    (function tick(){
+      if(ed.src!==src) return;
+      var t=ed.s+(c.currentTime-ed.startedAt);
+      ph.style.left=(t/ed.buf.duration*wave.clientWidth)+"px";
+      ed.raf=requestAnimationFrame(tick);
+    })();
+  }
+  el("edPlay").addEventListener("click", function(){ if(ed.src) edStop(); else edPlay(); });
+
+  function renderSelection(){
+    var buf=ed.buf, sr=buf.sampleRate, from=Math.floor(ed.s*sr), to=Math.min(buf.length,Math.ceil(ed.e*sr));
+    var len=Math.max(1,to-from), chs=Math.min(2,buf.numberOfChannels);
+    var out=ctx().createBuffer(chs,len,sr);
+    var fadeIn=el("edFadeIn").checked?Math.min(len/2,Math.floor(0.25*sr)):0;
+    var fadeOut=el("edFadeOut").checked?Math.min(len/2,Math.floor(0.6*sr)):0;
+    var peak=0;
+    for(var c=0;c<chs;c++){
+      var src=buf.getChannelData(c), dst=out.getChannelData(c);
+      for(var i=0;i<len;i++){ var v=src[from+i]; dst[i]=v; var a=v<0?-v:v; if(a>peak) peak=a; }
+    }
+    var gain = el("edNorm").checked && peak>0.001 ? Math.min(8, 0.95/peak) : 1;
+    for(var c2=0;c2<chs;c2++){
+      var d=out.getChannelData(c2);
+      for(var j=0;j<len;j++){
+        var g=gain;
+        if(fadeIn && j<fadeIn) g*=j/fadeIn;
+        if(fadeOut && j>len-fadeOut) g*=(len-j)/fadeOut;
+        d[j]*=g;
+      }
+    }
+    return out;
+  }
+  function toWav(ab){
+    var chs=ab.numberOfChannels, sr=ab.sampleRate, len=ab.length, bytes=len*chs*2;
+    var view=new DataView(new ArrayBuffer(44+bytes)), p=0;
+    function str(s){ for(var i=0;i<s.length;i++) view.setUint8(p++,s.charCodeAt(i)); }
+    function u32(v){ view.setUint32(p,v,true); p+=4; } function u16(v){ view.setUint16(p,v,true); p+=2; }
+    str("RIFF"); u32(36+bytes); str("WAVE"); str("fmt "); u32(16); u16(1); u16(chs); u32(sr); u32(sr*chs*2); u16(chs*2); u16(16);
+    str("data"); u32(bytes);
+    var data=[]; for(var c=0;c<chs;c++) data.push(ab.getChannelData(c));
+    for(var i=0;i<len;i++) for(var k=0;k<chs;k++){ var v=Math.max(-1,Math.min(1,data[k][i])); view.setInt16(p, v<0?v*0x8000:v*0x7fff, true); p+=2; }
+    return new Blob([view],{type:"audio/wav"});
+  }
+  el("edDone").addEventListener("click", function(){
+    var name=el("edName").value.trim()||ed.file.name.replace(/\.[^.]+$/,"");
+    if(!ed.buf){ // формат не открылся — отдаём как есть, сервер обрежет сам
+      closeEditor({file:ed.file,name:name,duration:null,range:null}); return;
+    }
+    var out=renderSelection(), blob=toWav(out);
+    var file=new File([blob], name.replace(/[\\/:*?"<>|]+/g,"_")+".wav", {type:"audio/wav"});
+    closeEditor({file:file,name:name,duration:ed.e-ed.s,range:[ed.s,ed.e]});
+  });
+
+  route();
 })();
 </script>
 </body>

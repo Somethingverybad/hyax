@@ -308,11 +308,21 @@ class StickerPackSerializer(serializers.ModelSerializer):
     # Пак 18+ открыт без настройки «Показывать 18+»: карточку отдаём, стикеры — нет
     # (их режет StickerViewSet.get_queryset).
     adult_locked = serializers.SerializerMethodField()
+    # Первые стикеры пака — обложка-мозаика папки в студии.
+    preview = serializers.SerializerMethodField()
     
     class Meta:
         model = StickerPack
-        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'created_at', 'updated_at', 'stickers_count', 'is_saved']
+        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'created_at', 'updated_at', 'stickers_count', 'is_saved', 'preview']
         read_only_fields = ['author', 'created_at', 'updated_at']
+
+    def get_preview(self, obj):
+        if self.get_adult_locked(obj):
+            return []
+        # Из prefetch, если он был (my_packs), иначе — один короткий запрос.
+        if 'stickers' in getattr(obj, '_prefetched_objects_cache', {}):
+            return [s.file_url for s in list(obj.stickers.all())[:4]]
+        return list(obj.stickers.values_list('file_url', flat=True)[:4])
 
     def get_adult_locked(self, obj):
         if not obj.is_adult:
