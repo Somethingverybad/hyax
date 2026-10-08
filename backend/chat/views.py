@@ -4207,3 +4207,26 @@ class AdminMetricsView(APIView):
         except ValueError:
             tz = 0
         return Response(summary(request.query_params.get('range') or '24h', tz))
+
+
+
+class AdminRegistrationsView(APIView):
+    """GET /api/admin/registrations/?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=<минуты> —
+    регистрации за период для мониторинга. Только админам."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import date, timedelta as td
+        from .serializers import is_admin_profile
+        from .metrics import registrations
+        if not is_admin_profile(getattr(request.user, 'profile', None)):
+            return Response({"error": "Только для администраторов"}, status=403)
+        try:
+            to = date.fromisoformat(request.query_params.get('to') or date.today().isoformat())
+            frm = date.fromisoformat(request.query_params.get('from') or (to - td(days=6)).isoformat())
+            tz = max(-840, min(840, int(request.query_params.get('tz') or 0)))
+        except ValueError:
+            return Response({"error": "Даты — в виде ГГГГ-ММ-ДД"}, status=400)
+        if frm > to:
+            frm, to = to, frm
+        return Response(registrations(frm, to, tz))

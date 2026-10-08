@@ -339,3 +339,24 @@ def summary(range_key="24h", tz_offset_min=0):
         "daily": daily,
         "hours": hours,
     }
+
+
+def registrations(date_from, date_to, tz_offset_min=0):
+    """Регистрации людей (без ботов) с date_from по date_to включительно —
+    даты в часовом поясе клиента. Число, разбивка по дням и последние ники."""
+    from datetime import datetime, time as dtime, timezone as dtz
+    from .models import Profile
+    off = timedelta(minutes=int(tz_offset_min))
+    start = datetime.combine(date_from, dtime.min).replace(tzinfo=dtz.utc) - off
+    end = datetime.combine(date_to, dtime.min).replace(tzinfo=dtz.utc) - off + timedelta(days=1)
+    qs = Profile.objects.filter(is_bot=False, created_at__gte=start, created_at__lt=end)
+    days = {}
+    for ts in qs.values_list("created_at", flat=True):
+        d = (ts + off).date()
+        days[d] = days.get(d, 0) + 1
+    out_days, d = [], date_from
+    while d <= date_to and len(out_days) < 400:
+        out_days.append({"date": d.isoformat(), "count": days.get(d, 0)})
+        d += timedelta(days=1)
+    users = [{"username": u, "created_at": c.isoformat()} for u, c in qs.order_by("-created_at").values_list("username", "created_at")[:100]]
+    return {"from": date_from.isoformat(), "to": date_to.isoformat(), "count": qs.count(), "days": out_days, "users": users}

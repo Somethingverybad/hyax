@@ -23,6 +23,7 @@ urlpatterns = [
     # Кастомные маршруты ДО роутера
     path('profiles/current/', get_current_user_profile, name='current-profile'),
     path('admin/metrics/', AdminMetricsView.as_view(), name='admin-metrics'),
+    path('admin/registrations/', AdminRegistrationsView.as_view(), name='admin-registrations'),
     path('secret-chats/', SecretChatCreateView.as_view(), name='secret-create'),
     path('ideabox/', IdeaboxView.as_view(), name='ideabox'),
     path('secret-chats/<uuid:chat_id>/accept/', SecretChatAcceptView.as_view(), name='secret-accept'),

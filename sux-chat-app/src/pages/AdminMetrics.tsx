@@ -219,6 +219,78 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
   );
 }
 
+/** Регистрации за выбранный период: даты — в часовом поясе админа. */
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDay(d); };
+function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
+  const [from, setFrom] = useState(daysAgo(6));
+  const [to, setTo] = useState(daysAgo(0));
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.getAdminRegistrations>> | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let off = false;
+    api.getAdminRegistrations(from, to, -new Date().getTimezoneOffset())
+      .then((d) => { if (!off) { setData(d); setErr(null); } })
+      .catch((e) => { if (!off) setErr((e as Error).message); });
+    return () => { off = true; };
+  }, [from, to]);
+  const presets: [string, string, string][] = [
+    ["Сегодня", daysAgo(0), daysAgo(0)], ["Вчера", daysAgo(1), daysAgo(1)],
+    ["7 дней", daysAgo(6), daysAgo(0)], ["30 дней", daysAgo(29), daysAgo(0)], ["Всё время", "2025-01-01", daysAgo(0)],
+  ];
+  const axis = { stroke: pal.axis, fontSize: 11, tickLine: false, axisLine: false } as const;
+  return (
+    <Card title="Регистрации за период" sub="Новые люди без ботов, ваше время">
+      <div className="flex flex-wrap items-center gap-2">
+        {presets.map(([label, f, t]) => (
+          <button key={label} type="button" onClick={() => { setFrom(f); setTo(t); }}
+            className={`h-8 px-3 rounded-md text-small border ${from === f && to === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-foreground hover:bg-surface-3"}`}>
+            {label}
+          </button>
+        ))}
+        <span className="inline-flex items-center gap-1.5 text-small text-subtle">
+          <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)}
+            className="h-8 px-2 rounded-md bg-background border border-border text-foreground" aria-label="С" />
+          —
+          <input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)}
+            className="h-8 px-2 rounded-md bg-background border border-border text-foreground" aria-label="По" />
+        </span>
+      </div>
+      {err ? <p className="mt-3 text-small text-subtle">Не удалось загрузить: {err}</p> : data && (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-[auto,1fr] gap-4 items-start">
+          <div>
+            <div className="text-[40px] leading-none font-semibold text-foreground tabular-nums">{fmt(data.count)}</div>
+            <div className="mt-1 text-caption text-subtle">{data.count === 1 ? "регистрация" : "регистраций"}</div>
+            {data.users.length > 0 && (
+              <ul className="mt-3 max-h-40 overflow-y-auto pr-2 space-y-0.5 text-small">
+                {data.users.map((u) => (
+                  <li key={u.username + u.created_at} className="flex justify-between gap-3">
+                    <span className="truncate text-foreground">{u.username}</span>
+                    <span className="shrink-0 text-subtle tabular-nums">{new Date(u.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {data.days.length > 1 && (
+            <div className="h-40 min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.days.map((d) => ({ ...d, t: new Date(d.date + "T00:00:00").getTime() }))} margin={{ top: 6, right: 4, bottom: 0, left: 0 }} barCategoryGap={2}>
+                  <CartesianGrid vertical={false} stroke={pal.grid} strokeOpacity={0.6} />
+                  <XAxis dataKey="t" tickFormatter={dayFmt} minTickGap={22} {...axis} />
+                  <YAxis allowDecimals={false} width={32} {...axis} />
+                  <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
+                  <Bar name="регистраций" dataKey="count" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ---------- страница ----------
 
 export default function AdminMetrics() {
@@ -318,6 +390,8 @@ export default function AdminMetrics() {
                 <Tile icon={Database} label="База данных" value={bytes(live.db_size)}
                   sub={<>процесс API {bytes(live.rss)} · работает {duration(live.uptime_s)}</>} />
               </div>
+
+              <RegistrationsCard pal={pal} />
 
               {/* ---- кто в сети ---- */}
               <Card title={`Сейчас в сети · ${fmt(live.users_online?.length ?? 0)}`}

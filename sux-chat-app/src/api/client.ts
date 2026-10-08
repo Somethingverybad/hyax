@@ -1207,6 +1207,14 @@ export const api = {
     return res.json();
   },
 
+  getAdminRegistrations: async (from: string, to: string, tzOffsetMin: number): Promise<{
+    from: string; to: string; count: number; days: { date: string; count: number }[]; users: { username: string; created_at: string }[];
+  }> => {
+    const res = await fetchWithAuth(`${API_URL}/admin/registrations/?from=${from}&to=${to}&tz=${tzOffsetMin}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(res.status === 403 ? "403" : `HTTP ${res.status}`);
+    return res.json();
+  },
+
   getAdminMetrics: async (range: string, tzOffsetMin: number): Promise<AdminMetrics> => {
     const res = await fetchWithAuth(`${API_URL}/admin/metrics/?range=${encodeURIComponent(range)}&tz=${tzOffsetMin}`, { method: "GET", headers: authHeaders() });
     if (res.status === 403) throw new Error("403");

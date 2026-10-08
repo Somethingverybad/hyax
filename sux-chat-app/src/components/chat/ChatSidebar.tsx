@@ -124,6 +124,22 @@ const ChatSidebar = ({
   const [searchQuery, setSearchQuery] = useState("");
   // Поиск по списку чатов (поле под шапкой): по названию и именам участников.
   const [listFilter, setListFilter] = useState("");
+  // Человек по нику — только при точном совпадении (сервер иначе ничего не
+  // отдаёт): перебором по букве каталог людей не вытянуть.
+  const [peopleHit, setPeopleHit] = useState<Profile | null>(null);
+  useEffect(() => {
+    const q = listFilter.trim().replace(/^@/, "");
+    if (q.length < 2) { setPeopleHit(null); return; }
+    let off = false;
+    const t = setTimeout(() => {
+      api.searchUsers(q).then((r) => {
+        if (off) return;
+        const hit = (Array.isArray(r) ? r : []).find((p) => p.username.toLowerCase() === q.toLowerCase() && p.id !== userId);
+        setPeopleHit(hit || null);
+      }).catch(() => { if (!off) setPeopleHit(null); });
+    }, 350);
+    return () => { off = true; clearTimeout(t); };
+  }, [listFilter, userId]);
   // Фильтр-чипы под поиском: все чаты, только с непрочитанным, только каналы.
   const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
   const unreadChats = chats.filter((c) => ((c as any).unread_count || 0) > 0).length;
@@ -327,9 +343,7 @@ const ChatSidebar = ({
 
   const createChat = async (friendId: string) => {
     try {
-      console.log("Creating chat with friendId:", friendId);
       const chat = await api.createDirectChat(friendId);
-      toast.success("Чат создан!");
       
       onChatCreated();
       handleSelectChat(chat.id);
@@ -337,7 +351,6 @@ const ChatSidebar = ({
     } catch (error: any) {
       console.error("Error creating chat:", error);
       if (error?.message === "exists") {
-        toast.success("Чат уже существует");
         handleSelectChat(error.chatId);
       } else {
         toast.error("Ошибка создания чата");
@@ -737,7 +750,7 @@ const ChatSidebar = ({
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
-              placeholder="Поиск чатов"
+              placeholder="Поиск чатов и людей по нику"
               className="flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"
             />
           </label>
@@ -830,6 +843,19 @@ const ChatSidebar = ({
               </div>
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>
+          )}
+          {peopleHit && !isCollapsed && (
+            <div className="px-4 pt-2 pb-1">
+              <p className="text-caption uppercase tracking-wide text-subtle mb-1">Люди</p>
+              <button type="button" onClick={() => { setListFilter(""); void createChat(peopleHit.id); }}
+                className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
+                <Identicon id={peopleHit.id} avatarUrl={peopleHit.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" />
+                <span className="min-w-0">
+                  <span className="block text-h2 md:text-[15px] truncate">{peopleHit.username}</span>
+                  <span className="block text-small text-subtle truncate">@{peopleHit.username} · написать</span>
+                </span>
+              </button>
+            </div>
           )}
           {chats.length > 0 ? (
             [...chats].sort((x, y) => {

@@ -29,10 +29,13 @@ export const playlistLink = (token: string) => `${PUBLIC_ORIGIN}/pl/${token}`;
 export const channelLink = (ch: { id: string; username?: string | null }) =>
   `${PUBLIC_ORIGIN}/c/${encodeURIComponent(ch.username || ch.id)}`;
 
+/* Ссылка — внутри текста, одним элементом. Если отдать text и url порознь,
+   пункт «Скопировать» системного меню на iPhone берёт только первый —
+   в буфере оказывался текст без ссылки («Напиши мне в WhoYaX»). */
 async function shareUrl(title: string, text: string, url: string): Promise<ShareResult> {
   const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
   if (typeof nav.share === "function") {
-    try { await nav.share({ title, text, url }); return "shared"; }
+    try { await nav.share({ title, text: `${text}: ${url}` }); return "shared"; }
     catch (e: any) { if (e?.name === "AbortError") return "shared"; }
   }
   try { await navigator.clipboard.writeText(`${text}: ${url}`); return "copied"; }
@@ -67,7 +70,7 @@ export async function shareProfile(username: string): Promise<ShareResult> {
   const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
   if (typeof nav.share === "function") {
     try {
-      await nav.share({ title: "WhoYaX", text: `Напиши мне в WhoYaX`, url });
+      await nav.share({ title: "WhoYaX", text });
       return "shared";
     } catch (e: any) {
       // Пользователь закрыл шит — это не ошибка.
