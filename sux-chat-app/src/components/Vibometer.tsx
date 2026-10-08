@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, Check, Lightbulb } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 
@@ -11,11 +10,10 @@ const prevStep = (v: number) => [0, ...STEPS].filter((s) => s <= v).pop() ?? 0;
 
 /**
  * Вайбометр в профиле. Чужой — можно один раз «поднять вайб» (+1).
- * Свой — только смотреть и узнать, как набрать: голоса за идеи в «Долгом
- * ящике» (+5) и лайки своих идей (+10). Сервер: chat/ideabox.py (VibeView).
+ * Свой — только смотреть. Баллы ещё и за голоса в «Долгом ящике» (+5) и
+ * лайки своих идей (+10). Сервер: chat/ideabox.py (VibeView).
  */
 export default function Vibometer({ profileId, own, initial }: { profileId: string; own?: boolean; initial?: number | null }) {
-  const navigate = useNavigate();
   const [vibe, setVibe] = useState<number | null>(initial ?? null);
   const [voted, setVoted] = useState(false);
   const [canVote, setCanVote] = useState(false);
@@ -53,12 +51,7 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
         <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${vibe === null ? 0 : pct}%` }} />
       </div>
       <p className="mt-1.5 text-caption text-subtle tabular-nums">до {hi} — ещё {Math.max(0, hi - v)}</p>
-      {own ? (
-        <button type="button" onClick={() => navigate("/profile/ideas")}
-          className="mt-3 w-full h-10 rounded-md bg-surface-2 text-small font-medium flex items-center justify-center gap-2 active:opacity-80">
-          <Lightbulb className="w-4 h-4" />Голосовать за идеи: +5 за голос, +10 за лайк вашей идеи
-        </button>
-      ) : voted ? (
+      {own ? null : voted ? (
         <p className="mt-3 h-10 rounded-md bg-surface-2 text-small text-subtle flex items-center justify-center gap-2">
           <Check className="w-4 h-4" />Вы подняли вайб
         </p>
