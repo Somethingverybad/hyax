@@ -64,13 +64,14 @@ export const sharePost = (ch: { id: string; name: string; username?: string | nu
   return shareUrl("WhoYaX", line ? `${line} — «${ch.name}» в WhoYaX` : `Пост из канала «${ch.name}» в WhoYaX`, postLink(ch, postId));
 };
 
+/** Профиль — только ссылкой, без подписи: «Скопировать» в системном меню
+ *  кладёт в буфер ровно её. */
 export async function shareProfile(username: string): Promise<ShareResult> {
   const url = profileLink(username);
-  const text = `Напиши мне в WhoYaX: ${url}`;
   const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
   if (typeof nav.share === "function") {
     try {
-      await nav.share({ title: "WhoYaX", text });
+      await nav.share({ url });
       return "shared";
     } catch (e: any) {
       // Пользователь закрыл шит — это не ошибка.
@@ -79,7 +80,7 @@ export async function shareProfile(username: string): Promise<ShareResult> {
     }
   }
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(url);
     return "copied";
   } catch {
     return "error";
