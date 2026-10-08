@@ -3,10 +3,9 @@ import { Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 
-/** Отметки шкалы: полоска показывает путь до следующей. */
-const STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
-const nextStep = (v: number) => STEPS.find((s) => s > v) ?? Math.ceil((v + 1) / 10000) * 10000;
-const prevStep = (v: number) => [0, ...STEPS].filter((s) => s <= v).pop() ?? 0;
+/** Шкала заполняется до 10; дальше счётчик растёт без предела, а полная
+ *  шкала светится. */
+const FULL = 10;
 
 /**
  * Вайбометр в профиле. Чужой — можно один раз «поднять вайб» (+1).
@@ -38,8 +37,8 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
     } finally { setBusy(false); }
   };
   const v = vibe ?? 0;
-  const lo = prevStep(v), hi = nextStep(v);
-  const pct = Math.max(4, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+  const pct = Math.max(4, Math.min(100, (v / FULL) * 100));
+  const glow = v > FULL;
   return (
     <div className="rounded-lg bg-surface-4 p-4">
       <div className="flex items-center gap-2">
@@ -47,10 +46,9 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
         <span className="text-h2 flex-1">Вайбометр</span>
         <span className="text-[22px] leading-none font-semibold tabular-nums">{vibe === null ? "…" : v}</span>
       </div>
-      <div className="mt-3 h-2 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
-        <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${vibe === null ? 0 : pct}%` }} />
+      <div className={`mt-3 h-2 rounded-full bg-surface-2 ${glow ? "vibe-glow" : "overflow-hidden"}`} aria-hidden>
+        <div className={`h-full rounded-full bg-primary transition-[width] duration-500 ${glow ? "vibe-glow-bar" : ""}`} style={{ width: `${vibe === null ? 0 : pct}%` }} />
       </div>
-      <p className="mt-1.5 text-caption text-subtle tabular-nums">до {hi} — ещё {Math.max(0, hi - v)}</p>
       {own ? null : voted ? (
         <p className="mt-3 h-10 rounded-md bg-surface-2 text-small text-subtle flex items-center justify-center gap-2">
           <Check className="w-4 h-4" />Вы подняли вайб
