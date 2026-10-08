@@ -220,6 +220,9 @@ interface ChatWindowProps {
    *  обновляется сразу, а не через 5 с опроса /chats/ (иначе при выходе из
    *  чата список на миг показывал старое превью и бейдж). */
   onLatest?: (chatId: string, latest: LatestMessage) => void;
+  /** Сколько было непрочитанных в момент открытия: лента встаёт к первому из
+   *  них, а не вниз (число берём до того, как чат отметится прочитанным). */
+  unreadAtOpen?: number;
 }
 
 export interface LatestMessage { id: string; text: string; sender_id: string; created_at: string; read: boolean }
@@ -239,7 +242,7 @@ function previewText(m: { content?: string | null; entities?: TextEntity[] | nul
 /** Вторая галочка: сообщение прочитал кто-то кроме автора (в группе — хоть один). */
 const readByOthers = (m: Message) => (m.read_by || []).some((r) => r.id !== (m.sender?.id || m.sender_id));
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId, onLatest }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId, onLatest, unreadAtOpen }: ChatWindowProps) => {
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -1154,6 +1157,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     pinnedRef.current = true;
     windowedRef.current = false;
     setRenderLimit(RENDER_STEP);
+    unreadOpenRef.current = unreadAtOpen || 0;
+    setUnreadMarkId(null);
+    setAnchoring(unreadOpenRef.current > 0);
     setNewBelow(0);
     setAwayFromBottom(false);
     setFreshIds(new Set());
@@ -1180,6 +1186,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         scrollToBottomOnOpen();
         await syncSince(chatId);
         primedRef.current = true;
+        void anchorUnread(chatId);
         return;
       }
       const cached = await readMessages(chatId);
@@ -1204,6 +1211,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         }
       }
       primedRef.current = true;
+      if (alive) void anchorUnread(chatId);
     })();
 
     // Опрос раз в три секунды — страховка на случай оборванного сокета;
@@ -1540,8 +1548,53 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   /** Вход в чат: лента сразу стоит на последнем сообщении. */
+  // Непрочитанные: при входе лента встаёт к первому из них (с плашкой над
+  // ним), а не вниз. Если их больше, чем загружено, догружаем историю.
+  const unreadOpenRef = useRef(0);
+  const [unreadMarkId, setUnreadMarkId] = useState<string | null>(null);
+  const [anchoring, setAnchoring] = useState(false);
+  useEffect(() => {
+    if (!anchoring) return;
+    const t = setTimeout(() => setAnchoring(false), 3000); // страховка: ленту не прячем надолго
+    return () => clearTimeout(t);
+  }, [anchoring]);
+  const anchorUnread = async (id: string) => {
+    const n = unreadOpenRef.current;
+    unreadOpenRef.current = 0;
+    if (!n) { setAnchoring(false); return; }
+    const frames = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
+    const incoming = () => messagesListRef.current.filter((m) => !m.pending && (m.sender?.id ?? m.sender_id) !== userId);
+    for (let i = 0; i < 10 && incoming().length < n && hasMoreRef.current; i++) {
+      if (!(await loadOlder())) break;
+      await frames();
+    }
+    if (id !== chatIdRef.current) return;
+    const inc = incoming();
+    const target = inc[Math.max(0, inc.length - n)];
+    const box = scrollRef.current;
+    if (!target || !box) { setAnchoring(false); pinnedRef.current = true; goBottom(false); return; }
+    setUnreadMarkId(target.id);
+    const after = messagesListRef.current.length - messagesListRef.current.findIndex((m) => m.id === target.id);
+    setRenderLimit((l) => Math.max(l, after + 20));
+    await frames();
+    const mark = document.getElementById("unread-mark") || document.getElementById(`msg-${target.id}`);
+    if (mark) {
+      box.scrollTop += mark.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
+      const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
+      pinnedRef.current = dist < 40;
+      setAwayFromBottom(!pinnedRef.current);
+      logFeed(`unread ${n} → ${pinnedRef.current ? "bottom" : "anchor"}`);
+    } else {
+      pinnedRef.current = true;
+      goBottom(false);
+    }
+    setAnchoring(false);
+  };
+
   const scrollToBottomOnOpen = () => {
     logFeed("open");
+    // Есть непрочитанные — позицию выставит anchorUnread после загрузки.
+    if (unreadOpenRef.current > 0) { pinnedRef.current = false; return; }
     // Вход в чат — сразу у последнего сообщения, без «въезда»: плавный пролёт
     // на входе спорил с догрузкой истории и синхронизацией, лента дёргалась.
     // Дальше низ удерживает ResizeObserver (см. выше), пока лента прижата.
@@ -2821,7 +2874,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         onKeyDown={markUserScroll}
         onTouchEnd={settleAfterTouch}
         onTouchCancel={settleAfterTouch}
-        style={{ WebkitOverflowScrolling: "touch" }}
+        style={{ WebkitOverflowScrolling: "touch", ...(anchoring ? { opacity: 0 } : {}) }}
         onTouchMove={(e) => {
           // Свайп вниз по ленте при открытой клавиатуре прячет её (как в Telegram).
           const s = kbSwipeRef.current;
@@ -2902,6 +2955,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <div className="bg-surface-3 px-3.5 py-1.5 rounded-full text-small text-foreground">
                       {formatDate(message.created_at)}
                     </div>
+                  </div>
+                )}
+                {unreadMarkId === message.id && (
+                  <div id="unread-mark" className="-mx-3 md:-mx-7 py-1.5 bg-surface-3/80 text-center text-small text-subtle">
+                    Непрочитанные сообщения
                   </div>
                 )}
 

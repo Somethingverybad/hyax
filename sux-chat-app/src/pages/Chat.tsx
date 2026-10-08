@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { clearMessageCache } from "@/lib/messageCache";
@@ -137,6 +137,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     reactions: { emoji: string; count: number; users: string[] }[]; at: number;
   } | null>(null);
   chatsRef.current = chats;
+  // Непрочитанные в момент открытия: эффект ниже обнулит бейдж, а лента должна
+  // встать к первому непрочитанному (ChatWindow.unreadAtOpen).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const unreadAtOpen = useMemo(() => chatsRef.current.find((c) => c.id === selectedChatId)?.unread_count || 0, [selectedChatId]);
   const navigate = useNavigate();
 
   // Р.Ё.В: пока держат площадку, повторяем «держу» — приёмник глушит
@@ -930,6 +934,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
                   savedChatId={savedChat?.id}
                   messagePing={messagePing}
             onLatest={handleLatest}
+            unreadAtOpen={unreadAtOpen}
           reactionEvent={reactionEvent}
             reactionEvent={reactionEvent}
                   reactionEvent={reactionEvent}
@@ -968,6 +973,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onCall={startCall}
             messagePing={messagePing}
             onLatest={handleLatest}
+            unreadAtOpen={unreadAtOpen}
           reactionEvent={reactionEvent}
             reactionEvent={reactionEvent}
             onBack={() => setSelectedChatId(null)}
@@ -1060,6 +1066,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           onCall={startCall}
           messagePing={messagePing}
             onLatest={handleLatest}
+            unreadAtOpen={unreadAtOpen}
           reactionEvent={reactionEvent}
           title={chatHeaderTitle}
         />

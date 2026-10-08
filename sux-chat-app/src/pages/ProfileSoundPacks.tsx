@@ -1,24 +1,38 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Music2, Link2, ChevronRight, Plus } from "lucide-react";
+import { Link2, ChevronRight, Plus, Share2 } from "lucide-react";
 import { packCover } from "@/lib/packCover";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type SoundPackInfo } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
-import { PUBLIC_ORIGIN } from "@/lib/share";
+import { PUBLIC_ORIGIN, shareSoundPack } from "@/lib/share";
 
 /**
- * Паки звуков, добавленные по ссылке. Базовые и свои здесь не показываем:
- * первые есть у всех, вторые правятся в студии.
+ * Паки звуков: свои (созданные здесь или в студии) — чтобы делиться ими, и
+ * добавленные по ссылке. Базовые не показываем — они есть у всех.
  */
 const ProfileSoundPacks = () => {
   const navigate = useNavigate();
   const [packs, setPacks] = useState<SoundPackInfo[] | null>(null);
+  const [mine, setMine] = useState<SoundPackInfo[] | null>(null);
   const [link, setLink] = useState("");
 
   useEffect(() => { api.listAddedSoundPacks().then(setPacks).catch(() => setPacks([])); }, []);
+  useEffect(() => { api.listMySoundPacks().then(setMine).catch(() => setMine([])); }, []);
+
+  const share = async (p: SoundPackInfo) => {
+    const r = await shareSoundPack(p.name, p.id);
+    if (r === "copied") toast.success("Ссылка скопирована");
+    else if (r === "error") toast.error("Не удалось поделиться");
+  };
+  const shareBtn = (p: SoundPackInfo) => (
+    <button type="button" onClick={(e) => { e.stopPropagation(); void share(p); }} aria-label="Поделиться паком"
+      className="w-9 h-9 -my-1 flex items-center justify-center rounded-md text-primary active:bg-surface-3">
+      <Share2 className="w-4 h-4" />
+    </button>
+  );
 
   const remove = async (p: SoundPackInfo) => {
     try {
@@ -61,6 +75,24 @@ const ProfileSoundPacks = () => {
           <Plus className="w-5 h-5" /> Создать свой пак
         </button>
 
+        {mine && mine.length > 0 && (
+          <>
+            <p className="px-1 text-small text-subtle">Мои паки</p>
+            <SettingsCard>
+              {mine.map((p) => (
+                <SettingsRow
+                  key={p.id}
+                  leading={<img src={packCover(p.cover_url)} alt="" className="ui-card w-9 h-9 rounded-md object-cover shrink-0" />}
+                  label={p.name}
+                  hint={`${p.sounds.length} звуков · правка в студии`}
+                  onClick={() => navigate(`/sp/${p.id}`)}
+                  trailing={<span className="flex items-center gap-1">{shareBtn(p)}<ChevronRight className="w-4 h-4 text-subtle" /></span>}
+                />
+              ))}
+            </SettingsCard>
+          </>
+        )}
+
         <p className="px-1 text-small text-subtle">Добавленные</p>
         <SettingsCard>
           {packs === null ? (
@@ -77,6 +109,7 @@ const ProfileSoundPacks = () => {
               onClick={() => navigate(`/sp/${p.id}`)}
               trailing={
                 <span className="flex items-center gap-2">
+                  {shareBtn(p)}
                   <button type="button" onClick={(e) => { e.stopPropagation(); remove(p); }} className="text-small text-primary active:opacity-60">Убрать</button>
                   <ChevronRight className="w-4 h-4 text-subtle" />
                 </span>

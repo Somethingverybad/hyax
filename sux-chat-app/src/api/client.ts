@@ -1958,6 +1958,13 @@ export const api = {
     if (!res.ok) throw new Error("Не удалось убрать пак");
   },
 
+  /** Свои паки (созданные в приложении или в студии). */
+  listMySoundPacks: async (): Promise<SoundPackInfo[]> => {
+    const res = await fetchWithAuth(`${API_URL}/sounds/mine/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return ((await res.json()).packs || []) as SoundPackInfo[];
+  },
+
   listAddedSoundPacks: async (): Promise<SoundPackInfo[]> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/added/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new Error("Не удалось загрузить паки");

@@ -157,6 +157,14 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
                   <ChevronDown className={cn("w-4 h-4 text-subtle transition-transform", !expanded && "-rotate-90")} />
                   <span className="flex-1 min-w-0 truncate text-small font-medium">{pack}</span>
                   <span className="text-caption text-subtle">{list.length}</span>
+                  {list[0]?.pack && (
+                    <span role="button" tabIndex={0} aria-label={`Поделиться паком «${pack}»`}
+                      onClick={(e) => { e.stopPropagation(); void share(pack, list[0]?.pack); }}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      className="-mr-1 w-8 h-8 flex items-center justify-center rounded-md text-subtle active:bg-surface-4 active:text-foreground">
+                      <Share2 className="w-4 h-4" />
+                    </span>
+                  )}
                 </button>
                 {menuFor === pack && (
                   <div className="px-3 py-2 flex gap-2 bg-surface-3/60 border-b border-border/60">
