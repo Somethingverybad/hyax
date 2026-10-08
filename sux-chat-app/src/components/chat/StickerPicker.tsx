@@ -49,6 +49,15 @@ interface StickerPickerProps {
  * (создание, импорт, удаление) осталось в вебе — на маленьком экране это
  * отдельный сценарий, который мешал бы основному.
  */
+/** Кэш между открытиями окна стикеров (живёт, пока открыто приложение). */
+const pickerCache: { packs: UserStickerPack[] | null; lastPackId: string | null; stickers: Map<string, Sticker[]> } = {
+  packs: null, lastPackId: null, stickers: new Map(),
+};
+const activePackIdInit = (): string | null => {
+  const list = pickerCache.packs || [];
+  return list.some((p) => p.pack.id === pickerCache.lastPackId) ? pickerCache.lastPackId : list[0]?.pack?.id ?? null;
+};
+
 const StickerPicker = ({
   onSelect,
   sounds = [],
@@ -89,10 +98,12 @@ const StickerPicker = ({
 
   useEffect(() => () => previewRef.current?.(), []);
 
-  const [packs, setPacks] = useState<UserStickerPack[]>([]);
-  const [activePackId, setActivePackId] = useState<string | null>(null);
-  const [stickers, setStickers] = useState<Sticker[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Окно монтируется заново при каждом открытии — показываем запомненное
+  // сразу (иначе стикеры на секунду пропадали), свежее подтягиваем фоном.
+  const [packs, setPacks] = useState<UserStickerPack[]>(() => pickerCache.packs || []);
+  const [activePackId, setActivePackId] = useState<string | null>(activePackIdInit);
+  const [stickers, setStickers] = useState<Sticker[]>(() => (activePackIdInit() && pickerCache.stickers.get(activePackIdInit()!)) || []);
+  const [loading, setLoading] = useState(() => !pickerCache.packs);
   // Создание набора: имя вводится один раз, дальше выбираются файлы.
   const [creating, setCreating] = useState(false);
   const [newPackName, setNewPackName] = useState("");
@@ -101,9 +112,10 @@ const StickerPicker = ({
 
   const loadPacks = async (selectId?: string) => {
     try {
-      const list = await api.getMyStickerPacks();
-      setPacks(list || []);
-      setActivePackId(selectId ?? list?.[0]?.pack?.id ?? null);
+      const list = (await api.getMyStickerPacks()) || [];
+      pickerCache.packs = list;
+      setPacks(list);
+      setActivePackId((prev) => selectId ?? (prev && list.some((p: UserStickerPack) => p.pack.id === prev) ? prev : list[0]?.pack?.id ?? null));
     } catch {
       setPacks([]);
     } finally {
@@ -206,18 +218,26 @@ const StickerPicker = ({
   };
 
   useEffect(() => {
+    pickerCache.lastPackId = activePackId;
     if (!activePackId) {
       setStickers([]);
       return;
     }
+    let alive = true;
+    setStickers(pickerCache.stickers.get(activePackId) || []);
     (async () => {
       try {
-        setStickers((await api.getStickers(activePackId)) || []);
+        const list = (await api.getStickers(activePackId)) || [];
+        pickerCache.stickers.set(activePackId, list);
+        if (alive) setStickers(list);
       } catch {
-        setStickers([]);
+        if (alive && !pickerCache.stickers.has(activePackId)) setStickers([]);
       }
     })();
+    return () => { alive = false; };
   }, [activePackId]);
+  // Правки в открытом паке (добавили, удалили, сменили макрос) — тоже в кэш.
+  useEffect(() => { if (activePackId) pickerCache.stickers.set(activePackId, stickers); }, [stickers, activePackId]);
 
   const tabs = (
     <div className="flex gap-2 px-3 pt-2 shrink-0">
