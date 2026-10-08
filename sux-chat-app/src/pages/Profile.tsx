@@ -20,7 +20,7 @@ const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "изб�
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
-  Sticker, Activity, Flame, Lightbulb,
+  Sticker, Activity, Flame, Lightbulb, Sparkles,
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
@@ -448,6 +448,12 @@ const ProfilePage = () => {
                 label="Мониторинг"
                 hint="Онлайн, пользователи, нагрузка сервера"
                 onClick={() => navigate("/monitoring")}
+              />
+              <SettingsRow
+                icon={Sparkles}
+                label="Уровни вайбометра"
+                hint="Пороги, цвета, свечение, длина шкалы"
+                onClick={() => navigate("/profile/vibe-levels")}
               />
             </SettingsCard>
           )}

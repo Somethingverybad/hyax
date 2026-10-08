@@ -926,3 +926,26 @@ class IdeaVote(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["idea", "voter"], name="idea_vote_once")]
+
+
+class VibeLevel(models.Model):
+    """Уровень вайбометра: с min_vibe баллов шкала и число красятся в color
+    («Бронза» с 10, «Серебро» с 20…). glow — шкала светится. Настраивает
+    админ в приложении (Профиль → Уровни вайбометра)."""
+    min_vibe = models.IntegerField(unique=True)
+    name = models.CharField(max_length=40)
+    color = models.CharField(max_length=9, default="#cd7f32")
+    glow = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["min_vibe"]
+
+
+class VibeConfig(models.Model):
+    """Одна запись (pk=1): bar_length — сколько баллов заполняют шкалу на
+    последнем уровне (и до первого, если уровней нет)."""
+    bar_length = models.PositiveIntegerField(default=10)
+
+    @classmethod
+    def get(cls):
+        return cls.objects.get_or_create(pk=1)[0]

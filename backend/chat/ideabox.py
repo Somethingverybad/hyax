@@ -370,6 +370,63 @@ class VibeView(APIView):
         return Response(self._state(me, target))
 
 
+def vibe_levels_payload():
+    from .models import VibeConfig, VibeLevel
+    return {
+        "bar_length": VibeConfig.get().bar_length,
+        "levels": [{"min_vibe": l.min_vibe, "name": l.name, "color": l.color, "glow": l.glow}
+                   for l in VibeLevel.objects.all()],
+    }
+
+
+class VibeLevelsView(APIView):
+    """GET /api/vibe-levels/ — уровни вайбометра и длина шкалы.
+    PUT (админ) {bar_length, levels: [{min_vibe, name, color, glow}]} — заменить целиком."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(vibe_levels_payload())
+
+    def put(self, request):
+        import re
+        from .models import VibeConfig, VibeLevel
+        me = _me(request)
+        if not me or not _is_admin(me):
+            return Response({"error": "Только для админа"}, status=403)
+        try:
+            bar = int(request.data.get("bar_length") or 10)
+        except (TypeError, ValueError):
+            return Response({"error": "Длина шкалы — число"}, status=400)
+        if not 1 <= bar <= 1_000_000:
+            return Response({"error": "Длина шкалы — от 1 до 1 000 000"}, status=400)
+        raw = request.data.get("levels") or []
+        if not isinstance(raw, list) or len(raw) > 100:
+            return Response({"error": "Не больше 100 уровней"}, status=400)
+        levels, seen = [], set()
+        for item in raw:
+            try:
+                v = int(item.get("min_vibe"))
+            except (TypeError, ValueError, AttributeError):
+                return Response({"error": "У уровня нужен порог — число"}, status=400)
+            name = " ".join(str(item.get("name") or "").split())[:40]
+            color = str(item.get("color") or "").strip().lower()
+            if not name:
+                return Response({"error": f"У уровня с {v} нет названия"}, status=400)
+            if not re.fullmatch(r"#[0-9a-f]{6}", color):
+                return Response({"error": f"Цвет уровня «{name}» — в виде #rrggbb"}, status=400)
+            if v < 1 or v in seen:
+                return Response({"error": f"Порог {v}: должен быть больше нуля и не повторяться"}, status=400)
+            seen.add(v)
+            levels.append(VibeLevel(min_vibe=v, name=name, color=color, glow=bool(item.get("glow"))))
+        with transaction.atomic():
+            cfg = VibeConfig.get()
+            cfg.bar_length = bar
+            cfg.save(update_fields=["bar_length"])
+            VibeLevel.objects.all().delete()
+            VibeLevel.objects.bulk_create(levels)
+        return Response(vibe_levels_payload())
+
+
 class IdeasListView(APIView):
     """GET /api/ideas/?sort=top|new|done|mine&page=1&size=20 — списки идей.
     POST {text} — предложить идею с экрана: ложится в чат человека с ботом

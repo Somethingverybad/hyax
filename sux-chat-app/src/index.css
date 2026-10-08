@@ -1187,13 +1187,15 @@ textarea,
   .aura-flame > span { animation: none; }
 }
 
-/* Вайбометр больше 10: шкала полная и светится (components/Vibometer.tsx). */
+/* Вайбометр: шкала уровня светится его цветом (components/Vibometer.tsx). */
 .vibe-glow-bar {
-  box-shadow: 0 0 8px 1px hsl(var(--primary) / 0.75), 0 0 18px 2px hsl(var(--primary) / 0.35);
+  --vibe-c: hsl(var(--primary));
   animation: vibe-glow 2.4s ease-in-out infinite;
 }
 @keyframes vibe-glow {
-  0%, 100% { box-shadow: 0 0 6px 1px hsl(var(--primary) / 0.6), 0 0 14px 2px hsl(var(--primary) / 0.25); }
-  50% { box-shadow: 0 0 10px 2px hsl(var(--primary) / 0.9), 0 0 24px 4px hsl(var(--primary) / 0.45); }
+  0%, 100% { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--vibe-c) 60%, transparent), 0 0 14px 2px color-mix(in srgb, var(--vibe-c) 25%, transparent); }
+  50% { box-shadow: 0 0 10px 2px color-mix(in srgb, var(--vibe-c) 90%, transparent), 0 0 24px 4px color-mix(in srgb, var(--vibe-c) 45%, transparent); }
 }
-@media (prefers-reduced-motion: reduce) { .vibe-glow-bar { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .vibe-glow-bar { animation: none; box-shadow: 0 0 8px 1px color-mix(in srgb, var(--vibe-c) 70%, transparent); }
+}

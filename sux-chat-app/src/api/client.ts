@@ -345,6 +345,8 @@ export interface NotificationSoundInfo {
 }
 
 export interface VibeState { vibe: number; voted: boolean; can_vote: boolean }
+export interface VibeLevel { min_vibe: number; name: string; color: string; glow: boolean }
+export interface VibeLevelsConfig { bar_length: number; levels: VibeLevel[] }
 export interface IdeaItem {
   id: string; text: string; likes: number; dislikes: number; status: "" | "done" | "hidden";
   created_at: string; done_at: string | null; mine: boolean; my_vote: number;
@@ -1102,6 +1104,17 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  },
+  getVibeLevels: async (): Promise<VibeLevelsConfig> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe-levels/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  saveVibeLevels: async (cfg: VibeLevelsConfig): Promise<VibeLevelsConfig> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe-levels/`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(cfg) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось сохранить");
+    return body;
   },
   raiseVibe: async (profileId: string): Promise<VibeState> => {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders() });
