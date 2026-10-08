@@ -221,6 +221,7 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
 
 /** Регистрации за выбранный период: даты — в часовом поясе админа. */
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const monthFmt = (t: number) => new Date(t).toLocaleDateString("ru-RU", { month: "short", year: "2-digit" });
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDay(d); };
 function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
   const [from, setFrom] = useState(daysAgo(6));
@@ -277,9 +278,9 @@ function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.days.map((d) => ({ ...d, t: new Date(d.date + "T00:00:00").getTime() }))} margin={{ top: 6, right: 4, bottom: 0, left: 0 }} barCategoryGap={2}>
                   <CartesianGrid vertical={false} stroke={pal.grid} strokeOpacity={0.6} />
-                  <XAxis dataKey="t" tickFormatter={dayFmt} minTickGap={22} {...axis} />
+                  <XAxis dataKey="t" tickFormatter={data.unit === "month" ? monthFmt : dayFmt} minTickGap={22} {...axis} />
                   <YAxis allowDecimals={false} width={32} {...axis} />
-                  <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
+                  <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString("ru-RU", data.unit === "month" ? { month: "long", year: "numeric" } : { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
                   <Bar name="регистраций" dataKey="count" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>

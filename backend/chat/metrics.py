@@ -350,13 +350,17 @@ def registrations(date_from, date_to, tz_offset_min=0):
     start = datetime.combine(date_from, dtime.min).replace(tzinfo=dtz.utc) - off
     end = datetime.combine(date_to, dtime.min).replace(tzinfo=dtz.utc) - off + timedelta(days=1)
     qs = Profile.objects.filter(is_bot=False, created_at__gte=start, created_at__lt=end)
+    # Длинный период — по месяцам, иначе столбики сливаются в шум.
+    monthly = (date_to - date_from).days > 92
+    bucket = (lambda d: d.replace(day=1)) if monthly else (lambda d: d)
     days = {}
     for ts in qs.values_list("created_at", flat=True):
-        d = (ts + off).date()
+        d = bucket((ts + off).date())
         days[d] = days.get(d, 0) + 1
-    out_days, d = [], date_from
+    out_days, d = [], bucket(date_from)
     while d <= date_to and len(out_days) < 400:
         out_days.append({"date": d.isoformat(), "count": days.get(d, 0)})
-        d += timedelta(days=1)
+        d = (d.replace(day=28) + timedelta(days=4)).replace(day=1) if monthly else d + timedelta(days=1)
     users = [{"username": u, "created_at": c.isoformat()} for u, c in qs.order_by("-created_at").values_list("username", "created_at")[:100]]
-    return {"from": date_from.isoformat(), "to": date_to.isoformat(), "count": qs.count(), "days": out_days, "users": users}
+    return {"from": date_from.isoformat(), "to": date_to.isoformat(), "count": qs.count(),
+            "unit": "month" if monthly else "day", "days": out_days, "users": users}
