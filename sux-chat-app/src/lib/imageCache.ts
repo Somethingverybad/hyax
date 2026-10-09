@@ -63,6 +63,13 @@ function load(url: string, k: string): Promise<string | null> {
   return job;
 }
 
+/** Достать картинку в память заранее (свой аватар и обложка — при старте),
+ *  чтобы экран, где она нужна, показал её сразу, без скелетона. */
+export function preloadImage(url?: string | null) {
+  const k = url ? keyOf(url) : null;
+  if (url && k && !mem.has(k)) void load(url, k);
+}
+
 /** Адрес картинки из кэша: из памяти — сразу, иначе — после загрузки.
  *  Пока грузится, отдаёт пустую строку (рисуем подложку), не получилось —
  *  исходный адрес. */

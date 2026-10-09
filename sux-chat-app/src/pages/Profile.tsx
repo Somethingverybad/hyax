@@ -14,6 +14,7 @@ import { checkForUpdate, startUpdate, describeUpdateError } from "@/lib/updateCh
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { Aura, DEFAULT_AURA } from "@/components/Aura";
+import { FadeImg } from "@/components/LoadingSkeleton";
 import ImageCropper from "@/components/ImageCropper";
 
 const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
@@ -275,9 +276,7 @@ const ProfilePage = () => {
               поэтому блок выходит за горизонтальные отступы прокрутки. */}
           <div className={mint ? "shrink-0 -mx-[17px] relative pb-[47px]" : "shrink-0 -mx-4 relative"}>
             <div className={mint ? "h-[139px] w-full bg-surface-3 overflow-hidden" : "h-36 w-full bg-surface-3 overflow-hidden"} style={mint ? { boxShadow: "0 4.3px 13.3px rgb(0 0 0 / 0.25)" } : undefined}>
-              {profile?.cover_url && (
-                <img src={mediaUrl(profile.cover_url)} alt="" className="w-full h-full object-cover" />
-              )}
+              {profile?.cover_url && <FadeImg src={mediaUrl(profile.cover_url)} className="w-full h-full" />}
             </div>
 
             <div className="absolute top-2 right-2 flex gap-2">
@@ -314,7 +313,7 @@ const ProfilePage = () => {
             >
               <Aura active={online} owner={profile} size={mint ? 93 : 88} className="w-full h-full">
                 {profile?.avatar_url ? (
-                  <img src={mediaUrl(profile.avatar_url)} alt="" className={mint ? "w-full h-full rounded-[15px] object-cover" : "w-full h-full rounded-[6px] object-cover"} />
+                  <FadeImg src={mediaUrl(profile.avatar_url)} className={mint ? "w-full h-full rounded-[15px]" : "w-full h-full rounded-[6px]"} />
                 ) : (
                   <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
                     {(profile?.username || "?")[0]?.toUpperCase()}

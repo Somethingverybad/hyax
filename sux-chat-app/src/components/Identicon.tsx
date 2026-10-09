@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { useCachedImage } from "@/lib/imageCache";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { mediaUrl } from "@/api/client";
 
 /**
@@ -60,14 +62,16 @@ interface IdenticonProps {
 
 const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) => {
   const cached = useCachedImage(avatarUrl ? mediaUrl(avatarUrl) : null);
+  // Ждали загрузку — проявляем плавно; из памяти — сразу, без мигания.
+  const waited = useRef(false);
   if (avatarUrl) {
-    // Пока картинка достаётся из кэша — подложка того же размера.
-    if (!cached) return <span className={`ui-avatar ${className} rounded-md shrink-0 bg-surface-4 block`} aria-hidden />;
+    // Пока картинка достаётся из кэша — скелетон того же размера.
+    if (!cached) { waited.current = true; return <LoadingSkeleton className={`ui-avatar ${className} rounded-md shrink-0`} />; }
     return (
       <img
         src={cached}
         alt=""
-        className={`ui-avatar ${className} ${avatarUrl ? "rounded-md" : "rounded-full"} object-cover shrink-0 select-none`}
+        className={`ui-avatar ${className} ${avatarUrl ? "rounded-md" : "rounded-full"} object-cover shrink-0 select-none${waited.current ? " ui-fade-in" : ""}`}
         draggable={false}
         // Списки на десятки строк: без этого все аватары декодировались на
         // главном потоке разом при открытии, и первая прокрутка запиналась.

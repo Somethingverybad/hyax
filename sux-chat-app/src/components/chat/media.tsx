@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { createPortal } from "react-dom";
 import { Paperclip, Download, Play, Pause, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -111,16 +112,9 @@ export const previewSize = (dims: { w: number; h: number }) => {
 export const dimsOf = (w?: number | null, h?: number | null) => (w && h ? { w, h } : null);
 
 /** Заглушка на время загрузки медиа: место уже зарезервировано по размерам,
- *  а внутри — медленно плывущие фигуры в духе супрематизма (квадрат,
- *  круг, брусок), чтобы пауза читалась как «грузится», а не как дыра. */
+ *  а внутри — скелетон «Мяты» (палочки «X» играют в пинг-понг). */
 export const MediaSkeleton = ({ className }: { className?: string }) => (
-  <svg className={cn("supra block w-full h-full", className)} viewBox="0 0 200 160" preserveAspectRatio="xMidYMid slice" aria-hidden>
-    <rect width="200" height="160" fill="hsl(var(--surface-3))" />
-    <rect className="supra-square" x="52" y="34" width="70" height="70" fill="hsl(var(--primary))" />
-    <circle className="supra-circle" cx="150" cy="116" r="22" fill="hsl(var(--foreground) / 0.85)" />
-    <rect className="supra-bar" x="20" y="120" width="96" height="9" fill="hsl(var(--foreground) / 0.55)" />
-    <rect className="supra-bar2" x="130" y="28" width="7" height="60" fill="hsl(var(--amber))" />
-  </svg>
+  <LoadingSkeleton className={cn("block w-full h-full", className)} />
 );
 
 /** Треугольная маска — форма наших видео-сообщений вместо круглых «кружков». */

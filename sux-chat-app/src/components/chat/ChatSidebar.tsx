@@ -29,6 +29,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api, mediaUrl } from "@/api/client";
+import { preloadImage } from "@/lib/imageCache";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
@@ -266,6 +267,9 @@ const ChatSidebar = ({
       if (profile && profile.id) {
         setCurrentUser(profile);
         writeCache("user", profile);
+        // Свой аватар и обложку — в память сразу: профиль откроется без скелетона.
+        if (profile.avatar_url) preloadImage(mediaUrl(profile.avatar_url));
+        if ((profile as { cover_url?: string | null }).cover_url) preloadImage(mediaUrl((profile as { cover_url?: string | null }).cover_url!));
       } else {
         console.warn("No valid user profile found");
       }

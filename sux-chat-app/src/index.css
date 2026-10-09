@@ -926,15 +926,14 @@ textarea,
   100% { background: transparent; }
 }
 
-/* Скелетон медиа (MediaSkeleton): фигуры медленно плывут, как на холсте. */
-.supra-square { transform-origin: 87px 69px; animation: supra-turn 6s ease-in-out infinite; }
-.supra-circle { transform-origin: 150px 116px; animation: supra-breathe 3.2s ease-in-out infinite; }
-.supra-bar { animation: supra-slide 4.5s ease-in-out infinite; }
-.supra-bar2 { transform-origin: 133px 58px; animation: supra-turn 9s linear infinite reverse; }
-@keyframes supra-turn { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg) translate(6px, -4px); } }
-@keyframes supra-breathe { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.18); opacity: .6; } }
-@keyframes supra-slide { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(36px); } }
-@media (prefers-reduced-motion: reduce) { .supra * { animation: none !important; } }
+/* Скелетон загрузки (LoadingSkeleton): мягкая мятная подложка, поверх —
+   Lottie с пинг-понгом палочек «X». Пока под аурой скелетон, сама аура
+   погашена: свечение вокруг пустого места выглядело как сбой. */
+.ui-skel { background: linear-gradient(150deg, hsl(var(--surface-3)) 0%, hsl(var(--surface-4)) 100%); }
+.aura-flame { transition: opacity 300ms ease-out; }
+.aura-wrap:has(.ui-avatar-loading) > .aura-flame { opacity: 0; }
+.ui-fade-in { animation: ui-fade-in 300ms ease-out both; }
+@keyframes ui-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 
 /* ── Форма темы ────────────────────────────────────────────────────────────────

@@ -1,9 +1,11 @@
-import type { ImgHTMLAttributes } from "react";
+import { useRef, type ImgHTMLAttributes } from "react";
 import { useCachedImage } from "@/lib/imageCache";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 /** <img> через кэш картинок (lib/imageCache): аватары групп, обложки. */
 export default function CachedImg({ src, className, ...rest }: ImgHTMLAttributes<HTMLImageElement> & { src: string }) {
   const s = useCachedImage(src);
-  if (!s) return <span className={`${className || ""} block bg-surface-4`} aria-hidden />;
-  return <img src={s} className={className} draggable={false} {...rest} />;
+  const waited = useRef(false);
+  if (!s) { waited.current = true; return <LoadingSkeleton className={className} />; }
+  return <img src={s} className={`${className || ""}${waited.current ? " ui-fade-in" : ""}`} draggable={false} {...rest} />;
 }
