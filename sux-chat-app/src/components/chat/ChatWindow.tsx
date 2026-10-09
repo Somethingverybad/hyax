@@ -1361,6 +1361,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     textareaRef.current?.blur();
     if (Capacitor.isNativePlatform()) import("@capacitor/keyboard").then(({ Keyboard }) => Keyboard.hide()).catch(() => {});
   };
+  /** После переезда ленты за клавиатурой: в лог — реальный зазор между
+   *  последним сообщением и панелью ввода (по геометрии), и принудительная
+   *  перерисовка ленты. Баг-репорт 8ce658e6: после закрытия клавиатуры
+   *  сообщения висели выше на её высоту, хотя по логу прокрутка и отступ
+   *  были верными, — похоже, WebKit не перерисовал ленту под стеклянной
+   *  шапкой. Смена прозрачности на кадр заставляет слой отрисоваться заново. */
+  const settleKb = (height: number) => {
+    const n = scrollRef.current, f = feedRef.current, cs = composeRef.current;
+    if (!n || !f) return;
+    const last = f.lastElementChild as HTMLElement | null;
+    const gap = last && cs ? Math.round(cs.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : -1;
+    const dist = Math.round(n.scrollHeight - n.scrollTop - n.clientHeight);
+    applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(f).transform}`);
+    // Пока лента доводится к непрочитанным, она спрятана (opacity: 0 из
+    // React) — не трогаем, иначе она проявится раньше времени.
+    if (n.style.opacity === "0") return;
+    n.style.opacity = "0.999";
+    requestAnimationFrame(() => { n.style.opacity = ""; });
+  };
   useEffect(() => {
     let cleanup: ReturnType<typeof setTimeout> | undefined;
     const onKb = (ev: Event) => {
@@ -1403,7 +1422,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         const late = ts ? Math.min(Math.max(0, Date.now() - ts), duration - 16) : 0;
         feed.style.transition = `transform ${duration}ms ${ease || "cubic-bezier(0.17, 0.59, 0.4, 1)"} ${-Math.round(late)}ms`;
         feed.style.transform = "translateY(0)";
-        cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; }, duration - late + 60);
+        cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; settleKb(height); }, duration - late + 60);
       });
     };
     window.addEventListener("hyax:keyboard", onKb);
