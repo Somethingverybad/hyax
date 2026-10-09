@@ -2766,7 +2766,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {mintM && (onBack || title || peer || isGroup) && (
-        <div ref={headerRef} className="mint-glass mint-glass-over relative z-20 shrink-0 pad-safe-top" style={{ marginBottom: "calc(-1 * var(--glass-h, 0px))" }}>
+        <div ref={headerRef} className="mint-glass mint-glass-over mint-glass-flat relative z-20 shrink-0 pad-safe-top" style={{ marginBottom: "calc(-1 * var(--glass-h, 0px))" }}>
           <div className="mint-head !pb-[11px] !pt-[19px]">
             {onBack ? (
               <button type="button" onClick={onBack} aria-label="Назад" className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">

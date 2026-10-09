@@ -189,3 +189,11 @@
   -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
   mask-image: linear-gradient(to bottom, #000 62%, transparent);
 }
+/* Шапка чата — без размытия, только растворение. Размытие над лентой iOS
+   пересчитывал на каждом кадре переезда ленты за клавиатурой и не
+   перерисовывал её: сообщения висели выше на высоту клавиатуры, хотя по
+   геометрии стояли на месте (баг-репорты 8ce658e6, 85c94555: kbcheck gap=0). */
+[data-shape="soft"] .mint-glass-flat::before {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  background: linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.9) 50%, hsl(var(--background) / 0) 100%);
+}
