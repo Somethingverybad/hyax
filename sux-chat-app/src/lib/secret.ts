@@ -223,6 +223,7 @@ export interface SecretMedia {
   h?: number | null;
   dur?: number | null;
   mi?: boolean;       // кружок с фронтальной камеры — зеркалить
+  fl?: boolean;       // треугольник вершиной вниз
   th?: string | null; // миниатюра JPEG, base64 — пока файл качается
 }
 export interface SecretPayload { t: string; e?: unknown[]; m?: SecretMedia }

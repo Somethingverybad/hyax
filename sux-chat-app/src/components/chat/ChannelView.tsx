@@ -6,7 +6,7 @@ import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -40,7 +40,7 @@ interface Channel {
 interface Post {
   id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null; poster_url?: string | null;
   file_width?: number | null; file_height?: number | null; album_id?: string | null;
-  video_url?: string; video_duration?: number | null; video_mirror?: boolean;
+  video_url?: string; video_duration?: number | null; video_mirror?: boolean; video_flip?: boolean;
   download_only?: boolean; sender?: { id: string; username: string };
   reactions?: ReactionSummary[]; reactions_total?: number;
   comments_count?: number; views_count?: number;
@@ -118,7 +118,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
   if (post.video_url) {
     return (
       <div className="mt-2">
-        <VideoNote url={post.video_url} seconds={post.video_duration || 0} own={false} mirror={post.video_mirror} />
+        <VideoNote url={post.video_url} seconds={post.video_duration || 0} own={false} mirror={post.video_mirror} flip={post.video_flip} />
       </div>
     );
   }
@@ -294,17 +294,17 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   };
 
   /** Загрузка + публикация видео-«треугольника»; при ошибке пост остаётся с повтором. */
-  const publishNote = async (temp: ReturnType<typeof addPending>, file: File, seconds: number, mirror: boolean) => {
+  const publishNote = async (temp: ReturnType<typeof addPending>, file: File, seconds: number, mirror: boolean, flip = false) => {
     try {
       temp.restart();
       const uploaded = await api.uploadFile(file, undefined, (p) => temp.progress(p));
       temp.progress(100);
-      temp.confirm(await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror));
+      temp.confirm(await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror, undefined, flip));
       await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch {
       toast.error("Не удалось опубликовать видео — нажми «Повторить»");
-      temp.fail(() => void publishNote(temp, file, seconds, mirror));
+      temp.fail(() => void publishNote(temp, file, seconds, mirror, flip));
     }
   };
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -315,6 +315,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   // Видео-«треугольник»: тап — начать запись, тап — закончить и опубликовать.
   const { recording, seconds: recSeconds, stream: recStream, start: startRec, stop: stopRec } = useMediaRecorder();
   const [facing, setFacing] = useState<"user" | "environment">("user");
+  // Треугольник вершиной вниз — переключается прямо во время записи.
+  const [noteFlip, setNoteFlip] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
 
   const pick = async (e: React.ChangeEvent<HTMLInputElement>, mode: AttachMode) => {
@@ -368,8 +370,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       if (!result) return;
       setSending(true);
       const mirror = facing === "user";
-      temp = addPending({ video_url: URL.createObjectURL(result.file), video_duration: result.seconds, video_mirror: mirror, _progress: 0 });
-      await publishNote(temp, result.file, result.seconds, mirror);
+      temp = addPending({ video_url: URL.createObjectURL(result.file), video_duration: result.seconds, video_mirror: mirror, video_flip: noteFlip, _progress: 0 });
+      await publishNote(temp, result.file, result.seconds, mirror, noteFlip);
     } catch {
       temp?.drop();
       toast.error("Не удалось записать видео");
@@ -859,7 +861,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           )}
           {recording && (
             <div className="flex items-center gap-3 mb-2">
-              <LivePreview stream={recStream} dimmed={false} facing={facing} />
+              <LivePreview stream={recStream} dimmed={false} facing={facing} flip={noteFlip} onToggleFlip={() => setNoteFlip((v) => !v)} />
               <div className="flex-1 text-sm">
                 <p className="font-semibold text-primary">Запись · {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:{String(recSeconds % 60).padStart(2, "0")}</p>
                 <p className="text-muted-foreground text-xs">Тап по треугольнику — опубликовать</p>
@@ -917,6 +919,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               </button>
             ) : (
               <>
+                {recording && (
+                  <button type="button" onClick={() => setNoteFlip((v) => !v)} className="w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center"
+                    aria-label={noteFlip ? "Треугольник вершиной вверх" : "Треугольник вершиной вниз"} aria-pressed={noteFlip}>
+                    <TriangleIcon className={`w-5 h-5 transition-transform duration-300${noteFlip ? " rotate-180" : ""}`} />
+                  </button>
+                )}
                 {recording && (
                   <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center" aria-label="Сменить камеру">
                     <SwitchCamera className="w-5 h-5" />

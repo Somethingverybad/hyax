@@ -933,6 +933,35 @@ textarea,
 .aura-flame { transition: opacity 300ms ease-out; }
 .aura-wrap:has(.ui-avatar-loading) > .aura-flame { opacity: 0; }
 .ui-fade-in { animation: ui-fade-in 300ms ease-out both; }
+
+/* Видео-сообщения — стеклянно-мятные треугольники (GlassTriangle в media.tsx):
+   кромка — градиент палочек «X», мягкая тень по форме, блик стекла сверху. */
+.tri-shadow { filter: drop-shadow(0 5px 11px rgb(0 0 0 / 0.2)); }
+/* Переворот вершиной вниз/вверх: оборот вокруг горизонтальной оси. */
+.tri-turn { animation: tri-turn 380ms cubic-bezier(0.45, 0, 0.55, 1); }
+@keyframes tri-turn {
+  0% { transform: perspective(600px) rotateX(0deg); }
+  47%, 53% { transform: perspective(600px) rotateX(90deg) scale(0.96); }
+  100% { transform: perspective(600px) rotateX(0deg); }
+}
+@media (prefers-reduced-motion: reduce) { .tri-turn { animation: none; } }
+.tri-play-pos { position: absolute; inset: 0; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 34px; pointer-events: none; }
+[data-flip] .tri-play-pos { align-items: flex-start; padding-bottom: 0; padding-top: 34px; }
+.tri-pill-pos { bottom: 8px; }
+[data-flip] .tri-pill-pos { bottom: auto; top: 8px; }
+/* Длительность — тёмное мятное стекло с белым текстом: читается на любом кадре. */
+.tri-pill {
+  background: rgb(47 91 83 / 0.55); color: #fff;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid rgb(255 255 255 / 0.25);
+}
+.tri-rim { background: linear-gradient(160deg, #C7F964 0%, #8DBB5C 40%, #2F5B53 100%); }
+.tri-sheen { background: linear-gradient(160deg, rgb(255 255 255 / 0.4) 0%, rgb(255 255 255 / 0.12) 28%, transparent 48%); }
+.tri-glass {
+  background: hsl(var(--surface-1) / 0.6); color: hsl(var(--primary));
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid rgb(255 255 255 / 0.45); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18);
+}
 @keyframes ui-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 

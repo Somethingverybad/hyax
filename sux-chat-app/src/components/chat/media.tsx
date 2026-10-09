@@ -120,8 +120,57 @@ export const MediaSkeleton = ({ className }: { className?: string }) => (
 /** Треугольная маска — форма наших видео-сообщений вместо круглых «кружков». */
 export const TRIANGLE = "polygon(50% 0%, 100% 100%, 0% 100%)";
 
+/** Треугольник со скруглёнными углами (clip-path: path в пикселях — у
+ *  видео-сообщений размер постоянный). d — насколько срезан каждый угол;
+ *  flip — вершиной вниз. Команды пути одинаковые в обе стороны, поэтому
+ *  переворот анимируется переходом clip-path. */
+export function triClip(w: number, h: number, flip = false, d = Math.min(w, h) * 0.09) {
+  const T = [w / 2, flip ? h : 0], R = [w, flip ? 0 : h], L = [0, flip ? 0 : h];
+  const along = (a: number[], b: number[]) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    return [a[0] + (dx * d) / len, a[1] + (dy * d) / len];
+  };
+  const f = (p: number[]) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
+  return `path('M ${f(along(T, R))} L ${f(along(R, T))} Q ${f(R)} ${f(along(R, L))} L ${f(along(L, R))} Q ${f(L)} ${f(along(L, T))} L ${f(along(T, L))} Q ${f(T)} ${f(along(T, R))} Z')`;
+}
+
+/** Стеклянно-мятная рамка видео-сообщения: кромка — градиент как у палочек
+ *  «X», мягкая тень, блик стекла поверх видео. Внутренний треугольник
+ *  отступает от кромки на rim по нормали к каждой стороне (вершина у
+ *  треугольника острая, поэтому сверху отступ больше — иначе боковая кромка
+ *  выходила вдвое тоньше нижней). */
+export const GlassTriangle = ({ size, rim = 3, flip = false, className, innerClassName, onClick, children }: {
+  size: number; rim?: number; flip?: boolean; className?: string; innerClassName?: string; onClick?: () => void; children?: React.ReactNode;
+}) => {
+  const apex = rim * Math.sqrt(5);             // rim / sin(угла при вершине / 2), tg = 1/2
+  const h = size - rim - apex;
+  // Переворот — как карточка вокруг горизонтальной оси: форма меняется в
+  // середине, когда треугольник стоит ребром и подмены не видно.
+  const [shown, setShown] = useState(flip);
+  const [turning, setTurning] = useState(false);
+  useEffect(() => {
+    if (flip === shown) { setTurning(false); return; }
+    setTurning(true);
+    const half = window.setTimeout(() => setShown(flip), 180);
+    const end = window.setTimeout(() => setTurning(false), 380);
+    return () => { window.clearTimeout(half); window.clearTimeout(end); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flip]);
+  return (
+    <div className={cn("relative shrink-0 tri-shadow", turning && "tri-turn", className)} data-flip={shown ? "1" : undefined}
+      style={{ width: size, height: size }} onClick={onClick}>
+      <div className="absolute inset-0 tri-rim" style={{ clipPath: triClip(size, size, shown) }} />
+      <div className={cn("absolute overflow-hidden", innerClassName ?? "bg-black")}
+        style={{ top: shown ? rim : apex, left: (size - h) / 2, width: h, height: h, clipPath: triClip(h, h, shown) }}>
+        {children}
+        <div className="tri-sheen absolute inset-0 pointer-events-none" />
+      </div>
+    </div>
+  );
+};
+
 /** Живое изображение с камеры во время записи. */
-export const LivePreview = ({ stream, dimmed, facing }: { stream: MediaStream | null; dimmed: boolean; facing: "user" | "environment" }) => {
+export const LivePreview = ({ stream, dimmed, facing, flip, onToggleFlip }: { stream: MediaStream | null; dimmed: boolean; facing: "user" | "environment"; flip?: boolean; onToggleFlip?: () => void }) => {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (ref.current && stream) {
@@ -130,13 +179,15 @@ export const LivePreview = ({ stream, dimmed, facing }: { stream: MediaStream | 
     }
   }, [stream]);
   return (
-    <video
-      ref={ref}
-      muted
-      playsInline
-      className={cn("w-40 h-40 object-cover transition-opacity", dimmed && "opacity-40")}
-      style={{ clipPath: TRIANGLE, transform: facing === "user" ? "scaleX(-1)" : undefined }}
-    />
+    <GlassTriangle size={160} flip={flip} onClick={onToggleFlip}>
+      <video
+        ref={ref}
+        muted
+        playsInline
+        className={cn("absolute inset-0 w-full h-full object-cover transition-opacity", dimmed && "opacity-40")}
+        style={{ transform: facing === "user" ? "scaleX(-1)" : undefined }}
+      />
+    </GlassTriangle>
   );
 };
 
@@ -289,10 +340,11 @@ export const MessageFile = ({ raw, name, isOwn, onSave }: {
   );
 };
 
-export const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds: number; own: boolean; mirror?: boolean }) => {
+export const VideoNote = ({ url, seconds, mirror, flip }: { url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean }) => {
   const src = useMediaUrl(url);
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [ready, setReady] = useState(false);
 
   // Первый кадр вместо чёрного треугольника: WebKit рисует видео только
   // после перемотки, поэтому подталкиваем его на первый же кадр.
@@ -323,14 +375,8 @@ export const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds:
   const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <div className="relative w-44 h-44" onClick={toggle}>
-      {/* Цветная подложка-треугольник даёт обводку по краю: свои — алая,
-          входящие — зелёная. Видео вписано внутрь с отступом, и кромка
-          подложки читается как контур треугольника. */}
-      <div
-        className={cn("msg-note-edge absolute inset-0", own ? "bg-primary" : "bg-success")}
-        style={{ clipPath: TRIANGLE }}
-      />
+    <GlassTriangle size={176} flip={flip} onClick={toggle} innerClassName={ready ? "bg-black" : "bg-transparent"}>
+      {!ready && <LoadingSkeleton className="absolute inset-0" />}
       <video
         ref={ref}
         src={src}
@@ -338,31 +384,26 @@ export const VideoNote = ({ url, seconds, own, mirror }: { url: string; seconds:
         muted={!playing}
         preload="metadata"
         onLoadedMetadata={showFirstFrame}
-        onLoadedData={showFirstFrame}
+        onLoadedData={() => { showFirstFrame(); setReady(true); }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
-        className="absolute inset-[3px] object-cover bg-black"
-        style={{
-          clipPath: TRIANGLE,
-          width: "calc(100% - 6px)",
-          height: "calc(100% - 6px)",
-          // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
-          // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
-          transform: mirror ? "scaleX(-1)" : undefined,
-        }}
+        className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", ready ? "opacity-100" : "opacity-0")}
+        // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
+        // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
+        style={{ transform: mirror ? "scaleX(-1)" : undefined }}
       />
-      {!playing && (
-        <span className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
-          <span className="w-11 h-11 flex items-center justify-center bg-black/50">
-            <Play className="w-5 h-5 text-white" />
+      {!playing && ready && (
+        <span className="tri-play-pos">
+          <span className="tri-glass w-11 h-11 rounded-full flex items-center justify-center">
+            <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
           </span>
         </span>
       )}
-      <span className="absolute bottom-1 right-1 text-[11px] px-1 bg-black/60 text-white pointer-events-none">
+      <span className="tri-pill tri-pill-pos absolute left-1/2 -translate-x-1/2 rounded-full px-2 text-[11px] leading-[16px] tabular-nums pointer-events-none">
         {label}
       </span>
-    </div>
+    </GlassTriangle>
   );
 };
 

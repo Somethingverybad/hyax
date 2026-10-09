@@ -574,6 +574,7 @@ def _forward_copy(src, target, profile, album_id=None):
         video_url=src.video_url,
         video_duration=src.video_duration,
         video_mirror=src.video_mirror,
+        video_flip=src.video_flip,
         download_only=src.download_only,
         album_id=album_id,
         forwarded_from=origin,
@@ -1467,6 +1468,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 'video_url': video_url,
                 'video_duration': video_duration,
                 'video_mirror': str(request.data.get('video_mirror') or '').lower() in ('1', 'true', 'yes'),
+                'video_flip': str(request.data.get('video_flip') or '').lower() in ('1', 'true', 'yes'),
             })
         
         # Сохраняем с данными

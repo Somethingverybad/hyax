@@ -6,7 +6,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -20,6 +20,7 @@ import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
@@ -54,7 +55,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, type IndexedSticker } from "@/lib/stickerIndex";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
-import { LivePreview, TRIANGLE, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
+import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
@@ -113,6 +114,7 @@ interface Message {
   video_duration?: number | null;
   /** Видео-заметка снята фронталкой — воспроизводить зеркально (как в превью). */
   video_mirror?: boolean;
+  video_flip?: boolean;
   /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
   /** Кадр-превью видео с сервера. */
   poster_url?: string | null;
@@ -152,7 +154,7 @@ interface Message {
    *  запись (голос/кружок) лежит в _rec — раньше пузырь просто исчезал и
    *  снятое пропадало. */
   _failed?: boolean;
-  _rec?: VoiceRecording & { mirror: boolean; replyToId?: string };
+  _rec?: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string };
   /** Вложение, которое не доехало, — для кнопки «Повторить». */
   _att?: Attach;
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
@@ -424,6 +426,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Фронтальная/задняя камера для видео-сообщений (выбор до записи: удержание
   // занимает единственный палец, переключать во время съёмки нечем).
   const [facing, setFacing] = useState<"user" | "environment">("user");
+  // Видео-сообщение вершиной вниз; переключается и до записи, и во время неё.
+  const [noteFlip, setNoteFlip] = useState(false);
+  const noteFlipRef = useRef(false);
+  const toggleNoteFlip = () => { noteFlipRef.current = !noteFlipRef.current; setNoteFlip(noteFlipRef.current); recHaptic(false); };
   const pressStartedAtRef = useRef(0);
   // Жест записи: удержание захватывает устройство, тап только переключает режим.
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -659,7 +665,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       case "video": return { file_url: url, file_name: /\.(mp4|mov|m4v|webm)$/i.test(m.name) ? m.name : "video.mp4", download_only: false, poster_url: m.th ? `data:image/jpeg;base64,${m.th}` : null };
       case "audio": return { file_url: url, file_name: m.name || "audio.mp3", download_only: false };
       case "voice": return { voice_url: url, voice_duration: m.dur ?? null, file_url: null };
-      case "round": return { video_url: url, video_duration: m.dur ?? null, video_mirror: !!m.mi, file_url: null };
+      case "round": return { video_url: url, video_duration: m.dur ?? null, video_mirror: !!m.mi, video_flip: !!m.fl, file_url: null };
       default: return { file_url: url, file_name: m.name || "file", file_size: m.size, download_only: true };
     }
   };
@@ -2317,6 +2323,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const localUrl = URL.createObjectURL(result.file);
     const mirror = facing === "user";
+    const flip = noteFlipRef.current;
     // Ответ голосовым или кружком: цитата из панели ответа уходит вместе с
     // записью — раньше она просто терялась, и запись улетала обычным сообщением.
     const reply = replyTo;
@@ -2330,23 +2337,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       sender: { id: userId } as Profile,
       created_at: new Date().toISOString(),
       ...(result.kind === "video"
-        ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror }
+        ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror, video_flip: flip }
         : { voice_url: localUrl, voice_duration: result.seconds }),
       reply_to: reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
       pending: true,
       _key: tempId,
       _progress: 0,
-      _rec: { ...result, mirror, replyToId: reply?.id },
+      _rec: { ...result, mirror, flip, replyToId: reply?.id },
     };
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
-    await sendRecording(tempId, { ...result, mirror });
+    await sendRecording(tempId, { ...result, mirror, flip });
   };
 
   /** Отправка записи из пузыря tempId; повтор после ошибки — та же функция. */
-  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean; replyToId?: string }) => {
+  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string }) => {
     if (!chatId) return;
     setUploading(true);
     const isVideo = result.kind === "video";
@@ -2357,12 +2364,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (isSecret) {
         sent = await sendSecretFile(result.file, {
           k: isVideo ? "round" : "voice", mime: result.file.type || (isVideo ? "video/mp4" : "audio/webm"),
-          name: isVideo ? "round.mp4" : "voice", dur: result.seconds, mi: mirror,
+          name: isVideo ? "round.mp4" : "voice", dur: result.seconds, mi: mirror, fl: !!result.flip,
         }, null, result.replyToId, (p) => setProgressFor(tempId, p));
         setMessages(prev => {
           const local = prev.find((m) => m.id === tempId);
           const keep: Partial<Message> = isVideo
-            ? { video_url: local?.video_url, video_duration: local?.video_duration, video_mirror: local?.video_mirror, file_url: null }
+            ? { video_url: local?.video_url, video_duration: local?.video_duration, video_mirror: local?.video_mirror, video_flip: local?.video_flip, file_url: null }
             : { voice_url: local?.voice_url, voice_duration: local?.voice_duration, file_url: null };
           blobRef.current.set(sent.id, keep);
           return prev.some(m => m.id === sent.id)
@@ -2378,7 +2385,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         setProgressFor(tempId, 100);
         // Фронтальная камера снимается в зеркальном (селфи) виде — помечаем,
         // чтобы воспроизведение в чате отразилось так же. Сам файл не меняем.
-        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror, result.replyToId);
+        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror, result.replyToId, !!result.flip);
       } else {
         const uploaded = await api.uploadVoice(result.file, (p) => setProgressFor(tempId, p));
         setProgressFor(tempId, 100);
@@ -3236,13 +3243,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <StickerView url={message.sticker.file_url} alt={message.sticker.emoji || "Стикер"} className="w-32 h-32 object-contain" />
                       )}
 
-                      {/* Видео-сообщение: треугольник вершиной вверх */}
+                      {/* Видео-сообщение: треугольник вершиной вверх (или вниз) */}
                       {message.video_url && (
                         <VideoNote
                           url={message.video_url}
                           seconds={message.video_duration || 0}
                           own={isOwn}
                           mirror={message.video_mirror}
+                          flip={message.video_flip}
                         />
                       )}
 
@@ -3761,16 +3769,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           
 
           {recordKind === "video" && (recording || recPhase === "starting") && (
-            <div className="mb-2 flex justify-center">
+            <div className="mb-2 flex justify-center items-center gap-3">
+              {/* Распорка того же размера, что и кнопка справа: треугольник — по центру. */}
+              <span className="w-10 shrink-0" aria-hidden />
               {recording ? (
-                <LivePreview stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={facing} />
+                <LivePreview stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={facing} flip={noteFlip} onToggleFlip={toggleNoteFlip} />
               ) : (
                 // Камера ещё просыпается — рамка треугольника на месте сразу.
-                <div className="relative w-40 h-40">
-                  <div className="absolute inset-0 bg-surface-3 animate-pulse" style={{ clipPath: TRIANGLE }} />
-                  <Loader2 className="absolute left-1/2 top-[62%] -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-muted-foreground animate-spin" />
-                </div>
+                <GlassTriangle size={160} flip={noteFlip} onClick={toggleNoteFlip} innerClassName="bg-transparent">
+                  <LoadingSkeleton className="absolute inset-0" />
+                </GlassTriangle>
               )}
+              <button type="button" onClick={toggleNoteFlip} onPointerDown={(e) => e.stopPropagation()}
+                className="tri-glass w-10 h-10 shrink-0 rounded-full flex items-center justify-center"
+                aria-label={noteFlip ? "Треугольник вершиной вверх" : "Треугольник вершиной вниз"} aria-pressed={noteFlip}>
+                <TriangleIcon className={cn("w-[18px] h-[18px] transition-transform duration-300", noteFlip && "rotate-180")} />
+              </button>
             </div>
           )}
 
@@ -3993,6 +4007,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </Button>
             ) : (
               <>
+                {recordKind === "video" && !recording && (
+                  <button
+                    type="button"
+                    onClick={toggleNoteFlip}
+                    disabled={uploading}
+                    className="ui-compose-btn h-11 w-11 shrink-0 rounded-md border bg-surface-2 text-foreground border-border flex items-center justify-center"
+                    title={noteFlip ? "Треугольник вершиной вниз (нажми — вверх)" : "Треугольник вершиной вверх (нажми — вниз)"}
+                    aria-label={noteFlip ? "Треугольник вершиной вверх" : "Треугольник вершиной вниз"}
+                    aria-pressed={noteFlip}
+                  >
+                    <TriangleIcon className={cn("w-5 h-5 transition-transform duration-300", noteFlip && "rotate-180")} />
+                  </button>
+                )}
                 {recordKind === "video" && !recording && (
                   <button
                     type="button"
