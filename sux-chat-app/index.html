@@ -30,6 +30,36 @@
   </head>
 
   <body>
+    <!-- Заставка при запуске приложения: логотип собирается (public/splash.mp4)
+         на белом — системный сплэш тоже белый, переход бесшовный. Уходит, когда
+         ролик доиграл и приложение отрисовалось (событие hyax:ready из App.tsx);
+         не дольше 10 с на случай сбоя. Только в приложениях, не в браузере. -->
+    <div id="boot-splash" style="position:fixed;inset:0;z-index:2147483647;background:#fff;display:none;align-items:center;justify-content:center;transition:opacity 280ms ease-out">
+      <video id="boot-video" src="./splash.mp4" muted playsinline webkit-playsinline preload="auto" style="width:min(100vw,520px);height:auto;pointer-events:none"></video>
+    </div>
+    <script>
+      (function () {
+        var el = document.getElementById("boot-splash");
+        var cap = window.Capacitor;
+        var isApp = (cap && cap.isNativePlatform && cap.isNativePlatform()) || location.protocol === "capacitor:"
+          || /Electron/.test(navigator.userAgent) || (location.hostname === "localhost" && /Android/.test(navigator.userAgent));
+        if (!isApp) { el.parentNode.removeChild(el); return; }
+        el.style.display = "flex";
+        var v = document.getElementById("boot-video"), ended = false, ready = false, gone = false;
+        function done() {
+          if (gone || !ended || !ready) return;
+          gone = true; el.style.opacity = "0";
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+        }
+        v.addEventListener("ended", function () { ended = true; done(); });
+        v.addEventListener("error", function () { ended = true; done(); });
+        window.addEventListener("hyax:ready", function () { ready = true; done(); });
+        setTimeout(function () { ended = true; done(); }, 6500);
+        setTimeout(function () { ended = true; ready = true; done(); }, 10000);
+        var p = v.play && v.play();
+        if (p && p.catch) p.catch(function () { ended = true; done(); });
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
