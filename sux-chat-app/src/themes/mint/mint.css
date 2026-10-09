@@ -94,21 +94,24 @@
 .mint-compose > * { order: 3; }
 .mint-compose > .mint-stk { order: 0; }
 .mint-compose > .mint-field-wrap { order: 1; }
-.mint-compose > .mint-attach-wrap { order: 2; margin-left: -72px; margin-right: 12px; margin-bottom: 4px; z-index: 5; }
+.mint-compose > .mint-attach-wrap { order: 2; margin-left: -64px; margin-right: 8px; margin-bottom: 1px; z-index: 5; }
 .mint-compose :not(.mint-attach-wrap) > :is(.ui-compose-btn, .ui-compose-send) { width: 40px !important; height: 40px !important; border-radius: 999px !important; }
 .mint-compose :not(.mint-attach-wrap) > .ui-compose-btn:not(.bg-foreground) {
   background: var(--mint-surface) !important; color: var(--mint-ink) !important;
   border: var(--mint-border) !important; box-shadow: var(--mint-shadow) !important;
 }
 .mint-compose .mint-attach-wrap > button {
-  width: 56px; height: 32px; border-radius: 999px;
+  /* Как в макете: правый сегмент самой таблетки — во всю её высоту, прижат
+     к краю, скругление по форме таблетки. */
+  width: 55px; height: 38px; border-radius: 19px;
   background: rgb(52 92 84 / 0.1) !important; color: var(--mint-ink);
   border: 0 !important; box-shadow: none !important;
 }
 [data-base="dark"] .mint-compose .mint-attach-wrap > button { background: hsl(var(--accent) / 0.1) !important; }
 .mint-compose .ui-compose-field {
-  min-height: 40px; border-radius: 20px !important; padding: 9px 76px 9px 16px !important;
-  font-size: 16px; border: var(--mint-border) !important; box-shadow: var(--mint-shadow) !important;
+  display: block; min-height: 40px; height: 40px; border-radius: 20px !important; padding: 7px 66px 7px 16px !important;
+  font-size: 16px; line-height: 24px; box-sizing: border-box;
+  border: var(--mint-border) !important; box-shadow: var(--mint-shadow) !important;
 }
 .mint-compose .ui-compose-field::placeholder { color: var(--mint-muted); }
 

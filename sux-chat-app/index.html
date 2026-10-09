@@ -35,7 +35,7 @@
          белый, переход бесшовный. Уходит, когда анимация доиграла и приложение
          отрисовалось (событие hyax:ready из App.tsx); не дольше 10 с на случай
          сбоя. Только в приложениях: в браузере плеер даже не грузится. -->
-    <div id="boot-splash" style="position:fixed;inset:0;z-index:2147483647;background:#fff;display:none;align-items:center;justify-content:center;transition:opacity 280ms ease-out">
+    <div id="boot-splash" style="position:fixed;inset:0;z-index:2147483647;background:#F4F8F1;display:none;align-items:center;justify-content:center;transition:opacity 280ms ease-out">
       <div id="boot-anim" style="width:min(100vw,520px);height:min(100vw,520px);pointer-events:none"></div>
     </div>
     <script>
@@ -45,7 +45,27 @@
         var isApp = (cap && cap.isNativePlatform && cap.isNativePlatform()) || location.protocol === "capacitor:"
           || /Electron/.test(navigator.userAgent) || (location.hostname === "localhost" && /Android/.test(navigator.userAgent));
         if (!isApp) { el.parentNode.removeChild(el); return; }
+        // Цвета — под тему: фон темы, в тёмной буквы светлые (см. themes/builtin).
+        var theme = null;
+        try { theme = JSON.parse(localStorage.getItem("hyax-theme-def") || "null"); } catch (e) {}
+        var dark = theme ? theme.base === "dark" : (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+        var bg = (theme && theme.colors && theme.colors.background) || (dark ? "#222B27" : "#F4F8F1");
+        el.style.background = bg;
+        document.documentElement.style.background = bg;
         el.style.display = "flex";
+        function hex(c) { var n = parseInt(String(c).replace("#", ""), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255, 1]; }
+        function recolor(data) {
+          if (!dark) return data;
+          var ink = hex((theme && theme.colors && theme.colors.foreground) || "#FFFFFF");
+          (data.layers || []).forEach(function (l) {
+            if (!/^letter /.test(l.nm || "")) return;
+            (l.shapes || []).forEach(function (g) { (g.it || []).forEach(function (it) { if (it.ty === "fl") it.c.k = ink; }); });
+          });
+          return data;
+        }
+        // Виброотклик по меткам анимации (markers: «haptic:light|medium»).
+        var H = cap && cap.Plugins && cap.Plugins.Haptics;
+        function buzz(kind) { try { if (H && H.impact) H.impact({ style: kind === "medium" ? "MEDIUM" : "LIGHT" }); } catch (e) {} }
         var ended = false, ready = false, gone = false;
         function done() {
           if (gone || !ended || !ready) return;
@@ -54,14 +74,21 @@
         }
         function finish() { ended = true; done(); }
         window.addEventListener("hyax:ready", function () { ready = true; done(); });
-        setTimeout(finish, 6000);
+        setTimeout(finish, 7000);
         setTimeout(function () { ended = true; ready = true; done(); }, 10000);
         var s = document.createElement("script");
         s.src = "./lottie_light.min.js";
         s.onerror = finish;
         s.onload = function () {
           fetch("./splash.json").then(function (r) { return r.json(); }).then(function (data) {
-            var a = window.lottie.loadAnimation({ container: document.getElementById("boot-anim"), renderer: "svg", loop: false, autoplay: true, animationData: data });
+            var marks = (data.markers || []).filter(function (m) { return /^haptic:/.test(m.cm || ""); });
+            var a = window.lottie.loadAnimation({ container: document.getElementById("boot-anim"), renderer: "svg", loop: false, autoplay: true, animationData: recolor(data) });
+            var last = -1;
+            a.addEventListener("enterFrame", function (e) {
+              var f = e.currentTime;
+              marks.forEach(function (m) { if (m.tm > last && m.tm <= f) buzz(m.cm.slice(7)); });
+              last = f;
+            });
             a.addEventListener("complete", finish);
             a.addEventListener("data_failed", finish);
           }).catch(finish);

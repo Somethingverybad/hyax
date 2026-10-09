@@ -9,11 +9,16 @@
 устройства. Фон прозрачный — заставка ложится на фон темы.
 
 Сценарий (30 к/с):
-  0–9    таблетка проявляется в центре
-  9–30   расходится на две полосы, они поворачиваются в «X»
-  24–48  под «X» вырастает подложка (с лёгким перелётом)
-  48–72  буквы разъезжаются из центра на свои места
-  72–108 держим финальный кадр
+  0–9     таблетка проявляется в центре
+  9–30    расходится на две полосы, они поворачиваются в «X»
+  24–48   под «X» вырастает подложка (с лёгким перелётом)
+  48–72   буквы разъезжаются из центра — «WhoYaX»
+  72–100  салатовая точка прыгает по W → Y → X
+  100–118 h, o, a гаснут, W Y X съезжаются в «WYX»
+  118–140 держим финальный кадр
+
+Метки (markers, cm = "haptic:<сила>") — моменты виброотклика: index.html
+дёргает Haptics, когда анимация проходит кадр метки.
 """
 import json
 import os
@@ -28,14 +33,14 @@ OUT = os.path.join(ROOT, "sux-chat-app/public/splash.json")
 
 W = H = 768
 FR = 30
-OP = 108
+OP = 140
 CX, CY = 384, 330            # центр иконки
 ICON = 316                   # сторона подложки
 K = ICON / 1024              # масштаб из макета Figma
 BAR_W, BAR_H, BAR_R = 196.8 * K, 893.6 * K, 98.4 * K
 TEAL = (0x34 / 255, 0x5C / 255, 0x54 / 255)
 LIME = (0xC7 / 255, 0xF9 / 255, 0x64 / 255)
-TEXT_Y = CY + ICON / 2 + 20  # верх надписи
+TEXT_Y = CY + ICON / 2 + 34  # верх надписи (место под прыгающую точку)
 TEXT_W = 321                 # ширина надписи «WhoYaX»
 CAP_H = 0.23 * ICON          # высота заглавных — как в ролике
 SQ_R = 0.32 * ICON           # скругление подложки (на глаз ≈20% от стороны)
@@ -183,33 +188,81 @@ def contours(rec, scale, ox, oy):
 
 
 def text_layers(start_ind):
+    """Буквы «WhoYaX» и прыгающая точка. Возвращает (слои, метки отклика)."""
     font = TTFont(FONT)
     font = instantiateVariableFont(font, {"wght": 650})
     glyphs, adv, upm = glyph_paths(font, "WhoYaX")
     scale = CAP_H / font["OS/2"].sCapHeight
+    hmtx, cmap = font["hmtx"], font.getBestCmap()
+    width = lambda ch: hmtx[cmap[ord(ch)]][0] * scale
     # Ширину держим как в ролике: высокие буквы — плотнее трекинг.
     track = (TEXT_W - adv * scale) / (len(glyphs) - 1)
     base_y = TEXT_Y + CAP_H
     left = CX - TEXT_W / 2
-    layers = []
+    # Итоговое «WYX» — те же буквы, тот же трекинг, по центру.
+    keep = "WYX"
+    packed = sum(width(c) for c in keep) + track * (len(keep) - 1)
+    wyx_x, x = {}, CX - packed / 2
+    for c in keep:
+        wyx_x[c] = x
+        x += width(c) + track
+
+    layers, centers = [], {}
     for n, (ch, gx, rec) in enumerate(glyphs):
         paths = contours(rec, scale, 0, 0)  # в координатах слоя: начало — точка привязки
         shapes = [{"ty": "sh", "nm": f"c{j}", "ks": static(p)} for j, p in enumerate(paths)]
-        shapes.append({"ty": "fl", "nm": "teal", "o": static(100), "c": static([*TEAL, 1]), "r": 1, "bm": 0})
+        shapes.append({"ty": "fl", "nm": "letter", "o": static(100), "c": static([*TEAL, 1]), "r": 1, "bm": 0})
         x_final = left + gx * scale + n * track
+        centers[ch] = x_final + width(ch) / 2
         start = 48 + n * 3
         # Разъезжаются от центра, но не из одной точки — иначе буквы на миг двоились.
         x_from = x_final + (CX - x_final) * 0.45
-        ks = transform(
-            p=anim((start, [x_from, base_y + 6, 0]), (start + 14, [x_final, base_y, 0]), ease=EASE_OUT),
-            o=anim((start, 0), (start + 6, 100)),
-        )
-        layers.append(layer(start_ind + n, f"letter {ch}", [group(shapes, ch)], ks))
-    return layers
+        if ch in keep:
+            p = anim((start, [x_from, base_y + 6, 0]), (start + 14, [x_final, base_y, 0]),
+                     (100, [x_final, base_y, 0]), (116, [wyx_x[ch], base_y, 0]), ease=EASE_IO)
+            o = anim((start, 0), (start + 6, 100))
+        else:
+            # h, o, a гаснут и чуть уходят вниз — W, Y, X съезжаются на их место.
+            p = anim((start, [x_from, base_y + 6, 0]), (start + 14, [x_final, base_y, 0]),
+                     (100, [x_final, base_y, 0]), (110, [x_final, base_y + 10, 0]), ease=EASE_IO)
+            o = anim((start, 0), (start + 6, 100), (100, 100), (108, 0))
+        layers.append(layer(start_ind + n, f"letter {ch}", [group(shapes, ch)], transform(p=p, o=o)))
+
+    # Точка: прыгает по W, Y, X и съезжает вместе с X.
+    r = 9
+    top = TEXT_Y - 14                  # над заглавными
+    jump = 46                          # высота прыжка
+    dot = {"ty": "el", "nm": "dot", "d": 1, "s": static([2 * r, 2 * r]), "p": static([0, 0])}
+    fill = {"ty": "fl", "nm": "lime", "o": static(100), "c": static([*LIME, 1]), "r": 1, "bm": 0}
+    stroke = {"ty": "st", "nm": "edge", "o": static(100), "c": static([*TEAL, 1]), "w": static(2.5), "lc": 2, "lj": 2, "bm": 0}
+    wx, yx, xx = centers["W"], centers["Y"], centers["X"]
+    arc = lambda a, b: [(a + b) / 2, top - jump, 0]
+    keys = [
+        (72, [wx, top - jump, 0]), (76, [wx, top, 0]),          # падает на W
+        (81, arc(wx, yx)), (86, [yx, top, 0]),                   # прыжок на Y
+        (92, arc(yx, xx)), (98, [xx, top, 0]),                   # прыжок на X
+        (100, [xx, top, 0]), (116, [wyx_x["X"] + width("X") / 2, top, 0]),  # едет с X
+    ]
+    dot_ks = transform(
+        p=anim(*keys, ease=EASE_IO),
+        s=anim((72, [0, 0, 100]), (76, [100, 100, 100]), (77, [130, 70, 100]), (79, [100, 100, 100]),
+               (86, [130, 70, 100]), (88, [100, 100, 100]), (98, [130, 70, 100]), (100, [100, 100, 100])),
+        o=anim((72, 0), (74, 100)),
+    )
+    layers.insert(0, layer(start_ind + len(glyphs), "dot", [group([dot, fill, stroke], "dot")], dot_ks))
+    markers = [
+        {"tm": 30, "cm": "haptic:medium", "dr": 0},   # «X» собран
+        {"tm": 46, "cm": "haptic:light", "dr": 0},    # подложка встала
+        {"tm": 76, "cm": "haptic:light", "dr": 0},    # точка на W
+        {"tm": 86, "cm": "haptic:light", "dr": 0},    # на Y
+        {"tm": 98, "cm": "haptic:light", "dr": 0},    # на X
+        {"tm": 116, "cm": "haptic:medium", "dr": 0},  # собралось «WYX»
+    ]
+    return layers, markers
 
 
 def main():
-    layers = text_layers(1)
+    layers, markers = text_layers(1)
     n = len(layers)
     layers += [
         bar(n + 1, "bar 2", BAR2_END, 1 - 0.43 / 1.9066, -45, 26),
@@ -217,7 +270,7 @@ def main():
         backdrop(n + 3),
     ]
     doc = {"v": "5.7.4", "fr": FR, "ip": 0, "op": OP, "w": W, "h": H, "nm": "WhoYaX splash",
-           "ddd": 0, "assets": [], "layers": layers}
+           "ddd": 0, "assets": [], "layers": layers, "markers": markers}
     with open(OUT, "w") as f:
         json.dump(doc, f, separators=(",", ":"))
     print(OUT, os.path.getsize(OUT), "bytes")
