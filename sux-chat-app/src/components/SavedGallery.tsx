@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Download, Trash2 } from "lucide-react";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { useMint, MintIcon } from "@/themes/mint";
+import { useGlassHeight } from "@/themes/mint/glass";
 
 /** «1 фото», «12 фото» — слово не склоняется, но пусть будет одной точкой. */
 export const pluralPhotos = (n: number) => `${n} фото`;
@@ -30,6 +31,8 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
 }) => {
   const [rawItems, setItems] = useState<SavedImage[] | null>(null);
   const mint = useMint();
+  const glassRef = useRef<HTMLDivElement>(null);
+  useGlassHeight(glassRef, mint);
   // «Мята»: кнопка сортировки в шапке — новые сверху или старые сверху.
   const [oldFirst, setOldFirst] = useState(false);
   const items = rawItems && oldFirst ? [...rawItems].reverse() : rawItems;
@@ -63,7 +66,7 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
   return (
     <div className="fixed inset-0 z-[70] bg-background flex flex-col" style={mint ? { backgroundImage: "linear-gradient(155deg, hsl(var(--background)) 10%, hsl(var(--chat-canvas)) 100%)" } : undefined} onClick={(e) => e.stopPropagation()}>
       {mint ? (
-        <div className="shrink-0 pad-safe-top">
+        <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">
             <button type="button" onClick={onClose} aria-label="Назад" className="mint-pill w-[37px] h-[31px] inline-flex items-center justify-center mint-muted">
               <MintIcon name="back" size={[7, 13]} />
@@ -85,7 +88,7 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
         {items && <span className="ml-auto text-small text-subtle">{items.length}</span>}
       </div>
       )}
-      <div className={mint ? "flex-1 overflow-y-auto px-[17px] pt-[25px] pb-3 pad-safe-bottom" : "flex-1 overflow-y-auto p-3 pad-safe-bottom"}>
+      <div className={mint ? "flex-1 overflow-y-auto px-[17px] pb-3 pad-safe-bottom" : "flex-1 overflow-y-auto p-3 pad-safe-bottom"}>
         {items === null ? (
           <p className="py-10 text-center text-small text-subtle">Загрузка…</p>
         ) : items.length === 0 ? (

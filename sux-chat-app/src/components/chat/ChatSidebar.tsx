@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { api, mediaUrl } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { useMint, MintIcon } from "@/themes/mint";
+import { useGlassHeight } from "@/themes/mint/glass";
 
 interface Profile {
   id: string;
@@ -168,6 +169,7 @@ const ChatSidebar = ({
   // мини-плеер. Иначе он закрывал бы поиск — он-то стоит под шапкой чата,
   // а здесь шапка выше (см. components/MiniPlayer.tsx).
   const topRef = useRef<HTMLDivElement>(null);
+  useGlassHeight(topRef, mint);
   useEffect(() => {
     let last = "";
     const set = () => {
@@ -501,7 +503,7 @@ const ChatSidebar = ({
     }`}>
       {/* Шапка: аватар + имя + «В сети», справа шестерёнка и красный «+»
           (открывает диалог нового чата). Ниже — поиск по списку. */}
-      <div ref={topRef} className="px-4 pt-2 pb-3 pad-safe-top">
+      <div ref={topRef} className={mint ? "mint-glass mint-glass-over px-4 pt-2 pb-3 pad-safe-top" : "px-4 pt-2 pb-3 pad-safe-top"}>
         <div className={mint ? "mint-head !px-0 !pt-1 !pb-0" : "flex items-center gap-3 h-14 md:h-16"}>
           {mint && (
             <>
@@ -808,7 +810,7 @@ const ChatSidebar = ({
 
       {/* Индикатор жеста «потянуть вниз»: следует за пальцем, страницу не двигает */}
       <div
-        className="flex items-center justify-center overflow-hidden shrink-0"
+        className="relative z-10 flex items-center justify-center overflow-hidden shrink-0"
         style={{
           height: pull,
           transition: refreshing || pull === 0 ? "height 200ms ease-out" : "none",
@@ -822,8 +824,9 @@ const ChatSidebar = ({
 
       {/* Список чатов. Отступ сверху — под мини-плеер: он стоит полосой над
           списком, и без отступа накрывал бы первую строку. */}
-      <ScrollArea className="flex-1">
-        <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
+      {/* «Мята»: список уходит под стеклянную шапку (поиск и фильтры) и размывается. */}
+      <ScrollArea className="flex-1" style={mint ? { marginTop: "calc(-1 * var(--glass-h, 0px))" } : undefined}>
+        <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: mint ? "calc(var(--player-h, 0px) + var(--glass-h, 0px))" : "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
           {onOpenIdeabox && !isCollapsed && (
             <button

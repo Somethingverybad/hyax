@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { useMint, MintIcon } from "@/themes/mint";
+import { useGlassHeight } from "@/themes/mint/glass";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
@@ -1588,7 +1589,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     await frames();
     const mark = document.getElementById("unread-mark") || document.getElementById(`msg-${target.id}`);
     if (mark) {
-      box.scrollTop += mark.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
+      // Верхний край видимой ленты — под шапкой и полосой закрепления: в «Мяте»
+      // лента уходит под них, и метка встала бы за стекло.
+      const edge = Math.max(box.getBoundingClientRect().top, ...[headerRef.current, box.parentElement?.querySelector(".pinned-bar")].map((e) => e?.getBoundingClientRect().bottom ?? 0));
+      box.scrollTop += mark.getBoundingClientRect().top - edge - 8;
       const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
       pinnedRef.current = dist < 40;
       setAwayFromBottom(!pinnedRef.current);
@@ -2689,6 +2693,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // «Мята» на телефоне: шапка из таблеток по макету (см. themes/mint).
   const mintM = mintTheme && isMobile;
+  useGlassHeight(headerRef, mintM && !!(onBack || title || peer || isGroup), [chatId, peer?.id]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
                 <>
@@ -2735,7 +2740,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {mintM && (onBack || title || peer || isGroup) && (
-        <div ref={headerRef} className="relative z-20 shrink-0 pad-safe-top">
+        <div ref={headerRef} className="mint-glass mint-glass-over relative z-20 shrink-0 pad-safe-top" style={{ marginBottom: "calc(-1 * var(--glass-h, 0px))" }}>
           <div className="mint-head !pb-[11px] !pt-[19px]">
             {onBack ? (
               <button type="button" onClick={onBack} aria-label="Назад" className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">
@@ -2874,7 +2879,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         {/* Приглашение в секретный чат — на всю ленту, с прокруткой: в панели
             ввода плашка уезжала за край экрана вместе с кнопками. */}
         {isSecret && !skey && secretInfo?.state === "pending" && secretInfo.initiator_id !== userId && (
-          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-5 flex">
+          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-[calc(var(--glass-h,0px)+20px)] flex">
             <div className="m-auto w-full pb-4">
               <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
                 onConfirm={acceptSecret} onDecline={declineSecret} />
@@ -2894,14 +2899,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {jumping && (
-        <div className="absolute top-0 left-0 right-0 z-30 h-0.5 bg-primary/30 overflow-hidden" aria-hidden>
+        <div className="absolute top-[var(--glass-h,0px)] left-0 right-0 z-30 h-0.5 bg-primary/30 overflow-hidden" aria-hidden>
           <div className="h-full w-1/3 bg-primary animate-[msg-in_0.9s_ease-in-out_infinite_alternate]" />
         </div>
       )}
             {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
       {pinned && (
         <div
-          className={mintM ? "pinned-bar mint-card absolute top-0 left-[17px] right-[17px] z-20 flex items-center gap-[12px] px-4 py-[6px]" : "pinned-bar absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm"}
+          className={mintM ? "pinned-bar mint-card absolute top-[var(--glass-h,0px)] left-[17px] right-[17px] z-20 flex items-center gap-[12px] px-4 py-[6px]" : "pinned-bar absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm"}
           style={{ transform: "translateY(var(--player-h, 0px))" }}
         >
           {mintM ? (
@@ -2947,7 +2952,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         onKeyDown={markUserScroll}
         onTouchEnd={settleAfterTouch}
         onTouchCancel={settleAfterTouch}
-        style={{ WebkitOverflowScrolling: "touch", ...(anchoring ? { opacity: 0 } : {}) }}
+        style={{ WebkitOverflowScrolling: "touch", ...(mintM ? { paddingTop: "calc(var(--glass-h, 0px) + 16px)", scrollPaddingTop: "var(--glass-h, 0px)" } : {}), ...(anchoring ? { opacity: 0 } : {}) }}
         onTouchMove={(e) => {
           // Свайп вниз по ленте при открытой клавиатуре прячет её (как в Telegram).
           const s = kbSwipeRef.current;
@@ -3982,7 +3987,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               >
                 {uploading ? (
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
+                ) : mintM ? <MintIcon name="send" size={[10, 18]} className="ml-[2px]" /> : (
                   <Send className="w-4 h-4" />
                 )}
               </Button>
@@ -4054,9 +4059,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   }
                 >
                   {uploading ? <Loader2 className="w-5 h-5 animate-spin" />
-                    : recLocked ? <Send className="w-5 h-5" />
-                    : recordKind === "video" ? <Video className="w-5 h-5" />
-                    : recordKind === "rov" ? <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />
+                    : recLocked ? (mintM ? <MintIcon name="send" size={[10, 18]} className="ml-[2px]" /> : <Send className="w-5 h-5" />)
+                    : recordKind === "video" ? (mintM ? <MintIcon name="camera" size={[22, 17]} /> : <Video className="w-5 h-5" />)
+                    : recordKind === "rov" ? (mintM ? <MintIcon name="rev" size={21} className={cn(roving && "animate-pulse")} /> : <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />)
                     : mintM ? <MintIcon name="mic" size={[16, 23]} /> : <Mic className="w-5 h-5" />}
                 </button>
                 </span>

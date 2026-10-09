@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
 import { useMint, MintIcon } from "@/themes/mint";
+import { useGlassHeight } from "@/themes/mint/glass";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
 export interface Profile {
@@ -226,12 +227,14 @@ const ProfilePage = () => {
   // Своя точка: зелёная — «В сети», серая — выбран статус «Скрыт».
   const online = !profile?.hide_online;
   const mint = useMint();
+  const glassRef = useRef<HTMLDivElement>(null);
+  useGlassHeight(glassRef, mint);
   const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
 
   return (
     <div className="h-screen flex flex-col bg-background">
       {mint ? (
-        <div className="shrink-0 pad-safe-top">
+        <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">
             <span />
             <span className="mint-title">Профиль</span>

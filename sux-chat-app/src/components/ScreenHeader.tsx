@@ -1,6 +1,8 @@
+import { useRef } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMint, MintIcon } from "@/themes/mint";
+import { useGlassHeight } from "@/themes/mint/glass";
 
 /**
  * Шапка подэкрана: стрелка назад, заголовок по центру, необязательное
@@ -26,11 +28,13 @@ const ScreenHeader = ({
 }) => {
   const navigate = useNavigate();
   const mint = useMint();
+  const glassRef = useRef<HTMLDivElement>(null);
+  useGlassHeight(glassRef, mint);
   if (mint) {
     // «Мята»: назад — белая таблетка, заголовок по центру, действие справа —
     // салатовая таблетка (см. .mint-head-right в mint.css).
     return (
-      <div className="shrink-0 pad-safe-top">
+      <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
         <div className="mint-head !pt-[19px] !pb-[12px]">
           {left ?? (
             <button type="button" onClick={onBack ?? (() => navigate(-1))} aria-label="Назад"

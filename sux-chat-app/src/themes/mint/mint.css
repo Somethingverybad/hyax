@@ -100,6 +100,11 @@
   background: var(--mint-surface) !important; color: var(--mint-ink) !important;
   border: var(--mint-border) !important; box-shadow: var(--mint-shadow) !important;
 }
+/* Отправка — салатовый круг с шевроном, как в макете. */
+.mint-compose :not(.mint-attach-wrap) > .ui-compose-send {
+  background: hsl(var(--accent)) !important; color: hsl(var(--accent-foreground)) !important;
+  border: 0 !important; box-shadow: var(--mint-shadow) !important;
+}
 .mint-compose .mint-attach-wrap > button {
   /* Как в макете: правый сегмент самой таблетки — во всю её высоту, прижат
      к краю, скругление по форме таблетки. */
@@ -166,9 +171,21 @@
   [data-shape="soft"] .ui-chat-list > button .text-small { font-size: 13.3px; color: var(--mint-muted); }
 }
 
-/* Верх ленты растворяется под шапкой-таблетками: без этого прокрученное
-   (плашка даты, пузырь) обрезалось ровной линией и торчало из-под шапки. */
-[data-shape="soft"] .chat-scroll {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26px);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 26px);
+/* Стеклянная шапка: список уходит под неё и размывается (как в макете), а не
+   обрезается рамкой. Высота шапки — в --glass-h (useGlassHeight). Список
+   подтягивается под шапку, если идёт сразу за ней (обычные экраны), или
+   по классу mint-glass-over, когда раскладку подтягивает сам экран (чат,
+   список чатов). */
+[data-shape="soft"] .mint-glass { position: relative; z-index: 20; }
+[data-shape="soft"] .mint-glass:has(+ .overflow-y-auto) { margin-bottom: calc(-1 * var(--glass-h, 0px)); }
+[data-shape="soft"] .mint-glass + .overflow-y-auto {
+  padding-top: calc(var(--glass-h, 0px) + 16px) !important;
+  scroll-padding-top: var(--glass-h, 0px);
+}
+[data-shape="soft"] .mint-glass:is(:has(+ .overflow-y-auto), .mint-glass-over)::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; bottom: -22px; z-index: -1; pointer-events: none;
+  background: linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.82) 45%, hsl(var(--background) / 0) 100%);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent);
 }
