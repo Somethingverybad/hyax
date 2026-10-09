@@ -687,6 +687,167 @@ textarea,
   }
 }
 
+/* ── Мягкие карточки ───────────────────────────────────────────────────────
+   data-shape="soft" — плотные карточки с мягкой тенью над градиентным фоном,
+   кнопки, фильтры и поиск — таблетками, главные действия — цветом accent
+   (тема «Мята»: салатовый на тёмно-зелёном). В тёмном варианте у карточек
+   тонкая грань из accent и подсветки за ними. Как и у стекла, правила ни к
+   одной теме по имени не привязаны. */
+[data-shape="soft"] {
+  --soft-shadow: 0 4px 16px rgb(0 0 0 / 0.13);
+  --soft-shadow-sm: 0 3px 10px rgb(0 0 0 / 0.12);
+  --soft-surface: hsl(var(--surface-1));
+  --soft-line: transparent;
+  --soft-chip-text: hsl(var(--foreground));
+}
+[data-shape="soft"][data-base="dark"] {
+  /* Плотная тёмно-зелёная поверхность с лёгким салатовым отсветом — не
+     «контур на пустом месте»: грань едва заметна, поверхность светлее фона. */
+  --soft-shadow: 0 6px 22px rgb(0 0 0 / 0.42), 0 0 24px -10px hsl(var(--accent) / 0.25);
+  --soft-shadow-sm: 0 4px 14px rgb(0 0 0 / 0.38);
+  --soft-surface: linear-gradient(105deg, hsl(var(--surface-1)) 35%, color-mix(in srgb, hsl(var(--surface-1)) 82%, hsl(var(--accent))));
+  --soft-line: hsl(var(--accent) / 0.16);
+}
+[data-shape="soft"] #root {
+  background-color: hsl(var(--background));
+  background-image: linear-gradient(155deg, hsl(var(--background)) 10%, hsl(var(--chat-canvas)) 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+[data-shape="soft"][data-base="dark"] #root {
+  background-image:
+    radial-gradient(45% 22% at 100% 0%, hsl(var(--accent) / 0.16), transparent 70%),
+    radial-gradient(50% 26% at 0% 24%, hsl(var(--accent) / 0.09), transparent 70%),
+    radial-gradient(50% 26% at 100% 94%, hsl(var(--accent) / 0.10), transparent 72%);
+}
+/* Подложки экранов прозрачны — градиент рисует страница целиком (как у стекла).
+   Всплывающие окна и шторки остаются плотными. */
+[data-shape="soft"] .bg-background:not(.fixed):not(.absolute):not([role="dialog"]):not([data-state]),
+[data-shape="soft"] :is(.chat-scroll, .chat-compose) {
+  background-color: transparent;
+}
+/* Шапки — без полосы: кнопки и аватар в них сами по себе таблетки. */
+[data-shape="soft"] .pad-safe-top { border-bottom-color: transparent; }
+
+/* Карточки и шторки — плотная поверхность с мягкой тенью. */
+[data-shape="soft"] .ui-card,
+[data-shape="soft"] :is(.ui-sheet, [role="dialog"]):is(.bg-surface-1, .bg-surface-2, .bg-surface-3, .bg-surface-4) {
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow);
+}
+[data-shape="soft"] .divide-border > :not([hidden]) ~ :not([hidden]),
+[data-shape="soft"] .chat-row-divider { border-color: hsl(var(--ui-divider)); }
+[data-shape="soft"] .chat-row-divider { background: hsl(var(--ui-divider)); }
+
+/* Аватары — скруглённые квадраты, как в макете. */
+[data-shape="soft"] .ui-avatar { border-radius: 32%; }
+/* Счётчик на фильтре — цвет темы, а не красный. */
+[data-shape="soft"] .ui-chip-count { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+/* Строки списка непрозрачны: под ними лежат «закрепить» и «удалить». */
+[data-shape="soft"] .chat-row-card.bg-background { background-color: hsl(var(--surface-1)) !important; }
+[data-shape="soft"] .chat-row > button:is(.bg-amber, .bg-destructive) { opacity: 0; transition: opacity 120ms ease-out; }
+[data-shape="soft"] .chat-row.row-swiped > button.bg-destructive,
+[data-shape="soft"] .chat-row.row-pin-swiped > button.bg-amber { opacity: 1; }
+/* Вторичные кнопки на серой подложке — белые таблетки с тенью. */
+[data-shape="soft"] :is(button, a, [role="button"]).bg-surface-4 {
+  border-radius: 999px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow-sm);
+}
+/* Собеседник в шапке переписки — таблетка с аватаром и именем. */
+[data-shape="soft"] .ui-head-title {
+  padding: 4px 16px 4px 4px;
+  border-radius: 999px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow-sm);
+}
+
+/* Список чатов — одна карточка, строки внутри разделены линиями. */
+[data-shape="soft"] .ui-chat-list {
+  margin: 8px 12px 12px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius);
+  box-shadow: var(--soft-shadow);
+  overflow: hidden;
+}
+
+/* Таблетки: кнопки-значки, поиск, фильтры. */
+[data-shape="soft"] .ui-icon-btn {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow-sm);
+  color: hsl(var(--foreground));
+}
+[data-shape="soft"] .ui-search {
+  border-radius: 999px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow);
+}
+[data-shape="soft"] .ui-chip {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow-sm);
+  color: var(--soft-chip-text);
+}
+/* Главные действия — accent: выбранный фильтр, «+», «Сохранить», отправка. */
+[data-shape="soft"] :is(button, a, [role="button"], label).bg-primary:not(:disabled),
+[data-shape="soft"] .ui-chip.ui-chip-on,
+[data-shape="soft"] .ui-plus {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  border-color: transparent;
+  box-shadow: var(--soft-shadow-sm);
+}
+[data-shape="soft"] :is(button, a, [role="button"]).bg-primary:not(:disabled):active { filter: brightness(0.94); }
+
+/* Поле ввода: скрепка, стикеры, поле и кнопка — отдельными таблетками. */
+[data-shape="soft"] .chat-compose { border-top-color: transparent; }
+[data-shape="soft"] :is(.ui-compose-btn, .ui-compose-send) { border-radius: 999px; }
+[data-shape="soft"] .ui-compose-btn:not(.bg-primary):not(.bg-foreground) {
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow-sm);
+}
+[data-shape="soft"] .ui-compose-field {
+  border-radius: 22px;
+  background: var(--soft-surface);
+  border: 1px solid var(--soft-line);
+  box-shadow: var(--soft-shadow-sm);
+}
+
+/* Полоса закрепа — карточка под шапкой. */
+[data-shape="soft"] .pinned-bar {
+  left: 12px; right: 12px; top: 4px;
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius);
+  background: var(--soft-surface);
+  box-shadow: var(--soft-shadow-sm);
+}
+
+/* Дата и «Непрочитанные сообщения» — полупрозрачные таблетки цвета пузыря. */
+[data-shape="soft"] .ui-date-chip { background: hsl(var(--bubble-own) / 0.55); color: #fff; }
+[data-shape="soft"] .ui-unread-mark {
+  margin-left: 0; margin-right: 0;
+  background: transparent;
+  display: flex; justify-content: center;
+}
+[data-shape="soft"] .ui-unread-mark > span {
+  background: hsl(var(--bubble-own) / 0.55);
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 14px;
+}
+
 /* Мини-плеер и полоса закрепления стоят в одном месте — под шапкой. Плеер
    съезжает сверху, а закреп уступает ему место, сдвигаясь на его высоту
    (--player-h ставит сам плеер). Двигаем только transform: раскладка при этом
@@ -962,6 +1123,22 @@ textarea,
     color: hsl(var(--primary));
   color: color-mix(in srgb, hsl(var(--primary)) 72%, black);
   }
+
+  /* Мягкие карточки: плавающая панель — белая таблетка без подписей. */
+  [data-shape="soft"][data-nav="floating"] .ui-bottom-nav {
+    margin: 0 16px max(16px, calc(8px + var(--kb-sab, var(--sab))));
+    background: var(--soft-surface);
+    border: 1px solid var(--soft-line);
+    box-shadow: var(--soft-shadow);
+  }
+  [data-shape="soft"][data-nav="floating"] .ui-nav-item { border-color: transparent; border-radius: calc(var(--radius) - 4px); }
+  [data-shape="soft"][data-nav="floating"] .ui-nav-item.ui-nav-on {
+    background: hsl(var(--primary) / 0.1);
+    border-color: transparent;
+    color: hsl(var(--foreground));
+  }
+  [data-shape="soft"][data-base="dark"][data-nav="floating"] .ui-nav-item.ui-nav-on { background: hsl(var(--accent) / 0.1); color: hsl(var(--accent)); }
+  [data-shape="soft"][data-nav="floating"] .ui-nav-label { display: none; }
 }
 
 /* Цитата на экране входа: рукописный курсив и мягкая смена строк.

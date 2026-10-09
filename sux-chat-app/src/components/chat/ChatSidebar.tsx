@@ -862,7 +862,9 @@ const ChatSidebar = ({
             </div>
           )}
           {chats.length > 0 ? (
-            [...chats].sort((x, y) => {
+            // ui-chat-list — общая подложка строк: в стиле «мягкие карточки»
+            // список лежит в одной белой карточке (index.css).
+            <div className="ui-chat-list">{[...chats].sort((x, y) => {
               // Закреплённые сверху, позже закреплённый выше; остальные — по
               // времени последнего сообщения. Тот же порядок отдаёт сервер;
               // здесь он держится и между обновлениями списка (закрепили —
@@ -1102,7 +1104,7 @@ const ChatSidebar = ({
                   </div>
                 </div>
               );
-            })
+            })}</div>
           ) : (
             <div className={`text-center text-muted-foreground py-8 ${
               isCollapsed ? "px-2 text-xs" : "px-4"

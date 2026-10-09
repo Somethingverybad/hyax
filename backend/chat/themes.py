@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from .models import Theme, UserTheme
 
-BUILTIN_IDS = ("dark", "light", "neo", "glass-light", "glass-dark")
+BUILTIN_IDS = ("dark", "light", "neo", "glass-light", "glass-dark", "mint", "mint-dark")
 
 COLOR_KEYS = (
     "background", "foreground",
@@ -82,8 +82,8 @@ def clean_theme(raw):
     shape_in = raw.get("shape")
     if not isinstance(shape_in, dict):
         raise ThemeError("Нет параметров формы")
-    if shape_in.get("style") not in ("flat", "outlined", "glass"):
-        raise ThemeError("shape.style: flat, outlined или glass")
+    if shape_in.get("style") not in ("flat", "outlined", "glass", "soft"):
+        raise ThemeError("shape.style: flat, outlined, glass или soft")
     shape = {"style": shape_in["style"]}
     for key, (lo, hi) in SHAPE_LIMITS.items():
         value = shape_in.get(key)

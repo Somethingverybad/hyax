@@ -48,6 +48,7 @@ function syncStatusBar(t: ThemeDef) {
  *  своё окно «Вы изменили иконку», и дёргать его на ровном месте незачем. */
 const ICON_BY_THEME: Record<string, string> = {
   light: "Light", dark: "Dark", neo: "Neo", "glass-light": "Glass", "glass-dark": "Glass",
+  mint: "Mint", "mint-dark": "Mint",
 };
 
 function syncAppIcon(t: ThemeDef) {

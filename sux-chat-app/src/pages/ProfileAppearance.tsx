@@ -53,6 +53,8 @@ const Row = ({ theme, active, onPick, menu }: { theme: ThemeDef; active: boolean
                 ? "Обводки тушью, жёсткие тени"
                 : theme.shape.style === "glass"
                   ? "Полупрозрачные поверхности, размытие и свечение"
+                  : theme.shape.style === "soft"
+                    ? "Мягкие карточки, таблетки, зелёный с салатовым"
                   : theme.base === "light" ? "Белые карточки, тёмный текст" : "Почти чёрный фон")
             : `${theme.mine ? "Моя тема" : theme.author ? `Автор: ${theme.author}` : "Без автора"}${theme.installs ? ` · установок: ${theme.installs}` : ""}`}
         </span>

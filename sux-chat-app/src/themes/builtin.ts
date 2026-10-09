@@ -197,7 +197,83 @@ export const GLASS_DARK: ThemeDef = {
   shape: { ...GLASS },
 };
 
-export const BUILTIN_THEMES: ThemeDef[] = [LIGHT, DARK, NEO, GLASS_LIGHT, GLASS_DARK];
+/** «Мята» — по макету из Figma: белые карточки с мягкой тенью над
+ *  бело-зелёным градиентом, тёмно-зелёный основной цвет, салатовые
+ *  таблетки-фильтры и главные кнопки. Пузыри — тёмно-зелёные с белым текстом
+ *  и у себя, и у собеседника (как в макете). */
+const SOFT = { style: "soft", radius: 20, radiusField: 20, borderWidth: 1, shadowOffset: 0, iconStroke: 1.75, rowCards: false, floatingNav: true } as const;
+export const MINT: ThemeDef = {
+  id: "mint", name: "Мята", base: "light", builtin: true,
+  colors: {
+    background: "#F4F8F1",
+    foreground: "#23463F",
+    surface1: "#FFFFFF",
+    surface2: "#FFFFFF",
+    surface3: "#EEF4EA",
+    surface4: "#E2EBDB",
+    mutedForeground: "#6F7A74",
+    subtleForeground: "#858E89",
+    primary: "#2F5B53",
+    primaryForeground: "#FFFFFF",
+    primaryDeep: "#24473F",
+    accent: "#C7F964",
+    accentForeground: "#2F5B53",
+    destructive: "#D64545",
+    destructiveForeground: "#FFFFFF",
+    success: "#3E8E41",
+    successForeground: "#FFFFFF",
+    online: "#5DBB2E",
+    amber: "#E9A100",
+    border: "#E1E8DC",
+    divider: "#E3E7E0",
+    ring: "#2F5B53",
+    ink: "#23463F",
+    accentSoft: "#ECF9CF",
+    bubbleOwn: "#2F5B53",
+    bubbleOwnFg: "#FFFFFF",
+    bubbleIn: "#2F5B53",
+    bubbleInFg: "#FFFFFF",
+    chatCanvas: "#E3EDDB",
+  },
+  shape: { ...SOFT },
+};
+export const MINT_DARK: ThemeDef = {
+  id: "mint-dark", name: "Мята тёмная", base: "dark", builtin: true,
+  colors: {
+    background: "#222B27",
+    foreground: "#FFFFFF",
+    surface1: "#2C3832",
+    surface2: "#303D36",
+    surface3: "#37453D",
+    surface4: "#405046",
+    mutedForeground: "#BDBDBD",
+    subtleForeground: "#9AA59E",
+    primary: "#C7F964",
+    primaryForeground: "#2F5B53",
+    primaryDeep: "#9FCB45",
+    accent: "#C7F964",
+    accentForeground: "#2F5B53",
+    destructive: "#FF6B5E",
+    destructiveForeground: "#1C1C1C",
+    success: "#6FCF7B",
+    successForeground: "#13261A",
+    online: "#C7F964",
+    amber: "#FFB10A",
+    border: "#4C5F3A",
+    divider: "#3A4831",
+    ring: "#C7F964",
+    ink: "#FFFFFF",
+    accentSoft: "#34422F",
+    bubbleOwn: "#2F5B53",
+    bubbleOwnFg: "#FFFFFF",
+    bubbleIn: "#2F5B53",
+    bubbleInFg: "#FFFFFF",
+    chatCanvas: "#1C2420",
+  },
+  shape: { ...SOFT },
+};
+
+export const BUILTIN_THEMES: ThemeDef[] = [LIGHT, DARK, NEO, GLASS_LIGHT, GLASS_DARK, MINT, MINT_DARK];
 export const DEFAULT_THEME = DARK;
 
 export function builtinById(id: string): ThemeDef | undefined {

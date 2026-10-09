@@ -2709,7 +2709,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              className="ui-head-title flex items-center gap-3 flex-1 min-w-0 text-left"
               title="Профиль собеседника"
             >
               <Aura active={!peer.is_bot && !!peer.is_online} owner={peer} size={42}>
@@ -2956,14 +2956,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 {/* Разделитель с датой */}
                 {showDate && (
                   <div className="flex justify-center">
-                    <div className="bg-surface-3 px-3.5 py-1.5 rounded-full text-small text-foreground">
+                    <div className="ui-date-chip bg-surface-3 px-3.5 py-1.5 rounded-full text-small text-foreground">
                       {formatDate(message.created_at)}
                     </div>
                   </div>
                 )}
                 {unreadMarkId === message.id && (
-                  <div id="unread-mark" className="-mx-3 md:-mx-7 py-1.5 bg-surface-3/80 text-center text-small text-subtle">
-                    Непрочитанные сообщения
+                  <div id="unread-mark" className="ui-unread-mark -mx-3 md:-mx-7 py-1.5 bg-surface-3/80 text-center text-small text-subtle">
+                    <span>Непрочитанные сообщения</span>
                   </div>
                 )}
 
@@ -3768,7 +3768,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 size="icon"
                 onClick={() => setAttachMenuOpen((v) => !v)}
                 disabled={uploading}
-                className="h-11 w-11 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
+                className="ui-compose-btn h-11 w-11 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
                 aria-label="Прикрепить"
               >
                 <Paperclip className="w-5 h-5" />
@@ -3812,7 +3812,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               variant="outline"
               size="icon"
               onClick={() => setStickersOpen((v) => !v)}
-              className="h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
+              className="ui-compose-btn h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
               aria-label="Стикеры"
             >
               <Smile className="w-5 h-5" />
@@ -3884,7 +3884,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   }
                 }}
                 disabled={uploading}
-                className="w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 md:bg-background border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
+                className="ui-compose-field w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 md:bg-background border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
                 style={{ maxHeight: "6.5rem" }}
               />
             </div>
@@ -3903,7 +3903,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onTouchStart={(e) => e.preventDefault()}
                 onTouchEnd={(e) => { e.preventDefault(); if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
                 disabled={uploading}
-                className="h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
+                className="ui-compose-send h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
                 size="icon"
               >
                 {uploading ? (
@@ -3920,7 +3920,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
                     disabled={uploading}
                     className={cn(
-                      "h-11 w-11 shrink-0 rounded-md border flex items-center justify-center transition-colors",
+                      "ui-compose-btn h-11 w-11 shrink-0 rounded-md border flex items-center justify-center transition-colors",
                       // Фронтальная активна — плитка инвертирована; задняя — обычная плитка.
                       facing === "user"
                         ? "bg-foreground text-background border-foreground"
@@ -3963,7 +3963,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   disabled={uploading}
                   style={{ touchAction: "none" }}
                   className={cn(
-                    "h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
+                    "ui-compose-btn h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
                     // Вдавливается сразу на касание — до того, как проснётся микрофон.
                     recPressed && "scale-90",
                     recording || roving || recPhase !== "idle" ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
