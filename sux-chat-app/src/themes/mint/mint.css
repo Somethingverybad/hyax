@@ -189,6 +189,17 @@
   -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
   mask-image: linear-gradient(to bottom, #000 62%, transparent);
 }
+/* Панель ввода — остров поверх ленты (телефон): лента уходит под неё и
+   растворяется, как под шапкой; место под панель лента отводит отступом
+   --compose-h (ChatWindow меряет панель). */
+[data-shape="soft"] .mint-compose-island { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; }
+[data-shape="soft"] .mint-compose-island::before {
+  /* Растворение — 28px над панелью, под самой панелью фон плотный и тянется
+     до низа экрана (в «Избранном» ниже панели ещё остров навигации). */
+  content: ""; position: absolute; left: 0; right: 0; top: -28px; bottom: calc(-1 * var(--mint-nav-space, 0px)); z-index: -1; pointer-events: none;
+  background: linear-gradient(to bottom, hsl(var(--background) / 0) 0, hsl(var(--background) / 0.8) 28px, hsl(var(--background)) 64px);
+}
+
 /* Шапка чата — без размытия, только растворение. Размытие над лентой iOS
    пересчитывал на каждом кадре переезда ленты за клавиатурой и не
    перерисовывал её: сообщения висели выше на высоту клавиатуры, хотя по

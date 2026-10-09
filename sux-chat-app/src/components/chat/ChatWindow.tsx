@@ -2729,6 +2729,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // «Мята» на телефоне: шапка из таблеток по макету (см. themes/mint).
   const mintM = mintTheme && isMobile;
   useGlassHeight(headerRef, mintM && !!(onBack || title || peer || isGroup), [chatId, peer?.id]);
+  // «Мята»: панель ввода — остров поверх ленты, как шапка сверху: лента
+  // тянется до низа экрана, отводит под панель место отступом (--compose-h)
+  // и уходит под неё с растворением. Раньше панель стояла под лентой и
+  // обрезала её ровной линией — остров был виден только при открытой
+  // клавиатуре, когда панель поднята трансформом (баг-репорт d91c3437).
+  // Высота панели плавает (ответ, стикеры, запись), поэтому меряем её;
+  // рост поля ввода уже учтён в --compose-extra (fitTextarea) — вычитаем.
+  useEffect(() => {
+    const cs = composeRef.current, sc = scrollRef.current;
+    if (!mintM || !cs || !sc || typeof ResizeObserver === "undefined") return;
+    let last = -1;
+    const set = () => {
+      const extra = parseFloat(sc.style.getPropertyValue("--compose-extra")) || 0;
+      const nav = parseFloat(getComputedStyle(cs).marginBottom) || 0;
+      // +20 — зона растворения над панелью (mint.css): прижатое последнее
+      // сообщение стоит над ней целиком, а не тает краем.
+      const h = Math.round(cs.offsetHeight + nav - extra) + 20;
+      if (h === last) return;
+      last = h;
+      sc.style.setProperty("--compose-h", `${h}px`);
+      // Панель подросла — прижатая лента остаётся прижатой (и повтор кадром
+      // позже: WebKit на iOS применяет scrollTop асинхронно).
+      if (pinnedRef.current) { sc.scrollTop = sc.scrollHeight; requestAnimationFrame(() => { if (pinnedRef.current) sc.scrollTop = sc.scrollHeight; }); }
+    };
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(cs);
+    return () => { ro.disconnect(); sc.style.removeProperty("--compose-h"); };
+  }, [mintM, chatId]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
                 <>
@@ -2914,7 +2943,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         {/* Приглашение в секретный чат — на всю ленту, с прокруткой: в панели
             ввода плашка уезжала за край экрана вместе с кнопками. */}
         {isSecret && !skey && secretInfo?.state === "pending" && secretInfo.initiator_id !== userId && (
-          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-[calc(var(--glass-h,0px)+20px)] flex">
+          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-[calc(var(--glass-h,0px)+20px)] pb-[var(--compose-h,0px)] flex">
             <div className="m-auto w-full pb-4">
               <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
                 onConfirm={acceptSecret} onDecline={declineSecret} />
@@ -3549,7 +3578,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <button
             type="button"
             onClick={() => goBottom(true)}
-            className="ui-btn absolute right-3 md:right-6 -top-14 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80"
+            className="ui-btn absolute right-3 md:right-6 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80"
+            // Над панелью ввода; в «Мяте» панель — остров поверх ленты, учитываем её высоту.
+            style={{ top: "calc(-1 * (var(--compose-h, 0px) + 56px))" }}
             aria-label={newBelow > 0 ? `Новых сообщений: ${newBelow}. Вниз` : "Вниз"}
           >
             <ArrowDown className="w-5 h-5" />
@@ -3615,7 +3646,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
         </div>
       ) : (
-      <div ref={composeRef} className="chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0">
+      <div ref={composeRef} className={cn("chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0", mintM && "mint-compose-island")}>
         {/* На десктопе композер — панель с обводкой, как в референсе; отступ снизу
             даём панели (pad-safe-bottom перебивает padding контейнера). */}
         <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-2">

@@ -389,7 +389,9 @@ textarea,
 .chat-scroll {
   /* --compose-extra — на сколько панель ввода выросла сверх одной строки:
      она наезжает на ленту, лента отводит место (см. fitTextarea). */
-  padding-bottom: calc(var(--kb-lift, var(--kb-height)) + var(--compose-extra, 0px));
+  /* --compose-h — высота панели ввода, когда та лежит островом поверх ленты
+     («Мята», телефон); иначе 0. */
+  padding-bottom: calc(var(--kb-lift, var(--kb-height)) + var(--compose-extra, 0px) + var(--compose-h, 0px));
   /* Прижим к низу ведём сами (ResizeObserver и fitTextarea). Штатное
      якорение прокрутки браузера с этим спорило: после роста поля ввода мы
      ставили scrollTop в максимум, а WebKit откатывал его к прежнему значению,
