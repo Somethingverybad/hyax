@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Aura } from "@/components/Aura";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
@@ -132,7 +133,7 @@ const ProfileSavedAccess = () => {
                 <div className="px-4 py-4 text-small text-subtle">Пока никого. Сохранёнки видите только вы — найдите человека ниже и добавьте.</div>
               ) : viewers.map((p) => (
                 <div key={p.id} className="min-h-14 px-4 py-2 flex items-center gap-3">
-                  <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-9 h-9 rounded-md shrink-0" />
+                  <Aura active={!!(p as { is_online?: boolean }).is_online} owner={p as never} size={36}><Identicon id={p.id} avatarUrl={p.avatar_url} className="w-9 h-9 rounded-md shrink-0" /></Aura>
                   <span className="flex-1 text-body truncate">{p.username}</span>
                   <button type="button" onClick={() => void remove(p)} className="text-small text-primary active:opacity-60">Убрать</button>
                 </div>
@@ -171,7 +172,7 @@ const ProfileSavedAccess = () => {
                     disabled={viewers?.some((v) => v.id === p.id)}
                     className="w-full min-h-12 px-1 py-1 flex items-center gap-3 text-left active:opacity-70 disabled:opacity-50"
                   >
-                    <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 rounded-md shrink-0" />
+                    <Aura active={!!(p as { is_online?: boolean }).is_online} owner={p as never} size={32}><Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 rounded-md shrink-0" /></Aura>
                     <span className="flex-1 text-body truncate">{p.username}</span>
                     <span className="text-small text-subtle">добавить</span>
                   </button>

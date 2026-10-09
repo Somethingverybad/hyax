@@ -876,7 +876,7 @@ const ChatSidebar = ({
               <p className="text-caption uppercase tracking-wide text-subtle mb-1">Люди</p>
               <button type="button" onClick={() => { setListFilter(""); void createChat(peopleHit.id); }}
                 className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
-                <Identicon id={peopleHit.id} avatarUrl={peopleHit.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" />
+                <Aura active={!!(peopleHit as { is_online?: boolean }).is_online} owner={peopleHit as never} size={46}><Identicon id={peopleHit.id} avatarUrl={peopleHit.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
                 <span className="min-w-0">
                   <span className="block text-h2 md:text-[15px] truncate">{peopleHit.username}</span>
                   <span className="block text-small text-subtle truncate">@{peopleHit.username} · написать</span>
@@ -936,7 +936,7 @@ const ChatSidebar = ({
               return (
                 <div
                   key={chat.id}
-                  className={`chat-row relative overflow-hidden${swipedChatId === chat.id ? " row-swiped" : ""}${pinSwipedId === chat.id ? " row-pin-swiped" : ""}`}
+                  className={`chat-row relative ${mint && swipedChatId !== chat.id && pinSwipedId !== chat.id ? "overflow-visible" : "overflow-hidden"}${swipedChatId === chat.id ? " row-swiped" : ""}${pinSwipedId === chat.id ? " row-pin-swiped" : ""}`}
                 >
                   {/* Разделитель с полями 16 px; после последней строки и на десктопе его нет. */}
                   <div className="chat-row-divider absolute bottom-0 left-4 right-4 h-px bg-border pointer-events-none z-10 md:hidden" />

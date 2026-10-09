@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Aura } from "@/components/Aura";
 import { useNavigate } from "react-router-dom";
 import Identicon from "@/components/Identicon";
 import {
@@ -189,7 +190,7 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
             <button type="button" onClick={() => navigate(`/u/${encodeURIComponent(u.username)}`)}
               className="w-full flex items-center gap-3 py-2 text-left rounded-md active:bg-surface-3 hover:bg-surface-3/60 -mx-1 px-1">
               <span className="relative shrink-0">
-                <Identicon id={u.id} avatarUrl={u.avatar_url} className="w-9 h-9" />
+                <Aura active={u.active && !u.hidden} owner={u as never} size={36}><Identicon id={u.id} avatarUrl={u.avatar_url} className="w-9 h-9" /></Aura>
                 <span className="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full border-2 border-[hsl(var(--surface-2))]"
                   style={{ background: u.active ? pal.good : pal.axis }} aria-hidden />
               </span>

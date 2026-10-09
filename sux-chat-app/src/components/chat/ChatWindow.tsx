@@ -2756,12 +2756,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </span>
             </button>
             <span className="relative">
+              <Aura active={!!peer && !peer.is_bot && !!peer.is_online} owner={peer} size={43}>
               <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label="Меню чата"
                 className="block w-[43px] h-[43px] rounded-full overflow-hidden border-2 border-white" style={{ boxShadow: "var(--mint-shadow)" }}>
                 {peer ? <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-full h-full !rounded-none" />
                   : group?.avatar_url ? <CachedImg src={mediaUrl(group.avatar_url)} alt="" className="w-full h-full object-cover" />
                   : <span className="w-full h-full bg-surface-3 flex items-center justify-center">{saved ? <Bookmark className="w-5 h-5 text-amber" /> : <Users className="w-5 h-5 text-primary" />}</span>}
               </button>
+              </Aura>
               {headerMenuOpen && headerMenu}
             </span>
           </div>
@@ -3094,11 +3096,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       «в сети» видно по шапке и списку чатов. */}
                   {/* «Мята»: в личке аватаров у сообщений нет — как в макете. */}
                   {!isOwn && (!mintM || isGroup) && (
-                    <Identicon
-                      id={message.sender?.id || "?"}
-                      avatarUrl={message.sender?.avatar_url}
-                      className="w-9 h-9"
-                    />
+                    // Аура — только у последнего в серии: подряд свечения сливались в полосу.
+                    <Aura active={lastInGroup && !!(message.sender as { is_online?: boolean } | undefined)?.is_online} owner={message.sender as never} size={36}>
+                      <Identicon
+                        id={message.sender?.id || "?"}
+                        avatarUrl={message.sender?.avatar_url}
+                        className="w-9 h-9"
+                      />
+                    </Aura>
                   )}
 
                   {/* Контент сообщения */}
@@ -3647,7 +3652,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   onMouseEnter={() => setMentionIdx(i)}
                   className={cn("w-full flex items-center gap-3 px-3 py-2 text-left active:bg-surface-3", i > 0 && "border-t border-border/60", i === mentionIdx && !isTouchDevice() && "bg-surface-3")}
                 >
-                  <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 shrink-0" />
+                  <Aura active={!!(p as { is_online?: boolean }).is_online} owner={p as never} size={32}><Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 shrink-0" /></Aura>
                   <span className="min-w-0 flex-1 text-small font-medium truncate">@{p.username}</span>
                   {(p as { is_bot?: boolean }).is_bot && <Bot className="w-3.5 h-3.5 text-subtle shrink-0" />}
                 </button>
@@ -4112,7 +4117,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   disabled={adding}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-secondary"
                 >
-                  <Identicon id={person.id} avatarUrl={person.avatar_url} className="w-9 h-9" />
+                  <Aura active={!!(person as { is_online?: boolean }).is_online} owner={person as never} size={36}><Identicon id={person.id} avatarUrl={person.avatar_url} className="w-9 h-9" /></Aura>
                   <span className="flex-1 truncate">{person.username}</span>
                   <UserPlus className="w-4 h-4 text-muted-foreground" />
                 </button>

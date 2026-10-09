@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Aura } from "@/components/Aura";
 import { X, Camera, UserPlus, Users, Check } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import UserProfileModal from "@/components/UserProfileModal";
@@ -180,7 +181,7 @@ const GroupSettingsModal = ({
                   onClick={() => addMember(p)}
                   className="w-full flex items-center gap-2 px-2 py-2 rounded-lg active:bg-secondary text-left"
                 >
-                  <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8" />
+                  <Aura active={!!(p as { is_online?: boolean }).is_online} owner={p as never} size={32}><Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8" /></Aura>
                   <span className="text-sm">{p.username}</span>
                   <UserPlus className="w-4 h-4 ml-auto text-primary" />
                 </button>
@@ -197,7 +198,7 @@ const GroupSettingsModal = ({
                 onClick={() => setProfileFor(m.id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left active:bg-surface-3 disabled:active:bg-transparent"
               >
-                <Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" />
+                <Aura active={!!(m as { is_online?: boolean }).is_online} owner={m as never} size={32}><Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" /></Aura>
                 <span className="text-sm truncate flex-1">{m.username}</span>
                 {m.id === userId && <span className="text-caption text-subtle">вы</span>}
               </button>

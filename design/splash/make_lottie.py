@@ -229,12 +229,11 @@ def text_layers(start_ind):
         layers.append(layer(start_ind + n, f"letter {ch}", [group(shapes, ch)], transform(p=p, o=o)))
 
     # Точка: прыгает по W, Y, X и съезжает вместе с X.
-    r = 9
-    top = TEXT_Y - 14                  # над заглавными
+    r = 6
+    top = TEXT_Y - 11                  # над заглавными
     jump = 46                          # высота прыжка
     dot = {"ty": "el", "nm": "dot", "d": 1, "s": static([2 * r, 2 * r]), "p": static([0, 0])}
     fill = {"ty": "fl", "nm": "lime", "o": static(100), "c": static([*LIME, 1]), "r": 1, "bm": 0}
-    stroke = {"ty": "st", "nm": "edge", "o": static(100), "c": static([*TEAL, 1]), "w": static(2.5), "lc": 2, "lj": 2, "bm": 0}
     wx, yx, xx = centers["W"], centers["Y"], centers["X"]
     arc = lambda a, b: [(a + b) / 2, top - jump, 0]
     keys = [
@@ -249,7 +248,7 @@ def text_layers(start_ind):
                (86, [130, 70, 100]), (88, [100, 100, 100]), (98, [130, 70, 100]), (100, [100, 100, 100])),
         o=anim((72, 0), (74, 100)),
     )
-    layers.insert(0, layer(start_ind + len(glyphs), "dot", [group([dot, fill, stroke], "dot")], dot_ks))
+    layers.insert(0, layer(start_ind + len(glyphs), "dot", [group([dot, fill], "dot")], dot_ks))
     markers = [
         {"tm": 30, "cm": "haptic:medium", "dr": 0},   # «X» собран
         {"tm": 46, "cm": "haptic:light", "dr": 0},    # подложка встала

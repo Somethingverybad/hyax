@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Aura } from "@/components/Aura";
 import { useNavigate } from "react-router-dom";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
@@ -92,7 +93,7 @@ const ProfilePrivacy = () => {
             <div className="px-4 py-4 text-small text-subtle">Никого. Заблокировать можно из карточки пользователя — его сообщения и пуши перестанут приходить.</div>
           ) : list.map((b) => (
             <div key={b.id} className="min-h-14 px-4 py-2 flex items-center gap-3">
-              <Identicon id={b.id} avatarUrl={b.avatar_url} className="w-9 h-9 rounded-md shrink-0" />
+              <Aura active={!!(b as { is_online?: boolean }).is_online} owner={b as never} size={36}><Identicon id={b.id} avatarUrl={b.avatar_url} className="w-9 h-9 rounded-md shrink-0" /></Aura>
               <span className="flex-1 text-body truncate">{b.username}</span>
               <button type="button" onClick={() => unblock(b)} className="text-small text-primary active:opacity-60">Разблокировать</button>
             </div>

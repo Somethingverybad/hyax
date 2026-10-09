@@ -309,8 +309,7 @@ const ProfilePage = () => {
               style={mint ? { boxShadow: "0 4.3px 13.3px rgb(0 0 0 / 0.25)" } : undefined}
               aria-label="Сменить аватар"
             >
-              {/* «Мята»: без свечения ауры — в макете онлайн показывает точка у имени. */}
-              <Aura active={online && !mint} owner={profile} size={mint ? 93 : 88} className="w-full h-full">
+              <Aura active={online} owner={profile} size={mint ? 93 : 88} className="w-full h-full">
                 {profile?.avatar_url ? (
                   <img src={mediaUrl(profile.avatar_url)} alt="" className={mint ? "w-full h-full rounded-[15px] object-cover" : "w-full h-full rounded-[6px] object-cover"} />
                 ) : (
