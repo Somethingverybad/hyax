@@ -1,5 +1,6 @@
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useMint, MintIcon } from "@/themes/mint";
 
 /**
  * Шапка подэкрана: стрелка назад, заголовок по центру, необязательное
@@ -24,6 +25,25 @@ const ScreenHeader = ({
   left?: React.ReactNode;
 }) => {
   const navigate = useNavigate();
+  const mint = useMint();
+  if (mint) {
+    // «Мята»: назад — белая таблетка, заголовок по центру, действие справа —
+    // салатовая таблетка (см. .mint-head-right в mint.css).
+    return (
+      <div className="shrink-0 pad-safe-top">
+        <div className="mint-head !pt-[19px] !pb-[12px]">
+          {left ?? (
+            <button type="button" onClick={onBack ?? (() => navigate(-1))} aria-label="Назад"
+              className="mint-pill w-[37px] h-[31px] inline-flex items-center justify-center mint-muted">
+              <MintIcon name="back" size={[7, 13]} />
+            </button>
+          )}
+          <span className="mint-title truncate max-w-[56vw]">{title}</span>
+          {right ? <span className="mint-head-right">{right}</span> : <span className="w-[37px]" aria-hidden />}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="shrink-0 px-2 py-3 pad-safe-top bg-background border-b border-border min-h-14 flex items-center gap-2">
       {left ?? (

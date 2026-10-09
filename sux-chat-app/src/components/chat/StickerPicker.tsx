@@ -1,4 +1,5 @@
 import StickerView from "@/components/chat/StickerView";
+import { useMint, MintIcon } from "@/themes/mint";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, mediaUrl } from "@/api/client";
@@ -239,7 +240,19 @@ const StickerPicker = ({
   // Правки в открытом паке (добавили, удалили, сменили макрос) — тоже в кэш.
   useEffect(() => { if (activePackId) pickerCache.stickers.set(activePackId, stickers); }, [stickers, activePackId]);
 
-  const tabs = (
+  const mint = useMint();
+  // «Мята»: переключатель «Стикеры | Звуки» — белая таблетка внизу панели.
+  const mintTabs = (
+    <div className="absolute left-0 right-0 bottom-[12px] flex justify-center z-10 pointer-events-none">
+      <div className="mint-pill pointer-events-auto relative h-[28px] w-[152px] flex text-[12px] font-medium mint-ink overflow-hidden">
+        <span aria-hidden className="absolute top-0 bottom-0 rounded-full transition-all duration-300"
+          style={{ background: "rgb(52 92 84 / 0.15)", left: tab === "stickers" ? 0 : "56%", width: tab === "stickers" ? "56%" : "44%" }} />
+        <button type="button" onClick={() => setTab("stickers")} className="relative w-[56%]">Стикеры</button>
+        <button type="button" onClick={() => setTab("sounds")} className="relative w-[44%]">Звуки</button>
+      </div>
+    </div>
+  );
+  const tabs = mint ? mintTabs : (
     <div className="flex gap-2 px-3 pt-2 shrink-0">
       <button
         type="button"
@@ -296,7 +309,7 @@ const StickerPicker = ({
           className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary"
           aria-label={playingId === sound.id ? "Остановить" : "Прослушать"}
         >
-          {playingId === sound.id ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          {playingId === sound.id ? <Square className="w-4 h-4" /> : mint ? <MintIcon name="soundPlay" size={[13, 15]} /> : <Play className="w-4 h-4" />}
         </button>
         <button
           type="button"
@@ -316,7 +329,7 @@ const StickerPicker = ({
   };
 
   const soundsTab = (
-    <div className="h-64 flex flex-col">
+    <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
       {tabs}
       {!inPack ? (
         // Меню выбора пака + глобальный поиск по звукам
@@ -390,7 +403,7 @@ const StickerPicker = ({
 
   if (loading) {
     return (
-      <div className="h-64 flex flex-col">
+      <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
         {tabs}
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
           Загрузка стикеров…
@@ -428,7 +441,7 @@ const StickerPicker = ({
 
   if (packs.length === 0) {
     return (
-      <div className="h-64 flex flex-col">
+      <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
         {tabs}
         {creating ? createForm : null}
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -448,12 +461,12 @@ const StickerPicker = ({
   }
 
   return (
-    <div className="h-64 flex flex-col">
+    <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
       {tabs}
       {creating && createForm}
 
       {/* Полоса наборов */}
-      <div className="flex gap-2 px-3 py-2 overflow-x-auto border-b border-border shrink-0">
+      <div className={mint ? "flex items-center gap-[16px] mx-[11px] px-[8px] h-[49px] overflow-x-auto shrink-0 border-b border-[var(--mint-divider)]" : "flex gap-2 px-3 py-2 overflow-x-auto border-b border-border shrink-0"}>
         <button
           type="button"
           onClick={() => setCreating(true)}
@@ -477,14 +490,21 @@ const StickerPicker = ({
             key={p.pack.id}
             type="button"
             onClick={() => setActivePackId(p.pack.id)}
-            className={cn(
+            title={p.pack.name}
+            className={mint
+              ? cn("shrink-0 w-[25px] h-[25px] rounded-[6px] overflow-hidden flex items-center justify-center text-[11px] font-semibold mint-ink transition-transform", activePackId === p.pack.id ? "ring-2 ring-[var(--mint-ink)] ring-offset-1 scale-110" : "opacity-80")
+              : cn(
               "px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors",
               activePackId === p.pack.id
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground",
             )}
           >
-            {p.pack.name}
+            {mint
+              ? ((p.pack as { preview?: string[] }).preview?.[0]
+                  ? <StickerView url={(p.pack as { preview?: string[] }).preview![0]} alt="" className="w-full h-full object-contain" />
+                  : (p.pack.name || "?")[0])
+              : p.pack.name}
           </button>
         ))}
       </div>
@@ -514,15 +534,16 @@ const StickerPicker = ({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-2">
+          <div className={mint ? "grid grid-cols-5 gap-[10px] px-[9px] pt-[8px]" : "grid grid-cols-4 gap-2"}>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={busy}
-              className="aspect-square flex items-center justify-center bg-secondary text-muted-foreground disabled:opacity-40"
+              className={mint ? "aspect-square rounded-[20px] flex items-center justify-center mint-ink disabled:opacity-40" : "aspect-square flex items-center justify-center bg-secondary text-muted-foreground disabled:opacity-40"}
+              style={mint ? { background: "rgb(52 92 84 / 0.1)" } : undefined}
               aria-label="Добавить стикеры"
             >
-              <Plus className="w-6 h-6" />
+              {mint ? <MintIcon name="stkAdd" size={[22, 24]} /> : <Plus className="w-6 h-6" />}
             </button>
             {stickers.map((s) => (
               <button

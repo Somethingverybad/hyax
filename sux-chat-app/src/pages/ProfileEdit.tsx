@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMint } from "@/themes/mint";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
@@ -17,6 +18,7 @@ const BIO_LIMIT = 500;
  * лежит отдельно, в User.username, и отсюда не меняется.
  */
 const ProfileEdit = () => {
+  const mint = useMint();
   const navigate = useNavigate();
   const cached = readCache<Profile>("user");
   const [profile, setProfile] = useState<Profile | null>(cached);
@@ -71,7 +73,7 @@ const ProfileEdit = () => {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="px-2 h-10 text-body text-primary active:opacity-60"
+            className={mint ? "mint-pill mint-btn mint-ink" : "px-2 h-10 text-body text-primary active:opacity-60"}
           >
             Отмена
           </button>
@@ -88,6 +90,26 @@ const ProfileEdit = () => {
         }
       />
 
+      {mint ? (
+        <div className="flex-1 overflow-y-auto px-[17px] py-[10px]">
+          <label className="block text-[14.3px] font-medium" style={{ color: "var(--mint-title)" }} htmlFor="edit-username">Никнейм</label>
+          <input id="edit-username" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={50}
+            className="mint-card mt-[10px] w-full h-[39px] px-[19px] text-[14.3px] text-foreground outline-none" />
+          <p className="mt-[10px] text-[11.7px] leading-[14px]" style={{ color: "var(--mint-hint)" }}>
+            Имя, которое видят собеседники. Логин для входа не меняется
+          </p>
+          {!valid && <p className="mt-1 text-[11.7px] text-destructive">Никнейм короче 2 символов</p>}
+          <div className="mint-divider -mx-[6px] my-[18px]" />
+          <label className="block text-[14.3px] font-medium" style={{ color: "var(--mint-title)" }} htmlFor="edit-bio">О себе</label>
+          <textarea id="edit-bio" value={bio} onChange={(e) => setBio(e.target.value.slice(0, BIO_LIMIT))} rows={3}
+            placeholder="Например: на связи после 18:00"
+            className="mint-card mt-[10px] w-full min-h-[68px] px-[19px] py-[12px] text-[14.3px] text-foreground outline-none resize-none placeholder:text-[var(--mint-muted)]" />
+          <p className="mt-[10px] text-[11.7px] leading-[14px] flex justify-between gap-3" style={{ color: "var(--mint-hint)" }}>
+            <span>Аватарка и обложка меняются на экране профиля — по кнопке с камерой</span>
+            <span className="tabular-nums shrink-0">{bio.length}/{BIO_LIMIT}</span>
+          </p>
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-1.5">
           <label className="text-small text-subtle" htmlFor="edit-username">Никнейм</label>
@@ -125,6 +147,7 @@ const ProfileEdit = () => {
           Аватар и обложка меняются на экране профиля — по кнопке с камерой.
         </p>
       </div>
+      )}
     </div>
   );
 };

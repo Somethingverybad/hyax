@@ -23,6 +23,7 @@ import {
   Sticker, Activity, Flame, Lightbulb, Sparkles,
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
+import { useMint, MintIcon } from "@/themes/mint";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
 export interface Profile {
@@ -224,10 +225,23 @@ const ProfilePage = () => {
 
   // Своя точка: зелёная — «В сети», серая — выбран статус «Скрыт».
   const online = !profile?.hide_online;
+  const mint = useMint();
   const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      {mint ? (
+        <div className="shrink-0 pad-safe-top">
+          <div className="mint-head !pt-[19px] !pb-[12px]">
+            <span />
+            <span className="mint-title">Профиль</span>
+            <button type="button" onClick={() => navigate("/profile/edit")} aria-label="Редактировать профиль"
+              className="mint-lime w-[56px] h-[33px] inline-flex items-center justify-center">
+              <MintIcon name="pencil" size={[17, 18]} />
+            </button>
+          </div>
+        </div>
+      ) : (
       <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center gap-2">
         <span className="text-h1 flex-1">Профиль</span>
         <button
@@ -239,6 +253,7 @@ const ProfilePage = () => {
           <Pencil className="w-5 h-5" />
         </button>
       </div>
+      )}
 
       {/* Прокрутка и раскладка разведены намеренно. Когда overflow-y-auto и
           flex-col висели на одном блоке, его высота была ограничена экраном:
@@ -246,7 +261,7 @@ const ProfilePage = () => {
           и обрезались собственным overflow-hidden — пропадали целые строки.
           Теперь скроллит внешний блок, а внутренний свободно растёт вниз. */}
       <div className="flex-1 overflow-y-auto">
-        <div className="min-h-full px-4 pb-4 space-y-3 flex flex-col">
+        <div className={mint ? "min-h-full px-[17px] pb-4 space-y-[11px] flex flex-col" : "min-h-full px-4 pb-4 space-y-3 flex flex-col"}>
           <input ref={avatarRef} type="file" accept="image/*" className="hidden"
                  onChange={(e) => pickImage("avatar", e.target.files?.[0] || null)} />
           <input ref={coverRef} type="file" accept="image/*" className="hidden"
@@ -254,8 +269,8 @@ const ProfilePage = () => {
 
           {/* Обложка во всю ширину, аватар свешивается с её нижнего края —
               поэтому блок выходит за горизонтальные отступы прокрутки. */}
-          <div className="shrink-0 -mx-4 relative">
-            <div className="h-36 w-full bg-surface-3 overflow-hidden">
+          <div className={mint ? "shrink-0 -mx-[17px] relative pb-[47px]" : "shrink-0 -mx-4 relative"}>
+            <div className={mint ? "h-[139px] w-full bg-surface-3 overflow-hidden" : "h-36 w-full bg-surface-3 overflow-hidden"} style={mint ? { boxShadow: "0 4.3px 13.3px rgb(0 0 0 / 0.25)" } : undefined}>
               {profile?.cover_url && (
                 <img src={mediaUrl(profile.cover_url)} alt="" className="w-full h-full object-cover" />
               )}
@@ -287,12 +302,16 @@ const ProfilePage = () => {
               type="button"
               onClick={() => avatarRef.current?.click()}
               disabled={uploading !== null}
-              className="absolute -bottom-8 left-4 w-[88px] h-[88px] rounded-lg bg-surface-3 border-4 border-background disabled:opacity-60"
+              className={mint
+                ? "absolute bottom-0 left-1/2 -translate-x-1/2 w-[93px] h-[93px] rounded-[17px] bg-surface-3 border-2 border-white disabled:opacity-60"
+                : "absolute -bottom-8 left-4 w-[88px] h-[88px] rounded-lg bg-surface-3 border-4 border-background disabled:opacity-60"}
+              style={mint ? { boxShadow: "0 4.3px 13.3px rgb(0 0 0 / 0.25)" } : undefined}
               aria-label="Сменить аватар"
             >
-              <Aura active={online} owner={profile} size={88} className="w-full h-full">
+              {/* «Мята»: без свечения ауры — в макете онлайн показывает точка у имени. */}
+              <Aura active={online && !mint} owner={profile} size={mint ? 93 : 88} className="w-full h-full">
                 {profile?.avatar_url ? (
-                  <img src={mediaUrl(profile.avatar_url)} alt="" className="w-full h-full rounded-[6px] object-cover" />
+                  <img src={mediaUrl(profile.avatar_url)} alt="" className={mint ? "w-full h-full rounded-[15px] object-cover" : "w-full h-full rounded-[6px] object-cover"} />
                 ) : (
                   <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
                     {(profile?.username || "?")[0]?.toUpperCase()}
@@ -306,12 +325,12 @@ const ProfilePage = () => {
           </div>
 
           {/* Отступ сверху — под свешивающийся аватар. */}
-          <div className="shrink-0 pt-10">
-            <div className="flex items-center gap-2">
-              <p className="text-[24px] leading-tight font-semibold truncate">{profile?.username || "…"}</p>
-              <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${online ? "bg-online" : "bg-subtle"}`} title={online ? "В сети" : "Скрыт"} aria-hidden />
+          <div className={mint ? "shrink-0 pt-[12px] text-center" : "shrink-0 pt-10"}>
+            <div className={mint ? "flex items-center justify-center gap-2" : "flex items-center gap-2"}>
+              <p className={mint ? "text-[21.3px] leading-tight font-semibold truncate" : "text-[24px] leading-tight font-semibold truncate"} style={mint ? { color: "var(--mint-title)" } : undefined}>{profile?.username || "…"}</p>
+              <span className={`${mint ? "w-3 h-3" : "w-2.5 h-2.5"} shrink-0 rounded-full ${online ? (mint ? "bg-[#6ede32]" : "bg-online") : "bg-subtle"}`} title={online ? "В сети" : "Скрыт"} aria-hidden />
             </div>
-            <p className="mt-1 text-body text-subtle truncate">{bio || "Статус не указан"}</p>
+            {(!mint || bio) && <p className={mint ? "mt-1 text-[12.7px] mint-muted truncate" : "mt-1 text-body text-subtle truncate"}>{bio || "Статус не указан"}</p>}
             {uploading && (
               <p className="mt-1 text-caption text-subtle">
                 {uploading === "cover" ? "Загружаем обложку…" : "Загружаем аватар…"}
@@ -322,9 +341,11 @@ const ProfilePage = () => {
           <button
             type="button"
             onClick={() => { if (profile?.username) setShareOpen(true); }}
-            className="shrink-0 h-10 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"
+            className={mint
+              ? "mint-dark-pill shrink-0 h-[42px] text-[12.7px] flex items-center justify-center gap-[11px]"
+              : "shrink-0 h-10 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"}
           >
-            <Share2 className="w-4 h-4" />
+            {mint ? <MintIcon name="share" size={15} /> : <Share2 className="w-4 h-4" />}
             Поделиться профилем
           </button>
 
@@ -342,7 +363,7 @@ const ProfilePage = () => {
                   className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
                   aria-label="Скопировать никнейм"
                 >
-                  <Copy className="w-4 h-4" />
+                  {mint ? <MintIcon name="rowCopy" size={14} /> : <Copy className="w-4 h-4" />}
                 </button>
               }
             />
@@ -370,7 +391,7 @@ const ProfilePage = () => {
                   className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
                   aria-label="Скопировать имя пользователя"
                 >
-                  <Copy className="w-4 h-4" />
+                  {mint ? <MintIcon name="rowCopy" size={14} /> : <Copy className="w-4 h-4" />}
                 </button>
               }
             />

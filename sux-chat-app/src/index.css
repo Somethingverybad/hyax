@@ -433,6 +433,7 @@ textarea,
 .route-transition {
   animation: route-in 170ms ease-out;
 }
+.route-transition.route-tab { animation: none; }
 
 /* Переходы между экранами: вглубь экран въезжает справа, назад — слева, между
    вкладками — прежнее мягкое проявление. Кривая как у системных переходов:

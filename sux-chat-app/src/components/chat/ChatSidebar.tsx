@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import { api, mediaUrl } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
+import { useMint, MintIcon } from "@/themes/mint";
 
 interface Profile {
   id: string;
@@ -119,6 +120,7 @@ const ChatSidebar = ({
   onOpenIdeabox,
 }: ChatSidebarProps) => {
   const isMobileLayout = useIsMobile();
+  const mint = useMint() && isMobileLayout;
   const listRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
   const [searchQuery, setSearchQuery] = useState("");
@@ -221,6 +223,8 @@ const ChatSidebar = ({
   }, [chats, currentUser?.id]);
   // Свайп влево открывает удаление, вправо — закрепление.
   const [swipedChatId, setSwipedChatId] = useState<string | null>(null);
+  // «Изм.» в шапке «Мяты»: у строк видны «закрепить» и «удалить» без свайпа.
+  const [editMode, setEditMode] = useState(false);
   const [pinSwipedId, setPinSwipedId] = useState<string | null>(null);
   // Закрепление применяем сразу на экране, не дожидаясь ответа: иначе строка
   // прыгает вверх с задержкой в полсекунды. При ошибке откатываем.
@@ -497,7 +501,15 @@ const ChatSidebar = ({
       {/* Шапка: аватар + имя + «В сети», справа шестерёнка и красный «+»
           (открывает диалог нового чата). Ниже — поиск по списку. */}
       <div ref={topRef} className="px-4 pt-2 pb-3 pad-safe-top">
-        <div className="flex items-center gap-3 h-14 md:h-16">
+        <div className={mint ? "mint-head !px-0 !pt-1 !pb-0" : "flex items-center gap-3 h-14 md:h-16"}>
+          {mint && (
+            <>
+              <button type="button" onClick={() => setEditMode((v) => !v)} className="mint-pill mint-btn mint-ink">
+                {editMode ? "Готово" : "Изм."}
+              </button>
+              <span className="mint-title">Чаты</span>
+            </>
+          )}
           {!isMobileLayout && isCollapsed && (
             <Button
               variant="ghost"
@@ -509,7 +521,7 @@ const ChatSidebar = ({
               {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
             </Button>
           )}
-          {!isCollapsed && (
+          {!isCollapsed && !mint && (
             <>
               <button
                 type="button"
@@ -565,6 +577,9 @@ const ChatSidebar = ({
         {!isCollapsed && (
           <Dialog>
             <DialogTrigger asChild>
+              {mint ? (
+                <button type="button" className="mint-lime w-[56px] h-[33px] flex items-center justify-center text-[30px] font-light leading-none pb-1" aria-label="Новый чат" title="Новый чат">+</button>
+              ) : (
               <button
                 type="button"
                 className="ui-plus w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:brightness-90 hover:brightness-110"
@@ -573,6 +588,7 @@ const ChatSidebar = ({
               >
                 <PlusIcon className="w-6 h-6 md:w-5 md:h-5" />
               </button>
+              )}
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
@@ -745,18 +761,22 @@ const ChatSidebar = ({
         )}
         </div>
         {!isCollapsed && (
-          <label className="ui-search mt-2 flex items-center gap-2 h-11 md:h-9 px-3 rounded-md bg-surface-1 md:bg-transparent md:border md:border-border text-subtle focus-within:ring-1 focus-within:ring-amber md:focus-within:border-amber md:focus-within:ring-0">
-            <SearchIcon className="w-5 h-5 md:w-4 md:h-4 shrink-0" />
+          <label className={mint
+            ? "mint-pill mt-[11px] flex items-center gap-[12px] h-[42px] px-[14px] mint-muted"
+            : "ui-search mt-2 flex items-center gap-2 h-11 md:h-9 px-3 rounded-md bg-surface-1 md:bg-transparent md:border md:border-border text-subtle focus-within:ring-1 focus-within:ring-amber md:focus-within:border-amber md:focus-within:ring-0"}>
+            {mint ? <MintIcon name="search" size={[15, 16]} /> : <SearchIcon className="w-5 h-5 md:w-4 md:h-4 shrink-0" />}
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
-              placeholder="Поиск чатов и людей по нику"
-              className="flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"
+              placeholder={mint ? "Поиск чатов" : "Поиск чатов и людей по нику"}
+              className={mint ? "flex-1 min-w-0 bg-transparent outline-none text-[14.3px] text-foreground placeholder:text-[var(--mint-muted)]" : "flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"}
             />
           </label>
         )}
         {!isCollapsed && (
-          <div className="mt-2.5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 pb-1">
+          <div className={mint
+            ? "mint-card mt-[11px] h-[47px] flex items-center gap-2 px-[10px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            : "mt-2.5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 pb-1"}>
             {([
               { id: "all", label: "Все" },
               { id: "unread", label: "Непрочитанные", count: unreadChats },
@@ -767,12 +787,14 @@ const ChatSidebar = ({
                 type="button"
                 onClick={() => setListTab(t.id)}
                 aria-pressed={listTab === t.id}
-                className={`ui-chip shrink-0 h-8 px-3 rounded-full text-small font-medium inline-flex items-center gap-1.5 transition-colors ${
+                className={mint
+                  ? `shrink-0 h-[26px] px-[13px] text-[12.7px] inline-flex items-center gap-1.5 ${listTab === t.id ? "mint-lime" : "mint-pill mint-ink"}`
+                  : `ui-chip shrink-0 h-8 px-3 rounded-full text-small font-medium inline-flex items-center gap-1.5 transition-colors ${
                   listTab === t.id ? "ui-chip-on bg-primary text-primary-foreground" : "bg-surface-1 text-muted-foreground active:bg-surface-3"
                 }`}
               >
                 {t.label}
-                {"count" in t && t.count > 0 && (
+                {"count" in t && t.count > 0 && !mint && (
                   <span className="ui-chip-count min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[11px] leading-none font-semibold inline-flex items-center justify-center">
                     {t.count > 99 ? "99+" : t.count}
                   </span>
@@ -800,7 +822,7 @@ const ChatSidebar = ({
       {/* Список чатов. Отступ сверху — под мини-плеер: он стоит полосой над
           списком, и без отступа накрывал бы первую строку. */}
       <ScrollArea className="flex-1">
-        <div style={{ paddingTop: "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
+        <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
           {onOpenIdeabox && !isCollapsed && (
             <button
@@ -864,7 +886,7 @@ const ChatSidebar = ({
           {chats.length > 0 ? (
             // ui-chat-list — общая подложка строк: в стиле «мягкие карточки»
             // список лежит в одной белой карточке (index.css).
-            <div className="ui-chat-list">{[...chats].sort((x, y) => {
+            <div className={mint ? undefined : "ui-chat-list"}>{[...chats].sort((x, y) => {
               // Закреплённые сверху, позже закреплённый выше; остальные — по
               // времени последнего сообщения. Тот же порядок отдаёт сервер;
               // здесь он держится и между обновлениями списка (закрепили —
@@ -1035,7 +1057,20 @@ const ChatSidebar = ({
                             {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label="Секретный чат" />}
                             <span className="truncate">{chatTitle}</span>
                           </p>
-                          {(() => {
+                          {mint && editMode ? (
+                            <span className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <span role="button" tabIndex={0} aria-label={pinnedAt(chat) ? "Открепить" : "Закрепить"}
+                                onClick={(e) => { e.stopPropagation(); void togglePin(chat); }}
+                                className={`mint-round !w-8 !h-8 ${pinnedAt(chat) ? "mint-lime" : "mint-pill mint-ink"}`}>
+                                <Pin className="w-4 h-4" />
+                              </span>
+                              <span role="button" tabIndex={0} aria-label="Удалить чат"
+                                onClick={(e) => { e.stopPropagation(); void deleteChat(chat.id, chatTitle); }}
+                                className="mint-round !w-8 !h-8 mint-pill text-destructive">
+                                <Trash2 className="w-4 h-4" />
+                              </span>
+                            </span>
+                          ) : (() => {
                             // Время последнего сообщения, а не изменения чата:
                             // updated_at меняют переименование, смена аватара и
                             // закрепление, и в списке стояло не то время.

@@ -88,12 +88,18 @@ const ThemeFromProfile = () => {
   return null;
 };
 
+const TAB_ROOTS = ["/chat", "/saved", "/music", "/profile"];
+
 const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navType = useNavigationType();
   const prevPath = useRef(location.pathname);
   const step = routeDepth(location.pathname) - routeDepth(prevPath.current);
-  const dir = navType === "POP" ? "screen-pop" : step > 0 ? "screen-push" : step < 0 ? "screen-pop" : "";
+  // Переключение вкладок нижней панели — без «подъёма» экрана: выбор
+  // показывает сама панель (в «Мяте» подсветка переплывает к вкладке).
+  const isTab = (p: string) => TAB_ROOTS.includes(p);
+  const tabSwitch = isTab(location.pathname) && isTab(prevPath.current) && location.pathname !== prevPath.current;
+  const dir = tabSwitch ? "route-tab" : navType === "POP" ? "screen-pop" : step > 0 ? "screen-push" : step < 0 ? "screen-pop" : "";
   // Переходы — в лог баг-репорта: по ним видно, на каком экране что случилось.
   useEffect(() => { applog.info(`route ${location.pathname}`); }, [location.pathname]);
   useEffect(() => { prevPath.current = location.pathname; }, [location.pathname]);

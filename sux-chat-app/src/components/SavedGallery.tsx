@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
+import { useMint, MintIcon } from "@/themes/mint";
 
 /** «1 фото», «12 фото» — слово не склоняется, но пусть будет одной точкой. */
 export const pluralPhotos = (n: number) => `${n} фото`;
@@ -27,7 +28,11 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
   onClose: () => void;
   onChanged?: (count: number) => void;
 }) => {
-  const [items, setItems] = useState<SavedImage[] | null>(null);
+  const [rawItems, setItems] = useState<SavedImage[] | null>(null);
+  const mint = useMint();
+  // «Мята»: кнопка сортировки в шапке — новые сверху или старые сверху.
+  const [oldFirst, setOldFirst] = useState(false);
+  const items = rawItems && oldFirst ? [...rawItems].reverse() : rawItems;
   // Открытая сохранёнка — позицией в списке: просмотрщик листает их свайпом.
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const viewerItems: ViewerItem[] = (items || []).map((it) => ({
@@ -56,7 +61,22 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] bg-background flex flex-col" style={mint ? { backgroundImage: "linear-gradient(155deg, hsl(var(--background)) 10%, hsl(var(--chat-canvas)) 100%)" } : undefined} onClick={(e) => e.stopPropagation()}>
+      {mint ? (
+        <div className="shrink-0 pad-safe-top">
+          <div className="mint-head !pt-[19px] !pb-[12px]">
+            <button type="button" onClick={onClose} aria-label="Назад" className="mint-pill w-[37px] h-[31px] inline-flex items-center justify-center mint-muted">
+              <MintIcon name="back" size={[7, 13]} />
+            </button>
+            <span className="mint-title truncate">{title || "Сохранёнки"}</span>
+            <button type="button" onClick={() => setOldFirst((v) => !v)} aria-label={oldFirst ? "Сначала новые" : "Сначала старые"}
+              className="mint-lime w-[46px] h-[34px] inline-flex items-center justify-center gap-[1px]">
+              <MintIcon name="sort" size={[10, 15]} style={{ transform: "rotate(180deg)" }} />
+              <MintIcon name="sort" size={[10, 15]} />
+            </button>
+          </div>
+        </div>
+      ) : (
       <div className="shrink-0 flex items-center gap-2 px-3 py-3 pad-safe-top min-h-14 border-b border-border">
         <button type="button" onClick={onClose} className="p-2 -ml-2" aria-label="Назад">
           <ChevronLeft className="w-6 h-6" />
@@ -64,7 +84,8 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
         <span className="text-h1 truncate">{title || "Сохранёнки"}</span>
         {items && <span className="ml-auto text-small text-subtle">{items.length}</span>}
       </div>
-      <div className="flex-1 overflow-y-auto p-3 pad-safe-bottom">
+      )}
+      <div className={mint ? "flex-1 overflow-y-auto px-[17px] pt-[25px] pb-3 pad-safe-bottom" : "flex-1 overflow-y-auto p-3 pad-safe-bottom"}>
         {items === null ? (
           <p className="py-10 text-center text-small text-subtle">Загрузка…</p>
         ) : items.length === 0 ? (
@@ -72,8 +93,8 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
             {own ? "Пока пусто. Открой фото в чате, тапни по нему и выбери «Добавить в сохранёнки»." : "Сохранёнок пока нет"}
           </p>
         ) : (
-          <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5">
-            {items.map((it, i) => <SavedTile key={it.id} item={it} className="aspect-[4/5] w-full" onClick={() => setOpenIdx(i)} />)}
+          <div className={mint ? "grid grid-cols-3 md:grid-cols-5 gap-[4px]" : "grid grid-cols-3 md:grid-cols-5 gap-1.5"}>
+            {items.map((it, i) => <SavedTile key={it.id} item={it} className={mint ? "aspect-[117/130] w-full !rounded-[20px]" : "aspect-[4/5] w-full"} onClick={() => setOpenIdx(i)} />)}
           </div>
         )}
       </div>

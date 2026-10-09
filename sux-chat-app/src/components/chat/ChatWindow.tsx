@@ -17,6 +17,8 @@ import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
+import { useMint, MintIcon } from "@/themes/mint";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { DEFAULT_REACTION, type ReactionSummary } from "@/lib/reactions";
@@ -246,6 +248,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
+  const mintTheme = useMint();
+  const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
   const [stickersOpen, setStickersOpen] = useState(false);
   // Аудио-стикеры: каталог с сервера, выбранный звук уедет с сообщением
@@ -2682,6 +2686,42 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   hiddenRowsRef.current = hiddenRows;
   const shownRows = hiddenRows ? feedRows.slice(hiddenRows) : feedRows;
 
+  // «Мята» на телефоне: шапка из таблеток по макету (см. themes/mint).
+  const mintM = mintTheme && isMobile;
+  const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
+  const headerMenu = (
+                <>
+                  <span className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
+                  <span className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg bg-surface-1 border border-border shadow-xl py-1 flex flex-col">
+                    <button type="button" onClick={() => { setHeaderMenuOpen(false); peer ? setProfileOpen(true) : setGroupOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                      {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? "Профиль" : "Настройки группы"}
+                    </button>
+                    {mintM && onCall && !saved && (peer || isGroup) && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); onCall(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Phone className="w-5 h-5 text-foreground/80" />Позвонить
+                      </button>
+                    )}
+                    {mintM && !isGroup && !saved && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setAddOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <UserPlus className="w-5 h-5 text-foreground/80" />Добавить участников
+                      </button>
+                    )}
+                    <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                      <ImageIcon className="w-5 h-5 text-foreground/80" />Обои чата
+                    </button>
+                    {isSecret && skey && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setKeyOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <KeyRound className="w-5 h-5 text-foreground/80" />Ключ шифрования
+                      </button>
+                    )}
+                    {!isSecret && peer && !peer.is_bot && !saved && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setSecretIntroOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Lock className="w-5 h-5 text-online" />Секретный чат
+                      </button>
+                    )}
+                  </span>
+                </>
+  );
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {dragOver && (
@@ -2693,7 +2733,40 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           </div>
         </div>
       )}
-      {(onBack || title || peer || isGroup) && (
+      {mintM && (onBack || title || peer || isGroup) && (
+        <div ref={headerRef} className="relative z-20 shrink-0 pad-safe-top">
+          <div className="mint-head !pb-[11px] !pt-[19px]">
+            {onBack ? (
+              <button type="button" onClick={onBack} aria-label="Назад" className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">
+                <MintIcon name="back" size={[7, 13]} />
+                {otherUnread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#345c54] text-white text-[10.7px] leading-[18px] text-center">{otherUnread > 99 ? "99+" : otherUnread}</span>}
+              </button>
+            ) : <span />}
+            <button type="button" onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)}
+              className="mint-pill h-[43px] px-5 min-w-[120px] max-w-[60vw] flex flex-col items-center justify-center">
+              <span className="max-w-full truncate text-[16.3px] font-semibold leading-[18px] flex items-center gap-1" style={{ color: "var(--mint-title)" }}>
+                {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label="Секретный чат" />}
+                <span className="truncate">{headerTitle || peer?.username || group?.name || "Чат"}</span>
+              </span>
+              <span className="max-w-full truncate text-[11.7px] leading-[16px] mint-muted">
+                {peer ? (peer.is_bot ? "бот" : peer.is_online ? "в сети" : lastSeenText(peer.last_seen))
+                  : isGroup ? `${group?.participants?.length || 0} ${(() => { const n = group?.participants?.length || 0, m = n % 10, h = n % 100; return m === 1 && h !== 11 ? "участник" : m >= 2 && m <= 4 && (h < 12 || h > 14) ? "участника" : "участников"; })()}`
+                  : saved ? "Сообщения для себя" : ""}
+              </span>
+            </button>
+            <span className="relative">
+              <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label="Меню чата"
+                className="block w-[43px] h-[43px] rounded-full overflow-hidden border-2 border-white" style={{ boxShadow: "var(--mint-shadow)" }}>
+                {peer ? <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-full h-full !rounded-none" />
+                  : group?.avatar_url ? <img src={mediaUrl(group.avatar_url)} alt="" className="w-full h-full object-cover" />
+                  : <span className="w-full h-full bg-surface-3 flex items-center justify-center">{saved ? <Bookmark className="w-5 h-5 text-amber" /> : <Users className="w-5 h-5 text-primary" />}</span>}
+              </button>
+              {headerMenuOpen && headerMenu}
+            </span>
+          </div>
+        </div>
+      )}
+      {!mintM && (onBack || title || peer || isGroup) && (
         <div ref={headerRef} className="relative z-20 shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-7 py-2 pad-safe-top border-b border-border bg-background min-h-14 md:min-h-[84px]">
           {onBack && (
             <button
@@ -2786,29 +2859,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               >
                 <MoreVertical className="w-5 h-5" />
               </button>
-              {headerMenuOpen && (
-                <>
-                  <span className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
-                  <span className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg bg-surface-1 border border-border shadow-xl py-1 flex flex-col">
-                    <button type="button" onClick={() => { setHeaderMenuOpen(false); peer ? setProfileOpen(true) : setGroupOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                      {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? "Профиль" : "Настройки группы"}
-                    </button>
-                    <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                      <ImageIcon className="w-5 h-5 text-foreground/80" />Обои чата
-                    </button>
-                    {isSecret && skey && (
-                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setKeyOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <KeyRound className="w-5 h-5 text-foreground/80" />Ключ шифрования
-                      </button>
-                    )}
-                    {!isSecret && peer && !peer.is_bot && !saved && (
-                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setSecretIntroOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <Lock className="w-5 h-5 text-online" />Секретный чат
-                      </button>
-                    )}
-                  </span>
-                </>
-              )}
+              {headerMenuOpen && headerMenu}
             </span>
           )}
         </div>
@@ -2847,21 +2898,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
       {pinned && (
         <div
-          className="pinned-bar absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm"
+          className={mintM ? "pinned-bar mint-card absolute top-0 left-[17px] right-[17px] z-20 flex items-center gap-[12px] px-4 py-[6px]" : "pinned-bar absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 md:px-7 py-1.5 border-b border-border bg-surface-1/95 backdrop-blur-sm"}
           style={{ transform: "translateY(var(--player-h, 0px))" }}
         >
-          <Pin className="w-5 h-5 text-primary shrink-0" />
+          {mintM ? (
+            <span className="flex flex-col gap-[4px] shrink-0" aria-hidden>
+              <span className="w-[2px] h-[7px] rounded-[1px]" style={{ background: "var(--mint-divider)" }} />
+              <span className="w-[2px] h-[7px] rounded-[1px]" style={{ background: "var(--mint-divider)" }} />
+              <span className="w-[2px] h-[7px] rounded-[1px]" style={{ background: "var(--mint-ink)" }} />
+            </span>
+          ) : <Pin className="w-5 h-5 text-primary shrink-0" />}
           <button type="button" onClick={() => jumpToMessage(pinned.id)} disabled={jumping} className="flex-1 min-w-0 text-left disabled:opacity-60">
-            <span className="block text-small text-primary leading-tight">Закреплено · {pinned.sender_username}</span>
-            <span className="block text-body line-clamp-1 break-all">{pinned.preview}</span>
+            {mintM ? (
+              <>
+                <span className="block text-[14.3px] font-medium leading-[18px] truncate" style={{ color: "var(--mint-title)" }}>Закреплённое сообщение</span>
+                <span className="block text-[14.3px] leading-[18px] mint-muted truncate">{pinned.preview}</span>
+              </>
+            ) : (
+              <>
+                <span className="block text-small text-primary leading-tight">Закреплено · {pinned.sender_username}</span>
+                <span className="block text-body line-clamp-1 break-all">{pinned.preview}</span>
+              </>
+            )}
           </button>
           <button
             type="button"
             onClick={() => { const m = messages.find((x) => x.id === pinned.id); m ? togglePin(m, false) : api.pinMessage(pinned.id, false).then(() => setPinned(null)).catch(() => toast.error("Не удалось")); }}
-            className="p-1.5 text-muted-foreground"
+            className={mintM ? "p-1.5 mint-ink" : "p-1.5 text-muted-foreground"}
             aria-label="Открепить"
           >
-            <X className="w-4 h-4" />
+            {mintM ? <MintIcon name="pinnedRight" size={[24, 14]} /> : <X className="w-4 h-4" />}
           </button>
         </div>
       )}
@@ -2887,7 +2953,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         }}
 
       >
-        <div ref={feedRef} className="max-w-4xl mx-auto space-y-2">
+        <div ref={feedRef} className={cn("max-w-4xl mx-auto space-y-2", mintM && pinned && "pt-[56px]")}>
           {hasMore && (
             <div className="flex justify-center">
               <button
@@ -3025,7 +3091,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   {/* Аватар (только для чужих сообщений) */}
                   {/* Без ауры: у сообщений подряд свечения сливались в одну полосу —
                       «в сети» видно по шапке и списку чатов. */}
-                  {!isOwn && (
+                  {/* «Мята»: в личке аватаров у сообщений нет — как в макете. */}
+                  {!isOwn && (!mintM || isGroup) && (
                     <Identicon
                       id={message.sender?.id || "?"}
                       avatarUrl={message.sender?.avatar_url}
@@ -3038,8 +3105,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     "flex flex-col max-w-[72%] sm:max-w-[65%] md:max-w-[55%]",
                     isOwn ? "items-end" : "items-start"
                   )}>
-                    {/* Имя отправителя (только для чужих сообщений) */}
-                    {!isOwn && (
+                    {/* Имя отправителя (только для чужих сообщений). «Мята» — как в
+                        макете: в личке не пишем, в группе — над первым в серии. */}
+                    {!isOwn && (!mintM || (isGroup && !sameAuthor)) && (
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-small font-semibold text-foreground">
                           {username}
@@ -3745,7 +3813,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </div>
           )}
 
-          {stickersOpen && (
+          {stickersOpen && !mintM && (
             <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
@@ -3756,13 +3824,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </div>
           )}
 
-          <div className="flex gap-2 items-end">
+          <div className={cn("flex gap-2 items-end", mintM && "mint-compose")}>
             <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handlePick(e, "photo")} />
             <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => handlePick(e, "video")} />
             <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => handlePick(e, "audio")} />
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handlePick(e, "file")} />
 
-            <div className="relative shrink-0">
+            <div className="mint-attach-wrap relative shrink-0">
               <Button
                 variant="outline"
                 size="icon"
@@ -3771,10 +3839,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 className="ui-compose-btn h-11 w-11 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
                 aria-label="Прикрепить"
               >
-                <Paperclip className="w-5 h-5" />
+                {mintM ? <MintIcon name="attach" size={[19, 18]} /> : <Paperclip className="w-5 h-5" />}
               </Button>
               {attachMenuOpen && (
-                <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
+                <div className={cn("absolute bottom-full mb-2 w-56 bg-surface-1 border border-border rounded-lg overflow-hidden z-10", mintM ? "right-0" : "left-0")}>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); photoInputRef.current?.click(); }}>
                     <ImageIcon className="w-4 h-4 text-primary" /> Фото
@@ -3812,14 +3880,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               variant="outline"
               size="icon"
               onClick={() => setStickersOpen((v) => !v)}
-              className="ui-compose-btn h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
+              className="mint-stk ui-compose-btn h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
               aria-label="Стикеры"
             >
-              <Smile className="w-5 h-5" />
+              {mintM ? <MintIcon name="sticker" size={[18, 20]} className="mint-ink" /> : <Smile className="w-5 h-5" />}
             </Button>
             )}
 
-            <div className="flex-1 relative">
+            <div className="mint-field-wrap flex-1 relative">
               {/* Поле растёт под текст до четырёх строк: раньше это был
                   однострочный input (проп multiline ничего не делал), и
                   длинное сообщение набиралось вслепую. */}
@@ -3983,12 +4051,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     : recLocked ? <Send className="w-5 h-5" />
                     : recordKind === "video" ? <Video className="w-5 h-5" />
                     : recordKind === "rov" ? <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />
-                    : <Mic className="w-5 h-5" />}
+                    : mintM ? <MintIcon name="mic" size={[16, 23]} /> : <Mic className="w-5 h-5" />}
                 </button>
                 </span>
               </>
             )}
           </div>
+          {/* «Мята»: панель стикеров — шторкой под полем ввода, как в макете. */}
+          {stickersOpen && mintM && (
+            <div className="mint-sticker-sheet">
+              <StickerPicker
+                onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
+                sounds={sounds}
+                selectedSoundId={selectedSound?.id ?? null}
+                onSelectSound={(sound) => setSelectedSound(sound)}
+              />
+            </div>
+          )}
         </div>
       </div>
       )}
