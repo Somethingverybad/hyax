@@ -57,9 +57,12 @@
         function recolor(data) {
           if (!dark) return data;
           var ink = hex((theme && theme.colors && theme.colors.foreground) || "#FFFFFF");
+          // Точка тёмно-мятная — на тёмном фоне её не видно, берём основной цвет темы.
+          var dot = hex((theme && theme.colors && theme.colors.primary) || "#C7F964");
           (data.layers || []).forEach(function (l) {
-            if (!/^letter /.test(l.nm || "")) return;
-            (l.shapes || []).forEach(function (g) { (g.it || []).forEach(function (it) { if (it.ty === "fl") it.c.k = ink; }); });
+            var c = /^letter /.test(l.nm || "") ? ink : l.nm === "dot" ? dot : null;
+            if (!c) return;
+            (l.shapes || []).forEach(function (g) { (g.it || []).forEach(function (it) { if (it.ty === "fl") it.c.k = c; }); });
           });
           return data;
         }

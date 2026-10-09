@@ -40,8 +40,9 @@ K = ICON / 1024              # масштаб из макета Figma
 BAR_W, BAR_H, BAR_R = 196.8 * K, 893.6 * K, 98.4 * K
 TEAL = (0x34 / 255, 0x5C / 255, 0x54 / 255)
 LIME = (0xC7 / 255, 0xF9 / 255, 0x64 / 255)
+MINT_DEEP = (0x2F / 255, 0x5B / 255, 0x53 / 255)  # основной цвет «Мяты»
 TEXT_Y = CY + ICON / 2 + 34  # верх надписи (место под прыгающую точку)
-TEXT_W = 321                 # ширина надписи «WhoYaX»
+TEXT_W = 361                 # ширина надписи «WhoYaX» (трекинг шире, чем в ролике)
 CAP_H = 0.23 * ICON          # высота заглавных — как в ролике
 SQ_R = 0.32 * ICON           # скругление подложки (на глаз ≈20% от стороны)
 
@@ -233,7 +234,7 @@ def text_layers(start_ind):
     top = TEXT_Y - 11                  # над заглавными
     jump = 46                          # высота прыжка
     dot = {"ty": "el", "nm": "dot", "d": 1, "s": static([2 * r, 2 * r]), "p": static([0, 0])}
-    fill = {"ty": "fl", "nm": "lime", "o": static(100), "c": static([*LIME, 1]), "r": 1, "bm": 0}
+    fill = {"ty": "fl", "nm": "mint", "o": static(100), "c": static([*MINT_DEEP, 1]), "r": 1, "bm": 0}
     wx, yx, xx = centers["W"], centers["Y"], centers["X"]
     arc = lambda a, b: [(a + b) / 2, top - jump, 0]
     keys = [
