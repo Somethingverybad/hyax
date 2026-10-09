@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
@@ -833,7 +834,7 @@ const ChatSidebar = ({
               }`}
             >
               {ideabox?.avatar_url ? (
-                <img src={mediaUrl(ideabox.avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover bg-surface-1" />
+                <CachedImg src={mediaUrl(ideabox.avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full object-cover bg-surface-1" />
               ) : (
                 <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
                   <Lightbulb className="w-6 h-6 md:w-5 md:h-5 text-amber" />
@@ -1011,7 +1012,7 @@ const ChatSidebar = ({
                   >
                     {isChannel ? (
                       (chat as any).avatar_url ? (
-                        <img src={mediaUrl((chat as any).avatar_url)} alt="" loading="lazy" decoding="async" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover" />
+                        <CachedImg src={mediaUrl((chat as any).avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover" />
                       ) : (
                         <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
                           <Radio className="w-6 h-6 md:w-5 md:h-5 text-primary" />
@@ -1019,9 +1020,7 @@ const ChatSidebar = ({
                       )
                     ) : chat.is_group ? (
                       (chat as any).avatar_url ? (
-                        <img
-                          loading="lazy"
-                          decoding="async"
+                        <CachedImg
                           src={mediaUrl((chat as any).avatar_url)}
                           alt=""
                           className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover"

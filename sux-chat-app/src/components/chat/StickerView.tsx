@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AnimationItem } from "lottie-web";
 import { mediaUrl } from "@/api/client";
+import { useCachedImage } from "@/lib/imageCache";
 
 /**
  * Стикер любого формата: .webp/.png/.gif — картинка; .webm — видео
@@ -59,7 +60,14 @@ const StickerView = ({ url, alt, className, loop = true }: { url: string; alt?: 
   if (isWebm(src)) {
     return <video src={src} className={className} autoPlay loop={loop} muted playsInline aria-label={alt} />;
   }
-  return <img src={src} alt={alt || ""} className={className} loading="lazy" draggable={false} />;
+  return <CachedImg src={src} alt={alt || ""} className={className} />;
+};
+
+/** Статичный стикер — через кэш картинок (иначе при каждом открытии окна
+ *  стикеров они на миг пропадали: CDN не даёт браузеру их кэшировать). */
+const CachedImg = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+  const s = useCachedImage(src);
+  return s ? <img src={s} alt={alt} className={className} draggable={false} /> : <span className={className} aria-hidden />;
 };
 
 export default StickerView;

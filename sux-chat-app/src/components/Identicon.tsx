@@ -1,3 +1,4 @@
+import { useCachedImage } from "@/lib/imageCache";
 import { mediaUrl } from "@/api/client";
 
 /**
@@ -58,10 +59,13 @@ interface IdenticonProps {
 }
 
 const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) => {
+  const cached = useCachedImage(avatarUrl ? mediaUrl(avatarUrl) : null);
   if (avatarUrl) {
+    // Пока картинка достаётся из кэша — подложка того же размера.
+    if (!cached) return <span className={`ui-avatar ${className} rounded-md shrink-0 bg-surface-4 block`} aria-hidden />;
     return (
       <img
-        src={mediaUrl(avatarUrl)}
+        src={cached}
         alt=""
         className={`ui-avatar ${className} ${avatarUrl ? "rounded-md" : "rounded-full"} object-cover shrink-0 select-none`}
         draggable={false}

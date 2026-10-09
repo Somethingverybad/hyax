@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode } from "react";
+import CachedImg from "@/components/CachedImg";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
@@ -2758,7 +2759,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label="Меню чата"
                 className="block w-[43px] h-[43px] rounded-full overflow-hidden border-2 border-white" style={{ boxShadow: "var(--mint-shadow)" }}>
                 {peer ? <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-full h-full !rounded-none" />
-                  : group?.avatar_url ? <img src={mediaUrl(group.avatar_url)} alt="" className="w-full h-full object-cover" />
+                  : group?.avatar_url ? <CachedImg src={mediaUrl(group.avatar_url)} alt="" className="w-full h-full object-cover" />
                   : <span className="w-full h-full bg-surface-3 flex items-center justify-center">{saved ? <Bookmark className="w-5 h-5 text-amber" /> : <Users className="w-5 h-5 text-primary" />}</span>}
               </button>
               {headerMenuOpen && headerMenu}
@@ -2811,7 +2812,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               title="Настройки группы"
             >
               {group?.avatar_url ? (
-                <img src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
+                <CachedImg src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
               ) : (
                 <span className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center shrink-0"><Users className="w-5 h-5 text-primary" /></span>
               )}

@@ -273,9 +273,17 @@ export const MINT_DARK: ThemeDef = {
   shape: { ...SOFT },
 };
 
-export const BUILTIN_THEMES: ThemeDef[] = [LIGHT, DARK, NEO, GLASS_LIGHT, GLASS_DARK, MINT, MINT_DARK];
-export const DEFAULT_THEME = DARK;
+/** «Мята» — единственная встроенная тема (светлая и тёмная); остальное
+ *  приложение строится от неё. Прежние встроенные темы ведут на «Мяту» той
+ *  же яркости: у кого была «Тёмная» — «Мята тёмная», у кого светлые — «Мята». */
+export const BUILTIN_THEMES: ThemeDef[] = [MINT, MINT_DARK];
+export const DEFAULT_THEME = MINT;
+const LEGACY: Record<string, ThemeDef> = {
+  light: MINT, neo: MINT, "glass-light": MINT, dark: MINT_DARK, "glass-dark": MINT_DARK,
+};
+// Старые объекты оставлены для ссылок из кода и пользовательских тем-основ.
+void [LIGHT, DARK, NEO, GLASS_LIGHT, GLASS_DARK];
 
 export function builtinById(id: string): ThemeDef | undefined {
-  return BUILTIN_THEMES.find((t) => t.id === id);
+  return BUILTIN_THEMES.find((t) => t.id === id) || LEGACY[id];
 }

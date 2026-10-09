@@ -66,7 +66,8 @@ export function normalizeTheme(raw: any, fallback: ThemeDef = DEFAULT_THEME): Th
   }
   const s = raw?.shape ?? {}, f = fallback.shape;
   const shape: ThemeShape = {
-    style: s.style === "outlined" || s.style === "flat" || s.style === "glass" || s.style === "soft" ? s.style : f.style,
+    // Раскладка у всех тем одна — «мягкие карточки» «Мяты»; своя тема меняет цвета.
+    style: "soft",
     radius: clamp(s.radius, SHAPE_LIMITS.radius, f.radius),
     radiusField: clamp(s.radiusField, SHAPE_LIMITS.radiusField, f.radiusField),
     borderWidth: clamp(s.borderWidth, SHAPE_LIMITS.borderWidth, f.borderWidth),

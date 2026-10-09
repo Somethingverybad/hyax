@@ -203,8 +203,7 @@ const ThemeEditor = () => {
 
         <p className="px-1 pt-2 text-small text-subtle">Форма</p>
         <SettingsCard>
-          <Toggle label="Обводки и жёсткие тени" hint="Необрутализм: линии тушью, тень без размытия" checked={draft.shape.style === "outlined"} onChange={(v) => setShape({ style: v ? "outlined" : "flat" })} />
-          <Toggle label="Мягкие карточки" hint="Карточки с мягкой тенью над градиентом, кнопки и фильтры таблетками" checked={draft.shape.style === "soft"} onChange={(v) => setShape({ style: v ? "soft" : "flat" })} />
+
           <Slider label="Скругление карточек" value={draft.shape.radius} min={SHAPE_LIMITS.radius[0]} max={SHAPE_LIMITS.radius[1]} onChange={(radius) => setShape({ radius })} />
           <Slider label="Скругление полей" value={draft.shape.radiusField} min={SHAPE_LIMITS.radiusField[0]} max={SHAPE_LIMITS.radiusField[1]} onChange={(radiusField) => setShape({ radiusField })} />
           {draft.shape.style === "outlined" && (

@@ -10,7 +10,11 @@ import * as React from "react";
 export const DESKTOP_QUERY = "(min-width: 768px) and (min-height: 500px)";
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+  // Сразу верное значение, а не «не телефон» до первого эффекта: иначе первый
+  // кадр рисовался десктопной/обычной раскладкой и тут же перестраивался
+  // (в «Мяте» было видно старый интерфейс при каждом входе на экран).
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(() =>
+    typeof window !== "undefined" && window.matchMedia ? !window.matchMedia(DESKTOP_QUERY).matches : undefined);
 
   React.useEffect(() => {
     const mql = window.matchMedia(DESKTOP_QUERY);

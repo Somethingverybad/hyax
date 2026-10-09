@@ -46,21 +46,15 @@ function syncStatusBar(t: ThemeDef) {
  *
  *  Меняем, только если иконка и правда другая: на каждую смену iOS показывает
  *  своё окно «Вы изменили иконку», и дёргать его на ровном месте незачем. */
-const ICON_BY_THEME: Record<string, string> = {
-  light: "Light", dark: "Dark", neo: "Neo", "glass-light": "Glass", "glass-dark": "Glass",
-  mint: "Mint", "mint-dark": "Mint",
-};
-
-function syncAppIcon(t: ThemeDef) {
+// Основная иконка теперь мятная — и тема одна. Если на телефоне стоит
+// альтернативная (от прежних тем), возвращаем основную, один раз.
+function syncAppIcon(_t: ThemeDef) {
   if (Capacitor.getPlatform() !== "ios") return;
-  const want = ICON_BY_THEME[t.id] || (t.base === "light" ? "Light" : "Dark");
   void import("@capacitor-community/app-icon")
     .then(async ({ AppIcon }) => {
       const { value: now } = await AppIcon.getName();
-      if (now === want) return;
-      // suppressNotification: false — системное окно показывается, но и
-      // приватных вызовов, за которые Apple снимает с проверки, тут нет.
-      await AppIcon.change({ name: want, suppressNotification: false });
+      if (!now) return;
+      await AppIcon.reset({ suppressNotification: false });
     })
     .catch(() => { /* иконка не сменилась — тема всё равно применилась */ });
 }
@@ -92,9 +86,12 @@ export function initTheme() {
   current = (id && builtinById(id))
     || (id && cached && (cached as any).id === id ? normalizeTheme(cached) : null)
     || DEFAULT_THEME;
+  // Прежняя встроенная тема — запоминаем «Мяту», на которую её заменили.
+  if (id && current.builtin && current.id !== id) { write(KEY_ID, current.id); write(KEY_DEF, current); legacyMigrated = true; }
   paint(current);
 }
 
+let legacyMigrated = false;
 export function getTheme(): ThemeDef { return current; }
 export function getInstalledThemes(): ThemeDef[] { return installed; }
 
@@ -122,8 +119,11 @@ export function setInstalledThemes(list: ThemeDef[]) {
 
 /** Профиль пришёл с сервера: на этом устройстве ставим ту же тему. */
 export async function syncThemeFromProfile(activeId: string | null | undefined) {
-  if (!activeId || activeId === current.id) return;
+  if (!activeId) return;
   const known = builtinById(activeId) || installed.find((t) => t.id === activeId);
+  // На сервере записана прежняя встроенная тема — переводим на «Мяту» и там.
+  if (known && known.id !== activeId) { if (known.id !== current.id || legacyMigrated) setTheme(known, true); legacyMigrated = false; return; }
+  if (activeId === current.id) return;
   if (known) { setTheme(known, false); return; }
   try {
     const { api } = await import("@/api/client");

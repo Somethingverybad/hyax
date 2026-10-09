@@ -162,3 +162,10 @@
   [data-shape="soft"] .ui-chat-list > button .text-h2 { font-size: 15px; font-weight: 600; color: var(--mint-title); }
   [data-shape="soft"] .ui-chat-list > button .text-small { font-size: 13.3px; color: var(--mint-muted); }
 }
+
+/* Верх ленты растворяется под шапкой-таблетками: без этого прокрученное
+   (плашка даты, пузырь) обрезалось ровной линией и торчало из-под шапки. */
+[data-shape="soft"] .chat-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 26px);
+}
