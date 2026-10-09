@@ -706,7 +706,12 @@ textarea,
   --soft-shadow: 0 6px 22px rgb(0 0 0 / 0.42), 0 0 24px -10px hsl(var(--accent) / 0.25);
   --soft-shadow-sm: 0 4px 14px rgb(0 0 0 / 0.38);
   --soft-surface: linear-gradient(105deg, hsl(var(--surface-1)) 35%, color-mix(in srgb, hsl(var(--surface-1)) 82%, hsl(var(--accent))));
-  --soft-line: hsl(var(--accent) / 0.16);
+  --soft-line: hsl(var(--accent) / 0.09);
+}
+/* Вторичные кнопки в тёмной — светлее карточки, иначе сливались с фоном. */
+[data-shape="soft"][data-base="dark"] :is(button, a, [role="button"]).bg-surface-4 {
+  background: hsl(var(--surface-4));
+  border-color: hsl(var(--accent) / 0.22);
 }
 [data-shape="soft"] #root {
   background-color: hsl(var(--background));
