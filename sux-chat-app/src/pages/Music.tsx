@@ -44,7 +44,7 @@ const PlayerPanel = () => {
   const RepeatIcon = s.repeat === "one" ? Repeat1 : Repeat;
 
   return (
-    <div className="shrink-0 px-4 pb-2">
+    <div className="shrink-0 px-4 pb-2" style={{ marginBottom: "var(--mint-nav-space, 0px)" }}>
       <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1">
@@ -267,7 +267,7 @@ const Music = () => {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
           {tracks === null ? (
             <p className="text-small text-subtle">Загрузка…</p>
           ) : tracks.length === 0 ? (
@@ -372,7 +372,7 @@ const Music = () => {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
         {creating && (
           <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 flex gap-2">
             <input

@@ -1148,6 +1148,8 @@ const ChatSidebar = ({
             </div>
           )}
         </div>
+        {/* Под плавающим островом «Мяты» — место, чтобы последний чат не прятался. */}
+        <div aria-hidden style={{ height: "var(--mint-nav-space, 0px)" }} />
       </ScrollArea>
 
       {/* Кнопка выхода в свернутом состоянии (внизу) */}

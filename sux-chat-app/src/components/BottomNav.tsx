@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
@@ -41,6 +41,18 @@ const MintIsland = () => {
   const { pathname } = useLocation();
   const idx = MINT_ITEMS.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
   const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
+  // Остров висит поверх контента: экраны отступают снизу на его высоту
+  // (--mint-nav-space), чтобы последняя строка не пряталась под ним.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = wrapRef.current, root = document.documentElement;
+    if (!el) return;
+    const set = () => root.style.setProperty("--mint-nav-space", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(set) : null;
+    ro?.observe(el);
+    return () => { ro?.disconnect(); root.style.removeProperty("--mint-nav-space"); };
+  }, []);
   useLayoutEffect(() => {
     if (idx < 0) return;
     const raf = requestAnimationFrame(() => setPos(idx));
@@ -48,7 +60,7 @@ const MintIsland = () => {
     return () => cancelAnimationFrame(raf);
   }, [idx]);
   return (
-    <div className="mint-nav-wrap shrink-0 flex justify-center pt-2 pad-safe-bottom">
+    <div ref={wrapRef} className="mint-nav-wrap flex justify-center pt-2 pad-safe-bottom">
       <nav className="mint-nav">
         {pos >= 0 && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {MINT_ITEMS.map(({ to, label, icon, size }) => (

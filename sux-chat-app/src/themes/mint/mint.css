@@ -58,7 +58,13 @@
 .mint-round { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; }
 
 /* Остров навигации */
-.mint-nav-wrap { padding-bottom: max(14px, calc(8px + var(--sab, 0px))); background: transparent; }
+.mint-nav-wrap {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  padding-bottom: max(14px, calc(8px + var(--sab, 0px))); background: transparent; pointer-events: none;
+}
+.mint-nav-wrap > .mint-nav { pointer-events: auto; }
+/* Поле ввода в «Избранном» (там тоже остров) — над ним, а не под ним. */
+.chat-compose { margin-bottom: var(--mint-nav-space, 0px); }
 .mint-nav {
   width: min(295px, calc(100% - 64px)); height: 54px; padding: 4px;
   display: flex; align-items: center; justify-content: space-between;

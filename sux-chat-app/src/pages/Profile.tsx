@@ -261,7 +261,8 @@ const ProfilePage = () => {
           и обрезались собственным overflow-hidden — пропадали целые строки.
           Теперь скроллит внешний блок, а внутренний свободно растёт вниз. */}
       <div className="flex-1 overflow-y-auto">
-        <div className={mint ? "min-h-full px-[17px] pb-4 space-y-[11px] flex flex-col" : "min-h-full px-4 pb-4 space-y-3 flex flex-col"}>
+        <div className={mint ? "min-h-full px-[17px] pb-4 space-y-[11px] flex flex-col" : "min-h-full px-4 pb-4 space-y-3 flex flex-col"}
+          style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
           <input ref={avatarRef} type="file" accept="image/*" className="hidden"
                  onChange={(e) => pickImage("avatar", e.target.files?.[0] || null)} />
           <input ref={coverRef} type="file" accept="image/*" className="hidden"
