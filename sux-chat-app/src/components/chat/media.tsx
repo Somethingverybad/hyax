@@ -157,8 +157,14 @@ export const GlassTriangle = ({ size, rim = 3, flip = false, className, innerCla
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flip]);
   return (
-    <div className={cn("relative shrink-0 tri-shadow", turning && "tri-turn", className)} data-flip={shown ? "1" : undefined}
+    <div className={cn("relative shrink-0", turning && "tri-turn", className)} data-flip={shown ? "1" : undefined}
       style={{ width: size, height: size }} onClick={onClick}>
+      {/* Тень — отдельный размытый треугольник позади, а не filter: drop-shadow
+          на всей рамке: тот перерисовывался с каждым кадром видео и скелетона,
+          и в WebKit лента при прокрутке дёргалась. */}
+      <div className="absolute inset-0 tri-shadow-layer" aria-hidden>
+        <div className="absolute inset-0 bg-black/25" style={{ clipPath: triClip(size, size, shown) }} />
+      </div>
       <div className="absolute inset-0 tri-rim" style={{ clipPath: triClip(size, size, shown) }} />
       <div className={cn("absolute overflow-hidden", innerClassName ?? "bg-black")}
         style={{ top: shown ? rim : apex, left: (size - h) / 2, width: h, height: h, clipPath: triClip(h, h, shown) }}>
@@ -345,6 +351,14 @@ export const VideoNote = ({ url, seconds, mirror, flip }: { url: string; seconds
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
+  // iOS не грузит данные видео до тапа, и loadeddata может не прийти вовсе —
+  // тогда скелетон висел бы вечно. Готово по первому же признаку жизни,
+  // а не дождались — всё равно показываем рамку с видео.
+  useEffect(() => {
+    if (ready) return;
+    const t = window.setTimeout(() => setReady(true), 2500);
+    return () => window.clearTimeout(t);
+  }, [ready]);
 
   // Первый кадр вместо чёрного треугольника: WebKit рисует видео только
   // после перемотки, поэтому подталкиваем его на первый же кадр.
@@ -383,8 +397,10 @@ export const VideoNote = ({ url, seconds, mirror, flip }: { url: string; seconds
         playsInline
         muted={!playing}
         preload="metadata"
-        onLoadedMetadata={showFirstFrame}
+        onLoadedMetadata={() => { showFirstFrame(); setReady(true); }}
         onLoadedData={() => { showFirstFrame(); setReady(true); }}
+        onSeeked={() => setReady(true)}
+        onError={() => setReady(true)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}

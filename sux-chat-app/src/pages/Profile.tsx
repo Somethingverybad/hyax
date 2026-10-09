@@ -313,7 +313,9 @@ const ProfilePage = () => {
             >
               <Aura active={online} owner={profile} size={mint ? 93 : 88} className="w-full h-full">
                 {profile?.avatar_url ? (
-                  <FadeImg src={mediaUrl(profile.avatar_url)} className={mint ? "w-full h-full rounded-[15px]" : "w-full h-full rounded-[6px]"} />
+                  // Размер явный: обёртка ауры высотой по содержимому, а у FadeImg
+                  // содержимое абсолютное — с h-full аватар схлопывался в ноль.
+                  <FadeImg src={mediaUrl(profile.avatar_url)} className={mint ? "w-[89px] h-[89px] rounded-[15px]" : "w-20 h-20 rounded-[6px]"} />
                 ) : (
                   <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
                     {(profile?.username || "?")[0]?.toUpperCase()}

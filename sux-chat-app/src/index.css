@@ -936,7 +936,7 @@ textarea,
 
 /* Видео-сообщения — стеклянно-мятные треугольники (GlassTriangle в media.tsx):
    кромка — градиент палочек «X», мягкая тень по форме, блик стекла сверху. */
-.tri-shadow { filter: drop-shadow(0 5px 11px rgb(0 0 0 / 0.2)); }
+.tri-shadow-layer { filter: blur(8px); transform: translateY(5px); pointer-events: none; }
 /* Переворот вершиной вниз/вверх: оборот вокруг горизонтальной оси. */
 .tri-turn { animation: tri-turn 380ms cubic-bezier(0.45, 0, 0.55, 1); }
 @keyframes tri-turn {
