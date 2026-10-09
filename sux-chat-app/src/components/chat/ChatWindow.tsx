@@ -1373,7 +1373,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const last = f.lastElementChild as HTMLElement | null;
     const gap = last && cs ? Math.round(cs.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : -1;
     const dist = Math.round(n.scrollHeight - n.scrollTop - n.clientHeight);
-    applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(f).transform}`);
+    applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(f).transform} anims=${f.getAnimations().length}`);
     // Пока лента доводится к непрочитанным, она спрятана (opacity: 0 из
     // React) — не трогаем, иначе она проявится раньше времени.
     if (n.style.opacity === "0") return;
@@ -1413,16 +1413,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         // Переезд показываем трансформом с той же кривой и длительностью, что
         // у панели ввода: лента идёт вровень с клавиатурой, а scrollTop по
         // кадрам никто не пишет.
+        //
+        // Web Animations, а не CSS-переход через inline-стили: тот снимался
+        // таймером (transition и transform обнулялись разом), и iOS оставлял
+        // слой ленты в стартовом положении — после закрытия клавиатуры
+        // сообщения висели выше на её высоту при верной геометрии, после
+        // открытия — лежали ниже и подпрыгивали на первом же символе
+        // (баг-репорты 8ce658e6, 85c94555, 0311d654). Здесь началом и концом
+        // анимации владеет движок, inline-стилей нет, снимать нечего.
         clearTimeout(cleanup);
-        feed.style.transition = "none";
-        feed.style.transform = `translateY(${moved}px)`;
-        void feed.offsetHeight; // зафиксировать стартовое положение до перехода
+        feed.getAnimations().forEach((a) => a.cancel());
         // Та же кривая и та же поправка на опоздание, что у панели ввода
         // (main.tsx): лента и панель стоят вровень на каждом кадре.
         const late = ts ? Math.min(Math.max(0, Date.now() - ts), duration - 16) : 0;
-        feed.style.transition = `transform ${duration}ms ${ease || "cubic-bezier(0.17, 0.59, 0.4, 1)"} ${-Math.round(late)}ms`;
-        feed.style.transform = "translateY(0)";
-        cleanup = setTimeout(() => { feed.style.transition = ""; feed.style.transform = ""; settleKb(height); }, duration - late + 60);
+        const anim = feed.animate(
+          [{ transform: `translateY(${moved}px)` }, { transform: "translateY(0)" }],
+          { duration, easing: ease || "cubic-bezier(0.17, 0.59, 0.4, 1)", fill: "none" },
+        );
+        anim.currentTime = late;
+        anim.finished.then(() => settleKb(height)).catch(() => { /* отменена новой клавиатурой */ });
       });
     };
     window.addEventListener("hyax:keyboard", onKb);
