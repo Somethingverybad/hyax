@@ -11,6 +11,12 @@ final class Session: ObservableObject {
     @Published var online: [String: Bool] = [:]
     /// Растёт при событиях, после которых список чатов стоит перечитать.
     @Published var chatsVersion = 0
+    /// Внешний вид: system | light | dark.
+    @Published var appearance: String = UserDefaults.standard.string(forKey: "wyx.appearance") ?? "system" {
+        didSet { UserDefaults.standard.set(appearance, forKey: "wyx.appearance") }
+    }
+    var appearanceLabel: String { appearance == "light" ? "Мята" : appearance == "dark" ? "Мята тёмная" : "Как в системе" }
+    var scheme: ColorScheme? { appearance == "light" ? .light : appearance == "dark" ? .dark : nil }
     let socket = Socket()
     private var bag = Set<AnyCancellable>()
 
@@ -82,6 +88,7 @@ struct WYXApp: App {
                 if session.loggedIn { RootView() } else { AuthView() }
             }
             .environmentObject(session)
+            .preferredColorScheme(session.scheme)
             .task { await session.start() }
             .onChange(of: phase) { _, p in
                 session.socket.send(["type": "active", "active": p == .active])

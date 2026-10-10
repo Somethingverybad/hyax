@@ -1,4 +1,20 @@
 import Foundation
+import UIKit
+
+/// Журнал приложения для баг-репортов: кольцо последних строк.
+final class AppLog {
+    static let shared = AppLog()
+    private var lines: [String] = []
+    private let start = Date()
+    private let lock = NSLock()
+    func add(_ s: String) {
+        lock.lock(); defer { lock.unlock() }
+        let t = Date().timeIntervalSince(start)
+        lines.append(String(format: "+%03d:%06.3f %@", Int(t) / 60, t.truncatingRemainder(dividingBy: 60), s))
+        if lines.count > 1500 { lines.removeFirst(lines.count - 1500) }
+    }
+    func dump() -> String { lock.lock(); defer { lock.unlock() }; return lines.joined(separator: "\n") }
+}
 
 // Клиент того же API, что у веб-клиента (sux-chat-app/src/api/client.ts).
 // Прямой адрес, без CDN: CDN кэширует ответы API (см. память проекта).
@@ -12,7 +28,21 @@ struct Profile: Codable, Identifiable, Hashable {
     var is_bot: Bool?
     var hide_online: Bool?
     var bio: String?
+    var push_preview: Bool?
+    var rov_enabled: Bool?
+    var allow_adult: Bool?
+    var saved_visibility: String?
+    var aura_color: String?
+    var aura_text: String?
+    var notify_sound: SoundInfo?
 }
+
+struct VibeState: Codable { var vibe: Int; var voted: Bool?; var can_vote: Bool? }
+struct VibeLevel: Codable, Hashable { var min_vibe: Int; var name: String; var color: String; var glow: Bool? ; var glowOn: Bool { glow ?? false } }
+struct VibeLevelsConfig: Codable { var bar_length: Int; var levels: [VibeLevel] }
+struct IdeaItem: Codable, Identifiable, Hashable { let id: String; var text: String; var likes: Int; var dislikes: Int; var status: String?; var created_at: String?; var mine: Bool?; var my_vote: Int? }
+struct IdeasPage: Codable { var sort: String?; var page: Int?; var pages: Int?; var count: Int?; var is_admin: Bool; var my_vibe: Int?; var points: Points; var items: [IdeaItem]
+    struct Points: Codable { var vote: Int; var like: Int } }
 
 struct PinnedInfo: Codable, Hashable { var id: String; var sender_username: String?; var preview: String? }
 
@@ -339,6 +369,68 @@ final class API {
     func leaveChat(_ chat: String) async throws { let _: Empty = try await post("chats/\(chat)/leave/", body: [:]) }
     func pinChat(_ chat: String, pinned: Bool) async throws { let _: Empty = try await post("chats/\(chat)/pin/", body: ["pin": pinned]) }
 
+    // MARK: - Профиль и настройки
+
+    func updateProfile(fields: [String: Any]) async throws -> Profile {
+        guard let me = try? await currentProfile() else { throw APIError.unauthorized }
+        var req = URLRequest(url: base.appendingPathComponent("profiles/\(me.id)/"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: fields)
+        return try await run(req)
+    }
+    func removeCover() async throws {
+        var req = URLRequest(url: base.appendingPathComponent("cover/upload/")); req.httpMethod = "DELETE"
+        let _: Empty = try await run(req)
+    }
+    func blocks() async throws -> [Profile] { try await get("blocks/") }
+    func block(_ id: String) async throws { let _: Empty = try await post("blocks/", body: ["profile_id": id]) }
+    func unblock(_ id: String) async throws {
+        var req = URLRequest(url: base.appendingPathComponent("blocks/")); req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.httpBody = try JSONSerialization.data(withJSONObject: ["profile_id": id])
+        let _: Empty = try await run(req)
+    }
+    func savedImages() async throws -> [SavedImage] { try await get("saved-images/") }
+    func savedViewers() async throws -> [Profile] { try await get("saved-viewers/") }
+    func savedViewer(add id: String) async throws { let _: Empty = try await post("saved-viewers/", body: ["profile_id": id]) }
+    func savedViewer(remove id: String) async throws {
+        var req = URLRequest(url: base.appendingPathComponent("saved-viewers/")); req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.httpBody = try JSONSerialization.data(withJSONObject: ["profile_id": id])
+        let _: Empty = try await run(req)
+    }
+    func sounds() async throws -> [SoundInfo] { try await get("sounds/") }
+    func publicStickerPacks() async throws -> [StickerPack] { try await get("sticker-packs/") }
+    func saveStickerPack(_ id: String) async throws { let _: Empty = try await post("sticker-packs/\(id)/save/", body: [:]) }
+    func unsaveStickerPack(_ id: String) async throws { let _: Empty = try await post("sticker-packs/\(id)/unsave/", body: [:]) }
+    struct ImportResult: Codable { var pack_id: String?; var name: String; var total: Int; var done: Int }
+    func importTelegramStickers(url: String) async throws -> ImportResult { try await post("sticker-packs/import-telegram/", body: ["url": url]) }
+    func vibe(_ profile: String) async throws -> VibeState { try await get("vibe/\(profile)/") }
+    func raiseVibe(_ profile: String) async throws -> VibeState { try await post("vibe/\(profile)/", body: [:]) }
+    func vibeLevels() async throws -> VibeLevelsConfig { try await get("vibe-levels/") }
+    func ideas(sort: String, page: Int = 1) async throws -> IdeasPage { try await get("ideas/", query: ["sort": sort, "page": String(page), "size": "20"]) }
+    func createIdea(_ text: String) async throws -> Empty { try await post("ideas/", body: ["text": text]) }
+    func ideaAction(_ id: String, _ act: String, value: Int? = nil) async throws -> Empty { try await post("ideas/\(id)/\(act)/", body: value.map { ["value": $0] } ?? [:]) }
+    func deleteAccount(password: String) async throws { let _: Empty = try await post("account/delete/", body: ["password": password]) }
+
+    func sendBugReport(text: String, screenshot: Data?, log: String?) async throws {
+        let boundary = "----wyx\(UUID().uuidString)"
+        var req = URLRequest(url: base.appendingPathComponent("bugreports/"))
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let access { req.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization") }
+        var b = Data()
+        func field(_ name: String, _ value: String) { b.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!) }
+        field("description", text)
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?", bn = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        field("meta", "{\"platform\":\"ios-native\",\"app\":\"WYX\",\"version\":\"\(v)\",\"build\":\"\(bn)\",\"ua\":\"\(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)\",\"screen\":\"\(Int(UIScreen.main.bounds.width))x\(Int(UIScreen.main.bounds.height)) @\(Int(UIScreen.main.scale))\"}")
+        if let log { b.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"log\"; filename=\"app.log\"\r\nContent-Type: text/plain\r\n\r\n".data(using: .utf8)!); b.append(log.data(using: .utf8)!); b.append("\r\n".data(using: .utf8)!) }
+        if let screenshot { b.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"screenshot\"; filename=\"screenshot.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".data(using: .utf8)!); b.append(screenshot); b.append("\r\n".data(using: .utf8)!) }
+        b.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = b
+        let (d, r) = try await URLSession.shared.data(for: req)
+        guard let http = r as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.http((r as? HTTPURLResponse)?.statusCode ?? 0, String(data: d, encoding: .utf8) ?? "") }
+    }
+
     // MARK: - Каналы
 
     func channel(_ id: String) async throws -> Channel { try await get("channels/\(id)/") }
@@ -415,8 +507,10 @@ final class API {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if auth, let access { req.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization") }
         let (data, resp): (Data, URLResponse)
-        do { (data, resp) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        let t0 = Date()
+        do { (data, resp) = try await URLSession.shared.data(for: req) } catch { AppLog.shared.add("http \(req.httpMethod ?? "") \(req.url?.path ?? "") → сеть: \(error.localizedDescription)"); throw APIError.network(error) }
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        AppLog.shared.add("http \(req.httpMethod ?? "") \(req.url?.path ?? "") → \(code) \(Int(Date().timeIntervalSince(t0) * 1000))ms")
         if code == 401, auth, !retried, await refreshAccess() {
             return try await run(request, auth: auth, retried: true)
         }

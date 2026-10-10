@@ -13,7 +13,8 @@ enum Tab: Int, CaseIterable {
 /// Корень: вкладки под островом навигации; чат открывается поверх.
 struct RootView: View {
     @EnvironmentObject private var session: Session
-    @State private var tab: Tab = .chats
+    // Для автоматических прогонов: SIMCTL_CHILD_WYX_TAB=profile|saved|music.
+    @State private var tab: Tab = ["profile": Tab.profile, "saved": .saved, "music": .music][ProcessInfo.processInfo.environment["WYX_TAB"] ?? ""] ?? .chats
     @State private var path = NavigationPath()
 
     var body: some View {
