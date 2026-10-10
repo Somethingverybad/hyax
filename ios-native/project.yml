@@ -1,4 +1,4 @@
-# Нативный клиент WYX для iPhone (прототип). Проект генерируется XcodeGen:
+# Нативный клиент WYX для iPhone. Проект генерируется XcodeGen:
 #   cd ios-native && xcodegen generate
 # Живёт рядом с Capacitor-приложением (WhoYaX, com.hyax.messenger), у него свой
 # bundle id — на телефоне и в TestFlight они не пересекаются.
@@ -16,12 +16,18 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-spm
+    from: 4.4.0
 targets:
   WYX:
     type: application
     platform: iOS
     sources:
       - path: WYX
+    dependencies:
+      - package: Lottie
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hyax.wyx
@@ -29,6 +35,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: YES
+        OTHER_LDFLAGS: "-lz"
     info:
       path: WYX/Info.plist
       properties:
@@ -45,7 +52,8 @@ targets:
           - Inter-SemiBold.ttf
           - Inter-Bold.ttf
         NSPhotoLibraryUsageDescription: "Чтобы отправить фото в чат"
-        NSCameraUsageDescription: "Чтобы снять фото для чата"
+        NSCameraUsageDescription: "Чтобы снять фото или видео для чата"
+        NSMicrophoneUsageDescription: "Чтобы записать голосовое сообщение"
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

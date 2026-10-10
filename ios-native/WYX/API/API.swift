@@ -11,7 +11,10 @@ struct Profile: Codable, Identifiable, Hashable {
     var is_online: Bool?
     var is_bot: Bool?
     var hide_online: Bool?
+    var bio: String?
 }
+
+struct PinnedInfo: Codable, Hashable { var id: String; var sender_username: String?; var preview: String? }
 
 struct Chat: Codable, Identifiable, Hashable {
     let id: String
@@ -20,49 +23,98 @@ struct Chat: Codable, Identifiable, Hashable {
     var kind: String?
     var name: String?
     var avatar_url: String?
+    var creator: String?
     var unread_count: Int?
     var updated_at: String?
     var last_message: LastMessage?
+    var pinned_message: PinnedInfo?
 
     struct LastMessage: Codable, Hashable {
         var content: String?
         var created_at: String?
         var sender_username: String?
+        var sender_id: String?
+        var read: Bool?
     }
 
     /// Собеседник в личном чате.
     func other(me: String) -> Profile? { participants.first { $0.id != me } ?? participants.first }
+    var isGroupLike: Bool { is_group == true || kind == "group" || kind == "channel" }
 
     func title(me: String) -> String {
         if kind == "saved" { return "Избранное" }
-        if is_group == true || kind == "group" || kind == "channel" { return name ?? "Группа" }
+        if isGroupLike { return name ?? "Группа" }
         return other(me: me)?.username ?? name ?? "Чат"
     }
 }
 
+struct Entity: Codable, Hashable { var type: String; var offset: Int; var length: Int }
+struct Mention: Codable, Hashable { var id: String; var offset: Int; var length: Int }
+struct Reaction: Codable, Hashable { var emoji: String; var count: Int; var mine: Bool? }
+struct ReplyInfo: Codable, Hashable { var id: String; var sender_username: String?; var preview: String? }
+struct ReadBy: Codable, Hashable { var id: String; var username: String?; var read_at: String? }
+struct BotButton: Codable, Hashable { var text: String; var data: String }
+struct ForwardedFrom: Codable, Hashable { var id: String; var username: String?; var avatar_url: String? }
+struct ForwardedChat: Codable, Hashable { var id: String; var name: String?; var username: String? }
+struct SoundInfo: Codable, Hashable { var id: String; var slug: String?; var name: String?; var url: String? }
+
 struct Message: Codable, Identifiable, Hashable {
     let id: String
     var content: String?
+    var entities: [Entity]?
+    var mentions: [Mention]?
     var file_url: String?
     var file_name: String?
+    var file_size: Int?
     var file_width: Int?
     var file_height: Int?
+    var poster_url: String?
+    var download_only: Bool?
     var sender_id: String?
     var sender: Profile?
     var created_at: String
     var is_edited: Bool?
     var voice_url: String?
+    var voice_duration: Int?
+    var voice_transcript: String?
     var video_url: String?
+    var video_duration: Int?
+    var video_mirror: Bool?
+    var video_flip: Bool?
     var sticker: Sticker?
+    var sound: SoundInfo?
+    var reply_to: ReplyInfo?
+    var reactions: [Reaction]?
+    var read_by: [ReadBy]?
+    var buttons: [[BotButton]]?
+    var forwarded_from: ForwardedFrom?
+    var forwarded_title: String?
+    var forwarded_chat: ForwardedChat?
+    var effect: String?
+    var cipher: String?
     /// Локальная отметка: отправляется, сервера ещё не дождались.
     var pending: Bool? = nil
 
     struct Sticker: Codable, Hashable { var id: String; var file_url: String; var emoji: String? }
 
     var createdDate: Date { ISO8601.parse(created_at) ?? Date() }
+    var senderId: String? { sender_id ?? sender?.id }
     var isImage: Bool {
-        guard let n = file_name?.lowercased() ?? file_url?.lowercased() else { return false }
-        return n.hasSuffix(".png") || n.hasSuffix(".jpg") || n.hasSuffix(".jpeg") || n.hasSuffix(".webp") || n.hasSuffix(".gif") || n.hasSuffix(".heic")
+        guard let n = (file_name ?? file_url)?.lowercased() else { return false }
+        return [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"].contains { n.hasSuffix($0) }
+    }
+    var isVideoFile: Bool {
+        guard let n = (file_name ?? file_url)?.lowercased() else { return false }
+        return [".mp4", ".mov", ".m4v", ".webm"].contains { n.hasSuffix($0) }
+    }
+    var preview: String {
+        if let c = content, !c.isEmpty { return c }
+        if sticker != nil { return "Стикер" }
+        if video_url != nil { return "Видео-сообщение" }
+        if voice_url != nil { return "Голосовое сообщение" }
+        if isImage { return "Фото" }
+        if file_url != nil { return file_name ?? "Файл" }
+        return ""
     }
 }
 
@@ -73,13 +125,29 @@ struct SyncResponse: Codable {
     var now: String
 }
 
+struct UnreadCount: Codable {
+    var total_unread: Int
+    var unread_by_chat: [String: Int]
+    var mention_by_chat: [String: Bool]?
+}
+
+struct StickerPack: Codable, Identifiable, Hashable {
+    let id: String
+    var name: String
+    var stickers_count: Int?
+    var preview: String?
+    var is_saved: Bool?
+}
+struct StickerItem: Codable, Identifiable, Hashable { let id: String; var file_url: String; var emoji: String?; var pack: String? }
+
 struct TokenPair: Codable { var access: String; var refresh: String }
-struct UploadResult: Codable { var file_url: String; var file_name: String?; var file_size: Int?; var width: Int?; var height: Int? }
+struct UploadResult: Codable { var file_url: String; var file_name: String?; var file_size: Int?; var width: Int?; var height: Int?; var poster_url: String? }
 
 enum ISO8601 {
     private static let withFrac: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }()
     private static let plain: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f }()
     static func parse(_ s: String) -> Date? { withFrac.date(from: s) ?? plain.date(from: s) }
+    static func string(_ d: Date) -> String { withFrac.string(from: d) }
 }
 
 enum APIError: LocalizedError {
@@ -95,6 +163,9 @@ enum APIError: LocalizedError {
     }
 }
 
+/// Пустой ответ сервера (204 или {}), когда тело не нужно.
+struct Empty: Codable {}
+
 final class API {
     static let shared = API()
     /// WYX_API в окружении — для симулятора через локальный прокси (у симулятора
@@ -104,6 +175,11 @@ final class API {
         return URL(string: "https://huyax.e-tree.su")!
     }()
     var base: URL { origin.appendingPathComponent("api") }
+    var wsBase: URL {
+        var c = URLComponents(url: origin, resolvingAgainstBaseURL: false)!
+        c.scheme = c.scheme == "https" ? "wss" : "ws"
+        return c.url!.appendingPathComponent("ws")
+    }
 
     private let defaults = UserDefaults.standard
     var access: String? { get { defaults.string(forKey: "access_token") } set { defaults.set(newValue, forKey: "access_token") } }
@@ -148,38 +224,82 @@ final class API {
         } catch { return false }
     }
 
-    // MARK: - Данные
+    // MARK: - Профиль и чаты
 
     func currentProfile() async throws -> Profile { try await get("profiles/current/") }
+    func profile(_ id: String) async throws -> Profile { try await get("profiles/\(id)/") }
     func chats() async throws -> [Chat] { try await get("chats/") }
+    func chat(_ id: String) async throws -> Chat { try await get("chats/\(id)/") }
     func savedChat() async throws -> Chat { try await get("chats/saved/") }
+    func unreadCount() async throws -> UnreadCount { try await get("messages/unread_count/") }
 
-    func sync(chat: String, since: String? = nil, limit: Int = 60) async throws -> SyncResponse {
+    // MARK: - Сообщения
+
+    func sync(chat: String, since: String? = nil, before: String? = nil, limit: Int = 60) async throws -> SyncResponse {
         var q = ["chat": chat]
         if let since { q["since"] = since } else { q["limit"] = String(limit) }
+        if let before { q["before"] = before }
         return try await get("messages/sync/", query: q)
     }
 
-    func send(chat: String, content: String) async throws -> Message {
-        try await post("messages/", body: ["chat": chat, "content": content])
-    }
-
-    func sendFile(chat: String, upload: UploadResult) async throws -> Message {
-        var body: [String: Any] = ["chat": chat, "content": "", "file_url": upload.file_url,
-                                   "file_name": upload.file_name ?? "photo.jpg", "file_size": upload.file_size ?? 0]
-        if let w = upload.width { body["file_width"] = w }
-        if let h = upload.height { body["file_height"] = h }
+    func send(chat: String, content: String, entities: [Entity] = [], replyTo: String? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "content": content]
+        if !entities.isEmpty { body["entities"] = entities.map { ["type": $0.type, "offset": $0.offset, "length": $0.length] } }
+        if let replyTo { body["reply_to_id"] = replyTo }
         return try await post("messages/", body: body)
     }
 
-    func markRead(chat: String) async {
-        struct R: Codable { var status: String? }
-        let _: R? = try? await post("messages/mark_chat_as_read/", body: ["chat_id": chat])
+    func sendFile(chat: String, upload: UploadResult, caption: String = "", replyTo: String? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "content": caption, "file_url": upload.file_url,
+                                   "file_name": upload.file_name ?? "file", "file_size": upload.file_size ?? 0]
+        if let w = upload.width { body["file_width"] = w }
+        if let h = upload.height { body["file_height"] = h }
+        if let p = upload.poster_url { body["poster_url"] = p }
+        if let replyTo { body["reply_to_id"] = replyTo }
+        return try await post("messages/", body: body)
     }
 
-    func upload(data: Data, name: String, mime: String) async throws -> UploadResult {
+    func sendVoice(chat: String, url: String, seconds: Int, replyTo: String? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "voice_url": url, "voice_duration": seconds]
+        if let replyTo { body["reply_to_id"] = replyTo }
+        return try await post("messages/", body: body)
+    }
+
+    func sendSticker(chat: String, stickerId: String, replyTo: String? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "content": NSNull(), "sticker_id": stickerId]
+        if let replyTo { body["reply_to_id"] = replyTo }
+        return try await post("messages/", body: body)
+    }
+
+    func edit(message: String, content: String, entities: [Entity]) async throws -> Message {
+        try await post("messages/\(message)/edit/", body: ["content": content, "entities": entities.map { ["type": $0.type, "offset": $0.offset, "length": $0.length] }])
+    }
+    func remove(message: String, scope: String) async throws { let _: Empty = try await post("messages/\(message)/remove/", body: ["scope": scope]) }
+    func pin(message: String, pin: Bool) async throws -> PinnedInfo? {
+        struct R: Codable { var pinned_message: PinnedInfo? }
+        let r: R = try await post("messages/\(message)/pin/", body: ["pin": pin]); return r.pinned_message
+    }
+    func react(message: String, emoji: String) async throws -> [Reaction] {
+        struct R: Codable { var reactions: [Reaction] }
+        let r: R = try await post("messages/\(message)/react/", body: ["emoji": emoji]); return r.reactions
+    }
+    func forward(message: String, to chat: String) async throws { let _: Empty = try await post("messages/\(message)/forward/", body: ["chat_id": chat]) }
+    struct PressResult: Codable { var toast: String?; var toast_kind: String?; var open: String? }
+    func press(message: String, data: String) async throws -> PressResult {
+        try await post("messages/\(message)/press/", body: ["data": data, "caps": ["ideas_screen"]])
+    }
+    func markRead(chat: String) async { let _: Empty? = try? await post("messages/mark_chat_as_read/", body: ["chat_id": chat]) }
+
+    // MARK: - Стикеры
+
+    func myStickerPacks() async throws -> [StickerPack] { try await get("sticker-packs/my_packs/") }
+    func stickers(pack: String? = nil) async throws -> [StickerItem] { try await get("stickers/", query: pack.map { ["pack": $0] } ?? [:]) }
+
+    // MARK: - Загрузка файлов
+
+    func upload(data: Data, name: String, mime: String, path: String = "upload/") async throws -> UploadResult {
         let boundary = "----wyx\(UUID().uuidString)"
-        var req = URLRequest(url: base.appendingPathComponent("upload/"))
+        var req = URLRequest(url: base.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if let access { req.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization") }
@@ -227,12 +347,7 @@ final class API {
         }
         if code == 401, auth { logout(); throw APIError.unauthorized }
         guard (200..<300).contains(code) else { throw APIError.http(code, String(data: data, encoding: .utf8) ?? "") }
-        if T.self == Optional<Any>.self { fatalError() }
-        do { return try JSONDecoder().decode(T.self, from: data) }
-        catch {
-            // Пустой ответ на запрос без тела (mark_chat_as_read) — не ошибка.
-            if data.isEmpty, let v = try? JSONDecoder().decode(T.self, from: "{}".data(using: .utf8)!) { return v }
-            throw error
-        }
+        if T.self == Empty.self { return Empty() as! T }
+        return try JSONDecoder().decode(T.self, from: data)
     }
 }

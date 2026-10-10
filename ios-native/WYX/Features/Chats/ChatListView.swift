@@ -13,7 +13,7 @@ struct ChatListView: View {
     private var shown: [Chat] {
         let me = session.me?.id ?? ""
         var list = chats
-        if filter == 1 { list = list.filter { ($0.unread_count ?? 0) > 0 } }
+        if filter == 1 { list = list.filter { (session.unread[$0.id] ?? $0.unread_count ?? 0) > 0 } }
         if filter == 2 { list = list.filter { $0.kind == "channel" } }
         if !query.isEmpty { list = list.filter { $0.title(me: me).localizedCaseInsensitiveContains(query) } }
         return list
@@ -30,7 +30,8 @@ struct ChatListView: View {
                 } else {
                     VStack(spacing: 0) {
                         ForEach(Array(shown.enumerated()), id: \.element.id) { i, chat in
-                            ChatRow(chat: chat, me: session.me?.id ?? "", onOpen: onOpen)
+                            ChatRow(chat: chat, me: session.me?.id ?? "", unread: session.unread[chat.id] ?? chat.unread_count ?? 0,
+                                    online: session.online, onOpen: onOpen)
                             if i < shown.count - 1 { Rectangle().fill(Mint.rowDivider).frame(height: 1).padding(.leading, 87).padding(.trailing, 11) }
                         }
                     }
@@ -69,6 +70,7 @@ struct ChatListView: View {
         }
         .task { await load() }
         .refreshable { await load() }
+        .onChange(of: session.chatsVersion) { _, _ in Task { await load() } }
     }
 
     private func load() async {
@@ -82,11 +84,15 @@ struct ChatListView: View {
 struct ChatRow: View {
     let chat: Chat
     let me: String
+    let unread: Int
+    let online: [String: Bool]
     let onOpen: (Chat) -> Void
     var body: some View {
+        let other = chat.kind == "saved" ? nil : chat.other(me: me)
+        let isOnline = other.flatMap { online[$0.id] ?? $0.is_online } ?? false
         Button { Haptic.light(); onOpen(chat) } label: {
             HStack(spacing: 12) {
-                Avatar(profile: chat.kind == "saved" ? nil : chat.other(me: me), url: chat.avatar_url, name: chat.title(me: me), size: 51, radius: 17)
+                Avatar(profile: other, online: isOnline, url: chat.avatar_url, name: chat.title(me: me), size: 51, radius: 17)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(chat.title(me: me)).font(Inter.semibold(15)).foregroundStyle(Mint.title).lineLimit(1)
@@ -97,8 +103,8 @@ struct ChatRow: View {
                         Text(chat.last_message?.content?.isEmpty == false ? chat.last_message!.content! : "Нет сообщений")
                             .font(Inter.regular(13.3)).foregroundStyle(Mint.mintMuted).lineLimit(1)
                         Spacer()
-                        if let n = chat.unread_count, n > 0 {
-                            Text("\(n)").font(Inter.medium(11)).foregroundStyle(Mint.accentFg).padding(.horizontal, 7).frame(height: 20).background(Mint.accent).clipShape(Capsule())
+                        if unread > 0 {
+                            Text("\(unread)").font(Inter.medium(11)).foregroundStyle(Mint.accentFg).padding(.horizontal, 7).frame(height: 20).background(Mint.accent).clipShape(Capsule())
                         }
                     }
                 }
@@ -119,6 +125,7 @@ struct ChatRow: View {
 /// Аватар: картинка с сервера или буква на мятной подложке; аура онлайна.
 struct Avatar: View {
     var profile: Profile?
+    var online: Bool = false
     var url: String?
     var name: String
     var size: CGFloat
@@ -135,7 +142,7 @@ struct Avatar: View {
         }
         .frame(width: size, height: size)
         .overlay {
-            if profile?.is_online == true {
+            if online {
                 RoundedRectangle(cornerRadius: radius + 3, style: .continuous).stroke(Mint.online.opacity(0.9), lineWidth: 2).padding(-3)
                     .shadow(color: Mint.online.opacity(0.7), radius: 6)
             }

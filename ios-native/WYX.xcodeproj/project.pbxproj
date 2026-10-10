@@ -7,25 +7,33 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		18FD1D0829D6C636CA14253E /* Socket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3878EF85EE49AA441C7FC1 /* Socket.swift */; };
 		1B809AB4D7D50CD9F9135806 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53A4C49EADBD0C4E3672A63 /* ProfileView.swift */; };
+		2411187B0D62F415A56B3DEF /* MessageMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D6F888536EDAF9AF9BD776 /* MessageMenu.swift */; };
 		30802AE7A43B3F36160D33CB /* WYXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CB9BE1AB8C74E26146BCC2 /* WYXApp.swift */; };
 		33E85E33CF6FFE80CDA55C68 /* Inter-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B25B872738195BA33FA64677 /* Inter-Bold.ttf */; };
+		3950D2C4839D57659DB8C19E /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = F322728AB56C7E5FBA3C5FB0 /* Formatting.swift */; };
 		3DED2526484A5F860C669B36 /* Inter-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 71A4FB80CE9AE60D0C863AD8 /* Inter-Regular.ttf */; };
 		4125308A6205AB78DF0179E0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8222B5EBC39814AAE4C429BC /* RootView.swift */; };
 		553A13BEC4358CBCB262D42F /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414E0B585A72A9E73491E3DC /* API.swift */; };
 		59804A80384960AAE33CDE5F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8798A18C199E71F8DA1FA6E8 /* Theme.swift */; };
+		A47CB133C53CF01BC849308B /* Recorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D8C313F9AB60E97B397CB0 /* Recorder.swift */; };
 		BDE41BFC69DBEBAB2D69C602 /* ChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F6A92FE10F045DBD1595A4 /* ChatListView.swift */; };
 		DEF2704F8A55BE25538AC525 /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 69CEE94282BEC12A9B23D790 /* Inter-SemiBold.ttf */; };
 		E2607575AB2AC3F31BD6CCD4 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F432FD6809613E1522623FC /* ChatView.swift */; };
+		E52AB98B715C6D9EEABDC0A7 /* MediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1154AF7794C5D60C29D7723 /* MediaViews.swift */; };
 		E5EF9F4DC1B7B3A09DFCAA67 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9E40B1982CA419F0EB490DAF /* Assets.xcassets */; };
 		F360378F86D1127FA225B531 /* Inter-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A239FAF3E2BF4A7E8FA251CC /* Inter-Medium.ttf */; };
+		F6ED92DDD1A2B37DE6110D6C /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = B131E1DEDC3A4E220EB01738 /* Lottie */; };
 		FEB9D33F614B1ECEEE8CCC33 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAE54929C276DCA3ECCF6D0 /* AuthView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0F432FD6809613E1522623FC /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		414E0B585A72A9E73491E3DC /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		54D6F888536EDAF9AF9BD776 /* MessageMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageMenu.swift; sourceTree = "<group>"; };
 		69CEE94282BEC12A9B23D790 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
+		6E3878EF85EE49AA441C7FC1 /* Socket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Socket.swift; sourceTree = "<group>"; };
 		71A4FB80CE9AE60D0C863AD8 /* Inter-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Regular.ttf"; sourceTree = "<group>"; };
 		8222B5EBC39814AAE4C429BC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		8798A18C199E71F8DA1FA6E8 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -36,9 +44,23 @@
 		B25B872738195BA33FA64677 /* Inter-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Bold.ttf"; sourceTree = "<group>"; };
 		B5AAB9A5CF81E69451D8A9BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C53A4C49EADBD0C4E3672A63 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		C7D8C313F9AB60E97B397CB0 /* Recorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recorder.swift; sourceTree = "<group>"; };
 		CC18B7AD7C5E3477805C8515 /* WYX.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WYX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E9F6A92FE10F045DBD1595A4 /* ChatListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListView.swift; sourceTree = "<group>"; };
+		F1154AF7794C5D60C29D7723 /* MediaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViews.swift; sourceTree = "<group>"; };
+		F322728AB56C7E5FBA3C5FB0 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		919548D63371350B2E92D60A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F6ED92DDD1A2B37DE6110D6C /* Lottie in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		3A6E9E54F2181F01F3BD65D3 /* WYX */ = {
@@ -130,6 +152,7 @@
 			isa = PBXGroup;
 			children = (
 				414E0B585A72A9E73491E3DC /* API.swift */,
+				6E3878EF85EE49AA441C7FC1 /* Socket.swift */,
 			);
 			path = API;
 			sourceTree = "<group>";
@@ -146,6 +169,10 @@
 			isa = PBXGroup;
 			children = (
 				0F432FD6809613E1522623FC /* ChatView.swift */,
+				F322728AB56C7E5FBA3C5FB0 /* Formatting.swift */,
+				F1154AF7794C5D60C29D7723 /* MediaViews.swift */,
+				54D6F888536EDAF9AF9BD776 /* MessageMenu.swift */,
+				C7D8C313F9AB60E97B397CB0 /* Recorder.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -175,6 +202,7 @@
 			buildPhases = (
 				E52951613460D3B5E66B3D23 /* Sources */,
 				333DF7D3245AEC6B16AA9159 /* Resources */,
+				919548D63371350B2E92D60A /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -182,6 +210,7 @@
 			);
 			name = WYX;
 			packageProductDependencies = (
+				B131E1DEDC3A4E220EB01738 /* Lottie */,
 			);
 			productName = WYX;
 			productReference = CC18B7AD7C5E3477805C8515 /* WYX.app */;
@@ -211,6 +240,9 @@
 			);
 			mainGroup = E82449B7CF153FF30BA4A1D8;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CE32B24B9E427BD30F9B04C0 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 85D318E4BB28DB80DD777F33 /* Products */;
 			projectDirPath = "";
@@ -245,8 +277,13 @@
 				FEB9D33F614B1ECEEE8CCC33 /* AuthView.swift in Sources */,
 				BDE41BFC69DBEBAB2D69C602 /* ChatListView.swift in Sources */,
 				E2607575AB2AC3F31BD6CCD4 /* ChatView.swift in Sources */,
+				3950D2C4839D57659DB8C19E /* Formatting.swift in Sources */,
+				E52AB98B715C6D9EEABDC0A7 /* MediaViews.swift in Sources */,
+				2411187B0D62F415A56B3DEF /* MessageMenu.swift in Sources */,
 				1B809AB4D7D50CD9F9135806 /* ProfileView.swift in Sources */,
+				A47CB133C53CF01BC849308B /* Recorder.swift in Sources */,
 				4125308A6205AB78DF0179E0 /* RootView.swift in Sources */,
+				18FD1D0829D6C636CA14253E /* Socket.swift in Sources */,
 				59804A80384960AAE33CDE5F /* Theme.swift in Sources */,
 				30802AE7A43B3F36160D33CB /* WYXApp.swift in Sources */,
 			);
@@ -266,6 +303,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "-lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.wyx;
 				PRODUCT_NAME = WYX;
 				SDKROOT = iphoneos;
@@ -411,6 +449,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "-lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.wyx;
 				PRODUCT_NAME = WYX;
 				SDKROOT = iphoneos;
@@ -440,6 +479,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CE32B24B9E427BD30F9B04C0 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B131E1DEDC3A4E220EB01738 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CE32B24B9E427BD30F9B04C0 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6CCAF893EE492C7447050A96 /* Project object */;
 }

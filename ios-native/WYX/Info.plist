@@ -28,7 +28,9 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Чтобы снять фото для чата</string>
+	<string>Чтобы снять фото или видео для чата</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Чтобы записать голосовое сообщение</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Чтобы отправить фото в чат</string>
 	<key>UIAppFonts</key>
