@@ -9,6 +9,7 @@ struct ChatListView: View {
     @State private var query = ""
     @State private var filter = 0
     @State private var loading = true
+    @State private var newChat = false
 
     private var shown: [Chat] {
         let me = session.me?.id ?? ""
@@ -46,7 +47,10 @@ struct ChatListView: View {
                 MintHeader(title: "Чаты", left: {
                     Text("Изм.").font(Inter.regular(12.7)).foregroundStyle(Mint.ink).frame(height: 33).padding(.horizontal, 13).mintPill()
                 }, right: {
-                    Image(systemName: "plus").font(.system(size: 16, weight: .semibold)).foregroundStyle(Mint.accentFg).frame(width: 56, height: 33).mintLime()
+                    Button { Haptic.light(); newChat = true } label: {
+                        Image(systemName: "plus").font(.system(size: 16, weight: .semibold)).foregroundStyle(Mint.accentFg).frame(width: 56, height: 33)
+                    }
+                    .buttonStyle(.plain).mintLime()
                 })
                 HStack(spacing: 10) {
                     MintIcon("search", 16).foregroundStyle(Mint.mintMuted)
@@ -71,6 +75,7 @@ struct ChatListView: View {
         .task { await load() }
         .refreshable { await load() }
         .onChange(of: session.chatsVersion) { _, _ in Task { await load() } }
+        .sheet(isPresented: $newChat) { NewChatSheet { c in Task { await load() }; onOpen(c) } }
     }
 
     private func load() async {

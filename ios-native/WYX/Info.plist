@@ -29,6 +29,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Чтобы снять фото или видео для чата</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Чтобы отправить геопозицию в чат</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Чтобы записать голосовое сообщение</string>
 	<key>NSPhotoLibraryUsageDescription</key>

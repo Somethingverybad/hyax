@@ -54,6 +54,7 @@ targets:
         NSPhotoLibraryUsageDescription: "Чтобы отправить фото в чат"
         NSCameraUsageDescription: "Чтобы снять фото или видео для чата"
         NSMicrophoneUsageDescription: "Чтобы записать голосовое сообщение"
+        NSLocationWhenInUseUsageDescription: "Чтобы отправить геопозицию в чат"
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

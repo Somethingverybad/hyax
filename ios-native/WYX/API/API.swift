@@ -92,6 +92,8 @@ struct Message: Codable, Identifiable, Hashable {
     var forwarded_chat: ForwardedChat?
     var effect: String?
     var cipher: String?
+    var geo_lat: Double?
+    var geo_lng: Double?
     /// Локальная отметка: отправляется, сервера ещё не дождались.
     var pending: Bool? = nil
 
@@ -289,6 +291,34 @@ final class API {
         try await post("messages/\(message)/press/", body: ["data": data, "caps": ["ideas_screen"]])
     }
     func markRead(chat: String) async { let _: Empty? = try? await post("messages/mark_chat_as_read/", body: ["chat_id": chat]) }
+
+    func sendVideoNote(chat: String, url: String, seconds: Int, mirror: Bool, flip: Bool, replyTo: String? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "video_url": url, "video_duration": seconds]
+        if mirror { body["video_mirror"] = "1" }
+        if flip { body["video_flip"] = "1" }
+        if let replyTo { body["reply_to_id"] = replyTo }
+        return try await post("messages/", body: body)
+    }
+
+    func sendLocation(chat: String, lat: Double, lng: Double, replyTo: String? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "geo_lat": lat, "geo_lng": lng]
+        if let replyTo { body["reply_to_id"] = replyTo }
+        return try await post("messages/", body: body)
+    }
+
+    // MARK: - Чаты: создание, участники
+
+    func createChat(participants: [String], groupName: String? = nil) async throws -> Chat {
+        var body: [String: Any] = ["participants": participants]
+        if let groupName { body["is_group"] = true; body["name"] = groupName }
+        return try await post("chats/", body: body)
+    }
+    func profileByUsername(_ username: String) async throws -> Profile { try await get("profiles/by-username/\(username)/") }
+    func searchUsers(_ q: String) async throws -> [Profile] { try await get("profiles/", query: ["search": q]) }
+    func participants(chat: String) async throws -> [Profile] { try await get("chats/\(chat)/participants/") }
+    func addParticipants(chat: String, ids: [String]) async throws { let _: Empty = try await post("chats/\(chat)/add_participants/", body: ["participants": ids]) }
+    func leaveChat(_ chat: String) async throws { let _: Empty = try await post("chats/\(chat)/leave/", body: [:]) }
+    func pinChat(_ chat: String, pinned: Bool) async throws { let _: Empty = try await post("chats/\(chat)/pin/", body: ["pin": pinned]) }
 
     // MARK: - Стикеры
 

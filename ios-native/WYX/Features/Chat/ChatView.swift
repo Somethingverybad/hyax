@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import Combine
+import UniformTypeIdentifiers
 
 /// Чат: стеклянная шапка из таблеток, лента пузырей, панель ввода из макета.
 /// Клавиатура — родная: панель лежит в safeAreaInset, лента прижата к низу.
@@ -13,7 +14,17 @@ struct ChatView: View {
     @StateObject private var recorder = VoiceRecorder()
     @State private var text = ""
     @State private var photo: PhotosPickerItem?
-    @FocusState private var focused: Bool
+    @State private var focused = false
+    @State private var selection = NSRange(location: 0, length: 0)
+    @State private var fieldHeight: CGFloat = 40
+    @State private var fmtOpen = false
+    @State private var attachOpen = false
+    @State private var mediaOpen = false
+    @State private var fileOpen = false
+    @State private var recorderOpen = false
+    @State private var infoOpen = false
+    @State private var forwarding: Message?
+    @State private var participants: [Profile] = []
     @State private var replyTo: Message?
     @State private var editing: Message?
     @State private var menuFor: Message?
@@ -93,8 +104,28 @@ struct ChatView: View {
         .animation(.easeOut(duration: 0.2), value: toast)
         .animation(.easeOut(duration: 0.15), value: menuFor?.id)
         .fullScreenCover(item: $viewer) { v in ImageViewer(url: v.url) { viewer = nil } }
+        .fullScreenCover(isPresented: $recorderOpen) {
+            VideoNoteRecorderView(onDone: { url, secs, mirror, flip in
+                recorderOpen = false
+                let reply = replyTo; replyTo = nil
+                Task { await model.sendVideoNote(fileURL: url, seconds: secs, mirror: mirror, flip: flip, replyTo: reply?.id) }
+            }, onCancel: { recorderOpen = false })
+        }
+        .sheet(isPresented: $infoOpen) { ChatInfoSheet(chat: chat, me: me) }
+        .sheet(item: $forwarding) { m in ForwardSheet(me: me) { c in Task { if (try? await API.shared.forward(message: m.id, to: c.id)) != nil { toast = "Переслано" } } } }
+        .photosPicker(isPresented: $mediaOpen, selection: $photo, matching: .any(of: [.images, .videos]))
+        .fileImporter(isPresented: $fileOpen, allowedContentTypes: [.item]) { r in
+            if case .success(let url) = r { Task { await sendFile(url) } }
+        }
+        .overlay { if attachOpen { AttachMenu(onPick: { pick in
+            switch pick {
+            case .media: mediaOpen = true
+            case .file: fileOpen = true
+            case .location: Task { await sendLocation() }
+            }
+        }, onClose: { attachOpen = false }) } }
         .toolbar(.hidden, for: .navigationBar)
-        .task { await model.start(); await session.refreshUnread() }
+        .task { await model.start(); await session.refreshUnread(); if chat.isGroupLike { participants = (try? await API.shared.participants(chat: chat.id)) ?? chat.participants } }
         .onDisappear { model.stop() }
         .onChange(of: photo) { _, item in if let item { Task { await sendPhoto(item) }; photo = nil } }
         .onReceive(session.socket.events) { model.handle(event: $0, me: me) }
@@ -109,7 +140,10 @@ struct ChatView: View {
                 HStack(spacing: 8) {
                     if !embedded { BackPill { dismiss() } }
                     Spacer()
-                    Avatar(profile: peer, online: peerOnline ?? peer?.is_online ?? false, url: chat.avatar_url, name: chat.title(me: me), size: 43, radius: 21.5)
+                    Button { Haptic.light(); infoOpen = true } label: {
+                        Avatar(profile: peer, online: peerOnline ?? peer?.is_online ?? false, url: chat.avatar_url, name: chat.title(me: me), size: 43, radius: 21.5)
+                    }
+                    .buttonStyle(.plain)
                 }
                 VStack(spacing: 1) {
                     Text(chat.title(me: me)).font(Inter.semibold(15)).foregroundStyle(Mint.title).lineLimit(1)
@@ -154,6 +188,19 @@ struct ChatView: View {
         VStack(spacing: 6) {
             if let r = replyTo { panel(title: "Ответ · \(r.sender?.username ?? "")", text: r.preview) { replyTo = nil } }
             if let e = editing { panel(title: "Редактирование", text: e.preview) { editing = nil; text = "" } }
+            if focused {
+                HStack(spacing: 6) {
+                    Button { Haptic.light(); fmtOpen.toggle() } label: {
+                        Text("Aa").font(Inter.semibold(13)).foregroundStyle(fmtOpen ? Mint.accentFg : Mint.ink).frame(width: 36, height: 32)
+                    }
+                    .buttonStyle(.plain).background(fmtOpen ? AnyView(Color.clear.mintLime()) : AnyView(Color.clear.mintPill()))
+                    if fmtOpen { FormatToolbar { applyFormat($0) } }
+                    else if chat.isGroupLike, let q = mentionQuery(text, caret: selection.location) {
+                        MentionHints(people: participants.filter { $0.id != me && (q.1.isEmpty || $0.username.lowercased().hasPrefix(q.1.lowercased())) }) { p in insertMention(p, range: q.0) }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
             compose
             if stickersOpen { StickerSheet { s in stickersOpen = false; Task { await model.sendSticker(s, replyTo: replyTo?.id, me: session.me) }; replyTo = nil } }
         }
@@ -192,17 +239,15 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16).frame(height: 40).mintPill()
             } else {
-                HStack(spacing: 0) {
-                    TextField("Сообщение…", text: $text, axis: .vertical)
-                        .font(Inter.regular(16)).foregroundStyle(Mint.foreground).lineLimit(1...5)
-                        .focused($focused)
-                        .padding(.leading, 16).padding(.vertical, 8)
-                        .onChange(of: focused) { _, f in if f { stickersOpen = false } }
-                    PhotosPicker(selection: $photo, matching: .any(of: [.images, .videos])) {
+                HStack(alignment: .bottom, spacing: 0) {
+                    GrowingTextView(text: $text, selection: $selection, placeholder: "Сообщение…", focused: $focused) { fieldHeight = $0 }
+                        .frame(height: fieldHeight)
+                        .onChange(of: focused) { _, f in if f { stickersOpen = false } else { fmtOpen = false } }
+                    Button { Haptic.light(); attachOpen.toggle() } label: {
                         MintIcon("attach", 18, 19).foregroundStyle(Mint.ink).frame(width: 55, height: 38)
                             .background(Mint.attachSegment).clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
                     }
-                    .padding(1)
+                    .buttonStyle(.plain).padding(1)
                 }
                 .frame(minHeight: 40).mintPill()
             }
@@ -221,6 +266,8 @@ struct ChatView: View {
             } else {
                 MintIcon("mic", 16, 23).foregroundStyle(Mint.ink).frame(width: 40, height: 40).mintPill()
                     .scaleEffect(recorder.recording ? 1.15 : 1)
+                    // Тап — видео-треугольник, удержание — голосовое (как в вебе).
+                    .onTapGesture { Haptic.light(); focused = false; recorderOpen = true }
                     .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 60, perform: {}, onPressingChanged: { pressing in
                         if pressing { Task { if await recorder.start() { Haptic.medium() } } }
                         else if recorder.recording { finishVoice() }
@@ -255,6 +302,32 @@ struct ChatView: View {
         Task { await model.sendVoice(fileURL: r.url, seconds: r.seconds, replyTo: reply?.id, me: session.me) }
     }
 
+    private func applyFormat(_ type: String) {
+        let (t, r) = ComposerFormat.toggle(text, selection: selection, type: type)
+        text = t; selection = r
+    }
+
+    private func insertMention(_ p: Profile, range: NSRange) {
+        let ns = text as NSString
+        guard range.location + range.length <= ns.length else { return }
+        text = ns.replacingCharacters(in: range, with: "@\(p.username) ")
+        selection = NSRange(location: range.location + p.username.utf16.count + 2, length: 0)
+    }
+
+    private func sendFile(_ url: URL) async {
+        let ok = url.startAccessingSecurityScopedResource(); defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { toast = "Не удалось прочитать файл"; return }
+        let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        let reply = replyTo; replyTo = nil
+        await model.sendFile(data: data, name: url.lastPathComponent, mime: mime, replyTo: reply?.id, me: session.me)
+    }
+
+    private func sendLocation() async {
+        guard let c = await LocationOnce().get() else { toast = "Нет доступа к геопозиции"; return }
+        let reply = replyTo; replyTo = nil
+        await model.sendLocation(lat: c.latitude, lng: c.longitude, replyTo: reply?.id)
+    }
+
     private func sendPhoto(_ item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
         let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
@@ -278,7 +351,7 @@ struct ChatView: View {
             focused = true
         case .deleteMe: Task { await model.remove(m, scope: "me") }
         case .deleteAll: Task { await model.remove(m, scope: "all") }
-        case .forward: toast = "Пересылка — в следующем этапе"
+        case .forward: forwarding = m
         }
     }
 }
@@ -374,7 +447,8 @@ struct Bubble: View {
                 }
                 .buttonStyle(.plain)
             }
-            if message.isImage { ImageBubble(message: message, onOpen: onOpenImage) }
+            if let lat = message.geo_lat, let lng = message.geo_lng { GeoBubble(lat: lat, lng: lng) }
+            else if message.isImage { ImageBubble(message: message, onOpen: onOpenImage) }
             else if message.isVideoFile && message.video_url == nil { VideoFileBubble(message: message) }
             else if message.voice_url != nil { VoiceBubble(message: message) }
             else if message.video_url != nil { VideoNoteBubble(message: message) }
@@ -641,6 +715,20 @@ final class ChatModel: ObservableObject {
             merge([sent], deleted: [])
         } catch { }
         try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    func sendVideoNote(fileURL: URL, seconds: Int, mirror: Bool, flip: Bool, replyTo: String?) async {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let up = try await API.shared.upload(data: data, name: "round.mp4", mime: "video/mp4")
+            let sent = try await API.shared.sendVideoNote(chat: chatId, url: up.file_url, seconds: seconds, mirror: mirror, flip: flip, replyTo: replyTo)
+            merge([sent], deleted: [])
+        } catch { }
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    func sendLocation(lat: Double, lng: Double, replyTo: String?) async {
+        if let sent = try? await API.shared.sendLocation(chat: chatId, lat: lat, lng: lng, replyTo: replyTo) { merge([sent], deleted: []) }
     }
 
     func sendSticker(_ s: StickerItem, replyTo: String?, me: Profile?) async {
