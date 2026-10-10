@@ -31,7 +31,12 @@ struct WYXApp: App {
                 if session.loggedIn { RootView() } else { AuthView() }
             }
             .environmentObject(session)
-            .task { await session.start() }
+            .task {
+                #if DEBUG
+                print("WYX fonts: Inter-Regular \(UIFont(name: "Inter-Regular", size: 12) != nil ? "ok" : "MISSING")")
+                #endif
+                await session.start()
+            }
         }
     }
 }

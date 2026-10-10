@@ -135,12 +135,18 @@ struct BackPill: View {
     }
 }
 
-/// Стеклянная подложка под шапкой: размытие и растворение к ленте.
+/// Стеклянная подложка под шапкой: размытие под самой шапкой и растворение
+/// ниже неё. Материал нельзя маскировать — маска отключает размытие, поэтому
+/// размытая часть и градиент-растворение — разные слои.
 struct GlassTop: View {
+    var fade: CGFloat = 24
     var body: some View {
-        Rectangle().fill(.regularMaterial)
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0.7), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-            .overlay(LinearGradient(stops: [.init(color: Mint.background, location: 0), .init(color: Mint.background.opacity(0.85), location: 0.55), .init(color: Mint.background.opacity(0), location: 1)], startPoint: .top, endPoint: .bottom))
-            .allowsHitTesting(false)
+        VStack(spacing: 0) {
+            Rectangle().fill(.regularMaterial)
+                .overlay(LinearGradient(colors: [Mint.background.opacity(0.9), Mint.background.opacity(0.6)], startPoint: .top, endPoint: .bottom))
+            LinearGradient(colors: [Mint.background.opacity(0.6), Mint.background.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .frame(height: fade)
+        }
+        .allowsHitTesting(false)
     }
 }

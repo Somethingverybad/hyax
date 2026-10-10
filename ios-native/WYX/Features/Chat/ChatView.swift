@@ -67,7 +67,7 @@ struct ChatView: View {
             .padding(.horizontal, 18).frame(height: 44).mintPill().frame(maxWidth: 230)
         }
         .padding(.horizontal, 17).padding(.top, 19).padding(.bottom, 11)
-        .background(GlassTop().padding(.bottom, -22).ignoresSafeArea(edges: .top))
+        .background(GlassTop().padding(.bottom, -24).ignoresSafeArea(edges: .top))
     }
 
     private var subtitle: String {

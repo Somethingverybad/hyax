@@ -38,7 +38,7 @@ struct ProfileView: View {
             MintHeader(title: "Профиль", right: {
                 MintIcon("pencil", 17, 18).foregroundStyle(Mint.accentFg).frame(width: 56, height: 33).mintLime()
             })
-            .background(GlassTop().padding(.bottom, -22).ignoresSafeArea(edges: .top))
+            .background(GlassTop().padding(.bottom, -24).ignoresSafeArea(edges: .top))
         }
     }
 

@@ -65,7 +65,7 @@ struct ChatListView: View {
                 }
                 .padding(.horizontal, 17).padding(.bottom, 10)
             }
-            .background(GlassTop().padding(.bottom, -22).ignoresSafeArea(edges: .top))
+            .background(GlassTop().padding(.bottom, -24).ignoresSafeArea(edges: .top))
         }
         .task { await load() }
         .refreshable { await load() }

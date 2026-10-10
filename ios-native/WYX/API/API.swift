@@ -99,7 +99,10 @@ final class API {
     static let shared = API()
     /// WYX_API в окружении — для симулятора через локальный прокси (у симулятора
     /// при VPN на Mac не работает DNS): SIMCTL_CHILD_WYX_API=http://127.0.0.1:8080
-    let origin = URL(string: ProcessInfo.processInfo.environment["WYX_API"] ?? "https://huyax.e-tree.su")!
+    let origin: URL = {
+        if let s = ProcessInfo.processInfo.environment["WYX_API"], let u = URL(string: s), u.host != nil { return u }
+        return URL(string: "https://huyax.e-tree.su")!
+    }()
     var base: URL { origin.appendingPathComponent("api") }
 
     private let defaults = UserDefaults.standard
