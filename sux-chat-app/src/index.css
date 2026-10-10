@@ -1290,17 +1290,29 @@ textarea,
   background: color-mix(in srgb, currentColor 12%, transparent);
   cursor: pointer;
 }
+/* Блок кода: шапка «copy», акцентная полоса слева во всю высоту, тёмное тело. */
+.fmt-preblock {
+  display: block; position: relative; margin: 0.3em 0; border-radius: 0.6em; overflow: hidden; cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.fmt-preblock::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 2px; z-index: 1;
+  background: color-mix(in srgb, currentColor 70%, transparent);
+}
+[data-shape="soft"] .fmt-preblock::before { background: hsl(var(--accent)); }
+.fmt-pre-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6em;
+  padding: 0.3em 0.6em 0.3em 0.9em; font-size: 0.85em; line-height: 1.5;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+.fmt-pre-icon { width: 1em; height: 1em; opacity: 0.75; flex-shrink: 0; }
 .fmt-pre {
   display: block;
-  margin: 0.25em 0;
-  padding: 0.5em 0.7em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin: 0;
+  padding: 0.55em 0.7em 0.55em 0.9em;
   font-size: 0.9em;
   white-space: pre-wrap;
-  border-radius: 0.5em;
-  border-left: 3px solid color-mix(in srgb, currentColor 45%, transparent);
-  background: color-mix(in srgb, currentColor 9%, transparent);
-  cursor: pointer;
+  background: color-mix(in srgb, #000 35%, transparent);
 }
 /* Спойлер: текст прозрачный, поверх — мерцающая россыпь точек цветом текста. */
 .fmt-spoiler {

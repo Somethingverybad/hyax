@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { Copy } from "lucide-react";
 import { Linkify } from "./linkify";
 
 /**
@@ -300,7 +301,14 @@ function wrap(ent: RenderEntity, text: string, inner: RenderEntity[], s: number,
     case "code":
       return <code key={key} className="fmt-code" onClick={(e) => { e.stopPropagation(); copyCode(slice); }}>{slice}</code>;
     case "pre":
-      return <code key={key} className="fmt-pre" onClick={(e) => { e.stopPropagation(); copyCode(slice); }}>{slice}</code>;
+      // Блок кода как карточка: шапка «copy» со значком, акцентная полоса
+      // слева, тёмное моноширинное тело. Тап по любой части — копирование.
+      return (
+        <span key={key} className="fmt-preblock" role="button" onClick={(e) => { e.stopPropagation(); copyCode(slice); }}>
+          <span className="fmt-pre-head"><span>copy</span><Copy className="fmt-pre-icon" aria-hidden /></span>
+          <code className="fmt-pre">{slice}</code>
+        </span>
+      );
     case "spoiler": return <Spoiler key={key}>{kids()}</Spoiler>;
     case "zalgo": return <span key={key} className="fmt-zalgo">{zalgoText(slice, seed + s)}</span>;
     case "scramble":
