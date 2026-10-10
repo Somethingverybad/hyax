@@ -119,6 +119,7 @@ struct NewChatSheet: View {
 struct ChatInfoSheet: View {
     let chat: Chat
     let me: String
+    var onSecret: ((Chat) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var participants: [Profile] = []
     @State private var query = ""
@@ -134,6 +135,21 @@ struct ChatInfoSheet: View {
                     Avatar(profile: other, online: other?.is_online ?? false, url: chat.avatar_url, name: chat.title(me: me), size: 93, radius: 17)
                     Text(chat.title(me: me)).font(Inter.semibold(17)).foregroundStyle(Mint.title)
                     if let bio = other?.bio, !bio.isEmpty { Text(bio).font(Inter.regular(14)).foregroundStyle(Mint.mintMuted).multilineTextAlignment(.center).padding(.horizontal, 24) }
+                    if let other, !chat.isSecret, chat.kind != "saved", other.is_bot != true, let onSecret {
+                        Button {
+                            Task {
+                                let (priv, pub) = Secret.newKeyPair()
+                                if let c = try? await API.shared.createSecretChat(peer: other.id, pub: pub) {
+                                    Secret.rememberPending(chatId: c.id, priv: priv, myPub: pub)
+                                    Haptic.medium(); dismiss(); onSecret(c)
+                                } else { toast = "Не удалось создать секретный чат" }
+                            }
+                        } label: {
+                            HStack(spacing: 12) { Image(systemName: "lock.fill").foregroundStyle(Mint.online); Text("Секретный чат").font(Inter.medium(14.3)).foregroundStyle(Mint.label); Spacer() }
+                                .padding(.horizontal, 18).frame(height: 51)
+                        }
+                        .buttonStyle(.plain).mintCard().padding(.horizontal, 17)
+                    }
                     if chat.isGroupLike {
                         VStack(spacing: 0) {
                             ForEach(participants) { p in

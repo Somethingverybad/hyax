@@ -29,6 +29,8 @@ struct Chat: Codable, Identifiable, Hashable {
     var last_message: LastMessage?
     var last_message_at: String?
     var pinned_message: PinnedInfo?
+    var secret: SecretInfo?
+    var isSecret: Bool { secret != nil }
 
     /// Превью последнего сообщения (ChatSerializer.get_last_message).
     struct LastMessage: Codable, Hashable {
@@ -305,6 +307,21 @@ final class API {
         if let replyTo { body["reply_to_id"] = replyTo }
         return try await post("messages/", body: body)
     }
+
+    // MARK: - Секретные чаты
+
+    func createSecretChat(peer: String, pub: String) async throws -> Chat {
+        try await post("secret-chats/", body: ["peer_id": peer, "pub": pub, "device_id": Secret.deviceId])
+    }
+    func acceptSecretChat(_ chat: String, pub: String) async throws { let _: Empty = try await post("secret-chats/\(chat)/accept/", body: ["pub": pub, "device_id": Secret.deviceId]) }
+    func declineSecretChat(_ chat: String) async throws { let _: Empty = try await post("secret-chats/\(chat)/decline/", body: [:]) }
+    func sendSecret(chat: String, cipher: String, replyTo: String? = nil, fileURL: String? = nil, fileSize: Int? = nil) async throws -> Message {
+        var body: [String: Any] = ["chat": chat, "cipher": cipher]
+        if let replyTo { body["reply_to_id"] = replyTo }
+        if let fileURL { body["file_url"] = fileURL; body["file_size"] = fileSize ?? 0 }
+        return try await post("messages/", body: body)
+    }
+    func editSecret(message: String, cipher: String) async throws -> Message { try await post("messages/\(message)/edit/", body: ["cipher": cipher]) }
 
     // MARK: - Чаты: создание, участники
 

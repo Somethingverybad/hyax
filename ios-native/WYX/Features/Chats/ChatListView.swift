@@ -100,12 +100,13 @@ struct ChatRow: View {
                 Avatar(profile: other, online: isOnline, url: chat.avatar_url, name: chat.title(me: me), size: 51, radius: 17)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
+                        if chat.isSecret { Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(Mint.online) }
                         Text(chat.title(me: me)).font(Inter.semibold(15)).foregroundStyle(Mint.title).lineLimit(1)
                         Spacer()
                         Text(timeLabel).font(Inter.regular(12.3)).foregroundStyle(Mint.mintMuted)
                     }
                     HStack {
-                        Text(chat.last_message?.text?.isEmpty == false ? chat.last_message!.text! : "Нет сообщений")
+                        Text(chat.last_message?.text?.isEmpty == false ? chat.last_message!.text! : (chat.isSecret ? "Секретный чат" : "Нет сообщений"))
                             .font(Inter.regular(13.3)).foregroundStyle(Mint.mintMuted).lineLimit(1)
                         Spacer()
                         if unread > 0 {

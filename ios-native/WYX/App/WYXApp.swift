@@ -36,7 +36,7 @@ final class Session: ObservableObject {
         if let u = try? await API.shared.unreadCount() { unread = u.unread_by_chat }
     }
 
-    func logout() { socket.disconnect(); API.shared.logout(); loggedIn = false; me = nil }
+    func logout() { socket.disconnect(); API.shared.logout(); Secret.wipe(); loggedIn = false; me = nil }
 
     private func handle(_ e: [String: Any]) {
         let data = e["data"] as? [String: Any] ?? [:]
@@ -47,7 +47,7 @@ final class Session: ObservableObject {
             Task { await refreshUnread() }
         case "presence":
             if let pid = data["profile_id"] { online[String(describing: pid)] = (data["online"] as? Bool) ?? (data["online"] as? Int == 1) }
-        case "read":
+        case "read", "secret_chat":
             chatsVersion += 1
         case "rov":
             // Р.Ё.В: собеседник держит палец — у нас вибрирует, пока держит.

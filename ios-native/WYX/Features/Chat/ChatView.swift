@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import Combine
 import UniformTypeIdentifiers
+import CryptoKit
 
 /// Чат: стеклянная шапка из таблеток, лента пузырей, панель ввода из макета.
 /// Клавиатура — родная: панель лежит в safeAreaInset, лента прижата к низу.
@@ -25,6 +26,9 @@ struct ChatView: View {
     @State private var infoOpen = false
     @State private var forwarding: Message?
     @State private var participants: [Profile] = []
+    @State private var secretKey: SymmetricKey?
+    @State private var secretInfo: SecretInfo?
+    @State private var secretBusy = false
     @State private var replyTo: Message?
     @State private var editing: Message?
     @State private var menuFor: Message?
@@ -64,7 +68,7 @@ struct ChatView: View {
                         }
                         MessageRow(message: m, own: m.senderId == me, first: i == 0 || model.messages[i - 1].senderId != m.senderId,
                                    last: i == model.messages.count - 1 || model.messages[i + 1].senderId != m.senderId,
-                                   group: chat.isGroupLike, revealed: revealed.contains(m.id),
+                                   group: chat.isGroupLike, revealed: revealed.contains(m.id), payload: model.decrypted[m.id],
                                    onLongPress: { menuFor = m },
                                    onReveal: { revealed.insert(m.id) },
                                    onOpenImage: { viewer = ViewerItem(url: $0) },
@@ -86,6 +90,16 @@ struct ChatView: View {
         .background(Mint.pageGradient.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { composeArea }
+        .overlay {
+            if let info = secretInfo, secretKey == nil, info.state != "declined" {
+                ZStack {
+                    Color.clear
+                    SecretIntro(mode: info.state == "pending" ? (info.initiator_id == me ? .waiting : .accept) : .otherDevice,
+                                peerName: peer?.username ?? "собеседник", busy: secretBusy, onAccept: acceptSecret, onDecline: declineSecret)
+                }
+                .padding(.top, 90)
+            }
+        }
         .overlay {
             if let m = menuFor {
                 MessageMenu(message: m, own: m.senderId == me, pinned: pinned?.id == m.id,
@@ -111,7 +125,7 @@ struct ChatView: View {
                 Task { await model.sendVideoNote(fileURL: url, seconds: secs, mirror: mirror, flip: flip, replyTo: reply?.id) }
             }, onCancel: { recorderOpen = false })
         }
-        .sheet(isPresented: $infoOpen) { ChatInfoSheet(chat: chat, me: me) }
+        .sheet(isPresented: $infoOpen) { ChatInfoSheet(chat: chat, me: me, onSecret: { c in session.openChat = c }) }
         .sheet(item: $forwarding) { m in ForwardSheet(me: me) { c in Task { if (try? await API.shared.forward(message: m.id, to: c.id)) != nil { toast = "Переслано" } } } }
         .photosPicker(isPresented: $mediaOpen, selection: $photo, matching: .any(of: [.images, .videos]))
         .fileImporter(isPresented: $fileOpen, allowedContentTypes: [.item]) { r in
@@ -125,7 +139,14 @@ struct ChatView: View {
             }
         }, onClose: { attachOpen = false }) } }
         .toolbar(.hidden, for: .navigationBar)
-        .task { await model.start(); await session.refreshUnread(); if chat.isGroupLike { participants = (try? await API.shared.participants(chat: chat.id)) ?? chat.participants } }
+        .task {
+            secretInfo = chat.secret
+            await refreshSecretKey()
+            await model.start(); await session.refreshUnread()
+            if chat.isGroupLike { participants = (try? await API.shared.participants(chat: chat.id)) ?? chat.participants }
+        }
+        .onChange(of: session.chatsVersion) { _, _ in if chat.isSecret { Task { await refreshSecretKey() } } }
+        .onChange(of: model.messages) { _, _ in if let k = secretKey { model.decryptAll(with: k) } }
         .onDisappear { model.stop() }
         .onChange(of: photo) { _, item in if let item { Task { await sendPhoto(item) }; photo = nil } }
         .onReceive(session.socket.events) { model.handle(event: $0, me: me) }
@@ -177,6 +198,8 @@ struct ChatView: View {
 
     private var subtitle: String {
         if chat.kind == "saved" { return "Сообщения для себя" }
+        if chat.isSecret, let fp = Secret.chatKey(chatId: chat.id, info: secretInfo, myId: me)?.fp { return "🔒 " + Secret.fingerprintEmoji(fp) }
+        if chat.isSecret { return "секретный чат" }
         if chat.isGroupLike { return "\(chat.participants.count) участников" }
         if peer?.is_bot == true { return "бот" }
         return (peerOnline ?? peer?.is_online ?? false) ? "в сети" : "был(а) недавно"
@@ -286,6 +309,12 @@ struct ChatView: View {
         let (clean, entities) = Markers.parse(raw)
         text = ""
         Haptic.light()
+        if let key = secretKey {
+            let reply = replyTo; replyTo = nil
+            let e = editing; editing = nil
+            Task { await model.sendSecret(key: key, text: clean, entities: entities, replyTo: reply?.id, editing: e, me: session.me) }
+            return
+        }
         if let e = editing {
             editing = nil
             Task { await model.edit(e, content: clean, entities: entities) }
@@ -332,7 +361,36 @@ struct ChatView: View {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
         let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
         let reply = replyTo; replyTo = nil
+        if let key = secretKey {
+            await model.sendSecretFile(key: key, data: data, kind: isVideo ? "video" : "image", name: isVideo ? "video.mp4" : "photo.jpg", mime: isVideo ? "video/mp4" : "image/jpeg", replyTo: reply?.id, me: session.me)
+            return
+        }
         await model.sendFile(data: data, name: isVideo ? "video.mp4" : "photo.jpg", mime: isVideo ? "video/mp4" : "image/jpeg", replyTo: reply?.id, me: session.me)
+    }
+
+    // MARK: секретный чат
+
+    private func refreshSecretKey() async {
+        guard chat.isSecret else { return }
+        if let fresh = try? await API.shared.chat(chat.id) { secretInfo = fresh.secret }
+        if let k = Secret.chatKey(chatId: chat.id, info: secretInfo, myId: me) {
+            secretKey = k.key
+            model.decryptAll(with: k.key)
+        }
+    }
+
+    private func acceptSecret() {
+        secretBusy = true
+        Task {
+            let (priv, pub) = Secret.newKeyPair()
+            Secret.rememberPending(chatId: chat.id, priv: priv, myPub: pub)
+            if (try? await API.shared.acceptSecretChat(chat.id, pub: pub)) != nil { Haptic.medium(); await refreshSecretKey() } else { toast = "Не удалось принять" }
+            secretBusy = false
+        }
+    }
+
+    private func declineSecret() {
+        Task { try? await API.shared.declineSecretChat(chat.id); dismiss() }
     }
 
     private func act(_ m: Message, _ a: MessageMenu.Action) {
@@ -365,6 +423,7 @@ struct MessageRow: View {
     let last: Bool
     let group: Bool
     let revealed: Bool
+    var payload: SecretPayload? = nil
     let onLongPress: () -> Void
     let onReveal: () -> Void
     let onOpenImage: (URL) -> Void
@@ -385,7 +444,7 @@ struct MessageRow: View {
                 if message.sticker != nil && (message.content ?? "").isEmpty {
                     StickerView(fileURL: message.sticker!.file_url, size: 140)
                 } else {
-                    Bubble(message: message, own: own, tail: last, revealed: revealed, onReveal: onReveal, onOpenImage: onOpenImage, onJump: onJump)
+                    Bubble(message: message, own: own, tail: last, revealed: revealed, payload: payload, onReveal: onReveal, onOpenImage: onOpenImage, onJump: onJump)
                 }
                 if let r = message.reactions, !r.isEmpty { ReactionChips(reactions: r, onTap: onReact) }
                 if let rows = message.buttons, !rows.isEmpty {
@@ -417,6 +476,7 @@ struct Bubble: View {
     let own: Bool
     let tail: Bool
     let revealed: Bool
+    var payload: SecretPayload? = nil
     let onReveal: () -> Void
     let onOpenImage: (URL) -> Void
     let onJump: (String) -> Void
@@ -447,14 +507,33 @@ struct Bubble: View {
                 }
                 .buttonStyle(.plain)
             }
-            if let lat = message.geo_lat, let lng = message.geo_lng { GeoBubble(lat: lat, lng: lng) }
+            if message.cipher != nil {
+                if let p = payload {
+                    if let m = p.m { SecretMediaView(media: m, fileURL: message.file_url, onOpenImage: onOpenImage) }
+                    if !p.t.isEmpty {
+                        HStack(alignment: .bottom, spacing: 6) {
+                            Text(Formatting.attributed(p.t, entities: p.e ?? [], mentions: [], revealed: revealed, seed: message.id.hashValue, textColor: Mint.bubbleFg, accent: Mint.accent))
+                                .foregroundStyle(Mint.bubbleFg).tint(Mint.accent).textSelection(.enabled)
+                            meta
+                        }
+                    } else { HStack { Spacer(minLength: 0); meta } }
+                } else {
+                    HStack(alignment: .bottom, spacing: 6) {
+                        Label("Секретное сообщение", systemImage: "lock.fill").font(Inter.regular(14)).foregroundStyle(Mint.bubbleFg.opacity(0.7))
+                        meta
+                    }
+                }
+            }
+            else if let lat = message.geo_lat, let lng = message.geo_lng { GeoBubble(lat: lat, lng: lng) }
             else if message.isImage { ImageBubble(message: message, onOpen: onOpenImage) }
             else if message.isVideoFile && message.video_url == nil { VideoFileBubble(message: message) }
             else if message.voice_url != nil { VoiceBubble(message: message) }
             else if message.video_url != nil { VideoNoteBubble(message: message) }
             else if message.file_url != nil && !message.isImage { FileBubble(message: message) }
             if message.sticker != nil, let c = message.content, !c.isEmpty { StickerView(fileURL: message.sticker!.file_url, size: 96) }
-            if wholePre {
+            if message.cipher != nil {
+                EmptyView()
+            } else if wholePre {
                 CodeCard(code: message.content ?? "")
             } else if let c = message.content, !c.isEmpty {
                 HStack(alignment: .bottom, spacing: 6) {
@@ -464,7 +543,7 @@ struct Bubble: View {
                         .onTapGesture { if hasSpoiler && !revealed { onReveal() } }
                     meta
                 }
-            } else {
+            } else if message.cipher == nil {
                 HStack { Spacer(minLength: 0); meta }
             }
         }
@@ -609,6 +688,7 @@ final class ChatModel: ObservableObject {
     @Published var hasMore = false
     @Published var unreadFirstId: String?
     @Published var jumpTo: String?
+    @Published var decrypted: [String: SecretPayload] = [:]
     private let chatId: String
     private let unread: Int
     private var since: String?
@@ -729,6 +809,50 @@ final class ChatModel: ObservableObject {
 
     func sendLocation(lat: Double, lng: Double, replyTo: String?) async {
         if let sent = try? await API.shared.sendLocation(chat: chatId, lat: lat, lng: lng, replyTo: replyTo) { merge([sent], deleted: []) }
+    }
+
+    // MARK: секретный чат
+
+    func decryptAll(with key: SymmetricKey) {
+        var changed = false
+        for m in messages where m.cipher != nil && decrypted[m.id] == nil {
+            if let p = Secret.decryptPayload(key: key, m.cipher!) { decrypted[m.id] = p; changed = true }
+        }
+        if changed { objectWillChange.send() }
+    }
+
+    func sendSecret(key: SymmetricKey, text: String, entities: [Entity], replyTo: String?, editing: Message?, me: Profile?) async {
+        guard let cipher = Secret.encryptPayload(key: key, SecretPayload(t: text, e: entities.isEmpty ? nil : entities, m: nil)) else { return }
+        if let editing {
+            if let updated = try? await API.shared.editSecret(message: editing.id, cipher: cipher) { decrypted[updated.id] = nil; merge([updated], deleted: []); decryptAll(with: key) }
+            return
+        }
+        let tempId = "pending-\(UUID().uuidString)"
+        messages.append(Message(id: tempId, content: nil, sender_id: me?.id, sender: me, created_at: ISO8601.string(Date()), cipher: cipher, pending: true))
+        decrypted[tempId] = SecretPayload(t: text, e: entities, m: nil)
+        do {
+            let sent = try await API.shared.sendSecret(chat: chatId, cipher: cipher, replyTo: replyTo)
+            messages.removeAll { $0.id == tempId }
+            merge([sent], deleted: []); decryptAll(with: key)
+        } catch { messages.removeAll { $0.id == tempId } }
+    }
+
+    func sendSecretFile(key: SymmetricKey, data: Data, kind: String, name: String, mime: String, replyTo: String?, me: Profile?) async {
+        guard let enc = Secret.encryptFile(data) else { return }
+        var media = SecretMedia(k: kind, key: enc.key, iv: enc.iv, mime: mime, name: name, size: data.count)
+        if kind == "image", let ui = UIImage(data: data) {
+            media.w = Int(ui.size.width * ui.scale); media.h = Int(ui.size.height * ui.scale)
+            let scale = min(1, 240 / max(ui.size.width, ui.size.height))
+            let sz = CGSize(width: max(1, ui.size.width * scale), height: max(1, ui.size.height * scale))
+            let r = UIGraphicsImageRenderer(size: sz)
+            media.th = r.jpegData(withCompressionQuality: 0.6) { _ in ui.draw(in: CGRect(origin: .zero, size: sz)) }.base64EncodedString()
+        }
+        guard let cipher = Secret.encryptPayload(key: key, SecretPayload(t: "", e: nil, m: media)) else { return }
+        do {
+            let up = try await API.shared.upload(data: enc.data, name: "blob", mime: "application/octet-stream")
+            let sent = try await API.shared.sendSecret(chat: chatId, cipher: cipher, replyTo: replyTo, fileURL: up.file_url, fileSize: enc.data.count)
+            merge([sent], deleted: []); decryptAll(with: key)
+        } catch { }
     }
 
     func sendSticker(_ s: StickerItem, replyTo: String?, me: Profile?) async {
