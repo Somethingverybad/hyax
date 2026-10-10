@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
+import { applog } from "@/lib/applog";
 import { clearMessageCache } from "@/lib/messageCache";
 import { getPushSecret } from "@/lib/pushSecret";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -258,17 +259,24 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           openChatFromStateRef.current = null;
         }
         
-        // 🔔 Инициализация push-уведомлений после успешной аутентификации
-        if (Capacitor.isNativePlatform()) {
-          await initPushNotifications(profile.id);
-          // Аудио-стикеры: докачиваем caf-файлы каталога в Library/Sounds,
-          // чтобы пуш мог сослаться на них по имени. Фоном, без ожидания.
-          syncNotificationSounds();
-          // Камера и микрофон — спрашиваем один раз при первом запуске.
-          void requestMediaPermissionsOnce();
-        } else {
-          // Веб/десктоп: разрешение на системные баннеры (self-guard внутри).
-          ensureNotifyPermission();
+        // 🔔 Инициализация push-уведомлений после успешной аутентификации.
+        // Сбой регистрации пушей (нет APNs в симуляторе, недоступен Firebase)
+        // — не повод разлогинивать: раньше любая ошибка здесь уводила на
+        // экран входа при живом токене.
+        try {
+          if (Capacitor.isNativePlatform()) {
+            await initPushNotifications(profile.id);
+            // Аудио-стикеры: докачиваем caf-файлы каталога в Library/Sounds,
+            // чтобы пуш мог сослаться на них по имени. Фоном, без ожидания.
+            syncNotificationSounds();
+            // Камера и микрофон — спрашиваем один раз при первом запуске.
+            void requestMediaPermissionsOnce();
+          } else {
+            // Веб/десктоп: разрешение на системные баннеры (self-guard внутри).
+            ensureNotifyPermission();
+          }
+        } catch (e) {
+          applog.warn(`push init failed: ${(e as Error)?.message || e}`);
         }
       } catch (error) {
         navigate("/auth");

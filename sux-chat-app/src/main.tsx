@@ -240,14 +240,18 @@ if (Cap.isNativePlatform()) {
     // события рисовался 75–170 мс — панель стояла, пока клавиатура уезжала.
     const lift = `max(0px, calc(${h}px - var(--sab)))`;
     const tr = `transform ${a.ms}ms ${a.ease} ${-Math.round(late)}ms`;
-    // Событие — до смены отступа: лента замеряет, где стоит сейчас (ChatWindow).
-    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: h, duration: a.ms, ease: a.ease, ts: d.ts } }));
-    document.querySelectorAll<HTMLElement>(".pad-safe-bottom").forEach((el) => {
+    // Лента едет за клавиатурой тем же трансформом, что и панель ввода, —
+    // внутри неё ничего не меняется (translate: true для ChatWindow). Раньше
+    // лента отводила место отступом и прокручивалась на высоту клавиатуры, и
+    // iOS на устройстве оставлял её слой с прежним размером: после закрытия
+    // сообщения висели выше на высоту клавиатуры при верной геометрии, после
+    // открытия лежали ниже и прыгали на первом символе (баг-репорты 8ce658e6,
+    // 85c94555, 0311d654, 3f693d29; в симуляторе не воспроизводилось). Панель
+    // ввода трансформом на устройстве стояла верно всегда.
+    window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: h, duration: a.ms, ease: a.ease, ts: d.ts, translate: true } }));
+    document.querySelectorAll<HTMLElement>(".pad-safe-bottom, .kb-lift, .chat-scroll").forEach((el) => {
       el.style.transition = tr;
       el.style.transform = h ? `translateY(calc(-1 * ${lift}))` : "translateY(0)";
-    });
-    document.querySelectorAll<HTMLElement>(".chat-scroll").forEach((el) => {
-      el.style.paddingBottom = h ? `calc(${lift} + var(--compose-extra, 0px) + var(--compose-h, 0px))` : "";
     });
   };
   if (isIOS) {

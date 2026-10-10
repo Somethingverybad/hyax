@@ -55,7 +55,11 @@ export function LoadingSkeleton({ className, style }: { className?: string; styl
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     void loadLottie().then((lottie) => {
       if (!alive) return;
-      anim = lottie.loadAnimation({ container: host, renderer: "svg", loop: !still, autoplay: visible && !still, animationData: themed() });
+      // canvas, а не svg: svg-рендер каждый кадр переписывает transform у
+      // десятков узлов внутри прокручиваемой ленты, и на iOS это совпадало с
+      // залипанием кадра ленты после клавиатуры (баг появлялся после отправки
+      // фото и треугольников — как раз там, где крутится скелетон).
+      anim = lottie.loadAnimation({ container: host, renderer: "canvas", loop: !still, autoplay: visible && !still, animationData: themed(), rendererSettings: { clearCanvas: true } });
     });
     return () => { alive = false; io?.disconnect(); anim?.destroy(); };
   }, [big]);

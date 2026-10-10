@@ -1373,21 +1373,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const last = f.lastElementChild as HTMLElement | null;
     const gap = last && cs ? Math.round(cs.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : -1;
     const dist = Math.round(n.scrollHeight - n.scrollTop - n.clientHeight);
-    applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(f).transform} anims=${f.getAnimations().length}`);
-    // Пока лента доводится к непрочитанным, она спрятана (opacity: 0 из
-    // React) — не трогаем, иначе она проявится раньше времени.
-    if (n.style.opacity === "0") return;
-    n.style.opacity = "0.999";
-    requestAnimationFrame(() => { n.style.opacity = ""; });
+    applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(n).transform} anims=${f.getAnimations().length}`);
   };
   useEffect(() => {
     let cleanup: ReturnType<typeof setTimeout> | undefined;
     const onKb = (ev: Event) => {
       const el = scrollRef.current, feed = feedRef.current;
       if (!el) return;
-      const { height, duration, ease, ts } = (ev as CustomEvent<{ height: number; duration: number; ease?: string; ts?: number }>).detail;
+      const { height, duration, ease, ts, translate } = (ev as CustomEvent<{ height: number; duration: number; ease?: string; ts?: number; translate?: boolean }>).detail;
       if (height === kbShiftRef.current) return;
       kbShiftRef.current = height;
+      // iOS: ленту целиком двигает main.tsx трансформом — прокрутку и отступ
+      // не трогаем, только проверка зазора в лог после переезда.
+      if (translate) {
+        clearTimeout(cleanup);
+        cleanup = setTimeout(() => settleKb(height), duration + 80);
+        return;
+      }
       // Событие приходит до того, как поменяется отступ под клавиатуру
       // (main.tsx), поэтому расстояние до низа меряем прямо сейчас — по факту,
       // а не по последнему событию прокрутки: между ними могли прийти новые
@@ -3574,7 +3576,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {/* Кнопка «вниз»: появляется, когда лента отлистана вверх; со счётчиком,
           если за это время пришли новые. Сама лента при этом не двигается. */}
       {(awayFromBottom || newBelow > 0) && (
-        <div className="relative h-0 z-10">
+        <div className="relative h-0 z-10 kb-lift">
           <button
             type="button"
             onClick={() => goBottom(true)}
