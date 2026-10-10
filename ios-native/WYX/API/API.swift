@@ -96,6 +96,8 @@ struct Message: Codable, Identifiable, Hashable {
     var cipher: String?
     var geo_lat: Double?
     var geo_lng: Double?
+    var comments_count: Int?
+    var views_count: Int?
     /// Локальная отметка: отправляется, сервера ещё не дождались.
     var pending: Bool? = nil
 
@@ -336,6 +338,32 @@ final class API {
     func addParticipants(chat: String, ids: [String]) async throws { let _: Empty = try await post("chats/\(chat)/add_participants/", body: ["participants": ids]) }
     func leaveChat(_ chat: String) async throws { let _: Empty = try await post("chats/\(chat)/leave/", body: [:]) }
     func pinChat(_ chat: String, pinned: Bool) async throws { let _: Empty = try await post("chats/\(chat)/pin/", body: ["pin": pinned]) }
+
+    // MARK: - Каналы
+
+    func channel(_ id: String) async throws -> Channel { try await get("channels/\(id)/") }
+    func channelPosts(_ id: String, before: String? = nil, limit: Int = 30) async throws -> PostsResponse {
+        var q = ["limit": String(limit)]; if let before { q["before"] = before }
+        return try await get("channels/\(id)/posts/", query: q)
+    }
+    func reactPost(_ id: String, value: String) async throws { let _: Empty = try await post("posts/\(id)/react/", body: ["value": value]) }
+    func unreactPost(_ id: String) async throws {
+        var req = URLRequest(url: base.appendingPathComponent("posts/\(id)/react/")); req.httpMethod = "DELETE"
+        let _: Empty = try await run(req)
+    }
+    func postComments(_ id: String) async throws -> [PostComment] { try await get("posts/\(id)/comments/") }
+    func addComment(_ id: String, content: String) async throws { let _: Empty = try await post("posts/\(id)/comments/", body: ["content": content]) }
+    func markPostView(_ id: String) async { let _: Empty? = try? await post("posts/\(id)/view/", body: [:]) }
+    func subscribeChannel(_ id: String) async throws { let _: Empty = try await post("channels/\(id)/subscribe/", body: [:]) }
+    func leaveChannel(_ id: String) async throws { let _: Empty = try await post("channels/\(id)/leave/", body: [:]) }
+    func muteChannel(_ id: String, muted: Bool) async throws { let _: Empty = try await post("channels/\(id)/mute/", body: ["muted": muted]) }
+    func discoverChannels(_ q: String) async throws -> [Channel] { try await get("channels/discover/", query: ["q": q]) }
+    func createChannel(name: String, username: String?, description: String?) async throws -> Channel {
+        var body: [String: Any] = ["name": name]
+        if let username, !username.isEmpty { body["username"] = username }
+        if let description, !description.isEmpty { body["description"] = description }
+        return try await post("channels/", body: body)
+    }
 
     // MARK: - Стикеры
 

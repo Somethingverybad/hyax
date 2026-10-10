@@ -30,7 +30,9 @@ struct RootView: View {
                 }
                 MintIsland(selected: $tab)
             }
-            .navigationDestination(for: Chat.self) { chat in ChatView(chat: chat) }
+            .navigationDestination(for: Chat.self) { chat in
+                if chat.kind == "channel" { ChannelView(chat: chat) } else { ChatView(chat: chat) }
+            }
             .toolbar(.hidden, for: .navigationBar)
         }
         .onChange(of: session.openChat) { _, c in if let c { path.append(c) } }

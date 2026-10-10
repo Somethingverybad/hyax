@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		18FD1D0829D6C636CA14253E /* Socket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3878EF85EE49AA441C7FC1 /* Socket.swift */; };
 		1B809AB4D7D50CD9F9135806 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53A4C49EADBD0C4E3672A63 /* ProfileView.swift */; };
+		1C9285B1EA493AA435572AB3 /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C9F0E7C76EAE7EC8A074A11 /* ChannelView.swift */; };
 		2411187B0D62F415A56B3DEF /* MessageMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D6F888536EDAF9AF9BD776 /* MessageMenu.swift */; };
 		30802AE7A43B3F36160D33CB /* WYXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CB9BE1AB8C74E26146BCC2 /* WYXApp.swift */; };
 		33E85E33CF6FFE80CDA55C68 /* Inter-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B25B872738195BA33FA64677 /* Inter-Bold.ttf */; };
@@ -44,6 +45,7 @@
 		69CEE94282BEC12A9B23D790 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
 		6E3878EF85EE49AA441C7FC1 /* Socket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Socket.swift; sourceTree = "<group>"; };
 		71A4FB80CE9AE60D0C863AD8 /* Inter-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Regular.ttf"; sourceTree = "<group>"; };
+		7C9F0E7C76EAE7EC8A074A11 /* ChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelView.swift; sourceTree = "<group>"; };
 		8222B5EBC39814AAE4C429BC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		85DFC308037D2FB554B4E4FD /* Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachments.swift; sourceTree = "<group>"; };
 		8798A18C199E71F8DA1FA6E8 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -125,6 +127,7 @@
 			isa = PBXGroup;
 			children = (
 				7254548EABFE556F174F06D5 /* Auth */,
+				A3294EE941538D87BCB9869A /* Channel */,
 				D5E12F7DAFEDBE8763F4E211 /* Chat */,
 				B98A5AA36E75443ECDAC9626 /* Chats */,
 				795560707262602A67DEE0E9 /* Nav */,
@@ -132,6 +135,14 @@
 				C19168B927CD49ADA8C065FB /* Secret */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		A3294EE941538D87BCB9869A /* Channel */ = {
+			isa = PBXGroup;
+			children = (
+				7C9F0E7C76EAE7EC8A074A11 /* ChannelView.swift */,
+			);
+			path = Channel;
 			sourceTree = "<group>";
 		};
 		B45D33734CBB65FBC8E9F531 /* Fonts */ = {
@@ -302,6 +313,7 @@
 				553A13BEC4358CBCB262D42F /* API.swift in Sources */,
 				7ADA1ACB88D8163D4E46EA82 /* Attachments.swift in Sources */,
 				FEB9D33F614B1ECEEE8CCC33 /* AuthView.swift in Sources */,
+				1C9285B1EA493AA435572AB3 /* ChannelView.swift in Sources */,
 				BDE41BFC69DBEBAB2D69C602 /* ChatListView.swift in Sources */,
 				E2607575AB2AC3F31BD6CCD4 /* ChatView.swift in Sources */,
 				558F56D5EE53B9A7E57DF9DE /* Composer.swift in Sources */,

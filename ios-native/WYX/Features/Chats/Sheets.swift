@@ -29,7 +29,11 @@ struct NewChatSheet: View {
     let onCreated: (Chat) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var group = false
+    @State private var channelMode = false
     @State private var name = ""
+    @State private var handle = ""
+    @State private var about = ""
+    @State private var channels: [Channel] = []
     @State private var query = ""
     @State private var found: Profile?
     @State private var members: [Profile] = []
@@ -38,29 +42,63 @@ struct NewChatSheet: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            MintHeader(title: group ? "Новая группа" : "Новый чат", left: { Button("Отмена") { dismiss() }.font(Inter.regular(14)).foregroundStyle(Mint.ink) },
+            MintHeader(title: channelMode ? "Каналы" : (group ? "Новая группа" : "Новый чат"), left: { Button("Отмена") { dismiss() }.font(Inter.regular(14)).foregroundStyle(Mint.ink) },
                        right: { Button(action: create) { Text("Создать").font(Inter.regular(12.7)).foregroundStyle(Mint.accentFg).frame(height: 33).padding(.horizontal, 13) }.mintLime().disabled(!canCreate || busy).opacity(canCreate ? 1 : 0.5) })
             HStack(spacing: 8) {
-                ForEach([("Личный", false), ("Группа", true)], id: \.1) { t in
-                    Button { group = t.1 } label: { Text(t.0).font(Inter.regular(12.7)).foregroundStyle(group == t.1 ? Mint.accentFg : Mint.ink).frame(height: 33).padding(.horizontal, 13) }
-                        .buttonStyle(.plain).background(group == t.1 ? AnyView(Color.clear.mintLime()) : AnyView(Color.clear.mintPill()))
+                ForEach([("Личный", 0), ("Группа", 1), ("Канал", 2)], id: \.1) { t in
+                    let on = t.1 == (channelMode ? 2 : (group ? 1 : 0))
+                    Button { channelMode = t.1 == 2; group = t.1 == 1 } label: { Text(t.0).font(Inter.regular(12.7)).foregroundStyle(on ? Mint.accentFg : Mint.ink).frame(height: 33).padding(.horizontal, 13) }
+                        .buttonStyle(.plain).background(on ? AnyView(Color.clear.mintLime()) : AnyView(Color.clear.mintPill()))
                 }
                 Spacer()
             }
             .padding(.horizontal, 17)
-            if group {
+            if channelMode {
+                HStack(spacing: 10) {
+                    MintIcon("search", 16).foregroundStyle(Mint.mintMuted)
+                    TextField("Поиск каналов", text: $query).font(Inter.regular(14)).foregroundStyle(Mint.foreground).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .onChange(of: query) { _, q in Task { channels = q.count >= 2 ? ((try? await API.shared.discoverChannels(q)) ?? []) : [] } }
+                }
+                .padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17)
+                if !channels.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(channels) { c in
+                            Button {
+                                Task { try? await API.shared.subscribeChannel(c.id); if let chat = try? await API.shared.chat(c.id) { dismiss(); onCreated(chat) } }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Avatar(url: c.avatar_url, name: c.name, size: 44, radius: 15)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(c.name).font(Inter.semibold(15)).foregroundStyle(Mint.title)
+                                        Text((c.username.map { "@\($0) · " } ?? "") + "\(c.subscribers_count ?? 0) подписчиков").font(Inter.regular(12.3)).foregroundStyle(Mint.mintMuted)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(12)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .mintCard().padding(.horizontal, 17)
+                }
+                Text("Или создайте свой").font(Inter.regular(12.7)).foregroundStyle(Mint.mintMuted)
+                TextField("Название канала", text: $name).font(Inter.regular(15)).foregroundStyle(Mint.foreground).padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17)
+                TextField("@имя (необязательно)", text: $handle).font(Inter.regular(15)).foregroundStyle(Mint.foreground).textInputAutocapitalization(.never).autocorrectionDisabled().padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17)
+                TextField("Описание", text: $about).font(Inter.regular(15)).foregroundStyle(Mint.foreground).padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17)
+            }
+            if group && !channelMode {
                 TextField("Название группы", text: $name).font(Inter.regular(15)).foregroundStyle(Mint.foreground)
                     .padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17)
             }
-            HStack(spacing: 10) {
+            if !channelMode { HStack(spacing: 10) {
                 MintIcon("search", 16).foregroundStyle(Mint.mintMuted)
                 TextField("Точный ник", text: $query).font(Inter.regular(14)).foregroundStyle(Mint.foreground)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onSubmit { Task { await lookup() } }
                     .onChange(of: query) { _, q in Task { if q.count >= 2 { await lookup() } else { found = nil } } }
             }
-            .padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17)
-            if let p = found {
+            .padding(.horizontal, 16).frame(height: 40).mintPill().padding(.horizontal, 17) }
+            if let p = found, !channelMode {
                 Button {
                     if group { if !members.contains(p) { members.append(p) }; query = ""; found = nil }
                     else { create() }
@@ -95,7 +133,7 @@ struct NewChatSheet: View {
         .background(Mint.pageGradient.ignoresSafeArea())
     }
 
-    private var canCreate: Bool { group ? (!name.isEmpty && !members.isEmpty) : found != nil }
+    private var canCreate: Bool { channelMode ? !name.isEmpty : (group ? (!name.isEmpty && !members.isEmpty) : found != nil) }
 
     private func lookup() async {
         found = try? await API.shared.profileByUsername(query.trimmingCharacters(in: .whitespaces))
@@ -105,6 +143,11 @@ struct NewChatSheet: View {
         busy = true; error = nil
         Task {
             do {
+                if channelMode {
+                    let c = try await API.shared.createChannel(name: name, username: handle.replacingOccurrences(of: "@", with: ""), description: about)
+                    let chat = try await API.shared.chat(c.id)
+                    Haptic.medium(); dismiss(); onCreated(chat); busy = false; return
+                }
                 let ids = group ? members.map(\.id) : [found!.id]
                 let chat = try await API.shared.createChat(participants: ids, groupName: group ? name : nil)
                 Haptic.medium()
