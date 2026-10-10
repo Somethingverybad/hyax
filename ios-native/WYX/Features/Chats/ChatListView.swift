@@ -75,7 +75,7 @@ struct ChatListView: View {
 
     private func load() async {
         if let c = try? await API.shared.chats() {
-            chats = c.sorted { ($0.updated_at ?? $0.last_message?.created_at ?? "") > ($1.updated_at ?? $1.last_message?.created_at ?? "") }
+            chats = c.sorted { ($0.last_message_at ?? $0.updated_at ?? "") > ($1.last_message_at ?? $1.updated_at ?? "") }
         }
         loading = false
     }
@@ -100,7 +100,7 @@ struct ChatRow: View {
                         Text(timeLabel).font(Inter.regular(12.3)).foregroundStyle(Mint.mintMuted)
                     }
                     HStack {
-                        Text(chat.last_message?.content?.isEmpty == false ? chat.last_message!.content! : "Нет сообщений")
+                        Text(chat.last_message?.text?.isEmpty == false ? chat.last_message!.text! : "Нет сообщений")
                             .font(Inter.regular(13.3)).foregroundStyle(Mint.mintMuted).lineLimit(1)
                         Spacer()
                         if unread > 0 {
@@ -115,7 +115,7 @@ struct ChatRow: View {
         .buttonStyle(.plain)
     }
     private var timeLabel: String {
-        guard let s = chat.last_message?.created_at ?? chat.updated_at, let d = ISO8601.parse(s) else { return "" }
+        guard let s = chat.last_message_at ?? chat.updated_at, let d = ISO8601.parse(s) else { return "" }
         let f = DateFormatter(); f.locale = Locale(identifier: "ru_RU")
         f.dateFormat = Calendar.current.isDateInToday(d) ? "HH:mm" : "d MMM"
         return f.string(from: d)

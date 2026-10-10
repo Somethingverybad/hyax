@@ -396,7 +396,6 @@ struct Bubble: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(maxWidth: 300, alignment: .leading)
-        .fixedSize(horizontal: true, vertical: false)
         .background(Mint.bubble)
         .clipShape(BubbleShape(own: own, tail: tail))
         .overlay(alignment: own ? .bottomTrailing : .bottomLeading) {

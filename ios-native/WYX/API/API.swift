@@ -27,12 +27,12 @@ struct Chat: Codable, Identifiable, Hashable {
     var unread_count: Int?
     var updated_at: String?
     var last_message: LastMessage?
+    var last_message_at: String?
     var pinned_message: PinnedInfo?
 
+    /// Превью последнего сообщения (ChatSerializer.get_last_message).
     struct LastMessage: Codable, Hashable {
-        var content: String?
-        var created_at: String?
-        var sender_username: String?
+        var text: String?
         var sender_id: String?
         var read: Bool?
     }
