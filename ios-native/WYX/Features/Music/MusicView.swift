@@ -130,6 +130,7 @@ struct MusicView: View {
                         .buttonStyle(.plain).mintLime()
                     }
                     VStack(spacing: 0) {
+                        if playlists.isEmpty { Text("Плейлистов пока нет. Создайте первый или добавьте музыку из чата: долгое нажатие на аудио → «В плейлист».").font(Inter.regular(13)).foregroundStyle(Mint.mintMuted).multilineTextAlignment(.center).padding(20) }
                         ForEach(Array(playlists.enumerated()), id: \.element.id) { i, p in
                             Button { open = p; Task { tracks = (try? await API.shared.playlistTracks(p.id)) ?? [] } } label: {
                                 HStack(spacing: 14) {

@@ -2,6 +2,10 @@
 #   cd ios-native && xcodegen generate
 # Живёт рядом с Capacitor-приложением (WhoYaX, com.hyax.messenger), у него свой
 # bundle id — на телефоне и в TestFlight они не пересекаются.
+#
+# Пуши: нужен GoogleService-Info.plist для com.hyax.wyx (Firebase console →
+# добавить iOS-приложение) в WYX/Resources/. Без него Firebase не поднимается,
+# приложение работает без пушей.
 name: WYX
 options:
   bundleIdPrefix: com.hyax
@@ -20,6 +24,9 @@ packages:
   Lottie:
     url: https://github.com/airbnb/lottie-spm
     from: 4.4.0
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.0.0
 targets:
   WYX:
     type: application
@@ -28,6 +35,16 @@ targets:
       - path: WYX
     dependencies:
       - package: Lottie
+      - package: Firebase
+        product: FirebaseMessaging
+      - target: WYXNotificationService
+        embed: true
+    entitlements:
+      path: WYX/WYX.entitlements
+      properties:
+        aps-environment: development
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.hyax.wyx.shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hyax.wyx
@@ -35,7 +52,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: YES
-        OTHER_LDFLAGS: "-lz"
+        OTHER_LDFLAGS: "-lz -ObjC"
     info:
       path: WYX/Info.plist
       properties:
@@ -46,6 +63,10 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIUserInterfaceStyle: Automatic
+        UIBackgroundModes:
+          - remote-notification
+          - audio
+        FirebaseAppDelegateProxyEnabled: false
         UIAppFonts:
           - Inter-Regular.ttf
           - Inter-Medium.ttf
@@ -58,3 +79,25 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+  WYXNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WYXNotificationService
+    entitlements:
+      path: WYXNotificationService/NotificationService.entitlements
+      properties:
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.hyax.wyx.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hyax.wyx.NotificationService
+        PRODUCT_NAME: WYXNotificationService
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: WYXNotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: WYX Notifications
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService

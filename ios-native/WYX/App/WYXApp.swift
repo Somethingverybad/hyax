@@ -34,6 +34,8 @@ final class Session: ObservableObject {
         guard loggedIn else { return }
         if let p = try? await API.shared.currentProfile() { me = p } else if !API.shared.isLoggedIn { loggedIn = false; return }
         if let me { socket.connect(userId: me.id) }
+        PushDelegate.enable()
+        PushDelegate.openChat = { [weak self] id in Task { if let c = try? await API.shared.chat(id) { self?.openChat = c } } }
         await refreshUnread()
         if env["WYX_OPEN"] == "saved", let c = try? await API.shared.savedChat() { openChat = c }
     }
@@ -80,6 +82,7 @@ final class Rov {
 
 @main
 struct WYXApp: App {
+    @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @StateObject private var session = Session()
     @Environment(\.scenePhase) private var phase
     var body: some Scene {

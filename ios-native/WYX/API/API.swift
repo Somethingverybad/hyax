@@ -436,6 +436,12 @@ final class API {
         guard let http = r as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.http((r as? HTTPURLResponse)?.statusCode ?? 0, String(data: d, encoding: .utf8) ?? "") }
     }
 
+    func registerPush(token: String, platform: String, secret: String?) async throws {
+        var body: [String: Any] = ["token": token, "platform": platform]
+        if let secret { body["secret"] = secret }
+        let _: Empty = try await post("push/register/", body: body)
+    }
+
     // MARK: - Музыка
 
     func playlists() async throws -> [Playlist] { try await get("playlists/") }
