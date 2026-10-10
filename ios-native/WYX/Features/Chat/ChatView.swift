@@ -410,6 +410,8 @@ struct ChatView: View {
         case .deleteMe: Task { await model.remove(m, scope: "me") }
         case .deleteAll: Task { await model.remove(m, scope: "all") }
         case .forward: forwarding = m
+        case .toPlaylist: Task { toast = (try? await API.shared.addTrack(messageId: m.id)) != nil ? "Добавлено в «Мою музыку»" : "Не удалось" }
+        case .saveImage: Task { toast = (try? await API.shared.saveImage(messageId: m.id)) != nil ? "В сохранёнках" : "Не удалось" }
         }
     }
 }

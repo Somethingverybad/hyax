@@ -25,7 +25,7 @@ struct RootView: View {
                     switch tab {
                     case .chats: ChatListView(onOpen: { path.append($0) })
                     case .saved: SavedView(onOpen: { path.append($0) })
-                    case .music: Placeholder(title: "Музыка")
+                    case .music: MusicView()
                     case .profile: ProfileView()
                     }
                 }

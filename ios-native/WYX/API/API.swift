@@ -139,6 +139,10 @@ struct Message: Codable, Identifiable, Hashable {
         guard let n = (file_name ?? file_url)?.lowercased() else { return false }
         return [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"].contains { n.hasSuffix($0) }
     }
+    var isAudioFile: Bool {
+        guard let n = (file_name ?? file_url)?.lowercased() else { return false }
+        return [".mp3", ".m4a", ".ogg", ".wav", ".flac", ".aac"].contains { n.hasSuffix($0) }
+    }
     var isVideoFile: Bool {
         guard let n = (file_name ?? file_url)?.lowercased() else { return false }
         return [".mp4", ".mov", ".m4v", ".webm"].contains { n.hasSuffix($0) }
@@ -391,6 +395,7 @@ final class API {
         let _: Empty = try await run(req)
     }
     func savedImages() async throws -> [SavedImage] { try await get("saved-images/") }
+    func saveImage(messageId: String) async throws { let _: Empty = try await post("saved-images/", body: ["message_id": messageId]) }
     func savedViewers() async throws -> [Profile] { try await get("saved-viewers/") }
     func savedViewer(add id: String) async throws { let _: Empty = try await post("saved-viewers/", body: ["profile_id": id]) }
     func savedViewer(remove id: String) async throws {
@@ -429,6 +434,36 @@ final class API {
         req.httpBody = b
         let (d, r) = try await URLSession.shared.data(for: req)
         guard let http = r as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw APIError.http((r as? HTTPURLResponse)?.statusCode ?? 0, String(data: d, encoding: .utf8) ?? "") }
+    }
+
+    // MARK: - Музыка
+
+    func playlists() async throws -> [Playlist] { try await get("playlists/") }
+    func createPlaylist(_ name: String) async throws -> Playlist { try await post("playlists/", body: ["name": name]) }
+    func deletePlaylist(_ id: String) async throws {
+        var req = URLRequest(url: base.appendingPathComponent("playlists/\(id)/")); req.httpMethod = "DELETE"
+        let _: Empty = try await run(req)
+    }
+    func playlistTracks(_ id: String) async throws -> [PlaylistTrack] {
+        // Треки — либо отдельной точкой, либо внутри плейлиста ({tracks: […]}).
+        if let t: [PlaylistTrack] = try? await get("playlists/\(id)/tracks/") { return t }
+        struct R: Codable { var tracks: [PlaylistTrack]? }
+        let r: R = try await get("playlists/\(id)/"); return r.tracks ?? []
+    }
+    /// Добавить музыку из сообщения; без плейлиста — в «Мою музыку».
+    func addTrack(messageId: String, playlist: String? = nil) async throws {
+        let _: Empty = try await post(playlist.map { "playlists/\($0)/tracks/" } ?? "playlists/tracks/", body: ["message_id": messageId])
+    }
+    func removeTrack(_ playlist: String, _ track: String) async throws {
+        var req = URLRequest(url: base.appendingPathComponent("playlists/\(playlist)/tracks/\(track)/")); req.httpMethod = "DELETE"
+        let _: Empty = try await run(req)
+    }
+    func sharePlaylist(_ id: String) async throws -> String {
+        struct R: Codable { var share_token: String?; var token: String? }
+        let r: R = try await post("playlists/\(id)/share/", body: [:]); return r.share_token ?? r.token ?? ""
+    }
+    func sendTrack(chat: String, fileURL: String, title: String) async throws {
+        let _: Message = try await post("messages/", body: ["chat": chat, "content": "", "file_url": fileURL, "file_name": "\(title).mp3"])
     }
 
     // MARK: - Каналы

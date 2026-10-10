@@ -23,6 +23,7 @@
 		59804A80384960AAE33CDE5F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8798A18C199E71F8DA1FA6E8 /* Theme.swift */; };
 		7ADA1ACB88D8163D4E46EA82 /* Attachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85DFC308037D2FB554B4E4FD /* Attachments.swift */; };
 		991D115C7A5E4D8A5E126E47 /* VideoNoteRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9120470CD144895F9AE05180 /* VideoNoteRecorder.swift */; };
+		9FC28002F683D2744040006B /* MusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ADAAA7C5C5CD6DB9A7EB66A /* MusicView.swift */; };
 		A1B7F2C6619CFD057888F8DE /* Secret.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E0904CB0D20168AD4E87986 /* Secret.swift */; };
 		A47CB133C53CF01BC849308B /* Recorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D8C313F9AB60E97B397CB0 /* Recorder.swift */; };
 		BDE41BFC69DBEBAB2D69C602 /* ChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F6A92FE10F045DBD1595A4 /* ChatListView.swift */; };
@@ -39,6 +40,7 @@
 		0E0904CB0D20168AD4E87986 /* Secret.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secret.swift; sourceTree = "<group>"; };
 		0E93AA672ACBDE38DAC04EAB /* SecretViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretViews.swift; sourceTree = "<group>"; };
 		0F432FD6809613E1522623FC /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		3ADAAA7C5C5CD6DB9A7EB66A /* MusicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicView.swift; sourceTree = "<group>"; };
 		414E0B585A72A9E73491E3DC /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		526629FFF57600DC2C25DFAD /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
 		54D6F888536EDAF9AF9BD776 /* MessageMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageMenu.swift; sourceTree = "<group>"; };
@@ -77,6 +79,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2DD06AD391F61290D9EBD590 /* Music */ = {
+			isa = PBXGroup;
+			children = (
+				3ADAAA7C5C5CD6DB9A7EB66A /* MusicView.swift */,
+			);
+			path = Music;
+			sourceTree = "<group>";
+		};
 		3A6E9E54F2181F01F3BD65D3 /* WYX */ = {
 			isa = PBXGroup;
 			children = (
@@ -130,6 +140,7 @@
 				A3294EE941538D87BCB9869A /* Channel */,
 				D5E12F7DAFEDBE8763F4E211 /* Chat */,
 				B98A5AA36E75443ECDAC9626 /* Chats */,
+				2DD06AD391F61290D9EBD590 /* Music */,
 				795560707262602A67DEE0E9 /* Nav */,
 				B4C0A70DCED6686238542C75 /* Profile */,
 				C19168B927CD49ADA8C065FB /* Secret */,
@@ -320,6 +331,7 @@
 				3950D2C4839D57659DB8C19E /* Formatting.swift in Sources */,
 				E52AB98B715C6D9EEABDC0A7 /* MediaViews.swift in Sources */,
 				2411187B0D62F415A56B3DEF /* MessageMenu.swift in Sources */,
+				9FC28002F683D2744040006B /* MusicView.swift in Sources */,
 				1B809AB4D7D50CD9F9135806 /* ProfileView.swift in Sources */,
 				A47CB133C53CF01BC849308B /* Recorder.swift in Sources */,
 				4125308A6205AB78DF0179E0 /* RootView.swift in Sources */,

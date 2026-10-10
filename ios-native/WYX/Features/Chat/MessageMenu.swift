@@ -11,7 +11,7 @@ struct MessageMenu: View {
     let onAction: (Action) -> Void
     let onClose: () -> Void
 
-    enum Action { case reply, copy, pin, edit, deleteMe, deleteAll, forward }
+    enum Action { case reply, copy, pin, edit, deleteMe, deleteAll, forward, toPlaylist, saveImage }
 
     var body: some View {
         ZStack {
@@ -36,6 +36,8 @@ struct MessageMenu: View {
                     if message.content?.isEmpty == false { divider; row("Копировать", "doc.on.doc") { onAction(.copy) } }
                     divider; row(pinned ? "Открепить" : "Закрепить", "pin") { onAction(.pin) }
                     divider; row("Переслать", "arrowshape.turn.up.right") { onAction(.forward) }
+                    if message.isAudioFile { divider; row("В плейлист", "music.note.list") { onAction(.toPlaylist) } }
+                    if message.isImage { divider; row("В сохранёнки", "bookmark") { onAction(.saveImage) } }
                     if own && message.content?.isEmpty == false && message.sticker == nil { divider; row("Изменить", "pencil") { onAction(.edit) } }
                     divider; row("Удалить у меня", "trash", destructive: true) { onAction(.deleteMe) }
                     if own { divider; row("Удалить у всех", "trash.fill", destructive: true) { onAction(.deleteAll) } }
