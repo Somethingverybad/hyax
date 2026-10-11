@@ -628,11 +628,11 @@ const ChatSidebar = ({
                     <Button type="button" onClick={createChannel} disabled={chBusy || chName.trim().length < 2} className="w-full bg-gradient-primary">
                       Создать канал
                     </Button>
-                    <div className="flex items-center gap-3 text-caption text-subtle"><span className="flex-1 h-px bg-border" />или из Telegram<span className="flex-1 h-px bg-border" /></div>
-                    <Input placeholder="t.me/канал или @канал" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} className="bg-secondary/50" inputMode="url" autoCapitalize="off" />
+                    <div className="flex items-center gap-3 text-caption text-subtle"><span className="flex-1 h-px bg-border" />или по ссылке<span className="flex-1 h-px bg-border" /></div>
+                    <Input placeholder="Ссылка на публичный канал или @имя" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} className="bg-secondary/50" inputMode="url" autoCapitalize="off" />
                     <p className="text-caption text-subtle">Публичный канал появится у вас как канал WhoYaX и будет обновляться сам. Реакции и комментарии — только от людей из WhoYaX.</p>
                     <Button type="button" variant="outline" onClick={addTelegram} disabled={chBusy || !tgUrl.trim()} className="w-full">
-                      Подключить из Telegram
+                      Добавить по ссылке
                     </Button>
                   </div>
                 )}

@@ -725,8 +725,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           <p className="text-center text-sm text-muted-foreground py-10">Загрузка…</p>
         ) : posts.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground py-10">
-            {channel?.tg_state === "pending" ? "Подключаем канал из Telegram — посты появятся в течение минуты"
-              : channel?.tg_state === "error" ? "Не удалось подключить канал из Telegram"
+            {channel?.tg_state === "pending" ? "Подключаем канал по ссылке — посты появятся в течение минуты"
+              : channel?.tg_state === "error" ? "Не удалось подключить канал по ссылке"
               : isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
           </p>
         ) : (

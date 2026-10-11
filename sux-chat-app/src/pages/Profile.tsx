@@ -418,7 +418,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Sticker}
               label="Стикерпаки"
-              hint="Свои наборы и импорт из Telegram"
+              hint="Свои наборы и добавление по ссылке"
               onClick={() => navigate("/profile/stickerpacks")}
             />
             <SettingsRow

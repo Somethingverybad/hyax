@@ -169,7 +169,7 @@
       <div class="tile active"><div class="ico">🔊</div><div class="t">Звуки уведомлений</div>
         <div class="d">Паки и редактор с обрезкой</div><span class="badge">доступно</span></div>
       <div class="tile active"><div class="ico">🎨</div><div class="t">Стикеры</div>
-        <div class="d">Импорт паков из Telegram</div><span class="badge">доступно</span></div>
+        <div class="d">Свои паки и добавление по ссылке</div><span class="badge">доступно</span></div>
       <a class="tile active" href="bots.html"><div class="ico">🤖</div><div class="t">Боты</div>
         <div class="d">API и inline-режим — документация</div><span class="badge">доступно</span></a>
       <div class="tile soon"><div class="ico">😍</div><div class="t">Реакции</div>
@@ -246,10 +246,10 @@
   <!-- ИМПОРТ СТИКЕРОВ -->
   <div id="importView" hidden>
     <button class="back" type="button" data-back>← Все паки</button>
-    <h2>Стикеры из Telegram</h2>
+    <h2>Стикеры по ссылке</h2>
     <div class="card">
       <div class="field"><label class="lbl">Ссылка на пак</label>
-        <input id="tgUrl" type="text" placeholder="https://t.me/addstickers/…" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+        <input id="tgUrl" type="text" placeholder="Ссылка на набор стикеров" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <button class="btn primary wide" id="tgImport" type="button">Импортировать пак</button>
       <div class="prog" id="tgProg"><i></i></div>
       <div class="result" id="tgResult"></div>
@@ -466,7 +466,7 @@
     }
     if(stickerPacks!==null){
       tf.innerHTML="";
-      tf.appendChild(folder({isNew:true,name:"Импорт",count:"пак из Telegram",icon:"＋",onClick:function(){ go("#/import"); }}));
+      tf.appendChild(folder({isNew:true,name:"Импорт",count:"пак по ссылке",icon:"＋",onClick:function(){ go("#/import"); }}));
       stickerPacks.forEach(function(p){
         tf.appendChild(folder({name:p.name,count:plural(p.stickers_count||0,"стикер","стикера","стикеров"),mosaic:p.preview,icon:"🎨",
           adult:p.is_adult,tag:isMine(p)?"":"сохранён",onClick:function(){ go("#/stp/"+p.id); }}));
@@ -757,7 +757,7 @@
   el("tgImport").addEventListener("click", function(){
     var btn=this, url=el("tgUrl").value.trim();
     tgResult.className="result";
-    if(!url){ tgRes("err","Вставьте ссылку вида t.me/addstickers/название."); return; }
+    if(!url){ tgRes("err","Вставьте ссылку на набор стикеров."); return; }
     btn.disabled=true; btn.textContent="Импорт…";
     tgProg.style.display="block"; tgProgBar.style.width="5%";
     authJson(TG_IMPORT_URL,"POST",{url:url}).then(function(x){

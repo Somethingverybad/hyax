@@ -62,14 +62,14 @@ const ProfileStickerPacks = () => {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title="Стикерпаки" />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle flex items-center gap-2"><Link2 className="w-4 h-4" /> Набор из Telegram</p>
+        <p className="px-1 text-small text-subtle flex items-center gap-2"><Link2 className="w-4 h-4" /> Набор по ссылке</p>
         <SettingsCard>
           <div className="px-4 py-3 space-y-2.5">
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") importPack(); }}
-              placeholder="t.me/addstickers/…"
+              placeholder="Ссылка на набор стикеров"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
@@ -97,7 +97,7 @@ const ProfileStickerPacks = () => {
               </div>
             )}
             <p className="text-caption text-subtle">
-              Откройте набор в Telegram, нажмите «Поделиться» и вставьте ссылку сюда. Анимированные стикеры станут картинками.
+              Вставьте ссылку на набор стикеров — он появится в ваших наборах. Анимированные стикеры станут картинками.
             </p>
           </div>
         </SettingsCard>
@@ -107,7 +107,7 @@ const ProfileStickerPacks = () => {
           {packs === null ? (
             <div className="px-4 py-4 text-small text-subtle">Загрузка…</div>
           ) : packs.length === 0 ? (
-            <div className="px-4 py-4 text-small text-subtle">Пока пусто. Добавьте набор из Telegram или сохраните чужой по ссылке.</div>
+            <div className="px-4 py-4 text-small text-subtle">Пока пусто. Добавьте набор по ссылке или сохраните чужой.</div>
           ) : packs.map((p) => (
             <SettingsRow
               key={p.id}
