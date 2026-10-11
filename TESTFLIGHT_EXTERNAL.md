@@ -1,5 +1,16 @@
 # External TestFlight — что вставить в App Store Connect
 
+> 2026-10-11, отказ по 4.1(a) и 2.3.8 на сборке 1.1.16 (161) при чистом What to
+> Test. Причина — не тексты сборки, а метаданные записи: **имя приложения в
+> App Store Connect осталось «hyax»** (чужой бренд, и для русскоязычного ревьюера
+> читается вместе с доменом huyax.e-tree.su), плюс «18+» в полях Test
+> Information и Review Notes. Что сделать: App Information → Name = WhoYaX;
+> Privacy/Marketing URL — на wyx.su; в полях для Apple не писать «18+» —
+> только «возрастной фильтр». Сайт wyx.su: nginx/wyx-site, деплой
+> ~/hyax-deploy-wyx.sh. Предыдущий отказ (2026-10-06) был за «как в Telegram»,
+> @ytbot и чужих персонажей в What to Test — чужие сервисы и бренды в текстах
+> для Apple не упоминать вообще.
+
 Сборка: WhoYaX 1.1.11 (132). Поля ниже — раздел TestFlight → Test Information
 и Beta App Review Information. Английский текст читает ревьюер Apple.
 
@@ -37,7 +48,7 @@ Sign-up needs only a login and a password.
 - Audio and video calls between two accounts.
 - Push notifications with custom sounds.
 - Report a message or a user, block a user (Profile card → Block).
-- Profile → Privacy: 18+ toggle, Terms, Privacy Policy, Delete account.
+- Profile → Privacy: content filter, Terms, Privacy Policy, Delete account.
 ```
 
 Поля Test Information помечены «Russian» (основной язык приложения) — их читают
@@ -59,12 +70,12 @@ WhoYaX — мессенджер: личные и групповые чаты, к
 - Аудио- и видеозвонки между двумя аккаунтами.
 - Пуш-уведомления со своими звуками.
 - Жалоба на сообщение или пользователя, блокировка (карточка пользователя → «Заблокировать»).
-- Профиль → Конфиденциальность: «Показывать 18+», правила, политика, удаление аккаунта.
+- Профиль → Конфиденциальность: фильтр контента, правила, политика, удаление аккаунта.
 ```
 
 **Feedback Email:** Ancher001@yandex.ru
-**Privacy Policy URL:** https://huyax.e-tree.su/privacy
-**Marketing URL (необязательно):** https://huyax.e-tree.su/apk/
+**Privacy Policy URL:** https://wyx.su/privacy
+**Marketing URL (необязательно):** https://wyx.su — или оставить пустым
 
 ## Beta App Review Information
 
@@ -80,16 +91,16 @@ WhoYaX is a messenger with user-generated content. Guideline 1.2 measures:
 1. Terms (EULA): registration requires accepting the Terms of Use and Privacy
    Policy; the Terms state zero tolerance for objectionable content and abusive
    users. Existing users see a blocking consent screen on first launch.
-   Terms: https://huyax.e-tree.su/terms  Privacy: https://huyax.e-tree.su/privacy
+   Terms: https://wyx.su/terms  Privacy: https://wyx.su/privacy
 2. Reporting: long-press a message → "Пожаловаться" (Report); user card →
    "Пожаловаться". Sticker and sound packs can be reported too. Reports go to a
    moderators' system chat and the admin panel; we act within 24 hours by
    removing the content and ejecting the offending user.
 3. Blocking: user card → "Заблокировать". Messages and push notifications from
    a blocked user stop immediately. Block list: Profile → Конфиденциальность.
-4. Filtering: sticker and sound packs marked 18+ are hidden by default. They
-   appear only after the user enables "Показывать 18+" in Profile →
-   Конфиденциальность and confirms being 18 or older.
+4. Filtering: sticker and sound packs flagged as mature are hidden by
+   default. They appear only after the user enables the content filter switch
+   in Profile → Конфиденциальность and confirms their age.
 5. Account deletion (5.1.1(v)): Profile → Конфиденциальность → "Удалить
    аккаунт", confirmed with the password. Deletes the profile, messages,
    chats, channels and packs immediately.
