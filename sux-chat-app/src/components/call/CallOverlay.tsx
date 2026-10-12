@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { playRingtone, resolveRingtoneUrl } from "@/lib/ringtone";
 import { readCache } from "@/lib/session-cache";
+import { playSfx } from "@/lib/sfx";
+import { hasCallKit } from "@/lib/voip";
+import { Capacitor } from "@capacitor/core";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
@@ -75,13 +78,22 @@ const CallOverlay = ({
   // CallKit; на Android приложение в фоне звонит каналом уведомления.
   useEffect(() => {
     if (state !== "incoming") return;
+    // iPhone: звонит CallKit. Свой звук тут запускать нельзя — <audio> в
+    // WebView перехватывает аудиосессию у движка звонка, и после ответа
+    // разговор идёт без звука в обе стороны.
+    if (hasCallKit()) return;
     let stop: (() => void) | null = null;
     let cancelled = false;
-    // Звук — из настроек (Профиль → Уведомления и звуки → Звук звонка).
-    resolveRingtoneUrl(readCache<{ ringtone?: string }>("user")?.ringtone).then((url) => {
-      if (cancelled) return;
-      stop = playRingtone(url, 0.8);
-    });
+    if (Capacitor.isNativePlatform()) {
+      // Android: прежний способ, из бандла.
+      playSfx("/sounds/call.mp3", { loop: true, volume: 0.8 }).then((s) => { if (cancelled) s(); else stop = s; });
+    } else {
+      // Веб и компьютер: звук из настроек (Профиль → Уведомления и звуки → Звук звонка).
+      resolveRingtoneUrl(readCache<{ ringtone?: string }>("user")?.ringtone).then((url) => {
+        if (cancelled) return;
+        stop = playRingtone(url, 0.8);
+      });
+    }
     return () => {
       cancelled = true;
       stop?.();
