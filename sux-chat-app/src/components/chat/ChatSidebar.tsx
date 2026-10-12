@@ -838,7 +838,9 @@ const ChatSidebar = ({
           списком, и без отступа накрывал бы первую строку. */}
       {/* «Мята»: список уходит под стеклянную шапку (поиск и фильтры) и размывается. */}
       <ScrollArea className="flex-1" style={mint ? { marginTop: "calc(-1 * var(--glass-h, 0px))" } : undefined}>
-        <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: mint ? "calc(var(--player-h, 0px) + var(--glass-h, 0px))" : "var(--player-h, 0px)", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
+        {/* Под мини-плеер отступаем только на телефоне: на десктопе он висит
+            справа над перепиской, а список от него зря уезжал вниз. */}
+        <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: mint ? `calc(${isMobileLayout ? "var(--player-h, 0px)" : "0px"} + var(--glass-h, 0px))` : isMobileLayout ? "var(--player-h, 0px)" : "0px", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
           {onOpenIdeabox && !isCollapsed && (
             <button

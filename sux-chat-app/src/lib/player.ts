@@ -33,10 +33,18 @@ interface State {
   /** Перемешивание: следующий трек выбирается случайно. */
   shuffle: boolean;
   repeat: RepeatMode;
+  /** Громкость 0…1 — нужна на десктопе (на телефоне есть кнопки); помним между запусками. */
+  volume: number;
 }
 
+const VOLUME_KEY = "hyax:volume";
+const readVolume = () => {
+  try { const v = Number(localStorage.getItem(VOLUME_KEY)); return isFinite(v) && v >= 0 && v <= 1 && localStorage.getItem(VOLUME_KEY) !== null ? v : 1; }
+  catch { return 1; }
+};
+
 let state: State = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-                     shuffle: false, repeat: "off" };
+                     shuffle: false, repeat: "off", volume: readVolume() };
 // Что уже играли в перемешанном порядке: чтобы не повторять одно и то же,
 // пока не кончится очередь.
 let heard = new Set<number>();
@@ -97,7 +105,7 @@ async function start(index: number) {
   emit();
   const src = await resolve(t);
   if (state.index !== index) return; // успели переключить
-  if (!audio) { audio = new Audio(); attach(audio); }
+  if (!audio) { audio = new Audio(); attach(audio); audio.volume = state.volume; }
   audio.src = src;
   try {
     await audio.play();
@@ -166,6 +174,13 @@ export async function prev() {
   // Как в плеерах: первые секунды — в начало трека, дальше — предыдущий.
   if (audio && audio.currentTime > 3) { audio.currentTime = 0; return; }
   if (state.index > 0) await start(state.index - 1);
+}
+
+export function setVolume(v: number) {
+  state.volume = Math.max(0, Math.min(1, v));
+  if (audio) audio.volume = state.volume;
+  try { localStorage.setItem(VOLUME_KEY, String(state.volume)); } catch { /* приватный режим */ }
+  emit();
 }
 
 export function seek(sec: number) {

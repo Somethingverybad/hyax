@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send,
-         Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X } from "lucide-react";
+         Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
@@ -9,7 +9,7 @@ import { readCache, writeCache } from "@/lib/session-cache";
 import { sharePlaylistLink } from "@/lib/share";
 import Identicon from "@/components/Identicon";
 import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, toggle,
-         toggleShuffle, cycleRepeat, type Track } from "@/lib/player";
+         toggleShuffle, cycleRepeat, setVolume, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
 
 /**
@@ -101,6 +101,14 @@ const PlayerPanel = () => {
           >
             <RepeatIcon className="w-5 h-5" />
           </button>
+        </div>
+        {/* Громкость — на десктопе (на телефоне есть кнопки). */}
+        <div className="hidden md:flex items-center gap-2 mt-3 justify-center" title="Громкость">
+          <button type="button" onClick={() => setVolume(s.volume > 0 ? 0 : 1)} className="w-8 h-8 flex items-center justify-center text-subtle" aria-label={s.volume > 0 ? "Выключить звук" : "Включить звук"}>
+            {s.volume === 0 ? <VolumeX className="w-4 h-4" /> : s.volume < 0.5 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <input type="range" min={0} max={1} step={0.02} value={s.volume} onChange={(e) => setVolume(Number(e.target.value))}
+            className="w-40 h-1 accent-primary cursor-pointer" aria-label="Громкость" />
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
-import { currentTrack, fmtTime, next, prev, seek, stop, toggle, usePlayer } from "@/lib/player";
+import { Pause, Play, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
+import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer } from "@/lib/player";
 
 /**
  * Мини-плеер: полоса под шапкой — там же, где полоса закреплённого сообщения.
@@ -64,6 +64,14 @@ const MiniPlayer = () => {
               {fmtTime(s.time)}{s.duration ? ` / ${fmtTime(s.duration)}` : ""}
               {s.queue.length > 1 && ` · ${s.index + 1} из ${s.queue.length}`}
             </div>
+          </div>
+          {/* Громкость — только на десктопе: на телефоне есть кнопки, а место дорого. */}
+          <div className="hidden md:flex items-center gap-1 shrink-0" title="Громкость">
+            <button type="button" onClick={() => setVolume(s.volume > 0 ? 0 : 1)} className="w-7 h-7 flex items-center justify-center text-subtle" aria-label={s.volume > 0 ? "Выключить звук" : "Включить звук"}>
+              {s.volume === 0 ? <VolumeX className="w-4 h-4" /> : s.volume < 0.5 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+            <input type="range" min={0} max={1} step={0.02} value={s.volume} onChange={(e) => setVolume(Number(e.target.value))}
+              className="w-20 h-1 accent-primary cursor-pointer" aria-label="Громкость" />
           </div>
           <button type="button" onClick={stop} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label="Закрыть плеер">
             <X className="w-4 h-4" />
