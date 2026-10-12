@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, Link2, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard } from "@/components/settings";
+import { SettingsCard, SettingsRow } from "@/components/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 import { api } from "@/api/client";
 import { BUILTIN_THEMES, setInstalledThemes, setTheme, useInstalledThemes, useTheme } from "@/lib/theme";
 import { normalizeTheme } from "@/themes/engine";
@@ -97,6 +98,8 @@ const ProfileAppearance = () => {
     } catch (e: any) { toast.error(e?.message || "Не получилось"); }
   };
 
+  const [auraAnim, setAuraAnim] = useState(() => getSetting("aura_anim"));
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title="Внешний вид" />
@@ -105,6 +108,19 @@ const ProfileAppearance = () => {
         <p className="px-1 text-small text-subtle">Встроенные</p>
         <SettingsCard>
           {BUILTIN_THEMES.map((t) => <Row key={t.id} theme={t} active={current.id === t.id} onPick={() => setTheme(t)} />)}
+        </SettingsCard>
+
+        <p className="px-1 pt-2 text-small text-subtle">Эффекты</p>
+        <SettingsCard>
+          {/* Аура вокруг аватаров: пламя или статичный ореол того же цвета. */}
+          <SettingsRow
+            label="Анимация ауры"
+            hint={auraAnim ? "Пламя вокруг аватаров тех, кто в сети" : "Статичный ореол цвета ауры"}
+            trailing={
+              <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label="Анимация ауры" checked={auraAnim}
+                onChange={(e) => { setAuraAnim(e.target.checked); setSetting("aura_anim", e.target.checked); }} />
+            }
+          />
         </SettingsCard>
 
         <p className="px-1 pt-2 text-small text-subtle">Мои и установленные</p>

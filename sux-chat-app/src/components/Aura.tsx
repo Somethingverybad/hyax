@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { getSetting } from "@/lib/settings";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
@@ -51,8 +52,10 @@ export function Aura({
     "--aura-blur": `${Math.max(1, Math.round(size * (size < 60 ? 0.03 : 0.045) * 10) / 10)}px`,
   } as CSSProperties;
 
+  // Анимация ауры выключена в настройках — статичный ореол цвета ауры.
+  const staticAura = !getSetting("aura_anim");
   const body = (
-    <span className={`aura-wrap ${className}`} style={style}>
+    <span className={`aura-wrap ${staticAura ? "aura-static " : ""}${className}`} style={style}>
       {active && (
         <span className="aura-flame" aria-hidden>
           <span className="aura-tongues" />

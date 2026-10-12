@@ -5,9 +5,9 @@
  */
 const PREFIX = "hyax:setting:";
 
-export type LocalSettingKey = "sfx_send" | "wallpaper_anim";
+export type LocalSettingKey = "sfx_send" | "wallpaper_anim" | "aura_anim";
 
-const DEFAULTS: Record<LocalSettingKey, boolean> = { sfx_send: true, wallpaper_anim: true };
+const DEFAULTS: Record<LocalSettingKey, boolean> = { sfx_send: true, wallpaper_anim: true, aura_anim: true };
 
 export function getSetting(key: LocalSettingKey): boolean {
   try {

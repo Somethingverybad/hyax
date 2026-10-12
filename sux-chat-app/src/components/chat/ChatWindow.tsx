@@ -567,6 +567,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // К сообщению едем вручную: лента больше не считается прижатой к низу,
     // иначе наблюдатель за размером тут же вернул бы её обратно.
     pinnedRef.current = false;
+    // Пока едем, обработчик прокрутки не должен решить, что лента «у низа», и
+    // вернуть её обратно (так закреп на десктопе не доезжал: плавная прокрутка
+    // начинается у самого низа, dist < 80 — и лента тут же прижималась снова).
+    jumpingRef.current = Date.now() + 1500;
     el.scrollIntoView({ block: "center", behavior: "smooth" });
     el.classList.add("msg-flash");
     setTimeout(() => el!.classList.remove("msg-flash"), 1200);
@@ -1521,10 +1525,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       logFeed("repin-webkit");
       return;
     }
-    if (dist < 80) {
+    if (dist < 80 && !jumping) {
       if (!pinnedRef.current) logFeed("repin");
       pinnedRef.current = true;
-      jumpingRef.current = 0;
       if (newBelow) setNewBelow(0);
     } else if (!jumping && byUser && pinnedRef.current) {
       pinnedRef.current = false;

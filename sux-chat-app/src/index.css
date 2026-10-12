@@ -1397,6 +1397,14 @@ textarea,
   opacity: .95;
   animation: aura-breathe 2.4s ease-in-out infinite alternate;
 }
+/* Статичная аура (Внешний вид → «Анимация ауры» выкл.): без языков пламени и
+   дыхания — ровный ореол цвета ауры вокруг аватара. */
+.aura-static .aura-tongues, .aura-static .aura-rise { display: none; }
+.aura-static .aura-core {
+  animation: none; inset: 14%;
+  box-shadow: 0 0 calc(var(--aura-blur, 2px) * 5) calc(var(--aura-blur, 2px) * 2.2) var(--aura);
+  opacity: .8;
+}
 @keyframes aura-spin { to { transform: rotate(360deg); } }
 @keyframes aura-spin-rev { to { transform: rotate(-360deg); } }
 @keyframes aura-flicker {
