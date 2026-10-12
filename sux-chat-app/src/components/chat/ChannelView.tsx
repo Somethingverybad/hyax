@@ -24,6 +24,7 @@ import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
 import { takePendingShare } from "@/lib/shareInbox";
+import { readCache } from "@/lib/session-cache";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
@@ -184,6 +185,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [repostFor, setRepostFor] = useState<Post | null>(null);
   const fetchPosts = useCallback((opts: { limit?: number; before?: string; since?: string }) =>
     wall ? api.getWallPosts(opts) : api.getChannelPosts(channelId, opts), [wall, channelId]);
+  // Стена без «Показывать 18+»: посты без отметки «4+» (кроме своих) не
+  // показываем и из кэша — сервер их уже не отдаёт, но в кэше они могли
+  // остаться с тех пор, когда настройка была включена, а since-синхронизация
+  // чужие «исчезновения» не приносит.
+  const wallVisible = useCallback((p: Post) => {
+    if (!wall) return true;
+    const me = readCache<{ id?: string; allow_adult?: boolean }>("user");
+    if (me?.allow_adult) return true;
+    return !!p.wall_safe || p.sender?.id === userId;
+  }, [wall, userId]);
   /** 403 с wall_ban: показываем плашку вместо композера. */
   const catchBan = (e: any) => {
     const ban = e?.body?.wall_ban;
@@ -583,7 +594,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         syncedAtRef.current = cached!.syncedAt;
         setHasMore(cached!.hasMore);
         hasMoreRef.current = cached!.hasMore;
-        setPosts(cached!.messages as Post[]);
+        setPosts((cached!.messages as Post[]).filter(wallVisible));
         setLoading(false);
         scrollFeedOnOpen();
       }
@@ -774,7 +785,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   }
   const albumTail = new Set<string>();
   albumsById.forEach((list) => list.slice(1).forEach((p) => albumTail.add(p.id)));
-  const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id));
+  const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id) && wallVisible(p));
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
