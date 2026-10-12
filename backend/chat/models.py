@@ -135,6 +135,8 @@ class Chat(models.Model):
     description = models.TextField(blank=True, default="")
     is_public = models.BooleanField(default=True)   # в MVP всегда True (в общем поиске)
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
+    # Комментарии к постам канала; у Стены всегда включены (chat/wall.py).
+    comments_enabled = models.BooleanField(default=True)
     subscribers_count = models.IntegerField(default=0)
     # Обои чата — общие для всех участников (ставит любой участник, в канале —
     # админ). kind: image | video; у видео есть постер для тех, кто выключил

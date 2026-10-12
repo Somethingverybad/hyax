@@ -628,7 +628,7 @@ class ChannelSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
         fields = ['id', 'kind', 'name', 'username', 'description', 'avatar_url',
-                  'is_public', 'sign_posts', 'subscribers_count', 'creator',
+                  'is_public', 'sign_posts', 'comments_enabled', 'subscribers_count', 'creator',
                   'my_role', 'muted', 'notify_sound', 'created_at', 'tg_username', 'tg_state']
 
     def _my_cp(self, obj):

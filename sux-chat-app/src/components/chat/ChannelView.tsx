@@ -30,6 +30,8 @@ import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
   avatar_url?: string | null; subscribers_count?: number; sign_posts?: boolean;
+  /** Комментарии к постам (у Стены всегда включены). */
+  comments_enabled?: boolean;
   my_role?: "owner" | "admin" | "subscriber" | null; creator?: string | null;
   /** Зеркало Telegram-канала: @канал там и состояние подключения. */
   tg_username?: string | null; tg_state?: "" | "pending" | "active" | "error";
@@ -913,6 +915,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 >
                   ＋
                 </button>
+                {(wall || channel?.comments_enabled !== false) && (
                 <button
                   type="button"
                   onClick={() => setCommentsFor(post)}
@@ -921,6 +924,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   <MessageCircle className="w-4 h-4" />
                   {post.comments_count ?? 0}
                 </button>
+                )}
                 {!post._pending && (
                   <button
                     type="button"
@@ -1500,6 +1504,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
   const [name, setName] = useState(channel.name);
   const [description, setDescription] = useState(channel.description || "");
   const [signPosts, setSignPosts] = useState(!!channel.sign_posts);
+  const [commentsOn, setCommentsOn] = useState(channel.comments_enabled !== false);
   const [adminQuery, setAdminQuery] = useState("");
   const [adminResults, setAdminResults] = useState<any[]>([]);
   const [admins, setAdmins] = useState(channel.admins || []);
@@ -1545,7 +1550,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
 
   const save = async () => {
     try {
-      const updated = await api.updateChannel(channel.id, { name: name.trim(), description, sign_posts: signPosts });
+      const updated = await api.updateChannel(channel.id, { name: name.trim(), description, sign_posts: signPosts, comments_enabled: commentsOn });
       onChanged({ ...channel, ...updated });
       toast.success("Сохранено");
     } catch (e: any) {
@@ -1687,6 +1692,10 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={signPosts} onChange={(e) => setSignPosts(e.target.checked)} />
                 Показывать автора постов
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={commentsOn} onChange={(e) => setCommentsOn(e.target.checked)} />
+                Комментарии к постам
               </label>
               <button type="button" onClick={save} className="w-full py-2.5 bg-primary text-primary-foreground font-semibold">Сохранить</button>
 

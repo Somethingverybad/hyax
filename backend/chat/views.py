@@ -3066,6 +3066,8 @@ class ChannelDetailView(APIView):
             ch.avatar_url = request.data.get("avatar_url") or None; fields.append("avatar_url")
         if "sign_posts" in request.data:
             ch.sign_posts = str(request.data.get("sign_posts")).lower() in ("1", "true", "yes"); fields.append("sign_posts")
+        if "comments_enabled" in request.data:
+            ch.comments_enabled = str(request.data.get("comments_enabled")).lower() in ("1", "true", "yes"); fields.append("comments_enabled")
         if "notify_sound_id" in request.data:
             sid = request.data.get("notify_sound_id")
             ch.notify_sound = NotificationSound.objects.filter(id=sid, is_active=True).first() if sid else None
@@ -3446,6 +3448,8 @@ class PostCommentsView(APIView):
                 return Response({"error": "Вам запрещено писать на Стену", "wall_ban": ban_payload(ban)}, status=403)
         elif not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
             return Response({"error": "Подпишитесь, чтобы комментировать"}, status=403)
+        if msg.chat.kind == "channel" and not msg.chat.comments_enabled:
+            return Response({"error": "В этом канале комментарии выключены"}, status=403)
         content = (request.data.get("content") or "").strip()
         if not content:
             return Response({"error": "Пустой комментарий"}, status=400)
