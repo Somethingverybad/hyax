@@ -103,6 +103,12 @@ abstract class NativeBase {
     return this.muted;
   }
 
+  /** Громкость участника: 1 — как есть, 0 — тишина, до 2 — громче. */
+  setPeerVolume(peerId: string, volume: number): void {
+    if (!this.peers.has(peerId)) return;
+    nativeCall.setPeerVolume(peerId, volume).catch(() => {});
+  }
+
   toggleMute(): boolean {
     this.muted = !this.muted;
     nativeCall.setMuted(this.muted).catch(() => {});
@@ -268,6 +274,19 @@ export class NativeCallService extends NativeBase {
     if (state === "failed") this.finish("failed");
   }
 
+  /** Отдать звонок групповому сервису (добор участников): соединение в
+   *  нативном движке остаётся, здесь только забываем о нём. */
+  detach(): { callId: string; chatId: string; peerId: string } | null {
+    if (!this.callId || !this.targetUserId) return null;
+    const out = { callId: this.callId, chatId: this.chatId || "", peerId: this.targetUserId };
+    this.peers.clear();
+    this.callId = null;
+    this.targetUserId = null;
+    this.isCaller = false;
+    this.setState("idle");
+    return out;
+  }
+
   dispose(): void {
     this.endCall("ended", false);
     this.removeListeners();
@@ -304,7 +323,7 @@ export class NativeGroupCallService extends NativeBase {
     iceServers: RTCIceServer[];
     onStateChange?: (s: GroupCallState) => void;
     onIncoming?: (invite: GroupCallInvite) => void;
-    onStreams?: (streams: MediaStream[]) => void;
+    onStreams?: (streams: { peerId: string; stream: MediaStream }[]) => void;
     onPeers?: (ids: string[]) => void;
     onError?: (m: string) => void;
   }) {
@@ -318,6 +337,24 @@ export class NativeGroupCallService extends NativeBase {
 
   getCallId(): string | null {
     return this.callId;
+  }
+
+  getPeers(): string[] {
+    return [...this.peers];
+  }
+
+  addParticipants(userIds: string[]): void {
+    if (!this.callId || !userIds.length) return;
+    this.send("call_add", { user_ids: userIds });
+  }
+
+  /** Личный звонок стал групповым: соединение уже живёт в нативном движке. */
+  adopt(input: { callId: string; chatId: string; peerId: string }): void {
+    this.callId = input.callId;
+    this.chatId = input.chatId;
+    this.peers.add(input.peerId);
+    this.setState("active");
+    this.cb.onPeers?.([input.peerId]);
   }
 
   async start(chatId: string): Promise<void> {

@@ -10,13 +10,16 @@ export type GroupCallInvite = {
   chatName: string;
 };
 
+/** Поток участника вместе с его id — UI рисует громкость по каждому. */
+export type PeerStream = { peerId: string; stream: MediaStream };
+
 type Options = {
   wsService: WebSocketService;
   userId: string;
   iceServers: RTCIceServer[];
   onStateChange?: (state: GroupCallState) => void;
   onIncoming?: (invite: GroupCallInvite) => void;
-  onStreams?: (streams: MediaStream[]) => void;
+  onStreams?: (streams: PeerStream[]) => void;
   onPeers?: (peerIds: string[]) => void;
   onError?: (message: string) => void;
 };
@@ -55,6 +58,42 @@ export class GroupCallService {
 
   getCallId() {
     return this.callId;
+  }
+
+  getPeers(): string[] {
+    return [...this.peers.keys()];
+  }
+
+  /** Позвать ещё людей в идущий звонок (сервер разошлёт им вызов). */
+  addParticipants(userIds: string[]): void {
+    if (!this.callId || !userIds.length) return;
+    this.send("call_add", { user_ids: userIds });
+  }
+
+  /** Личный звонок стал групповым: забираем готовое соединение из
+   *  OneToOneCallService, не пересобирая его — разговор не прерывается. */
+  adopt(input: { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null }): void {
+    this.callId = input.callId;
+    this.chatId = input.chatId;
+    this.localStream = input.localStream;
+    const pc = input.pc;
+    this.peers.set(input.peerId, pc);
+    if (input.remoteStream) this.streams.set(input.peerId, input.remoteStream);
+    pc.ontrack = (event) => {
+      const tracks = event.streams?.[0]?.getTracks() ?? [event.track];
+      this.streams.set(input.peerId, new MediaStream(tracks));
+      this.emitStreams();
+    };
+    pc.onicecandidate = (event) => {
+      if (event.candidate) this.send("webrtc_ice_candidate", { to_user_id: input.peerId, candidate: event.candidate });
+    };
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState;
+      if (st === "failed" || st === "closed") this.dropPeer(input.peerId);
+    };
+    this.setState("active");
+    this.cb.onPeers?.([input.peerId]);
+    this.emitStreams();
   }
 
   isMuted(): boolean {
@@ -236,7 +275,7 @@ export class GroupCallService {
   }
 
   private emitStreams(): void {
-    this.cb.onStreams?.([...this.streams.values()]);
+    this.cb.onStreams?.([...this.streams].map(([peerId, stream]) => ({ peerId, stream })));
   }
 
   private cleanup(): void {

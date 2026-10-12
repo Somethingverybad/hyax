@@ -25,7 +25,9 @@ import { GroupCallService, type GroupCallInvite, type GroupCallState } from "@/s
 import { NativeCallService, NativeGroupCallService } from "@/services/native-call-service";
 import { hasNativeCalls } from "@/lib/nativeCall";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
-import CallOverlay from "@/components/call/CallOverlay";
+import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
+import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
+import type { PeerStream } from "@/services/group-call-service";
 import { toast } from "sonner";
 import { WS_URL, getFreshAccessToken } from "@/api/client";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
@@ -128,8 +130,14 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const groupCallRef = useRef<GroupCallService | NativeGroupCallService | null>(null);
   const [groupState, setGroupState] = useState<GroupCallState>("idle");
   const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
-  const [groupStreams, setGroupStreams] = useState<MediaStream[]>([]);
+  const [groupStreams, setGroupStreams] = useState<PeerStream[]>([]);
   const [groupPeers, setGroupPeers] = useState<string[]>([]);
+  const groupCallIdRef = useRef<string | null>(null);
+  // Громкость каждого участника у меня (1 — как есть); сбрасывается с концом звонка.
+  const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
+  // Имена и аватары участников звонка, которых нет в моих чатах.
+  const [peopleInfo, setPeopleInfo] = useState<Record<string, { name: string; avatarUrl?: string | null }>>({});
+  const [addToCallOpen, setAddToCallOpen] = useState(false);
   // Чаты нужны обработчикам звонка, а те живут вне рендера.
   const chatsRef = useRef<ChatType[]>([]);
   // Активный чат для обработчика сокета: он живёт в эффекте с deps
@@ -330,6 +338,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           voip.endCall(String(d.call_id));
           const svc = callRef.current;
           if (svc && svc.getCurrentCallId() === String(d.call_id)) svc.endCall("ended", false);
+          const group = groupCallRef.current;
+          if (group && group.getCallId() === String(d.call_id) && group.getState() === "incoming") group.reject();
         }
       });
 
@@ -451,6 +461,19 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           });
         } else if (msg?.type === "call_signal") {
           const group = groupCallRef.current;
+          // В личный звонок добавили людей: сервер прислал состав (call_peers).
+          // Отдаём живое соединение групповому сервису — разговор не прерывается.
+          if (msg.signal_type === "call_peers" && group && group.getState() === "idle" && svc
+              && svc.getCurrentCallId() && svc.getCurrentCallId() === msg.data?.call_id) {
+            const d = svc.detach();
+            if (d) {
+              group.adopt(d as any);
+              lastCallIdRef.current = null;
+              setCallPeer(null);
+              setRemoteStream(null);
+              setIncomingCall(null);
+            }
+          }
           const forGroup =
             msg.signal_type === "call_peers" ||
             (group?.getCallId() && group.getCallId() === msg.data?.call_id);
@@ -603,11 +626,19 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         iceServers,
         onStateChange: (st) => {
           setGroupState(st);
+          const gid = groupCallRef.current?.getCallId();
+          if (st !== "idle" && gid) groupCallIdRef.current = gid;
           if (st === "active") voip.setSpeaker(true);
           if (st === "idle") {
+            // Звонок, который начинался личным, CallKit знает по тому же id.
+            if (groupCallIdRef.current) voip.endCall(groupCallIdRef.current);
+            groupCallIdRef.current = null;
             setGroupInvite(null);
             setGroupStreams([]);
             setGroupPeers([]);
+            setPeerVolumes({});
+            setMuted(false);
+            setAddToCallOpen(false);
           }
         },
         onIncoming: (invite) => setGroupInvite(invite),
@@ -668,13 +699,21 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           if (svc.getState() === "idle") svc.notifyIncomingCall(toIncoming(c));
         }),
         voip.on("callEnded", ({ callId }: any) => {
+          const group = groupCallRef.current;
+          if (group && group.getCallId() === callId) {
+            if (group.getState() === "incoming") group.reject(); else group.leave();
+            return;
+          }
           if (svc.getCurrentCallId() !== callId) return;
           const peerId = callPeer?.id;
           if (svc.getState() === "incoming" && peerId) svc.rejectIncomingCall(callId, peerId);
           else svc.endCall("ended", true);
         }),
         voip.on("callMuted", ({ muted: m }: any) => {
-          if (svc.isMuted() !== m) svc.toggleMute();
+          const group = groupCallRef.current;
+          if (group && group.getState() !== "idle") {
+            if (group.isMuted() !== m) group.toggleMute();
+          } else if (svc.isMuted() !== m) svc.toggleMute();
           setMuted(m);
         })
       );
@@ -793,17 +832,79 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     voip.setSpeaker(next);
   };
 
+  /** Кто это: из участников чатов, иначе из кеша, иначе подтянем с сервера. */
+  const personInfo = (id: string): { name: string; avatarUrl?: string | null } => {
+    for (const c of chatsRef.current) {
+      const p = c.participants?.find((x) => x.id === id);
+      if (p) return { name: p.username, avatarUrl: p.avatar_url };
+    }
+    return peopleInfo[id] || { name: "…" };
+  };
+  useEffect(() => {
+    const missing = groupPeers.filter((id) => personInfo(id).name === "…" && !peopleInfo[id]);
+    if (!missing.length) return;
+    let alive = true;
+    Promise.all(missing.map((id) => api.getProfileById(id).then((p) => [id, { name: p.username, avatarUrl: p.avatar_url }] as const).catch(() => null)))
+      .then((rows) => { if (alive) setPeopleInfo((prev) => { const n = { ...prev }; rows.forEach((r) => { if (r) n[r[0]] = r[1]; }); return n; }); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupPeers]);
+
+  /** Громкость участника у меня: в вебе — элементом, в приложении — движком. */
+  const setPeerVolume = (id: string, v: number) => {
+    setPeerVolumes((prev) => ({ ...prev, [id]: v }));
+    const group = groupCallRef.current;
+    if (group && "setPeerVolume" in group && group.getState() !== "idle") (group as NativeGroupCallService).setPeerVolume(id, v);
+    else if (hasNativeCalls() && callPeer && callState === "active") (callRef.current as NativeCallService | null)?.setPeerVolume?.(id, v);
+  };
+
+  /** Позвать ещё людей: сервер разошлёт им вызов и вернёт состав, после
+   *  чего личный звонок станет групповым сам (см. обработку call_peers). */
+  const addToCall = (ids: string[]) => {
+    setAddToCallOpen(false);
+    const group = groupCallRef.current;
+    const svc = callRef.current;
+    if (group && group.getState() !== "idle") { group.addParticipants(ids); return; }
+    const callId = svc?.getCurrentCallId();
+    if (callId && wsRef.current) {
+      wsRef.current.send({ type: "call_add", data: { chat_id: selectedChatId, call_id: callId, user_ids: ids } });
+    }
+  };
+
+  // Кого можно позвать: участники открытого чата и люди из личных переписок,
+  // кроме себя и тех, кто уже в звонке.
+  const inCall = new Set<string>([user?.id || "", ...groupPeers, callPeer?.id || ""]);
+  const callCandidates: CallCandidate[] = (() => {
+    const map = new Map<string, CallCandidate>();
+    const add = (p?: { id: string; username: string; avatar_url?: string | null; is_bot?: boolean } | null) => {
+      if (!p || inCall.has(p.id) || (p as any).is_bot) return;
+      if (!map.has(p.id)) map.set(p.id, { id: p.id, name: p.username, avatarUrl: p.avatar_url });
+    };
+    selectedChat?.participants?.forEach((p) => add(p as any));
+    chats.filter((c) => !(c as any).is_group && !["saved", "ideabox", "channel", "secret", "system"].includes((c as any).kind || "direct"))
+      .forEach((c) => c.participants?.forEach((p) => add(p as any)));
+    return [...map.values()];
+  })();
+
+  const groupParticipants: CallParticipant[] = groupPeers.map((id) => {
+    const info = personInfo(id);
+    const st = groupStreams.find((x) => x.peerId === id);
+    return { id, name: info.name, avatarUrl: info.avatarUrl, stream: st?.stream || null, connected: !!st || hasNativeCalls() };
+  });
+
   const groupCallUi = groupState !== "idle" ? (
     <CallOverlay
       state={groupState === "outgoing" ? "outgoing" : groupState === "incoming" ? "incoming" : "active"}
       peer={{
         id: groupInvite?.chatId || selectedChatId || "group",
-        name: groupInvite?.chatName || selectedChat?.name || "Группа",
+        name: groupInvite?.chatName || (groupPeers.length <= 1 && groupPeers[0] ? personInfo(groupPeers[0]).name : selectedChat?.name || "Групповой звонок"),
       }}
       isGroup
-      participantsCount={groupPeers.length}
+      participants={groupParticipants}
+      volumes={peerVolumes}
+      onVolume={setPeerVolume}
+      onAdd={() => setAddToCallOpen(true)}
       muted={muted}
-      streams={groupStreams}
       onAccept={async () => {
         await groupCallRef.current?.accept();
         if (groupInvite?.chatId) setSelectedChatId(groupInvite.chatId);
@@ -819,12 +920,17 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     />
   ) : null;
 
-  const callUi = groupCallUi ?? (callPeer ? (
+  const callUi = (
+    <>
+      {groupCallUi ?? (callPeer ? (
     <CallOverlay
       state={callState}
       peer={callPeer}
       muted={muted}
-      streams={remoteStream ? [remoteStream] : []}
+      participants={[{ id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, stream: remoteStream, connected: callState === "active" }]}
+      volumes={peerVolumes}
+      onVolume={setPeerVolume}
+      onAdd={() => setAddToCallOpen(true)}
       onAccept={acceptCall}
       onReject={rejectCall}
       onHangup={hangup}
@@ -832,7 +938,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       speaker={speaker}
       onToggleSpeaker={toggleSpeaker}
     />
-  ) : null);
+  ) : null)}
+      {addToCallOpen && <AddToCall candidates={callCandidates} onClose={() => setAddToCallOpen(false)} onConfirm={addToCall} />}
+    </>
+  );
 
   // 🔔 Функция обновления списка чатов
   // getChats счётчик непрочитанного не отдаёт — берём его из отдельного

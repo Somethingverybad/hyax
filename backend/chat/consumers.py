@@ -648,6 +648,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 "call_accept",
                 "call_reject",
                 "call_end",
+                "call_add",
                 "webrtc_offer",
                 "webrtc_answer",
                 "webrtc_ice_candidate",
@@ -798,7 +799,14 @@ class UserConsumer(AsyncWebsocketConsumer):
         # mesh — каждый соединяется с каждым напрямую, а сервер лишь сводит
         # их и рассылает состав. Логика 1:1 с её единственным «собеседником»
         # тут неприменима.
-        if chat_id and await self.is_group_chat(chat_id):
+        # Добор участников в идущий звонок: любой участник зовёт ещё людей,
+        # после этого звонок живёт по правилам группового (mesh), даже если
+        # чат личный.
+        if signal_type == "call_add":
+            await self.handle_call_add(data, profile_id, chat_id, call_id)
+            return
+
+        if chat_id and (await self.is_group_chat(chat_id) or await self.is_mesh_call(call_id)):
             await self.handle_group_call(signal_type, data, profile_id, chat_id, call_id, target_user_id)
             return
 
@@ -951,10 +959,15 @@ class UserConsumer(AsyncWebsocketConsumer):
                 
                 print(f"📞 Проверка отправки {signal_type}: initiator_id={initiator_id}, profile_id={profile_id}")
                 
-                if initiator_id and initiator_id != str(profile_id):
-                    print(f"📞 Отправка {signal_type} инициатору {initiator_id}")
+                # Всем остальным участникам сессии: раньше уходило только
+                # инициатору, и отбой звонящего собеседник узнавал лишь из пуша.
+                others = await self.call_participant_ids(call_id, exclude=profile_id)
+                if initiator_id and initiator_id != str(profile_id) and initiator_id not in others:
+                    others.append(initiator_id)
+                for uid in others:
+                    print(f"📞 Отправка {signal_type} участнику {uid}")
                     await self.channel_layer.group_send(
-                        f"user_{initiator_id}",
+                        f"user_{uid}",
                         {
                             "type": "call_signal_notification",
                             "signal_type": signal_type,
@@ -1043,7 +1056,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 try:
                     from .fcm import notify_data
                     from .apns_voip import notify_voip
-                    invitees = await self.group_invitees(chat_id, profile_id)
+                    invitees = await self.call_participant_ids(call_id, exclude=profile_id)
                     profiles = Profile.objects.filter(id__in=invitees)
                     cancel = {"type": "call_ended", "call_id": str(call_id)}
                     # В группе VoIP-пуш получали все приглашённые — им же
@@ -1053,6 +1066,96 @@ class UserConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     print(f"❌ [group] отбой не разослан: {e}")
             return
+
+    async def handle_call_add(self, data, profile_id, chat_id, call_id):
+        """call_add {call_id, user_ids}: позвать ещё людей в идущий звонок.
+        Приглашённым — обычный incoming_call с пометкой group, всем в звонке —
+        обновлённый состав (call_peers)."""
+        ids = [str(i) for i in (data.get("user_ids") or []) if i][:10]
+        if not call_id or not ids:
+            return
+        info = await self.call_add_participants(call_id, profile_id, ids)
+        if not info:
+            print("❌ [call_add] нельзя добавить участников")
+            return
+        payload = {
+            "type": "incoming_call",
+            "call_id": str(call_id),
+            "chat_id": info["chat_id"],
+            "from_user_id": str(profile_id),
+            "from_username": info["from_username"],
+            "from_user_avatar": info["from_user_avatar"] or "",
+            "call_type": info["call_type"],
+            "group": "1",
+            "chat_name": info["chat_name"],
+        }
+        for uid in info["invited"]:
+            await self.channel_layer.group_send(f"user_{uid}", {"type": "notification", "data": payload})
+        if info["invited"]:
+            await self.push_call_invite(info["invited"], payload, info["chat_name"])
+        await self.broadcast_peers(call_id, info["chat_id"])
+
+    @database_sync_to_async
+    def call_add_participants(self, call_id, sender_id, ids):
+        try:
+            session = CallSession.objects.select_related("chat", "initiator").get(id=call_id)
+            sender = Profile.objects.get(id=sender_id)
+        except (CallSession.DoesNotExist, Profile.DoesNotExist, ValueError):
+            return None
+        if session.status not in ("ringing", "active"):
+            return None
+        is_member = str(session.initiator_id) == str(sender_id) or \
+            CallParticipant.objects.filter(call=session, user_id=sender_id, left_at__isnull=True).exists()
+        if not is_member:
+            return None
+        # В личном звонке инициатор не отмечен как joined — для mesh он
+        # должен быть в составе.
+        if session.status == "active":
+            CallParticipant.objects.filter(call=session, joined_at__isnull=True, left_at__isnull=True,
+                                           user_id__in=[session.initiator_id, sender_id]).update(joined_at=timezone.now())
+        invited = []
+        for uid in ids:
+            if str(uid) in (str(sender_id), str(session.initiator_id)):
+                continue
+            if not Profile.objects.filter(id=uid, is_bot=False).exists():
+                continue
+            row = CallParticipant.objects.filter(call=session, user_id=uid).first()
+            if row and row.joined_at and row.left_at is None:
+                continue  # уже в звонке
+            if row:
+                row.joined_at = None
+                row.left_at = None
+                row.save(update_fields=["joined_at", "left_at"])
+            else:
+                CallParticipant.objects.create(call=session, user_id=uid)
+            invited.append(str(uid))
+        chat = session.chat
+        chat_name = (chat.name or "Группа") if chat.is_group else "Групповой звонок"
+        return {
+            "invited": invited, "chat_id": str(chat.id), "chat_name": chat_name,
+            "from_username": sender.username, "from_user_avatar": sender.avatar_url,
+            "call_type": session.call_type,
+        }
+
+    @database_sync_to_async
+    def is_mesh_call(self, call_id):
+        """Звонок с добором участников: в сессии больше двух человек."""
+        if not call_id:
+            return False
+        try:
+            return CallParticipant.objects.filter(call_id=call_id).count() > 2
+        except Exception:
+            return False
+
+    @database_sync_to_async
+    def call_participant_ids(self, call_id, exclude=None):
+        try:
+            qs = CallParticipant.objects.filter(call_id=call_id)
+            if exclude:
+                qs = qs.exclude(user_id=exclude)
+            return [str(i) for i in qs.values_list("user_id", flat=True)]
+        except Exception:
+            return []
 
     async def push_call_invite(self, invitees, payload, chat_name):
         """Пуши приглашённым: VoIP на iOS, данные на Android, обычный — запасной."""
@@ -1147,7 +1250,9 @@ class UserConsumer(AsyncWebsocketConsumer):
             session = CallSession.objects.get(id=call_id)
         except (CallSession.DoesNotExist, ValueError):
             return False
-        if not ChatParticipant.objects.filter(chat=session.chat, user_id=profile_id).exists():
+        in_chat = ChatParticipant.objects.filter(chat=session.chat, user_id=profile_id).exists()
+        invited = CallParticipant.objects.filter(call=session, user_id=profile_id).exists()
+        if not in_chat and not invited:
             return False
         CallParticipant.objects.update_or_create(
             call=session, user_id=profile_id,

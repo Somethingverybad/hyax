@@ -528,6 +528,24 @@ export class OneToOneCallService {
     }
   }
 
+  /** Отдать живое соединение групповому сервису (добор участников): ничего
+   *  не закрываем и не сообщаем об окончании — звонок продолжается. */
+  detach(): { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null } | null {
+    if (!this.peerConnection || !this.currentCallId || !this.targetUserId) return null;
+    const out = {
+      callId: this.currentCallId, chatId: this.chatId, peerId: this.targetUserId,
+      pc: this.peerConnection, localStream: this.localStream, remoteStream: this.remoteStream,
+    };
+    this.peerConnection = null;
+    this.localStream = null;
+    this.remoteStream = null;
+    this.currentCallId = null;
+    this.targetUserId = null;
+    this.isCaller = false;
+    this.setState("idle");
+    return out;
+  }
+
   private finishCall(reason: CallEndReason): void {
     this.cleanupPeerConnection();
     this.cleanupLocalStream();

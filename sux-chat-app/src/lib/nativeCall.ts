@@ -41,6 +41,8 @@ interface NativeCallPlugin {
   closePeer(o: { peerId: string }): Promise<void>;
   end(): Promise<void>;
   setMuted(o: { muted: boolean }): Promise<void>;
+  /** Громкость входящего звука участника: 1 — как есть, 0 — тишина, до 2 — громче. */
+  setPeerVolume(o: { peerId: string; volume: number }): Promise<void>;
   addListener(event: "sdp", cb: (d: NativeSdp) => void): Promise<PluginListenerHandle>;
   addListener(event: "iceCandidate", cb: (d: NativeIce) => void): Promise<PluginListenerHandle>;
   addListener(event: "peerState", cb: (d: NativePeerState) => void): Promise<PluginListenerHandle>;
@@ -67,6 +69,7 @@ export const nativeCall = {
   closePeer: (peerId: string) => plugin.closePeer({ peerId }),
   end: () => plugin.end(),
   setMuted: (muted: boolean) => plugin.setMuted({ muted }),
+  setPeerVolume: (peerId: string, volume: number) => plugin.setPeerVolume({ peerId, volume }),
   onSdp: (cb: (d: NativeSdp) => void) => plugin.addListener("sdp", cb),
   onIce: (cb: (d: NativeIce) => void) => plugin.addListener("iceCandidate", cb),
   onPeerState: (cb: (d: NativePeerState) => void) => plugin.addListener("peerState", cb),

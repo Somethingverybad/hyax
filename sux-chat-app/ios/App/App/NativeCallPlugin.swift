@@ -27,6 +27,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "closePeer", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "end", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setMuted", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setPeerVolume", returnType: CAPPluginReturnPromise),
     ]
 
     private static let factory: RTCPeerConnectionFactory = {
@@ -38,6 +39,9 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private var peers: [String: RTCPeerConnection] = [:]
     private var delegates: [String: PeerDelegate] = [:]
+    // Входящие дорожки по участнику — для громкости каждого.
+    private var remoteTracks: [String: RTCAudioTrack] = [:]
+    private var peerVolumes: [String: Double] = [:]
     private var audioTrack: RTCAudioTrack?
     private var iceServers: [RTCIceServer] = []
     private let queue = DispatchQueue(label: "hyax.nativecall")
@@ -197,6 +201,27 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Громкость участника: 1 — как есть, 0 — тишина, до 2 — громче
+    /// (RTCAudioSource.volume принимает 0…10).
+    @objc func setPeerVolume(_ call: CAPPluginCall) {
+        guard let peerId = call.getString("peerId") else { call.reject("peerId"); return }
+        let volume = max(0, min(10, call.getDouble("volume") ?? 1))
+        queue.async {
+            self.peerVolumes[peerId] = volume
+            self.remoteTracks[peerId]?.source.volume = volume
+            call.resolve()
+        }
+    }
+
+    /// Делегат: пришла дорожка участника — запоминаем и применяем громкость,
+    /// если её выставили раньше, чем дорожка появилась.
+    fileprivate func storeRemote(_ peerId: String, _ track: RTCAudioTrack) {
+        queue.async {
+            self.remoteTracks[peerId] = track
+            if let v = self.peerVolumes[peerId] { track.source.volume = v }
+        }
+    }
+
     // MARK: - Внутреннее
 
     private static let mediaConstraints = RTCMediaConstraints(
@@ -228,6 +253,8 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         peers[peerId]?.close()
         peers.removeValue(forKey: peerId)
         delegates.removeValue(forKey: peerId)
+        remoteTracks.removeValue(forKey: peerId)
+        peerVolumes.removeValue(forKey: peerId)
     }
 
     fileprivate func emitCandidate(_ peerId: String, _ candidate: RTCIceCandidate) {
@@ -270,6 +297,10 @@ private final class PeerDelegate: NSObject, RTCPeerConnectionDelegate {
         default: name = "new"
         }
         plugin?.emitState(peerId, name)
+    }
+
+    func peerConnection(_ pc: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams mediaStreams: [RTCMediaStream]) {
+        if let track = rtpReceiver.track as? RTCAudioTrack { plugin?.storeRemote(peerId, track) }
     }
 
     // Остальные требования протокола нам не нужны: звук воспроизводится

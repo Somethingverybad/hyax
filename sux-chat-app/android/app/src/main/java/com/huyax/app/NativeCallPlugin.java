@@ -48,6 +48,9 @@ public class NativeCallPlugin extends Plugin {
     private AudioTrack audioTrack;
     private AudioSource audioSource;
     private final Map<String, PeerConnection> peers = new HashMap<>();
+    // Входящие дорожки по участнику — для громкости каждого.
+    private final Map<String, AudioTrack> remoteTracks = new HashMap<>();
+    private final Map<String, Double> peerVolumes = new HashMap<>();
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
     private int previousAudioMode = AudioManager.MODE_NORMAL;
 
@@ -209,6 +212,21 @@ public class NativeCallPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Громкость участника: 1 — как есть, 0 — тишина, до 2 — громче (AudioTrack.setVolume 0…10). */
+    @PluginMethod
+    public void setPeerVolume(PluginCall call) {
+        String peerId = call.getString("peerId");
+        Double volume = call.getDouble("volume", 1.0);
+        if (peerId == null) { call.reject("peerId"); return; }
+        double v = Math.max(0, Math.min(10, volume == null ? 1.0 : volume));
+        synchronized (remoteTracks) {
+            peerVolumes.put(peerId, v);
+            AudioTrack t = remoteTracks.get(peerId);
+            if (t != null) t.setVolume(v);
+        }
+        call.resolve();
+    }
+
     // ===== внутреннее =====
 
     private void ensureFactory() {
@@ -324,7 +342,18 @@ public class NativeCallPlugin extends Plugin {
         @Override public void onRemoveStream(MediaStream stream) {}
         @Override public void onDataChannel(org.webrtc.DataChannel dc) {}
         @Override public void onRenegotiationNeeded() {}
-        @Override public void onAddTrack(RtpReceiver receiver, MediaStream[] streams) {}
+        @Override public void onAddTrack(RtpReceiver receiver, MediaStream[] streams) {
+            // Дорожка участника — запоминаем и применяем громкость, если её
+            // выставили раньше, чем дорожка появилась.
+            if (receiver.track() instanceof AudioTrack) {
+                AudioTrack t = (AudioTrack) receiver.track();
+                synchronized (remoteTracks) {
+                    remoteTracks.put(peerId, t);
+                    Double v = peerVolumes.get(peerId);
+                    if (v != null) t.setVolume(v);
+                }
+            }
+        }
     }
 
     /** Заглушка, чтобы не описывать все четыре метода в каждом вызове. */
