@@ -143,6 +143,7 @@ const DeepLinks = () => {
 /** Вложения из «Поделиться → WYX»: спросить, в какой чат, и открыть его. */
 const ShareInboxSheet = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [payload, setPayload] = useState<SharedPayload | null>(null);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -151,7 +152,9 @@ const ShareInboxSheet = () => {
     window.addEventListener("hyax:share-inbox", check);
     return () => window.removeEventListener("hyax:share-inbox", check);
   }, []);
-  if (!payload) return null;
+  // Не вошёл (или вышел): держим присланное, шторку покажем после входа —
+  // на экране логина ей нечего предложить, список чатов не загрузится.
+  if (!payload || location.pathname === "/auth") return null;
   const n = payload.files.length;
   return (
     <ShareToChat
