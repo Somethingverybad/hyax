@@ -116,7 +116,13 @@ class OwnProfileSerializer(ProfileSerializer):
 
     def update(self, instance, validated_data):
         was_hidden = instance.hide_online
+        was_identity = (instance.username, instance.avatar_url)
         instance = super().update(instance, validated_data)
+        if (instance.username, instance.avatar_url) != was_identity:
+            # Ник или аватар сменились — клиенты обновят подписи у старых сообщений.
+            from django.utils import timezone as _tz
+            instance.identity_updated_at = _tz.now()
+            instance.save(update_fields=["identity_updated_at"])
         if instance.hide_online != was_hidden:
             # Включил «Скрыт» — собеседники сразу видят «не в сети», и наоборот.
             from .presence import broadcast_presence_sync

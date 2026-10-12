@@ -1454,6 +1454,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (id !== chatIdRef.current) return; // чат успели переключить
       syncedAtRef.current = r.now;
       if (r.messages.length || r.deleted.length) applyBatch(r.messages.map(prefillSecret), r.deleted);
+      // У кого-то сменились ник или аватар — подписи у старых сообщений тоже.
+      if (r.authors?.length) {
+        const by = new Map(r.authors.map((a) => [a.id, a]));
+        setMessages((prev) => prev.map((m: any) => (m.sender && by.has(m.sender.id) ? { ...m, sender: { ...m.sender, username: by.get(m.sender.id)!.username, avatar_url: by.get(m.sender.id)!.avatar_url } } : m)));
+      }
       // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
       // Иначе бейдж в списке чатов оставался, хотя человек всё видел и ответил.
       if (r.messages.some((m) => m.sender?.id !== userId) && (typeof document === "undefined" || document.visibilityState === "visible")) {

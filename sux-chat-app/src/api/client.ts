@@ -1043,7 +1043,7 @@ export const api = {
     await fetchWithAuth(`${API_URL}/channels/${id}/leave/`, { method: "POST", headers: authHeaders() });
   },
   /** Лента канала: страница (limit/before) или приращение (since) — как syncMessages. */
-  getChannelPosts: async (id: string, opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string }> => {
+  getChannelPosts: async (id: string, opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string; authors?: { id: string; username: string; avatar_url?: string | null }[] }> => {
     const q = new URLSearchParams();
     if (opts.limit) q.set("limit", String(opts.limit));
     if (opts.before) q.set("before", opts.before);
@@ -1126,7 +1126,7 @@ export const api = {
   markWallSeen: async (): Promise<void> => {
     await fetchWithAuth(`${API_URL}/wall/seen/`, { method: "POST", headers: authHeaders() }).catch(() => {});
   },
-  getWallPosts: async (opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string }> => {
+  getWallPosts: async (opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string; authors?: { id: string; username: string; avatar_url?: string | null }[] }> => {
     const q = new URLSearchParams();
     if (opts.limit) q.set("limit", String(opts.limit));
     if (opts.before) q.set("before", opts.before);
@@ -1257,7 +1257,7 @@ export const api = {
   syncMessages: async (
     chatId: string,
     opts: { since?: string; before?: string; limit?: number; around?: string } = {},
-  ): Promise<{ messages: any[]; deleted: string[]; has_more: boolean; has_newer?: boolean; now: string }> => {
+  ): Promise<{ messages: any[]; deleted: string[]; has_more: boolean; has_newer?: boolean; now: string; authors?: { id: string; username: string; avatar_url?: string | null }[] }> => {
     const q = new URLSearchParams({ chat: chatId });
     if (opts.since) q.set("since", opts.since);
     if (opts.before) q.set("before", opts.before);

@@ -497,6 +497,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       syncedAtRef.current = r.now;
       if (!since || initial) { setHasMore(r.has_more); hasMoreRef.current = r.has_more; }
       if (r.posts.length || r.deleted.length) applyPosts(r.posts, r.deleted);
+      // У кого-то сменились ник или аватар — подписи у старых постов тоже.
+      if (r.authors?.length) {
+        const by = new Map(r.authors.map((a) => [a.id, a]));
+        setPosts((prev) => prev.map((p) => (p.sender && by.has(p.sender.id) ? { ...p, sender: { ...p.sender, username: by.get(p.sender.id)!.username, avatar_url: by.get(p.sender.id)!.avatar_url } } : p)));
+      }
       setPosts((prev) => { void writePosts(channelId, prev, r.now, hasMoreRef.current); return prev; });
     } catch {
       /* сеть подождёт: на экране то, что уже есть */

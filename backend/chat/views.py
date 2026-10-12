@@ -1164,6 +1164,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({
                 "messages": ser([m for m in changed if not m.deleted_for_all]),
                 "deleted": [str(m.id) for m in changed if m.deleted_for_all],
+                "authors": _changed_authors(chat, since),
                 "has_more": False,
                 "now": now.isoformat(),
             })
@@ -2916,6 +2917,17 @@ def _valid_username(u):
     return bool(_re.match(r"^[A-Za-z0-9_]{3,32}$", u or ""))
 
 
+def _changed_authors(chat, since):
+    """Авторы сообщений чата, у кого после since менялись ник или аватар:
+    клиент подменит подписи у закэшированных сообщений."""
+    try:
+        rows = (Profile.objects.filter(identity_updated_at__gt=since, message__chat=chat)
+                .distinct().values("id", "username", "avatar_url")[:200])
+        return [{"id": str(r["id"]), "username": r["username"], "avatar_url": r["avatar_url"]} for r in rows]
+    except Exception:
+        return []
+
+
 def _post_payload(msg, request):
     """Пост канала = Message + сводка реакций/просмотров/комментов."""
     data = MessageSerializer(msg, context={"request": request}).data
@@ -3374,6 +3386,7 @@ class ChannelPostsView(APIView):
             return Response({
                 "posts": [_post_payload(m, request) for m in changed if not m.deleted_for_all],
                 "deleted": [str(m.id) for m in changed if m.deleted_for_all],
+                "authors": _changed_authors(ch, since),
                 "has_more": False, "now": now.isoformat(),
             })
         qs = base.filter(deleted_for_all=False)

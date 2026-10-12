@@ -53,6 +53,9 @@ class Profile(models.Model):
     # Звук входящего звонка: "" — стандартный, "classic" — прежний, "sound:<id>"
     # — звук из каталога. Проигрывает клиент (пока только веб/десктоп).
     ringtone = models.CharField(max_length=80, blank=True, default="")
+    # Когда менялись ник или аватар: клиенты по since-синхронизации получают
+    # список таких авторов и обновляют подписи у закэшированных сообщений.
+    identity_updated_at = models.DateTimeField(default=timezone.now)
     # Когда человек последний раз открывал Стену — по нему считаем «новые посты».
     wall_seen_at = models.DateTimeField(null=True, blank=True)
     # Когда человек принял правила и политику конфиденциальности. Пусто у тех,

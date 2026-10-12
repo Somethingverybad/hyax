@@ -166,9 +166,11 @@ class WallPostsView(APIView):
         if since:
             changed = list(Message.objects.filter(chat=chat, updated_at__gt=since).order_by("created_at"))
             ok_ids = set(visible.filter(updated_at__gt=since).values_list("id", flat=True))
+            from .views import _changed_authors
             return Response({
                 "posts": [_post_payload(m, request) for m in changed if m.id in ok_ids],
                 "deleted": [str(m.id) for m in changed if m.id not in ok_ids],
+                "authors": _changed_authors(chat, since),
                 "has_more": False, "now": now.isoformat(),
             })
         before = parse_datetime(request.query_params.get("before") or "")
