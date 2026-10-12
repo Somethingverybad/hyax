@@ -835,7 +835,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       )}
                       <span className="min-w-0">
                         <span className="block text-body font-semibold truncate">{post.forwarded_chat ? post.forwarded_chat.name : post.sender.username}</span>
-                        {post.forwarded_chat && <span className="block text-caption text-subtle truncate">канал · репост от {post.sender.username}</span>}
+                        {post.forwarded_chat && <span className="block text-caption text-subtle truncate">канал</span>}
                       </span>
                     </button>
                     <span className="ml-auto flex items-center gap-1 shrink-0">

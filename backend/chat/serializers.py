@@ -73,6 +73,10 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Никнейм короче 2 символов")
         if len(value) > 50:
             raise serializers.ValidationError("Никнейм длиннее 50 символов")
+        # Свой ник без изменений — не проверяем: у старых аккаунтов остались
+        # пары вроде EvilTree/eviltree, и правка «О себе» отбивалась как «занят».
+        if self.instance is not None and value == self.instance.username:
+            return value
         # Занят ли ник с точностью до регистра: иначе появлялись пары вроде
         # EvilTree и eviltree, и ссылки на профиль вели не туда.
         taken = Profile.objects.filter(username__iexact=value)

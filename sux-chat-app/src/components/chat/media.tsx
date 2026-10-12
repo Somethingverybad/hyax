@@ -331,7 +331,7 @@ export const MessageFile = ({ raw, name, isOwn, onSave }: {
         href={src || "#"}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex-1 min-w-0 text-sm truncate hover:underline"
+        className="flex-1 min-w-0 text-sm break-all line-clamp-2 hover:underline"
       >
         {name || "Файл"}
       </a>

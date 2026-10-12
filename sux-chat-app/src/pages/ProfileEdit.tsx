@@ -51,8 +51,9 @@ const ProfileEdit = () => {
     if (!profile || !dirty || !valid) return;
     setSaving(true);
     try {
+      // Ник шлём только если он менялся: иначе сервер проверял бы его занятость заново.
       const updated = await api.updateProfile(profile.id, {
-        username: username.trim(),
+        ...(username.trim() !== (profile.username || "") ? { username: username.trim() } : {}),
         bio: bio.trim(),
       });
       writeCache("user", updated);
