@@ -3168,13 +3168,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   {/* «Мята»: в личке аватаров у сообщений нет — как в макете. */}
                   {!isOwn && (!mintM || isGroup) && (
                     // Аура — только у последнего в серии: подряд свечения сливались в полосу.
-                    <Aura active={lastInGroup && !!(message.sender as { is_online?: boolean } | undefined)?.is_online} owner={message.sender as never} size={36}>
-                      <Identicon
-                        id={message.sender?.id || "?"}
-                        avatarUrl={message.sender?.avatar_url}
-                        className="w-9 h-9"
-                      />
-                    </Aura>
+                    // По тапу — карточка профиля (в группе так проще понять, кто пишет).
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); if (message.sender?.id) setViewProfileId(message.sender.id); }}
+                      disabled={!message.sender?.id}
+                      className="shrink-0 rounded-full active:opacity-70"
+                      aria-label={username ? `Профиль ${username}` : "Профиль"}
+                    >
+                      <Aura active={lastInGroup && !!(message.sender as { is_online?: boolean } | undefined)?.is_online} owner={message.sender as never} size={36}>
+                        <Identicon
+                          id={message.sender?.id || "?"}
+                          avatarUrl={message.sender?.avatar_url}
+                          className="w-9 h-9"
+                        />
+                      </Aura>
+                    </button>
                   )}
 
                   {/* Контент сообщения */}
@@ -3186,7 +3195,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         макете: в личке не пишем, в группе — над первым в серии. */}
                     {!isOwn && (!mintM || (isGroup && !sameAuthor)) && (
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-small font-semibold text-foreground">
+                        <span className="text-small font-semibold text-foreground cursor-pointer active:opacity-70"
+                          onClick={(e) => { e.stopPropagation(); if (message.sender?.id) setViewProfileId(message.sender.id); }}>
                           {username}
                         </span>
                       </div>
