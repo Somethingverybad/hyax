@@ -340,15 +340,12 @@ const ChatSidebar = ({
     }
 
     try {
-      // Каталога людей нет: сервер отдаёт только точное совпадение ника, по
-      // букве перебрать никого нельзя. Поэтому в личном режиме ищем и людей
-      // (иначе бота или собеседника по нику было не найти вовсе), и каналы.
+      // Каталога людей нет: в личном режиме строка ищет только каналы. Людей
+      // находят по ссылке на профиль, ботов — тоже по ссылке и «Начать».
+      // Точный ник остаётся только для набора участников группы.
       if (mode === "user") {
-        const [people, chans] = await Promise.all([
-          api.searchUsers(query).catch(() => []),
-          api.discoverChannels(query).catch(() => []),
-        ]);
-        setSearchResults(Array.isArray(people) ? people : []);
+        const chans = await api.discoverChannels(query).catch(() => []);
+        setSearchResults([]);
         setChannelResults(Array.isArray(chans) ? chans : []);
         return;
       }
