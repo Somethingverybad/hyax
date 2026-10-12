@@ -64,7 +64,7 @@
 }
 .mint-nav-wrap > .mint-nav { pointer-events: auto; }
 /* Поле ввода в «Избранном» (там тоже остров) — над ним, а не под ним. */
-.chat-compose { margin-bottom: var(--mint-nav-space, 0px); }
+.chat-compose, .wall-tab-bottom { margin-bottom: var(--mint-nav-space, 0px); }
 .mint-nav {
   width: min(340px, calc(100% - 48px)); height: 54px; padding: 4px;
   display: flex; align-items: center; justify-content: space-between;

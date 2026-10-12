@@ -157,6 +157,7 @@ interface ChannelViewProps {
   onWallChanged?: () => void;
 }
 
+/** Низ экрана на вкладке Стены: под плавающим островом «Мяты» (см. .wall-tab-bottom). */
 const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "навсегда";
 
 /** «1 подписчик», «2 подписчика», «5 подписчиков». */
@@ -944,7 +945,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
       {/* Композер (админ канала или любой на Стене), плашка бана или кнопка подписки */}
       {banned && wallState?.ban ? (
-        <div className="pad-safe-bottom px-3 py-3 shrink-0">
+        <div className={cn("pad-safe-bottom px-3 py-3 shrink-0", wall && !onBack && "wall-tab-bottom")}>
           <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 flex gap-3">
             <Ban className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
             <div className="text-small">
@@ -955,7 +956,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           </div>
         </div>
       ) : canPost ? (
-        <div className="pad-safe-bottom px-3 py-2 shrink-0">
+        <div className={cn("pad-safe-bottom px-3 py-2 shrink-0", wall && !onBack && "wall-tab-bottom")}>
           {wall && (
             <label className="flex items-center gap-2 mb-2 text-caption text-subtle">
               <input type="checkbox" className="w-4 h-4 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
@@ -1100,13 +1101,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // ещё не факт — кнопка мелькала на мгновение у подписчиков и админов.
         // Подписчику кнопка не нужна — она стояла и после подписки, потому что
         // ветка была просто «не админ». Отписка — в инфо-модалке канала.
-        <div className="pad-safe-bottom px-3 py-3 shrink-0">
+        <div className={cn("pad-safe-bottom px-3 py-3 shrink-0", wall && !onBack && "wall-tab-bottom")}>
           <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
             Подписаться
           </button>
         </div>
       ) : (
-        <div className="pad-safe-bottom shrink-0" />
+        <div className={cn("pad-safe-bottom shrink-0", wall && !onBack && "wall-tab-bottom")} />
       )}
 
       {infoOpen && wall && wallState && (
