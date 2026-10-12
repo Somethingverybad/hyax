@@ -16,16 +16,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     /// Spotlight ищет приложение только по имени под иконкой и кириллицу в
-    /// латиницу не переводит: после переименования в WhoYaX запрос прежним
+    /// латиницу не переводит: после переименования в WYX запрос прежним
     /// названием ничего не находил. Кладём в системный индекс одну карточку
     /// приложения с прежними написаниями в ключевых словах — они нигде не
-    /// показываются, в выдаче видно только «WhoYaX». Тап по карточке просто
+    /// показываются, в выдаче видно только «WYX». Тап по карточке просто
     /// открывает приложение. Идентификатор постоянный: повторная индексация
     /// обновляет ту же запись, а не плодит новые.
     private func indexForSpotlight() {
         guard CSSearchableIndex.isIndexingAvailable() else { return }
         let attrs = CSSearchableItemAttributeSet(contentType: .item)
-        attrs.title = "WhoYaX"
+        attrs.title = "WYX"
         attrs.contentDescription = "Мессенджер"
         attrs.keywords = ["хуякс", "хуяк", "hyax", "huyax", "whoyax", "вуякс", "мессенджер"]
         let item = CSSearchableItem(uniqueIdentifier: "app", domainIdentifier: "com.hyax.messenger.app", attributeSet: attrs)

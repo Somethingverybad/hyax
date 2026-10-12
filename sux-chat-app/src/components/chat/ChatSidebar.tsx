@@ -396,7 +396,7 @@ const ChatSidebar = ({
     setTgUrl("");
   };
 
-  // Зеркало Telegram-канала: ссылка t.me/… → канал WhoYaX, посты придут через минуту.
+  // Зеркало Telegram-канала: ссылка t.me/… → канал WYX, посты придут через минуту.
   const [tgUrl, setTgUrl] = useState("");
   const addTelegram = async () => {
     const url = tgUrl.trim();
@@ -638,7 +638,7 @@ const ChatSidebar = ({
                     </Button>
                     <div className="flex items-center gap-3 text-caption text-subtle"><span className="flex-1 h-px bg-border" />или по ссылке<span className="flex-1 h-px bg-border" /></div>
                     <Input placeholder="Ссылка на публичный канал или @имя" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} className="bg-secondary/50" inputMode="url" autoCapitalize="off" />
-                    <p className="text-caption text-subtle">Публичный канал появится у вас как канал WhoYaX и будет обновляться сам. Реакции и комментарии — только от людей из WhoYaX.</p>
+                    <p className="text-caption text-subtle">Публичный канал появится у вас как канал WYX и будет обновляться сам. Реакции и комментарии — только от людей из WYX.</p>
                     <Button type="button" variant="outline" onClick={addTelegram} disabled={chBusy || !tgUrl.trim()} className="w-full">
                       Добавить по ссылке
                     </Button>
@@ -674,7 +674,7 @@ const ChatSidebar = ({
                 {mode === "user" && (
                   <div className="rounded-lg bg-secondary/50 p-3 space-y-2">
                     <p className="text-sm">
-                      Поиска по людям нет. Чтобы начать переписку, отправьте человеку ссылку на свой профиль — она откроется у него прямо в WhoYaX.
+                      Поиска по людям нет. Чтобы начать переписку, отправьте человеку ссылку на свой профиль — она откроется у него прямо в WYX.
                     </p>
                     <Button
                       type="button"

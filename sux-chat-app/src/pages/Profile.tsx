@@ -461,7 +461,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Lightbulb}
               label="Долгий ящик"
-              hint="Идеи для WhoYaX: предложить, голосовать, что уже сделано"
+              hint="Идеи для WYX: предложить, голосовать, что уже сделано"
               onClick={() => navigate("/profile/ideas")}
             />
           </SettingsCard>
@@ -491,7 +491,7 @@ const ProfilePage = () => {
               всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
               его показываем рядом, если он отличается. */}
           <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
-            WhoYaX {APP_VERSION} · сборка {APP_BUILD}
+            WYX {APP_VERSION} · сборка {APP_BUILD}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
           </div>
         </div>

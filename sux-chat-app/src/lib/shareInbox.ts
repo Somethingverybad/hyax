@@ -1,7 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 /**
- * «Поделиться → WhoYaX» из других приложений (iOS Share Extension).
+ * «Поделиться → WYX» из других приложений (iOS Share Extension).
  *
  * Расширение складывает файлы в общий контейнер и открывает приложение по
  * `whoyax://share`. Здесь забираем их у нативного плагина ShareInbox, читаем

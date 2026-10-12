@@ -162,7 +162,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                 className="w-full h-12 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
               >
                 <Share2 className="w-5 h-5" />
-                Поделиться за пределами WhoYaX
+                Поделиться за пределами WYX
               </button>
             )}
           </div>

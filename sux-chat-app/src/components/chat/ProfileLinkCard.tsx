@@ -29,7 +29,7 @@ const ProfileLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         id: p.id,
         username: p.username,
         avatar: p.avatar_url,
-        subtitle: p.is_bot ? "Бот" : (p.bio || "").split("\n")[0] || "Профиль в WhoYaX",
+        subtitle: p.is_bot ? "Бот" : (p.bio || "").split("\n")[0] || "Профиль в WYX",
       }))
       .catch(() => alive && setInfo(null));
     return () => { alive = false; };

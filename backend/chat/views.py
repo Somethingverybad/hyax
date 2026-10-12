@@ -2965,7 +2965,7 @@ class ChannelsView(APIView):
 
 
 class TelegramChannelView(APIView):
-    """POST {url} — подключить публичный Telegram-канал как канал WhoYaX.
+    """POST {url} — подключить публичный Telegram-канал как канал WYX.
 
     Принимаем ссылку t.me/<канал>, @канал или просто имя. Канал создаётся в
     состоянии pending; воркер tg_mirror (отдельный контейнер с Telethon)

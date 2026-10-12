@@ -10,7 +10,7 @@
 		<string>en</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-	<string>WhoYaX</string>
+	<string>WYX</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -43,9 +43,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Геопозиция нужна, чтобы отправить её в чат, — только когда вы сами выбираете «Геопозиция».</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>WhoYaX не следит за вашим местоположением в фоне. Геопозиция определяется один раз — когда вы сами отправляете её в чат.</string>
+	<string>WYX не следит за вашим местоположением в фоне. Геопозиция определяется один раз — когда вы сами отправляете её в чат.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>WhoYaX не следит за вашим местоположением в фоне. Геопозиция определяется один раз — когда вы сами отправляете её в чат.</string>
+	<string>WYX не следит за вашим местоположением в фоне. Геопозиция определяется один раз — когда вы сами отправляете её в чат.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна для видео-сообщений и фото в переписке.</string>
 	<key>NSMicrophoneUsageDescription</key>

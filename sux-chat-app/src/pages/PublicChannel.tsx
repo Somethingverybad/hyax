@@ -117,7 +117,7 @@ const PublicChannel = () => {
             {!Capacitor.isNativePlatform() && (
               <p className="text-caption text-subtle text-center">
                 Удобнее в приложении —{" "}
-                <a href={`${PUBLIC_ORIGIN}/apk/`} className="underline text-foreground">скачать WhoYaX</a>
+                <a href={`${PUBLIC_ORIGIN}/apk/`} className="underline text-foreground">скачать WYX</a>
               </p>
             )}
           </div>

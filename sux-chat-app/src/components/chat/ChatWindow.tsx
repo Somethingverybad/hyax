@@ -1178,7 +1178,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setHasMore(false);
     setMessages([]);
     setSelected(null);
-    // «Поделиться → WhoYaX» из другого приложения: выбранный чат открыт —
+    // «Поделиться → WYX» из другого приложения: выбранный чат открыт —
     // подставляем присланные файлы и текст в поле ввода, отправка за человеком.
     const shared = takePendingShare();
     if (shared) {

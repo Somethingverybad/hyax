@@ -78,7 +78,7 @@ function createWindow() {
     minHeight: 600,
     show: false,
     backgroundColor: '#0a0a0a',
-    title: 'WhoYaX',
+    title: 'WYX',
     ...(process.platform === 'linux' ? { icon: LINUX_ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

@@ -1,7 +1,7 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// «Поделиться → WhoYaX» из Фото, Файлов, Safari и других приложений.
+/// «Поделиться → WYX» из Фото, Файлов, Safari и других приложений.
 ///
 /// Расширение не может показать чат само: оно живёт отдельным процессом без
 /// сессии и без нашего WebView. Поэтому оно только принимает вложения,
@@ -20,7 +20,7 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = UIColor(white: 0.08, alpha: 0.96)
         spinner.color = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Отправляем в WhoYaX…"
+        label.text = "Отправляем в WYX…"
         label.textColor = .white
         label.font = .systemFont(ofSize: 17, weight: .medium)
         label.translatesAutoresizingMaskIntoConstraints = false

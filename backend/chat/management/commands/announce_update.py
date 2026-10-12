@@ -20,7 +20,7 @@ from chat.models import Chat, ChatParticipant, Message, Profile
 
 BOT_USERNAME = "Фуфелшмерц Пакость Инкорпорейтед"   # имя в чате (Profile.username)
 BOT_LOGIN = "doofenshmirtz_evil_inc"                 # учётка Django — латиницей, никому не видна
-BOT_BIO = "Доктор Хайнц Фуфелшмерц. Изобретаю обновляторы для WhoYaX и рассказываю о них. Писать мне бесполезно — я только вещать."
+BOT_BIO = "Доктор Хайнц Фуфелшмерц. Изобретаю обновляторы для WYX и рассказываю о них. Писать мне бесполезно — я только вещать."
 
 
 class Command(BaseCommand):

@@ -129,13 +129,13 @@ const Auth = () => {
         <div className="relative flex flex-col items-center mb-4 md:mb-6 -mt-6">
           <img
             src={logo}
-            alt="WhoYaX"
+            alt="WYX"
             className="w-20 h-20 md:w-24 md:h-24 mb-3 rounded-[14px] select-none pointer-events-none"
             draggable={false}
           />
 
           <div className="text-center mb-2 md:mb-3">
-            <h1 className="text-[34px] md:text-[38px] font-extrabold text-foreground leading-none tracking-tight">WhoYaX</h1>
+            <h1 className="text-[34px] md:text-[38px] font-extrabold text-foreground leading-none tracking-tight">WYX</h1>
             <p className="text-caption text-subtle mt-1.5 tracking-[0.32em] uppercase">эсемэсэнджер</p>
             <span className="mt-2.5 mx-auto block w-9 h-[3px] rounded-full bg-foreground/80" />
           </div>
@@ -258,7 +258,7 @@ const Auth = () => {
                       Загрузка...
                     </div>
                   ) : isLogin ? (
-                    "Войти в WhoYaX"
+                    "Войти в WYX"
                   ) : (
                     "Создать аккаунт"
                   )}

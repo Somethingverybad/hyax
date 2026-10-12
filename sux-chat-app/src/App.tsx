@@ -140,7 +140,7 @@ const DeepLinks = () => {
   return null;
 };
 
-/** Вложения из «Поделиться → WhoYaX»: спросить, в какой чат, и открыть его. */
+/** Вложения из «Поделиться → WYX»: спросить, в какой чат, и открыть его. */
 const ShareInboxSheet = () => {
   const navigate = useNavigate();
   const [payload, setPayload] = useState<SharedPayload | null>(null);

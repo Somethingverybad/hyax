@@ -43,8 +43,8 @@ export function LocationSheet({ onSend, onClose }: { onSend: (fix: GeoFix) => vo
         )}
         {err?.kind === "denied" && !fix && (
           <p className="mt-2 text-caption text-subtle">
-            {canOpenAppSettings() ? "Откройте настройки и включите «Геопозиция» для WhoYaX."
-              : Capacitor.getPlatform() === "android" ? "Настройки → Приложения → WhoYaX → Разрешения → Местоположение."
+            {canOpenAppSettings() ? "Откройте настройки и включите «Геопозиция» для WYX."
+              : Capacitor.getPlatform() === "android" ? "Настройки → Приложения → WYX → Разрешения → Местоположение."
               : "Разрешите доступ к местоположению для этого сайта в настройках браузера."}
           </p>
         )}

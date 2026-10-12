@@ -68,7 +68,7 @@ services:
       - "api.telegram.org:2001:67c:4e8:f004::9"
 
   # Зеркала Telegram-каналов: реальный аккаунт через Telethon (MTProto) вступает
-  # в каналы, которые люди подключили ссылкой, и пересылает посты в WhoYaX в
+  # в каналы, которые люди подключили ссылкой, и пересылает посты в WYX в
   # реальном времени. Тот же образ, что у api, и та же база через Django ORM.
   # Перед первым запуском — вход: docker compose run --rm -it tg python manage.py tg_login
   # (TG_API_ID/TG_API_HASH в .env, сессия ляжет в backend/private/tg.session).
@@ -105,6 +105,24 @@ services:
       # Не только на чтение: yt-dlp продлевает сессию и переписывает файл —
       # иначе куки протухают за считаные дни.
       - ./bots/media-bot/cookies:/cookies
+    depends_on:
+      - api
+    networks:
+      - sux_chat_network
+
+  # Отдельный VK music bot: слушает сообщения по WebSocket, показывает
+  # результаты inline-кнопками и загружает выбранный MP3 через Hyax API.
+  vk-music-bot:
+    build: ./bots/vk-music-bot
+    container_name: sux_chat_vk_music_bot
+    restart: unless-stopped
+    environment:
+      HYAX_API: http://api:8000/api
+      HYAX_WS: ws://api:8000/ws
+      HYAX_BOT_TOKEN: ${VK_MUSIC_BOT_TOKEN:-}
+      VK_AUDIO_TOKEN: ${VK_AUDIO_TOKEN:-}
+      VK_AUDIO_API_VERSION: ${VK_AUDIO_API_VERSION:-5.131}
+      VK_MUSIC_PARALLEL: ${VK_MUSIC_PARALLEL:-2}
     depends_on:
       - api
     networks:

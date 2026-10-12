@@ -1,7 +1,7 @@
 /**
  * Поделиться профилем. Поиска по людям в приложении нет — единственный
  * способ начать чат с человеком, это получить от него ссылку. Ссылка
- * https://huyax.e-tree.su/u/<ник>: на телефоне с установленным WhoYaXом она
+ * https://huyax.e-tree.su/u/<ник>: на телефоне с установленным WYXом она
  * открывается прямо в приложении (universal link / app link), у остальных —
  * в браузере той же страницей с кнопкой «Написать» и ссылкой на установку.
  *
@@ -31,7 +31,7 @@ export const channelLink = (ch: { id: string; username?: string | null }) =>
 
 /* Ссылка — внутри текста, одним элементом. Если отдать text и url порознь,
    пункт «Скопировать» системного меню на iPhone берёт только первый —
-   в буфере оказывался текст без ссылки («Напиши мне в WhoYaX»). */
+   в буфере оказывался текст без ссылки («Напиши мне в WYX»). */
 async function shareUrl(title: string, text: string, url: string): Promise<ShareResult> {
   const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
   if (typeof nav.share === "function") {
@@ -44,14 +44,14 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
 
 /** Поделиться паком звуков: системное окно «Поделиться», иначе — буфер. */
 export const shareSoundPack = (name: string, id: string) =>
-  shareUrl("WhoYaX", `Пак звуков «${name}» в WhoYaX`, soundPackLink(id));
+  shareUrl("WYX", `Пак звуков «${name}» в WYX`, soundPackLink(id));
 
 /** Поделиться плейлистом: системное окно «Поделиться», иначе — буфер. */
 export const sharePlaylistLink = (name: string, token: string) =>
-  shareUrl("WhoYaX", `Плейлист «${name}» в WhoYaX`, playlistLink(token));
+  shareUrl("WYX", `Плейлист «${name}» в WYX`, playlistLink(token));
 
 export const shareChannel = (ch: { id: string; name: string; username?: string | null }) =>
-  shareUrl("WhoYaX", `Канал «${ch.name}» в WhoYaX`, channelLink(ch));
+  shareUrl("WYX", `Канал «${ch.name}» в WYX`, channelLink(ch));
 
 /** Ссылка на пост канала: та же страница канала, ?post= — к какому посту
  *  прокрутить (см. PublicChannel → ChannelView). */
@@ -61,7 +61,7 @@ export const postLink = (ch: { id: string; username?: string | null }, postId: s
 /** Поделиться постом наружу: первая строка текста поста — как подпись. */
 export const sharePost = (ch: { id: string; name: string; username?: string | null }, postId: string, text?: string | null) => {
   const line = (text || "").trim().split("\n")[0].slice(0, 120);
-  return shareUrl("WhoYaX", line ? `${line} — «${ch.name}» в WhoYaX` : `Пост из канала «${ch.name}» в WhoYaX`, postLink(ch, postId));
+  return shareUrl("WYX", line ? `${line} — «${ch.name}» в WYX` : `Пост из канала «${ch.name}» в WYX`, postLink(ch, postId));
 };
 
 /** Профиль — только ссылкой, без подписи: «Скопировать» в системном меню

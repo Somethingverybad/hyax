@@ -76,7 +76,7 @@ def main():
     ]
     for l in layers:
         l["op"] = OP
-    doc = {"v": "5.7.4", "fr": 30, "ip": 0, "op": OP, "w": S, "h": S, "nm": "WhoYaX skeleton",
+    doc = {"v": "5.7.4", "fr": 30, "ip": 0, "op": OP, "w": S, "h": S, "nm": "WYX skeleton",
            "ddd": 0, "assets": [], "layers": layers}
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as f:

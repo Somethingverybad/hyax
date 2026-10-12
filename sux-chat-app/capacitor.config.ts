@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.hyax.messenger',
-  appName: 'WhoYaX',
+  appName: 'WYX',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

@@ -48,7 +48,7 @@ export async function askGeoOnFirstLaunch() {
   } catch { /* службы выключены — спросим при отправке */ }
 }
 
-/** Настройки приложения: на iOS — прямо в раздел WhoYaX. */
+/** Настройки приложения: на iOS — прямо в раздел WYX. */
 export const canOpenAppSettings = () => Capacitor.getPlatform() === "ios";
 export const openAppSettings = () => { window.open("app-settings:", "_system"); };
 
