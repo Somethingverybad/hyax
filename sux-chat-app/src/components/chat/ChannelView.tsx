@@ -8,7 +8,7 @@ import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -171,7 +171,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
   const [wallState, setWallState] = useState<WallState | null>(null);
   // «Контент 4+»: без отметки пост на Стене считается 18+.
-  const [safe, setSafe] = useState(false);
+  const [safe, setSafeState] = useState(() => { try { return localStorage.getItem("hyax:wall-safe") === "1"; } catch { return false; } });
+  const setSafe = (v: boolean) => { setSafeState(v); try { localStorage.setItem("hyax:wall-safe", v ? "1" : "0"); } catch { /* приватный режим */ } };
+  // Стена: новый пост пишется в шторке по «+», а не в строке снизу, как в канале.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeOpts, setComposeOpts] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Post | null>(null);
   const [repostFor, setRepostFor] = useState<Post | null>(null);
@@ -652,6 +656,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         }
       }
       await sync();
+      setComposeOpen(false);
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch (e) {
       if (!catchBan(e)) toast.error((e as any)?.message || "Не удалось опубликовать");
@@ -943,26 +948,122 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         )}
       </div>
 
-      {/* Композер (админ канала или любой на Стене), плашка бана или кнопка подписки */}
-      {banned && wallState?.ban ? (
-        <div className={cn("pad-safe-bottom px-3 py-3 shrink-0", wall && !onBack && "wall-tab-bottom")}>
-          <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 flex gap-3">
-            <Ban className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-            <div className="text-small">
-              <p className="font-semibold">Вам запретили писать на Стену {wallState.ban.until ? `до ${fmtUntil(wallState.ban.until)}` : "навсегда"}</p>
-              {wallState.ban.reason && <p className="text-subtle mt-0.5">Причина: {wallState.ban.reason}</p>}
-              <p className="text-subtle mt-0.5">Покайтесь во грехе и возвращайтесь — читать и реагировать можно.</p>
+      {/* Стена: кнопка «+» над лентой, пост пишется в шторке. Канал: строка композера админа или подписка. */}
+      {wall && (
+        <>
+          {undoBar && (
+            <div className="px-3 pb-2 shrink-0">
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
+                <span className="text-sm">Пост удалён</span>
+                <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
+              </div>
             </div>
-          </div>
-        </div>
-      ) : canPost ? (
-        <div className={cn("pad-safe-bottom px-3 py-2 shrink-0", wall && !onBack && "wall-tab-bottom")}>
-          {wall && (
-            <label className="flex items-center gap-2 mb-2 text-caption text-subtle">
-              <input type="checkbox" className="w-4 h-4 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
-              <span><b className="text-foreground">Контент 4+</b> — без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+».</span>
-            </label>
           )}
+          <div className={cn("pad-safe-bottom shrink-0", !onBack && "wall-tab-bottom")} />
+          {wallState && !composeOpen && (
+            <button type="button" onClick={() => { setComposeOpen(true); setComposeOpts(false); }} aria-label="Новый пост"
+              className={cn("absolute right-4 z-20 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform",
+                !onBack ? "bottom-[calc(16px+var(--mint-nav-space,0px)+env(safe-area-inset-bottom,0px))]" : "bottom-[calc(16px+env(safe-area-inset-bottom,0px))]")}>
+              <Plus className="w-7 h-7" />
+            </button>
+          )}
+          {composeOpen && (
+            <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => !sending && setComposeOpen(false)}>
+              <div className="bg-card border-t-2 border-border rounded-t-2xl pad-safe-bottom px-4 pt-3 pb-3 space-y-3 max-h-[88%] overflow-y-auto" onClick={(e) => e.stopPropagation()} onPaste={onPasteFile}>
+                <div className="flex items-center gap-2">
+                  <Newspaper className="w-5 h-5 text-primary" />
+                  <span className="font-semibold flex-1">Новый пост</span>
+                  <button type="button" onClick={() => setComposeOpen(false)} disabled={sending} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+                </div>
+                {banned && wallState?.ban ? (
+                  <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 flex gap-3">
+                    <Ban className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                    <div className="text-small">
+                      <p className="font-semibold">Вам запретили писать на Стену {wallState.ban.until ? `до ${fmtUntil(wallState.ban.until)}` : "навсегда"}</p>
+                      {wallState.ban.reason && <p className="text-subtle mt-0.5">Причина: {wallState.ban.reason}</p>}
+                      <p className="text-subtle mt-0.5">Покайтесь во грехе и возвращайтесь — читать и реагировать можно.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      placeholder="Что нового?"
+                      rows={4}
+                      autoFocus
+                      disabled={sending}
+                      className="w-full resize-none bg-surface-2 border border-border rounded-md px-3.5 py-3 text-body outline-none focus:border-amber max-h-56"
+                    />
+                    {attachments.length > 0 && (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {attachments.map((a) => (
+                          <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
+                            {a.mode === "photo" ? (
+                              <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label="Редактировать фото">
+                                <img src={a.url} alt="" className="w-full h-full object-cover" />
+                                <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
+                              </button>
+                            ) : a.mode === "video" ? (
+                              <video src={a.url} muted playsInline className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-center">
+                                {a.mode === "audio" ? <Music2 className="w-5 h-5 text-primary" /> : <FileText className="w-5 h-5 text-primary" />}
+                                <span className="text-[10px] leading-tight text-muted-foreground line-clamp-2 break-all">{a.file.name}</span>
+                              </div>
+                            )}
+                            <button type="button" onClick={() => dropAttachment(a.id)} disabled={sending}
+                              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={`Убрать ${a.file.name}`}>
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {attachments.length > 10 && <p className="text-caption text-subtle">Выбрано {attachments.length} — уйдут по 10 в посте</p>}
+                    <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e, "photo")} />
+                    <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => pick(e, "video")} />
+                    <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => pick(e, "audio")} />
+                    <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => pick(e, "file")} />
+                    <div className="flex items-center gap-2">
+                      <div ref={attachRef} className="relative">
+                        <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending} className={cn("h-10 px-3 rounded-full bg-surface-2 border border-border flex items-center gap-2 text-small font-medium", attachments.length > 0 && "text-primary border-primary")} aria-label="Прикрепить">
+                          <Paperclip className="w-4 h-4" /> Медиа{attachments.length ? ` · ${attachments.length}` : ""}
+                        </button>
+                        {attachOpen && (
+                          <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}><ImageIcon className="w-4 h-4 text-primary" /> Фото</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}><Video className="w-4 h-4 text-primary" /> Видео</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> Музыка</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}><FileText className="w-4 h-4 text-primary" /> Файл</button>
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => setComposeOpts((v) => !v)} aria-label="Настройки поста" aria-expanded={composeOpts}
+                        className={cn("h-10 w-10 rounded-full bg-surface-2 border border-border flex items-center justify-center", composeOpts && "text-primary border-primary")}>
+                        <SlidersHorizontal className="w-4 h-4" />
+                      </button>
+                      {!composeOpts && safe && <span className="text-caption text-subtle">4+</span>}
+                      <button type="button" onClick={publish} disabled={sending || (!text.trim() && !attachments.length)}
+                        className="ml-auto h-10 px-5 rounded-full bg-primary text-primary-foreground font-semibold text-small disabled:opacity-40">
+                        {sending ? "Публикую…" : "Опубликовать"}
+                      </button>
+                    </div>
+                    {composeOpts && (
+                      <label className="flex items-start gap-2 text-caption text-subtle rounded-lg bg-surface-2 px-3 py-2.5">
+                        <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
+                        <span><b className="text-foreground">Контент 4+</b> — без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+». Выбор запоминается.</span>
+                      </label>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      {wall ? null : canPost ? (
+        <div className={cn("pad-safe-bottom px-3 py-2 shrink-0")}>
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
               <span className="text-sm">Пост удалён</span>
@@ -1046,7 +1147,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               value={text}
               onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
-              placeholder={attachments.length ? "Подпись…" : wall ? "Написать на Стену…" : "Написать в канал…"}
+              placeholder={attachments.length ? "Подпись…" : "Написать в канал…"}
               rows={1}
               disabled={recording}
               className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
@@ -1101,13 +1202,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // ещё не факт — кнопка мелькала на мгновение у подписчиков и админов.
         // Подписчику кнопка не нужна — она стояла и после подписки, потому что
         // ветка была просто «не админ». Отписка — в инфо-модалке канала.
-        <div className={cn("pad-safe-bottom px-3 py-3 shrink-0", wall && !onBack && "wall-tab-bottom")}>
+        <div className="pad-safe-bottom px-3 py-3 shrink-0">
           <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
             Подписаться
           </button>
         </div>
       ) : (
-        <div className={cn("pad-safe-bottom shrink-0", wall && !onBack && "wall-tab-bottom")} />
+        <div className="pad-safe-bottom shrink-0" />
       )}
 
       {infoOpen && wall && wallState && (
