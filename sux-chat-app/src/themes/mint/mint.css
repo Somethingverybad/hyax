@@ -66,7 +66,7 @@
 /* Поле ввода в «Избранном» (там тоже остров) — над ним, а не под ним. */
 .chat-compose { margin-bottom: var(--mint-nav-space, 0px); }
 .mint-nav {
-  width: min(295px, calc(100% - 64px)); height: 54px; padding: 4px;
+  width: min(340px, calc(100% - 48px)); height: 54px; padding: 4px;
   display: flex; align-items: center; justify-content: space-between;
   border-radius: 20px; background: var(--mint-nav-bg);
   border: var(--mint-border); box-shadow: var(--mint-card-shadow);
@@ -77,7 +77,7 @@
 .mint-nav-pill {
   position: absolute; top: 4px; height: 46px; width: 63px; border-radius: 20px;
   background: var(--mint-nav-on);
-  left: calc(4px + (100% - 8px) / 4 * var(--i) + ((100% - 8px) / 4 - 63px) / 2);
+  left: calc(4px + (100% - 8px) / 5 * var(--i) + ((100% - 8px) / 5 - 63px) / 2);
   transition: left 320ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) { .mint-nav-pill { transition: none; } }

@@ -1114,11 +1114,6 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           state={wallState}
           onClose={() => setInfoOpen(false)}
           onChanged={setWallState}
-          onHide={async () => {
-            if (!confirm("Скрыть Стену из списка чатов? Вернуть её можно в «Профиль → Конфиденциальность».")) return;
-            try { await api.setWallEnabled(false); setInfoOpen(false); onWallChanged?.(); onBack?.(); }
-            catch { toast.error("Не получилось"); }
-          }}
           onOpenProfile={(id) => { setInfoOpen(false); setProfileFor(id); }}
         />
       )}
@@ -1307,8 +1302,8 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
 };
 
 /** Сведения о Стене: скрытые авторы (вернуть), у админа — баны (снять), выключить Стену. */
-const WallInfo = ({ state, onClose, onChanged, onHide, onOpenProfile }: {
-  state: WallState; onClose: () => void; onChanged: (s: WallState) => void; onHide: () => void; onOpenProfile: (id: string) => void;
+const WallInfo = ({ state, onClose, onChanged, onOpenProfile }: {
+  state: WallState; onClose: () => void; onChanged: (s: WallState) => void; onOpenProfile: (id: string) => void;
 }) => {
   const [bans, setBans] = useState<Awaited<ReturnType<typeof api.getWallBans>> | null>(null);
   useEffect(() => {
@@ -1353,7 +1348,6 @@ const WallInfo = ({ state, onClose, onChanged, onHide, onOpenProfile }: {
               ))}
             </div>
           )}
-          <button type="button" onClick={onHide} className="w-full h-11 rounded-md bg-surface-4 text-destructive font-medium">Скрыть Стену из списка чатов</button>
         </div>
       </div>
     </div>

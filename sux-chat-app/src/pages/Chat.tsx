@@ -66,7 +66,7 @@ interface ProfileType {
 
 /** savedMode — вкладка «Избранное»: вместо списка сразу открыт личный чат
  *  без собеседника (сервер создаёт его при первом обращении). */
-const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
+const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wallMode?: boolean } = {}) => {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<ProfileType | null>(() => readCache<ProfileType>("user"));
   const [chats, setChats] = useState<ChatType[]>(() => readCache<ChatType[]>("chats") || []);
@@ -79,7 +79,11 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
   // Стена: строка наверху списка, пока она включена (chat/wall.py).
   const [wall, setWall] = useState<WallState | null>(() => readCache<WallState>("wall"));
-  const refreshWall = () => api.getWall().then((w) => { setWall(w); writeCache("wall", w); }).catch(() => {});
+  const refreshWall = () => api.getWall().then((w) => {
+    setWall(w); writeCache("wall", w);
+    // Бейдж на вкладке живёт в BottomNav — ему сообщаем событием.
+    window.dispatchEvent(new CustomEvent("hyax:wall", { detail: w }));
+  }).catch(() => {});
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   // Список чатов «приезжает» слева только как возврат из переписки: при
   // запуске приложения он просто на месте.
@@ -708,11 +712,12 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // «Избранное» живёт на своей вкладке — из общего списка его убираем.
   // «Долгий ящик» — своя строка наверху списка (ChatSidebar), в общем списке его нет.
   const listChats = chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox");
-  // Стена — синтетическая строка: в списке чатов сервера её нет (участников у неё нет).
-  const wallRow = wall?.enabled
-    ? ({ id: wall.id, kind: "wall", name: "Стена", participants: [], unread_count: wall.new_count, created_at: "" } as any as ChatType)
-    : null;
-  const sidebarChats = wallRow ? [wallRow, ...listChats] : listChats;
+  // Стена — своя вкладка (/wall) и строка над списком на десктопе; в самом списке её нет.
+  const openWall = () => {
+    if (isMobile) { navigate("/wall"); return; }
+    if (!wall) { toast.error("Стена ещё не загрузилась"); return; }
+    setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle("Стена");
+  };
   const ideaboxChat = chats.find((c) => (c as any).kind === "ideabox") || null;
   const openIdeabox = async () => {
     try {
@@ -954,7 +959,25 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       <div className="h-screen flex flex-col bg-background">
         {termsGate}
         {callUi}
-        {savedMode ? (
+        {wallMode ? (
+          <>
+            <div className="flex-1 min-h-0 flex">
+              {wall ? (
+                <ChannelView
+                  key="wall-tab"
+                  channelId={wall.id}
+                  userId={user.id}
+                  wall
+                  onOpenChannel={(id, title) => navigate("/chat", { state: { chatId: id, kind: "channel", title } })}
+                  onWallChanged={() => { void refreshWall(); }}
+                />
+              ) : (
+                <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Загрузка…</p>
+              )}
+            </div>
+            <BottomNav />
+          </>
+        ) : savedMode ? (
           <>
             <div className="flex-1 min-h-0 flex">
               {selectedChatId ? (
@@ -1029,12 +1052,7 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onOpenIdeabox={openIdeabox}
             userId={user.id}
             username={user.username}
-            chats={sidebarChats}
-            onWallHide={async () => {
-              if (!confirm("Скрыть Стену из списка чатов? Вернуть её можно в «Профиль → Конфиденциальность».")) return;
-              try { await api.setWallEnabled(false); await refreshWall(); }
-              catch { toast.error("Не получилось"); }
-            }}
+            chats={listChats}
             onSelectChat={(id, title, kind) => {
               setSelectedChatId(id);
               if (title) setSelectedChatTitle(title);
@@ -1071,12 +1089,10 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
         userId={user.id}
-        chats={sidebarChats}
-        onWallHide={async () => {
-          if (!confirm("Скрыть Стену из списка чатов? Вернуть её можно в «Профиль → Конфиденциальность».")) return;
-          try { await api.setWallEnabled(false); await refreshWall(); if (isWallOpen) setSelectedChatId(null); }
-          catch { toast.error("Не получилось"); }
-        }}
+        chats={listChats}
+        onOpenWall={openWall}
+        wallSelected={isWallOpen}
+        wallNew={wall?.new_count || 0}
         savedChatId={savedChat?.id}
         onOpenSaved={() => { if (savedChat) { setSelectedChatId(savedChat.id); setSelectedKind("saved"); } }}
         onSelectChat={(id, title, kind) => {

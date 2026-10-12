@@ -72,8 +72,10 @@ interface ChatSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onChatDeleted: (chatId: string) => void;
-  /** «Удалить» строку Стены = выключить её (вернуть — в настройках). */
-  onWallHide?: () => void;
+  /** Стена — строка над списком (десктоп); на телефоне у неё вкладка. */
+  onOpenWall?: () => void;
+  wallSelected?: boolean;
+  wallNew?: number;
   onChatCreated: () => void;
   /** «Избранное» на десктопе — строкой над списком (на телефоне у него
    *  своя вкладка, и пропсы не передаются). */
@@ -121,6 +123,9 @@ const ChatSidebar = ({
   onChatCreated,
   savedChatId,
   onOpenSaved,
+  onOpenWall,
+  wallSelected,
+  wallNew,
   ideabox,
   onOpenIdeabox,
 }: ChatSidebarProps) => {
@@ -461,7 +466,6 @@ const ChatSidebar = ({
   const deleteChat = async (chatId: string, chatTitle: string, skipConfirm = false) => {
     setChatMenu(null);
     setSwipedChatId(null);
-    if (chats.find((c) => c.id === chatId && (c as any).kind === "wall")) { onWallHide?.(); return; }
     if (!skipConfirm && !confirm(`Вы уверены, что хотите удалить чат "${chatTitle}"?`)) {
       return;
     }
@@ -862,6 +866,24 @@ const ChatSidebar = ({
               ) : (
                 <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
               )}
+            </button>
+          )}
+          {onOpenWall && !isCollapsed && (
+            <button
+              type="button"
+              onClick={onOpenWall}
+              className={`w-full hidden md:flex items-center gap-3 px-4 py-3 text-left border-l-4 ${
+                wallSelected ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
+              }`}
+            >
+              <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
+                <Newspaper className="w-6 h-6 md:w-5 md:h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-h2 md:text-[15px] truncate">Стена</p>
+                <p className="text-small text-subtle truncate">{wallNew ? `Общая лента · новых: ${wallNew}` : "Общая лента — пишут все"}</p>
+              </div>
+              {wallNew ? <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{wallNew}</span> : <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />}
             </button>
           )}
           {onOpenSaved && !isCollapsed && (

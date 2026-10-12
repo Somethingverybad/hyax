@@ -16,6 +16,7 @@ import navChat from "./icons/nav-chat.svg";
 import navMusic from "./icons/nav-music.svg";
 import navProfile from "./icons/nav-profile.svg";
 import navSaved from "./icons/nav-saved.svg";
+import navWall from "./icons/nav-wall.svg";
 import pencil from "./icons/pencil.svg";
 import pinnedRight from "./icons/pinned-right.svg";
 import rowAbout from "./icons/row-about.svg";
@@ -51,7 +52,7 @@ export function useMint(): boolean {
 /** Иконки макета. Красим маской в currentColor: одна и та же иконка годится
  *  и светлой «Мяте», и тёмной. */
 export const MINT_ICONS = {
-  back, checks, chevron, close, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved,
+  back, checks, chevron, close, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navWall,
   pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowSaved,
   rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent,
 } as const;

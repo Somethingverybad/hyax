@@ -88,7 +88,7 @@ const ThemeFromProfile = () => {
   return null;
 };
 
-const TAB_ROOTS = ["/chat", "/saved", "/music", "/profile"];
+const TAB_ROOTS = ["/chat", "/wall", "/saved", "/music", "/profile"];
 
 const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
@@ -236,6 +236,7 @@ const App = () => {
               <Route path="/chat" element={<Chat />} />
               {/* «Избранное» — та же страница чатов, сразу открытая на личном чате. */}
               <Route path="/saved" element={<Chat savedMode />} />
+              <Route path="/wall" element={<Chat wallMode />} />
               {/* Музыка: плейлисты из того, что присылали в переписке. */}
               <Route path="/music" element={<Music />} />
               {/* Плейлист по ссылке «Поделиться». */}

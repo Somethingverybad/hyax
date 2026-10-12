@@ -46,16 +46,6 @@ const ProfilePrivacy = () => {
     }
   };
 
-  /** Стена: включить обратно после «удаления» из списка чатов. */
-  const setWall = async (value: boolean) => {
-    if (!profile) return;
-    const prev = profile;
-    const next = { ...profile, wall_enabled: value };
-    setProfile(next); writeCache("user", next);
-    try { await api.setWallEnabled(value); }
-    catch { toast.error("Не удалось сохранить"); setProfile(prev); writeCache("user", prev); }
-  };
-
   /** Переключатель в профиле: рисуем сразу, при ошибке возвращаем как было. */
   const setFlag = async (key: "show_last_seen", value: boolean) => {
     if (!profile) return;
@@ -165,20 +155,6 @@ const ProfilePrivacy = () => {
 
         <p className="px-1 pt-2 text-small text-subtle">Контент</p>
         <SettingsCard>
-          <SettingsRow
-            label="Стена"
-            hint={profile?.wall_enabled !== false ? "Общая лента в списке чатов" : "Скрыта из списка чатов"}
-            trailing={
-              <input
-                type="checkbox"
-                className="w-5 h-5 accent-primary shrink-0"
-                aria-label="Стена"
-                checked={profile?.wall_enabled !== false}
-                disabled={!profile}
-                onChange={(e) => setWall(e.target.checked)}
-              />
-            }
-          />
           <SettingsRow
             label="Показывать 18+"
             hint={profile?.allow_adult ? "Паки для взрослых и посты Стены без отметки «4+» видны" : "Паки для взрослых и посты Стены без отметки «4+» скрыты"}
