@@ -47,6 +47,11 @@ class Profile(models.Model):
     # такие паки не попадают в пикер и не открываются по ссылке, пока человек
     # сам не включит настройку и не подтвердит возраст.
     allow_adult = models.BooleanField(default=False)
+    # «Стена» (chat/wall.py) в списке чатов. «Удалить» Стену из списка —
+    # выключить её здесь; включается обратно в настройках.
+    wall_enabled = models.BooleanField(default=True)
+    # Когда человек последний раз открывал Стену — по нему считаем «новые посты».
+    wall_seen_at = models.DateTimeField(null=True, blank=True)
     # Когда человек принял правила и политику конфиденциальности. Пусто у тех,
     # кто регистрировался до появления правил, — клиент покажет им экран согласия.
     terms_accepted_at = models.DateTimeField(blank=True, null=True)
@@ -265,6 +270,11 @@ class Message(models.Model):
     # сервер текста не видит и расшифровать не может.
     cipher = models.TextField(blank=True, null=True)
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех
+    # Стена (chat/wall.py): автор подтвердил, что пост годится всем («Контент
+    # 4+»). Без отметки пост считается 18+ и виден только тем, кто включил
+    # «Показывать 18+». wall_hidden — скрыт админом (виден только админам и автору).
+    wall_safe = models.BooleanField(default=False)
+    wall_hidden = models.BooleanField(default=False)
     # Момент последнего изменения (текст, удаление у всех). По нему клиент
     # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,
     # что менялось. auto_now срабатывает на save(); при save(update_fields=…)
@@ -951,3 +961,26 @@ class VibeConfig(models.Model):
     @classmethod
     def get(cls):
         return cls.objects.get_or_create(pk=1)[0]
+
+
+class WallMute(models.Model):
+    """Стена: «скрыть автора» — его постов этот человек больше не видит."""
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="wall_mutes")
+    author = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("user", "author")
+
+
+class WallBan(models.Model):
+    """Стена: запрет постить и комментировать. until пусто — навсегда."""
+    user = models.OneToOneField(Profile, on_delete=models.CASCADE, related_name="wall_ban")
+    until = models.DateTimeField(null=True, blank=True)
+    reason = models.CharField(max_length=200, blank=True, default="")
+    created_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    @property
+    def active(self):
+        return self.until is None or self.until > timezone.now()

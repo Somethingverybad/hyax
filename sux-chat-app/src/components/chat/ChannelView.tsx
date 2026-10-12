@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
-import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
+import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
+import UserProfileModal from "@/components/UserProfileModal";
+import Identicon from "@/components/Identicon";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { cn } from "@/lib/utils";
 import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -41,7 +43,12 @@ interface Post {
   id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null; poster_url?: string | null;
   file_width?: number | null; file_height?: number | null; album_id?: string | null;
   video_url?: string; video_duration?: number | null; video_mirror?: boolean; video_flip?: boolean;
-  download_only?: boolean; sender?: { id: string; username: string };
+  download_only?: boolean; sender?: { id: string; username: string; avatar_url?: string | null };
+  /** Репост из канала (Стена): по тапу на отправителя открывается канал. */
+  forwarded_chat?: { id: string; name: string; username?: string | null; avatar_url?: string | null } | null;
+  forwarded_title?: string;
+  /** Стена: отметка «Контент 4+» и «скрыт админом». */
+  wall_safe?: boolean; wall_hidden?: boolean;
   reactions?: ReactionSummary[]; reactions_total?: number;
   comments_count?: number; views_count?: number;
   sound?: { name: string } | null;
@@ -142,7 +149,15 @@ interface ChannelViewProps {
   userId: string;
   onBack?: () => void;
   onDeleted?: () => void;
+  /** Стена (chat/wall.py): общая лента, пишут все, свои правила видимости. */
+  wall?: boolean;
+  /** Открыть канал-источник репоста со Стены. */
+  onOpenChannel?: (id: string, title?: string) => void;
+  /** Состояние Стены изменилось (скрыли из списка) — родитель перечитает. */
+  onWallChanged?: () => void;
 }
+
+const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "навсегда";
 
 /** «1 подписчик», «2 подписчика», «5 подписчиков». */
 const pluralSubs = (n: number) => {
@@ -151,7 +166,22 @@ const pluralSubs = (n: number) => {
   return `${n} ${w}`;
 };
 
-const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps) => {
+const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged }: ChannelViewProps) => {
+  // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
+  const [wallState, setWallState] = useState<WallState | null>(null);
+  // «Контент 4+»: без отметки пост на Стене считается 18+.
+  const [safe, setSafe] = useState(false);
+  const [profileFor, setProfileFor] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<Post | null>(null);
+  const [repostFor, setRepostFor] = useState<Post | null>(null);
+  const fetchPosts = useCallback((opts: { limit?: number; before?: string; since?: string }) =>
+    wall ? api.getWallPosts(opts) : api.getChannelPosts(channelId, opts), [wall, channelId]);
+  /** 403 с wall_ban: показываем плашку вместо композера. */
+  const catchBan = (e: any) => {
+    const ban = e?.body?.wall_ban;
+    if (ban) { setWallState((w) => (w ? { ...w, ban } : w)); toast.error("Вам запретили писать на Стену"); return true; }
+    return false;
+  };
   // Просмотр картинок канала: список всех картинок ленты и позиция в нём.
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number } | null>(null);
   const openViewer = (postId: string) => {
@@ -299,10 +329,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       temp.restart();
       const uploaded = await api.uploadFile(file, undefined, (p) => temp.progress(p));
       temp.progress(100);
-      temp.confirm(await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror, undefined, flip));
+      temp.confirm(await api.sendMessageWithVideo(channelId, uploaded.file_url, seconds, mirror, undefined, flip, wall ? { wall_safe: safe } : undefined));
       await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
-    } catch {
+    } catch (e) {
+      if (catchBan(e)) { temp.drop(); return; }
       toast.error("Не удалось опубликовать видео — нажми «Повторить»");
       temp.fail(() => void publishNote(temp, file, seconds, mirror, flip));
     }
@@ -339,11 +370,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes("Files");
-  const onDragEnter = (e: React.DragEvent) => { if (!isAdmin || !hasFiles(e)) return; e.preventDefault(); dragDepthRef.current++; setDragOver(true); };
-  const onDragOver = (e: React.DragEvent) => { if (!isAdmin || !hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; };
+  const onDragEnter = (e: React.DragEvent) => { if (!canPost || !hasFiles(e)) return; e.preventDefault(); dragDepthRef.current++; setDragOver(true); };
+  const onDragOver = (e: React.DragEvent) => { if (!canPost || !hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; };
   const onDragLeave = (e: React.DragEvent) => { if (!hasFiles(e)) return; dragDepthRef.current = Math.max(0, dragDepthRef.current - 1); if (!dragDepthRef.current) setDragOver(false); };
   const onDrop = (e: React.DragEvent) => {
-    if (!isAdmin || !hasFiles(e)) return;
+    if (!canPost || !hasFiles(e)) return;
     e.preventDefault(); dragDepthRef.current = 0; setDragOver(false);
     void acceptFiles(Array.from(e.dataTransfer.files || []));
   };
@@ -387,7 +418,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   };
 
   const isAdmin = channel?.my_role === "owner" || channel?.my_role === "admin";
-  const subscribed = !!channel?.my_role;
+  const wallAdmin = wall && !!wallState?.is_admin;
+  const banned = wall && !!wallState?.ban;
+  // Кто может писать: в канал — админы, на Стену — все, кроме забаненных.
+  const canPost = wall ? !!wallState && !banned : isAdmin;
+  const subscribed = wall ? true : !!channel?.my_role;
 
   // Лента канала живёт по тем же правилам, что и переписка (см. messageCache):
   // при входе рисуем из IndexedDB, сеть догоняет приращением по since, старые
@@ -432,7 +467,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
   const sync = useCallback(async (initial = false) => {
     try {
       const since = syncedAtRef.current;
-      const r = await api.getChannelPosts(channelId, since && !initial ? { since } : { limit: 50 });
+      const r = await fetchPosts(since && !initial ? { since } : { limit: 50 });
       syncedAtRef.current = r.now;
       if (!since || initial) { setHasMore(r.has_more); hasMoreRef.current = r.has_more; }
       if (r.posts.length || r.deleted.length) applyPosts(r.posts, r.deleted);
@@ -440,7 +475,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     } catch {
       /* сеть подождёт: на экране то, что уже есть */
     }
-  }, [channelId]);
+  }, [channelId, fetchPosts]);
 
   /** Страница старее первого загруженного — при прокрутке к верху ленты. */
   const loadOlder = async () => {
@@ -450,7 +485,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     try {
-      const r = await api.getChannelPosts(channelId, { before: first.created_at, limit: 50 });
+      const r = await fetchPosts({ before: first.created_at, limit: 50 });
       const el = feedRef.current;
       if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
       setHasMore(r.has_more);
@@ -536,8 +571,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         scrollFeedOnOpen();
       }
       try {
-        const ch = await api.getChannel(channelId);
-        if (alive) setChannel(ch);
+        if (wall) {
+          const w = await api.getWall();
+          if (alive) { setWallState(w); setChannel({ id: w.id, name: w.name || "Стена", sign_posts: true, my_role: "subscriber" }); }
+          void api.markWallSeen();
+        } else {
+          const ch = await api.getChannel(channelId);
+          if (alive) setChannel(ch);
+        }
       } catch {
         /* канал мог быть удалён */
       }
@@ -549,7 +590,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     // Лёгкий поллинг: с since он почти ничего не стоит.
     const t = setInterval(() => { void sync(); }, 9000);
     return () => { alive = false; clearInterval(t); };
-  }, [channelId, sync]);
+  }, [channelId, sync, wall]);
 
   // Звук пуша для поста выбираем той же шторкой, что «мой звук» и звук
   // канала: там поиск и паки, а каталог уже под сотню звуков.
@@ -567,7 +608,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
     setSound(null);
     try {
       if (!list.length) {
-        await api.sendMessage(channelId, body, snd?.id);
+        await api.sendMessage(channelId, body, snd?.id, undefined, undefined, wall ? { wall_safe: safe } : undefined);
       } else {
         // Выбранное разом — один пост с общим album_id (фото, видео и музыка
         // вместе); больше ALBUM_MAX за раз не кладём, остальное уходит
@@ -600,9 +641,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               i === 0 ? snd?.id : undefined,
               undefined,
               att.mode === "file",
+              wall ? { wall_safe: safe } : undefined,
             ));
-          } catch {
-            toast.error(`Не удалось опубликовать «${att.file.name}»`);
+          } catch (e) {
+            if (!catchBan(e)) toast.error(`Не удалось опубликовать «${att.file.name}»`);
             temp.drop();
           }
         }
@@ -610,11 +652,55 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
       }
       await sync();
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
-    } catch {
-      toast.error("Не удалось опубликовать");
+    } catch (e) {
+      if (!catchBan(e)) toast.error((e as any)?.message || "Не удалось опубликовать");
     } finally {
       setSending(false);
     }
+  };
+
+  // ---- Стена: действия над постом и авторами ----
+  const openAuthor = (post: Post) => {
+    if (post.forwarded_chat) { onOpenChannel?.(post.forwarded_chat.id, post.forwarded_chat.name); return; }
+    if (post.sender?.id) setProfileFor(post.sender.id);
+  };
+  const hideAuthor = async (post: Post) => {
+    setMenuFor(null);
+    const a = post.sender;
+    if (!a) return;
+    try {
+      setWallState(await api.muteWallAuthor(a.id, true));
+      setPosts((prev) => prev.filter((p) => p.sender?.id !== a.id));
+      toast.success(`${a.username} больше не показывается`, { description: "Вернуть можно в сведениях о Стене" });
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+  };
+  const adminPost = async (post: Post, data: { hidden?: boolean; wall_safe?: boolean }) => {
+    setMenuFor(null);
+    try {
+      const fresh = await api.wallAdminPost(post.id, data);
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, ...fresh } : p)));
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+  };
+  const banAuthor = async (post: Post) => {
+    setMenuFor(null);
+    const a = post.sender;
+    if (!a) return;
+    const raw = prompt(`Запретить ${a.username} писать на Стену. На сколько часов? Пусто — навсегда.`, "24");
+    if (raw === null) return;
+    const hours = raw.trim() ? Number(raw) : null;
+    if (hours !== null && !(hours > 0)) { toast.error("Число часов"); return; }
+    const reason = prompt("Причина (увидит пользователь)", "Нарушение правил") ?? "";
+    try {
+      await api.banWallUser(a.id, hours, reason);
+      toast.success(hours ? `${a.username}: запрет на ${hours} ч` : `${a.username}: запрет навсегда`);
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+  };
+  const doRepost = async (post: Post, wallSafe: boolean) => {
+    setRepostFor(null);
+    try {
+      await api.repostToWall(post.id, wallSafe);
+      toast.success("Опубликовано на Стене");
+    } catch (e: any) { if (!catchBan(e)) toast.error(e?.message || "Не получилось"); }
   };
 
   /** Реакция на пост — тем же модулем и тем же запросом, что в переписке:
@@ -690,7 +776,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           </button>
         )}
         <button type="button" onClick={() => setInfoOpen(true)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
-          {avatarUrl ? (
+          {wall ? (
+            <span className="w-10 h-10 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
+              <Newspaper className="w-5 h-5 text-primary" />
+            </span>
+          ) : avatarUrl ? (
             <img src={avatarUrl} alt="" className="w-10 h-10 shrink-0 rounded-md object-cover" />
           ) : (
             <span className="w-10 h-10 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
@@ -698,9 +788,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
             </span>
           )}
           <span className="min-w-0">
-            <span className="block text-h1 truncate">{channel?.name || "Канал"}</span>
+            <span className="block text-h1 truncate">{wall ? "Стена" : channel?.name || "Канал"}</span>
             <span className="block text-small text-muted-foreground truncate">
-              {pluralSubs(channel?.subscribers_count ?? 0)}{channel?.username ? ` · @${channel.username}` : ""}
+              {wall ? (wallAdmin ? "Общая лента · вы админ" : "Общая лента — пишут все")
+                : `${pluralSubs(channel?.subscribers_count ?? 0)}${channel?.username ? ` · @${channel.username}` : ""}`}
             </span>
           </span>
         </button>
@@ -727,13 +818,37 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
           <p className="text-center text-sm text-muted-foreground py-10">
             {channel?.tg_state === "pending" ? "Подключаем канал по ссылке — посты появятся в течение минуты"
               : channel?.tg_state === "error" ? "Не удалось подключить канал по ссылке"
-              : isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
+              : wall ? "На Стене пока пусто. Напишите первым." : isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
           </p>
         ) : (
           feedPosts.map((post) => (
             <div key={post._key ?? post.id} data-post-id={post.id} className="bg-surface-2 rounded-lg overflow-hidden">
               <div className="px-4 py-3">
-                {channel?.sign_posts && post.sender && (
+                {wall && post.sender ? (
+                  <div className="flex items-center gap-2 mb-2">
+                    <button type="button" onClick={() => openAuthor(post)} className="flex items-center gap-2 min-w-0 text-left active:opacity-70">
+                      {post.forwarded_chat ? (
+                        post.forwarded_chat.avatar_url ? <img src={mediaUrl(post.forwarded_chat.avatar_url)} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />
+                          : <span className="w-8 h-8 rounded-md bg-surface-3 flex items-center justify-center shrink-0"><Radio className="w-4 h-4 text-primary" /></span>
+                      ) : (
+                        <Identicon id={post.sender.id} avatarUrl={post.sender.avatar_url || undefined} className="w-8 h-8 shrink-0" />
+                      )}
+                      <span className="min-w-0">
+                        <span className="block text-body font-semibold truncate">{post.forwarded_chat ? post.forwarded_chat.name : post.sender.username}</span>
+                        {post.forwarded_chat && <span className="block text-caption text-subtle truncate">канал · репост от {post.sender.username}</span>}
+                      </span>
+                    </button>
+                    <span className="ml-auto flex items-center gap-1 shrink-0">
+                      {!post.wall_safe && <span className="px-1.5 h-5 rounded-full bg-surface-4 text-[11px] font-semibold text-subtle flex items-center">18+</span>}
+                      {post.wall_hidden && <span className="px-1.5 h-5 rounded-full bg-destructive/15 text-[11px] font-semibold text-destructive flex items-center">скрыт</span>}
+                      {!post._pending && (
+                        <button type="button" onClick={() => setMenuFor(post)} className="w-8 h-8 -mr-2 rounded-full flex items-center justify-center text-muted-foreground" aria-label="Действия">
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ) : channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
                 {post.content && <p className="text-body whitespace-pre-wrap break-words"><FormattedText text={post.content} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} /></p>}
@@ -800,7 +915,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
                     <Share2 className="w-4 h-4" />
                   </button>
                 )}
-                {isAdmin && !post._pending && (
+                {!wall && isAdmin && !post._pending && (
+                  <button
+                    type="button"
+                    onClick={() => setRepostFor(post)}
+                    aria-label="На Стену"
+                    title="Опубликовать на Стене"
+                    className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground"
+                  >
+                    <Newspaper className="w-4 h-4" />
+                  </button>
+                )}
+                {(wall ? (wallAdmin || post.sender?.id === userId) : isAdmin) && !post._pending && (
                   <button
                     type="button"
                     onClick={() => startDelete(post)}
@@ -816,9 +942,26 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         )}
       </div>
 
-      {/* Композер (админ) или кнопка подписки */}
-      {isAdmin ? (
+      {/* Композер (админ канала или любой на Стене), плашка бана или кнопка подписки */}
+      {banned && wallState?.ban ? (
+        <div className="pad-safe-bottom px-3 py-3 shrink-0">
+          <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 flex gap-3">
+            <Ban className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+            <div className="text-small">
+              <p className="font-semibold">Вам запретили писать на Стену {wallState.ban.until ? `до ${fmtUntil(wallState.ban.until)}` : "навсегда"}</p>
+              {wallState.ban.reason && <p className="text-subtle mt-0.5">Причина: {wallState.ban.reason}</p>}
+              <p className="text-subtle mt-0.5">Покайтесь во грехе и возвращайтесь — читать и реагировать можно.</p>
+            </div>
+          </div>
+        </div>
+      ) : canPost ? (
         <div className="pad-safe-bottom px-3 py-2 shrink-0">
+          {wall && (
+            <label className="flex items-center gap-2 mb-2 text-caption text-subtle">
+              <input type="checkbox" className="w-4 h-4 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
+              <span><b className="text-foreground">Контент 4+</b> — без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+».</span>
+            </label>
+          )}
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
               <span className="text-sm">Пост удалён</span>
@@ -902,7 +1045,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
               value={text}
               onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
-              placeholder={attachments.length ? "Подпись…" : "Написать в канал…"}
+              placeholder={attachments.length ? "Подпись…" : wall ? "Написать на Стену…" : "Написать в канал…"}
               rows={1}
               disabled={recording}
               className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
@@ -966,7 +1109,20 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         <div className="pad-safe-bottom shrink-0" />
       )}
 
-      {infoOpen && channel && (
+      {infoOpen && wall && wallState && (
+        <WallInfo
+          state={wallState}
+          onClose={() => setInfoOpen(false)}
+          onChanged={setWallState}
+          onHide={async () => {
+            if (!confirm("Скрыть Стену из списка чатов? Вернуть её можно в «Профиль → Конфиденциальность».")) return;
+            try { await api.setWallEnabled(false); setInfoOpen(false); onWallChanged?.(); onBack?.(); }
+            catch { toast.error("Не получилось"); }
+          }}
+          onOpenProfile={(id) => { setInfoOpen(false); setProfileFor(id); }}
+        />
+      )}
+      {infoOpen && channel && !wall && (
         <ChannelInfo
           channel={channel}
           userId={userId}
@@ -1018,10 +1174,50 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
         onPick={(emoji) => { const post = posts.find((p) => p.id === reactPickFor); if (post) react(post, emoji); }}
       />
 
+      {menuFor && (
+        <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => setMenuFor(null)}>
+          <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
+            {menuFor.sender?.id !== userId && (
+              <button type="button" onClick={() => void hideAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                <EyeOff className="w-5 h-5 text-muted-foreground" /> Скрыть автора {menuFor.sender?.username}
+              </button>
+            )}
+            {wallAdmin && (
+              <>
+                <button type="button" onClick={() => void adminPost(menuFor, { hidden: !menuFor.wall_hidden })} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                  {menuFor.wall_hidden ? <Eye className="w-5 h-5 text-muted-foreground" /> : <EyeOff className="w-5 h-5 text-muted-foreground" />}
+                  {menuFor.wall_hidden ? "Показать пост всем" : "Скрыть пост (админ)"}
+                </button>
+                <button type="button" onClick={() => void adminPost(menuFor, { wall_safe: !menuFor.wall_safe })} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                  <ShieldCheck className="w-5 h-5 text-muted-foreground" /> {menuFor.wall_safe ? "Снять отметку «4+»" : "Отметить как «4+»"}
+                </button>
+                {menuFor.sender?.id !== userId && (
+                  <button type="button" onClick={() => void banAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
+                    <Ban className="w-5 h-5" /> Запретить {menuFor.sender?.username} писать…
+                  </button>
+                )}
+              </>
+            )}
+            {(wallAdmin || menuFor.sender?.id === userId) && (
+              <button type="button" onClick={() => { const p = menuFor; setMenuFor(null); startDelete(p); }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
+                <Trash2 className="w-5 h-5" /> Удалить пост
+              </button>
+            )}
+            <button type="button" onClick={() => setMenuFor(null)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">Отмена</button>
+          </div>
+        </div>
+      )}
+      {repostFor && (
+        <RepostSheet post={repostFor} onClose={() => setRepostFor(null)} onConfirm={(safeFlag) => void doRepost(repostFor, safeFlag)} />
+      )}
+      {profileFor && <UserProfileModal userId={profileFor} onClose={() => setProfileFor(null)} />}
+
       {commentsFor && (
         <CommentsSheet
           post={commentsFor}
-          canComment={subscribed}
+          canComment={wall ? !banned : subscribed}
+          bannedText={wall ? "Вам запретили писать на Стену" : undefined}
+          onAuthor={wall ? (id) => setProfileFor(id) : undefined}
           onClose={() => setCommentsFor(null)}
           onCountChange={(n) => setPosts((prev) => prev.map((p) => (p.id === commentsFor.id ? { ...p, comments_count: n } : p)))}
         />
@@ -1032,8 +1228,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted }: ChannelViewProps)
 
 /** Звук в списке выбора — с проигрыванием. */
 /** Комментарии к посту. */
-const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
-  post: Post; canComment: boolean; onClose: () => void; onCountChange: (n: number) => void;
+const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCountChange }: {
+  post: Post; canComment: boolean; bannedText?: string; onAuthor?: (id: string) => void; onClose: () => void; onCountChange: (n: number) => void;
 }) => {
   const [comments, setComments] = useState<any[]>([]);
   const [text, setText] = useState("");
@@ -1082,7 +1278,10 @@ const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
             comments.map((c) => (
               <div key={c.id} className="flex gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm"><b>{c.author?.username}</b> <span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span></p>
+                  <p className="text-sm">
+                    {onAuthor && c.author?.id ? <button type="button" className="font-bold active:opacity-70" onClick={() => onAuthor(c.author.id)}>{c.author?.username}</button> : <b>{c.author?.username}</b>}
+                    {" "}<span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span>
+                  </p>
                   <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>
                 </div>
                 <button type="button" onClick={() => del(c.id)} className="p-1 text-muted-foreground shrink-0" aria-label="Удалить">
@@ -1100,8 +1299,81 @@ const CommentsSheet = ({ post, canComment, onClose, onCountChange }: {
             </button>
           </div>
         ) : (
-          <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">Подпишитесь, чтобы комментировать</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || "Подпишитесь, чтобы комментировать"}</p>
         )}
+      </div>
+    </div>
+  );
+};
+
+/** Сведения о Стене: скрытые авторы (вернуть), у админа — баны (снять), выключить Стену. */
+const WallInfo = ({ state, onClose, onChanged, onHide, onOpenProfile }: {
+  state: WallState; onClose: () => void; onChanged: (s: WallState) => void; onHide: () => void; onOpenProfile: (id: string) => void;
+}) => {
+  const [bans, setBans] = useState<Awaited<ReturnType<typeof api.getWallBans>> | null>(null);
+  useEffect(() => {
+    if (state.is_admin) api.getWallBans().then(setBans).catch(() => setBans([]));
+  }, [state.is_admin]);
+  const unmute = async (id: string) => {
+    try { onChanged(await api.muteWallAuthor(id, false)); } catch { toast.error("Не получилось"); }
+  };
+  const unban = async (id: string) => {
+    try { await api.unbanWallUser(id); setBans((b) => (b || []).filter((x) => x.profile.id !== id)); } catch { toast.error("Не получилось"); }
+  };
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
+      <div className="bg-card border-t-2 border-border max-h-[80%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
+          <Newspaper className="w-5 h-5 text-primary" />
+          <span className="font-semibold flex-1">Стена</span>
+          <button type="button" onClick={onClose}><X className="w-5 h-5" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
+          <p className="text-muted-foreground">Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят только те, кто включил «Показывать 18+».</p>
+          <div>
+            <p className="font-semibold mb-1">Скрытые авторы</p>
+            {state.muted_authors.length === 0 ? <p className="text-muted-foreground">Никого — всё видно</p> : state.muted_authors.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 py-1.5">
+                <button type="button" onClick={() => onOpenProfile(a.id)} className="flex-1 text-left truncate">{a.username}</button>
+                <button type="button" onClick={() => void unmute(a.id)} className="text-primary font-medium">Вернуть</button>
+              </div>
+            ))}
+          </div>
+          {state.is_admin && (
+            <div>
+              <p className="font-semibold mb-1">Запреты (админ)</p>
+              {bans === null ? <p className="text-muted-foreground">Загрузка…</p> : bans.length === 0 ? <p className="text-muted-foreground">Никому не запрещено</p> : bans.map((b) => (
+                <div key={b.profile.id} className="flex items-center gap-2 py-1.5">
+                  <button type="button" onClick={() => onOpenProfile(b.profile.id)} className="flex-1 min-w-0 text-left">
+                    <span className="block truncate">{b.profile.username}</span>
+                    <span className="block text-xs text-muted-foreground truncate">{b.until ? `до ${fmtUntil(b.until)}` : "навсегда"}{b.reason ? ` · ${b.reason}` : ""}</span>
+                  </button>
+                  <button type="button" onClick={() => void unban(b.profile.id)} className="text-primary font-medium">Снять</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button type="button" onClick={onHide} className="w-full h-11 rounded-md bg-surface-4 text-destructive font-medium">Скрыть Стену из списка чатов</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Репост поста канала на Стену: подтверждение с отметкой «Контент 4+». */
+const RepostSheet = ({ post, onClose, onConfirm }: { post: Post; onClose: () => void; onConfirm: (safe: boolean) => void }) => {
+  const [safe, setSafe] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
+      <div className="bg-card border-t-2 border-border pad-safe-bottom px-4 py-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <p className="font-semibold flex items-center gap-2"><Newspaper className="w-5 h-5 text-primary" /> Опубликовать на Стене</p>
+        {post.content && <p className="text-sm text-muted-foreground line-clamp-3">{post.content}</p>}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="w-4 h-4 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
+          <span><b>Контент 4+</b> — без мата и материалов для взрослых</span>
+        </label>
+        <p className="text-xs text-muted-foreground">Читатели по тапу на отправителя попадут в ваш канал и смогут подписаться.</p>
+        <button type="button" onClick={() => onConfirm(safe)} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">На Стену</button>
       </div>
     </div>
   );

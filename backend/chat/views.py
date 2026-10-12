@@ -600,6 +600,9 @@ def _socket_new_message(message, request):
 
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
+    # Стена: подписчиков нет, читают все по запросу — рассылать некому.
+    if getattr(message.chat, "kind", "") == "wall":
+        return
     """Разослать новое сообщение: в сокет чата, пуш остальным участникам и
     персональные уведомления в сокеты (веб/десктоп без пушей). Общее для
     обычной отправки и пересылки."""
@@ -771,14 +774,20 @@ def _without_muted(chat, recipients):
 
 
 def _can_see_chat(chat, profile):
-    """Читать чат может участник; публичный канал — любой."""
+    """Читать чат может участник; публичный канал и Стена — любой."""
+    if chat.kind == "wall":
+        return True
     if ChatParticipant.objects.filter(chat=chat, user=profile).exists():
         return True
     return chat.kind == "channel" and chat.is_public
 
 
 def _can_post_to(chat, profile):
-    """Писать в чат может участник; в канал — только owner/admin."""
+    """Писать в чат может участник; в канал — только owner/admin; на Стену —
+    любой, кому не запретили (chat/wall.py)."""
+    if chat.kind == "wall":
+        from .wall import wall_ban
+        return wall_ban(profile) is None
     cp = ChatParticipant.objects.filter(chat=chat, user=profile).first()
     if not cp:
         return False
@@ -828,7 +837,9 @@ class MessageViewSet(viewsets.ModelViewSet):
             # У всех — автор; в канале ещё владелец и админы: пост чужого
             # админа или уволенного автора иначе было бы не убрать. Подписчикам
             # удаление доедет обычной синхронизацией — save() двигает updated_at.
-            if msg.sender_id != profile.id and not (msg.chat.kind == "channel" and _can_post_to(msg.chat, profile)):
+            from .serializers import is_admin_profile
+            if msg.sender_id != profile.id and not (msg.chat.kind == "channel" and _can_post_to(msg.chat, profile)) \
+                    and not (msg.chat.kind == "wall" and is_admin_profile(profile)):
                 return Response({"error": "Удалить у всех может только автор"}, status=403)
             msg.deleted_for_all = True
             msg.save(update_fields=['deleted_for_all', 'updated_at'])
@@ -1303,16 +1314,17 @@ class MessageViewSet(viewsets.ModelViewSet):
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
         
-        # Считаем сообщения, где текущий пользователь не отправитель и не прочитал
+        # Считаем сообщения в моих чатах, где я не отправитель и не прочитал.
+        # Только мои чаты: иначе в счётчик попадали посты Стены и чужих каналов.
         unread_count = Message.objects.filter(
-            ~Q(sender=profile)  # Исключаем сообщения, где пользователь отправитель
+            ~Q(sender=profile), chat__participants=profile
         ).exclude(
             read_statuses__user=profile
         ).count()
         
         # Или по чатам
         unread_by_chat = Message.objects.filter(
-            ~Q(sender=profile)
+            ~Q(sender=profile), chat__participants=profile
         ).exclude(
             read_statuses__user=profile
         ).values('chat_id').annotate(count=models.Count('id'))
@@ -1378,6 +1390,12 @@ class MessageViewSet(viewsets.ModelViewSet):
                 _cp = ChatParticipant.objects.filter(chat=_ch, user=profile).first()
                 if not _cp or _cp.role not in ('owner', 'admin'):
                     return Response({"error": "Публиковать в канал могут только админы"}, status=403)
+            # Стена: пишут все, кроме забаненных (chat/wall.py).
+            if _ch and _ch.kind == 'wall':
+                from .wall import wall_ban, ban_payload
+                _ban = wall_ban(profile)
+                if _ban:
+                    return Response({"error": "Вам запрещено писать на Стену", "wall_ban": ban_payload(_ban)}, status=403)
 
         # Музыка из своего плейлиста: файл уже в хранилище — ссылку берём у
         # трека, ничего не перекачивая. Только свои плейлисты: иначе по id
@@ -1471,6 +1489,10 @@ class MessageViewSet(viewsets.ModelViewSet):
                 'video_flip': str(request.data.get('video_flip') or '').lower() in ('1', 'true', 'yes'),
             })
         
+        # Стена: отметка «Контент 4+» — только от автора и только здесь.
+        if _chat_id and _ch and _ch.kind == 'wall':
+            save_kwargs['wall_safe'] = str(request.data.get('wall_safe') or '').lower() in ('1', 'true', 'yes')
+
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)
         if message.content and message.chat.is_group:
@@ -3417,7 +3439,12 @@ class PostCommentsView(APIView):
         if not msg:
             return Response({"error": "Пост не найден"}, status=404)
         me = _prof(request)
-        if not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
+        if msg.chat.kind == "wall":
+            from .wall import wall_ban, ban_payload
+            ban = wall_ban(me)
+            if ban:
+                return Response({"error": "Вам запрещено писать на Стену", "wall_ban": ban_payload(ban)}, status=403)
+        elif not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
             return Response({"error": "Подпишитесь, чтобы комментировать"}, status=403)
         content = (request.data.get("content") or "").strip()
         if not content:
@@ -3439,7 +3466,9 @@ class PostCommentDetailView(APIView):
         if not c:
             return Response({"error": "Комментарий не найден"}, status=404)
         me = _prof(request)
-        if c.author_id != (me.id if me else None) and _role_in(c.post.chat, me) not in ("owner", "admin"):
+        from .serializers import is_admin_profile
+        wall_admin = c.post.chat.kind == "wall" and me and is_admin_profile(me)
+        if c.author_id != (me.id if me else None) and _role_in(c.post.chat, me) not in ("owner", "admin") and not wall_admin:
             return Response({"error": "Нельзя удалить чужой комментарий"}, status=403)
         c.deleted = True
         c.save(update_fields=["deleted"])

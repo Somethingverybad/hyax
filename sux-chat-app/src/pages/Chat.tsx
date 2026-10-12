@@ -13,7 +13,7 @@ import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
 import TermsGate from "@/components/TermsGate";
 import { syncThemeFromProfile } from "@/lib/theme";
-import { api, mediaUrl } from "@/api/client";
+import { api, mediaUrl, type WallState } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
@@ -77,6 +77,9 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
   // Подсказка типа выбранного чата: канал из поиска может отсутствовать в
   // списке chats (пока не подписан), поэтому храним kind отдельно.
   const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
+  // Стена: строка наверху списка, пока она включена (chat/wall.py).
+  const [wall, setWall] = useState<WallState | null>(() => readCache<WallState>("wall"));
+  const refreshWall = () => api.getWall().then((w) => { setWall(w); writeCache("wall", w); }).catch(() => {});
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   // Список чатов «приезжает» слева только как возврат из переписки: при
   // запуске приложения он просто на месте.
@@ -305,7 +308,9 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
 
       // По тапу на пуш открываем чат из data.chat_id.
       await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
-        const chatId = (e?.notification?.data as any)?.chat_id;
+        const data = (e?.notification?.data as any) || {};
+        if (data.kind === "vibe") { navigate("/profile"); return; }
+        const chatId = data.chat_id;
         if (chatId) {
           setSelectedChatId(String(chatId));
           // Чат мог быть новым — подтянем список, чтобы заголовок и участники
@@ -351,9 +356,13 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
     const intervalId = setInterval(() => {
       refreshChats();
     }, 5000); // Обновляем каждые 5 секунд
+    // Стена: счётчик новых постов — реже, он не срочный.
+    void refreshWall();
+    const wallTimer = setInterval(() => { void refreshWall(); }, 30000);
 
     return () => {
       clearInterval(intervalId);
+      clearInterval(wallTimer);
     };
   }, [user]);
 
@@ -475,6 +484,12 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             c.participants?.some((p) => p.id === pid && p.is_online !== online)
               ? { ...c, participants: c.participants.map((p) => (p.id === pid ? { ...p, is_online: online } : p)) }
               : c));
+        } else if (msg?.data?.type === "vibe") {
+          // Подняли вайб: тост с именем (или без — анонимно) и свежее число в кеше профиля.
+          const who = msg.data.from?.username;
+          toast.success(who ? `${who} поднял(а) ваш вайб` : "Кто-то поднял ваш вайб", { description: `Вайбометр: ${msg.data.vibe}`, id: "vibe" });
+          playSfx("sent");
+          setUser((u) => { if (!u) return u; const n = { ...u, vibe: msg.data.vibe }; writeCache("user", n); return n; });
         } else if (msg?.data?.type === "rov") {
           // Сигнал живёт, только пока приложение открыто: в истории его нет.
           if (msg.data.on) rovOn(msg.data.from_username);
@@ -683,10 +698,21 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
 
   const selectedChat = chats.find((c) => c.id === selectedChatId) || (savedChat?.id === selectedChatId ? savedChat : undefined);
   const isChannelOpen = selectedKind === "channel" || (selectedChat as any)?.kind === "channel";
+  const isWallOpen = selectedKind === "wall";
+  const openChannelFromWall = (id: string, title?: string) => {
+    setSelectedChatId(id);
+    setSelectedKind("channel");
+    if (title) setSelectedChatTitle(title);
+  };
   const isSavedOpen = !!selectedChatId && (selectedKind === "saved" || (selectedChat as any)?.kind === "saved");
   // «Избранное» живёт на своей вкладке — из общего списка его убираем.
   // «Долгий ящик» — своя строка наверху списка (ChatSidebar), в общем списке его нет.
   const listChats = chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox");
+  // Стена — синтетическая строка: в списке чатов сервера её нет (участников у неё нет).
+  const wallRow = wall?.enabled
+    ? ({ id: wall.id, kind: "wall", name: "Стена", participants: [], unread_count: wall.new_count, created_at: "" } as any as ChatType)
+    : null;
+  const sidebarChats = wallRow ? [wallRow, ...listChats] : listChats;
   const ideaboxChat = chats.find((c) => (c as any).kind === "ideabox") || null;
   const openIdeabox = async () => {
     try {
@@ -960,11 +986,15 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
           // возвращается слева. Ключ по чату перезапускает анимацию при
           // переходе из чата в чат.
           <div key={selectedChatId} className="flex-1 min-w-0 min-h-0 flex screen-push">
-          {isChannelOpen ? (
+          {isChannelOpen || isWallOpen ? (
             <ChannelView
+              key={isWallOpen ? "wall" : selectedChatId}
               channelId={selectedChatId}
               userId={user.id}
-              onBack={() => setSelectedChatId(null)}
+              wall={isWallOpen}
+              onOpenChannel={openChannelFromWall}
+              onWallChanged={() => { void refreshWall(); }}
+              onBack={() => { setSelectedChatId(null); if (isWallOpen) void refreshWall(); }}
               onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
             />
           ) : (
@@ -1036,7 +1066,12 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
         userId={user.id}
-        chats={listChats}
+        chats={sidebarChats}
+        onWallHide={async () => {
+          if (!confirm("Скрыть Стену из списка чатов? Вернуть её можно в «Профиль → Конфиденциальность».")) return;
+          try { await api.setWallEnabled(false); await refreshWall(); if (isWallOpen) setSelectedChatId(null); }
+          catch { toast.error("Не получилось"); }
+        }}
         savedChatId={savedChat?.id}
         onOpenSaved={() => { if (savedChat) { setSelectedChatId(savedChat.id); setSelectedKind("saved"); } }}
         onSelectChat={(id, title, kind) => {
@@ -1054,10 +1089,14 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
       />
 
       {selectedChatId ? (
-        isChannelOpen ? (
+        isChannelOpen || isWallOpen ? (
           <ChannelView
+            key={isWallOpen ? "wall" : selectedChatId}
             channelId={selectedChatId}
             userId={user.id}
+            wall={isWallOpen}
+            onOpenChannel={openChannelFromWall}
+            onWallChanged={() => { void refreshWall(); }}
             onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
           />
         ) : (

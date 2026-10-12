@@ -28,6 +28,8 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
   const [voted, setVoted] = useState(false);
   const [canVote, setCanVote] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Анонимно: человеку придёт «Кто-то поднял ваш вайб» без имени.
+  const [anon, setAnon] = useState(false);
   useEffect(() => {
     let off = false;
     api.getVibe(profileId).then((s) => { if (!off) { setVibe(s.vibe); setVoted(s.voted); setCanVote(s.can_vote); } }).catch(() => {});
@@ -39,7 +41,7 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
     setVibe((v) => (v ?? 0) + 1);
     setCanVote(false);
     try {
-      const s = await api.raiseVibe(profileId);
+      const s = await api.raiseVibe(profileId, anon);
       setVibe(s.vibe); setVoted(true);
     } catch (e: any) {
       if (e?.state) { setVibe(e.state.vibe); setVoted(e.state.voted); setCanVote(e.state.can_vote); }
@@ -68,10 +70,16 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
           <Check className="w-4 h-4" />Вы подняли вайб
         </p>
       ) : canVote ? (
-        <button type="button" onClick={raise} disabled={busy}
-          className="mt-3 w-full h-10 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-60">
-          <Sparkles className="w-4 h-4" />Поднять вайб +1
-        </button>
+        <>
+          <button type="button" onClick={raise} disabled={busy}
+            className="mt-3 w-full h-10 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-60">
+            <Sparkles className="w-4 h-4" />Поднять вайб +1
+          </button>
+          <label className="mt-2 flex items-center gap-2 text-caption text-subtle">
+            <input type="checkbox" className="w-4 h-4 accent-primary" checked={anon} onChange={(e) => setAnon(e.target.checked)} />
+            Анонимно — без моего имени в уведомлении
+          </label>
+        </>
       ) : null}
     </div>
   );

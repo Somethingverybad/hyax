@@ -332,6 +332,31 @@ def _me(request):
     return me if me and not me.is_bot else None
 
 
+def _notify_vibe(target, voter, anonymous):
+    """Сказать человеку, что его вайб подняли: в персональный сокет (веб и
+    десктоп) и пушем. Анонимно — без имени; в пуше kind=vibe, по тапу
+    клиент открывает свой профиль."""
+    who = None if anonymous else {"id": str(voter.id), "username": voter.username, "avatar_url": voter.avatar_url}
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(f"user_{target.id}", {
+                "type": "notification",
+                "data": {"type": "vibe", "vibe": target.vibe, "from": who},
+            })
+    except Exception:
+        logger.exception("vibe: сокет не ответил")
+    try:
+        from .fcm import notify_profiles
+        body = "Кто-то поднял ваш вайб" if anonymous else f"{voter.username} поднял(а) ваш вайб"
+        notify_profiles(Profile.objects.filter(id=target.id), title="Вайбометр", body=f"{body} — уже {target.vibe}",
+                        extra={"kind": "vibe", "profile_id": str(target.id)})
+    except Exception:
+        logger.exception("vibe: пуш не поставлен")
+
+
 class VibeView(APIView):
     """GET /api/vibe/<profile>/ — вайбометр и можно ли поднять; POST — поднять (+1, раз)."""
     permission_classes = [IsAuthenticated]
@@ -367,6 +392,8 @@ class VibeView(APIView):
         except IntegrityError:
             return Response({**self._state(me, target), "error": "Вы уже поднимали вайб"}, status=409)
         target.refresh_from_db(fields=["vibe"])
+        anonymous = str(request.data.get("anonymous") or "").lower() in ("1", "true", "yes")
+        _notify_vibe(target, me, anonymous)
         return Response(self._state(me, target))
 
 

@@ -3,7 +3,7 @@ import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper } from "lucide-react";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
 import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
@@ -72,6 +72,8 @@ interface ChatSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onChatDeleted: (chatId: string) => void;
+  /** «Удалить» строку Стены = выключить её (вернуть — в настройках). */
+  onWallHide?: () => void;
   onChatCreated: () => void;
   /** «Избранное» на десктопе — строкой над списком (на телефоне у него
    *  своя вкладка, и пропсы не передаются). */
@@ -236,6 +238,7 @@ const ChatSidebar = ({
   const pinnedAt = (c: Chat) => (c.id in pinOverride ? pinOverride[c.id] : c.pinned_at ?? null);
 
   const togglePin = async (chat: Chat) => {
+    if ((chat as any).kind === "wall") { setPinSwipedId(null); return; }
     const next = pinnedAt(chat) ? null : new Date().toISOString();
     setPinSwipedId(null);
     setPinOverride((p) => ({ ...p, [chat.id]: next }));
@@ -458,6 +461,7 @@ const ChatSidebar = ({
   const deleteChat = async (chatId: string, chatTitle: string, skipConfirm = false) => {
     setChatMenu(null);
     setSwipedChatId(null);
+    if (chats.find((c) => c.id === chatId && (c as any).kind === "wall")) { onWallHide?.(); return; }
     if (!skipConfirm && !confirm(`Вы уверены, что хотите удалить чат "${chatTitle}"?`)) {
       return;
     }
@@ -899,6 +903,9 @@ const ChatSidebar = ({
               // времени последнего сообщения. Тот же порядок отдаёт сервер;
               // здесь он держится и между обновлениями списка (закрепили —
               // строка уезжает вверх сразу, не дожидаясь ответа).
+              // Стена — всегда первой строкой.
+              const wx = (x as any).kind === "wall", wy = (y as any).kind === "wall";
+              if (wx !== wy) return wx ? -1 : 1;
               const px = pinnedAt(x), py = pinnedAt(y);
               if (px && py) return py.localeCompare(px);
               if (px) return -1;
@@ -908,7 +915,7 @@ const ChatSidebar = ({
               return ty.localeCompare(tx);
             }).filter((chat) => {
               if (listTab === "unread" && !(((chat as any).unread_count || 0) > 0)) return false;
-              if (listTab === "channels" && (chat as any).kind !== "channel") return false;
+              if (listTab === "channels" && (chat as any).kind !== "channel" && (chat as any).kind !== "wall") return false;
               const q = listFilter.trim().toLowerCase();
               if (!q) return true;
               if ((chat.name || "").toLowerCase().includes(q)) return true;
@@ -925,9 +932,10 @@ const ChatSidebar = ({
               const otherParticipants = participants.filter(p => p.id !== currentUser?.id);
               const displayParticipants = otherParticipants.length > 0 ? otherParticipants : participants;
               
-              const isChannel = (chat as any).kind === "channel";
+              const isWall = (chat as any).kind === "wall";
+              const isChannel = (chat as any).kind === "channel" || isWall;
               // Формируем название чата
-              let chatTitle = isChannel
+              let chatTitle = isWall ? "Стена" : isChannel
                 ? ((chat as any).name || "Канал")
                 : chat.is_group ? (chat.name || "Группа") : "Без названия";
 
@@ -1017,7 +1025,11 @@ const ChatSidebar = ({
                     disabled={isDeleting}
                     title={isCollapsed ? chatTitle : undefined}
                   >
-                    {isChannel ? (
+                    {isWall ? (
+                      <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
+                        <Newspaper className="w-6 h-6 md:w-5 md:h-5 text-primary" />
+                      </div>
+                    ) : isChannel ? (
                       (chat as any).avatar_url ? (
                         <CachedImg src={mediaUrl((chat as any).avatar_url)} alt="" className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-md object-cover" />
                       ) : (
@@ -1059,7 +1071,7 @@ const ChatSidebar = ({
                         <div className="flex items-baseline justify-between gap-2">
                           <p className="text-h2 md:text-[15px] truncate min-w-0 flex items-center gap-1.5">
                             {pinnedAt(chat) && <Pin className="w-3.5 h-3.5 text-amber shrink-0" aria-label="Закреплён" />}
-                            {isChannel && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
+                            {isChannel && !isWall && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
                             {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label="Секретный чат" />}
                             <span className="truncate">{chatTitle}</span>
                           </p>

@@ -197,6 +197,8 @@ export interface Profile {
   rov_enabled?: boolean;
   /** Показывать паки 18+. Приходит только в своём профиле. */
   allow_adult?: boolean;
+  /** «Стена» в списке чатов (выключается «удалением» строки, включается в настройках). */
+  wall_enabled?: boolean;
   /** Бот: таким сохранёнки не открывают и в личку не пишут вручную. */
   is_bot?: boolean;
   /** Бот только для чтения (Обновлямбус): писать ему нельзя. */
@@ -305,6 +307,15 @@ export interface PinnedInfo {
 }
 
 export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null; anim?: string | null }
+
+/** Бан на Стене: until пусто — навсегда. */
+export interface WallBan { until: string | null; reason: string; created_at: string }
+export interface WallBanRow extends WallBan { profile: { id: string; username: string; avatar_url?: string | null } }
+export interface WallState {
+  id: string; name: string; kind: "wall"; enabled: boolean; new_count: number;
+  ban: WallBan | null; is_admin: boolean;
+  muted_authors: { id: string; username: string; avatar_url?: string | null }[];
+}
 
 export interface Chat {
   id: string;
@@ -1099,6 +1110,65 @@ export const api = {
     return res.json().catch(() => ({}));
   },
 
+  // ===== СТЕНА (chat/wall.py) =====
+  getWall: async (): Promise<WallState> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  setWallEnabled: async (enabled: boolean): Promise<WallState> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ enabled }) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  markWallSeen: async (): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/wall/seen/`, { method: "POST", headers: authHeaders() }).catch(() => {});
+  },
+  getWallPosts: async (opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string }> => {
+    const q = new URLSearchParams();
+    if (opts.limit) q.set("limit", String(opts.limit));
+    if (opts.before) q.set("before", opts.before);
+    if (opts.since) q.set("since", opts.since);
+    const res = await fetchWithAuth(`${API_URL}/wall/posts/${q.toString() ? `?${q}` : ""}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  muteWallAuthor: async (profileId: string, mute = true): Promise<WallState> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/mute/`, { method: mute ? "POST" : "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    return body;
+  },
+  /** Репост поста своего канала на Стену. */
+  repostToWall: async (messageId: string, wallSafe: boolean): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/repost/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ message_id: messageId, wall_safe: wallSafe }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { const e: any = new Error(body?.error || "Не получилось"); e.body = body; throw e; }
+    return body;
+  },
+  wallAdminPost: async (messageId: string, data: { hidden?: boolean; wall_safe?: boolean }): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/admin/posts/${messageId}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(data) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    return body;
+  },
+  getWallBans: async (): Promise<WallBanRow[]> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/admin/bans/`, { method: "GET", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    return body.bans || [];
+  },
+  banWallUser: async (profileId: string, hours: number | null, reason: string): Promise<WallBanRow> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/admin/bans/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId, hours, reason }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    return body;
+  },
+  unbanWallUser: async (profileId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/admin/bans/`, { method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }) });
+    if (!res.ok) throw new Error("Не получилось");
+  },
+
   // ===== ВАЙБОМЕТР И ИДЕИ (chat/ideabox.py) =====
   getVibe: async (profileId: string): Promise<VibeState> => {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "GET", headers: authHeaders() });
@@ -1116,8 +1186,8 @@ export const api = {
     if (!res.ok) throw new Error(body?.error || "Не удалось сохранить");
     return body;
   },
-  raiseVibe: async (profileId: string): Promise<VibeState> => {
-    const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders() });
+  raiseVibe: async (profileId: string, anonymous = false): Promise<VibeState> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ anonymous }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { const e: any = new Error(body?.error || "Не получилось"); if ("vibe" in body) e.state = body; throw e; }
     return body;
@@ -1205,13 +1275,15 @@ export const api = {
     return res.json();
   },
 
-  sendMessage: async (chatId: string, content: string, soundId?: string, replyToId?: string, entities?: { type: string; offset: number; length: number }[]): Promise<any> => {
+  sendMessage: async (chatId: string, content: string, soundId?: string, replyToId?: string, entities?: { type: string; offset: number; length: number }[], extra?: Record<string, unknown>): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined, reply_to_id: replyToId || undefined, entities: entities?.length ? entities : undefined }),
+      body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined, reply_to_id: replyToId || undefined, entities: entities?.length ? entities : undefined, ...(extra || {}) }),
     });
-    return res.json();
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { const e: any = new Error(body?.error || `HTTP ${res.status}`); e.body = body; throw e; }
+    return body;
   },
 
   // ===== MESSAGE READ STATUS =====
@@ -1376,11 +1448,12 @@ export const api = {
     album_id?: string | null;
     /** Оформление подписи (см. lib/format.tsx). */
     entities?: { type: string; offset: number; length: number }[];
-  }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean): Promise<any> => {
+  }, content?: string, soundId?: string, replyToId?: string, downloadOnly?: boolean, extra?: Record<string, unknown>): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
+        ...(extra || {}),
         chat: chatId,
         content: content || null,
         file_url: fileData.file_url,
@@ -1475,11 +1548,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number, mirror?: boolean, replyToId?: string, flip?: boolean): Promise<any> => {
+  sendMessageWithVideo: async (chatId: string, videoUrl: string, duration: number, mirror?: boolean, replyToId?: string, flip?: boolean, extra?: Record<string, unknown>): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration, video_mirror: mirror ? "1" : undefined, video_flip: flip ? "1" : undefined, reply_to_id: replyToId || undefined }),
+      body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration, video_mirror: mirror ? "1" : undefined, video_flip: flip ? "1" : undefined, reply_to_id: replyToId || undefined, ...(extra || {}) }),
     });
     if (!res.ok) throw new Error("Не удалось отправить видео-сообщение");
     return res.json();

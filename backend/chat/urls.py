@@ -6,6 +6,7 @@ from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineF
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeLevelsView
+from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
 
@@ -30,6 +31,14 @@ urlpatterns = [
     path('ideas/<uuid:idea_id>/<str:act>/', IdeaActionView.as_view(), name='idea-action'),
     path('vibe/<uuid:profile_id>/', VibeView.as_view(), name='vibe'),
     path('vibe-levels/', VibeLevelsView.as_view(), name='vibe-levels'),
+    # Стена (chat/wall.py)
+    path('wall/', WallView.as_view(), name='wall'),
+    path('wall/seen/', WallSeenView.as_view(), name='wall-seen'),
+    path('wall/posts/', WallPostsView.as_view(), name='wall-posts'),
+    path('wall/mute/', WallMuteView.as_view(), name='wall-mute'),
+    path('wall/repost/', WallRepostView.as_view(), name='wall-repost'),
+    path('wall/admin/posts/<uuid:pk>/', WallAdminPostView.as_view(), name='wall-admin-post'),
+    path('wall/admin/bans/', WallAdminBansView.as_view(), name='wall-admin-bans'),
     path('secret-chats/<uuid:chat_id>/accept/', SecretChatAcceptView.as_view(), name='secret-accept'),
     path('secret-chats/<uuid:chat_id>/decline/', SecretChatDeclineView.as_view(), name='secret-decline'),
     path('auth/register/', register_user, name='register'),
