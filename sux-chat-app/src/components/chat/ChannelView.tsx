@@ -845,7 +845,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       </span>
                     </button>
                     <span className="ml-auto flex items-center gap-1 shrink-0">
-                      {!post.wall_safe && <span className="px-1.5 h-5 rounded-full bg-surface-4 text-[11px] font-semibold text-subtle flex items-center">18+</span>}
+                      {post.wall_safe && <span className="px-1.5 h-5 rounded-full bg-primary/15 text-[11px] font-semibold text-primary flex items-center" title="Контент 4+">4+</span>}
                       {post.wall_hidden && <span className="px-1.5 h-5 rounded-full bg-destructive/15 text-[11px] font-semibold text-destructive flex items-center">скрыт</span>}
                       {!post._pending && (
                         <button type="button" onClick={() => setMenuFor(post)} className="w-8 h-8 -mr-2 rounded-full flex items-center justify-center text-muted-foreground" aria-label="Действия">
