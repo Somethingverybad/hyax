@@ -50,6 +50,9 @@ class Profile(models.Model):
     # «Стена» (chat/wall.py) в списке чатов. «Удалить» Стену из списка —
     # выключить её здесь; включается обратно в настройках.
     wall_enabled = models.BooleanField(default=True)
+    # Звук входящего звонка: "" — стандартный, "classic" — прежний, "sound:<id>"
+    # — звук из каталога. Проигрывает клиент (пока только веб/десктоп).
+    ringtone = models.CharField(max_length=80, blank=True, default="")
     # Когда человек последний раз открывал Стену — по нему считаем «новые посты».
     wall_seen_at = models.DateTimeField(null=True, blank=True)
     # Когда человек принял правила и политику конфиденциальности. Пусто у тех,
