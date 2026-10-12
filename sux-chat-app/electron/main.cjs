@@ -88,6 +88,9 @@ function createWindow() {
       autoplayPolicy: 'no-user-gesture-required',
       // Та же история, что и с ключами выше, но для конкретного окна.
       backgroundThrottling: false,
+      // Консоль разработчика — только в dev-запуске; в релизе выключена
+      // целиком (ни F12, ни Cmd/Ctrl+Shift+I, ни пункт меню).
+      devTools: isDev,
     },
   });
 
@@ -104,6 +107,24 @@ function createWindow() {
   attachContextMenu(mainWindow);
 
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
+}
+
+// Меню приложения. В релизе — без «Инструментов разработчика»: на macOS
+// оставляем стандартные роли (без них не работают Cmd+C/V и прочие),
+// на Windows/Linux строки меню нет вовсе — у приложения свой интерфейс.
+function installAppMenu() {
+  if (isDev) return; // стандартное меню Electron со всеми пунктами
+  if (process.platform !== 'darwin') { Menu.setApplicationMenu(null); return; }
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'appMenu' },
+    { role: 'editMenu' },
+    { label: 'Вид', submenu: [
+      { role: 'reload' }, { type: 'separator' },
+      { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
+      { role: 'togglefullscreen' },
+    ] },
+    { role: 'windowMenu' },
+  ]));
 }
 
 // Своего контекстного меню Chromium в Electron не показывает: без этого правая
@@ -315,6 +336,7 @@ if (!gotLock) {
   app.on('second-instance', focusMainWindow);
 
   app.whenReady().then(() => {
+    installAppMenu();
     logLine('ready');
     if (!isDev) serveDist();
     allowMediaPermissions();
