@@ -27,6 +27,22 @@ from .serializers import is_admin_profile
 
 logger = logging.getLogger(__name__)
 
+
+def notify_ban(profile_id, ban):
+    """Сказать человеку по сокету, что ему запретили (или снова разрешили)
+    писать на Стену: клиент блокирует/разблокирует экран сам, без перезахода."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(f"user_{profile_id}", {
+                "type": "notification",
+                "data": {"type": "wall_ban", "ban": ban_payload(ban) if ban else None},
+            })
+    except Exception:
+        logger.exception("wall: сокет не ответил")
+
 WALL_NAME = "Стена"
 
 
@@ -280,6 +296,7 @@ class WallAdminBansView(APIView):
         ban, _ = WallBan.objects.update_or_create(
             user=target, defaults={"until": until, "reason": str(request.data.get("reason") or "")[:200],
                                    "created_by": me, "created_at": timezone.now()})
+        notify_ban(target.id, ban)
         return Response(self._row(ban), status=201)
 
     def delete(self, request):
@@ -287,4 +304,5 @@ class WallAdminBansView(APIView):
         if err:
             return err
         WallBan.objects.filter(user_id=request.data.get("profile_id")).delete()
+        notify_ban(request.data.get("profile_id"), None)
         return Response({"ok": True})

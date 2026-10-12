@@ -24,7 +24,7 @@ import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
 import { takePendingShare } from "@/lib/shareInbox";
-import { readCache } from "@/lib/session-cache";
+import { readCache, writeCache } from "@/lib/session-cache";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
@@ -173,7 +173,14 @@ const pluralSubs = (n: number) => {
 
 const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged }: ChannelViewProps) => {
   // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
-  const [wallState, setWallState] = useState<WallState | null>(null);
+  // Состояние Стены — сразу из кэша сессии, сервер потом уточнит.
+  const [wallState, setWallState] = useState<WallState | null>(() => (wall ? readCache<WallState>("wall") : null));
+  useEffect(() => {
+    if (!wall) return;
+    const on = (e: Event) => setWallState((w) => (w ? { ...w, ban: (e as CustomEvent).detail || null } : w));
+    window.addEventListener("hyax:wall-ban", on);
+    return () => window.removeEventListener("hyax:wall-ban", on);
+  }, [wall]);
   // «Контент 4+»: без отметки пост на Стене считается 18+.
   const [safe, setSafeState] = useState(() => { try { return localStorage.getItem("hyax:wall-safe") === "1"; } catch { return false; } });
   const setSafe = (v: boolean) => { setSafeState(v); try { localStorage.setItem("hyax:wall-safe", v ? "1" : "0"); } catch { /* приватный режим */ } };
@@ -589,7 +596,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     (async () => {
       const cached = await readPosts(channelId);
       if (!alive) return;
-      const fromCache = !!cached?.messages?.length;
+      // Запись в кэше есть — рисуем сразу, даже пустую ленту: иначе при каждом
+      // переходе на вкладку мелькала «Загрузка…», пока сервер не ответит.
+      const fromCache = !!cached;
       if (fromCache) {
         syncedAtRef.current = cached!.syncedAt;
         setHasMore(cached!.hasMore);
@@ -600,8 +609,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       }
       try {
         if (wall) {
+          const cachedWall = readCache<WallState>("wall");
+          if (cachedWall && alive) setChannel({ id: cachedWall.id, name: cachedWall.name || "Стена", sign_posts: true, my_role: "subscriber" });
           const w = await api.getWall();
-          if (alive) { setWallState(w); setChannel({ id: w.id, name: w.name || "Стена", sign_posts: true, my_role: "subscriber" }); }
+          if (alive) { setWallState(w); writeCache("wall", w); setChannel({ id: w.id, name: w.name || "Стена", sign_posts: true, my_role: "subscriber" }); }
           void api.markWallSeen();
         } else {
           const ch = await api.getChannel(channelId);

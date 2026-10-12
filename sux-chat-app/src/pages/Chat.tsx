@@ -511,6 +511,13 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             c.participants?.some((p) => p.id === pid && p.is_online !== online)
               ? { ...c, participants: c.participants.map((p) => (p.id === pid ? { ...p, is_online: online } : p)) }
               : c));
+        } else if (msg?.data?.type === "wall_ban") {
+          // Админ запретил (или снова разрешил) писать на Стену — экран
+          // Стены переключается сразу, без перезахода.
+          const ban = msg.data.ban || null;
+          setWall((w) => { const n = w ? { ...w, ban } : w; if (n) writeCache("wall", n); return n; });
+          window.dispatchEvent(new CustomEvent("hyax:wall-ban", { detail: ban }));
+          toast(ban ? "Вам запретили писать на Стену" : "Вам снова можно писать на Стену", { id: "wall-ban" });
         } else if (msg?.data?.type === "vibe") {
           // Подняли вайб: тост с именем (или без — анонимно) и свежее число в кеше профиля.
           const who = msg.data.from?.username;
