@@ -1121,6 +1121,8 @@ const ChatSidebar = ({
                           <p className="text-body md:text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
                             {isLoading
                               ? "Загрузка…"
+                              : isWall
+                                ? ((chat as any).unread_count ? `Общая лента · новых: ${(chat as any).unread_count}` : "Общая лента — пишут все")
                               : (chat as any).kind === "secret" && !(chat as any).last_message
                                 ? ((chat as any).secret?.state === "pending"
                                     ? ((chat as any).secret?.initiator_id === currentUser?.id ? "Ждём, когда собеседник примет" : "Приглашение в секретный чат")
