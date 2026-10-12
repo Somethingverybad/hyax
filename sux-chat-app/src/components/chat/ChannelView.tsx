@@ -23,6 +23,7 @@ import { playQueue, type Track } from "@/lib/player";
 import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
+import { takePendingShare } from "@/lib/shareInbox";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
@@ -563,6 +564,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     setHasMore(false);
     syncedAtRef.current = null;
     viewedRef.current = new Set();
+    // «Поделиться → WYX»: в канал — в строку композера, на Стену — в шторку поста.
+    const shared = takePendingShare();
+    if (shared) {
+      setTimeout(() => {
+        if (shared.text) setText(shared.text);
+        if (shared.files.length) void acceptFiles(shared.files);
+        if (wall) { setComposeOpen(true); setComposeOpts(false); }
+      }, 0);
+    }
     (async () => {
       const cached = await readPosts(channelId);
       if (!alive) return;

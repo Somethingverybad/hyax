@@ -24,9 +24,12 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(InsetsPlugin.class);
         registerPlugin(PushSecretPlugin.class);
         registerPlugin(RovHapticsPlugin.class);
+        registerPlugin(ShareInboxPlugin.class);
         super.onCreate(savedInstanceState);
         MessageChannels.ensure(this);
         handleCallIntent(getIntent());
+        // Холодный старт из «Поделиться»: JS заберёт очередь сам после загрузки.
+        ShareInboxPlugin.accept(this, getIntent());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installImeResize();
     }
 
@@ -74,6 +77,10 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleCallIntent(intent);
+        // Тёплый старт из «Поделиться»: приложение уже открыто — сообщаем JS.
+        if (ShareInboxPlugin.accept(this, intent) && getBridge() != null) {
+            getBridge().triggerWindowJSEvent("hyax:share-inbox");
+        }
     }
 
     @Override

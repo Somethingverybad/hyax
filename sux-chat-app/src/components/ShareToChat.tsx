@@ -18,7 +18,7 @@ import { readCache } from "@/lib/session-cache";
  * Пересылка сообщений (includeChannels) их показывает — своим каналом
  * делятся постами из переписки.
  */
-type Row = { id: string; title: string; kind: "saved" | "group" | "direct" | "channel"; peerId?: string; avatar?: string | null };
+type Row = { id: string; title: string; kind: "saved" | "group" | "direct" | "channel" | "wall"; peerId?: string; avatar?: string | null };
 
 const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeChatId?: string): Row[] => chats
   .filter((c) => (includeChannels || c.kind !== "channel") && c.id !== excludeChatId)
@@ -32,7 +32,7 @@ const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeCha
   // «Избранное» — первой строкой, как в пересылке сообщений.
   .sort((a, b) => Number(b.kind === "saved") - Number(a.kind === "saved"));
 
-const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, includeChannels, excludeChatId, onShareToWall }: {
+const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, includeChannels, excludeChatId, onShareToWall, includeWall }: {
   open: boolean;
   /** Что отправляем: обычно ссылка. */
   text: string;
@@ -42,13 +42,15 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   /** Системное «Поделиться» — если его стоит предложить. */
   onShareOutside?: () => void;
   /** Только выбрать чат — отправкой займётся вызывающий (вложения из «Поделиться»). */
-  onPick?: (chatId: string, title: string) => void;
+  onPick?: (chatId: string, title: string, kind?: "saved" | "group" | "direct" | "channel" | "wall") => void;
   /** Показывать и каналы (пересылка сообщений). */
   includeChannels?: boolean;
   /** Не показывать этот чат (откуда пересылаем). */
   excludeChatId?: string;
   /** «На Стену» — репост поста своего канала (ChannelView). */
   onShareToWall?: () => void;
+  /** Строка «Стена» среди целей (onPick получит kind "wall"). */
+  includeWall?: boolean;
 }) => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
@@ -56,9 +58,20 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
 
   useEffect(() => {
     if (!open || rows) return;
-    api.getChats()
-      .then((chats) => setRows(toRows(chats, readCache<{ id: string }>("user")?.id, includeChannels, excludeChatId)))
-      .catch(() => setRows([]));
+    (async () => {
+      try {
+        const chats = await api.getChats();
+        let list = toRows(chats, readCache<{ id: string }>("user")?.id, includeChannels, excludeChatId);
+        if (includeChannels) {
+          // Публиковать в канал может только владелец или админ — чужие убираем.
+          const mine = new Set((await api.getMyChannels().catch(() => [] as any[]))
+            .filter((c: any) => c.my_role === "owner" || c.my_role === "admin").map((c: any) => c.id));
+          list = list.filter((r) => r.kind !== "channel" || mine.has(r.id));
+        }
+        if (includeWall) list = [{ id: "wall", title: "Стена", kind: "wall" }, ...list];
+        setRows(list);
+      } catch { setRows([]); }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rows]);
 
@@ -67,7 +80,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   if (!open) return null;
 
   const send = async (row: Row) => {
-    if (onPick) { onPick(row.id, row.title); onClose(); return; }
+    if (onPick) { onPick(row.id, row.title, row.kind); onClose(); return; }
     if (busy || !text) return;
     setBusy(true);
     try {
@@ -123,7 +136,11 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
               onClick={() => void send(r)}
               className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50"
             >
-              {r.kind === "saved" ? (
+              {r.kind === "wall" ? (
+                <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">
+                  <Newspaper className="w-4 h-4 text-primary" />
+                </span>
+              ) : r.kind === "saved" ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-primary flex items-center justify-center">
                   <Bookmark className="w-4 h-4 text-primary-foreground" />
                 </span>

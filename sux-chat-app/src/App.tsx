@@ -156,13 +156,16 @@ const ShareInboxSheet = () => {
   return (
     <ShareToChat
       open
-      title={n ? `Отправить ${n === 1 ? "файл" : `${n} файла`} в чат` : "Отправить в чат"}
+      includeChannels
+      includeWall
+      title={n ? `Отправить ${n === 1 ? "файл" : n < 5 ? `${n} файла` : `${n} файлов`}` : "Отправить в WYX"}
       text={payload.text}
       onClose={() => setPayload(null)}
-      onPick={(chatId, chatTitle) => {
+      onPick={(chatId, chatTitle, kind) => {
         setPendingShare(payload);
         setPayload(null);
-        navigate("/chat", { state: { chatId, title: chatTitle } });
+        if (kind === "wall") { navigate("/wall"); return; }
+        navigate("/chat", { state: { chatId, title: chatTitle, kind: kind === "channel" ? "channel" : undefined } });
       }}
     />
   );
