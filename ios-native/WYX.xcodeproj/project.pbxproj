@@ -17,6 +17,8 @@
 		3950D2C4839D57659DB8C19E /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = F322728AB56C7E5FBA3C5FB0 /* Formatting.swift */; };
 		3DED2526484A5F860C669B36 /* Inter-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 71A4FB80CE9AE60D0C863AD8 /* Inter-Regular.ttf */; };
 		4125308A6205AB78DF0179E0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8222B5EBC39814AAE4C429BC /* RootView.swift */; };
+		435BADDD77A4B523341BB8E6 /* VoipManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EF6E3FEE384305EEB27C45 /* VoipManager.swift */; };
+		4915020459A59C297F3AD4AE /* call.caf in Resources */ = {isa = PBXBuildFile; fileRef = 74CED635E8760D2F9D32FE31 /* call.caf */; };
 		553A13BEC4358CBCB262D42F /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414E0B585A72A9E73491E3DC /* API.swift */; };
 		558F56D5EE53B9A7E57DF9DE /* Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526629FFF57600DC2C25DFAD /* Composer.swift */; };
 		58825451CEF79A8496CB1061 /* SecretViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E93AA672ACBDE38DAC04EAB /* SecretViews.swift */; };
@@ -28,11 +30,14 @@
 		A47CB133C53CF01BC849308B /* Recorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D8C313F9AB60E97B397CB0 /* Recorder.swift */; };
 		BDE41BFC69DBEBAB2D69C602 /* ChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F6A92FE10F045DBD1595A4 /* ChatListView.swift */; };
 		D374F048249C80E8000D7EAF /* Push.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605CB1E485242820B8E18BC4 /* Push.swift */; };
+		D71721316F7AF8BBCBEAA187 /* CallService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4778189ADA4857463FCF092A /* CallService.swift */; };
 		DEF2704F8A55BE25538AC525 /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 69CEE94282BEC12A9B23D790 /* Inter-SemiBold.ttf */; };
 		E2607575AB2AC3F31BD6CCD4 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F432FD6809613E1522623FC /* ChatView.swift */; };
+		E321D3D2A4D6879A19F644A5 /* CallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24309A0BDC7260C03C92516C /* CallEngine.swift */; };
 		E52AB98B715C6D9EEABDC0A7 /* MediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1154AF7794C5D60C29D7723 /* MediaViews.swift */; };
 		E5A990597D92A891EFB637E3 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB66FFA5F355CA0AE69F84F4 /* NotificationService.swift */; };
 		E5EF9F4DC1B7B3A09DFCAA67 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9E40B1982CA419F0EB490DAF /* Assets.xcassets */; };
+		E88FDFE530593BDAB7EEB8F8 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = D862D674AE79CF3DABBC884E /* WebRTC */; };
 		E892CFBDE34B95C13A96C3AA /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 2CA143BA5EF1860A7153BE23 /* FirebaseMessaging */; };
 		F360378F86D1127FA225B531 /* Inter-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A239FAF3E2BF4A7E8FA251CC /* Inter-Medium.ttf */; };
 		F6ED92DDD1A2B37DE6110D6C /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = B131E1DEDC3A4E220EB01738 /* Lottie */; };
@@ -68,8 +73,11 @@
 		0E0904CB0D20168AD4E87986 /* Secret.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secret.swift; sourceTree = "<group>"; };
 		0E93AA672ACBDE38DAC04EAB /* SecretViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretViews.swift; sourceTree = "<group>"; };
 		0F432FD6809613E1522623FC /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		18EF6E3FEE384305EEB27C45 /* VoipManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoipManager.swift; sourceTree = "<group>"; };
+		24309A0BDC7260C03C92516C /* CallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEngine.swift; sourceTree = "<group>"; };
 		3ADAAA7C5C5CD6DB9A7EB66A /* MusicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicView.swift; sourceTree = "<group>"; };
 		414E0B585A72A9E73491E3DC /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		4778189ADA4857463FCF092A /* CallService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallService.swift; sourceTree = "<group>"; };
 		494B79A21866C2BF291EE7BC /* NotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; };
 		526629FFF57600DC2C25DFAD /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
 		54D6F888536EDAF9AF9BD776 /* MessageMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageMenu.swift; sourceTree = "<group>"; };
@@ -78,6 +86,7 @@
 		69CEE94282BEC12A9B23D790 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
 		6E3878EF85EE49AA441C7FC1 /* Socket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Socket.swift; sourceTree = "<group>"; };
 		71A4FB80CE9AE60D0C863AD8 /* Inter-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Regular.ttf"; sourceTree = "<group>"; };
+		74CED635E8760D2F9D32FE31 /* call.caf */ = {isa = PBXFileReference; path = call.caf; sourceTree = "<group>"; };
 		7C9F0E7C76EAE7EC8A074A11 /* ChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelView.swift; sourceTree = "<group>"; };
 		8222B5EBC39814AAE4C429BC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		85DFC308037D2FB554B4E4FD /* Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachments.swift; sourceTree = "<group>"; };
@@ -108,6 +117,7 @@
 			files = (
 				F6ED92DDD1A2B37DE6110D6C /* Lottie in Frameworks */,
 				E892CFBDE34B95C13A96C3AA /* FirebaseMessaging in Frameworks */,
+				E88FDFE530593BDAB7EEB8F8 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -150,9 +160,20 @@
 			isa = PBXGroup;
 			children = (
 				9E40B1982CA419F0EB490DAF /* Assets.xcassets */,
+				74CED635E8760D2F9D32FE31 /* call.caf */,
 				B45D33734CBB65FBC8E9F531 /* Fonts */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		6F965022B499CB216AFBE729 /* Calls */ = {
+			isa = PBXGroup;
+			children = (
+				24309A0BDC7260C03C92516C /* CallEngine.swift */,
+				4778189ADA4857463FCF092A /* CallService.swift */,
+				18EF6E3FEE384305EEB27C45 /* VoipManager.swift */,
+			);
+			path = Calls;
 			sourceTree = "<group>";
 		};
 		7254548EABFE556F174F06D5 /* Auth */ = {
@@ -184,6 +205,7 @@
 			isa = PBXGroup;
 			children = (
 				7254548EABFE556F174F06D5 /* Auth */,
+				6F965022B499CB216AFBE729 /* Calls */,
 				A3294EE941538D87BCB9869A /* Channel */,
 				D5E12F7DAFEDBE8763F4E211 /* Chat */,
 				B98A5AA36E75443ECDAC9626 /* Chats */,
@@ -328,6 +350,7 @@
 			packageProductDependencies = (
 				B131E1DEDC3A4E220EB01738 /* Lottie */,
 				2CA143BA5EF1860A7153BE23 /* FirebaseMessaging */,
+				D862D674AE79CF3DABBC884E /* WebRTC */,
 			);
 			productName = WYX;
 			productReference = CC18B7AD7C5E3477805C8515 /* WYX.app */;
@@ -364,6 +387,7 @@
 			packageReferences = (
 				8CE3AE1B2E50B95BB2216F61 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				CE32B24B9E427BD30F9B04C0 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+				4BA13A25EB87C8BF430D8A92 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 85D318E4BB28DB80DD777F33 /* Products */;
@@ -386,6 +410,7 @@
 				F360378F86D1127FA225B531 /* Inter-Medium.ttf in Resources */,
 				3DED2526484A5F860C669B36 /* Inter-Regular.ttf in Resources */,
 				DEF2704F8A55BE25538AC525 /* Inter-SemiBold.ttf in Resources */,
+				4915020459A59C297F3AD4AE /* call.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -407,6 +432,8 @@
 				553A13BEC4358CBCB262D42F /* API.swift in Sources */,
 				7ADA1ACB88D8163D4E46EA82 /* Attachments.swift in Sources */,
 				FEB9D33F614B1ECEEE8CCC33 /* AuthView.swift in Sources */,
+				E321D3D2A4D6879A19F644A5 /* CallEngine.swift in Sources */,
+				D71721316F7AF8BBCBEAA187 /* CallService.swift in Sources */,
 				1C9285B1EA493AA435572AB3 /* ChannelView.swift in Sources */,
 				BDE41BFC69DBEBAB2D69C602 /* ChatListView.swift in Sources */,
 				E2607575AB2AC3F31BD6CCD4 /* ChatView.swift in Sources */,
@@ -425,6 +452,7 @@
 				18FD1D0829D6C636CA14253E /* Socket.swift in Sources */,
 				59804A80384960AAE33CDE5F /* Theme.swift in Sources */,
 				991D115C7A5E4D8A5E126E47 /* VideoNoteRecorder.swift in Sources */,
+				435BADDD77A4B523341BB8E6 /* VoipManager.swift in Sources */,
 				30802AE7A43B3F36160D33CB /* WYXApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -674,6 +702,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		4BA13A25EB87C8BF430D8A92 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 125.0.0;
+			};
+		};
 		8CE3AE1B2E50B95BB2216F61 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -702,6 +738,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CE32B24B9E427BD30F9B04C0 /* XCRemoteSwiftPackageReference "lottie-spm" */;
 			productName = Lottie;
+		};
+		D862D674AE79CF3DABBC884E /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4BA13A25EB87C8BF430D8A92 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

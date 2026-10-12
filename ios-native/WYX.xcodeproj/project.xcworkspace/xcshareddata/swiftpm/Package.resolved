@@ -1,5 +1,5 @@
 {
-  "originHash" : "95304ebd3d8af61129bd9455b740b14ad680bbeb22d98e2687394e79f0b01733",
+  "originHash" : "99c1069dd0a133d94a1858d393e7ff890091cfc46bc2e7b0010735151eaacd5a",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -134,6 +134,15 @@
       "state" : {
         "revision" : "55d7a1cc5666b85c13464aea1c4b4a90feccb4c8",
         "version" : "1.38.1"
+      }
+    },
+    {
+      "identity" : "webrtc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stasel/WebRTC",
+      "state" : {
+        "revision" : "b4f5a90c887bde68512b8f1a6d684b27b5597b76",
+        "version" : "125.0.0"
       }
     }
   ],
