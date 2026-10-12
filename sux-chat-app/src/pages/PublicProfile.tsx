@@ -56,15 +56,20 @@ const PublicProfile = () => {
     setBusy(true);
     try {
       let chatId: string;
-      try {
-        chatId = (await api.createDirectChat(card.id)).id;
-      } catch (e: any) {
-        if (e?.message === "exists" && e.chatId) chatId = e.chatId;
-        else throw e;
+      if (card.is_bot) {
+        // Бот: «Начать» — личка и команда /start; без этого бот писать не может.
+        chatId = (await api.startBot(card.id)).chat_id;
+      } else {
+        try {
+          chatId = (await api.createDirectChat(card.id)).id;
+        } catch (e: any) {
+          if (e?.message === "exists" && e.chatId) chatId = e.chatId;
+          else throw e;
+        }
       }
       navigate("/chat", { replace: true, state: { chatId } });
-    } catch {
-      toast.error("Не удалось открыть чат");
+    } catch (e: any) {
+      toast.error(e?.message || "Не удалось открыть чат");
       setBusy(false);
     }
   };
@@ -122,7 +127,7 @@ const PublicProfile = () => {
             <div className="flex gap-3">
               {!isMe && (
                 <button type="button" onClick={write} disabled={busy} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50">
-                  <MessageSquare className="w-4 h-4" /> {busy ? "Открываю…" : "Написать"}
+                  <MessageSquare className="w-4 h-4" /> {busy ? "Открываю…" : card.is_bot ? "Начать" : "Написать"}
                 </button>
               )}
               <button type="button" onClick={share} className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90">

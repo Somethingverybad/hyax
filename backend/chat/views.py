@@ -96,6 +96,11 @@ class ProfileViewSet(viewsets.ModelViewSet):
             # оба — а по ссылке открывался случайный.
             exact = queryset.filter(username=q)
             queryset = exact if exact.exists() else queryset.filter(username__iexact=q)
+            # Ботов по нику не ищут: к боту приходят по ссылке и нажимают
+            # «Начать». В поиске бот виден, только если личка с ним уже есть.
+            me = getattr(self.request.user, 'profile', None)
+            my_direct = Chat.objects.filter(kind='direct', participants=me) if me else Chat.objects.none()
+            queryset = queryset.filter(Q(is_bot=False) | Q(chats__in=my_direct)).distinct()
         elif self.action == 'list':
             queryset = queryset.none()
 
@@ -358,6 +363,9 @@ class ChatViewSet(viewsets.ModelViewSet):
             )
             
         
+        _me = getattr(request.user, 'profile', None)
+        if _me is not None and _me.is_bot:
+            return Response({'detail': 'Бот не пишет первым: человек должен нажать «Начать» на карточке бота'}, status=403)
         participant_ids = request.data.get('participants', [])
         print("Raw participant_ids:", participant_ids, type(participant_ids))
         
@@ -1399,6 +1407,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             if _ch and _ch.kind == 'direct' and not profile.is_bot and \
                     Profile.objects.filter(chatparticipant__chat=_ch, is_bot=True, readonly_bot=True).exists():
                 return Response({"error": "Этому боту нельзя писать — он только рассылает"}, status=403)
+            if _ch and _ch.kind == 'direct' and profile.is_bot and not _ch.bot_started:
+                return Response({"error": "Человек ещё не нажал «Начать» — бот не пишет первым"}, status=403)
             if _ch and _ch.kind == 'channel':
                 _cp = ChatParticipant.objects.filter(chat=_ch, user=profile).first()
                 if not _cp or _cp.role not in ('owner', 'admin'):
@@ -2894,6 +2904,37 @@ class BotsView(APIView):
             avatar_url=(request.data.get("avatar_url") or None),
         )
         return Response({"bot": _bot_payload(bot, with_token=True)}, status=201)
+
+
+class BotStartView(APIView):
+    """POST bots/<id>/start/ — человек начинает диалог с ботом: личка
+    создаётся (или находится), помечается bot_started, боту уходит /start.
+    Повторный вызов просто открывает чат."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        me = getattr(request.user, 'profile', None)
+        if not me or me.is_bot:
+            return Response({"error": "Нет профиля"}, status=403)
+        bot = Profile.objects.filter(id=pk, is_bot=True).first()
+        if not bot:
+            return Response({"error": "Бот не найден"}, status=404)
+        from .moderation import blocked_either_way
+        if blocked_either_way(me.id, bot.id):
+            return Response({"error": "Нельзя написать этому боту"}, status=403)
+        chat = Chat.objects.filter(kind='direct', participants=me).filter(participants=bot).first()
+        if not chat:
+            chat = Chat.objects.create(kind='direct')
+            ChatParticipant.objects.create(chat=chat, user=me)
+            ChatParticipant.objects.create(chat=chat, user=bot)
+        started = False
+        if not chat.bot_started:
+            chat.bot_started = True
+            chat.save(update_fields=['bot_started'])
+            msg = Message.objects.create(chat=chat, sender=me, content="/start")
+            _notify_new_message(msg, me, request)
+            started = True
+        return Response({"chat_id": str(chat.id), "started": started})
 
 
 class BotDetailView(APIView):

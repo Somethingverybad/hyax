@@ -54,14 +54,20 @@ const UserProfileModal = ({
     setWriting(true);
     try {
       let chatId: string;
-      try { chatId = (await api.createDirectChat(userId)).id; }
-      catch (err: any) { if (err?.message === "exists" && err.chatId) chatId = err.chatId; else throw err; }
+      if (isBot) {
+        // Бот: «Начать» — личка и команда /start; без этого бот писать не может.
+        chatId = (await api.startBot(userId)).chat_id;
+      } else {
+        try { chatId = (await api.createDirectChat(userId)).id; }
+        catch (err: any) { if (err?.message === "exists" && err.chatId) chatId = err.chatId; else throw err; }
+      }
       onClose();
       navigate("/chat", { state: { chatId, title: profile?.username } });
-    } catch { toast.error("Не удалось открыть чат"); }
+    } catch (e: any) { toast.error(e?.message || "Не удалось открыть чат"); }
     finally { setWriting(false); }
   };
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const isBot = !!(profile as { is_bot?: boolean } | null)?.is_bot;
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<{ count: number; items: SavedImage[] } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -174,7 +180,7 @@ const UserProfileModal = ({
                   className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  {writing ? "Открываю…" : "Написать"}
+                  {writing ? "Открываю…" : isBot ? "Начать" : "Написать"}
                 </button>
               )}
               {onCall && (

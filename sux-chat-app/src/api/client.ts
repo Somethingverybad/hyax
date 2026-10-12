@@ -864,6 +864,14 @@ export const api = {
     return res.json();
   },
 
+  /** «Начать» с ботом: личка создаётся, боту уходит /start; повтор — просто открыть. */
+  startBot: async (botId: string): Promise<{ chat_id: string; started: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/bots/${botId}/start/`, { method: "POST", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось начать");
+    return body;
+  },
+
   createDirectChat: async (friendId: string): Promise<Chat> => {
     try {
       return await api.createChat([friendId]);

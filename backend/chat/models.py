@@ -143,6 +143,9 @@ class Chat(models.Model):
     sign_posts = models.BooleanField(default=False)  # показывать автора поста
     # Комментарии к постам канала; у Стены всегда включены (chat/wall.py).
     comments_enabled = models.BooleanField(default=True)
+    # Личка с ботом: человек нажал «Начать» (ушла команда /start). До этого
+    # бот в эту личку писать не может — первым он не пишет.
+    bot_started = models.BooleanField(default=False)
     subscribers_count = models.IntegerField(default=0)
     # Обои чата — общие для всех участников (ставит любой участник, в канале —
     # админ). kind: image | video; у видео есть постер для тех, кто выключил

@@ -80,6 +80,7 @@ urlpatterns = [
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
     path('bots/', BotsView.as_view(), name='bots'),
     path('bots/<uuid:pk>/', BotDetailView.as_view(), name='bot-detail'),
+    path('bots/<uuid:pk>/start/', BotStartView.as_view(), name='bot-start'),
     # Inline-боты (chat/inline.py): запрос → результаты → выбор → заполнение.
     path('bots/inline/query/', InlineQueryView.as_view(), name='inline-query'),
     path('bots/inline/<str:query_id>/answer/', InlineAnswerView.as_view(), name='inline-answer'),

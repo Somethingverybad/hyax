@@ -77,13 +77,18 @@ class InlineQueryView(APIView):
             return Response({"error": "Нет профиля"}, status=403)
         username = str(request.data.get("bot") or "").strip().lstrip("@")
         query = str(request.data.get("query") or "").strip()[:256]
-        bot = Profile.objects.filter(is_bot=True, username__iexact=username).first()
-        if not bot:
-            return Response({"error": "Бот не найден"}, status=404)
         chat = Chat.objects.filter(id=request.data.get("chat_id")).first()
         from .views import _can_post_to
         if not chat or chat.kind == "secret" or not _can_post_to(chat, me):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
+        # Бот должен быть «своим»: начатая личка с ним или он участник этого
+        # чата. Иначе любой @ник в сообщении искал бы среди всех ботов.
+        from django.db.models import Q
+        bot = (Profile.objects.filter(is_bot=True, username__iexact=username)
+               .filter(Q(chats__kind="direct", chats__bot_started=True, chats__participants=me) | Q(chats__id=chat.id))
+               .distinct().first())
+        if not bot:
+            return Response({"error": "Бот не найден"}, status=404)
         _prune()
         qid = secrets.token_urlsafe(12)
         QUERIES[qid] = {"bot_id": str(bot.id), "user_id": str(me.id), "chat_id": str(chat.id), "query": query, "results": {}, "at": time.time()}

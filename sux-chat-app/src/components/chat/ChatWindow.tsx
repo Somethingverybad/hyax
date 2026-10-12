@@ -787,7 +787,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return m ? { bot: m[1], query: m[2].trim() } : null;
   };
   const updateInline = (text: string) => {
-    const p = isSecret ? null : parseInline(text);
+    let p = isSecret ? null : parseInline(text);
+    // «@ник текст», где ник — участник этого чата или собеседник, — это
+    // упоминание, а не запрос к боту: к серверу не ходим и «Бот не найден»
+    // не показываем.
+    if (p) {
+      const nick = p.bot.toLowerCase();
+      const known = [peer?.username, ...(group?.participants || []).map((x) => x.username)].filter(Boolean).map((u) => (u as string).toLowerCase());
+      if (known.includes(nick)) p = null;
+    }
     if (inlineTimer.current) { clearTimeout(inlineTimer.current); inlineTimer.current = null; }
     if (!p || !p.query) { inlineQidRef.current = null; setInline((prev) => (prev ? null : prev)); return; }
     setInline((prev) => (prev && prev.bot === p.bot && prev.query === p.query ? prev : { bot: p.bot, query: p.query, results: null }));

@@ -19,7 +19,8 @@ from django.utils import timezone
 
 logger = logging.getLogger("tg_mirror")
 
-BACKFILL = 30           # сколько последних постов забрать при подключении
+BACKFILL = 30           # сколько последних постов забрать при подключении нового канала
+CATCH_UP_MAX = 2000     # сколько пропущенных постов добирать после простоя зеркала
 REFRESH_SEC = 15        # как часто смотреть, не подключили ли новый канал
 
 
@@ -49,6 +50,26 @@ class Command(BaseCommand):
         logger.info("вошли как %s (@%s)", me.first_name, me.username)
 
         peers: dict[int, str] = {}   # tg_peer_id → Chat.id (str)
+        caught_up: set[str] = set()  # каналы, по которым после старта добрали пропуски
+
+        @sync_to_async
+        def last_tg_id(ch):
+            from django.db.models import Max
+            return Chat.objects.get(id=ch.id).messages.filter(tg_id__isnull=False).aggregate(m=Max("tg_id"))["m"]
+
+        async def catch_up(ch, entity):
+            """Добрать посты, вышедшие пока зеркало стояло (или падало): всё новее
+            последнего сохранённого tg_id, без пушей. У канала без постов — BACKFILL
+            последних. Так неделя простоя (6–12.10.2026, IntegrityError по новой
+            колонке) не теряет ленту."""
+            last = await last_tg_id(ch)
+            if last:
+                history = [m async for m in client.iter_messages(entity, min_id=last, limit=CATCH_UP_MAX)]
+            else:
+                history = [m async for m in client.iter_messages(entity, limit=BACKFILL)]
+            for m in reversed(history):
+                await process(m, str(ch.id), notify=False)
+            return len(history)
 
         @sync_to_async
         def load_channels():
@@ -101,8 +122,9 @@ class Command(BaseCommand):
                 pass
             return {"file_url": file_url, "file_name": name, "file_size": got, "dims": dims, "poster_url": poster_url}
 
-        async def process(msg, chat_id):
-            """Один пост Telegram → сообщение канала + рассылка."""
+        async def process(msg, chat_id, notify=True):
+            """Один пост Telegram → сообщение канала + рассылка. notify=False —
+            догон истории при подключении: старые посты без пушей."""
             if getattr(msg, "action", None) is not None:
                 return  # служебное: «канал создан», «закреплено» и т.п.
             chat = await sync_to_async(Chat.objects.get)(id=chat_id)
@@ -119,7 +141,8 @@ class Command(BaseCommand):
                 chat, msg.id, text=text, created_at=msg.date, grouped_id=getattr(msg, "grouped_id", None), media=media,
             )
             if created and message:
-                await sync_to_async(notify_mirror_post)(message)
+                if notify:
+                    await sync_to_async(notify_mirror_post)(message)
                 logger.info("%s/%s → %s%s", chat.tg_username, msg.id, message.id, " +медиа" if media else "")
 
         async def activate(ch):
@@ -146,10 +169,9 @@ class Command(BaseCommand):
                     avatar_url=avatar_url, tg_peer_id=entity.id, tg_state="active", tg_error="",
                 )
                 peers[entity.id] = str(ch.id)
-                history = [m async for m in client.iter_messages(entity, limit=BACKFILL)]
-                for m in reversed(history):
-                    await process(m, str(ch.id))
-                logger.info("подключён %s (%s): %d постов", ch.tg_username, entity.title, len(history))
+                n = await catch_up(ch, entity)
+                caught_up.add(str(ch.id))
+                logger.info("подключён %s (%s): %d постов", ch.tg_username, entity.title, n)
             except Exception as e:
                 logger.exception("не удалось подключить %s", ch.tg_username)
                 await save_channel(ch, tg_state="error", tg_error=str(e)[:300])
@@ -162,6 +184,15 @@ class Command(BaseCommand):
                             await activate(ch)
                         else:
                             peers[ch.tg_peer_id] = str(ch.id)
+                            if str(ch.id) not in caught_up:
+                                caught_up.add(str(ch.id))  # одна попытка за запуск
+                                try:
+                                    entity = await client.get_entity(ch.tg_username)
+                                    n = await catch_up(ch, entity)
+                                    if n:
+                                        logger.info("догнали %s: %d постов", ch.tg_username, n)
+                                except Exception:
+                                    logger.exception("догон %s", ch.tg_username)
                 except Exception:
                     logger.exception("refresh")
                 await asyncio.sleep(REFRESH_SEC)
