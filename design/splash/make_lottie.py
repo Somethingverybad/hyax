@@ -25,17 +25,22 @@
 import json
 import os
 
-from fontTools.pens.recordingPen import RecordingPen
+from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FONT = os.path.join(ROOT, "sux-chat-app/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+# Кириллица — для подписи «Народный мессенджер» под подчёркиванием. Полный
+# статический Inter: в кириллическом сабсете fontsource буквы а, о, р, е, с, Н
+# — составные из латинских, а латинские контуры лежат в другом файле.
+FONT_CYR = os.path.join(ROOT, "design/splash/Inter-Medium.ttf")
+TAGLINE = "Народный мессенджер"
 OUT = os.path.join(ROOT, "sux-chat-app/public/splash.json")
 
 W = H = 768
 FR = 30
-OP = 140
+OP = 150
 CX, CY = 384, 330            # центр иконки
 ICON = 316                   # сторона подложки
 K = ICON / 1024              # масштаб из макета Figma
@@ -140,7 +145,9 @@ def glyph_paths(font, text):
     out = []
     for ch in text:
         gn = cmap[ord(ch)]
-        pen = RecordingPen()
+        # Составные глифы (кириллические а, о, р, е, с, Н — из латинских)
+        # разбираем на контуры, иначе они остаются пустыми.
+        pen = DecomposingRecordingPen(gs)
         gs[gn].draw(pen)
         out.append((ch, x, pen.value))
         x += hmtx[gn][0]
@@ -262,6 +269,27 @@ def text_layers(start_ind):
         o=anim((72, 0), (74, 100)),
     )
     layers.insert(0, layer(start_ind + len(glyphs), "dot", [group([dot, fill], "dot")], dot_ks))
+
+    # Подпись под линией: проявляется и чуть всплывает, когда подчёркивание
+    # уже встало. Один слой на всю строку, трекинг естественный.
+    cyr = TTFont(FONT_CYR)
+    if "fvar" in cyr:
+        cyr = instantiateVariableFont(cyr, {"wght": 500})
+    tg, tadv, _ = glyph_paths(cyr, TAGLINE)
+    tscale = (CAP_H * 0.40) / cyr["OS/2"].sCapHeight
+    t_left = CX - tadv * tscale / 2
+    t_base = under + line_h / 2 + 42
+    tshapes = []
+    for n, (ch, gx, rec) in enumerate(tg):
+        for j, path in enumerate(contours(rec, tscale, gx * tscale, 0)):
+            tshapes.append({"ty": "sh", "nm": f"t{n}_{j}", "ks": static(path)})
+    tshapes.append({"ty": "fl", "nm": "tagline", "o": static(100), "c": static([*MINT_DEEP, 1]), "r": 1, "bm": 0})
+    T_TAG = T_LINE + 2
+    tag_ks = transform(
+        p=anim((T_TAG, [t_left, t_base + 10, 0]), (T_TAG + 14, [t_left, t_base, 0]), ease=EASE_OUT),
+        o=anim((T_TAG, 0), (T_TAG + 12, 100)),
+    )
+    layers.insert(0, layer(start_ind + len(glyphs) + 1, "tagline", [group(tshapes, "tagline")], tag_ks))
     markers = [
         {"tm": 30, "cm": "haptic:medium", "dr": 0},   # «X» собран
         {"tm": 46, "cm": "haptic:light", "dr": 0},    # подложка встала
@@ -278,9 +306,9 @@ def main():
     layers, markers = text_layers(1)
     n = len(layers)
     layers += [
-        bar(n + 1, "bar 2", BAR2_END, 1 - 0.43 / 1.9066, -45, 26),
-        bar(n + 2, "bar 1", BAR1_END, 1.0, 45, -26),
-        backdrop(n + 3),
+        bar(n + 2, "bar 2", BAR2_END, 1 - 0.43 / 1.9066, -45, 26),
+        bar(n + 3, "bar 1", BAR1_END, 1.0, 45, -26),
+        backdrop(n + 4),
     ]
     doc = {"v": "5.7.4", "fr": FR, "ip": 0, "op": OP, "w": W, "h": H, "nm": "WhoYaX splash",
            "ddd": 0, "assets": [], "layers": layers, "markers": markers}
