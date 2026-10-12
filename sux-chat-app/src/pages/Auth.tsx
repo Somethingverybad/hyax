@@ -136,7 +136,7 @@ const Auth = () => {
 
           <div className="text-center mb-2 md:mb-3">
             <h1 className="text-[34px] md:text-[38px] font-extrabold text-foreground leading-none tracking-tight">WYX</h1>
-            <p className="text-caption text-subtle mt-1.5 tracking-[0.32em] uppercase">эсемэсэнджер</p>
+            <p className="text-caption text-subtle mt-1.5 tracking-[0.22em] uppercase">народный мессенджер</p>
             <span className="mt-2.5 mx-auto block w-9 h-[3px] rounded-full bg-foreground/80" />
           </div>
 
