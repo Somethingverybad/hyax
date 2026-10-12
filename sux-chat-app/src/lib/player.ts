@@ -192,7 +192,7 @@ export function stop() {
   if (audio) audio.src = "";
   // Перемешивание и повтор — настройки человека, они переживают остановку.
   state = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-            shuffle: state.shuffle, repeat: state.repeat };
+            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume };
   heard = new Set();
   emit();
 }
