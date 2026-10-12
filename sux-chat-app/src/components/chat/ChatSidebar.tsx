@@ -1189,6 +1189,27 @@ const ChatSidebar = ({
               isCollapsed ? "px-2 text-xs" : "px-4"
             }`}>
               {isCollapsed ? "Нет чатов" : "Нет чатов. Создайте первый чат!"}
+              {/* У нового человека чатов нет и писать некому — единственный путь
+                  к первому диалогу — отдать друзьям ссылку на свой профиль. Та же
+                  системная «Поделиться», что и в профиле, с откатом в буфер. */}
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  disabled={!currentUser?.username}
+                  onClick={async () => {
+                    if (!currentUser?.username) return;
+                    const r = await shareProfile(currentUser.username);
+                    if (r === "copied") sonnerToast.success("Ссылка на профиль скопирована — отправьте её друзьям");
+                    else if (r === "error") sonnerToast.error("Не удалось поделиться");
+                  }}
+                  className={mint
+                    ? "mint-dark-pill mt-4 h-[42px] px-5 text-[12.7px] inline-flex items-center justify-center gap-[11px]"
+                    : "mt-4 h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium inline-flex items-center justify-center gap-2 active:opacity-90"}
+                >
+                  {mint ? <MintIcon name="share" size={15} /> : <Share2 className="w-4 h-4" />}
+                  Пригласить друзей
+                </button>
+              )}
             </div>
           )}
         </div>
