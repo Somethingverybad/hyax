@@ -32,7 +32,7 @@ const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeCha
   // «Избранное» — первой строкой, как в пересылке сообщений.
   .sort((a, b) => Number(b.kind === "saved") - Number(a.kind === "saved"));
 
-const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, includeChannels, excludeChatId }: {
+const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, includeChannels, excludeChatId, onShareToWall }: {
   open: boolean;
   /** Что отправляем: обычно ссылка. */
   text: string;

@@ -12,6 +12,7 @@ const KEYS = {
   // Музыка: список плейлистов и треки по каждому — по той же причине.
   playlists: "cache_playlists",
   playlistTracks: "cache_playlist_tracks",
+  wall: "cache_wall",
 } as const;
 
 export function readCache<T>(key: keyof typeof KEYS): T | null {
