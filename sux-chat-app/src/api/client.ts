@@ -193,6 +193,8 @@ export interface Profile {
   push_preview?: boolean;
   /** «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников. */
   notify_sound?: NotificationSoundInfo | null;
+  /** Звук входящего звонка (lib/ringtone.ts). Только в своём профиле. */
+  ringtone?: string;
   /** Принимать Р.Ё.В — вибрацию, которую шлёт собеседник. */
   rov_enabled?: boolean;
   /** Показывать паки 18+. Приходит только в своём профиле. */
@@ -1773,7 +1775,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[] }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[] }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

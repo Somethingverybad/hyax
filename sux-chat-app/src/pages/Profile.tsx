@@ -38,6 +38,8 @@ export interface Profile {
   push_preview?: boolean;
   rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
+  /** Звук входящего звонка: "" — стандартный, "classic", "sound:<id>" (lib/ringtone.ts). */
+  ringtone?: string;
   /** Статус «Скрыт» (Конфиденциальность). */
   hide_online?: boolean;
   /** Кто видит сохранёнки: all | selected | none. */

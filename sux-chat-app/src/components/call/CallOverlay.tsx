@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { playSfx } from "@/lib/sfx";
+import { playRingtone, resolveRingtoneUrl } from "@/lib/ringtone";
+import { readCache } from "@/lib/session-cache";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
@@ -76,9 +77,10 @@ const CallOverlay = ({
     if (state !== "incoming") return;
     let stop: (() => void) | null = null;
     let cancelled = false;
-    playSfx("/sounds/call.mp3", { loop: true, volume: 0.8 }).then((s) => {
-      if (cancelled) s();
-      else stop = s;
+    // Звук — из настроек (Профиль → Уведомления и звуки → Звук звонка).
+    resolveRingtoneUrl(readCache<{ ringtone?: string }>("user")?.ringtone).then((url) => {
+      if (cancelled) return;
+      stop = playRingtone(url, 0.8);
     });
     return () => {
       cancelled = true;
