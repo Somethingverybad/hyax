@@ -1029,7 +1029,12 @@ const Chat = ({ savedMode = false }: { savedMode?: boolean } = {}) => {
             onOpenIdeabox={openIdeabox}
             userId={user.id}
             username={user.username}
-            chats={listChats}
+            chats={sidebarChats}
+            onWallHide={async () => {
+              if (!confirm("Скрыть Стену из списка чатов? Вернуть её можно в «Профиль → Конфиденциальность».")) return;
+              try { await api.setWallEnabled(false); await refreshWall(); }
+              catch { toast.error("Не получилось"); }
+            }}
             onSelectChat={(id, title, kind) => {
               setSelectedChatId(id);
               if (title) setSelectedChatTitle(title);
