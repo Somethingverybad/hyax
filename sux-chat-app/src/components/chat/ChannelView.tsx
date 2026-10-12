@@ -921,17 +921,6 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     <Share2 className="w-4 h-4" />
                   </button>
                 )}
-                {!wall && isAdmin && !post._pending && (
-                  <button
-                    type="button"
-                    onClick={() => setRepostFor(post)}
-                    aria-label="На Стену"
-                    title="Опубликовать на Стене"
-                    className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground"
-                  >
-                    <Newspaper className="w-4 h-4" />
-                  </button>
-                )}
                 {(wall ? (wallAdmin || post.sender?.id === userId) : isAdmin) && !post._pending && (
                   <button
                     type="button"
@@ -1240,6 +1229,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           onClose={() => setShareFor(null)}
           onPick={(chatId, title) => void forwardPost(shareFor, chatId, title)}
           onShareOutside={() => void sharePostOutside(shareFor)}
+          onShareToWall={!wall && isAdmin ? () => setRepostFor(shareFor) : undefined}
         />
       )}
 

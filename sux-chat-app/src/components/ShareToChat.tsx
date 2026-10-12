@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bookmark, Share2, Users, Radio } from "lucide-react";
+import { Bookmark, Share2, Users, Radio, Newspaper } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { readCache } from "@/lib/session-cache";
@@ -47,6 +47,8 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   includeChannels?: boolean;
   /** Не показывать этот чат (откуда пересылаем). */
   excludeChatId?: string;
+  /** «На Стену» — репост поста своего канала (ChannelView). */
+  onShareToWall?: () => void;
 }) => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
@@ -141,19 +143,31 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
           ))}
         </div>
 
-        {onShareOutside && (
-          <div className="shrink-0 px-4 pt-2 pb-[calc(var(--sab)+16px)] md:pb-4">
-            <button
-              type="button"
-              onClick={() => { onClose(); onShareOutside(); }}
-              className="w-full h-12 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
-            >
-              <Share2 className="w-5 h-5" />
-              Поделиться за пределами WhoYaX
-            </button>
+        {(onShareOutside || onShareToWall) && (
+          <div className="shrink-0 px-4 pt-2 pb-[calc(var(--sab)+16px)] md:pb-4 space-y-2">
+            {onShareToWall && (
+              <button
+                type="button"
+                onClick={() => { onClose(); onShareToWall(); }}
+                className="w-full h-12 rounded-md bg-surface-4 text-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
+              >
+                <Newspaper className="w-5 h-5 text-primary" />
+                Опубликовать на Стене
+              </button>
+            )}
+            {onShareOutside && (
+              <button
+                type="button"
+                onClick={() => { onClose(); onShareOutside(); }}
+                className="w-full h-12 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
+              >
+                <Share2 className="w-5 h-5" />
+                Поделиться за пределами WhoYaX
+              </button>
+            )}
           </div>
         )}
-        {!onShareOutside && <div className="shrink-0 h-[calc(var(--sab)+16px)] md:h-4" aria-hidden />}
+        {!onShareOutside && !onShareToWall && <div className="shrink-0 h-[calc(var(--sab)+16px)] md:h-4" aria-hidden />}
       </div>
     </div>
   );
