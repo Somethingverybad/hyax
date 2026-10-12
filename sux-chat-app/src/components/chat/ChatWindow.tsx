@@ -6,7 +6,7 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces } from "lucide-react";
+import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -52,6 +52,8 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { takePendingShare } from "@/lib/shareInbox";
+import ActionSheet from "@/components/chat/ActionSheet";
+import type { ChatActionInfo } from "@/api/client";
 import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, type IndexedSticker } from "@/lib/stickerIndex";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
@@ -99,6 +101,9 @@ interface Message {
   file_name: string | null;
   /** Приходит с бэкенда, если сообщение — стикер. */
   sticker?: { id: string; file_url: string; emoji?: string } | null;
+  /** Сообщение-жест: «😉 Вася подмигивает Пете» (chat/ChatAction). */
+  action?: { id: number; slug: string; name: string; verb: string; emoji: string } | null;
+  action_target?: { id: string; username: string } | null;
   /** Аудио-стикер: звук, который слышит получатель. */
   sound?: { id: string; slug: string; name: string; url: string } | null;
   /** Цитата: на какое сообщение это ответ (компактное превью с сервера). */
@@ -256,6 +261,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
   const [stickersOpen, setStickersOpen] = useState(false);
+  // Действие из меню сообщения — адресат автор сообщения; из панели в группе —
+  // сначала выбираем, кому.
+  const [actionFor, setActionFor] = useState<{ id: string; username: string } | null>(null);
+  const [actionTargetPick, setActionTargetPick] = useState<ChatActionInfo | null>(null);
   // Аудио-стикеры: каталог с сервера, выбранный звук уедет с сообщением
   // и прозвучит у получателя (в пуше и в открытом приложении).
   const [sounds, setSounds] = useState<NotificationSoundInfo[]>([]);
@@ -1908,6 +1917,34 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  const sendAction = async (action: ChatActionInfo, targetId?: string) => {
+    if (!chatId) return;
+    const target = targetId ? (group?.participants || []).find((p) => p.id === targetId) || (peer && peer.id === targetId ? peer : null) : peer;
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimistic: Message = {
+      id: tempId, content: `${action.emoji} ${action.verb} ${target?.username || ""}`, file_url: null, file_name: null,
+      sender_id: userId, sender: { id: userId } as Profile, created_at: new Date().toISOString(),
+      action, action_target: target ? { id: target.id, username: target.username } : null, pending: true, _key: tempId,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    lastSendTimeRef.current = Date.now();
+    setTimeout(() => scrollToBottom(true), 50);
+    void playSfx("/sounds/send.mp3", { volume: 0.3 });
+    try {
+      const sent = await api.sendAction(chatId, action.id, targetId);
+      setMessages((prev) => prev.some((m) => m.id === sent.id) ? prev.filter((m) => m.id !== tempId) : prev.map((m) => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m)));
+    } catch (e: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      toast.error(e?.message || "Не удалось отправить");
+    }
+  };
+  /** Из панели стикеров: в личке — собеседнику, в группе — спросим кому. */
+  const pickAction = (action: ChatActionInfo) => {
+    setStickersOpen(false);
+    if (isGroup) { setActionTargetPick(action); return; }
+    void sendAction(action);
+  };
+
   const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }, burstMode = false) => {
     noteStickerUsed(sticker.id); // частые — первыми в подсказках
     if (burstMode) setBurst({ url: sticker.file_url, key: Date.now() }); // отправитель видит глюк у себя тоже
@@ -2696,6 +2733,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     ? [
         { label: "Реакция", icon: <Smile className="w-5 h-5" />, show: !menuMessage.pending && !!menuPos, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
         { label: "Ответить", icon: <Reply className="w-5 h-5" />, show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
+        { label: "Действие…", icon: <Sparkles className="w-5 h-5" />, show: !!menuMessage.sender?.id && menuMessage.sender.id !== userId && !saved && !isSecret && !menuMessage.pending, onClick: () => { setActionFor({ id: menuMessage.sender!.id, username: menuMessage.sender!.username || "" }); closeMenu(); } },
         { label: "Скопировать", icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
         { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
         { label: "Переслать", icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
@@ -3050,6 +3088,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
           {shownRows.map((message, index) => {
             const isOwn = message.sender?.id === userId;
+            if (message.action) {
+              const who = isOwn ? "Вы" : message.sender?.username || "Кто-то";
+              const whom = message.action_target?.id === userId ? "вам" : message.action_target?.username || "";
+              return (
+                <div key={message._key ?? message.id} id={`msg-${message.id}`} className="flex justify-center my-1.5" data-message-id={message.id}>
+                  <button type="button"
+                    onClick={() => { hideKeyboard(); setMenuPos(null); setMenuMessage(message); }}
+                    onContextMenu={(e) => { e.preventDefault(); hideKeyboard(); setMenuMessage(message); setMenuPos({ x: e.clientX, y: e.clientY }); }}
+                    className={cn("max-w-[85%] px-3.5 py-1.5 rounded-full bg-surface-3 text-small text-foreground/90 text-center", message.pending && "opacity-60")}>
+                    <span className="mr-1">{message.action.emoji}</span>
+                    <b>{who}</b> {message.action.verb} <b>{whom}</b>
+                  </button>
+                </div>
+              );
+            }
             // Ссылка на пак, тему или профиль разворачивается карточкой
             // (PackLinkCard / ProfileLinkCard), и в тексте её уже не показываем.
             const packLink = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u) || channelLinkRef(u)) || null;
@@ -3925,6 +3978,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
+                onSelectAction={!saved && !isSecret ? pickAction : undefined}
               />
             </div>
           )}
@@ -4183,6 +4237,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
+                onSelectAction={!saved && !isSecret ? pickAction : undefined}
               />
             </div>
           )}
@@ -4363,6 +4418,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),
           «Избранное» — первой строкой. */}
+      {actionFor && (
+        <ActionSheet title={`Действие для ${actionFor.username}`} onClose={() => setActionFor(null)}
+          onPick={(a) => { const t = actionFor; setActionFor(null); void sendAction(a, t.id); }} />
+      )}
+      {actionTargetPick && (
+        <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={() => setActionTargetPick(null)}>
+          <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[420px] max-h-[70%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
+              <span className="text-xl">{actionTargetPick.emoji}</span>
+              <span className="font-semibold flex-1">{actionTargetPick.name} — кому?</span>
+              <button type="button" onClick={() => setActionTargetPick(null)} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+              {(group?.participants || []).filter((p) => p.id !== userId).map((p) => (
+                <button key={p.id} type="button" onClick={() => { const a = actionTargetPick; setActionTargetPick(null); void sendAction(a, p.id); }}
+                  className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70">
+                  <Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8" />
+                  <span className="flex-1 min-w-0 truncate text-body">{p.username}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {reportFor && (
         <ReportSheet target={{ type: "message", id: reportFor.id }} title="Жалоба на сообщение" onClose={() => setReportFor(null)} />
       )}

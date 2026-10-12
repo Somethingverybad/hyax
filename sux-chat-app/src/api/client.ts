@@ -310,6 +310,9 @@ export interface PinnedInfo {
 
 export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null; anim?: string | null }
 
+/** Действие в чате: кнопка name, в сообщении — «<emoji> <ник> <verb> <адресат>». */
+export interface ChatActionInfo { id: number; slug: string; name: string; verb: string; emoji: string; premium?: boolean }
+
 /** Бан на Стене: until пусто — навсегда. */
 export interface WallBan { until: string | null; reason: string; created_at: string }
 export interface WallBanRow extends WallBan { profile: { id: string; username: string; avatar_url?: string | null } }
@@ -1110,6 +1113,23 @@ export const api = {
       throw new Error((await res.json().catch(() => ({})))?.error || "Кнопка не сработала");
     }
     return res.json().catch(() => ({}));
+  },
+
+  // ===== ДЕЙСТВИЯ («подмигнуть», «обнять») =====
+  getActions: async (): Promise<ChatActionInfo[]> => {
+    const res = await fetchWithAuth(`${API_URL}/actions/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()).actions || [];
+  },
+  /** Отправить действие: в личке адресат — собеседник, в группе — target. */
+  sendAction: async (chatId: string, actionId: number, targetId?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/`, {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ chat: chatId, content: "", action_id: actionId, target_id: targetId || undefined }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось отправить");
+    return body;
   },
 
   // ===== СТЕНА (chat/wall.py) =====

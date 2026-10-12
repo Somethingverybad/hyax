@@ -651,6 +651,16 @@ def _notify_new_message(message, profile, request):
                 preview = "Новое сообщение"
         # У поста канала заголовок пуша — имя канала, а не автора.
         push_title = message.chat.name if getattr(message.chat, "kind", "") == "channel" else profile.username
+        # Действие: адресату — «подмигивает вам», остальным в группе — «подмигивает Имя».
+        if message.action_id and message.action_target_id:
+            _act = message.action
+            _tgt = recipients.filter(id=message.action_target_id)
+            if _tgt.exists():
+                notify_profiles(_tgt, title=push_title, body=f"{_act.emoji} {profile.username} {_act.verb} вам"[:150],
+                                extra={"chat_id": str(message.chat.id)},
+                                sound=profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None)
+            recipients = recipients.exclude(id=message.action_target_id)
+            preview = f"{_act.emoji} {profile.username} {_act.verb} {message.action_target.username}"
         notify_profiles(
             recipients,
             title=push_title,
@@ -1398,6 +1408,30 @@ class MessageViewSet(viewsets.ModelViewSet):
                 if _ban:
                     return Response({"error": "Вам запрещено писать на Стену", "wall_ban": ban_payload(_ban)}, status=403)
 
+        # Действие («подмигнуть»): адресат — указанный участник, в личке —
+        # собеседник. Текст сообщения — для превью и поиска; клиент рисует
+        # жест по центру ленты.
+        action_obj = None
+        action_target = None
+        action_id = request.data.get('action_id')
+        if action_id:
+            action_obj = ChatAction.objects.filter(id=action_id, is_active=True).first()
+            if not action_obj:
+                return Response({"error": "Такого действия нет"}, status=400)
+            _chat_for_action = Chat.objects.filter(id=_chat_id).first() if _chat_id else None
+            if not _chat_for_action:
+                return Response({"error": "Чат не найден"}, status=404)
+            target_id = request.data.get('target_id')
+            if target_id:
+                action_target = Profile.objects.filter(id=target_id).first()
+                if not action_target or not ChatParticipant.objects.filter(chat=_chat_for_action, user=action_target).exists():
+                    return Response({"error": "Адресат не в этом чате"}, status=400)
+            else:
+                other = ChatParticipant.objects.filter(chat=_chat_for_action).exclude(user=profile).select_related('user').first()
+                if not other or _chat_for_action.is_group:
+                    return Response({"error": "Укажите, кому адресовано действие"}, status=400)
+                action_target = other.user
+
         # Музыка из своего плейлиста: файл уже в хранилище — ссылку берём у
         # трека, ничего не перекачивая. Только свои плейлисты: иначе по id
         # чужого трека можно было бы разослать чужой файл.
@@ -1429,6 +1463,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         # Подготавливаем данные для сохранения
         save_kwargs = {'sender': profile}
+        if action_obj:
+            save_kwargs.update({'action': action_obj, 'action_target': action_target,
+                                'content': f"{action_obj.emoji} {action_obj.verb} {action_target.username}"})
         if geo:
             save_kwargs.update({
                 'geo_lat': geo[0], 'geo_lng': geo[1], 'entities': [],
@@ -2939,6 +2976,14 @@ def _post_payload(msg, request):
     data["comments_count"] = msg.comments.filter(deleted=False).count()
     data["views_count"] = msg.views.count()
     return data
+
+
+class ActionsView(APIView):
+    """Каталог действий («подмигнуть», «обнять»…) для панели стикеров."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response({"actions": ChatActionSerializer(ChatAction.objects.filter(is_active=True), many=True).data})
 
 
 class ChannelsView(APIView):

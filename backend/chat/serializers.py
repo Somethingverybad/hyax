@@ -513,6 +513,8 @@ class MessageSerializer(serializers.ModelSerializer):
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
     sticker = StickerSerializer(read_only=True)
+    action = serializers.SerializerMethodField()
+    action_target = serializers.SerializerMethodField()
     sound = NotificationSoundSerializer(read_only=True)
     reply_to = serializers.SerializerMethodField()
     forwarded_from = serializers.SerializerMethodField()
@@ -521,8 +523,17 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden']
-        read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden', 'action', 'action_target']
+        read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden', 'action', 'action_target']
+
+    def get_action(self, obj):
+        """Действие («подмигивает»): клиент рисует сообщение-жест по центру."""
+        a = obj.action
+        return {"id": a.id, "slug": a.slug, "name": a.name, "verb": a.verb, "emoji": a.emoji} if a else None
+
+    def get_action_target(self, obj):
+        t = obj.action_target
+        return {"id": str(t.id), "username": t.username} if t else None
 
     def get_forwarded_from(self, obj):
         """От кого переслано: профиль, если он есть, — клиент может открыть его."""
@@ -681,3 +692,9 @@ class MusicTrackSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         return obj.file.url if obj.file else ''
+
+
+class ChatActionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatAction
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium']

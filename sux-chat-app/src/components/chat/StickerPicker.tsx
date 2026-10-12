@@ -6,12 +6,13 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2 } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles } from "lucide-react";
 import { shareStickerPack } from "@/lib/share";
 import ImageCropper from "@/components/ImageCropper";
 import { readCache } from "@/lib/session-cache";
 import { invalidateStickerIndex } from "@/lib/stickerIndex";
-import type { NotificationSoundInfo } from "@/api/client";
+import type { NotificationSoundInfo, ChatActionInfo } from "@/api/client";
+import { ActionGrid } from "@/components/chat/ActionSheet";
 
 interface Sticker {
   id: string;
@@ -42,6 +43,8 @@ interface StickerPickerProps {
   sounds?: NotificationSoundInfo[];
   selectedSoundId?: string | null;
   onSelectSound?: (sound: NotificationSoundInfo | null) => void;
+  /** Действия («подмигнуть», «обнять»): третья вкладка; нет — вкладка скрыта. */
+  onSelectAction?: (action: ChatActionInfo) => void;
 }
 
 /**
@@ -65,8 +68,9 @@ const StickerPicker = ({
   sounds = [],
   selectedSoundId = null,
   onSelectSound,
+  onSelectAction,
 }: StickerPickerProps) => {
-  const [tab, setTab] = useState<"stickers" | "sounds">("stickers");
+  const [tab, setTab] = useState<"stickers" | "sounds" | "actions">("stickers");
   // Долгое удержание стикера (burst): таймер и флаг, чтобы click после него не сработал.
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdFiredRef = useRef(false);
@@ -264,13 +268,19 @@ const StickerPicker = ({
 
   const mint = useMint();
   // «Мята»: переключатель «Стикеры | Звуки» — белая таблетка внизу панели.
+  const segs = onSelectAction
+    ? [{ id: "stickers" as const, label: "Стикеры", w: 36 }, { id: "sounds" as const, label: "Звуки", w: 28 }, { id: "actions" as const, label: "Действия", w: 36 }]
+    : [{ id: "stickers" as const, label: "Стикеры", w: 56 }, { id: "sounds" as const, label: "Звуки", w: 44 }];
+  const segLeft = segs.slice(0, Math.max(0, segs.findIndex((x) => x.id === tab))).reduce((a, x) => a + x.w, 0);
+  const segW = segs.find((x) => x.id === tab)?.w ?? segs[0].w;
   const mintTabs = (
     <div className="absolute left-0 right-0 bottom-[12px] flex justify-center z-10 pointer-events-none">
-      <div className="mint-pill pointer-events-auto relative h-[28px] w-[152px] flex text-[12px] font-medium mint-ink overflow-hidden">
+      <div className={cn("mint-pill pointer-events-auto relative h-[28px] flex text-[12px] font-medium mint-ink overflow-hidden", onSelectAction ? "w-[222px]" : "w-[152px]")}>
         <span aria-hidden className="absolute top-0 bottom-0 rounded-full transition-all duration-300"
-          style={{ background: "rgb(52 92 84 / 0.15)", left: tab === "stickers" ? 0 : "56%", width: tab === "stickers" ? "56%" : "44%" }} />
-        <button type="button" onClick={() => setTab("stickers")} className="relative w-[56%]">Стикеры</button>
-        <button type="button" onClick={() => setTab("sounds")} className="relative w-[44%]">Звуки</button>
+          style={{ background: "rgb(52 92 84 / 0.15)", left: `${segLeft}%`, width: `${segW}%` }} />
+        {segs.map((x) => (
+          <button key={x.id} type="button" onClick={() => setTab(x.id)} className="relative" style={{ width: `${x.w}%` }}>{x.label}</button>
+        ))}
       </div>
     </div>
   );
@@ -297,6 +307,29 @@ const StickerPicker = ({
         <Music2 className="w-3.5 h-3.5" />
         Звуки
       </button>
+      {onSelectAction && (
+        <button
+          type="button"
+          onClick={() => setTab("actions")}
+          className={cn(
+            "flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1.5",
+            tab === "actions" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
+          )}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Действия
+        </button>
+      )}
+    </div>
+  );
+
+  // Вкладка действий: сетка «эмодзи + название», тап — отправить.
+  const actionsTab = (
+    <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
+      {tabs}
+      <div className="flex-1 overflow-y-auto">
+        <ActionGrid compact onPick={(a) => onSelectAction?.(a)} />
+      </div>
     </div>
   );
 
@@ -422,6 +455,7 @@ const StickerPicker = ({
   );
 
   if (tab === "sounds") return soundsTab;
+  if (tab === "actions" && onSelectAction) return actionsTab;
 
   if (loading) {
     return (

@@ -283,6 +283,9 @@ class Message(models.Model):
     # «Показывать 18+». wall_hidden — скрыт админом (виден только админам и автору).
     wall_safe = models.BooleanField(default=False)
     wall_hidden = models.BooleanField(default=False)
+    # Действие («подмигивает») и его адресат — сообщение-жест (ChatAction).
+    action = models.ForeignKey('ChatAction', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    action_target = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     # Момент последнего изменения (текст, удаление у всех). По нему клиент
     # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,
     # что менялось. auto_now срабатывает на save(); при save(update_fields=…)
@@ -992,3 +995,22 @@ class WallBan(models.Model):
     @property
     def active(self):
         return self.until is None or self.until > timezone.now()
+
+
+class ChatAction(models.Model):
+    """«Действие» в чате: «подмигнуть», «обнять» — сообщение-жест с адресатом.
+    Каталог правится в админке; premium — для платных аккаунтов (пока не
+    ограничивается)."""
+    slug = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=40)        # кнопка: «Подмигнуть»
+    verb = models.CharField(max_length=60)        # в сообщении: «подмигивает»
+    emoji = models.CharField(max_length=8, default="✨")
+    order = models.PositiveSmallIntegerField(default=100)
+    is_active = models.BooleanField(default=True)
+    premium = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return f"{self.emoji} {self.name}"

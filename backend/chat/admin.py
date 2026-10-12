@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import (
+    ChatAction,
     Block, BugReport, Chat, ChatParticipant, Friendship, Message, NotificationSound,
     Profile, Report, SoundPack, StickerPack, Theme,
 )
@@ -156,3 +157,13 @@ class ThemeAdmin(admin.ModelAdmin):
     list_editable = ("is_public",)
     list_filter = ("is_public",)
     search_fields = ("name", "author__username")
+
+
+@admin.register(ChatAction)
+class ChatActionAdmin(admin.ModelAdmin):
+    """Действия в чате («подмигнуть», «обнять»). Добавить новое — строкой здесь;
+    verb — форма в сообщении: «<эмодзи> <ник> <verb> <ник адресата>»."""
+    list_display = ("emoji", "name", "verb", "slug", "order", "is_active", "premium")
+    list_editable = ("order", "is_active", "premium")
+    prepopulated_fields = {"slug": ("name",)}
+    ordering = ("order",)
