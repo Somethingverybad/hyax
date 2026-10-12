@@ -46,6 +46,10 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
 export const shareSoundPack = (name: string, id: string) =>
   shareUrl("WYX", `Пак звуков «${name}» в WYX`, soundPackLink(id));
 
+/** Поделиться стикерпаком: системное окно «Поделиться», иначе — буфер. */
+export const shareStickerPack = (name: string, id: string) =>
+  shareUrl("WYX", `Стикеры «${name}» в WYX`, stickerPackLink(id));
+
 /** Поделиться плейлистом: системное окно «Поделиться», иначе — буфер. */
 export const sharePlaylistLink = (name: string, token: string) =>
   shareUrl("WYX", `Плейлист «${name}» в WYX`, playlistLink(token));

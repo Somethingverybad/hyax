@@ -1955,6 +1955,12 @@ export const api = {
     if (!res.ok) throw new Error("Не удалось убрать пак");
   },
 
+  /** Удалить свой стикерпак целиком (только автор). */
+  deleteStickerPack: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не удалось удалить пак");
+  },
+
   // ---- Паки звуков (подписка, как у стикеров) ----
 
   getSoundPack: async (id: string): Promise<SoundPackInfo> => {

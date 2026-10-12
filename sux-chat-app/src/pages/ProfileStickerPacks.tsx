@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ChevronRight, Link2, Sticker as StickerIcon } from "lucide-react";
+import { shareStickerPack } from "@/lib/share";
+import { readCache } from "@/lib/session-cache";
+import { ChevronRight, Link2, Sticker as StickerIcon, Share2, Trash2 } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, mediaUrl } from "@/api/client";
 
-type Pack = { id: string; name: string; stickers_count: number; author?: { username?: string } | null; cover?: string | null };
+type Pack = { id: string; name: string; stickers_count: number; author?: { id?: string; username?: string } | null; cover?: string | null };
 
 /**
  * Стикерпаки: свои и сохранённые, плюс импорт набора из Telegram по ссылке.
@@ -56,6 +58,24 @@ const ProfileStickerPacks = () => {
       toast.error(e?.message || "Не удалось импортировать");
       setBusy(false);
     }
+  };
+
+  const meId = readCache<{ id: string }>("user")?.id;
+  const isMine = (p: { author?: { id?: string } | null }) => !!meId && p.author?.id === meId;
+  const sharePack = async (p: { id: string; name: string }) => {
+    const r = await shareStickerPack(p.name, p.id);
+    if (r === "copied") toast.success("Ссылка скопирована");
+    else if (r === "error") toast.error("Не удалось поделиться");
+  };
+  /** Свой набор — удалить у всех; чужой — убрать из моих. */
+  const removePack = async (p: { id: string; name: string; author?: { id?: string } | null }) => {
+    const mine = isMine(p);
+    if (!confirm(mine ? `Удалить набор «${p.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${p.name}» из моих наборов?`)) return;
+    try {
+      if (mine) await api.deleteStickerPack(p.id); else await api.unsaveStickerPack(p.id);
+      setPacks((prev) => (prev || []).filter((x) => x.id !== p.id));
+      toast.success(mine ? "Набор удалён" : "Убрано из моих");
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
   };
 
   return (
@@ -119,7 +139,19 @@ const ProfileStickerPacks = () => {
               label={p.name}
               hint={`${p.stickers_count} стикеров${p.author?.username ? ` · ${p.author.username}` : ""}`}
               onClick={() => navigate(`/stp/${p.id}`)}
-              trailing={<ChevronRight className="w-4 h-4 text-subtle" />}
+              trailing={
+                <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" aria-label="Поделиться набором" onClick={() => void sharePack(p)}
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-subtle active:bg-surface-4">
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                  <button type="button" aria-label={isMine(p) ? "Удалить набор" : "Убрать из моих"} onClick={() => void removePack(p)}
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-subtle active:bg-surface-4 active:text-destructive">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <ChevronRight className="w-4 h-4 text-subtle" />
+                </span>
+              }
             />
           ))}
         </SettingsCard>

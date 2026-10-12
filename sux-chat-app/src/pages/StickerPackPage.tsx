@@ -91,7 +91,25 @@ const StickerPackPage = () => {
                 {pack.is_saved ? <><Trash2 className="w-4 h-4" /> Убрать из моих</> : <><Plus className="w-4 h-4" /> Добавить себе</>}
               </button>
             )}
-            {mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>}
+            {mine && (
+              <div className="space-y-2">
+                <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!confirm(`Удалить набор «${pack.name}» у всех, кто его сохранил? Это необратимо.`)) return;
+                    setBusy(true);
+                    try { await api.deleteStickerPack(pack.id); toast.success("Набор удалён"); navigate("/profile/stickers", { replace: true }); }
+                    catch (e: any) { toast.error(e?.message || "Не получилось"); }
+                    finally { setBusy(false); }
+                  }}
+                  className="w-full h-11 rounded-md bg-surface-4 text-destructive font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" /> Удалить набор
+                </button>
+              </div>
+            )}
 
             {!pack.adult_locked && <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
               {stickers.map((s) => (

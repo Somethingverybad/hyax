@@ -6,7 +6,8 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2 } from "lucide-react";
+import { shareStickerPack } from "@/lib/share";
 import ImageCropper from "@/components/ImageCropper";
 import { readCache } from "@/lib/session-cache";
 import { invalidateStickerIndex } from "@/lib/stickerIndex";
@@ -172,6 +173,27 @@ const StickerPicker = ({
   // карандаш в шапке, тап по стикеру открывает форму вместо отправки.
   const meId = readCache<{ id: string }>("user")?.id;
   const activePack = packs.find((p) => p.pack.id === activePackId)?.pack;
+  // Меню набора: поделиться ссылкой, удалить свой или убрать чужой из моих.
+  const [packMenu, setPackMenu] = useState(false);
+  const sharePack = async () => {
+    setPackMenu(false);
+    if (!activePack) return;
+    const r = await shareStickerPack(activePack.name, activePack.id);
+    if (r === "copied") toast.success("Ссылка скопирована");
+    else if (r === "error") toast.error("Не удалось поделиться");
+  };
+  const removePack = async (mine: boolean) => {
+    setPackMenu(false);
+    if (!activePack) return;
+    if (!confirm(mine ? `Удалить набор «${activePack.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${activePack.name}» из моих наборов?`)) return;
+    try {
+      if (mine) await api.deleteStickerPack(activePack.id); else await api.unsaveStickerPack(activePack.id);
+      pickerCache.stickers.delete(activePack.id);
+      invalidateStickerIndex();
+      await loadPacks();
+      toast.success(mine ? "Набор удалён" : "Убрано из моих");
+    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+  };
   const authorId = activePack?.author && typeof activePack.author === "object" ? activePack.author.id : (activePack?.author as string | undefined);
   const isAuthor = !!meId && !!authorId && meId === authorId;
   const [editMode, setEditMode] = useState(false);
@@ -485,6 +507,16 @@ const StickerPicker = ({
             {editMode ? <Check className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
           </button>
         )}
+        {activePack && (
+          <button
+            type="button"
+            onClick={() => setPackMenu(true)}
+            className={cn("shrink-0 w-8 h-8 rounded-full flex items-center justify-center", mint ? "mint-ink" : "bg-muted text-muted-foreground")}
+            aria-label="Действия с набором"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+        )}
         {packs.map((p) => (
           <button
             key={p.pack.id}
@@ -508,6 +540,22 @@ const StickerPicker = ({
           </button>
         ))}
       </div>
+
+      {packMenu && activePack && createPortal(
+        <div className="fixed inset-0 z-[90] bg-black/60 flex flex-col justify-end" onClick={() => setPackMenu(false)}>
+          <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
+            <p className="px-4 pt-3 pb-2 text-small text-subtle truncate">{activePack.name}</p>
+            <button type="button" onClick={() => void sharePack()} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+              <Share2 className="w-5 h-5 text-primary" /> Поделиться набором
+            </button>
+            <button type="button" onClick={() => void removePack(isAuthor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
+              <Trash2 className="w-5 h-5" /> {isAuthor ? "Удалить набор у всех" : "Убрать из моих"}
+            </button>
+            <button type="button" onClick={() => setPackMenu(false)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">Отмена</button>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Добавление стикеров в выбранный набор */}
       <input
