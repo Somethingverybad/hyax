@@ -178,6 +178,13 @@ struct ChatInfoSheet: View {
                     Avatar(profile: other, online: other?.is_online ?? false, url: chat.avatar_url, name: chat.title(me: me), size: 93, radius: 17)
                     Text(chat.title(me: me)).font(Inter.semibold(17)).foregroundStyle(Mint.title)
                     if let bio = other?.bio, !bio.isEmpty { Text(bio).font(Inter.regular(14)).foregroundStyle(Mint.mintMuted).multilineTextAlignment(.center).padding(.horizontal, 24) }
+                    if let other, chat.kind != "saved", other.is_bot != true {
+                        Button { Task { dismiss(); await CallService.shared.startOutgoing(peer: other, chat: chat.id) } } label: {
+                            HStack(spacing: 12) { Image(systemName: "phone.fill").foregroundStyle(Mint.ink); Text("Позвонить").font(Inter.medium(14.3)).foregroundStyle(Mint.label); Spacer() }
+                                .padding(.horizontal, 18).frame(height: 51)
+                        }
+                        .buttonStyle(.plain).mintCard().padding(.horizontal, 17)
+                    }
                     if let other, !chat.isSecret, chat.kind != "saved", other.is_bot != true, let onSecret {
                         Button {
                             Task {

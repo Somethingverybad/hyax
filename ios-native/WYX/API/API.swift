@@ -525,7 +525,7 @@ final class API {
 
     // MARK: - Транспорт
 
-    private func get<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
+    func get<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         var comps = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         var items = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         items.append(URLQueryItem(name: "_", value: String(Int(Date().timeIntervalSince1970 * 1000)))) // мимо кэшей

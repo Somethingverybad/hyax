@@ -27,6 +27,9 @@ packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     from: 11.0.0
+  WebRTC:
+    url: https://github.com/stasel/WebRTC
+    from: 125.0.0
 targets:
   WYX:
     type: application
@@ -37,6 +40,7 @@ targets:
       - package: Lottie
       - package: Firebase
         product: FirebaseMessaging
+      - package: WebRTC
       - target: WYXNotificationService
         embed: true
     entitlements:
@@ -66,6 +70,7 @@ targets:
         UIBackgroundModes:
           - remote-notification
           - audio
+          - voip
         FirebaseAppDelegateProxyEnabled: false
         UIAppFonts:
           - Inter-Regular.ttf

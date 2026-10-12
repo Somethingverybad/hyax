@@ -33,7 +33,7 @@ final class Session: ObservableObject {
         }
         guard loggedIn else { return }
         if let p = try? await API.shared.currentProfile() { me = p } else if !API.shared.isLoggedIn { loggedIn = false; return }
-        if let me { socket.connect(userId: me.id) }
+        if let me { socket.connect(userId: me.id); CallService.shared.attach(socket: socket, me: me.id) }
         PushDelegate.enable()
         PushDelegate.openChat = { [weak self] id in Task { if let c = try? await API.shared.chat(id) { self?.openChat = c } } }
         await refreshUnread()
@@ -84,12 +84,15 @@ final class Rov {
 struct WYXApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @StateObject private var session = Session()
+    @ObservedObject private var call = CallService.shared
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
-            Group {
+            ZStack {
                 if session.loggedIn { RootView() } else { AuthView() }
+                if call.state != .idle { CallView().transition(.move(edge: .bottom)) }
             }
+            .animation(.easeOut(duration: 0.25), value: call.state == .idle)
             .environmentObject(session)
             .preferredColorScheme(session.scheme)
             .task { await session.start() }

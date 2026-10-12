@@ -53,7 +53,7 @@ struct ProfileView: View {
                 card {
                     nav("row-saved", "Сохранёнки", "\(savedCount) фото", hint: "Видят: " + visibilityLabel) { SavedImagesView(count: $savedCount) }
                     div; nav("row-bell", "Уведомления", me?.notify_sound?.name ?? "Обычный звук") { NotificationsView() }
-                    div; nav("row-sticker", "Стикерпаки", "", hint: "Свои наборы и импорт из Telegram") { StickerPacksView() }
+                    div; nav("row-sticker", "Стикерпаки", "", hint: "Свои наборы и добавление по ссылке") { StickerPacksView() }
                     div; nav("row-lock", "Конфиденциальность", "") { PrivacyView() }
                     div; nav("row-appearance", "Внешний вид", session.appearanceLabel) { AppearanceView() }
                 }
@@ -417,7 +417,7 @@ struct StickerPacksView: View {
         SubScreen(title: "Стикерпаки") {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    TextField("Ссылка t.me/addstickers/…", text: $link).font(Inter.regular(14)).foregroundStyle(Mint.foreground).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Ссылка на набор стикеров", text: $link).font(Inter.regular(14)).foregroundStyle(Mint.foreground).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .padding(.horizontal, 16).frame(height: 40).mintPill()
                     Button { importTG() } label: { Text("Импорт").font(Inter.regular(12.7)).foregroundStyle(Mint.accentFg).frame(height: 33).padding(.horizontal, 13) }.mintLime().disabled(busy || link.isEmpty)
                 }
