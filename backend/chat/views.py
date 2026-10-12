@@ -1056,6 +1056,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         _notify_reactions(msg)
         if not removed:
             _push_reaction(msg, profile, emoji)
+        if msg.chat.kind in ("channel", "wall"):
+            _touch_post(msg)
         return Response({"reactions": reactions_payload(msg, profile.id)})
 
     @action(detail=True, methods=['post'])
@@ -2965,6 +2967,16 @@ def _changed_authors(chat, since):
         return []
 
 
+def _touch_post(msg):
+    """Реакция или комментарий меняют сводку поста: двигаем updated_at, чтобы
+    since-синхронизация у остальных принесла свежие счётчики (у Стены и
+    каналов нет сокета чата — только опрос)."""
+    try:
+        Message.objects.filter(id=msg.id).update(updated_at=timezone.now())
+    except Exception:
+        pass
+
+
 def _post_payload(msg, request):
     """Пост канала = Message + сводка реакций/просмотров/комментов."""
     data = MessageSerializer(msg, context={"request": request}).data
@@ -3473,6 +3485,7 @@ class PostReactView(APIView):
                 post=msg, user=me, value=value[:64],
                 kind=(request.data.get("kind") or "emoji")[:10],
             )
+        _touch_post(msg)
         return Response(_post_payload(msg, request))
 
     def delete(self, request, pk):
@@ -3516,6 +3529,7 @@ class PostCommentsView(APIView):
         if parent_id:
             parent = PostComment.objects.filter(id=parent_id, post=msg).first()
         c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content[:2000])
+        _touch_post(msg)
         return Response(PostCommentSerializer(c).data, status=201)
 
 
@@ -3534,6 +3548,7 @@ class PostCommentDetailView(APIView):
             return Response({"error": "Нельзя удалить чужой комментарий"}, status=403)
         c.deleted = True
         c.save(update_fields=["deleted"])
+        _touch_post(c.post)
         return Response({"ok": True})
 
 

@@ -632,7 +632,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       if (!fromCache) scrollFeedOnOpen();
     })();
     // Лёгкий поллинг: с since он почти ничего не стоит.
-    const t = setInterval(() => { void sync(); }, 9000);
+    // Опрос чаще: сервер двигает updated_at поста при реакции и комментарии,
+    // так счётчики у всех обновляются «вживую» без сокета.
+    const t = setInterval(() => { void sync(); }, 5000);
     return () => { alive = false; clearInterval(t); };
   }, [channelId, sync, wall]);
 
@@ -1366,6 +1368,12 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
     try { setComments(await api.getPostComments(post.id)); } finally { setLoading(false); }
   }, [post.id]);
   useEffect(() => { load(); }, [load]);
+  // Открытые комментарии подтягиваем, пока шторка видна: чужие появляются сами.
+  useEffect(() => {
+    const t = setInterval(() => { api.getPostComments(post.id).then((fresh) => { setComments(fresh); onCountChange(fresh.length); }).catch(() => {}); }, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post.id]);
 
   const add = async () => {
     const body = text.trim();
