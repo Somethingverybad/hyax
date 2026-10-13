@@ -1478,7 +1478,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       // У кого-то сменились ник или аватар — подписи у старых сообщений тоже.
       if (r.authors?.length) {
         const by = new Map(r.authors.map((a) => [a.id, a]));
-        setMessages((prev) => prev.map((m: any) => (m.sender && by.has(m.sender.id) ? { ...m, sender: { ...m.sender, username: by.get(m.sender.id)!.username, avatar_url: by.get(m.sender.id)!.avatar_url } } : m)));
+        setMessages((prev) => prev.map((m: any) => (m.sender && by.has(m.sender.id) ? { ...m, sender: { ...m.sender, ...by.get(m.sender.id)! } } : m)));
       }
       // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
       // Иначе бейдж в списке чатов оставался, хотя человек всё видел и ответил.

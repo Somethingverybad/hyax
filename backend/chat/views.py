@@ -3002,8 +3002,9 @@ def _changed_authors(chat, since):
     клиент подменит подписи у закэшированных сообщений."""
     try:
         rows = (Profile.objects.filter(identity_updated_at__gt=since, message__chat=chat)
-                .distinct().values("id", "username", "avatar_url")[:200])
-        return [{"id": str(r["id"]), "username": r["username"], "avatar_url": r["avatar_url"]} for r in rows]
+                .distinct().values("id", "username", "avatar_url", "aura_color", "aura_text")[:200])
+        return [{"id": str(r["id"]), "username": r["username"], "avatar_url": r["avatar_url"],
+                 "aura_color": r["aura_color"], "aura_text": r["aura_text"]} for r in rows]
     except Exception:
         return []
 

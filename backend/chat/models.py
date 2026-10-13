@@ -29,6 +29,9 @@ class Profile(models.Model):
     aura_color = models.CharField(max_length=7, blank=True, default="")
     aura_text = models.CharField(max_length=60, blank=True, default="")
     aura_presets = models.JSONField(default=list, blank=True)
+    # Анимация ауры (пламя / статичный ореол) — настройка аккаунта, а не
+    # устройства: выключил на телефоне — на компьютере тоже выключено.
+    aura_anim = models.BooleanField(default=True)
     # Вайбометр: +1 от каждого, кто «поднял вайб» в профиле (раз на человека),
     # +5 за голос за идею, +10 автору за каждый лайк его идеи (chat/ideabox.py).
     vibe = models.IntegerField(default=0)

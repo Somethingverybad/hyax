@@ -7,6 +7,8 @@ import Identicon from "@/components/Identicon";
 import { Aura, AURA_SWATCHES, DEFAULT_AURA } from "@/components/Aura";
 import { api } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
+import { getSetting, setSetting } from "@/lib/settings";
+import { SettingsCard, SettingsRow } from "@/components/settings";
 
 /**
  * Профиль → Аура. Свечение вокруг аватара, пока человек в сети, и его
@@ -30,6 +32,16 @@ export default function ProfileAura() {
   const [text, setText] = useState(() => me?.aura_text || "");
   const [presets, setPresets] = useState<Preset[]>(() => me?.aura_presets || []);
   const [busy, setBusy] = useState(false);
+  // Анимация ауры — настройка аккаунта: сохраняем на сервере, локально — зеркало.
+  const [anim, setAnim] = useState(() => getSetting("aura_anim"));
+  const toggleAnim = async (on: boolean) => {
+    setAnim(on); setSetting("aura_anim", on);
+    if (!me) return;
+    try {
+      const upd = await api.updateProfile(me.id, { aura_anim: on });
+      writeCache("user", { ...(readCache<object>("user") || {}), ...upd });
+    } catch { toast.error("Не удалось сохранить настройку"); }
+  };
 
   // Свежий профиль: в кеше могло не быть сохранённых аур.
   useEffect(() => {
@@ -39,6 +51,10 @@ export default function ProfileAura() {
       setColor((c) => c || m.aura_color || "");
       setText((t) => t || m.aura_text || "");
       setPresets(m.aura_presets || []);
+      if (typeof (m as { aura_anim?: boolean }).aura_anim === "boolean") {
+        const v = (m as { aura_anim?: boolean }).aura_anim!;
+        setAnim(v); if (v !== getSetting("aura_anim")) setSetting("aura_anim", v);
+      }
     }).catch(() => { /* остаёмся на кеше */ });
   }, []);
 
@@ -107,6 +123,18 @@ export default function ProfileAura() {
               </p>
             )}
           </section>
+
+          <SettingsCard>
+            {/* Пламя или статичный ореол того же цвета — на всех ваших устройствах. */}
+            <SettingsRow
+              label="Анимация ауры"
+              hint={anim ? "Пламя вокруг аватаров тех, кто в сети" : "Статичный ореол цвета ауры"}
+              trailing={
+                <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label="Анимация ауры" checked={anim}
+                  onChange={(e) => void toggleAnim(e.target.checked)} />
+              }
+            />
+          </SettingsCard>
 
           <section className="ui-card rounded-lg bg-surface-2 border border-border p-4">
             <h2 className="text-small text-subtle mb-3">Цвет</h2>

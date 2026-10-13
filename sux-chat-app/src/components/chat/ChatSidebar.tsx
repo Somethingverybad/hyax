@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { api, mediaUrl } from "@/api/client";
 import { preloadImage } from "@/lib/imageCache";
 import { readCache, writeCache } from "@/lib/session-cache";
+import { applyServerSettings } from "@/lib/settings";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
 
@@ -268,6 +269,20 @@ const ChatSidebar = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats]);
 
+  // Вернулись в приложение — свежий профиль: аура или её анимация могли
+  // смениться на другом устройстве. Не чаще раза в 20 с.
+  useEffect(() => {
+    let last = Date.now();
+    const h = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 20_000) return;
+      last = Date.now();
+      void fetchCurrentUser();
+    };
+    document.addEventListener("visibilitychange", h);
+    return () => document.removeEventListener("visibilitychange", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const fetchCurrentUser = async () => {
     try {
       const profile = await api.getCurrentUser();
@@ -275,6 +290,7 @@ const ChatSidebar = ({
       if (profile && profile.id) {
         setCurrentUser(profile);
         writeCache("user", profile);
+        applyServerSettings(profile);
         // Свой аватар и обложку — в память сразу: профиль откроется без скелетона.
         if (profile.avatar_url) preloadImage(mediaUrl(profile.avatar_url));
         if ((profile as { cover_url?: string | null }).cover_url) preloadImage(mediaUrl((profile as { cover_url?: string | null }).cover_url!));

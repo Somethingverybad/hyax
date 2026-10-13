@@ -110,15 +110,17 @@ class OwnProfileSerializer(ProfileSerializer):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
-        read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at']
+        read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at']
 
     def update(self, instance, validated_data):
         was_hidden = instance.hide_online
-        was_identity = (instance.username, instance.avatar_url)
+        # Аура — тоже часть «подписи» у сообщений: сменил на одном устройстве —
+        # у собеседников и на других своих устройствах подтянется через authors.
+        was_identity = (instance.username, instance.avatar_url, instance.aura_color, instance.aura_text)
         instance = super().update(instance, validated_data)
-        if (instance.username, instance.avatar_url) != was_identity:
+        if (instance.username, instance.avatar_url, instance.aura_color, instance.aura_text) != was_identity:
             # Ник или аватар сменились — клиенты обновят подписи у старых сообщений.
             from django.utils import timezone as _tz
             instance.identity_updated_at = _tz.now()

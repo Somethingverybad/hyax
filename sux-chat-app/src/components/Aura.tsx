@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { getSetting } from "@/lib/settings";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -53,6 +53,13 @@ export function Aura({
   } as CSSProperties;
 
   // Анимация ауры выключена в настройках — статичный ореол цвета ауры.
+  // Настройка приходит и с сервера (другое устройство) — перерисовываемся по событию.
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const h = (e: Event) => { if ((e as CustomEvent).detail?.key === "aura_anim") bump((x) => x + 1); };
+    window.addEventListener("hyax:setting", h);
+    return () => window.removeEventListener("hyax:setting", h);
+  }, []);
   const staticAura = !getSetting("aura_anim");
   const body = (
     <span className={`aura-wrap ${staticAura ? "aura-static " : ""}${className}`} style={style}>

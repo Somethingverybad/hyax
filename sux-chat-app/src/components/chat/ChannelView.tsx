@@ -500,7 +500,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       // У кого-то сменились ник или аватар — подписи у старых постов тоже.
       if (r.authors?.length) {
         const by = new Map(r.authors.map((a) => [a.id, a]));
-        setPosts((prev) => prev.map((p) => (p.sender && by.has(p.sender.id) ? { ...p, sender: { ...p.sender, username: by.get(p.sender.id)!.username, avatar_url: by.get(p.sender.id)!.avatar_url } } : p)));
+        setPosts((prev) => prev.map((p) => (p.sender && by.has(p.sender.id) ? { ...p, sender: { ...p.sender, ...by.get(p.sender.id)! } } : p)));
       }
       setPosts((prev) => { void writePosts(channelId, prev, r.now, hasMoreRef.current); return prev; });
     } catch {

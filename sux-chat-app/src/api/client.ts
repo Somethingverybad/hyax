@@ -222,6 +222,10 @@ export interface Profile {
   /** Когда приняты правила. null — ещё не приняты (экран согласия);
    *  undefined — сервер поля не знает или это чужой профиль. */
   terms_accepted_at?: string | null;
+  /** Анимация ауры — настройка аккаунта, зеркалится в локальную aura_anim. */
+  aura_anim?: boolean;
+  /** Когда менялись ник, аватар или аура — по нему устройства понимают, что кеш устарел. */
+  identity_updated_at?: string;
   /** Только в своём профиле: видит админские разделы (мониторинг). */
   is_admin?: boolean;
 }
@@ -1803,7 +1807,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[] }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

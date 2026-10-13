@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
+import { applyServerSettings } from "@/lib/settings";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -79,6 +80,7 @@ const ProfilePage = () => {
         const p = await api.getCurrentUser();
         setProfile(p);
         writeCache("user", p);
+        applyServerSettings(p);
       } catch {
         navigate("/auth", { replace: true });
       }
