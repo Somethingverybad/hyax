@@ -10,6 +10,12 @@
  *
  * Выход из аккаунта стирает все ключи (wipeSecretKeys) — как в Telegram,
  * секретные чаты после этого на устройстве не читаются.
+ *
+ * Общий ключ чата хранится извлекаемым (extractable: true) — ради переноса
+ * на другое своё устройство (exportChatKeys / importChatKeys, экран
+ * «Перенести секретные чаты»). Для скрипта того же origin разницы нет: он и
+ * неизвлекаемым ключом расшифровал бы всё; перенос идёт запечатанным
+ * (sealKeys) и в открытом виде ключ устройство не покидает.
  */
 
 const DB = "hyax-secret";
@@ -82,6 +88,7 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
   });
 }
 const getEntry = (chatId: string) => tx<Entry | undefined>("readonly", (s) => s.get(chatId) as IDBRequest<Entry | undefined>);
+const allEntries = () => tx<Entry[]>("readonly", (s) => s.getAll() as IDBRequest<Entry[]>);
 const putEntry = (e: Entry) => tx("readwrite", (s) => s.put(e));
 
 export async function wipeSecretKeys(): Promise<void> {
@@ -165,8 +172,81 @@ async function derive(chatId: string, priv: CryptoKey, peerPub: string): Promise
   const hk = await crypto.subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     { name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode(chatId), info: INFO },
+    hk, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"],
+  );
+}
+
+// ---------- перенос ключей на другое устройство ----------
+
+const TRANSFER_INFO = new TextEncoder().encode("whoyax-keytransfer-v1");
+
+export interface ExportedKey { chatId: string; myPub: string; fp: string; raw: string }
+
+/** Ключи всех секретных чатов этого устройства. Чаты, созданные до того, как
+ *  ключи стали извлекаемыми, пропускаются — их перенести нельзя. */
+export async function exportChatKeys(): Promise<{ keys: ExportedKey[]; skipped: number }> {
+  const keys: ExportedKey[] = []; let skipped = 0;
+  let entries: Entry[] = [];
+  try { entries = await allEntries(); } catch { return { keys, skipped }; }
+  for (const e of entries) {
+    if (!e.key || !e.fp) continue;
+    try { keys.push({ chatId: e.chatId, myPub: e.myPub, fp: e.fp, raw: b64(await crypto.subtle.exportKey("raw", e.key)) }); }
+    catch { skipped++; }
+  }
+  return { keys, skipped };
+}
+
+/** Принять ключи с другого устройства; свои существующие не трогаем. */
+export async function importChatKeys(list: ExportedKey[]): Promise<number> {
+  let n = 0;
+  for (const k of list) {
+    try {
+      const have = await getEntry(k.chatId);
+      if (have?.key) continue;
+      const key = await crypto.subtle.importKey("raw", unb64(k.raw), "AES-GCM", true, ["encrypt", "decrypt"]);
+      await putEntry({ chatId: k.chatId, myPub: k.myPub, key, fp: k.fp });
+      n++;
+    } catch { /* битая запись — пропускаем */ }
+  }
+  return n;
+}
+
+/** Одноразовая пара сеанса переноса (та же ECDH P-256). */
+export const transferKeyPair = newKeyPair;
+
+async function transferKey(sessionId: string, priv: CryptoKey, peerPub: string): Promise<CryptoKey> {
+  const peer = await crypto.subtle.importKey("raw", unb64(peerPub), { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const bits = await crypto.subtle.deriveBits({ name: "ECDH", public: peer }, priv, 256);
+  const hk = await crypto.subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode(sessionId), info: TRANSFER_INFO },
     hk, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"],
   );
+}
+
+/** Запечатать ключи для нового устройства: base64(iv ‖ шифротекст). */
+export async function sealKeys(sessionId: string, priv: CryptoKey, peerPub: string, keys: ExportedKey[]): Promise<string> {
+  const k = await transferKey(sessionId, priv, peerPub);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k, new TextEncoder().encode(JSON.stringify(keys))));
+  const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+  return b64(out);
+}
+
+export async function openKeys(sessionId: string, priv: CryptoKey, peerPub: string, blob: string): Promise<ExportedKey[]> {
+  const k = await transferKey(sessionId, priv, peerPub);
+  const data = unb64(blob);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: data.slice(0, 12) }, k, data.slice(12));
+  const list = JSON.parse(new TextDecoder().decode(pt));
+  return Array.isArray(list) ? list : [];
+}
+
+/** Код проверки: 6 цифр от SHA-256 открытого ключа нового устройства. Одинаков
+ *  на обоих экранах, если сервер ничего не подменил. */
+export async function transferCode(pub: string): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", unb64(pub)));
+  const n = ((h[0] << 24) >>> 0) + (h[1] << 16) + (h[2] << 8) + h[3];
+  return String(n % 1_000_000).padStart(6, "0");
 }
 
 /** Отпечаток: SHA-256 от обоих открытых ключей и id чата. Одинаковый у обеих

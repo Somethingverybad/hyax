@@ -35,6 +35,7 @@
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/sp/" />
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/stp/" />
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/t/" />
+                <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/kt/" />
             </intent-filter>
 
             <!-- «Поделиться → WYX» из других приложений: текст, ссылки, фото, видео,

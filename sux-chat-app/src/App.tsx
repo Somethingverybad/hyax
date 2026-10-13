@@ -18,6 +18,7 @@ import ProfileAura from "./pages/ProfileAura";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
 import ProfileEmail from "./pages/ProfileEmail";
+import ProfileSecretTransfer from "./pages/ProfileSecretTransfer";
 import Legal from "./pages/Legal";
 import ThemeEditor from "./pages/ThemeEditor";
 import SoundPackNew from "./pages/SoundPackNew";
@@ -132,7 +133,7 @@ const DeepLinks = () => {
         const u = new URL(url);
         // whoyax://share — расширение «Поделиться» положило файлы (lib/shareInbox).
         if (u.protocol === "whoyax:") { if (u.host === "share") window.dispatchEvent(new CustomEvent("hyax:share-inbox")); return; }
-        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/t/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/")) navRef.current(u.pathname + u.search);
+        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/t/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/") || u.pathname.startsWith("/kt/")) navRef.current(u.pathname + u.search + u.hash);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
@@ -270,6 +271,8 @@ const App = () => {
               <Route path="/profile/stickerpacks" element={<ProfileStickerPacks />} />
               <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
               <Route path="/profile/email" element={<ProfileEmail />} />
+              <Route path="/profile/secret-transfer" element={<ProfileSecretTransfer />} />
+              <Route path="/kt/:id" element={<ProfileSecretTransfer />} />
               {/* Редактор темы: новая или своя по id. */}
               <Route path="/profile/themes/:id" element={<ThemeEditor />} />
               {/* Тема по ссылке «Поделиться темой». */}

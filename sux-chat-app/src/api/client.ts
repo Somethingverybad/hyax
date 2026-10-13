@@ -1796,6 +1796,32 @@ export const api = {
   },
 
   /** Безвозвратно удалить свой аккаунт. Пароль — подтверждение. */
+  /** Перенос ключей секретных чатов на другое устройство (lib/secret.ts). */
+  createKeyTransfer: async (pub: string): Promise<{ id: string; code: string; pub: string; ready: boolean; expires_at: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/secret-transfer/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ pub }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось открыть сеанс");
+    return body;
+  },
+  lookupKeyTransfer: async (ref: string): Promise<{ id: string; code: string; pub: string; ready: boolean; expires_at: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/secret-transfer/${encodeURIComponent(ref)}/`, { method: "GET", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Сеанс не найден");
+    return body;
+  },
+  sendKeyTransferBlob: async (id: string, blob: string, oldPub: string, chats: string[]): Promise<{ ok: boolean; notified: number }> => {
+    const res = await fetchWithAuth(`${API_URL}/secret-transfer/${id}/blob/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ blob, old_pub: oldPub, chats }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось отправить ключи");
+    return body;
+  },
+  pollKeyTransfer: async (id: string): Promise<{ ready: boolean; blob?: string; old_pub?: string; pub?: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/secret-transfer/${id}/blob/`, { method: "GET", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Сеанс истёк");
+    return body;
+  },
+
   /** Почта для восстановления пароля: письмо с кодом на новый адрес. */
   setEmail: async (email: string): Promise<{ sent: boolean; email: string }> => {
     const res = await fetchWithAuth(`${API_URL}/account/email/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ email }) });
