@@ -627,7 +627,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       } catch {
         /* канал мог быть удалён */
       }
-      await sync(!fromCache);
+      // Первая страница целиком, даже когда кэш есть: since-синхронизация
+      // приносит только посты с новым updated_at, а счётчики, посчитанные до
+      // того, как реакции и комментарии стали двигать updated_at, иначе
+      // оставались бы нулями навсегда (баг «0 комментариев, внутри один»).
+      await sync(true);
       if (!alive) return;
       setLoading(false);
       if (!fromCache) scrollFeedOnOpen();
@@ -1366,7 +1370,11 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
-    try { setComments(await api.getPostComments(post.id)); } finally { setLoading(false); }
+    try {
+      const list = await api.getPostComments(post.id);
+      setComments(list);
+      onCountChange(list.length); // счётчик под постом — сразу по факту, не ждём опроса
+    } finally { setLoading(false); }
   }, [post.id]);
   useEffect(() => { load(); }, [load]);
   // Открытые комментарии подтягиваем, пока шторка видна: чужие появляются сами.
