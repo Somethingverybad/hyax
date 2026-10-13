@@ -180,7 +180,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'chat.devices.DeviceJWTAuthentication',  # JWT + проверка, что сеанс не завершён
+        'chat.device_auth.DeviceJWTAuthentication',  # JWT + проверка, что сеанс не завершён
         'chat.bot_auth.BotTokenAuthentication',
     ),
 }
