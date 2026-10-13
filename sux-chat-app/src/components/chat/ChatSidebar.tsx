@@ -1191,9 +1191,8 @@ const ChatSidebar = ({
                               @
                             </span>
                           )}
+                          {/* Бейдж без text-caption: в «Мяте» подписи строки красятся в приглушённый цвет, и цифры бледнели. */}
                           {!!chat.unread_count && chat.unread_count > 0 && (
-                            {/* Не text-caption: в «Мяте» подписи строки красятся в приглушённый
-                                цвет, и цифры на бейдже становились бледными. */}
                             <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-[12px] leading-none font-semibold flex items-center justify-center">
                               {chat.unread_count > 99 ? "99+" : chat.unread_count}
                             </span>
