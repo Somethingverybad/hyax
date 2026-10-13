@@ -483,6 +483,15 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           // Реакции приходят событием: обычная синхронизация их не приносит —
           // само сообщение при этом не меняется.
           setReactionEvent({ ...msg.data, at: Date.now() });
+        } else if (msg?.data?.type === "session_revoked") {
+          // Сеанс завершили из «Устройств» на другом устройстве — выходим и чистим кэш.
+          void import("@/lib/secret").then(({ deviceId }) => {
+            const me = deviceId();
+            const d = msg.data as { device_id?: string; all_except?: string };
+            if (d.device_id === me || ("all_except" in d && d.all_except !== me)) {
+              void import("@/lib/forceLogout").then((m) => m.forceLogout("revoked"));
+            }
+          });
         } else if (msg?.data?.type === "secret_chat") {
           // Секретный чат создан, принят или отклонён — список и открытая переписка перечитываются.
           refreshChats();

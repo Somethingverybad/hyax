@@ -20,6 +20,7 @@ import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
 import ProfileEmail from "./pages/ProfileEmail";
 import ProfileSecretTransfer from "./pages/ProfileSecretTransfer";
+import ProfileDevices from "./pages/ProfileDevices";
 import Legal from "./pages/Legal";
 import ThemeEditor from "./pages/ThemeEditor";
 import SoundPackNew from "./pages/SoundPackNew";
@@ -126,6 +127,16 @@ const DeepLinks = () => {
   // «Написать» «не работала»). Поэтому: navigate через ref, эффект — один раз.
   const navRef = useRef(navigate);
   navRef.current = navigate;
+  // Принудительный выход (lib/forceLogout): кэш уже стёрт — остаётся уйти на вход.
+  useEffect(() => {
+    const h = (e: Event) => {
+      const reason = (e as CustomEvent).detail?.reason;
+      sonnerToast(reason === "revoked" ? "Сеанс завершён с другого устройства" : "Войдите снова");
+      navRef.current("/auth", { replace: true });
+    };
+    window.addEventListener("hyax:force-logout", h);
+    return () => window.removeEventListener("hyax:force-logout", h);
+  }, []);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const toPath = (url?: string | null) => {
@@ -290,6 +301,7 @@ const App = () => {
               <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
               <Route path="/profile/email" element={<ProfileEmail />} />
               <Route path="/profile/secret-transfer" element={<ProfileSecretTransfer />} />
+              <Route path="/profile/devices" element={<ProfileDevices />} />
               <Route path="/kt/:id" element={<ProfileSecretTransfer />} />
               {/* Редактор темы: новая или своя по id. */}
               <Route path="/profile/themes/:id" element={<ThemeEditor />} />

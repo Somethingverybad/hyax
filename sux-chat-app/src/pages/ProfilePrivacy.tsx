@@ -8,7 +8,7 @@ import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
-import { Ban, Lock, FileText, ShieldCheck, Trash2, Images, Mail, KeyRound } from "lucide-react";
+import { Ban, Lock, FileText, ShieldCheck, Trash2, Images, Mail, KeyRound, MonitorSmartphone } from "lucide-react";
 
 const SAVED_ACCESS: Record<string, string> = { all: "Все", selected: "Избранные", none: "Никто" };
 
@@ -188,6 +188,12 @@ const ProfilePrivacy = () => {
         </SettingsCard>
 
         <SettingsCard>
+          <SettingsRow
+            icon={MonitorSmartphone}
+            label="Устройства"
+            hint="Где выполнен вход; выйти с любого или со всех"
+            onClick={() => navigate("/profile/devices")}
+          />
           <SettingsRow
             icon={KeyRound}
             label="Перенести секретные чаты"

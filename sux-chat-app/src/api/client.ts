@@ -180,6 +180,11 @@ export interface AdminMetrics {
   hours: { hour: number; messages: number }[];
 }
 
+export interface DeviceSession {
+  device_id: string; name: string; platform: string; app_version: string;
+  created_at: string; last_seen: string; current: boolean;
+}
+
 export interface Profile {
   id: string;
   username: string;
@@ -409,6 +414,12 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
 
   // Если access token устарел — пробуем обновить
   if (res.status === 401 && !isAuthEndpoint) {
+    // Сеанс завершили с другого устройства — не обновляем, а выходим и чистим кэш.
+    const probe = await res.clone().json().catch(() => null);
+    if (probe && /Сеанс завершён/.test(String(probe.detail || ""))) {
+      void import("@/lib/forceLogout").then((m) => m.forceLogout("revoked"));
+      throw new Error("Сеанс завершён — войдите снова");
+    }
     const refreshToken = localStorage.getItem("refresh_token");
     if (!refreshToken) throw new Error("Unauthorized: no refresh token");
 
@@ -420,9 +431,9 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
       });
 
       if (!refreshRes.ok) {
-        // Refresh token тоже недействителен
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        // Refresh token тоже недействителен (истёк или сеанс отозван) — выходим и чистим кэш.
+        const body = await refreshRes.json().catch(() => null);
+        void import("@/lib/forceLogout").then((m) => m.forceLogout(/Сеанс завершён/.test(String(body?.detail || "")) ? "revoked" : "expired"));
         throw new Error("Refresh token expired, please login again");
       }
 
@@ -751,10 +762,13 @@ export const api = {
   },
 
   login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
+    // Паспорт устройства — для списка «Устройства» и выхода с него издалека.
+    let device: Record<string, string> = {};
+    try { const { deviceInfo } = await import("@/lib/device"); device = deviceInfo(); } catch { /* без него тоже войдём */ }
     const res = await fetchWithAuth(`${API_URL}/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ...device }),
     });
 
     if (!res.ok) {
@@ -777,9 +791,35 @@ export const api = {
   },
 
   logout: async (): Promise<AuthResponse> => {
+    // Сначала завершаем сеанс на сервере, чтобы устройство пропало из списка.
+    try {
+      const { deviceId } = await import("@/lib/secret");
+      await fetchWithAuth(`${API_URL}/account/devices/${encodeURIComponent(deviceId())}/revoke/`, { method: "POST", headers: authHeaders() }).catch(() => {});
+    } catch { /* офлайн — не страшно */ }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     return { message: "Logged out" };
+  },
+
+  /** Устройства с действующим входом (Конфиденциальность → Устройства). */
+  listDevices: async (): Promise<{ current: string; devices: DeviceSession[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/account/devices/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось получить устройства");
+    return res.json();
+  },
+  revokeDevice: async (deviceId: string): Promise<{ ok: boolean; self: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/account/devices/${encodeURIComponent(deviceId)}/revoke/`, { method: "POST", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось завершить сеанс");
+    return body;
+  },
+  /** Выйти везде, кроме этого устройства; сервер выдаёт этому устройству новые токены. */
+  revokeOtherDevices: async (): Promise<{ ok: boolean; revoked: number }> => {
+    const res = await fetchWithAuth(`${API_URL}/account/devices/revoke-others/`, { method: "POST", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось завершить сеансы");
+    if (body.access && body.refresh) { localStorage.setItem("access_token", body.access); localStorage.setItem("refresh_token", body.refresh); }
+    return body;
   },
 
   // ===== PROFILES =====
