@@ -1,4 +1,4 @@
-from rest_framework import serializers
+from rest_framework import serializers, exceptions
 from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import *
@@ -617,15 +617,29 @@ import logging
 logger = logging.getLogger(__name__)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Вход по нику или по привязанной почте; ошибка — по-русски, а не
+    «No active account found with the given credentials»."""
     def validate(self, attrs):
-        username = attrs.get('username')
+        username = (attrs.get('username') or '').strip().lstrip('@')
+        if '@' in username:
+            # Почта вместо ника: подставляем ник владельца подтверждённой почты.
+            p = Profile.objects.filter(email__iexact=username, email_verified_at__isnull=False).select_related('user').first()
+            if p:
+                username = p.user.username
+        else:
+            # Ник без учёта регистра: точное совпадение важнее.
+            p = Profile.objects.filter(username=username).first() or Profile.objects.filter(username__iexact=username).first()
+            if p:
+                username = p.user.username
+        attrs['username'] = username
         logger.info(f"[JWT] Попытка аутентификации с username: {username}")
-        
         try:
-            # Вызываем родительский validate, который использует username для аутентификации
             data = super().validate(attrs)
             logger.info(f"[JWT] Аутентификация успешна для username: {username}")
             return data
+        except exceptions.AuthenticationFailed:
+            logger.warning(f"[JWT] Неверные данные для {username}")
+            raise exceptions.AuthenticationFailed("Неверный ник, почта или пароль", code="no_active_account")
         except Exception as e:
             logger.error(f"[JWT] Ошибка аутентификации для username {username}: {str(e)}")
             raise
