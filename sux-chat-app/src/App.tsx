@@ -1,4 +1,5 @@
 import { ConfirmHost } from "@/lib/confirm";
+import { toast as sonnerToast } from "sonner";
 import { Toaster } from "@/components/ui/toaster";
 import ProfilePage from "./pages/Profile";
 import ProfileEdit from "./pages/ProfileEdit";
@@ -177,6 +178,22 @@ const ShareInboxSheet = () => {
   );
 };
 
+/** Тост закрывается по тапу (баг-репорт 37234a7a): sonner сам по клику не
+ *  прячет, а на телефоне ждать, пока уедет, неудобно. */
+const ToastTapDismiss = () => {
+  useEffect(() => {
+    const h = (e: Event) => {
+      const el = (e.target as Element | null)?.closest?.("[data-sonner-toast]");
+      if (!el) return;
+      const id = el.getAttribute("data-id") || undefined;
+      sonnerToast.dismiss(id as string | undefined);
+    };
+    document.addEventListener("click", h, true);
+    return () => document.removeEventListener("click", h, true);
+  }, []);
+  return null;
+};
+
 const App = () => {
   // Приложение отрисовалось — заставку из index.html можно убирать (она
   // сама дождётся конца ролика).
@@ -216,6 +233,7 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <ToastTapDismiss />
         
         {/* Основной контейнер с закругленными углами */}
         <div className="w-screen h-screen overflow-hidden bg-background relative">

@@ -25,7 +25,11 @@ const dismiss = (v: string) => { try { localStorage.setItem(DISMISS_KEY, v); } c
  * запасной путь: скачать установщик и открыть его. Телефон/веб — ведём на
  * страницу загрузок. Закрыть можно, и для этой версии плашка больше не покажется.
  */
-const UpdateBanner = () => {
+const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
+  // rounded — карточкой внутри списка чатов, а не полосой во всю ширину окна.
+  const shell = rounded
+    ? "shrink-0 bg-primary text-primary-foreground px-3 py-2 flex items-center gap-2 rounded-lg"
+    : "shrink-0 bg-primary text-primary-foreground px-3 py-2 flex items-center gap-2";
   const api = (window as any).electronAPI;
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [upd, setUpd] = useState<UpdaterState | null>(null);
@@ -71,7 +75,7 @@ const UpdateBanner = () => {
       }
     };
     return (
-      <div className="shrink-0 bg-primary text-primary-foreground px-3 py-2 flex items-center gap-2">
+      <div className={shell}>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">
             {upd.state === "downloaded" ? "Обновление готово" : "Вжух — и новая версия, закачаешься"}
@@ -125,7 +129,7 @@ const UpdateBanner = () => {
   const canAct = info.desktop ? !!info.fileUrl : true;
 
   return (
-    <div className="shrink-0 bg-primary text-primary-foreground px-3 py-2 flex items-center gap-2">
+    <div className={shell}>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold truncate">Вжух — и новая версия, закачаешься</div>
         <div className="text-xs opacity-80 truncate">

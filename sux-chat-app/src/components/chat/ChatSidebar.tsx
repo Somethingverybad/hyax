@@ -33,6 +33,7 @@ import { api, mediaUrl } from "@/api/client";
 import { preloadImage } from "@/lib/imageCache";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
+import UpdateBanner from "@/components/UpdateBanner";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
 
@@ -845,6 +846,9 @@ const ChatSidebar = ({
             ))}
           </div>
         )}
+        {/* Плашка обновления — под фильтрами, где до неё точно дотянуться
+            (на телефоне; на компьютере она сверху окна, см. pages/Chat). */}
+        {isMobileLayout && <div className="px-3 pt-2"><UpdateBanner rounded /></div>}
       </div>
 
       {/* Индикатор жеста «потянуть вниз»: следует за пальцем, страницу не двигает */}

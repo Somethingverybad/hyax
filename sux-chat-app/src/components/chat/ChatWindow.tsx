@@ -3119,6 +3119,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
           {shownRows.map((message, index) => {
             const isOwn = message.sender?.id === userId;
+            // Служебное сообщение без отправителя («собеседник добавил устройство»)
+            // — строкой по центру, как действие; раньше рисовалось пузырём от «Неизвестного».
+            if (!message.sender && !message.pending && message.content && !message.file_url && !message.voice_url && !message.video_url) {
+              return (
+                <div key={message._key ?? message.id} id={`msg-${message.id}`} className="flex justify-center my-1.5" data-message-id={message.id}>
+                  <span className="max-w-[85%] px-3.5 py-1.5 rounded-full bg-surface-3 text-small text-foreground/90 text-center">{message.content}</span>
+                </div>
+              );
+            }
             if (message.action) {
               const who = isOwn ? "Вы" : message.sender?.username || "Кто-то";
               const whom = message.action_target?.id === userId ? "вам" : message.action_target?.username || "";
