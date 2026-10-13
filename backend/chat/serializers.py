@@ -635,6 +635,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         logger.info(f"[JWT] Попытка аутентификации с username: {username}")
         try:
             data = super().validate(attrs)
+            # Устройство входа → claim did в обоих токенах (chat/devices.py).
+            from .devices import attach_device
+            did = attach_device(self.user, self.initial_data if isinstance(self.initial_data, dict) else {})
+            if did:
+                refresh = self.get_token(self.user)
+                refresh["did"] = did
+                data["refresh"] = str(refresh)
+                data["access"] = str(refresh.access_token)
             logger.info(f"[JWT] Аутентификация успешна для username: {username}")
             return data
         except exceptions.AuthenticationFailed:

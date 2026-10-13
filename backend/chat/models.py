@@ -69,6 +69,9 @@ class Profile(models.Model):
     # привязанной и для восстановления не годится.
     email = models.EmailField(blank=True, default="")
     email_verified_at = models.DateTimeField(blank=True, null=True)
+    # «Выйти со всех устройств»: токены, выданные раньше этого момента,
+    # не принимаются (chat/devices.py) — в том числе старые, без device_id.
+    sessions_valid_from = models.DateTimeField(blank=True, null=True)
 
     @property
     def email_verified(self):
@@ -1058,3 +1061,23 @@ class KeyTransfer(models.Model):
     blob = models.TextField(blank=True, default="")     # запечатанные ключи чатов
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+
+
+class Device(models.Model):
+    """Устройство, с которого выполнен вход (chat/devices.py). device_id
+    придумывает клиент и кладёт в токены (claim did); revoked_at — сеанс
+    завершён из «Конфиденциальность → Устройства», токены с этим did больше
+    не принимаются, а само устройство получает по сокету команду выйти и
+    стереть кэш."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="devices")
+    device_id = models.CharField(max_length=64)
+    name = models.CharField(max_length=120, blank=True, default="")
+    platform = models.CharField(max_length=16, blank=True, default="")  # ios | android | desktop | web
+    app_version = models.CharField(max_length=32, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(default=timezone.now)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("profile", "device_id")

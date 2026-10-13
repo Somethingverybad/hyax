@@ -6,6 +6,7 @@ from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineF
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
 from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransferBlobView
+from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeLevelsView
 from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -58,7 +59,10 @@ urlpatterns = [
     path('themes/<uuid:pk>/', ThemeDetailView.as_view(), name='theme-detail'),
     path('themes/<uuid:pk>/install/', ThemeInstallView.as_view(), name='theme-install'),
     path('token/', TokenObtainPairView.as_view(serializer_class=CustomTokenObtainPairSerializer), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/refresh/', TokenRefreshView.as_view(serializer_class=DeviceTokenRefreshSerializer), name='token_refresh'),
+    path('account/devices/', DevicesView.as_view(), name='account-devices'),
+    path('account/devices/revoke-others/', DevicesRevokeOthersView.as_view(), name='account-devices-revoke-others'),
+    path('account/devices/<str:device_id>/revoke/', DeviceRevokeView.as_view(), name='account-device-revoke'),
     path('upload/', FileUploadView.as_view(), name='file-upload'),
     path('upload/chunk/', ChunkUploadView.as_view(), name='file-upload-chunk'),
     path('upload/chunk/<str:upload_id>/', ChunkUploadView.as_view(), name='file-upload-chunk-status'),
