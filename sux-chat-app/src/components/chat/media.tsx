@@ -134,6 +134,16 @@ export function triClip(w: number, h: number, flip = false, d = Math.min(w, h) *
   return `path('M ${f(along(T, R))} L ${f(along(R, T))} Q ${f(R)} ${f(along(R, L))} L ${f(along(L, R))} Q ${f(L)} ${f(along(L, T))} L ${f(along(T, L))} Q ${f(T)} ${f(along(T, R))} Z')`;
 }
 
+/** Та же фигура маской (SVG data-URL): Android WebView на части прошивок
+ *  (Samsung One UI) кладёт <video> в отдельный слой композитора и clip-path
+ *  обёртки для него игнорирует — кромка режется треугольником, а само видео
+ *  остаётся чёрным квадратом. Маска идёт другим путём композитора и слой
+ *  видео режет; вместе с clip-path вреда нет. */
+export function triMask(w: number, h: number, flip = false) {
+  const d = triClip(w, h, flip).replace(/^path\('/, "").replace(/'\)$/, "");
+  return `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'><path d='${d}' fill='black'/></svg>`)}")`;
+}
+
 /** Стеклянно-мятная рамка видео-сообщения: кромка — градиент как у палочек
  *  «X», мягкая тень, блик стекла поверх видео. Внутренний треугольник
  *  отступает от кромки на rim по нормали к каждой стороне (вершина у
@@ -167,7 +177,12 @@ export const GlassTriangle = ({ size, rim = 3, flip = false, className, innerCla
       </div>
       <div className="absolute inset-0 tri-rim" style={{ clipPath: triClip(size, size, shown) }} />
       <div className={cn("absolute overflow-hidden", innerClassName ?? "bg-black")}
-        style={{ top: shown ? rim : apex, left: (size - h) / 2, width: h, height: h, clipPath: triClip(h, h, shown) }}>
+        style={{
+          top: shown ? rim : apex, left: (size - h) / 2, width: h, height: h, clipPath: triClip(h, h, shown),
+          WebkitMaskImage: triMask(h, h, shown), maskImage: triMask(h, h, shown),
+          WebkitMaskSize: "100% 100%", maskSize: "100% 100%", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+          isolation: "isolate", willChange: "transform",
+        }}>
         {children}
         <div className="tri-sheen absolute inset-0 pointer-events-none" />
       </div>
@@ -346,11 +361,14 @@ export const MessageFile = ({ raw, name, isOwn, onSave }: {
   );
 };
 
-export const VideoNote = ({ url, seconds, mirror, flip }: { url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean }) => {
+export const VideoNote = ({ url, seconds, mirror, flip, poster }: { url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null }) => {
   const src = useMediaUrl(url);
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
-  const [ready, setReady] = useState(false);
+  // С постером кадр есть сразу — скелетон не нужен.
+  const [ready, setReady] = useState(!!poster);
+  // Размер внутреннего треугольника — как в GlassTriangle(size=176, rim=3).
+  const innerH = 176 - 3 - 3 * Math.sqrt(5);
   // iOS не грузит данные видео до тапа, и loadeddata может не прийти вовсе —
   // тогда скелетон висел бы вечно. Готово по первому же признаку жизни,
   // а не дождались — всё равно показываем рамку с видео.
@@ -394,6 +412,7 @@ export const VideoNote = ({ url, seconds, mirror, flip }: { url: string; seconds
       <video
         ref={ref}
         src={src}
+        poster={poster || undefined}
         playsInline
         muted={!playing}
         preload="metadata"
@@ -407,7 +426,8 @@ export const VideoNote = ({ url, seconds, mirror, flip }: { url: string; seconds
         className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", ready ? "opacity-100" : "opacity-0")}
         // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
         // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
-        style={{ transform: mirror ? "scaleX(-1)" : undefined }}
+        // clip-path и на самом видео: слой видео в Android WebView обёртку не слушает.
+        style={{ transform: mirror ? "scaleX(-1)" : undefined, clipPath: triClip(innerH, innerH, !!flip) }}
       />
       {!playing && ready && (
         <span className="tri-play-pos">

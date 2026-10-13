@@ -308,6 +308,35 @@ export interface SecretMedia {
 }
 export interface SecretPayload { t: string; e?: unknown[]; m?: SecretMedia }
 
+/** Первый кадр записанного видео (кружка) — JPEG base64 для постера: в
+ *  секретном чате сервер превью не делает, а Android WebView до тапа кадр не
+ *  рисует, и треугольник оставался чёрным. */
+export async function videoThumb(file: Blob, size = 240): Promise<string | null> {
+  const url = URL.createObjectURL(file);
+  try {
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
+    await new Promise<void>((res, rej) => {
+      const t = setTimeout(() => rej(new Error("timeout")), 4000);
+      v.onloadeddata = () => { clearTimeout(t); res(); };
+      v.onerror = () => { clearTimeout(t); rej(new Error("video")); };
+    });
+    if (v.currentTime < 0.05) {
+      await new Promise<void>((res) => { const t = setTimeout(res, 1500); v.onseeked = () => { clearTimeout(t); res(); }; try { v.currentTime = 0.1; } catch { res(); } });
+    }
+    const w = v.videoWidth || 1, h = v.videoHeight || 1;
+    const scale = Math.min(1, size / Math.max(w, h));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
+    c.getContext("2d")!.drawImage(v, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.6).split(",")[1] || null;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /** Шифруем файл своим случайным ключом (не ключом чата): так ключ одного
  *  файла не раскрывает другие, а утечка файла без сообщения бесполезна. */
 export async function encryptFile(file: Blob): Promise<{ blob: Blob; key: string; iv: string }> {

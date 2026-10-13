@@ -32,7 +32,7 @@ import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef } from "@/lib/linkify";
 import { FormattedText, type Mention, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
-import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload } from "@/lib/secret";
+import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload, videoThumb } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import ProfileLinkCard from "./ProfileLinkCard";
@@ -120,6 +120,7 @@ interface Message {
   /** Видео-заметка снята фронталкой — воспроизводить зеркально (как в превью). */
   video_mirror?: boolean;
   video_flip?: boolean;
+  video_poster?: string | null; // первый кадр кружка (data: из секретного описания)
   /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
   /** Кадр-превью видео с сервера. */
   poster_url?: string | null;
@@ -678,7 +679,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       case "video": return { file_url: url, file_name: /\.(mp4|mov|m4v|webm)$/i.test(m.name) ? m.name : "video.mp4", download_only: false, poster_url: m.th ? `data:image/jpeg;base64,${m.th}` : null };
       case "audio": return { file_url: url, file_name: m.name || "audio.mp3", download_only: false };
       case "voice": return { voice_url: url, voice_duration: m.dur ?? null, file_url: null };
-      case "round": return { video_url: url, video_duration: m.dur ?? null, video_mirror: !!m.mi, video_flip: !!m.fl, file_url: null };
+      case "round": return { video_url: url, video_duration: m.dur ?? null, video_mirror: !!m.mi, video_flip: !!m.fl, file_url: null, video_poster: m.th ? `data:image/jpeg;base64,${m.th}` : null };
       default: return { file_url: url, file_name: m.name || "file", file_size: m.size, download_only: true };
     }
   };
@@ -2445,9 +2446,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       let sent: Message;
       if (isSecret) {
+        // Кружок: первый кадр в описание — постер у получателя вместо чёрного треугольника.
+        const th = isVideo ? await videoThumb(result.file) : null;
         sent = await sendSecretFile(result.file, {
           k: isVideo ? "round" : "voice", mime: result.file.type || (isVideo ? "video/mp4" : "audio/webm"),
-          name: isVideo ? "round.mp4" : "voice", dur: result.seconds, mi: mirror, fl: !!result.flip,
+          name: isVideo ? "round.mp4" : "voice", dur: result.seconds, mi: mirror, fl: !!result.flip, th: th || undefined,
         }, null, result.replyToId, (p) => setProgressFor(tempId, p));
         setMessages(prev => {
           const local = prev.find((m) => m.id === tempId);
@@ -3409,6 +3412,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           own={isOwn}
                           mirror={message.video_mirror}
                           flip={message.video_flip}
+                          poster={(message as { video_poster?: string | null }).video_poster}
                         />
                       )}
 
