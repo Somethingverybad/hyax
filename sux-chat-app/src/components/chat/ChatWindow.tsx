@@ -2810,9 +2810,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (pinnedRef.current) { sc.scrollTop = sc.scrollHeight; requestAnimationFrame(() => { if (pinnedRef.current) sc.scrollTop = sc.scrollHeight; }); }
     };
     set();
+    // border-box, а не content-box по умолчанию: при открытии и закрытии
+    // клавиатуры у панели меняется только padding-bottom (отступ под полосу
+    // навигации, --kb-sab: 12 ↔ 60 px на Samsung с кнопками), content-box
+    // при этом прежний, и наблюдатель молчал — лента оставалась с резервом
+    // «под клавиатуру», последнее сообщение уходило под панель на высоту
+    // полосы (баг-репорт 0913c6c8, Galaxy S24 Ultra, секретный чат).
     const ro = new ResizeObserver(set);
-    ro.observe(cs);
-    return () => { ro.disconnect(); sc.style.removeProperty("--compose-h"); };
+    ro.observe(cs, { box: "border-box" });
+    // Страховка: после события клавиатуры пересчитываем ещё раз, когда
+    // переходы отступов точно закончились.
+    const onKb = () => { setTimeout(set, 50); setTimeout(set, 400); };
+    window.addEventListener("hyax:keyboard", onKb);
+    window.visualViewport?.addEventListener("resize", onKb);
+    return () => {
+      ro.disconnect(); sc.style.removeProperty("--compose-h");
+      window.removeEventListener("hyax:keyboard", onKb);
+      window.visualViewport?.removeEventListener("resize", onKb);
+    };
   }, [mintM, chatId]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
