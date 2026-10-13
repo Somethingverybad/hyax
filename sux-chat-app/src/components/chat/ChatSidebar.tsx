@@ -109,6 +109,10 @@ function writeParticipantsCache(map: {[chatId: string]: any[]}) {
   }
 }
 
+// Прокрутка списка переживает вход в чат и выход из него: на телефоне список
+// размонтируется, пока открыт чат, и без этого каждый выход бросал наверх.
+let savedListScroll = 0;
+
 const ChatSidebar = ({ 
   userId, 
   username,
@@ -135,6 +139,15 @@ const ChatSidebar = ({
   const mint = useMint() && isMobileLayout;
   const listRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
+  // Запоминаем прокрутку списка и возвращаем её при следующем монтировании.
+  useEffect(() => {
+    const vp = listRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLElement | null;
+    if (!vp) return;
+    if (savedListScroll > 0) vp.scrollTop = savedListScroll;
+    const onScroll = () => { savedListScroll = vp.scrollTop; };
+    vp.addEventListener("scroll", onScroll, { passive: true });
+    return () => vp.removeEventListener("scroll", onScroll);
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   // Поиск по списку чатов (поле под шапкой): по названию и именам участников.
   const [listFilter, setListFilter] = useState("");
@@ -876,7 +889,7 @@ const ChatSidebar = ({
                 <p className="text-small text-subtle truncate">Идеи и предложения разработчику</p>
               </div>
               {ideabox && ideabox.unread > 0 ? (
-                <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-caption font-semibold flex items-center justify-center">
+                <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-[12px] leading-none font-semibold flex items-center justify-center">
                   {ideabox.unread > 99 ? "99+" : ideabox.unread}
                 </span>
               ) : (
@@ -1179,7 +1192,9 @@ const ChatSidebar = ({
                             </span>
                           )}
                           {!!chat.unread_count && chat.unread_count > 0 && (
-                            <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-caption font-semibold flex items-center justify-center">
+                            {/* Не text-caption: в «Мяте» подписи строки красятся в приглушённый
+                                цвет, и цифры на бейдже становились бледными. */}
+                            <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-[12px] leading-none font-semibold flex items-center justify-center">
                               {chat.unread_count > 99 ? "99+" : chat.unread_count}
                             </span>
                           )}
