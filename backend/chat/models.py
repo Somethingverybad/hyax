@@ -1045,3 +1045,16 @@ class EmailCode(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["profile", "purpose", "created_at"], name="emailcode_lookup_idx")]
+
+
+class KeyTransfer(models.Model):
+    """Сеанс переноса ключей секретных чатов на другое устройство
+    (chat/keytransfer.py). Живёт 10 минут, блоб выдаётся один раз."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="key_transfers")
+    code = models.CharField(max_length=6)
+    new_pub = models.TextField()                 # открытый ключ нового устройства
+    old_pub = models.TextField(blank=True, default="")  # открытый ключ старого (для ECDH на новом)
+    blob = models.TextField(blank=True, default="")     # запечатанные ключи чатов
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)

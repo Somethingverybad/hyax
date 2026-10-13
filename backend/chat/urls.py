@@ -5,6 +5,7 @@ from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirm
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
+from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransferBlobView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeLevelsView
 from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -41,6 +42,9 @@ urlpatterns = [
     path('wall/admin/bans/', WallAdminBansView.as_view(), name='wall-admin-bans'),
     path('secret-chats/<uuid:chat_id>/accept/', SecretChatAcceptView.as_view(), name='secret-accept'),
     path('secret-chats/<uuid:chat_id>/decline/', SecretChatDeclineView.as_view(), name='secret-decline'),
+    path('secret-transfer/', KeyTransferCreateView.as_view(), name='keytransfer-create'),
+    path('secret-transfer/<str:ref>/', KeyTransferLookupView.as_view(), name='keytransfer-lookup'),
+    path('secret-transfer/<str:ref>/blob/', KeyTransferBlobView.as_view(), name='keytransfer-blob'),
     path('auth/register/', register_user, name='register'),
     path('auth/login/', login_user, name='login'),
     path('auth/logout/', logout_user, name='logout'),
