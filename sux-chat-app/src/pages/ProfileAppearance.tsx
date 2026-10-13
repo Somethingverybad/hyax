@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -89,7 +90,7 @@ const ProfileAppearance = () => {
   const remove = async (t: ThemeDef) => {
     setMenuFor(null);
     try {
-      if (t.mine) { if (!confirm(`Удалить тему «${t.name}»? Она пропадёт и у тех, кто её установил.`)) return; await api.deleteTheme(t.id); }
+      if (t.mine) { if (!(await confirmDialog(`Удалить тему «${t.name}»? Она пропадёт и у тех, кто её установил.`))) return; await api.deleteTheme(t.id); }
       else await api.uninstallTheme(t.id);
       const rest = installed.filter((x) => x.id !== t.id);
       setInstalledThemes(rest);

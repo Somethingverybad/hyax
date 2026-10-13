@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -70,7 +71,7 @@ const ProfileStickerPacks = () => {
   /** Свой набор — удалить у всех; чужой — убрать из моих. */
   const removePack = async (p: { id: string; name: string; author?: { id?: string } | null }) => {
     const mine = isMine(p);
-    if (!confirm(mine ? `Удалить набор «${p.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${p.name}» из моих наборов?`)) return;
+    if (!(await confirmDialog(mine ? `Удалить набор «${p.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${p.name}» из моих наборов?`))) return;
     try {
       if (mine) await api.deleteStickerPack(p.id); else await api.unsaveStickerPack(p.id);
       setPacks((prev) => (prev || []).filter((x) => x.id !== p.id));

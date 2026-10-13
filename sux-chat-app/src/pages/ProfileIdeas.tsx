@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send, Flag } from "lucide-react";
@@ -94,7 +95,7 @@ export default function ProfileIdeas() {
 
   const report = async (idea: IdeaItem) => {
     if (busyId) return;
-    if (!window.confirm("Пожаловаться на эту идею? Её проверит модератор.")) return;
+    if (!(await confirmDialog("Пожаловаться на эту идею? Её проверит модератор.", { ok: "Пожаловаться" }))) return;
     setBusyId(idea.id);
     try { await api.ideaAction(idea.id, "report"); toast.success("Жалоба отправлена — спасибо"); }
     catch (e: any) { toast.error(e?.message || "Не получилось"); }

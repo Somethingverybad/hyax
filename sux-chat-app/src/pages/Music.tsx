@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send,
@@ -180,7 +181,7 @@ const Music = () => {
   };
 
   const remove = async (pl: Playlist) => {
-    if (!confirm(`Удалить плейлист «${pl.name}»? Сама музыка в переписке останется.`)) return;
+    if (!(await confirmDialog(`Удалить плейлист «${pl.name}»? Сама музыка в переписке останется.`))) return;
     try {
       await api.deletePlaylist(pl.id);
       setOpen(null); load();

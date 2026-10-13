@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Sticker as StickerIcon, Share2, Check, Plus, Trash2 } from "lucide-react";
@@ -98,7 +99,7 @@ const StickerPackPage = () => {
                   type="button"
                   disabled={busy}
                   onClick={async () => {
-                    if (!confirm(`Удалить набор «${pack.name}» у всех, кто его сохранил? Это необратимо.`)) return;
+                    if (!(await confirmDialog(`Удалить набор «${pack.name}» у всех, кто его сохранил? Это необратимо.`))) return;
                     setBusy(true);
                     try { await api.deleteStickerPack(pack.id); toast.success("Набор удалён"); navigate("/profile/stickerpacks", { replace: true }); }
                     catch (e: any) { toast.error(e?.message || "Не получилось"); }

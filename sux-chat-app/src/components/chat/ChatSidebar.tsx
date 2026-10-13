@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
@@ -479,7 +480,7 @@ const ChatSidebar = ({
   const deleteChat = async (chatId: string, chatTitle: string, skipConfirm = false) => {
     setChatMenu(null);
     setSwipedChatId(null);
-    if (!skipConfirm && !confirm(`Вы уверены, что хотите удалить чат "${chatTitle}"?`)) {
+    if (!skipConfirm && !(await confirmDialog(`Вы уверены, что хотите удалить чат "${chatTitle}"?`))) {
       return;
     }
 

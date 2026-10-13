@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import StickerView from "@/components/chat/StickerView";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useEffect, useRef, useState } from "react";
@@ -189,7 +190,7 @@ const StickerPicker = ({
   const removePack = async (mine: boolean) => {
     setPackMenu(false);
     if (!activePack) return;
-    if (!confirm(mine ? `Удалить набор «${activePack.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${activePack.name}» из моих наборов?`)) return;
+    if (!(await confirmDialog(mine ? `Удалить набор «${activePack.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${activePack.name}» из моих наборов?`))) return;
     try {
       if (mine) await api.deleteStickerPack(activePack.id); else await api.unsaveStickerPack(activePack.id);
       pickerCache.stickers.delete(activePack.id);

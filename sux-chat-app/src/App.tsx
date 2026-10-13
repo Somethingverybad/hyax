@@ -1,3 +1,4 @@
+import { ConfirmHost } from "@/lib/confirm";
 import { Toaster } from "@/components/ui/toaster";
 import ProfilePage from "./pages/Profile";
 import ProfileEdit from "./pages/ProfileEdit";
@@ -224,6 +225,7 @@ const App = () => {
           <BrowserRouter>
             <DeepLinks />
             <ShareInboxSheet />
+            <ConfirmHost />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
             <MiniPlayer />
             <ThemeFromProfile />

@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
 import UserProfileModal from "@/components/UserProfileModal";
@@ -781,7 +782,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   };
 
   const removeChannel = async () => {
-    if (!confirm(`Удалить канал «${channel?.name}»? Это необратимо.`)) return;
+    if (!(await confirmDialog(`Удалить канал «${channel?.name}»? Это необратимо.`))) return;
     try {
       await api.deleteChannel(channelId);
       onDeleted?.();
