@@ -8,7 +8,7 @@ import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
-import { Ban, Lock, FileText, ShieldCheck, Trash2, Images } from "lucide-react";
+import { Ban, Lock, FileText, ShieldCheck, Trash2, Images, Mail } from "lucide-react";
 
 const SAVED_ACCESS: Record<string, string> = { all: "Все", selected: "Избранные", none: "Никто" };
 
@@ -188,6 +188,12 @@ const ProfilePrivacy = () => {
         </SettingsCard>
 
         <SettingsCard>
+          <SettingsRow
+            icon={Mail}
+            label="Почта для восстановления"
+            hint={profile?.email_verified ? profile.email : "Без неё забытый пароль не вернуть"}
+            onClick={() => navigate("/profile/email")}
+          />
           <SettingsRow
             icon={Trash2}
             label="Удалить аккаунт"

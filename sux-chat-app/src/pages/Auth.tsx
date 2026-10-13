@@ -11,6 +11,7 @@ import { api } from "@/api/client";
 import { LegalView, type LegalKind } from "./Legal";
 import AuthQuote from "@/components/AuthQuote";
 import SuprematistBackdrop from "@/components/SuprematistBackdrop";
+import ForgotPassword from "@/components/ForgotPassword";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -23,6 +24,7 @@ const Auth = () => {
   // Правила открываются поверх формы: переход на /terms размонтировал бы
   // экран и стёр уже введённые логин с паролем.
   const [legal, setLegal] = useState<LegalKind | null>(null);
+  const [forgot, setForgot] = useState(false);
   // Двухшаговый вход, как в мессенджерах: сначала логин, потом пароль.
   // Одно поле на экране — клавиатура ничего не перекрывает, а панели
   // скользят transform-ом (его считает композитор, перехода без рывков).
@@ -279,7 +281,21 @@ const Auth = () => {
             <span className="text-primary font-semibold underline underline-offset-4">{isLogin ? "Зарегистрируйтесь" : "Войдите"}</span>
           </button>
         </div>
+        {isLogin && (
+          <div className="mt-3 text-center">
+            <button type="button" onClick={() => setForgot(true)} className="text-small text-subtle underline underline-offset-4">
+              Забыли пароль?
+            </button>
+          </div>
+        )}
       </Card>
+      {forgot && (
+        <ForgotPassword
+          initialLogin={username}
+          onClose={() => setForgot(false)}
+          onDone={(l) => { setForgot(false); setIsLogin(true); setUsername(l); setPassword(""); setStep(1); }}
+        />
+      )}
       {legal && (
         <div className="fixed inset-0 z-50">
           <LegalView kind={legal} onClose={() => setLegal(null)} />

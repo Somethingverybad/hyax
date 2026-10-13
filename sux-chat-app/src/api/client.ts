@@ -224,6 +224,9 @@ export interface Profile {
   terms_accepted_at?: string | null;
   /** Анимация ауры — настройка аккаунта, зеркалится в локальную aura_anim. */
   aura_anim?: boolean;
+  /** Почта для восстановления пароля (только свой профиль); verified — подтверждена кодом. */
+  email?: string;
+  email_verified?: boolean;
   /** Когда менялись ник, аватар или аура — по нему устройства понимают, что кеш устарел. */
   identity_updated_at?: string;
   /** Только в своём профиле: видит админские разделы (мониторинг). */
@@ -1793,6 +1796,35 @@ export const api = {
   },
 
   /** Безвозвратно удалить свой аккаунт. Пароль — подтверждение. */
+  /** Почта для восстановления пароля: письмо с кодом на новый адрес. */
+  setEmail: async (email: string): Promise<{ sent: boolean; email: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/account/email/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ email }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось отправить код");
+    return body;
+  },
+  confirmEmail: async (code: string): Promise<Profile> => {
+    const res = await fetchWithAuth(`${API_URL}/account/email/confirm/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ code }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось подтвердить");
+    return body;
+  },
+  unlinkEmail: async (): Promise<Profile> => {
+    const res = await fetchWithAuth(`${API_URL}/account/email/`, { method: "DELETE", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось отвязать");
+    return body;
+  },
+  /** Сброс пароля без входа: код на привязанную почту, затем новый пароль. */
+  forgotPassword: async (login: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/auth/password/forgot/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login }) });
+    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body?.error || "Не удалось отправить код"); }
+  },
+  resetPassword: async (login: string, code: string, password: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/auth/password/reset/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, code, password }) });
+    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body?.error || "Не удалось сменить пароль"); }
+  },
+
   deleteAccount: async (password: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/account/delete/`, {
       method: "POST",

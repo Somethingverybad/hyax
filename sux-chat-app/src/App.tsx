@@ -16,6 +16,7 @@ import ProfileVibeLevels from "./pages/ProfileVibeLevels";
 import ProfileAura from "./pages/ProfileAura";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
+import ProfileEmail from "./pages/ProfileEmail";
 import Legal from "./pages/Legal";
 import ThemeEditor from "./pages/ThemeEditor";
 import SoundPackNew from "./pages/SoundPackNew";
@@ -266,6 +267,7 @@ const App = () => {
               {/* Стикерпаки: свои, сохранённые и импорт набора из Telegram. */}
               <Route path="/profile/stickerpacks" element={<ProfileStickerPacks />} />
               <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
+              <Route path="/profile/email" element={<ProfileEmail />} />
               {/* Редактор темы: новая или своя по id. */}
               <Route path="/profile/themes/:id" element={<ThemeEditor />} />
               {/* Тема по ссылке «Поделиться темой». */}
