@@ -42,7 +42,9 @@ def check_token(profile_id, payload):
     did = payload.get("did") or ""
     iat = payload.get("iat") or 0
     revoked, vf_ts = _state(profile_id, did)
-    if revoked or (vf_ts and iat and iat < vf_ts):
+    # iat в токене — целые секунды, граница — с микросекундами: токен,
+    # выданный в ту же секунду, что и «выйти везде», должен пройти.
+    if revoked or (vf_ts and iat and iat < int(vf_ts)):
         _cache.pop((profile_id, did), None)
         raise exceptions.AuthenticationFailed("Сеанс завершён — войдите снова", code="session_revoked")
 
