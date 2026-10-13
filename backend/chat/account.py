@@ -13,7 +13,7 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Chat, Message, NotificationSound, Profile, SoundPack, Sticker
+from .models import Chat, EmailCode, Message, NotificationSound, Profile, SoundPack, Sticker
 from .serializers import OwnProfileSerializer
 
 logger = logging.getLogger(__name__)
@@ -126,4 +126,152 @@ class DeleteAccountView(APIView):
 
         logger.warning("Аккаунт удалён по запросу владельца: %s (файлов: %d, ключей S3: %d)",
                        username, len(local), len(s3_keys))
+        return Response({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Почта для восстановления пароля
+# ---------------------------------------------------------------------------
+import re
+import secrets
+from datetime import timedelta
+
+from .mailer import MailNotConfigured, code_email, send_email
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+CODE_TTL = timedelta(minutes=15)
+RESEND_AFTER = timedelta(seconds=60)
+MAX_ATTEMPTS = 5
+
+
+def _issue_code(profile, email, purpose):
+    """Новый код в письмо. Не чаще раза в минуту на профиль и назначение —
+    иначе чужую почту можно было бы заспамить, зная ник."""
+    recent = EmailCode.objects.filter(profile=profile, purpose=purpose, created_at__gt=timezone.now() - RESEND_AFTER).exists()
+    if recent:
+        return None, "Код уже отправлен — проверьте почту или подождите минуту"
+    code = f"{secrets.randbelow(10**6):06d}"
+    EmailCode.objects.filter(profile=profile, purpose=purpose, used_at__isnull=True).update(used_at=timezone.now())
+    row = EmailCode.objects.create(profile=profile, email=email, code=code, purpose=purpose)
+    subject, text, html = code_email(code, purpose)
+    try:
+        send_email(email, subject, text, html)
+    except MailNotConfigured:
+        row.delete()
+        return None, "Отправка писем пока не настроена"
+    except Exception:
+        logger.exception("письмо %s на %s не ушло", purpose, email)
+        row.delete()
+        return None, "Не удалось отправить письмо"
+    return row, None
+
+
+def _check_code(profile, purpose, code):
+    """Последний живой код этого назначения. Неверный ввод тратит попытку,
+    после пяти код сгорает."""
+    row = (EmailCode.objects.filter(profile=profile, purpose=purpose, used_at__isnull=True,
+                                    created_at__gt=timezone.now() - CODE_TTL)
+           .order_by("-created_at").first())
+    if not row:
+        return None, "Код устарел — запросите новый"
+    if row.attempts >= MAX_ATTEMPTS:
+        return None, "Слишком много попыток — запросите новый код"
+    if (code or "").strip() != row.code:
+        row.attempts += 1
+        row.save(update_fields=["attempts"])
+        return None, "Неверный код"
+    row.used_at = timezone.now()
+    row.save(update_fields=["used_at"])
+    return row, None
+
+
+def _find_by_login(login):
+    """Ник или привязанная почта → профиль. Почта считается только подтверждённая."""
+    login = (login or "").strip().lstrip("@")
+    if not login:
+        return None
+    if "@" in login:
+        return Profile.objects.filter(email__iexact=login, email_verified_at__isnull=False).first()
+    return Profile.objects.filter(username=login).first() or Profile.objects.filter(username__iexact=login).first()
+
+
+class EmailView(APIView):
+    """POST {email} — письмо с кодом на новую почту; DELETE — отвязать."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile:
+            return Response({"error": "Profile not found"}, status=404)
+        email = (request.data.get("email") or "").strip().lower()
+        if not EMAIL_RE.match(email) or len(email) > 254:
+            return Response({"error": "Это не похоже на адрес почты"}, status=400)
+        if Profile.objects.filter(email__iexact=email, email_verified_at__isnull=False).exclude(pk=profile.pk).exists():
+            return Response({"error": "Эта почта уже привязана к другому аккаунту"}, status=400)
+        _, err = _issue_code(profile, email, "verify")
+        if err:
+            return Response({"error": err}, status=503 if "не настроена" in err else 429 if "подождите" in err else 502)
+        return Response({"sent": True, "email": email})
+
+    def delete(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile:
+            return Response({"error": "Profile not found"}, status=404)
+        profile.email = ""
+        profile.email_verified_at = None
+        profile.save(update_fields=["email", "email_verified_at"])
+        return Response(OwnProfileSerializer(profile).data)
+
+
+class EmailConfirmView(APIView):
+    """POST {code} — код из письма подтверждает почту из последнего запроса."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile:
+            return Response({"error": "Profile not found"}, status=404)
+        row, err = _check_code(profile, "verify", request.data.get("code"))
+        if err:
+            return Response({"error": err}, status=400)
+        if Profile.objects.filter(email__iexact=row.email, email_verified_at__isnull=False).exclude(pk=profile.pk).exists():
+            return Response({"error": "Эта почта уже привязана к другому аккаунту"}, status=400)
+        profile.email = row.email
+        profile.email_verified_at = timezone.now()
+        profile.save(update_fields=["email", "email_verified_at"])
+        return Response(OwnProfileSerializer(profile).data)
+
+
+class PasswordForgotView(APIView):
+    """POST {login} — ник или почта. Если у аккаунта есть подтверждённая почта,
+    туда уходит код. Ответ одинаковый в любом случае: по нему нельзя узнать,
+    есть ли у человека почта."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        profile = _find_by_login(request.data.get("login"))
+        if profile and profile.email_verified and not profile.is_bot:
+            _, err = _issue_code(profile, profile.email, "reset")
+            if err and "не настроена" in err:
+                return Response({"error": err}, status=503)
+        return Response({"sent": True})
+
+
+class PasswordResetView(APIView):
+    """POST {login, code, password} — новый пароль по коду из письма."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        profile = _find_by_login(request.data.get("login"))
+        password = request.data.get("password") or ""
+        if len(password) < 6:
+            return Response({"error": "Пароль короче 6 символов"}, status=400)
+        if not profile or not profile.email_verified:
+            return Response({"error": "Неверный код"}, status=400)
+        _, err = _check_code(profile, "reset", request.data.get("code"))
+        if err:
+            return Response({"error": err}, status=400)
+        user = profile.user
+        user.set_password(password)
+        user.save(update_fields=["password"])
         return Response({"ok": True})

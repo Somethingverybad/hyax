@@ -64,6 +64,15 @@ class Profile(models.Model):
     # Когда человек принял правила и политику конфиденциальности. Пусто у тех,
     # кто регистрировался до появления правил, — клиент покажет им экран согласия.
     terms_accepted_at = models.DateTimeField(blank=True, null=True)
+    # Почта для восстановления пароля. Привязывается кодом из письма
+    # (chat/account.py); пока email_verified_at пуст — почта не считается
+    # привязанной и для восстановления не годится.
+    email = models.EmailField(blank=True, default="")
+    email_verified_at = models.DateTimeField(blank=True, null=True)
+
+    @property
+    def email_verified(self):
+        return bool(self.email and self.email_verified_at)
     # Выбранная тема оформления: dark | light | neo либо uuid темы из Theme.
     # Хранится на сервере, чтобы выбор переезжал между устройствами; на самом
     # устройстве лежит копия (см. клиент, src/lib/theme.ts).
@@ -1020,3 +1029,19 @@ class ChatAction(models.Model):
 
     def __str__(self):
         return f"{self.emoji} {self.name}"
+
+
+class EmailCode(models.Model):
+    """Одноразовый код из письма: привязка почты (verify) или сброс пароля
+    (reset). Живёт 15 минут, 5 попыток ввода, повторная отправка не чаще
+    раза в минуту (chat/account.py)."""
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="email_codes")
+    email = models.EmailField()
+    code = models.CharField(max_length=8)
+    purpose = models.CharField(max_length=10)  # verify | reset
+    created_at = models.DateTimeField(auto_now_add=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["profile", "purpose", "created_at"], name="emailcode_lookup_idx")]

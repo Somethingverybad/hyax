@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
-from .account import AcceptTermsView, DeleteAccountView
+from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
@@ -46,6 +46,10 @@ urlpatterns = [
     path('auth/logout/', logout_user, name='logout'),
     path('account/accept-terms/', AcceptTermsView.as_view(), name='account-accept-terms'),
     path('account/delete/', DeleteAccountView.as_view(), name='account-delete'),
+    path('account/email/', EmailView.as_view(), name='account-email'),
+    path('account/email/confirm/', EmailConfirmView.as_view(), name='account-email-confirm'),
+    path('auth/password/forgot/', PasswordForgotView.as_view(), name='password-forgot'),
+    path('auth/password/reset/', PasswordResetView.as_view(), name='password-reset'),
     path('themes/', ThemesView.as_view(), name='themes'),
     path('themes/<uuid:pk>/', ThemeDetailView.as_view(), name='theme-detail'),
     path('themes/<uuid:pk>/install/', ThemeInstallView.as_view(), name='theme-install'),
