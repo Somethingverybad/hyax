@@ -2840,6 +2840,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <KeyRound className="w-5 h-5 text-foreground/80" />Ключ шифрования
                       </button>
                     )}
+                    {isSecret && skey && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); navigate(`/profile/secret-transfer?give=1&chat=${chatId}`); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Send className="w-5 h-5 text-foreground/80" />Перенести на другое устройство
+                      </button>
+                    )}
                     {!isSecret && peer && !peer.is_bot && !saved && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setSecretIntroOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <Lock className="w-5 h-5 text-online" />Секретный чат
@@ -3721,9 +3726,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 : "Этот секретный чат создан на другом вашем устройстве."}
             </p>
           ) : (
-            <p className="text-center text-small text-subtle">
-              {hasHalf ? "Готовлю ключ…" : "Этот секретный чат открыт на другом устройстве — здесь его не прочитать и не написать."}
-            </p>
+            <div className="space-y-2">
+              <p className="text-center text-small text-subtle">
+                {hasHalf ? "Готовлю ключ…" : "Этот секретный чат открыт на другом устройстве — здесь его не прочитать и не написать."}
+              </p>
+              {!hasHalf && (
+                <button type="button" onClick={() => navigate("/profile/secret-transfer?receive=1")}
+                  className="w-full h-11 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90">
+                  <KeyRound className="w-4 h-4" /> Получить ключ с того устройства
+                </button>
+              )}
+            </div>
           )}
         </div>
       ) : (

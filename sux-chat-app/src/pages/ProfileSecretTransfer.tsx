@@ -26,7 +26,12 @@ const ProfileSecretTransfer = () => {
   const { id: linkId } = useParams();
   const location = useLocation();
   const linkPub = linkId ? decodeURIComponent((location.hash || "").replace(/^#/, "")) : "";
-  const [mode, setMode] = useState<"pick" | "receive" | "give">(linkId ? "give" : "pick");
+  // Из секретного чата: ?give=1&chat=<id> — отдать ключ только этого чата;
+  // ?receive=1 — сразу показать QR (ключ этого чата на другом устройстве).
+  const params = new URLSearchParams(location.search);
+  const onlyChat = params.get("chat") || "";
+  const autoReceive = params.get("receive") === "1";
+  const [mode, setMode] = useState<"pick" | "receive" | "give">(linkId || params.get("give") === "1" ? "give" : "pick");
 
   // ---- новое устройство ----
   const [session, setSession] = useState<Session | null>(null);
@@ -51,6 +56,8 @@ const ProfileSecretTransfer = () => {
     } catch (e: any) { toast.error(e?.message || "Не удалось открыть сеанс"); }
     finally { setBusy(false); }
   };
+
+  useEffect(() => { if (autoReceive) void startReceive(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   // Опрос: пришли ли ключи. Сеанс живёт 10 минут.
   useEffect(() => {
@@ -103,7 +110,9 @@ const ProfileSecretTransfer = () => {
     if (!target || busy) return;
     setBusy(true);
     try {
-      const { keys, skipped } = await exportChatKeys();
+      const all = await exportChatKeys();
+      const keys = onlyChat ? all.keys.filter((k) => k.chatId === onlyChat) : all.keys;
+      const skipped = onlyChat ? (keys.length ? 0 : 1) : all.skipped;
       const kp = await transferKeyPair();
       const blob = await sealKeys(target.id, kp.priv, target.pub, keys);
       await api.sendKeyTransferBlob(target.id, blob, kp.pub, keys.map((k) => k.chatId));
@@ -162,7 +171,7 @@ const ProfileSecretTransfer = () => {
 
         {mode === "give" && !target && (
           <form onSubmit={(e) => { e.preventDefault(); void lookup(code); }} className={card}>
-            <p className="text-small text-subtle">Код сеанса с нового устройства — 6 цифр под его QR.</p>
+            <p className="text-small text-subtle">{onlyChat ? "Переносим ключ этого чата. " : ""}Код сеанса с нового устройства — 6 цифр под его QR. На нём: Конфиденциальность → Перенести секретные чаты → «Получить ключи», или откройте там этот чат.</p>
             <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="000000"
               className={`${inputCls} tracking-[0.3em] text-center text-lg`} />
@@ -182,7 +191,7 @@ const ProfileSecretTransfer = () => {
 
         {sent && (
           <div className={card}>
-            <p className="text-body">Отправлено секретных чатов: {sent.n}.</p>
+            <p className="text-body">{onlyChat ? (sent.n ? "Ключ чата отправлен." : "Ключ этого чата отдать нельзя.") : `Отправлено секретных чатов: ${sent.n}.`}</p>
             {sent.skipped > 0 && <p className="text-small text-subtle">Не перенеслись: {sent.skipped}. Это чаты, созданные до обновления — их ключи устройство отдать не может. Создайте такой чат заново.</p>}
             <p className="text-small text-subtle">Собеседникам ушло сообщение, что вы добавили устройство. Новое устройство подхватит чаты само.</p>
             <Button type="button" className="w-full h-12" onClick={() => navigate(-1)}>Готово</Button>
