@@ -132,19 +132,17 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
   <section class="wrap" id="download">
     <h2>Скачать</h2>
     <!-- Платформа посетителя — крупной карточкой (скрипт ниже переносит её сюда),
-         остальные — списком по кнопке «Другие платформы». Без скрипта виден весь список. -->
+         остальные — списком под разделителем «Другие платформы». Без скрипта — весь список. -->
     <div class="dl-main" id="dl-main" hidden></div>
-    <div class="dl-more-wrap"><button type="button" class="pill soft dl-more" id="dl-more" aria-expanded="false" aria-controls="dl-others" hidden><span class="if-closed">Другие платформы</span><span class="if-open">Свернуть</span></button></div>
+    <div class="dl-sep" id="dl-sep" hidden><span>Другие платформы</span></div>
     <div class="dl-others card" id="dl-others">
       <div class="plat" data-p="ios">
         <div class="plat-text">
           <h3>iPhone</h3>
           <p>Через TestFlight — приложение Apple для бета-версий.</p>
           <ol class="steps">
-            <li>Установите TestFlight из App Store — первая кнопка.</li>
-            <li>На этом же iPhone откройте приглашение — вторая кнопка.</li>
-            <li>В TestFlight нажмите «Принять», затем «Установить».</li>
-            <li>Запускайте WYX с экрана «Домой». Обновления приходят через TestFlight — включите в нём автообновления.</li>
+            <li>Установите TestFlight из App Store.</li>
+            <li>Откройте приглашение на этом iPhone и нажмите «Принять», затем «Установить».</li>
           </ol>
         </div>
         <div class="links">
@@ -194,15 +192,10 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
         : /Mac/.test(pf) || /Mac OS X/.test(ua) ? "mac"
         : /Win/.test(pf) || /Windows/.test(ua) ? "win"
         : /Linux/.test(pf) || /Linux|X11/.test(ua) ? "linux" : "";
-      var main = document.getElementById("dl-main"), others = document.getElementById("dl-others"), btn = document.getElementById("dl-more");
+      var main = document.getElementById("dl-main"), others = document.getElementById("dl-others"), sep = document.getElementById("dl-sep");
       var el = k && others.querySelector('[data-p="' + k + '"]');
       if (!el) return; // платформа не определилась — оставляем весь список
-      main.appendChild(el); main.hidden = false;
-      others.hidden = true; btn.hidden = false;
-      btn.addEventListener("click", function () {
-        var open = others.hidden; others.hidden = !open;
-        btn.setAttribute("aria-expanded", open ? "true" : "false");
-      });
+      main.appendChild(el); main.hidden = false; sep.hidden = false;
     })();
     </script>
   </section>

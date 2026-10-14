@@ -132,19 +132,17 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
   <section class="wrap" id="download">
     <h2>Download</h2>
     <!-- Платформа посетителя — крупной карточкой (скрипт ниже переносит её сюда),
-         остальные — списком по кнопке «Другие платформы». Без скрипта виден весь список. -->
+         остальные — списком под разделителем «Другие платформы». Без скрипта — весь список. -->
     <div class="dl-main" id="dl-main" hidden></div>
-    <div class="dl-more-wrap"><button type="button" class="pill soft dl-more" id="dl-more" aria-expanded="false" aria-controls="dl-others" hidden><span class="if-closed">Other platforms</span><span class="if-open">Hide</span></button></div>
+    <div class="dl-sep" id="dl-sep" hidden><span>Other platforms</span></div>
     <div class="dl-others card" id="dl-others">
       <div class="plat" data-p="ios">
         <div class="plat-text">
           <h3>iPhone</h3>
           <p>Via TestFlight, Apple's app for beta versions.</p>
           <ol class="steps">
-            <li>Install TestFlight from the App Store — the first button.</li>
-            <li>On the same iPhone, open the invitation — the second button.</li>
-            <li>In TestFlight, tap “Accept”, then “Install”.</li>
-            <li>Launch WYX from the Home Screen. Updates arrive through TestFlight — turn on automatic updates there.</li>
+            <li>Install TestFlight from the App Store.</li>
+            <li>Open the invitation on this iPhone and tap “Accept”, then “Install”.</li>
           </ol>
         </div>
         <div class="links">
@@ -194,15 +192,10 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
         : /Mac/.test(pf) || /Mac OS X/.test(ua) ? "mac"
         : /Win/.test(pf) || /Windows/.test(ua) ? "win"
         : /Linux/.test(pf) || /Linux|X11/.test(ua) ? "linux" : "";
-      var main = document.getElementById("dl-main"), others = document.getElementById("dl-others"), btn = document.getElementById("dl-more");
+      var main = document.getElementById("dl-main"), others = document.getElementById("dl-others"), sep = document.getElementById("dl-sep");
       var el = k && others.querySelector('[data-p="' + k + '"]');
       if (!el) return; // платформа не определилась — оставляем весь список
-      main.appendChild(el); main.hidden = false;
-      others.hidden = true; btn.hidden = false;
-      btn.addEventListener("click", function () {
-        var open = others.hidden; others.hidden = !open;
-        btn.setAttribute("aria-expanded", open ? "true" : "false");
-      });
+      main.appendChild(el); main.hidden = false; sep.hidden = false;
     })();
     </script>
   </section>
