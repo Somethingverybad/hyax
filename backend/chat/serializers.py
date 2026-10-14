@@ -465,6 +465,7 @@ class MessageSerializer(serializers.ModelSerializer):
             if not me or str(me.id) not in (getattr(instance, 'transcript_for', None) or []):
                 data['voice_transcript'] = None
                 data['transcript_status'] = ''
+                data['transcript_translations'] = {}
         return data
 
     def validate(self, attrs):
@@ -525,7 +526,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden', 'action', 'action_target']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden', 'action', 'action_target']
         read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden', 'action', 'action_target']
 
     def get_action(self, obj):

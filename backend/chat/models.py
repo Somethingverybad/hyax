@@ -256,6 +256,11 @@ class Message(models.Model):
     # Кто просил расшифровку (id профилей): текст видят только они. Распознаём
     # один раз — следующий попросивший получает готовое сразу.
     transcript_for = models.JSONField(default=list, blank=True)
+    # Язык речи, который определил whisper, и переводы расшифровки на языки
+    # попросивших (chat/translate.py, schedule_transcript) — если в личке
+    # включён автоперевод и языки разные.
+    transcript_lang = models.CharField(max_length=8, blank=True, default='')
+    transcript_translations = models.JSONField(default=dict, blank=True)
     # Видео-сообщение — наш ответ «кружкам»: короткое видео с фронтальной
     # камеры, которое в переписке показывается треугольником.
     video_url = models.TextField(blank=True, null=True)

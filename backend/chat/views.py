@@ -933,6 +933,10 @@ class MessageViewSet(viewsets.ModelViewSet):
             msg.save(update_fields=[*update, 'updated_at'])
         if 'transcript_status' in update:
             transcribe_async(msg.id)
+        elif msg.transcript_status == 'done' and 'transcript_for' in update:
+            # Расшифровка уже есть, попросил новый человек — переведём ему, если надо.
+            from .translate import schedule_transcript
+            schedule_transcript(msg.id)
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])

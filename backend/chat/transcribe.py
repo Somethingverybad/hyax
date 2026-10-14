@@ -66,11 +66,16 @@ def transcribe_message(message_id: str):
             text = " ".join(s.text.strip() for s in segments).strip()
             msg.voice_transcript = text or "(тишина)"
             msg.transcript_status = "done"
+            msg.transcript_lang = (getattr(info, "language", "") or "")[:8]
             logger.info("whisper: %s — %s, %.0f с аудио", message_id, info.language, info.duration)
         except Exception:
             logger.exception("whisper: расшифровка не удалась (%s)", message_id)
             msg.transcript_status = "error"
-        msg.save(update_fields=["voice_transcript", "transcript_status", "updated_at"])
+        msg.save(update_fields=["voice_transcript", "transcript_status", "transcript_lang", "updated_at"])
+    # Автоперевод расшифровки — уже вне блокировки whisper (сеть, не CPU).
+    if msg.transcript_status == "done":
+        from .translate import translate_transcript
+        translate_transcript(msg.id)
 
 
 def transcribe_async(message_id: str):
