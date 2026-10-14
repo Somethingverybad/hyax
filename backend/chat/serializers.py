@@ -110,7 +110,7 @@ class OwnProfileSerializer(ProfileSerializer):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at', 'email', 'email_verified']
 
@@ -201,6 +201,8 @@ class ChatSerializer(serializers.ModelSerializer):
     my_wallpaper = serializers.SerializerMethodField()
 
     secret = serializers.SerializerMethodField()
+    # Запрос на переписку: id того, кто должен принять (или null).
+    pending_for = serializers.PrimaryKeyRelatedField(read_only=True)
 
     def get_secret(self, obj):
         """Секретный чат: состояние и открытые ключи сторон (chat/secret.py)."""
@@ -228,7 +230,7 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'pending_for']
 
     def get_pinned_at(self, obj):
         v = getattr(obj, 'my_pinned_at', None)

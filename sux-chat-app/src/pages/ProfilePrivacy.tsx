@@ -49,7 +49,7 @@ const ProfilePrivacy = () => {
   };
 
   /** Переключатель в профиле: рисуем сразу, при ошибке возвращаем как было. */
-  const setFlag = async (key: "show_last_seen", value: boolean) => {
+  const setFlag = async (key: "show_last_seen" | "confirm_chats", value: boolean) => {
     if (!profile) return;
     const prev = profile;
     const next = { ...profile, [key]: value };
@@ -154,6 +154,25 @@ const ProfilePrivacy = () => {
             {t("Пока включено «Скрыть, что я в сети», время последнего входа не показывается никому.")}
           </p>
         )}
+
+        <SettingsCard>
+          <SettingsRow
+            label={t("Подтверждать новые чаты")}
+            hint={profile?.confirm_chats
+              ? t("Новый собеседник сначала присылает запрос — писать и звонить он сможет, когда вы примете")
+              : t("Выключено — новые чаты появляются сразу")}
+            trailing={
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                aria-label={t("Подтверждать новые чаты")}
+                checked={!!profile?.confirm_chats}
+                disabled={!profile}
+                onChange={(e) => setFlag("confirm_chats", e.target.checked)}
+              />
+            }
+          />
+        </SettingsCard>
 
         <p className="px-1 pt-2 text-small text-subtle">{t("Контент")}</p>
         <SettingsCard>

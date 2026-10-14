@@ -261,6 +261,49 @@ class ChatViewSet(viewsets.ModelViewSet):
         return Response({"ok": True, "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None})
 
     @action(detail=True, methods=['post'])
+    def accept_request(self, request, pk=None):
+        """Принять запрос на переписку (принимает тот, кого ждёт чат)."""
+        me = getattr(request.user, 'profile', None)
+        chat = Chat.objects.filter(id=pk, pending_for=me).first() if me else None
+        if not chat:
+            return Response({"error": "Запрос не найден"}, status=404)
+        Chat.objects.filter(id=chat.id).update(pending_for=None, updated_at=timezone.now())
+        ids = list(chat.participants.values_list('id', flat=True))
+        _user_event(ids, {"type": "chat_request", "chat_id": str(chat.id), "state": "accepted"})
+        try:
+            from .fcm import notify_profiles
+            from .i18n import L
+            notify_profiles(Profile.objects.filter(id__in=ids).exclude(id=me.id), title=me.username,
+                            body=L("Принял(а) ваш запрос на переписку"), extra={"chat_id": str(chat.id), "kind": "chat_request"})
+        except Exception:
+            logger.exception("запрос на переписку: пуш о принятии не ушёл")
+        chat.refresh_from_db()
+        return Response(self.get_serializer(chat).data)
+
+    @action(detail=True, methods=['post'])
+    def decline_request(self, request, pk=None):
+        """Отклонить запрос: чат удаляется у обоих."""
+        me = getattr(request.user, 'profile', None)
+        chat = Chat.objects.filter(id=pk, pending_for=me).first() if me else None
+        if not chat:
+            return Response({"error": "Запрос не найден"}, status=404)
+        ids = list(chat.participants.values_list('id', flat=True))
+        chat.delete()
+        _user_event(ids, {"type": "chat_removed", "chat_id": str(pk), "reason": "declined", "by": str(me.id)})
+        return Response({"ok": True})
+
+    def destroy(self, request, *args, **kwargs):
+        """Удалить чат (у всех участников). Остальным — событие, чтобы чат
+        сразу пропал из списка и закрылся, если открыт."""
+        chat = self.get_object()
+        me = getattr(request.user, 'profile', None)
+        ids = [] if chat.kind == "channel" else list(chat.participants.exclude(id=getattr(me, 'id', None)).values_list('id', flat=True)[:200])
+        cid = str(chat.id)
+        resp = super().destroy(request, *args, **kwargs)
+        _user_event(ids, {"type": "chat_removed", "chat_id": cid, "reason": "deleted", "by": str(getattr(me, "id", ""))})
+        return resp
+
+    @action(detail=True, methods=['post'])
     def leave(self, request, pk=None):
         """Выйти из чата"""
         chat = self.get_object()
@@ -497,9 +540,15 @@ class ChatViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Создаем новый чат
-        chat = Chat.objects.create()
+        # Создаем новый чат. У собеседника включено «Подтверждать новые чаты» —
+        # чат приходит запросом: писать и звонить нельзя, пока он не примет.
+        me_profile = next((p for p in existing_profiles if p.user_id == request.user.id), None)
+        target = next((p for p in existing_profiles if me_profile is None or p.id != me_profile.id), None)
+        needs_ok = bool(me_profile and target and target.confirm_chats and not target.is_bot and not me_profile.is_bot)
+        chat = Chat.objects.create(pending_for=target if needs_ok else None)
         chat.participants.set(existing_profiles)
+        if needs_ok:
+            _chat_request_notify(chat, me_profile, target)
 
         print("New chat created with ID:", chat.id)
         
@@ -519,6 +568,34 @@ from rest_framework.response import Response
 from django.db.models import Q
 from django.utils import timezone
 from .models import MessageReadStatus
+
+def _user_event(profile_ids, data):
+    """Событие в личные сокеты (user_<id>) — список чатов и открытый чат
+    обновляются сразу."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if not layer:
+            return
+        for pid in profile_ids:
+            async_to_sync(layer.group_send)(f'user_{pid}', {'type': 'notification', 'data': data})
+    except Exception:
+        logger.exception("событие пользователю не ушло")
+
+
+def _chat_request_notify(chat, requester, target):
+    """Запрос на переписку: тому, кого ждём, — событие и пуш."""
+    _user_event([target.id], {"type": "chat_request", "chat_id": str(chat.id), "state": "pending",
+                              "from_username": requester.username})
+    try:
+        from .fcm import notify_profiles
+        from .i18n import L
+        notify_profiles(Profile.objects.filter(id=target.id), title=requester.username,
+                        body=L("Хочет начать с вами переписку"), extra={"chat_id": str(chat.id), "kind": "chat_request"})
+    except Exception:
+        logger.exception("запрос на переписку: пуш не ушёл")
+
 
 def broadcast_read(chat_id, reader):
     """Сообщить остальным участникам, что reader прочитал чат: у авторов
@@ -841,6 +918,8 @@ def _can_post_to(chat, profile):
     if chat.kind == "wall":
         from .wall import wall_ban
         return wall_ban(profile) is None
+    if getattr(chat, "pending_for_id", None):
+        return False  # запрос на переписку ещё не принят
     cp = ChatParticipant.objects.filter(chat=chat, user=profile).first()
     if not cp:
         return False
@@ -1442,7 +1521,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Канал: публиковать может только owner/admin.
         _chat_id = request.data.get('chat')
         if _chat_id:
-            _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name').first()
+            _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name', 'pending_for').first()
+            # Запрос на переписку не принят — писать нельзя никому.
+            if _ch and _ch.pending_for_id:
+                return Response({"error": "Сначала примите запрос на переписку" if _ch.pending_for_id == profile.id
+                                 else "Собеседник ещё не принял запрос на переписку", "chat_request": True}, status=403)
             # Секретный чат: сервер принимает только шифротекст (chat/secret.py).
             if _ch and _ch.kind == 'secret':
                 from .secret import create_secret_message

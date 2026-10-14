@@ -509,6 +509,14 @@ const ChatSidebar = ({
     if (!skipConfirm && !(await confirmDialog(t("Вы уверены, что хотите удалить чат \"{title}\"?", { title: chatTitle })))) {
       return;
     }
+    // Второе подтверждение: удаление стирает переписку у всех, вернуть её нельзя.
+    const target = chats.find((c) => c.id === chatId) as (Chat & { kind?: string; is_group?: boolean }) | undefined;
+    const warn = target?.kind === "channel"
+      ? t("Канал удалится вместе со всеми постами и не сохранится.")
+      : target?.is_group
+        ? t("Группа удалится у всех участников вместе с перепиской и не сохранится.")
+        : t("Переписка удалится у вас и у собеседника и не сохранится. Если потом снова начать чат с этим человеком, он будет пустым.");
+    if (!(await confirmDialog(warn, { ok: t("Удалить навсегда") }))) return;
 
     try {
       setDeletingChats(prev => ({ ...prev, [chatId]: true }));
@@ -1176,6 +1184,8 @@ const ChatSidebar = ({
                               ? t("Загрузка…")
                               : isWall
                                 ? ((chat as any).unread_count ? t("Общая лента · новых: {n}", { n: (chat as any).unread_count }) : t("Общая лента — пишут все"))
+                              : (chat as any).pending_for && !(chat as any).last_message
+                                ? ((chat as any).pending_for === currentUser?.id ? t("Запрос на переписку") : t("Ждём, когда собеседник примет запрос"))
                               : (chat as any).kind === "secret" && !(chat as any).last_message
                                 ? ((chat as any).secret?.state === "pending"
                                     ? ((chat as any).secret?.initiator_id === currentUser?.id ? t("Ждём, когда собеседник примет") : t("Приглашение в секретный чат"))

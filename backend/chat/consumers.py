@@ -434,6 +434,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         target_in_chat = ChatParticipant.objects.filter(chat=chat, user=target).exists()
         if not initiator_in_chat or not target_in_chat:
             return None
+        if chat.pending_for_id:
+            return None  # запрос на переписку не принят — звонить нельзя
 
         if call_id:
             try:
@@ -1417,6 +1419,8 @@ class UserConsumer(AsyncWebsocketConsumer):
         target_in_chat = ChatParticipant.objects.filter(chat=chat, user=target).exists()
         if not initiator_in_chat or not target_in_chat:
             return None
+        if chat.pending_for_id:
+            return None  # запрос на переписку не принят — звонить нельзя
 
         if call_id:
             try:

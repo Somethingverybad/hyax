@@ -19,6 +19,7 @@ import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
+import { confirmDialog } from "@/lib/confirm";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { useMint, MintIcon } from "@/themes/mint";
@@ -338,6 +339,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // вместо поля ввода плашка (принять / ждём собеседника / другое устройство).
   const isSecret = chatInfo?.kind === "secret";
   const secretInfo = (chatInfo?.secret ?? null) as SecretInfo | null;
+  // Запрос на переписку (у собеседника «Подтверждать новые чаты»): пока не
+  // принят, писать и звонить нельзя никому; принимает тот, кого ждёт чат.
+  const reqPending = !!chatInfo?.pending_for && chatInfo?.id === chatId;
+  const reqForMe = reqPending && String(chatInfo?.pending_for) === String(userId);
+  const [reqBusy, setReqBusy] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent).detail?.chat_id === chatId) loadChatInfo(); };
+    window.addEventListener("hyax:chatreq", on);
+    return () => window.removeEventListener("hyax:chatreq", on);
+  }, [chatId, loadChatInfo]);
+  const answerRequest = async (accept: boolean) => {
+    if (!chatId || reqBusy) return;
+    if (!accept && !(await confirmDialog(tr("Отклонить запрос? Чат удалится у вас и у собеседника."), { ok: tr("Отклонить") }))) return;
+    setReqBusy(true);
+    try {
+      if (accept) {
+        const c = await api.acceptChatRequest(chatId);
+        if (c?.id) { chatInfoCache.set(chatId, c); setChatInfo(c); }
+      } else {
+        await api.declineChatRequest(chatId);
+        toast.success(tr("Запрос отклонён"));
+        onBack?.();
+      }
+    } catch (e: any) {
+      toast.error(e?.message || tr("Не получилось"));
+    } finally {
+      setReqBusy(false);
+    }
+  };
   const [skey, setSkey] = useState<{ key: CryptoKey; fp: string } | null>(null);
   const [hasHalf, setHasHalf] = useState(false);
   const [secretBusy, setSecretBusy] = useState(false);
@@ -2919,11 +2949,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); peer ? setProfileOpen(true) : setGroupOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? tr("Профиль") : tr("Настройки группы")}
                     </button>
-                    {mintM && onCall && !saved && (peer || isGroup) && (
+                    {mintM && onCall && !saved && !reqPending && (peer || isGroup) && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); onCall(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <Phone className="w-5 h-5 text-foreground/80" />{tr("Позвонить")}</button>
                     )}
-                    {mintM && !isGroup && !saved && (
+                    {mintM && !isGroup && !saved && !reqPending && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setAddOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <UserPlus className="w-5 h-5 text-foreground/80" />{tr("Добавить участников")}</button>
                     )}
@@ -3058,7 +3088,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </span>
             </span>
           )}
-          {!isGroup && !saved && (
+          {!isGroup && !saved && !reqPending && (
             <button
               type="button"
               onClick={() => setAddOpen(true)}
@@ -3068,7 +3098,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <UserPlus className="w-5 h-5" />
             </button>
           )}
-          {onCall && !saved && (peer || isGroup) && (
+          {onCall && !saved && !reqPending && (peer || isGroup) && (
             <button
               type="button"
               onClick={onCall}
@@ -3099,6 +3129,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <div className="relative flex-1 min-h-0 flex flex-col isolate">
         {/* Приглашение в секретный чат — на всю ленту, с прокруткой: в панели
             ввода плашка уезжала за край экрана вместе с кнопками. */}
+        {reqForMe && (
+          <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-[calc(var(--glass-h,0px)+20px)] pb-[var(--compose-h,0px)] flex">
+            <div className="m-auto w-full max-w-sm mb-4 rounded-xl bg-surface-1 border border-border p-5 text-center space-y-3">
+              <UserPlus className="w-8 h-8 mx-auto text-primary" aria-hidden />
+              <p className="text-h2">{tr("{name} хочет начать с вами переписку", { name: peer?.username || tr("Собеседник") })}</p>
+              <p className="text-small text-subtle">{tr("Пока вы не примете запрос, писать и звонить в этом чате нельзя. Если отклонить, чат удалится у вас обоих.")}</p>
+              <div className="flex gap-2 pt-1">
+                <button type="button" disabled={reqBusy} onClick={() => void answerRequest(false)}
+                  className="flex-1 h-11 rounded-md border border-border text-small font-medium text-destructive active:opacity-80 disabled:opacity-50">{tr("Отклонить")}</button>
+                <button type="button" disabled={reqBusy} onClick={() => void answerRequest(true)}
+                  className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-small font-medium active:opacity-90 disabled:opacity-50">{tr("Принять")}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {isSecret && !skey && secretInfo?.state === "pending" && secretInfo.initiator_id !== userId && (
           <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-[calc(var(--glass-h,0px)+20px)] pb-[var(--compose-h,0px)] flex">
             <div className="m-auto w-full pb-4">
@@ -3847,6 +3892,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {/* Поле ввода */}
       {peer?.readonly_bot ? (
         <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">{tr("Это канал обновлений — только чтение")}</div>
+      ) : reqPending ? (
+        <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">
+          {reqForMe
+            ? tr("Примите или отклоните запрос выше.")
+            : peer?.username
+              ? tr("Ждём, когда {name} примет запрос на переписку.", { name: peer.username })
+              : tr("Ждём, когда собеседник примет запрос на переписку.")}
+        </div>
       ) : isSecret && !skey ? (
         <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 max-h-[75vh] overflow-y-auto">
           {!secretInfo ? (

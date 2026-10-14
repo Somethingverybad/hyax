@@ -39,6 +39,9 @@ class Profile(models.Model):
     # «в сети 5 минут назад», если он это не выключил и не скрыл сам статус.
     last_seen = models.DateTimeField(null=True, blank=True)
     show_last_seen = models.BooleanField(default=True)
+    # «Подтверждать новые чаты»: новый собеседник сначала присылает запрос
+    # (Chat.pending_for), писать и звонить можно после принятия.
+    confirm_chats = models.BooleanField(default=False)
     # Кто видит «сохранёнки» в профиле: all — все, selected — только те, кого
     # владелец добавил (SavedViewer), none — никто, кроме него самого.
     SAVED_VISIBILITY = [("all", "Все"), ("selected", "Избранные"), ("none", "Никто")]
@@ -158,6 +161,10 @@ class Chat(models.Model):
     # переименовывает группу, меняет аватар и добавляет участников.
     avatar_url = models.TextField(blank=True, null=True)
     creator = models.ForeignKey(Profile, on_delete=models.SET_NULL, blank=True, null=True, related_name="created_chats")
+    # Запрос на переписку: личка ждёт, когда этот участник её примет (у него
+    # включено «Подтверждать новые чаты»). Пока задано — писать и звонить
+    # нельзя никому; отказ удаляет чат у обоих.
+    pending_for = models.ForeignKey(Profile, on_delete=models.CASCADE, blank=True, null=True, related_name="+")
     # Поля канала (для kind=channel):
     username = models.CharField(max_length=32, unique=True, null=True, blank=True)  # публичный @хэндл
     description = models.TextField(blank=True, default="")

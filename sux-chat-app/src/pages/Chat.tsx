@@ -493,6 +493,21 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               void import("@/lib/forceLogout").then((m) => m.forceLogout("revoked"));
             }
           });
+        } else if (msg?.data?.type === "chat_request") {
+          // Запрос на переписку пришёл или принят — список и открытый чат перечитываются.
+          refreshChats();
+          window.dispatchEvent(new CustomEvent("hyax:chatreq", { detail: msg.data }));
+        } else if (msg?.data?.type === "chat_removed") {
+          // Чат удалён (собеседником или отклонённый запрос) — убрать из списка и закрыть.
+          const removedId = String(msg.data.chat_id || "");
+          setChats((prev) => prev.filter((c) => String(c.id) !== removedId));
+          if (selectedChatIdRef.current === removedId) {
+            setSelectedChatId(null);
+            if (String(msg.data.by || "") !== String(user?.id || "")) {
+              toast(msg.data.reason === "declined" ? tr("Собеседник отклонил запрос на переписку") : tr("Собеседник удалил этот чат"));
+            }
+          }
+          refreshChats();
         } else if (msg?.data?.type === "secret_chat") {
           // Секретный чат создан, принят или отклонён — список и открытая переписка перечитываются.
           refreshChats();

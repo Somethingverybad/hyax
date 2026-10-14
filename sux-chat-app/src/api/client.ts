@@ -227,6 +227,8 @@ export interface Profile {
   last_seen?: string | null;
   /** Показывать время последнего входа. Только в своём профиле. */
   show_last_seen?: boolean;
+  /** «Подтверждать новые чаты»: новый собеседник сначала присылает запрос. */
+  confirm_chats?: boolean;
   /** Кто видит сохранёнки: all | selected | none. Только в своём профиле. */
   saved_visibility?: "all" | "selected" | "none";
   /** Видны ли смотрящему сохранёнки этого человека. */
@@ -374,6 +376,8 @@ export interface Chat {
   pinned_message?: PinnedInfo | null;
   /** Секретный чат: состояние и открытые ключи сторон (lib/secret.ts). */
   secret?: import("@/lib/secret").SecretInfo | null;
+  /** Запрос на переписку: id того, кто должен принять; null — обычный чат. */
+  pending_for?: string | null;
 }
 
 export interface ChatInfo {
@@ -1501,6 +1505,19 @@ export const api = {
     if (!res.ok) throw new LError("Failed to delete chat");
   },
 
+  /** Принять запрос на переписку — вернёт чат уже без pending_for. */
+  acceptChatRequest: async (chatId: string): Promise<Chat> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/accept_request/`, { method: "POST", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
+    return body;
+  },
+  /** Отклонить запрос: чат удаляется у обоих. */
+  declineChatRequest: async (chatId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/decline_request/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не получилось");
+  },
+
   leaveChat: async (chatId: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/leave/`, {
       method: "POST",
@@ -1950,7 +1967,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
