@@ -412,6 +412,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [editing, setEditing] = useState<Message | null>(null);
   // Удаление с отменой (5с): прячем локально, коммитим по таймеру.
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  // «Сообщение съели»: удалённое сообщение ещё EAT_MS рисуется с анимацией
+  // (ротик идёт слева направо и откусывает пузырь), потом пропадает.
+  const EAT_MS = 700;
+  const [eatingIds, setEatingIds] = useState<Set<string>>(new Set());
+  const eatThenHide = (ids: string[]) => {
+    if (!ids.length) return;
+    setEatingIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.add(i)); return n; });
+    setTimeout(() => {
+      setHiddenIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.add(i)); return n; });
+      setEatingIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
+    }, EAT_MS);
+  };
   const [undoBar, setUndoBar] = useState<{ id: string; scope: "me" | "all"; message: Message } | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Настройки группы (клик по названию группы). Заголовок держим локально,
@@ -1373,8 +1385,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     deleted: string[],
     mode: "merge" | "prepend" = "merge",
   ) => {
+    // Удалённые собеседником сообщения не выбрасываем сразу: пусть их «съедят».
+    const toEat = deleted.filter((id) => !eatingIds.has(id) && !hiddenIds.has(id));
+    if (toEat.length) {
+      eatThenHide(toEat);
+      setTimeout(() => setMessages((prev) => prev.filter((m) => !toEat.includes(m.id))), EAT_MS + 50);
+    }
     setMessages(prev => {
-      const gone = new Set(deleted);
+      const gone = new Set(deleted.filter((id) => hiddenIds.has(id)));
       const byId = new Map(prev.filter(m => !gone.has(m.id)).map(m => [m.id, m]));
       for (const d of incoming) {
         const local = byId.get(d.id);
@@ -1883,7 +1901,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Если уже есть отложенное удаление — закоммитим его сразу.
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
     if (undoBar) commitDelete(undoBar.id, undoBar.scope);
-    setHiddenIds((prev) => new Set(prev).add(message.id));
+    eatThenHide([message.id]);
     setUndoBar({ id: message.id, scope, message });
     deleteTimerRef.current = setTimeout(() => {
       commitDelete(message.id, scope);
@@ -3222,7 +3240,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
-                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in", eatingIds.has(message.id) && "msg-eaten")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (

@@ -1438,3 +1438,20 @@ textarea,
 @media (prefers-reduced-motion: reduce) {
   .vibe-glow-bar { animation: none; box-shadow: 0 0 8px 1px color-mix(in srgb, var(--vibe-c) 70%, transparent); }
 }
+
+/* «Сообщение съели»: ротик бежит слева направо, пузырь откусывается за ним. */
+.msg-eaten { position: relative; pointer-events: none; animation: msg-eat .7s linear forwards; }
+@keyframes msg-eat { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 0 0 100%); } }
+.msg-eaten::after {
+  content: "😋"; position: absolute; top: 50%; left: 0; font-size: 28px; line-height: 1;
+  transform: translate(-50%, -50%); animation: msg-chomp .7s linear forwards; z-index: 2;
+}
+@keyframes msg-chomp {
+  0% { left: 0; transform: translate(-50%, -50%) scale(1); }
+  12% { transform: translate(-50%, -50%) scale(1.2); } 25% { transform: translate(-50%, -50%) scale(1); }
+  37% { transform: translate(-50%, -50%) scale(1.2); } 50% { transform: translate(-50%, -50%) scale(1); }
+  62% { transform: translate(-50%, -50%) scale(1.2); } 75% { transform: translate(-50%, -50%) scale(1); }
+  87% { transform: translate(-50%, -50%) scale(1.2); }
+  100% { left: 100%; transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .msg-eaten { animation-duration: .2s; } .msg-eaten::after { display: none; } }

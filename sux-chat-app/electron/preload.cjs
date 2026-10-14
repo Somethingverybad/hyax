@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
+  platform: process.platform,
+  // Свои уведомления (Windows/Linux): окно-тост от main; клик → open-chat.
+  notify: (payload) => ipcRenderer.invoke('notify', payload),
+  onOpenChat: (cb) => { const h = (_e, chatId) => cb(chatId); ipcRenderer.on('open-chat', h); return () => ipcRenderer.removeListener('open-chat', h); },
   closeWindow: () => ipcRenderer.send('close-window'),
   saveFile: (fileUrl, fileName) => ipcRenderer.invoke('save-file', fileUrl, fileName),
   // Обновление изнутри: качаем установщик и запускаем его.

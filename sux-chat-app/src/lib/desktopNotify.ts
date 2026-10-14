@@ -34,12 +34,39 @@ export async function ensureNotifyPermission(): Promise<void> {
   }
 }
 
+type ElectronBridge = {
+  platform?: string;
+  notify?: (p: { title: string; body: string; chatId?: string; avatar?: string }) => Promise<boolean>;
+  onOpenChat?: (cb: (chatId: string) => void) => () => void;
+};
+const bridge = (): ElectronBridge | undefined => (window as unknown as { electronAPI?: ElectronBridge }).electronAPI;
+
+// Клик по своему тосту приходит из main как open-chat с id чата — зовём
+// onClick того уведомления, которое его показало.
+const pendingClicks = new Map<string, () => void>();
+let openChatBound = false;
+function bindOpenChat() {
+  if (openChatBound) return;
+  openChatBound = true;
+  bridge()?.onOpenChat?.((chatId) => { const cb = pendingClicks.get(chatId); pendingClicks.delete(chatId); cb?.(); });
+}
+
 export function showDesktopNotification(opts: {
   title: string;
   body: string;
   tag?: string;
+  avatar?: string;
   onClick?: () => void;
 }): void {
+  // Windows и Linux в Electron: свой тост в углу экрана (как у Telegram), а не
+  // системный центр уведомлений — он там прячет баннеры и теряет клик.
+  const b = bridge();
+  if (b?.notify && b.platform && b.platform !== "darwin") {
+    bindOpenChat();
+    if (opts.tag && opts.onClick) pendingClicks.set(opts.tag, opts.onClick);
+    void b.notify({ title: opts.title, body: opts.body, chatId: opts.tag, avatar: opts.avatar });
+    return;
+  }
   if (!available() || Notification.permission !== "granted") return;
   try {
     const n = new Notification(opts.title, {

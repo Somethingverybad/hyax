@@ -1,7 +1,7 @@
 // Десктопная обёртка hyax. Та же веб-сборка (dist/), что и в мобильном
 // приложении, в окне Electron. API и WebSocket ходят на боевой сервер по
 // абсолютным URL, поэтому никакого локального бэкенда здесь нет.
-const { app, BrowserWindow, Menu, clipboard, ipcMain, dialog, protocol, net, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, screen, clipboard, ipcMain, dialog, protocol, net, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -326,6 +326,111 @@ function focusMainWindow() {
   mainWindow.focus();
 }
 
+// ---------------------------------------------------------------------------
+// Трей: крестик окна прячет приложение в трей (как Telegram), оно продолжает
+// получать сообщения и показывать уведомления. Выход — из меню трея или
+// Cmd/Ctrl+Q. Настройка «сворачивать в трей» лежит в userData/settings.json.
+// ---------------------------------------------------------------------------
+const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
+function readSettings() { try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); } catch { return {}; } }
+function writeSettings(patch) { try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ ...readSettings(), ...patch })); } catch (e) { logLine('settings write failed', String(e)); } }
+const trayEnabled = () => readSettings().minimizeToTray !== false;
+
+let tray = null;
+function trayIcon() {
+  const p = path.join(__dirname, '../assets/icons', process.platform === 'darwin' ? '32x32.png' : '32x32.png');
+  let img = nativeImage.createFromPath(p);
+  if (process.platform === 'darwin') img = img.resize({ width: 18, height: 18 });
+  return img;
+}
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Открыть WYX', click: focusMainWindow },
+    { type: 'separator' },
+    { label: 'Сворачивать в трей при закрытии', type: 'checkbox', checked: trayEnabled(), click: (item) => writeSettings({ minimizeToTray: item.checked }) },
+    { type: 'separator' },
+    { label: 'Выйти', click: () => { app.isQuitting = true; app.quit(); } },
+  ]);
+}
+function createTray() {
+  if (tray) return;
+  try {
+    tray = new Tray(trayIcon());
+    tray.setToolTip('WYX');
+    tray.setContextMenu(buildTrayMenu());
+    tray.on('click', focusMainWindow);
+    tray.on('double-click', focusMainWindow);
+  } catch (e) { logLine('tray failed', String(e)); }
+}
+
+// ---------------------------------------------------------------------------
+// Свои уведомления на Windows и Linux (как у Telegram): маленькие окна в
+// правом нижнем углу поверх всего, с именем, текстом и аватаром; клик открывает
+// чат. На macOS — системный баннер, он там и так хорош (desktopNotify.ts).
+// ---------------------------------------------------------------------------
+const toasts = [];
+const TOAST_W = 340, TOAST_H = 84, TOAST_GAP = 8, TOAST_TTL = 6000;
+function layoutToasts() {
+  const area = screen.getPrimaryDisplay().workArea;
+  toasts.forEach((t, i) => {
+    if (t.win.isDestroyed()) return;
+    const y = area.y + area.height - (TOAST_H + TOAST_GAP) * (i + 1);
+    t.win.setPosition(area.x + area.width - TOAST_W - 12, y, false);
+  });
+}
+function removeToast(t) {
+  const i = toasts.indexOf(t);
+  if (i >= 0) toasts.splice(i, 1);
+  clearTimeout(t.timer);
+  if (!t.win.isDestroyed()) t.win.close();
+  layoutToasts();
+}
+function toastHtml({ title, body, avatar }) {
+  const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const initial = esc((title || '?').trim().slice(0, 1).toUpperCase());
+  const av = avatar ? `<img src="${esc(avatar)}" onerror="this.replaceWith(document.createTextNode('${initial}'))">` : initial;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{margin:0;background:transparent;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
+    .card{box-sizing:border-box;width:${TOAST_W}px;height:${TOAST_H}px;padding:12px 14px;display:flex;gap:12px;align-items:center;border-radius:14px;
+      background:#1C2420;color:#fff;border:1px solid #37453D;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;animation:in .18s ease-out}
+    @keyframes in{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+    .av{width:44px;height:44px;border-radius:50%;flex:none;background:#345c54;color:#C7F964;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;overflow:hidden}
+    .av img{width:100%;height:100%;object-fit:cover}
+    .t{min-width:0;flex:1}.n{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .b{font-size:13px;color:#BDBDBD;margin-top:2px;line-height:1.3;max-height:34px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .x{position:absolute;right:10px;top:8px;color:#9AA59E;font-size:14px;line-height:1;padding:2px 4px}.x:hover{color:#fff}
+    .w{position:absolute;right:12px;bottom:8px;font-size:10px;color:#9AA59E;letter-spacing:.08em}
+  </style></head><body>
+  <div class="card" onclick="window.__open()"><div class="av">${av}</div><div class="t"><div class="n">${esc(title)}</div><div class="b">${esc(body)}</div></div>
+  <span class="x" onclick="event.stopPropagation();window.__close()">✕</span><span class="w">WYX</span></div>
+  <script>const {ipcRenderer}=require('electron');window.__open=()=>ipcRenderer.send('toast-open');window.__close=()=>ipcRenderer.send('toast-close');</script>
+  </body></html>`;
+}
+function showToast(payload) {
+  if (!['win32', 'linux'].includes(process.platform)) return false;
+  // Один чат — одно окно: новое сообщение заменяет прежнее, а не плодит стопку.
+  const same = toasts.find((t) => t.chatId && t.chatId === payload.chatId);
+  if (same) removeToast(same);
+  while (toasts.length >= 3) removeToast(toasts[0]);
+  const win = new BrowserWindow({
+    width: TOAST_W, height: TOAST_H, frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true,
+    resizable: false, movable: false, focusable: false, show: false, hasShadow: false,
+    webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false },
+  });
+  const t = { win, chatId: payload.chatId || '', timer: null };
+  toasts.push(t);
+  win.webContents.on('ipc-message', (_e, channel) => {
+    if (channel === 'toast-open') { focusMainWindow(); if (t.chatId) mainWindow?.webContents.send('open-chat', t.chatId); removeToast(t); }
+    else if (channel === 'toast-close') removeToast(t);
+  });
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(toastHtml(payload)));
+  win.once('ready-to-show', () => { layoutToasts(); win.showInactive(); });
+  t.timer = setTimeout(() => removeToast(t), TOAST_TTL);
+  return true;
+}
+ipcMain.handle('notify', (_e, payload) => showToast(payload || {}));
+ipcMain.handle('toast-supported', () => ['win32', 'linux'].includes(process.platform));
+
 // Второй запуск (двойной клик по ярлыку, автозапуск) поднимает уже открытое
 // окно вместо второй копии приложения с тем же localStorage и сокетом.
 const gotLock = app.requestSingleInstanceLock();
@@ -341,6 +446,14 @@ if (!gotLock) {
     if (!isDev) serveDist();
     allowMediaPermissions();
     createWindow();
+    createTray();
+    // Крестик — в трей, а не выход (если не выключено в меню трея).
+    mainWindow?.on('close', (e) => {
+      if (app.isQuitting || !trayEnabled()) return;
+      e.preventDefault();
+      mainWindow.hide();
+    });
+    app.on('before-quit', () => { app.isQuitting = true; });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

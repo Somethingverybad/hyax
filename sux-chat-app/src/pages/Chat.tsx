@@ -565,6 +565,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               title: m.sender?.username || "Новое сообщение",
               body: preview.slice(0, 150),
               tag: chatId ? String(chatId) : undefined,
+              avatar: m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
               onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
             });
             // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
