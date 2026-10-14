@@ -75,6 +75,10 @@ class Profile(models.Model):
     # Язык интерфейса и переводов: ru | en | ko (chat/translate.py). Пусто —
     # клиент не сообщил, считаем русским.
     language = models.CharField(max_length=5, blank=True, default="")
+    # Автоперевод по умолчанию для всех личек (Профиль → Язык); в чате можно
+    # переопределить (ChatParticipant.translate_in/out, None = «как в профиле»).
+    translate_in_default = models.BooleanField(default=False)
+    translate_out_default = models.BooleanField(default=False)
 
     @property
     def email_verified(self):
@@ -208,8 +212,8 @@ class ChatParticipant(models.Model):
     muted = models.BooleanField(default=False)  # подписчик отключил пуши канала
     # Автоперевод в личке (chat/translate.py): translate_out — мои сообщения
     # переводить на язык собеседника, translate_in — его сообщения на мой.
-    translate_in = models.BooleanField(default=False)
-    translate_out = models.BooleanField(default=False)
+    translate_in = models.BooleanField(null=True, blank=True, default=None)
+    translate_out = models.BooleanField(null=True, blank=True, default=None)
     # Свои обои только для себя: kind "" — как у чата, "none" — без обоев,
     # image/video — свой файл.
     wallpaper_url = models.TextField(blank=True, null=True)

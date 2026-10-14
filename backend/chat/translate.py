@@ -118,9 +118,15 @@ def wanted_targets(message, sender):
         tgt = norm_lang(p.user.language) or "ru"
         if tgt == src:
             continue
-        if (me and me.translate_out) or p.translate_in:
+        if (me and effective(me, "translate_out")) or effective(p, "translate_in"):
             out.add(tgt)
     return sorted(out)
+
+
+def effective(part, flag):
+    """Флаг чата, а если он не задан — умолчание из профиля."""
+    v = getattr(part, flag)
+    return bool(v) if v is not None else bool(getattr(part.user, flag + "_default", False))
 
 
 def schedule(message, sender, request=None):
