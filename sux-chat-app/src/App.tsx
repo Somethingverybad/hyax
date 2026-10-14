@@ -21,6 +21,7 @@ import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
 import ProfileEmail from "./pages/ProfileEmail";
 import ProfileSecretTransfer from "./pages/ProfileSecretTransfer";
 import ProfileDevices from "./pages/ProfileDevices";
+import Onboarding from "./pages/Onboarding";
 import Legal from "./pages/Legal";
 import ThemeEditor from "./pages/ThemeEditor";
 import SoundPackNew from "./pages/SoundPackNew";
@@ -275,6 +276,7 @@ const App = () => {
                 }
               />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/chat" element={<Chat />} />
               {/* «Избранное» — та же страница чатов, сразу открытая на личном чате. */}
               <Route path="/saved" element={<Chat savedMode />} />

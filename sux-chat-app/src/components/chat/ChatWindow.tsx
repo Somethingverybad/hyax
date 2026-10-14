@@ -4399,7 +4399,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <div
           className="fixed inset-0 z-[70]"
           onClick={closeMenu}
-          onContextMenu={(e) => { e.preventDefault(); closeMenu(); }}
+          onContextMenu={(e) => { e.preventDefault(); if (!touchInputRef.current) closeMenu(); }}
         >
           <div
             className="fixed min-w-[200px] bg-surface-1 border border-border rounded-lg py-1"

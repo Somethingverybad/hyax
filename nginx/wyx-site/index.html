@@ -13,6 +13,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
+<link rel="alternate" hreflang="ru" href="https://wyx.su/">
+<link rel="alternate" hreflang="en" href="https://wyx.su/en/">
+<link rel="alternate" hreflang="ko" href="https://wyx.su/ko/">
+<link rel="alternate" hreflang="x-default" href="https://wyx.su/">
+<script>
+(function(){try{var c=localStorage.getItem("wyx-lang");if(c){if(c!=="ru"&&location.pathname==="/")location.replace("/"+c+"/");return;}
+var n=(navigator.language||"").slice(0,2).toLowerCase();if((n==="en"||n==="ko")&&location.pathname==="/")location.replace("/"+n+"/");}catch(e){}})();
+document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("[data-lang]");if(a){try{localStorage.setItem("wyx-lang",a.getAttribute("data-lang"));}catch(_){}}});
+</script>
 </head>
 <body>
 
@@ -27,6 +36,7 @@
       <a href="#crypto" class="hide-sm">Шифрование</a>
       <a href="/terms" class="hide-sm">Правила</a>
       <a href="/privacy">Конфиденциальность</a>
+    <span class="lang"><a href="/" data-lang="ru" aria-current="page">RU</a><a href="/en/" data-lang="en">EN</a><a href="/ko/" data-lang="ko">KO</a></span>
     </nav>
   </div>
 </header>

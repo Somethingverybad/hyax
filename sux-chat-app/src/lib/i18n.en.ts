@@ -281,5 +281,12 @@ const en: Record<string, string> = {
   "Не удалось проверить обновления": "Couldn't check for updates",
   "Установлена последняя версия. Обновления для iOS приходят через TestFlight": "You're on the latest version. iOS updates come through TestFlight",
   "Остальные настройки — кто видит профиль и обложку — пока в разработке.": "Other settings — who sees your profile and cover — are coming.",
+  "Выберите язык": "Choose a language",
+  "Выберите тему": "Choose a theme",
+  "Выберите ауру": "Choose your aura",
+  "Пропустить": "Skip",
+  "Язык интерфейса. Поменять можно в профиле.": "Interface language. You can change it in your profile.",
+  "Как выглядит приложение. Темы можно менять и устанавливать чужие.": "How the app looks. You can switch themes and install others' later.",
+  "Цвет ауры видят собеседники, пока вы в сети.": "Contacts see your aura colour while you're online.",
 };
 export default en;
