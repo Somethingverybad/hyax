@@ -4572,6 +4572,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           chatId={group.id}
           userId={userId}
           isAdmin={isGroupAdmin}
+          ownerId={group.creator ?? null}
           initialName={headerTitle || group.name || tr("Группа")}
           initialAvatar={group.avatar_url}
           initialSound={(group as { notify_sound?: NotificationSoundInfo | null }).notify_sound ?? null}

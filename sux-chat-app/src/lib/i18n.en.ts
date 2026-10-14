@@ -1580,5 +1580,21 @@ const en: Record<string, string> = {
   "Удалить навсегда": "Delete forever",
   "Сначала примите запрос на переписку": "Accept the chat request first",
   "Собеседник ещё не принял запрос на переписку": "They haven't accepted your chat request yet",
+  // Полный проход по интерфейсу (2026-10-14)
+  "Добавлять участников может только владелец группы": "Only the group owner can add members",
+  "Настраивать группу может только владелец": "Only the owner can change group settings",
+  "Удалять участников может только владелец группы": "Only the group owner can remove members",
+  "Себя удалить нельзя — выйдите из группы": "You can't remove yourself — leave the group instead",
+  "Участник не найден": "Member not found",
+  "Отписаться от канала «{title}»?": "Unsubscribe from “{title}”?",
+  "Выйти из группы «{title}»? У остальных участников переписка останется.": "Leave “{title}”? The conversation stays for the other members.",
+  "Выйти из группы": "Leave group",
+  "Вы отписались от канала": "You unsubscribed from the channel",
+  "Вы вышли из группы": "You left the group",
+  "Владелец удалил вас из группы": "The owner removed you from the group",
+  "Удалить {name} из группы? Группа у этого человека пропадёт, вернуть его можно через «Добавить».": "Remove {name} from the group? The group will disappear for them; you can add them back with “Add”.",
+  "{name} больше не в группе": "{name} is no longer in the group",
+  "владелец": "owner",
+  "Удалить {name} из группы": "Remove {name} from the group",
 };
 export default en;

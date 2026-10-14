@@ -506,11 +506,32 @@ const ChatSidebar = ({
   const deleteChat = async (chatId: string, chatTitle: string, skipConfirm = false) => {
     setChatMenu(null);
     setSwipedChatId(null);
+    const target = chats.find((c) => c.id === chatId) as (Chat & { kind?: string; is_group?: boolean; creator?: string | null }) | undefined;
+    // Группу и канал у всех удаляет только владелец. Остальные выходят из
+    // группы или отписываются от канала — у других участников всё остаётся.
+    const isChannel = target?.kind === "channel";
+    if (target && (isChannel || target.is_group) && String(target.creator ?? "") !== String(currentUser?.id ?? "")) {
+      const ok = await confirmDialog(
+        isChannel ? t("Отписаться от канала «{title}»?", { title: chatTitle }) : t("Выйти из группы «{title}»? У остальных участников переписка останется.", { title: chatTitle }),
+        { ok: isChannel ? t("Отписаться") : t("Выйти из группы") },
+      );
+      if (!ok) return;
+      try {
+        setDeletingChats(prev => ({ ...prev, [chatId]: true }));
+        await api.deleteChat(chatId);
+        toast.success(isChannel ? t("Вы отписались от канала") : t("Вы вышли из группы"));
+        onChatDeleted(chatId);
+      } catch {
+        toast.error(t("Не получилось"));
+      } finally {
+        setDeletingChats(prev => ({ ...prev, [chatId]: false }));
+      }
+      return;
+    }
     if (!skipConfirm && !(await confirmDialog(t("Вы уверены, что хотите удалить чат \"{title}\"?", { title: chatTitle })))) {
       return;
     }
     // Второе подтверждение: удаление стирает переписку у всех, вернуть её нельзя.
-    const target = chats.find((c) => c.id === chatId) as (Chat & { kind?: string; is_group?: boolean }) | undefined;
     const warn = target?.kind === "channel"
       ? t("Канал удалится вместе со всеми постами и не сохранится.")
       : target?.is_group
@@ -1292,7 +1313,11 @@ const ChatSidebar = ({
               onClick={() => deleteChat(chatMenu.chatId, chatMenu.title)}
               className="w-full px-4 py-2 text-left text-sm text-destructive hover:bg-secondary flex items-center gap-2"
             >
-              <Trash2 className="w-4 h-4" />{t("Удалить чат")}</button>
+              <Trash2 className="w-4 h-4" />{(() => {
+                const c = chats.find((x) => x.id === chatMenu.chatId) as (Chat & { kind?: string; is_group?: boolean; creator?: string | null }) | undefined;
+                const owner = String(c?.creator ?? "") === String(currentUser?.id ?? "");
+                return c?.kind === "channel" && !owner ? t("Отписаться") : c?.is_group && !owner ? t("Выйти из группы") : t("Удалить чат");
+              })()}</button>
           </div>
         </div>
       )}

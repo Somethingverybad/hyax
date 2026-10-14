@@ -1,7 +1,8 @@
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Aura } from "@/components/Aura";
-import { X, Camera, UserPlus, Users, Check, Music2 } from "lucide-react";
+import { X, Camera, UserPlus, UserMinus, Users, Check, Music2 } from "lucide-react";
+import { confirmDialog } from "@/lib/confirm";
 import SoundPickerSheet from "@/components/SoundPicker";
 import type { NotificationSoundInfo } from "@/api/client";
 import Identicon from "@/components/Identicon";
@@ -19,6 +20,7 @@ const GroupSettingsModal = ({
   chatId,
   userId,
   isAdmin,
+  ownerId,
   initialName,
   initialAvatar,
   initialSound,
@@ -29,6 +31,8 @@ const GroupSettingsModal = ({
   /** Свой id — свою строку в списке не открываем карточкой. */
   userId?: string;
   isAdmin: boolean;
+  /** Владелец группы (создатель): удаляет участников и меняет настройки. */
+  ownerId?: string | null;
   initialName: string;
   initialAvatar?: string | null;
   /** Общий звук уведомлений группы (задаёт админ). */
@@ -60,7 +64,27 @@ const GroupSettingsModal = ({
 
   useEffect(() => {
     api.getChatParticipants(chatId).then(setMembers).catch(() => {});
+    // Состав поменялся (удалили, вышел, сменился владелец) — перечитать.
+    const on = (e: Event) => { if ((e as CustomEvent).detail?.chat_id === chatId) api.getChatParticipants(chatId).then(setMembers).catch(() => {}); };
+    window.addEventListener("hyax:group", on);
+    return () => window.removeEventListener("hyax:group", on);
   }, [chatId]);
+
+  const [removing, setRemoving] = useState<string | null>(null);
+  const removeMember = async (m: Person) => {
+    if (!(await confirmDialog(t("Удалить {name} из группы? Группа у этого человека пропадёт, вернуть его можно через «Добавить».", { name: m.username })))) return;
+    setRemoving(m.id);
+    try {
+      await api.removeGroupMember(chatId, m.id);
+      setMembers((prev) => prev.filter((x) => x.id !== m.id));
+      toast.success(t("{name} больше не в группе", { name: m.username }));
+      onUpdated({});
+    } catch (err: any) {
+      toast.error(err?.message || t("Не получилось"));
+    } finally {
+      setRemoving(null);
+    }
+  };
 
   const pickAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -226,18 +250,31 @@ const GroupSettingsModal = ({
           )}
 
           <div className="space-y-1">
-            {members.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                disabled={m.id === userId}
-                onClick={() => setProfileFor(m.id)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left active:bg-surface-3 disabled:active:bg-transparent"
-              >
-                <Aura active={!!(m as { is_online?: boolean }).is_online} owner={m as never} size={32}><Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" /></Aura>
-                <span className="text-sm truncate flex-1">{m.username}</span>
-                {m.id === userId && <span className="text-caption text-subtle">{t("вы")}</span>}
-              </button>
+            {[...members].sort((a, b) => Number(b.id === ownerId) - Number(a.id === ownerId)).map((m) => (
+              <div key={m.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={m.id === userId}
+                  onClick={() => setProfileFor(m.id)}
+                  className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-md text-left active:bg-surface-3 disabled:active:bg-transparent"
+                >
+                  <Aura active={!!(m as { is_online?: boolean }).is_online} owner={m as never} size={32}><Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" /></Aura>
+                  <span className="text-sm truncate flex-1">{m.username}</span>
+                  {m.id === ownerId && <span className="text-caption text-primary shrink-0">{t("владелец")}</span>}
+                  {m.id === userId && <span className="text-caption text-subtle shrink-0">{t("вы")}</span>}
+                </button>
+                {isAdmin && m.id !== userId && (
+                  <button
+                    type="button"
+                    disabled={removing === m.id}
+                    onClick={() => void removeMember(m)}
+                    aria-label={t("Удалить {name} из группы", { name: m.username })}
+                    className="shrink-0 p-2 rounded-md text-subtle active:text-destructive active:bg-surface-3 disabled:opacity-40"
+                  >
+                    <UserMinus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>

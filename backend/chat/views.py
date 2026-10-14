@@ -297,6 +297,18 @@ class ChatViewSet(viewsets.ModelViewSet):
         сразу пропал из списка и закрылся, если открыт."""
         chat = self.get_object()
         me = getattr(request.user, 'profile', None)
+        # Группу и канал у всех удаляет только владелец; остальные выходят
+        # (старые приложения шлют DELETE и вместо «выйти»).
+        if chat.kind == "channel":
+            cp = ChatParticipant.objects.filter(chat=chat, user=me).first()
+            if cp and cp.role != "owner":
+                cp.delete()
+                if chat.subscribers_count > 0:
+                    Chat.objects.filter(id=chat.id).update(subscribers_count=models.F("subscribers_count") - 1)
+                return Response(status=status.HTTP_204_NO_CONTENT)
+        elif chat.is_group and me and chat.creator_id != me.id:
+            _leave_group(chat, me)
+            return Response(status=status.HTTP_204_NO_CONTENT)
         ids = [] if chat.kind == "channel" else list(chat.participants.exclude(id=getattr(me, 'id', None)).values_list('id', flat=True)[:200])
         cid = str(chat.id)
         resp = super().destroy(request, *args, **kwargs)
@@ -309,8 +321,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         chat = self.get_object()
         try:
             profile = request.user.profile
-            # Удаляем пользователя из участников чата
-            chat.participants.remove(profile)
+            if chat.is_group and chat.kind != "channel":
+                _leave_group(chat, profile)  # владелец уходит — владение следующему
+            else:
+                chat.participants.remove(profile)
             return Response({'detail': 'Successfully left the chat'})
         except Profile.DoesNotExist:
             return Response(
@@ -337,7 +351,7 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         # В существующей группе участников добавляет только админ-создатель.
         if chat.is_group and chat.creator_id and chat.creator_id != profile.id:
-            return Response({"error": "Добавлять участников может только админ группы"}, status=403)
+            return Response({"error": "Добавлять участников может только владелец группы"}, status=403)
 
         ids = request.data.get('participants') or []
         if isinstance(ids, str):
@@ -363,6 +377,33 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         return Response({"added": added, "chat": self.get_serializer(chat).data})
 
+    @action(detail=True, methods=['post'])
+    def remove_participant(self, request, pk=None):
+        """Удалить человека из группы — только владелец. Удалённому чат
+        пропадает сразу, остальным обновляется состав."""
+        chat = self.get_object()
+        me = getattr(request.user, 'profile', None)
+        if not me:
+            return Response({"error": "Profile not found"}, status=400)
+        if not chat.is_group or chat.kind == "channel":
+            return Response({"error": "Это не группа"}, status=400)
+        if chat.creator_id != me.id:
+            return Response({"error": "Удалять участников может только владелец группы"}, status=403)
+        try:
+            uid = uuid.UUID(str(request.data.get('user_id') or ''))
+        except ValueError:
+            return Response({"error": "Участник не найден"}, status=404)
+        if uid == me.id:
+            return Response({"error": "Себя удалить нельзя — выйдите из группы"}, status=400)
+        cp = ChatParticipant.objects.filter(chat=chat, user_id=uid).first()
+        if not cp:
+            return Response({"error": "Участник не найден"}, status=404)
+        cp.delete()
+        _user_event([uid], {"type": "chat_removed", "chat_id": str(chat.id), "reason": "removed", "by": str(me.id)})
+        _user_event(list(ChatParticipant.objects.filter(chat=chat).exclude(user=me).values_list('user_id', flat=True)),
+                    {"type": "group_updated", "chat_id": str(chat.id)})
+        return Response({"ok": True})
+
     @action(detail=True, methods=['post', 'patch'])
     def configure(self, request, pk=None):
         """Настройки группы: название и аватар. Меняет только админ-создатель."""
@@ -374,7 +415,7 @@ class ChatViewSet(viewsets.ModelViewSet):
         if not chat.is_group:
             return Response({"error": "Это не группа"}, status=400)
         if chat.creator_id and chat.creator_id != profile.id:
-            return Response({"error": "Настраивать группу может только админ"}, status=403)
+            return Response({"error": "Настраивать группу может только владелец"}, status=403)
 
         fields = []
         name = request.data.get('name')
@@ -582,6 +623,20 @@ def _user_event(profile_ids, data):
             async_to_sync(layer.group_send)(f'user_{pid}', {'type': 'notification', 'data': data})
     except Exception:
         logger.exception("событие пользователю не ушло")
+
+
+def _leave_group(chat, me):
+    """Выйти из группы. Уходит владелец — владельцем становится тот, кто в
+    группе дольше всех; ушёл последний — группа удаляется."""
+    ChatParticipant.objects.filter(chat=chat, user=me).delete()
+    rest = ChatParticipant.objects.filter(chat=chat).order_by('joined_at')
+    first = rest.first()
+    if not first:
+        chat.delete()
+        return
+    if not chat.creator_id or chat.creator_id == me.id:
+        Chat.objects.filter(id=chat.id).update(creator_id=first.user_id)
+    _user_event(list(rest.values_list('user_id', flat=True)), {"type": "group_updated", "chat_id": str(chat.id)})
 
 
 def _chat_request_notify(chat, requester, target):

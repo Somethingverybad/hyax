@@ -504,10 +504,16 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           if (selectedChatIdRef.current === removedId) {
             setSelectedChatId(null);
             if (String(msg.data.by || "") !== String(user?.id || "")) {
-              toast(msg.data.reason === "declined" ? tr("Собеседник отклонил запрос на переписку") : tr("Собеседник удалил этот чат"));
+              toast(msg.data.reason === "declined" ? tr("Собеседник отклонил запрос на переписку")
+                : msg.data.reason === "removed" ? tr("Владелец удалил вас из группы")
+                : tr("Собеседник удалил этот чат"));
             }
           }
           refreshChats();
+        } else if (msg?.data?.type === "group_updated") {
+          // Состав или владелец группы изменились — список и открытые настройки перечитываются.
+          refreshChats();
+          window.dispatchEvent(new CustomEvent("hyax:group", { detail: msg.data }));
         } else if (msg?.data?.type === "secret_chat") {
           // Секретный чат создан, принят или отклонён — список и открытая переписка перечитываются.
           refreshChats();

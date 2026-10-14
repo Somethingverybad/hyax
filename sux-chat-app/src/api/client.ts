@@ -1505,6 +1505,11 @@ export const api = {
     if (!res.ok) throw new LError("Failed to delete chat");
   },
 
+  /** Удалить человека из группы (только владелец). */
+  removeGroupMember: async (chatId: string, userId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/remove_participant/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId }) });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не получилось");
+  },
   /** Принять запрос на переписку — вернёт чат уже без pending_for. */
   acceptChatRequest: async (chatId: string): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/accept_request/`, { method: "POST", headers: authHeaders() });
