@@ -126,6 +126,9 @@ def translate_text(text, target, source=""):
     target = norm_lang(target)
     if not text or not text.strip() or not target:
         return text
+    stripped = _URL.sub(" ", text)
+    if not (_HANGUL.search(stripped) or _CYR.search(stripped) or _LAT.search(stripped)):
+        return text  # одни эмодзи, числа, ссылки — переводить нечего
     source = detect_lang(text, source)
     if source == target:
         return text
