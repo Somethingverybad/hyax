@@ -572,6 +572,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setJumping(true);
       try {
         const r = await api.syncMessages(chatId, { around: id, limit: 60 });
+        if (chatId !== chatIdRef.current) return; // чат успели переключить
         if (r.messages.length) {
           // Окно заменяет ленту целиком: между ним и концом переписки может
           // быть пропуск, и склеивать их нельзя. Вернуться к последним
@@ -1619,6 +1620,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     } catch { /* кэша нет — ждём сеть */ }
     try {
       const r = await api.syncMessages(chatId, { limit: 50 });
+      if (chatId !== chatIdRef.current) return; // чат успели переключить — не подменяем ленту чужой
       windowedRef.current = false;
       syncedAtRef.current = r.now;
       setHasMore(r.has_more);
