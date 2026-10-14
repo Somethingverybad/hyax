@@ -6,7 +6,9 @@
                         для живой переписки и сленга. Через свой ретранслятор:
                         OPENROUTER_BASE_URL (вместо https://openrouter.ai/api/v1)
                         и OPENROUTER_RELAY_TOKEN (уходит в X-Relay-Token); ключ
-                        тогда может жить только на ретрансляторе;
+                        тогда может жить только на ретрансляторе. У ретранслятора
+                        свой сертификат: OPENROUTER_RELAY_CA — путь к нему
+                        (доверяем только ему, backend/certs/wyx-relay.pem);
   YANDEX_TRANSLATE_API_KEY — Яндекс Переводчик (Yandex Cloud, API-ключ
                         сервисного аккаунта с ролью ai.translate.user;
                         YANDEX_FOLDER_ID — если ключ не привязан к каталогу);
@@ -27,9 +29,11 @@ TRANSLATE_PROVIDER=openrouter|gemini|deepl|libre задаёт провайдер
 Message.translations[язык]. Оригинал не трогаем: клиент показывает перевод
 с пометкой и даёт посмотреть исходник. Один язык у обоих — ничего не делаем.
 """
+import functools
 import logging
 import os
 import re
+import ssl
 import threading
 import time
 
@@ -46,6 +50,12 @@ class TranslateNotConfigured(Exception):
 
 def _openrouter_key():
     return os.environ.get("OPEN_ROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY") or ""
+
+
+@functools.lru_cache(maxsize=4)
+def _ssl_for(cafile):
+    """Проверка сертификата: свой (ретранслятор) или обычные корневые."""
+    return ssl.create_default_context(cafile=cafile) if cafile else True
 
 
 def _openrouter_on():
@@ -203,6 +213,7 @@ def _openrouter(text, target):
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": f"<message>\n{text}\n</message>"}],
         },
         timeout=25,
+        verify=_ssl_for(os.environ.get("OPENROUTER_RELAY_CA") or ""),
     )
     r.raise_for_status()
     out = (r.json()["choices"][0]["message"]["content"] or "").strip()
