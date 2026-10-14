@@ -104,6 +104,13 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
 </script>
 '''
 
+def strip(html):
+    """Убрать уже вставленные переключатель, hreflang и скрипт автовыбора —
+    сборка повторяема: index.html (источник) после первого прогона их содержит."""
+    html = re.sub(r'<span class="lang">.*?</span></span>|<span class="lang">(?:<a [^>]*>[A-Z]{2}</a>)+</span>\n?\s*', '', html, flags=re.S)
+    html = html.replace(ALT, '').replace(REDIRECT, '')
+    return html
+
 def switch(cur):
     return SWITCH.format(**{l: (' aria-current="page"' if l == cur else '') for l in ("ru", "en", "ko")})
 
@@ -127,9 +134,9 @@ def with_nav(html, lang):
     html = html.replace("</head>", ALT + REDIRECT + "</head>", 1)
     return html
 
-ru = with_nav(SRC, "ru")
-io.open(os.path.join(HERE, "index.html"), "w", encoding="utf-8").write(ru) if '<span class="lang">' not in SRC else None
+BASE = strip(SRC)
+io.open(os.path.join(HERE, "index.html"), "w", encoding="utf-8").write(with_nav(BASE, "ru"))
 for lang in ("en", "ko"):
     os.makedirs(os.path.join(HERE, lang), exist_ok=True)
-    io.open(os.path.join(HERE, lang, "index.html"), "w", encoding="utf-8").write(with_nav(translate(SRC, lang), lang))
+    io.open(os.path.join(HERE, lang, "index.html"), "w", encoding="utf-8").write(with_nav(translate(BASE, lang), lang))
     print(lang, "ok")
