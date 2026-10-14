@@ -49,7 +49,7 @@ def _firebase_app():
 
 
 # Заглушки, которые видит Apple/Google и которые покажет система, если
-# устройство не смогло расшифровать пуш.
+# устройство не смогло расшифровать пуш. Текст — на языке получателя (i18n.py).
 PLACEHOLDER_TITLE = "WYX"
 PLACEHOLDER_BODY = "Новое сообщение"
 
@@ -74,7 +74,8 @@ def _encrypt(secret_b64: str, payload: dict) -> str | None:
         return None
 
 
-def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | None):
+def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | None,
+                       placeholder: str = PLACEHOLDER_BODY):
     """Пуш с текстом внутри шифрованного блоба. Android — data-only, уведомление
     строит CallMessagingService; iOS — alert с mutable-content и заглушкой,
     текст подставляет Notification Service Extension. Звук не секрет — он в
@@ -97,7 +98,7 @@ def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | 
                 data=payload,
                 apns=messaging.APNSConfig(
                     payload=messaging.APNSPayload(aps=messaging.Aps(
-                        alert=messaging.ApsAlert(title=PLACEHOLDER_TITLE, body=PLACEHOLDER_BODY),
+                        alert=messaging.ApsAlert(title=PLACEHOLDER_TITLE, body=placeholder),
                         sound=ios_sound, mutable_content=True,
                     ))
                 ),
@@ -184,33 +185,48 @@ def _fcm_tokens(profiles, platforms=None):
     return list(qs.values_list("token", flat=True))
 
 
-def notify_profiles(profiles, title: str, body: str, extra: dict | None = None,
+def notify_profiles(profiles, title, body, extra: dict | None = None,
                     sound: str | None = None, platforms=None, hide_body_for=None):
     """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне.
     platforms — ограничить платформы (например, только android, если iOS
     уже получил VoIP-пуш о звонке). hide_body_for — id профилей, которым
-    вместо текста показать «Новое сообщение» (выключили превью)."""
+    вместо текста показать «Новое сообщение» (выключили превью).
+
+    title и body — готовая строка (имя, текст сообщения) или перевод на язык
+    получателя: i18n.L("Входящий звонок") либо функция lang -> str. Получатели
+    делятся по Profile.language, каждому — свой текст; заглушка «Новое
+    сообщение» тоже на его языке."""
     from .models import PushToken
+    from .i18n import norm, render, tr
 
     qs = PushToken.objects.filter(user__in=profiles).exclude(platform="ios_voip")
     if platforms:
         qs = qs.filter(platform__in=platforms)
-    rows = list(qs.values_list("token", "secret", "platform", "user_id"))
+    rows = list(qs.values_list("token", "secret", "platform", "user_id", "user__language"))
     if not rows:
         return
     hide = set(hide_body_for or ())
     extra = extra or {}
 
+    # Тексты собираем здесь, а не в потоке: функции-переводы могут обращаться
+    # к уже загруженным объектам, база в фоне им не нужна.
+    groups = {}
+    for r in rows:
+        groups.setdefault((norm(r[4]), r[3] in hide), []).append(r)
+    batches = []
+    for (lang, hidden), group in groups.items():
+        placeholder = tr(PLACEHOLDER_BODY, lang)
+        batches.append((group, render(title, lang),
+                        placeholder if hidden else render(body, lang), placeholder))
+
     def run():
-        for body_text, group in ((body, [r for r in rows if r[3] not in hide]), (PLACEHOLDER_BODY, [r for r in rows if r[3] in hide])):
-            if not group:
-                continue
+        for group, title_text, body_text, placeholder in batches:
             plain = [r[0] for r in group if not r[1]]
             enc = [(r[0], r[1], r[2]) for r in group if r[1]]
             if plain:
-                _deliver(plain, title, body_text, extra, sound)
+                _deliver(plain, title_text, body_text, extra, sound)
             if enc and _firebase_app() is not None:
-                _deliver_encrypted(enc, title, body_text, extra, sound)
+                _deliver_encrypted(enc, title_text, body_text, extra, sound, placeholder)
 
     threading.Thread(target=run, daemon=True).start()
 

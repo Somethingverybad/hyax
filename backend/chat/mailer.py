@@ -32,18 +32,25 @@ def send_email(to, subject, text, html=None):
     return r.json().get("id")
 
 
-def code_email(code, purpose):
-    """Тема и текст письма с кодом: привязка почты или сброс пароля."""
+def code_email(code, purpose, lang="ru"):
+    """Тема и текст письма с кодом: привязка почты или сброс пароля — на
+    языке профиля (lang: ru / en / ko, см. i18n.py)."""
+    from html import escape
+    from .i18n import tr
     if purpose == "reset":
-        subject = "Восстановление пароля WYX"
-        intro = "Вы запросили сброс пароля в WYX."
+        subject = tr("Восстановление пароля WYX", lang)
+        intro = tr("Вы запросили сброс пароля в WYX.", lang)
     else:
-        subject = "Подтверждение почты WYX"
-        intro = "Вы привязываете эту почту к аккаунту WYX."
-    text = f"{intro}\n\nКод: {code}\n\nОн действует 15 минут. Если это не вы — просто не обращайте внимания на письмо."
+        subject = tr("Подтверждение почты WYX", lang)
+        intro = tr("Вы привязываете эту почту к аккаунту WYX.", lang)
+    text = "\n\n".join([
+        intro,
+        tr("Код: {code}", lang, code=code),
+        tr("Он действует 15 минут. Если это не вы — просто не обращайте внимания на письмо.", lang),
+    ])
     html = (
-        f"<p>{intro}</p>"
+        f"<p>{escape(intro, quote=False)}</p>"
         f"<p style=\"font-size:28px;letter-spacing:6px;font-weight:600;font-family:ui-monospace,Menlo,monospace\">{code}</p>"
-        "<p>Код действует 15 минут. Если это не вы — просто не обращайте внимания на письмо.</p>"
+        f"<p>{escape(tr('Код действует 15 минут. Если это не вы — просто не обращайте внимания на письмо.', lang), quote=False)}</p>"
     )
     return subject, text, html

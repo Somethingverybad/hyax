@@ -34,6 +34,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .i18n import L, lang_of, tr, variants
 from .models import Chat, ChatParticipant, Idea, IdeaVote, Message, Profile
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,11 @@ UPDATE_NOTE = ("Бездна — все идеи от новых к старым
                "А предлагать идеи и голосовать в «Топ-10» можно и здесь.")
 
 
+def menu(lang="ru"):
+    """MENU на языке человека: подписи кнопок, data — те же."""
+    return [[{**b, "text": tr(b["text"], lang)} for b in row] for row in MENU]
+
+
 def ideabox_bot() -> Profile:
     bot = Profile.objects.filter(username=BOT_USERNAME, is_bot=True).first()
     if bot:
@@ -94,11 +100,14 @@ def user_chat(profile: Profile) -> Chat:
     if chat:
         return chat
     bot = ideabox_bot()
+    lang = lang_of(profile)
     with transaction.atomic():
+        # Имя чата в базе — русское (клиент переводит его сам), приветствие —
+        # сразу на языке человека.
         chat = Chat.objects.create(kind=KIND, is_group=False, name=BOT_USERNAME)
         ChatParticipant.objects.create(chat=chat, user=profile)
         ChatParticipant.objects.create(chat=chat, user=bot)
-        Message.objects.create(chat=chat, sender=bot, content=WELCOME, buttons=MENU)
+        Message.objects.create(chat=chat, sender=bot, content=tr(WELCOME, lang), buttons=menu(lang))
     return chat
 
 
@@ -126,10 +135,13 @@ def deliver_idea(message: Message, author: Profile, thank: bool = True) -> Idea 
         return idea
     try:
         box_bot = ideabox_bot()
-        last_reply = (Message.objects.filter(chat=message.chat, sender=box_bot, content=THANKS)
+        lang = lang_of(author)
+        # «Спасибо» мог уйти на любом языке — человек мог сменить язык.
+        last_reply = (Message.objects.filter(chat=message.chat, sender=box_bot, content__in=variants(THANKS))
                       .order_by("-created_at").values_list("created_at", flat=True).first())
         if not last_reply or timezone.now() - last_reply > REPLY_EVERY:
-            reply = Message.objects.create(chat=message.chat, sender=box_bot, content=THANKS, buttons=MENU)
+            reply = Message.objects.create(chat=message.chat, sender=box_bot, content=tr(THANKS, lang),
+                                           buttons=menu(lang))
             Chat.objects.filter(id=message.chat_id).update(updated_at=timezone.now())
             _notify_new_message(reply, box_bot, None)
     except Exception:
@@ -194,7 +206,8 @@ def set_done(idea_id, done=None):
             from .views import _notify_new_message
             chat = user_chat(idea.author)
             bot = ideabox_bot()
-            m = Message.objects.create(chat=chat, sender=bot, content=f"🎉 Вашу идею реализовали:\n«{_clip(idea.text, 300)}»\n\nСпасибо!")
+            m = Message.objects.create(chat=chat, sender=bot, content=tr(
+                "🎉 Вашу идею реализовали:\n«{text}»\n\nСпасибо!", lang_of(idea.author), text=_clip(idea.text, 300)))
             Chat.objects.filter(id=chat.id).update(updated_at=timezone.now())
             _notify_new_message(m, bot, None)
         except Exception:
@@ -230,21 +243,23 @@ def _u16(s):
 
 
 def render(viewer):
-    """«Топ-10» сообщением в чате бота: (текст, оформление, кнопки)."""
+    """«Топ-10» сообщением в чате бота: (текст, оформление, кнопки) — на языке
+    того, кто смотрит (чат у каждого свой)."""
     admin = _is_admin(viewer)
+    lang = lang_of(viewer)
     ideas = list(top_qs()[:TOP_SIZE])
-    title = "🏆 Топ-10 идей"
+    title = tr("🏆 Топ-10 идей", lang)
     mine = dict(IdeaVote.objects.filter(voter=viewer, idea__in=ideas).values_list("idea_id", "value"))
     lines = [title, ""]
     rows = []
     if not ideas:
-        lines.append("Пока пусто. Напишите сюда идею — она станет первой.")
+        lines.append(tr("Пока пусто. Напишите сюда идею — она станет первой.", lang))
     for i, idea in enumerate(ideas, start=1):
         marks = [f"👍 {idea.likes} · 👎 {idea.dislikes}"]
         if idea.author_id == viewer.id:
-            marks.append("ваша идея")
+            marks.append(tr("ваша идея", lang))
         elif idea.id in mine:
-            marks.append("ваш голос " + ("👍" if mine[idea.id] > 0 else "👎"))
+            marks.append(tr("ваш голос {vote}", lang, vote="👍" if mine[idea.id] > 0 else "👎"))
         lines.append(f"{i}. {_clip(idea.text)}")
         lines.append("    " + " · ".join(marks))
         row = [
@@ -252,10 +267,10 @@ def render(viewer):
             {"text": f"👎 {idea.dislikes}", "data": f"v:{idea.id}:-"},
         ]
         if admin:
-            row.append({"text": "✅ Реализовано", "data": f"d:{idea.id}"})
+            row.append({"text": tr("✅ Реализовано", lang), "data": f"d:{idea.id}"})
             row.append({"text": "🗑", "data": f"h:{idea.id}"})
         rows.append(row)
-    rows.append([{"text": "🔄 Обновить", "data": "t"}, {"text": "🕳 Бездна", "data": "abyss"}])
+    rows.append([{"text": tr("🔄 Обновить", lang), "data": "t"}, {"text": tr("🕳 Бездна", lang), "data": "abyss"}])
     text = "\n".join(lines).rstrip()
     return text, [{"type": "bold", "offset": 0, "length": _u16(title)}], rows
 
@@ -278,7 +293,7 @@ def handle_press(msg, profile, data, request=None, caps=()):
         if "ideas_screen" in caps:
             out["open"] = SCREEN + "?tab=new"
         else:
-            _bot_say(msg.chat_id, UPDATE_NOTE)
+            _bot_say(msg.chat_id, tr(UPDATE_NOTE, lang_of(profile)))
         return out
     if data == "top":
         # С приветствия и «спасибо» — новым сообщением, чтобы меню осталось.
@@ -350,8 +365,10 @@ def _notify_vibe(target, voter, anonymous):
         logger.exception("vibe: сокет не ответил")
     try:
         from .fcm import notify_profiles
-        body = "Кто-то поднял ваш вайб" if anonymous else f"{voter.username} поднял(а) ваш вайб"
-        notify_profiles(Profile.objects.filter(id=target.id), title="Вайбометр", body=f"{body} — уже {target.vibe}",
+        # На языке того, чей вайб подняли (notify_profiles знает его язык).
+        body = (L("Кто-то поднял ваш вайб — уже {n}", n=target.vibe) if anonymous
+                else L("{name} поднял(а) ваш вайб — уже {n}", name=voter.username, n=target.vibe))
+        notify_profiles(Profile.objects.filter(id=target.id), title=L("Вайбометр"), body=body,
                         extra={"kind": "vibe", "profile_id": str(target.id)})
     except Exception:
         logger.exception("vibe: пуш не поставлен")
@@ -437,12 +454,13 @@ class VibeLevelsView(APIView):
                 return Response({"error": "У уровня нужен порог — число"}, status=400)
             name = " ".join(str(item.get("name") or "").split())[:40]
             color = str(item.get("color") or "").strip().lower()
+            # Текст ошибки статичный (клиент переводит его), порог — отдельным полем.
             if not name:
-                return Response({"error": f"У уровня с {v} нет названия"}, status=400)
+                return Response({"error": "У уровня нет названия", "min_vibe": v}, status=400)
             if not re.fullmatch(r"#[0-9a-f]{6}", color):
-                return Response({"error": f"Цвет уровня «{name}» — в виде #rrggbb"}, status=400)
+                return Response({"error": "Цвет уровня — в виде #rrggbb", "min_vibe": v}, status=400)
             if v < 1 or v in seen:
-                return Response({"error": f"Порог {v}: должен быть больше нуля и не повторяться"}, status=400)
+                return Response({"error": "Порог должен быть больше нуля и не повторяться", "min_vibe": v}, status=400)
             seen.add(v)
             levels.append(VibeLevel(min_vibe=v, name=name, color=color, glow=bool(item.get("glow"))))
         with transaction.atomic():

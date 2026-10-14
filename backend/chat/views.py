@@ -650,31 +650,41 @@ def _notify_new_message(message, profile, request):
             recipients = recipients.exclude(id__in=watching)
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
         from .formatting import mask_preview
+        from .i18n import L, clip, render
+        # Подписи вместо текста — L(...): каждому получателю на его языке
+        # (notify_profiles делит получателей по Profile.language).
         preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
         if getattr(message, "geo_lat", None) is not None:
-            preview = "📍 Геопозиция"
+            preview = L("📍 Геопозиция")
         if getattr(message.chat, "kind", "") == "secret":
-            preview = "Новое сообщение в секретном чате"
+            preview = L("Новое сообщение в секретном чате")
         if not preview:
             if message.sticker_id:
-                preview = "Стикер"
+                preview = L("Стикер")
             elif getattr(message, "video_url", None):
-                preview = "Видео-сообщение"
+                preview = L("Видео-сообщение")
             elif getattr(message, "voice_url", None):
-                preview = "Голосовое сообщение"
+                preview = L("Голосовое сообщение")
             elif getattr(message, "file_url", None):
-                preview = "Файл"
+                preview = L("Файл")
             else:
-                preview = "Новое сообщение"
+                preview = L("Новое сообщение")
         # У поста канала заголовок пуша — имя канала, а не автора.
         push_title = message.chat.name if getattr(message.chat, "kind", "") == "channel" else profile.username
+        # Чат «Долгого ящика» и системные («Идеи», «Жалобы»): имя бота и чата
+        # из базы по-русски — в пуше переводим.
+        if getattr(message.chat, "kind", "") == "ideabox" and getattr(profile, "is_bot", False):
+            push_title = L(profile.username)
         # Группа: заголовок — название группы, в тексте — кто написал. Так по
         # пушу сразу видно, что это из группы, а не лично.
         is_group_chat = bool(getattr(message.chat, "is_group", False)) and getattr(message.chat, "kind", "") != "channel"
         if is_group_chat:
-            push_title = (message.chat.name or "").strip() or "Группа"
+            push_title = (message.chat.name or "").strip() or L("Группа")
+            if getattr(message.chat, "kind", "") == "system":
+                push_title = L(push_title)
             if not message.action_id:
-                preview = f"{profile.username}: {preview}"
+                _pv, _who = preview, profile.username
+                preview = lambda lang: f"{_who}: {render(_pv, lang)}"
         # Действие: адресату — «подмигивает вам», остальным в группе — «подмигивает Имя».
         if message.action_id and message.action_target_id:
             _act = message.action
@@ -689,11 +699,13 @@ def _notify_new_message(message, profile, request):
                                 sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
                                        else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None))
             recipients = recipients.exclude(id=message.action_target_id)
-            preview = f"{_act.emoji} {profile.username} {_act.verb} {message.action_target.username}"
+            # Остальным в группе — «Вася подмигивает Пете» на их языке.
+            _who, _whom = profile.username, message.action_target.username
+            preview = lambda lang: f"{_act.emoji} {_act.phrase(lang, _who, _whom)}"
         notify_profiles(
             recipients,
             title=push_title,
-            body=preview[:150],
+            body=clip(preview, 150),
             extra={"chat_id": str(message.chat.id)},
             # Звук: аудио-стикер поста, иначе звук канала, иначе «мой звук»
             # отправителя. У канала свой — подписчики узнают его по звуку.
@@ -743,16 +755,18 @@ def _push_reaction(message, reactor, emoji):
         if str(author.id) in viewers(message.chat_id):
             return
         from .formatting import mask_preview
+        from .i18n import L, clip
         preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
         if not preview:
-            preview = ("Стикер" if message.sticker_id else
-                       "Видео-сообщение" if getattr(message, "video_url", None) else
-                       "Голосовое сообщение" if getattr(message, "voice_url", None) else
-                       "Файл" if getattr(message, "file_url", None) else "сообщение")
+            preview = L("Стикер" if message.sticker_id else
+                        "Видео-сообщение" if getattr(message, "video_url", None) else
+                        "Голосовое сообщение" if getattr(message, "voice_url", None) else
+                        "Файл" if getattr(message, "file_url", None) else "сообщение")
         notify_profiles(
             Profile.objects.filter(id=author.id),
             title=reactor.username,
-            body=f"{emoji} на «{preview[:60]}»",
+            # На языке автора: «❤️ на «…»» / «Reacted ❤️ to “…”».
+            body=L("{emoji} на «{text}»", emoji=emoji, text=clip(preview, 60)),
             extra={"chat_id": str(message.chat_id), "kind": "reaction"},
             hide_body_for=set(
                 Profile.objects.filter(id=author.id, push_preview=False).values_list("id", flat=True)
@@ -1077,7 +1091,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             limit = profile.reaction_limit or 3
             if PostReaction.objects.filter(post=msg, user=profile).count() >= limit:
                 return Response(
-                    {"error": f"Можно поставить не больше {limit} реакций на сообщение",
+                    {"error": "Больше реакций на это сообщение поставить нельзя",
                      "limit": limit},
                     status=409,
                 )
@@ -3672,7 +3686,7 @@ class PostReactView(APIView):
         if not PostReaction.objects.filter(post=msg, user=me, value=value[:64]).delete()[0]:
             limit = me.reaction_limit or 3
             if PostReaction.objects.filter(post=msg, user=me).count() >= limit:
-                return Response({"error": f"Не больше {limit} реакций", "limit": limit}, status=409)
+                return Response({"error": "Больше реакций на этот пост поставить нельзя", "limit": limit}, status=409)
             PostReaction.objects.create(
                 post=msg, user=me, value=value[:64],
                 kind=(request.data.get("kind") or "emoji")[:10],

@@ -39,7 +39,21 @@ MAX_THEMES_PER_USER = 30
 
 
 class ThemeError(ValueError):
-    pass
+    """Текст — статичная русская строка (клиент переводит её по словарю),
+    field — какое поле темы не так, если это важно."""
+
+    def __init__(self, message, field=None, **extra):
+        super().__init__(message)
+        self.field = field
+        self.extra = extra
+
+
+def _theme_error(e):
+    out = {"error": str(e)}
+    if getattr(e, "field", None):
+        out["field"] = e.field
+    out.update(getattr(e, "extra", None) or {})
+    return out
 
 
 def _luminance(hex_color):
@@ -76,7 +90,7 @@ def clean_theme(raw):
     for key in COLOR_KEYS:
         value = colors_in.get(key)
         if not isinstance(value, str) or not HEX.match(value):
-            raise ThemeError(f"Цвет «{key}» должен быть в виде #RRGGBB")
+            raise ThemeError("Цвет темы должен быть в виде #RRGGBB", f"colors.{key}")
         colors[key] = value.upper()
 
     shape_in = raw.get("shape")
@@ -88,26 +102,26 @@ def clean_theme(raw):
     for key, (lo, hi) in SHAPE_LIMITS.items():
         value = shape_in.get(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not (lo <= value <= hi):
-            raise ThemeError(f"shape.{key}: число от {lo} до {hi}")
+            raise ThemeError("Параметр формы вне допустимых границ", f"shape.{key}", min=lo, max=hi)
         shape[key] = value
     for key in SHAPE_FLAGS:
         if not isinstance(shape_in.get(key), bool):
-            raise ThemeError(f"shape.{key}: true или false")
+            raise ThemeError("Параметр формы должен быть true или false", f"shape.{key}")
         shape[key] = shape_in[key]
 
     # Нечитаемую тему не принимаем: ею можно спрятать интерфейс от самого
     # себя и от того, кто её установит. Порог мягкий (2:1) — отсекает «белым по
     # белому», вкус не ограничивает; строже предупреждает уже редактор.
-    for label, fg, bg in (
-        ("текст на фоне", "foreground", "background"),
-        ("текст на карточке", "foreground", "surface1"),
-        ("текст на акцентной кнопке", "primaryForeground", "primary"),
-        ("текст на красной кнопке", "destructiveForeground", "destructive"),
-        ("свои сообщения", "bubbleOwnFg", "bubbleOwn"),
-        ("входящие сообщения", "bubbleInFg", "bubbleIn"),
+    for message, fg, bg in (
+        ("Слишком низкий контраст: текст на фоне", "foreground", "background"),
+        ("Слишком низкий контраст: текст на карточке", "foreground", "surface1"),
+        ("Слишком низкий контраст: текст на акцентной кнопке", "primaryForeground", "primary"),
+        ("Слишком низкий контраст: текст на красной кнопке", "destructiveForeground", "destructive"),
+        ("Слишком низкий контраст: свои сообщения", "bubbleOwnFg", "bubbleOwn"),
+        ("Слишком низкий контраст: входящие сообщения", "bubbleInFg", "bubbleIn"),
     ):
         if contrast(colors[fg], colors[bg]) < 2:
-            raise ThemeError(f"Слишком низкий контраст: {label}")
+            raise ThemeError(message, f"colors.{fg}")
 
     return name, {"version": 1, "base": base, "colors": colors, "shape": shape}
 
@@ -146,11 +160,11 @@ class ThemesView(APIView):
         if not me:
             return Response({"error": "Profile not found"}, status=404)
         if Theme.objects.filter(author=me).count() >= MAX_THEMES_PER_USER:
-            return Response({"error": f"Не больше {MAX_THEMES_PER_USER} своих тем"}, status=400)
+            return Response({"error": "Слишком много своих тем", "limit": MAX_THEMES_PER_USER}, status=400)
         try:
             name, data = clean_theme(request.data)
         except ThemeError as e:
-            return Response({"error": str(e)}, status=400)
+            return Response(_theme_error(e), status=400)
         theme = Theme.objects.create(name=name, author=me, data=data, is_public=request.data.get("is_public") is not False)
         return Response(theme_payload(theme, me), status=201)
 
@@ -183,7 +197,7 @@ class ThemeDetailView(APIView):
         try:
             theme.name, theme.data = clean_theme(request.data)
         except ThemeError as e:
-            return Response({"error": str(e)}, status=400)
+            return Response(_theme_error(e), status=400)
         if isinstance(request.data.get("is_public"), bool):
             theme.is_public = request.data["is_public"]
         theme.save()

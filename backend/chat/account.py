@@ -136,6 +136,7 @@ import re
 import secrets
 from datetime import timedelta
 
+from .i18n import lang_of
 from .mailer import MailNotConfigured, code_email, send_email
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
@@ -153,7 +154,7 @@ def _issue_code(profile, email, purpose):
     code = f"{secrets.randbelow(10**6):06d}"
     EmailCode.objects.filter(profile=profile, purpose=purpose, used_at__isnull=True).update(used_at=timezone.now())
     row = EmailCode.objects.create(profile=profile, email=email, code=code, purpose=purpose)
-    subject, text, html = code_email(code, purpose)
+    subject, text, html = code_email(code, purpose, lang_of(profile))
     try:
         send_email(email, subject, text, html)
     except MailNotConfigured:

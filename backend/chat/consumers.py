@@ -187,6 +187,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 try:
                     from .fcm import notify_profiles, notify_data
                     from .apns_voip import notify_voip
+                    from .i18n import L
                     is_video = data.get("call_type", "audio") == "video"
                     callee = Profile.objects.filter(id=target_user_id)
                     call_payload = {
@@ -209,7 +210,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         await database_sync_to_async(notify_profiles)(
                             callee,
                             title=from_username,
-                            body="Входящий видеозвонок" if is_video else "Входящий звонок",
+                            body=L("Входящий видеозвонок" if is_video else "Входящий звонок"),
                             extra=call_payload,
                             sound="call",
                             platforms=["ios"],
@@ -753,10 +754,11 @@ class UserConsumer(AsyncWebsocketConsumer):
             return
         logger.info("rov: шлю пуш %d из %d (их нет в приложении)", len(offline), len(targets))
         from .fcm import notify_profiles
+        from .i18n import L
         notify_profiles(
             Profile.objects.filter(id__in=offline),
             title=from_name,
-            body="Ревёт 📳",
+            body=L("Ревёт 📳"),
             extra={"kind": "rov"},
         )
 
@@ -866,6 +868,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 try:
                     from .fcm import notify_profiles, notify_data
                     from .apns_voip import notify_voip
+                    from .i18n import L
                     is_video = data.get("call_type", "audio") == "video"
                     callee = Profile.objects.filter(id=target_user_id)
                     call_payload = {
@@ -888,7 +891,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                         await database_sync_to_async(notify_profiles)(
                             callee,
                             title=from_username,
-                            body="Входящий видеозвонок" if is_video else "Входящий звонок",
+                            body=L("Входящий видеозвонок" if is_video else "Входящий звонок"),
                             extra=call_payload,
                             sound="call",
                             platforms=["ios"],
@@ -1038,7 +1041,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 await self.channel_layer.group_send(
                     f"user_{uid}", {"type": "notification", "data": payload}
                 )
-            await self.push_call_invite(invite["invitees"], payload, invite["chat_name"])
+            await self.push_call_invite(invite["invitees"], payload, invite["chat_name"], invite["default_name"])
             # Инициатор — первый в составе; остальные добавятся, когда ответят.
             await self.broadcast_peers(call_id, chat_id)
             return
@@ -1092,7 +1095,7 @@ class UserConsumer(AsyncWebsocketConsumer):
         for uid in info["invited"]:
             await self.channel_layer.group_send(f"user_{uid}", {"type": "notification", "data": payload})
         if info["invited"]:
-            await self.push_call_invite(info["invited"], payload, info["chat_name"])
+            await self.push_call_invite(info["invited"], payload, info["chat_name"], info["default_name"])
         await self.broadcast_peers(call_id, info["chat_id"])
 
     @database_sync_to_async
@@ -1130,9 +1133,12 @@ class UserConsumer(AsyncWebsocketConsumer):
                 CallParticipant.objects.create(call=session, user_id=uid)
             invited.append(str(uid))
         chat = session.chat
-        chat_name = (chat.name or "Группа") if chat.is_group else "Групповой звонок"
+        # Своё имя чата — как есть; подпись по умолчанию в пуше переводится
+        # на язык приглашённого (default_name — её русский ключ).
+        default_name = ("" if chat.name else "Группа") if chat.is_group else "Групповой звонок"
+        chat_name = (chat.name if chat.is_group else "") or default_name
         return {
-            "invited": invited, "chat_id": str(chat.id), "chat_name": chat_name,
+            "invited": invited, "chat_id": str(chat.id), "chat_name": chat_name, "default_name": default_name,
             "from_username": sender.username, "from_user_avatar": sender.avatar_url,
             "call_type": session.call_type,
         }
@@ -1157,23 +1163,32 @@ class UserConsumer(AsyncWebsocketConsumer):
         except Exception:
             return []
 
-    async def push_call_invite(self, invitees, payload, chat_name):
-        """Пуши приглашённым: VoIP на iOS, данные на Android, обычный — запасной."""
+    async def push_call_invite(self, invitees, payload, chat_name, default_name=""):
+        """Пуши приглашённым: VoIP на iOS, данные на Android, обычный — запасной.
+        Название группы по умолчанию («Группа») экран вызова берёт из
+        chat_name — поэтому приглашённых делим по языку, и каждому своё."""
         try:
             from .fcm import notify_profiles, notify_data
             from .apns_voip import notify_voip
-            profiles = Profile.objects.filter(id__in=invitees)
-            voip_sent = await database_sync_to_async(notify_voip)(profiles, payload)
-            await database_sync_to_async(notify_data)(profiles, payload, platforms=["android"], ttl=30)
-            if not voip_sent:
-                await database_sync_to_async(notify_profiles)(
-                    profiles,
-                    title=chat_name or payload.get("from_username", "WYX"),
-                    body=f"{payload.get('from_username')} звонит в группе",
-                    extra=payload,
-                    sound="call",
-                    platforms=["ios"],
-                )
+            from .i18n import L, by_lang, tr
+            rows = await database_sync_to_async(
+                lambda: list(Profile.objects.filter(id__in=invitees).values_list("id", "language"))
+            )()
+            for lang, ids in by_lang(rows).items():
+                name = tr(default_name, lang) if default_name else chat_name
+                lang_payload = {**payload, "chat_name": name}
+                profiles = Profile.objects.filter(id__in=ids)
+                voip_sent = await database_sync_to_async(notify_voip)(profiles, lang_payload)
+                await database_sync_to_async(notify_data)(profiles, lang_payload, platforms=["android"], ttl=30)
+                if not voip_sent:
+                    await database_sync_to_async(notify_profiles)(
+                        profiles,
+                        title=name or payload.get("from_username", "WYX"),
+                        body=L("{name} звонит в группе", name=payload.get("from_username")),
+                        extra=lang_payload,
+                        sound="call",
+                        platforms=["ios"],
+                    )
         except Exception as e:
             print(f"❌ [group] пуш не отправлен: {e}")
 
@@ -1235,6 +1250,7 @@ class UserConsumer(AsyncWebsocketConsumer):
             "from_username": initiator.username,
             "from_user_avatar": initiator.avatar_url,
             "chat_name": chat.name or "Группа",
+            "default_name": "" if chat.name else "Группа",
         }
 
     @database_sync_to_async
