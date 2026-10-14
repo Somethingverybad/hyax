@@ -22,12 +22,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// показываются, в выдаче видно только «WYX». Тап по карточке просто
     /// открывает приложение. Идентификатор постоянный: повторная индексация
     /// обновляет ту же запись, а не плодит новые.
-    private func indexForSpotlight() {
+    ///
+    /// Описание — на языке приложения (AppLang); при смене языка карточку
+    /// переиндексирует NativeLangPlugin.
+    func indexForSpotlight() {
         guard CSSearchableIndex.isIndexingAvailable() else { return }
         let attrs = CSSearchableItemAttributeSet(contentType: .item)
         attrs.title = "WYX"
-        attrs.contentDescription = "Мессенджер"
-        attrs.keywords = ["хуякс", "хуяк", "hyax", "huyax", "whoyax", "вуякс", "мессенджер"]
+        attrs.contentDescription = AppLang.t("spotlight.description", "Мессенджер")
+        attrs.keywords = ["хуякс", "хуяк", "hyax", "huyax", "whoyax", "вуякс", "мессенджер", "wyx", "messenger", "메신저"]
         let item = CSSearchableItem(uniqueIdentifier: "app", domainIdentifier: "com.hyax.messenger.app", attributeSet: attrs)
         item.expirationDate = .distantFuture
         CSSearchableIndex.default().indexSearchableItems([item]) { error in

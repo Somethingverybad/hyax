@@ -42,10 +42,11 @@ public class CallForegroundService extends Service {
         PendingIntent pi = PendingIntent.getActivity(
             this, 5, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
+        Context l = NativeLang.context(this);
         Notification notification = new NotificationCompat.Builder(this, CallNotifications.CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Звонок WYX")
-            .setContentText("Идёт разговор")
+            .setContentTitle(l.getString(R.string.call_ongoing_title))
+            .setContentText(l.getString(R.string.call_ongoing_text))
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setOngoing(true)
             .setSilent(true)

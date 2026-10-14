@@ -68,8 +68,13 @@ public class CallMessagingService extends FirebaseMessagingService {
         // по сокету и прозвучало само, как и раньше с системными пушами.
         if (MainActivity.isForeground) return;
         JSONObject p = PushCrypto.decrypt(getApplicationContext(), data.get("e"));
+        String fallback = NativeLang.str(this, R.string.push_new_message);
         String title = p != null ? p.optString("title", "WYX") : "WYX";
-        String body = p != null ? p.optString("body", "Новое сообщение") : "Новое сообщение";
+        String body = p != null ? p.optString("body", fallback) : fallback;
+        // Служебные фразы сервер пишет по-русски («Новое сообщение», «Стикер»,
+        // «Новое сообщение в секретном чате»…) — на язык приложения.
+        title = NativeLang.pushTitle(this, title);
+        body = NativeLang.pushBody(this, body);
         String chatId = p != null ? p.optString("chat_id", "") : "";
         String channel = data.get("ch");
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);

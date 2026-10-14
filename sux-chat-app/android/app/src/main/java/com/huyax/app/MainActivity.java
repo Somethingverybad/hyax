@@ -25,6 +25,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PushSecretPlugin.class);
         registerPlugin(RovHapticsPlugin.class);
         registerPlugin(ShareInboxPlugin.class);
+        registerPlugin(NativeLangPlugin.class);
         super.onCreate(savedInstanceState);
         MessageChannels.ensure(this);
         handleCallIntent(getIntent());

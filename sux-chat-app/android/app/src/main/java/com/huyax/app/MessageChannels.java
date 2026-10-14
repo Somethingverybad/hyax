@@ -46,7 +46,7 @@ final class MessageChannels {
         }
         NotificationChannel ch = new NotificationChannel(
             id, title == null || title.isEmpty() ? slug : title, NotificationManager.IMPORTANCE_HIGH);
-        ch.setGroup(ensureGroup(nm));
+        ch.setGroup(ensureGroup(ctx, nm));
         AudioAttributes attrs = new AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -57,12 +57,24 @@ final class MessageChannels {
     }
 
     /** Аудио-стикеры складываем в отдельную группу, чтобы не засорять список. */
-    private static String ensureGroup(NotificationManager nm) {
+    private static String ensureGroup(Context ctx, NotificationManager nm) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannelGroup(
-                new android.app.NotificationChannelGroup(SOUND_GROUP, "Аудио-стикеры"));
+            nm.createNotificationChannelGroup(new android.app.NotificationChannelGroup(
+                SOUND_GROUP, NativeLang.str(ctx, R.string.channel_group_sounds)));
         }
         return SOUND_GROUP;
+    }
+
+    /**
+     * Название канала — на языке приложения. Android разрешает приложению
+     * менять у готового канала имя (звук и важность остаются как есть),
+     * поэтому передаём сам канал из системы, поменяв только имя.
+     */
+    static void rename(NotificationManager nm, NotificationChannel ch, String name) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        if (name.contentEquals(ch.getName())) return;
+        ch.setName(name);
+        nm.createNotificationChannel(ch);
     }
 
     static void ensure(Context ctx) {
@@ -74,9 +86,15 @@ final class MessageChannels {
             if (nm.getNotificationChannel(old) != null) nm.deleteNotificationChannel(old);
         }
 
-        if (nm.getNotificationChannel(MESSAGES) == null) {
+        // Названия — на языке приложения; при смене языка ensure вызывает
+        // NativeLangPlugin, и уже созданные каналы переименовываются.
+        String title = NativeLang.str(ctx, R.string.channel_messages);
+        NotificationChannel existing = nm.getNotificationChannel(MESSAGES);
+        if (existing != null) {
+            rename(nm, existing, title);
+        } else {
             NotificationChannel ch = new NotificationChannel(
-                MESSAGES, "Сообщения", NotificationManager.IMPORTANCE_HIGH);
+                MESSAGES, title, NotificationManager.IMPORTANCE_HIGH);
             Uri sound = Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/receive");
             AudioAttributes attrs = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -85,6 +103,15 @@ final class MessageChannels {
             ch.setSound(sound, attrs);
             ch.enableVibration(true);
             nm.createNotificationChannel(ch);
+        }
+
+        // Группа аудио-стикеров уже есть — обновляем ей название.
+        for (android.app.NotificationChannelGroup g : nm.getNotificationChannelGroups()) {
+            if (SOUND_GROUP.equals(g.getId())) {
+                String groupTitle = NativeLang.str(ctx, R.string.channel_group_sounds);
+                if (!groupTitle.contentEquals(g.getName())) ensureGroup(ctx, nm);
+                break;
+            }
         }
 
         CallNotifications.ensureChannel(ctx);

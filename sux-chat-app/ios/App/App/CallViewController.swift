@@ -22,6 +22,7 @@ class CallViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(PushSecretPlugin())
         bridge?.registerPluginInstance(KeyboardSyncPlugin())
         bridge?.registerPluginInstance(ShareInboxPlugin())
+        bridge?.registerPluginInstance(NativeLangPlugin())
         webView?.configuration.userContentController.add(ComposeSelectionHandler(owner: self), name: "hyaxComposeSel")
     }
 
@@ -31,22 +32,24 @@ class CallViewController: CAPBridgeViewController {
     override func buildMenu(with builder: UIMenuBuilder) {
         super.buildMenu(with: builder)
         guard #available(iOS 16.0, *), builder.system == .context, composeHasSelection else { return }
+        // Подписи — на языке приложения (AppLang): меню собирается заново
+        // при каждом показе, так что смена языка видна сразу.
         let items: [(String, String, String)] = [
-            ("Жирный", "bold", "bold"),
-            ("Курсив", "italic", "italic"),
-            ("Подчёркнутый", "underline", "underline"),
-            ("Зачёркнутый", "strike", "strikethrough"),
-            ("Моноширинный", "code", "chevron.left.forwardslash.chevron.right"),
-            ("Спойлер", "spoiler", "eye.slash"),
-            ("Зальго", "zalgo", "waveform.path"),
-            ("Перемешать буквы", "scramble", "shuffle"),
+            (AppLang.t("format.bold", "Жирный"), "bold", "bold"),
+            (AppLang.t("format.italic", "Курсив"), "italic", "italic"),
+            (AppLang.t("format.underline", "Подчёркнутый"), "underline", "underline"),
+            (AppLang.t("format.strike", "Зачёркнутый"), "strike", "strikethrough"),
+            (AppLang.t("format.code", "Моноширинный"), "code", "chevron.left.forwardslash.chevron.right"),
+            (AppLang.t("format.spoiler", "Спойлер"), "spoiler", "eye.slash"),
+            (AppLang.t("format.zalgo", "Зальго"), "zalgo", "waveform.path"),
+            (AppLang.t("format.scramble", "Перемешать буквы"), "scramble", "shuffle"),
         ]
         let actions = items.map { title, type, icon in
             UIAction(title: title, image: UIImage(systemName: icon)) { [weak self] _ in
                 self?.applyFormat(type)
             }
         }
-        let menu = UIMenu(title: "Форматирование", image: UIImage(systemName: "textformat"),
+        let menu = UIMenu(title: AppLang.t("format.menu", "Форматирование"), image: UIImage(systemName: "textformat"),
                           identifier: UIMenu.Identifier("com.hyax.format"), children: actions)
         if builder.menu(for: .standardEdit) != nil {
             builder.insertSibling(menu, afterMenu: .standardEdit)

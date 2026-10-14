@@ -122,7 +122,8 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         // В группе звонит не человек, а сама группа — так и подписываем.
         let isGroup = (data["group"] as? String) == "1" || (data["group"] as? Bool) == true
         let caller = (data["from_username"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "WYX"
-        let groupName = (data["chat_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Группа"
+        let groupName = (data["chat_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? AppLang.t("call.group", "Группа")
         let name = isGroup ? "\(groupName) · \(caller)" : caller
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: name)
@@ -332,7 +333,7 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
         if call.getBool("group") == true {
             payload["group"] = "1"
-            payload["chat_name"] = call.getString("chatName") ?? "Группа"
+            payload["chat_name"] = call.getString("chatName") ?? ""
         }
         VoipManager.shared.reportIncoming(callId: callId, payload: payload)
         call.resolve()

@@ -32,8 +32,13 @@ final class CallNotifications {
     static void ensureChannel(Context ctx) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return;
-        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Звонки", NotificationManager.IMPORTANCE_HIGH);
+        String title = NativeLang.str(ctx, R.string.channel_calls);
+        NotificationChannel existing = nm.getNotificationChannel(CHANNEL_ID);
+        if (existing != null) {
+            MessageChannels.rename(nm, existing, title);
+            return;
+        }
+        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, title, NotificationManager.IMPORTANCE_HIGH);
         Uri sound = Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/call");
         AudioAttributes attrs = new AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
@@ -64,11 +69,13 @@ final class CallNotifications {
 
     static void show(Context ctx, JSONObject call) {
         ensureChannel(ctx);
+        // Подписи — на языке приложения (NativeLang), а не телефона.
+        Context l = NativeLang.context(ctx);
         boolean isGroup = call.optBoolean("group", false);
         String caller = call.optString("fromUsername", "WYX");
-        String name = isGroup
-            ? call.optString("chatName", "Группа") + " · " + caller
-            : caller;
+        String chatName = call.optString("chatName", "");
+        if (chatName.isEmpty()) chatName = l.getString(R.string.group_default);
+        String name = isGroup ? chatName + " · " + caller : caller;
         String json = call.toString();
 
         Intent ring = new Intent(ctx, MainActivity.class)
@@ -93,7 +100,7 @@ final class CallNotifications {
         NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(name)
-            .setContentText(isGroup ? "Звонок в группе" : "Входящий звонок")
+            .setContentText(l.getString(isGroup ? R.string.call_incoming_group : R.string.call_incoming))
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -102,8 +109,8 @@ final class CallNotifications {
             .setTimeoutAfter(45_000)
             .setFullScreenIntent(ringPi, true)
             .setContentIntent(ringPi)
-            .addAction(0, "Отклонить", declinePi)
-            .addAction(0, "Ответить", answerPi);
+            .addAction(0, l.getString(R.string.call_decline), declinePi)
+            .addAction(0, l.getString(R.string.call_answer), answerPi);
 
         Uri sound = Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/call");
         b.setSound(sound).setVibrate(new long[] {0, 800, 600, 800, 600, 800});

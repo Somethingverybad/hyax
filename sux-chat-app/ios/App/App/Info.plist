@@ -8,6 +8,7 @@
 	<array>
 		<string>ru</string>
 		<string>en</string>
+		<string>ko</string>
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>WYX</string>

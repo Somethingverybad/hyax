@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Каналы уведомлений (Настройки → Приложения → WYX → Уведомления) -->
+    <string name="channel_messages">메시지</string>
+    <string name="channel_calls">통화</string>
+    <string name="channel_group_sounds">오디오 스티커</string>
+    <!-- Входящий звонок и разговор -->
+    <string name="call_incoming">수신 전화</string>
+    <string name="call_incoming_group">그룹 통화</string>
+    <string name="call_answer">받기</string>
+    <string name="call_decline">거절</string>
+    <string name="call_ongoing_title">WYX 통화</string>
+    <string name="call_ongoing_text">통화 중</string>
+    <!-- Служебные фразы сервера в пушах (NativeLang.pushBody/pushTitle); group_default — и для звонка из группы без названия -->
+    <string name="group_default">그룹</string>
+    <string name="push_new_message">새 메시지</string>
+    <string name="push_new_secret_message">비밀 채팅의 새 메시지</string>
+    <string name="push_voice_message">음성 메시지</string>
+    <string name="push_video_message">동영상 메시지</string>
+    <string name="push_sticker">스티커</string>
+    <string name="push_file">파일</string>
+    <string name="push_location">📍 위치</string>
+</resources>

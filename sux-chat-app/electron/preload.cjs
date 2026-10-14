@@ -24,4 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appVersion: () => ipcRenderer.invoke('app-version'),
   // Как установлено на Linux: appimage | deb | other; иначе native.
   installKind: () => ipcRenderer.invoke('install-kind'),
+  // Язык интерфейса (ru | en | ko) — для трея, меню и диалогов main-процесса.
+  setLang: (l) => ipcRenderer.send('set-lang', l),
 });

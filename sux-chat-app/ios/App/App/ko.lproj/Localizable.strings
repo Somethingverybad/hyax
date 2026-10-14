@@ -1,0 +1,31 @@
+/* Тексты, которые формирует нативная часть; язык — выбранный в приложении (AppLang.swift). 한국어. */
+
+/* Меню выделения в поле ввода (CallViewController) */
+"format.menu" = "서식";
+"format.bold" = "굵게";
+"format.italic" = "기울임";
+"format.underline" = "밑줄";
+"format.strike" = "취소선";
+"format.code" = "고정폭";
+"format.spoiler" = "스포일러";
+"format.zalgo" = "잘고";
+"format.scramble" = "글자 섞기";
+
+/* Входящий звонок в группе без названия (VoipPlugin, CallKit) */
+"call.group" = "그룹";
+
+/* Описание карточки приложения в Spotlight (AppDelegate) */
+"spotlight.description" = "메신저";
+
+/* Расширение «Поделиться» (ShareViewController) */
+"share.sending" = "WYX로 보내는 중…";
+
+/* Служебные фразы сервера в пушах (NotificationService, AppLang.pushBody/pushTitle) */
+"push.new_message" = "새 메시지";
+"push.new_secret_message" = "비밀 채팅의 새 메시지";
+"push.voice_message" = "음성 메시지";
+"push.video_message" = "동영상 메시지";
+"push.sticker" = "스티커";
+"push.file" = "파일";
+"push.location" = "📍 위치";
+"push.group" = "그룹";

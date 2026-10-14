@@ -8,16 +8,22 @@
 
 /* Begin PBXBuildFile section */
 		00B449806F792351E1D26893 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7287D95575A8CE03C0F28767 /* NotificationService.swift */; };
+		0DD78352F128423F8CED2ACC /* AppLang.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46C9F112EC6F883378FB33E9 /* AppLang.swift */; };
 		298D928E8414839DF507478D /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3BC41145ECE4C015C9D27E54 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2D93DAB165ECA15AF0D852D8 /* AppLang.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46C9F112EC6F883378FB33E9 /* AppLang.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		3ABA7669014287E0B73DD1D0 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D274E1035E54C4015C423BC8 /* Localizable.strings */; };
+		4140E489E524B5E9E83C12BA /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 245D956CC6E7AE4974F982D3 /* InfoPlist.strings */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5B984A73D8DBED28FA644540 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D274E1035E54C4015C423BC8 /* Localizable.strings */; };
 		6039706E2F0589C7952D4939 /* PushSecretPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */; };
 		7B3C1E9A2F4D5A6B8C9D0E1F /* KeyboardSyncPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */; };
+		94680289572F917D80031A2A /* AppLang.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46C9F112EC6F883378FB33E9 /* AppLang.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		A1C0FFEE2026081800000001 /* receive.caf in Resources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2026081800000002 /* receive.caf */; };
 		AD531635F6A90AF6E71E6FA0 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA4AE405FE3B886956C80EE /* ShareViewController.swift */; };
@@ -27,6 +33,8 @@
 		B7981E10CE54BD62C6509110 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25B699FA0D7DC8FE07940A44 /* Foundation.framework */; };
 		C0DE00012026082200000001 /* NativeCallPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00022026082200000002 /* NativeCallPlugin.swift */; };
 		C0DE00032026082200000001 /* NativeCallAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00042026082200000002 /* NativeCallAudio.swift */; };
+		C527302614CE88F1BDBCF1F2 /* NativeLangPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F956BE94762B201A5884B8F4 /* NativeLangPlugin.swift */; };
+		E30C87420B87716E13286C53 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D274E1035E54C4015C423BC8 /* Localizable.strings */; };
 		E608F6A9ABD29907EA528372 /* ShareInboxPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */; };
 		EC9D80B8E2B04BD284F486E3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25B699FA0D7DC8FE07940A44 /* Foundation.framework */; };
 		F1B2C3D40001000000000002 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1B2C3D40001000000000001 /* GoogleService-Info.plist */; };
@@ -73,6 +81,7 @@
 		2BA4AE405FE3B886956C80EE /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		3BC41145ECE4C015C9D27E54 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		46C9F112EC6F883378FB33E9 /* AppLang.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLang.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -82,6 +91,8 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		5395E2DF04D075E1915E7055 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		610E00060B8AD3BB6DB99085 /* ru */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		6DFC505D3AC27FA8B9EC62A6 /* ru */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		7287D95575A8CE03C0F28767 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		744AD230D7DEE2BC6E6EC8E2 /* ShareExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardSyncPlugin.swift; sourceTree = "<group>"; };
@@ -89,15 +100,20 @@
 		A1C0FFEE2026081800000002 /* receive.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = receive.caf; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
+		AFAE97A3044414D69A295F6D /* ko */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B0B0CA110026082200000002 /* VoipPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoipPlugin.swift; sourceTree = "<group>"; };
 		B0B0CA110026082200000004 /* CallViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallViewController.swift; sourceTree = "<group>"; };
 		B0B0CA110026082200000006 /* call.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = call.caf; sourceTree = "<group>"; };
 		B7284B4303862F0B6C198B3B /* NotificationService.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; };
 		C0DE00022026082200000002 /* NativeCallPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallPlugin.swift; sourceTree = "<group>"; };
 		C0DE00042026082200000002 /* NativeCallAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallAudio.swift; sourceTree = "<group>"; };
+		C58687685DC17C4BB0B1DDDB /* ko */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		E0112A60FD21FF9929FA85C7 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareInboxPlugin.swift; sourceTree = "<group>"; };
 		F1B2C3D40001000000000001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		F443EFF3EF15AC7D960F83B5 /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		F956BE94762B201A5884B8F4 /* NativeLangPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeLangPlugin.swift; sourceTree = "<group>"; };
+		F9BF651DECC6D842C3754703 /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -190,6 +206,10 @@
 				7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */,
 				20D7B0E9196B806A74AE5E71 /* RovHapticsPlugin.swift */,
 				ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */,
+				245D956CC6E7AE4974F982D3 /* InfoPlist.strings */,
+				D274E1035E54C4015C423BC8 /* Localizable.strings */,
+				46C9F112EC6F883378FB33E9 /* AppLang.swift */,
+				F956BE94762B201A5884B8F4 /* NativeLangPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -308,6 +328,7 @@
 				ru,
 				en,
 				Base,
+				ko,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
@@ -326,6 +347,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E30C87420B87716E13286C53 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,6 +364,8 @@
 				F1B2C3D40001000000000002 /* GoogleService-Info.plist in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				4140E489E524B5E9E83C12BA /* InfoPlist.strings in Resources */,
+				5B984A73D8DBED28FA644540 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -349,6 +373,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3ABA7669014287E0B73DD1D0 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -404,6 +429,8 @@
 				7B3C1E9A2F4D5A6B8C9D0E1F /* KeyboardSyncPlugin.swift in Sources */,
 				FA16F02EBAD904FA7EBA2ABE /* RovHapticsPlugin.swift in Sources */,
 				E608F6A9ABD29907EA528372 /* ShareInboxPlugin.swift in Sources */,
+				2D93DAB165ECA15AF0D852D8 /* AppLang.swift in Sources */,
+				C527302614CE88F1BDBCF1F2 /* NativeLangPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -412,6 +439,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				00B449806F792351E1D26893 /* NotificationService.swift in Sources */,
+				0DD78352F128423F8CED2ACC /* AppLang.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -420,6 +448,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD531635F6A90AF6E71E6FA0 /* ShareViewController.swift in Sources */,
+				94680289572F917D80031A2A /* AppLang.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -441,6 +470,16 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
+		245D956CC6E7AE4974F982D3 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				610E00060B8AD3BB6DB99085 /* ru */,
+				F9BF651DECC6D842C3754703 /* en */,
+				C58687685DC17C4BB0B1DDDB /* ko */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -455,6 +494,16 @@
 				504EC3111FED79650016851F /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		D274E1035E54C4015C423BC8 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6DFC505D3AC27FA8B9EC62A6 /* ru */,
+				F443EFF3EF15AC7D960F83B5 /* en */,
+				AFAE97A3044414D69A295F6D /* ko */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Каналы уведомлений (Настройки → Приложения → WYX → Уведомления) -->
+    <string name="channel_messages">Messages</string>
+    <string name="channel_calls">Calls</string>
+    <string name="channel_group_sounds">Audio stickers</string>
+    <!-- Входящий звонок и разговор -->
+    <string name="call_incoming">Incoming call</string>
+    <string name="call_incoming_group">Group call</string>
+    <string name="call_answer">Answer</string>
+    <string name="call_decline">Decline</string>
+    <string name="call_ongoing_title">WYX call</string>
+    <string name="call_ongoing_text">Call in progress</string>
+    <!-- Служебные фразы сервера в пушах (NativeLang.pushBody/pushTitle); group_default — и для звонка из группы без названия -->
+    <string name="group_default">Group</string>
+    <string name="push_new_message">New message</string>
+    <string name="push_new_secret_message">New message in a secret chat</string>
+    <string name="push_voice_message">Voice message</string>
+    <string name="push_video_message">Video message</string>
+    <string name="push_sticker">Sticker</string>
+    <string name="push_file">File</string>
+    <string name="push_location">📍 Location</string>
+</resources>

@@ -25,6 +25,11 @@ class NotificationService: UNNotificationServiceExtension {
                 content.userInfo = info
             }
         }
+        // Служебные фразы сервер пишет по-русски («Новое сообщение», «Новое
+        // сообщение в секретном чате», «Стикер»…), и заглушка остаётся, если
+        // расшифровать не вышло, — подставляем их на языке приложения (AppLang).
+        content.title = AppLang.pushTitle(content.title)
+        content.body = AppLang.pushBody(content.body)
         contentHandler(content)
     }
 

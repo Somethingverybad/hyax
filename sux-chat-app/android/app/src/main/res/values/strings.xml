@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">WYX</string>
-    <string name="title_activity_main">WYX</string>
-    <string name="package_name">com.huyax.app</string>
-    <string name="custom_url_scheme">com.huyax.app</string>
+    <string name="app_name" translatable="false">WYX</string>
+    <string name="title_activity_main" translatable="false">WYX</string>
+    <string name="package_name" translatable="false">com.huyax.app</string>
+    <string name="custom_url_scheme" translatable="false">com.huyax.app</string>
 </resources>

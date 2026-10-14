@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Тексты, которые формирует нативная часть. Язык выбирается в приложении
+     (NativeLang.java), до первой синхронизации — системный. Русский — по умолчанию. -->
+<resources>
+    <!-- Каналы уведомлений (Настройки → Приложения → WYX → Уведомления) -->
+    <string name="channel_messages">Сообщения</string>
+    <string name="channel_calls">Звонки</string>
+    <string name="channel_group_sounds">Аудио-стикеры</string>
+    <!-- Входящий звонок и разговор -->
+    <string name="call_incoming">Входящий звонок</string>
+    <string name="call_incoming_group">Звонок в группе</string>
+    <string name="call_answer">Ответить</string>
+    <string name="call_decline">Отклонить</string>
+    <string name="call_ongoing_title">Звонок WYX</string>
+    <string name="call_ongoing_text">Идёт разговор</string>
+    <!-- Служебные фразы сервера в пушах (NativeLang.pushBody/pushTitle); group_default — и для звонка из группы без названия -->
+    <string name="group_default">Группа</string>
+    <string name="push_new_message">Новое сообщение</string>
+    <string name="push_new_secret_message">Новое сообщение в секретном чате</string>
+    <string name="push_voice_message">Голосовое сообщение</string>
+    <string name="push_video_message">Видео-сообщение</string>
+    <string name="push_sticker">Стикер</string>
+    <string name="push_file">Файл</string>
+    <string name="push_location">📍 Геопозиция</string>
+</resources>

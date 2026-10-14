@@ -20,7 +20,8 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = UIColor(white: 0.08, alpha: 0.96)
         spinner.color = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Отправляем в WYX…"
+        // Язык — выбранный в приложении (App Group, см. AppLang.swift).
+        label.text = AppLang.t("share.sending", "Отправляем в WYX…")
         label.textColor = .white
         label.font = .systemFont(ofSize: 17, weight: .medium)
         label.translatesAutoresizingMaskIntoConstraints = false

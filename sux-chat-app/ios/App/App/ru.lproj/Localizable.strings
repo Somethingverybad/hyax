@@ -1,0 +1,31 @@
+/* Тексты, которые формирует нативная часть; язык — выбранный в приложении (AppLang.swift). Русский — исходный язык. */
+
+/* Меню выделения в поле ввода (CallViewController) */
+"format.menu" = "Форматирование";
+"format.bold" = "Жирный";
+"format.italic" = "Курсив";
+"format.underline" = "Подчёркнутый";
+"format.strike" = "Зачёркнутый";
+"format.code" = "Моноширинный";
+"format.spoiler" = "Спойлер";
+"format.zalgo" = "Зальго";
+"format.scramble" = "Перемешать буквы";
+
+/* Входящий звонок в группе без названия (VoipPlugin, CallKit) */
+"call.group" = "Группа";
+
+/* Описание карточки приложения в Spotlight (AppDelegate) */
+"spotlight.description" = "Мессенджер";
+
+/* Расширение «Поделиться» (ShareViewController) */
+"share.sending" = "Отправляем в WYX…";
+
+/* Служебные фразы сервера в пушах (NotificationService, AppLang.pushBody/pushTitle) */
+"push.new_message" = "Новое сообщение";
+"push.new_secret_message" = "Новое сообщение в секретном чате";
+"push.voice_message" = "Голосовое сообщение";
+"push.video_message" = "Видео-сообщение";
+"push.sticker" = "Стикер";
+"push.file" = "Файл";
+"push.location" = "📍 Геопозиция";
+"push.group" = "Группа";

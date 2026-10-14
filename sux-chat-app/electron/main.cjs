@@ -118,7 +118,7 @@ function installAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { role: 'appMenu' },
     { role: 'editMenu' },
-    { label: 'Вид', submenu: [
+    { label: tr('Вид'), submenu: [
       { role: 'reload' }, { type: 'separator' },
       { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
       { role: 'togglefullscreen' },
@@ -138,23 +138,23 @@ function attachContextMenu(win) {
 
     if (params.isEditable) {
       items.push(
-        { label: 'Отменить', role: 'undo', enabled: flags.canUndo },
-        { label: 'Повторить', role: 'redo', enabled: flags.canRedo },
+        { label: tr('Отменить'), role: 'undo', enabled: flags.canUndo },
+        { label: tr('Повторить'), role: 'redo', enabled: flags.canRedo },
         { type: 'separator' },
-        { label: 'Вырезать', role: 'cut', enabled: flags.canCut },
-        { label: 'Копировать', role: 'copy', enabled: flags.canCopy },
-        { label: 'Вставить', role: 'paste', enabled: flags.canPaste },
+        { label: tr('Вырезать'), role: 'cut', enabled: flags.canCut },
+        { label: tr('Копировать'), role: 'copy', enabled: flags.canCopy },
+        { label: tr('Вставить'), role: 'paste', enabled: flags.canPaste },
         { type: 'separator' },
-        { label: 'Выделить всё', role: 'selectAll' }
+        { label: tr('Выделить всё'), role: 'selectAll' }
       );
     } else if (params.selectionText) {
-      items.push({ label: 'Копировать', role: 'copy' });
+      items.push({ label: tr('Копировать'), role: 'copy' });
     }
 
     if (params.linkURL) {
       if (items.length) items.push({ type: 'separator' });
       items.push({
-        label: 'Копировать ссылку',
+        label: tr('Копировать ссылку'),
         click: () => clipboard.writeText(params.linkURL),
       });
     }
@@ -162,7 +162,7 @@ function attachContextMenu(win) {
     if (params.mediaType === 'image' && params.srcURL) {
       if (items.length) items.push({ type: 'separator' });
       items.push({
-        label: 'Копировать картинку',
+        label: tr('Копировать картинку'),
         click: () => win.webContents.copyImageAt(params.x, params.y),
       });
     }
@@ -187,8 +187,8 @@ ipcMain.handle('save-file', async (_event, fileUrl, fileName) => {
   try {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: fileName,
-      title: 'Сохранить файл',
-      buttonLabel: 'Сохранить',
+      title: tr('Сохранить файл'),
+      buttonLabel: tr('Сохранить'),
     });
     if (result.canceled || !result.filePath) return { success: false, canceled: true };
     const response = await net.fetch(fileUrl);
@@ -375,6 +375,83 @@ function readSettings() { try { return JSON.parse(fs.readFileSync(SETTINGS_FILE,
 function writeSettings(patch) { try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ ...readSettings(), ...patch })); } catch (e) { logLine('settings write failed', String(e)); } }
 const trayEnabled = () => readSettings().minimizeToTray !== false;
 
+// ---------------------------------------------------------------------------
+// Язык оболочки (меню, контекстное меню, трей, диалоги, тосты) — тот же, что у
+// интерфейса: веб-часть шлёт его через electronAPI.setLang при старте и при
+// каждой смене (src/lib/i18n.ts). Храним в settings.json (поле lang), чтобы
+// трей при следующем запуске сразу был на нужном языке; пока веб-часть его не
+// прислала ни разу — язык системы. Ключ словаря — русская строка, как в
+// src/lib/i18n.ts, но словарь свой: здесь «Отменить»/«Повторить» — это
+// Undo/Redo в контекстном меню, а «Выйти» — выход из приложения, не из аккаунта.
+// ---------------------------------------------------------------------------
+const SHELL_LANGS = ['ru', 'en', 'ko'];
+const SHELL_DICT = {
+  ru: {},
+  en: {
+    'Вид': 'View',
+    'Отменить': 'Undo',
+    'Повторить': 'Redo',
+    'Вырезать': 'Cut',
+    'Копировать': 'Copy',
+    'Вставить': 'Paste',
+    'Выделить всё': 'Select all',
+    'Копировать ссылку': 'Copy link',
+    'Копировать картинку': 'Copy image',
+    'Сохранить файл': 'Save file',
+    'Сохранить': 'Save',
+    'Открыть WYX': 'Open WYX',
+    'Сворачивать в трей при закрытии': 'Minimize to tray on close',
+    'Выйти': 'Quit',
+  },
+  ko: {
+    'Вид': '보기',
+    'Отменить': '실행 취소',
+    'Повторить': '다시 실행',
+    'Вырезать': '잘라내기',
+    'Копировать': '복사',
+    'Вставить': '붙여넣기',
+    'Выделить всё': '모두 선택',
+    'Копировать ссылку': '링크 복사',
+    'Копировать картинку': '이미지 복사',
+    'Сохранить файл': '파일 저장',
+    'Сохранить': '저장',
+    'Открыть WYX': 'WYX 열기',
+    'Сворачивать в трей при закрытии': '닫을 때 트레이로 최소화',
+    'Выйти': '종료',
+  },
+};
+// app.getLocale() работает только после ready; раньше — без кэша и по-русски.
+function systemLang() {
+  let loc = '';
+  try { loc = String(app.getLocale() || '').toLowerCase(); } catch {}
+  return loc.startsWith('ko') ? 'ko' : loc.startsWith('en') ? 'en' : 'ru';
+}
+let shellLang = null;
+function getShellLang() {
+  if (shellLang) return shellLang;
+  const saved = readSettings().lang;
+  if (SHELL_LANGS.includes(saved)) return (shellLang = saved);
+  if (!app.isReady()) return 'ru';
+  return (shellLang = systemLang());
+}
+/** Перевод строки оболочки. Плейсхолдеры {name} подставляются из vars. */
+function tr(s, vars) {
+  let out = SHELL_DICT[getShellLang()][s] || s;
+  if (vars) for (const k of Object.keys(vars)) out = out.split(`{${k}}`).join(String(vars[k]));
+  return out;
+}
+ipcMain.on('set-lang', (_e, l) => {
+  if (!SHELL_LANGS.includes(l)) return;
+  const prev = getShellLang();
+  if (readSettings().lang !== l) writeSettings({ lang: l });
+  shellLang = l;
+  if (l === prev) return;
+  // Контекстное меню, диалоги и тосты строятся при каждом показе — они сами
+  // возьмут новый язык; готовые меню приложения и трея пересобираем.
+  installAppMenu();
+  if (tray) tray.setContextMenu(buildTrayMenu());
+});
+
 let tray = null;
 function trayIcon() {
   const p = path.join(__dirname, '../assets/icons', process.platform === 'darwin' ? '32x32.png' : '32x32.png');
@@ -384,11 +461,11 @@ function trayIcon() {
 }
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
-    { label: 'Открыть WYX', click: focusMainWindow },
+    { label: tr('Открыть WYX'), click: focusMainWindow },
     { type: 'separator' },
-    { label: 'Сворачивать в трей при закрытии', type: 'checkbox', checked: trayEnabled(), click: (item) => writeSettings({ minimizeToTray: item.checked }) },
+    { label: tr('Сворачивать в трей при закрытии'), type: 'checkbox', checked: trayEnabled(), click: (item) => writeSettings({ minimizeToTray: item.checked }) },
     { type: 'separator' },
-    { label: 'Выйти', click: () => { app.isQuitting = true; app.quit(); } },
+    { label: tr('Выйти'), click: () => { app.isQuitting = true; app.quit(); } },
   ]);
 }
 function createTray() {
@@ -428,7 +505,8 @@ function toastHtml({ title, body, avatar }) {
   const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const initial = esc((title || '?').trim().slice(0, 1).toUpperCase());
   const av = avatar ? `<img src="${esc(avatar)}" onerror="this.replaceWith(document.createTextNode('${initial}'))">` : initial;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  // lang — чтобы Chromium брал для иероглифов шрифт нужного языка (ko — корейский).
+  return `<!doctype html><html lang="${getShellLang()}"><head><meta charset="utf-8"><style>
     html,body{margin:0;background:transparent;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
     .card{box-sizing:border-box;width:${TOAST_W}px;height:${TOAST_H}px;padding:12px 14px;display:flex;gap:12px;align-items:center;border-radius:14px;
       background:#1C2420;color:#fff;border:1px solid #37453D;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;animation:in .18s ease-out}
