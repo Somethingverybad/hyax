@@ -1620,5 +1620,7 @@ const en: Record<string, string> = {
   "Разделы": "Sections",
   "Общая лента: вкладка внизу и строка в списке чатов": "The public feed: the bottom tab and a row in the chat list",
   "Идеи и предложения разработчику — строка в списке чатов": "Ideas and suggestions for the developer — a row in the chat list",
+  // Полный проход по интерфейсу (2026-10-14)
+  "Р.Ё.В.: тап — один толчок, держите — вибрация нарастает": "Ryov: tap for one buzz, hold for a building vibration",
 };
 export default en;

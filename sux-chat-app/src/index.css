@@ -744,6 +744,10 @@ textarea,
   border: 1px solid var(--soft-line);
   box-shadow: var(--soft-shadow);
 }
+/* Текст карточки — цвета поверхности, а не пузыря: карточка пака или
+   ссылки внутри своего (тёмного) пузыря иначе наследовала белый текст на
+   белой подложке светлой «Мяты», и название пропадало. */
+[data-shape="soft"] .ui-card { color: hsl(var(--foreground)); }
 [data-shape="soft"] .divide-border > :not([hidden]) ~ :not([hidden]),
 [data-shape="soft"] .chat-row-divider { border-color: hsl(var(--ui-divider)); }
 [data-shape="soft"] .chat-row-divider { background: hsl(var(--ui-divider)); }

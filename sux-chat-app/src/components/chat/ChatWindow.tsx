@@ -2794,7 +2794,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         setRoving(false);
         onRov?.(false);
       } else if (!forceCancel) {
-        toast(tr("Удерживайте кнопку"));
+        // Одиночный тап — один виброотклик у собеседника: «нажал и отпустил»
+        // (приёмник на первый сигнал даёт тычок, lib/rov.ts). Удержание —
+        // по-прежнему нарастающая вибрация.
+        onRov?.(true);
+        setTimeout(() => onRov?.(false), 80);
+        recHaptic(false);
       }
       return;
     }
@@ -2878,7 +2883,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         aria-label={kind === "video" ? tr("Записать треугольник") : kind === "rov" ? tr("Держать — вибрация собеседнику") : tr("Записать голосовое")}
         title={main ? tr("Голосовое: держите — запись, тап — треугольник и Р.Ё.В.")
           : kind === "video" ? tr("Треугольник: держите — запись")
-          : kind === "rov" ? tr("Р.Ё.В.: держите — у собеседника вибрирует")
+          : kind === "rov" ? tr("Р.Ё.В.: тап — один толчок, держите — вибрация нарастает")
           : tr("Голосовое: держите — запись")}
       >
         {uploading && main ? <Loader2 className="w-5 h-5 animate-spin" />
