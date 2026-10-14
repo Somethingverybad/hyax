@@ -4315,7 +4315,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => handlePick(e, "audio")} />
             <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handlePick(e, "file")} />
 
-            <div className="mint-attach-wrap relative shrink-0">
+            {/* В «Мяте» скрепка живёт внутри поля ввода — прячется вместе с ним. */}
+            <div className={cn("mint-attach-wrap relative shrink-0", recExpanded && !hasDraft && mintM && "hidden")}>
               <Button
                 variant="outline"
                 size="icon"
