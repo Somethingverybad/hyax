@@ -29,13 +29,22 @@ const PRIVACY = evalDoc(cut("PRIVACY"));
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const linkify = (s) => esc(s).replace(new RegExp(SUPPORT_EMAIL.replace(".", "\\."), "g"), `<a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>`);
 
+// Языки — те, что есть в Legal.tsx (ru всегда, en, ko — если есть).
+const LANGS = ["ru", "en", "ko"].filter((l) => TERMS[l] && PRIVACY[l]);
+const LABEL = { ru: "RU", en: "EN", ko: "KO" };
+const NAV = {
+  download: { ru: "Скачать", en: "Download", ko: "다운로드" },
+  terms: { ru: "Правила", en: "Terms", ko: "이용 규칙" },
+  privacy: { ru: "Конфиденциальность", en: "Privacy", ko: "개인정보" },
+};
+const navAttrs = (k) => LANGS.map((l) => `data-${l}="${esc(NAV[k][l])}"`).join(" ");
+
 const render = (doc, lang, other) => `
   <div class="lang-block" data-lang="${lang}" ${lang === "ru" ? "" : "hidden"}>
     <div class="doc-head">
       <h1>${esc(doc.title)}</h1>
       <div class="lang" role="group" aria-label="Language">
-        <button type="button" data-set="ru" aria-pressed="${lang === "ru"}">RU</button>
-        <button type="button" data-set="en" aria-pressed="${lang === "en"}">EN</button>
+        ${LANGS.map((l) => `<button type="button" data-set="${l}" aria-pressed="${lang === l}">${LABEL[l]}</button>`).join("\n        ")}
       </div>
     </div>
     <p class="updated">${esc(doc.updated)}</p>
@@ -50,7 +59,7 @@ const page = ({ kind, docs, other, path }) => `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(docs.ru.title)} — ${APP_NAME}</title>
-<meta name="description" content="${esc(docs.en.title)} / ${esc(docs.ru.title)} — ${APP_NAME}">
+<meta name="description" content="${LANGS.map((l) => esc(docs[l].title)).join(" / ")} — ${APP_NAME}">
 <meta name="theme-color" content="#F4F8F1" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#222B27" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/mark.svg" type="image/svg+xml">
@@ -64,16 +73,15 @@ const page = ({ kind, docs, other, path }) => `<!doctype html>
   <div class="wrap">
     <a class="brand" href="/" aria-label="WYX"><img src="/mark.svg" alt="" width="30" height="30"><span>WYX</span></a>
     <nav class="nav">
-      <a href="/#download" class="hide-sm">Скачать</a>
-      <a href="/terms"${kind === "terms" ? ' aria-current="page"' : ""}>Правила</a>
-      <a href="/privacy"${kind === "privacy" ? ' aria-current="page"' : ""}>Конфиденциальность</a>
+      <a href="/#download" class="hide-sm" data-nav="download" ${navAttrs("download")}>Скачать</a>
+      <a href="/terms" data-nav="terms" ${navAttrs("terms")}${kind === "terms" ? ' aria-current="page"' : ""}>Правила</a>
+      <a href="/privacy" data-nav="privacy" ${navAttrs("privacy")}${kind === "privacy" ? ' aria-current="page"' : ""}>Конфиденциальность</a>
     </nav>
   </div>
 </header>
 <main class="doc wrap">
   <article class="card">
-    ${render(docs.ru, "ru", { href: other.path, title: other.docs.ru.title })}
-    ${render(docs.en, "en", { href: other.path + "?lang=en", title: other.docs.en.title })}
+    ${LANGS.map((l) => render(docs[l], l, { href: other.path + (l === "ru" ? "" : "?lang=" + l), title: other.docs[l].title })).join("\n    ")}
   </article>
 </main>
 <footer class="wrap"><div>© 2026 ${APP_NAME}</div></footer>
@@ -81,9 +89,14 @@ const page = ({ kind, docs, other, path }) => `<!doctype html>
   // Язык: ?lang=…, иначе по браузеру; переключатель запоминает выбор в адресе.
   (function () {
     var q = new URLSearchParams(location.search).get("lang");
-    var lang = q === "en" || q === "ru" ? q : ((navigator.language || "ru").toLowerCase().indexOf("ru") === 0 ? "ru" : "en");
+    var langs = ${JSON.stringify(LANGS)};
+    var nav = (navigator.language || "ru").toLowerCase().slice(0, 2);
+    var saved = null; try { saved = localStorage.getItem("wyx-lang"); } catch (e) {}
+    var lang = langs.indexOf(q) >= 0 ? q : langs.indexOf(saved) >= 0 ? saved : (langs.indexOf(nav) >= 0 ? nav : "en");
     function apply(l) {
       document.querySelectorAll(".lang-block").forEach(function (b) { b.hidden = b.dataset.lang !== l; });
+      document.querySelectorAll("[data-nav]").forEach(function (a) { if (a.dataset[l]) a.textContent = a.dataset[l]; });
+      document.querySelectorAll('a[href="/"], a[href^="/#"]').forEach(function (a) { var base = l === "ru" ? "/" : "/" + l + "/"; a.setAttribute("href", a.getAttribute("href").replace(/^\/(?:(?:en|ko)\/)?/, base)); });
       document.documentElement.lang = l;
       var u = new URL(location.href); u.searchParams.set("lang", l); history.replaceState(null, "", u);
     }

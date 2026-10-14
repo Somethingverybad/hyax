@@ -142,6 +142,8 @@ def translate(html, lang):
         return m.group(0)
     out = re.sub(r">([^<>]+)<", rep, html)
     out = out.replace('<html lang="ru">', f'<html lang="{lang}">')
+    # Правила и политика — сразу на языке страницы.
+    out = out.replace('href="/terms"', f'href="/terms?lang={lang}"').replace('href="/privacy"', f'href="/privacy?lang={lang}"')
     for k, v in d.items():
         out = out.replace(f'content="{k}"', f'content="{v}"').replace(f"<title>{k}</title>", f"<title>{v}</title>")
     # Строка версии собирается скриптом страницы — подпись в нём тоже переводим.
