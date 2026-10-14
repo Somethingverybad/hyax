@@ -1596,5 +1596,8 @@ const en: Record<string, string> = {
   "{name} больше не в группе": "{name} is no longer in the group",
   "владелец": "owner",
   "Удалить {name} из группы": "Remove {name} from the group",
+  "Мягкие карточки, таблетки, тёмно-зелёный": "Soft cards, pill buttons, dark green accents",
+  "Звук при нажатии кнопки отправки. Выключите — сообщения будут уходить без звука": "Plays a sound when you tap Send. Turn it off to send messages silently",
+  "У кнопки записи в чате есть режим Р.Ё.В.: пока собеседник держит её, ваш телефон вибрирует. Выключите, если не хотите получать такие вибрации": "The record button in a chat has a R.O.A.R. mode: while your contact holds it, your phone vibrates. Turn it off if you don't want these vibrations",
 };
 export default en;

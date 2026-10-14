@@ -50,14 +50,14 @@ const Row = ({ theme, active, onPick, menu }: { theme: ThemeDef; active: boolean
       <Swatch theme={theme} />
       <span className="min-w-0 flex-1">
         <span className="block text-body truncate">{theme.builtin ? tr(theme.name) : theme.name}</span>
-        <span className="block text-caption text-subtle truncate">
+        <span className="block text-caption text-subtle line-clamp-2">
           {theme.builtin
             ? (theme.shape.style === "outlined"
                 ? tr("Обводки тушью, жёсткие тени")
                 : theme.shape.style === "glass"
                   ? tr("Полупрозрачные поверхности, размытие и свечение")
                   : theme.shape.style === "soft"
-                    ? tr("Мягкие карточки, таблетки, зелёный с салатовым")
+                    ? (theme.base === "dark" ? tr("Мягкие карточки, таблетки, тёмно-зелёный") : tr("Мягкие карточки, таблетки, зелёный с салатовым"))
                   : theme.base === "light" ? tr("Белые карточки, тёмный текст") : tr("Почти чёрный фон"))
             : `${theme.mine ? tr("Моя тема") : theme.author ? tr("Автор: {name}", { name: theme.author }) : tr("Без автора")}${theme.installs ? ` · ${tr("установок: {n}", { n: theme.installs })}` : ""}`}
         </span>

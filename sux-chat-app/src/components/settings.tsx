@@ -63,7 +63,7 @@ export const SettingsRow = ({
         ))}
         <span className="min-w-0 flex-1 text-left">
           <span className={cn("block mint-row-label", danger && "!text-destructive")}>{label}</span>
-          {hint && <span className="block mint-row-hint truncate">{hint}</span>}
+          {hint && <span className="block mint-row-hint line-clamp-3">{hint}</span>}
         </span>
         {value !== undefined && value !== null && <span className="mint-row-value max-w-[45%] truncate">{value}</span>}
         {trailing ?? (onClick ? <MintIcon name="chevron" size={[5, 10]} className="mint-muted" /> : null)}
@@ -79,7 +79,7 @@ export const SettingsRow = ({
       {leading ?? (Icon && <Icon className={cn("w-5 h-5 shrink-0", danger ? "text-destructive" : "text-primary")} />)}
       <span className="min-w-0 flex-1 text-left">
         <span className={cn("block text-body", danger && "text-destructive")}>{label}</span>
-        {hint && <span className="block text-caption text-subtle truncate">{hint}</span>}
+        {hint && <span className="block text-caption text-subtle line-clamp-3">{hint}</span>}
       </span>
       {value !== undefined && value !== null && (
         <span className="text-small text-muted-foreground max-w-[45%] truncate">{value}</span>
