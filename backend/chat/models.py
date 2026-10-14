@@ -72,6 +72,9 @@ class Profile(models.Model):
     # «Выйти со всех устройств»: токены, выданные раньше этого момента,
     # не принимаются (chat/devices.py) — в том числе старые, без device_id.
     sessions_valid_from = models.DateTimeField(blank=True, null=True)
+    # Язык интерфейса и переводов: ru | en | ko (chat/translate.py). Пусто —
+    # клиент не сообщил, считаем русским.
+    language = models.CharField(max_length=5, blank=True, default="")
 
     @property
     def email_verified(self):
@@ -203,6 +206,10 @@ class ChatParticipant(models.Model):
     # Постить в канал могут только owner/admin.
     role = models.CharField(max_length=12, default="member")
     muted = models.BooleanField(default=False)  # подписчик отключил пуши канала
+    # Автоперевод в личке (chat/translate.py): translate_out — мои сообщения
+    # переводить на язык собеседника, translate_in — его сообщения на мой.
+    translate_in = models.BooleanField(default=False)
+    translate_out = models.BooleanField(default=False)
     # Свои обои только для себя: kind "" — как у чата, "none" — без обоев,
     # image/video — свой файл.
     wallpaper_url = models.TextField(blank=True, null=True)
@@ -295,6 +302,8 @@ class Message(models.Model):
     # {"t": текст, "e": оформление} внутри. content при этом пустой —
     # сервер текста не видит и расшифровать не может.
     cipher = models.TextField(blank=True, null=True)
+    # Переводы текста по языкам: {"ko": "...", "en": "..."} — chat/translate.py.
+    translations = models.JSONField(default=dict, blank=True)
     deleted_for_all = models.BooleanField(default=False)  # удалено у всех
     # Стена (chat/wall.py): автор подтвердил, что пост годится всем («Контент
     # 4+»). Без отметки пост считается 18+ и виден только тем, кто включил

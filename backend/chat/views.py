@@ -894,7 +894,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         from .formatting import clean_entities
         msg.entities = clean_entities(request.data.get('entities'), content)
         msg.is_edited = True
-        msg.save(update_fields=['content', 'entities', 'is_edited', 'updated_at'])
+        msg.translations = {}
+        msg.save(update_fields=['content', 'entities', 'translations', 'is_edited', 'updated_at'])
+        from .translate import schedule as _schedule_translation
+        _schedule_translation(msg, profile, request)
         from .mentions import store_mentions
         store_mentions(msg)
         return Response(MessageSerializer(msg, context={'request': request}).data)
@@ -1091,6 +1094,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         message = _forward_copy(src, target, profile)
         Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
         _notify_new_message(message, profile, request)
+        from .translate import schedule as _schedule_translation
+        _schedule_translation(message, profile, request)  # автоперевод в личке, в фоне
         return Response(MessageSerializer(message, context={'request': request}).data, status=201)
 
     @action(detail=False, methods=['post'])
@@ -1558,6 +1563,8 @@ class MessageViewSet(viewsets.ModelViewSet):
                 fetch_async(message.id, link)
 
         _notify_new_message(message, profile, request)
+        from .translate import schedule as _schedule_translation
+        _schedule_translation(message, profile, request)  # автоперевод в личке, в фоне
 
         # «Долгий ящик»: идею — к разработчику (chat/ideabox.py).
         if getattr(message.chat, 'kind', '') == 'ideabox' and not profile.is_bot:
@@ -3181,6 +3188,79 @@ class ChannelByHandleView(APIView):
         data = ChannelSerializer(ch, context={"request": request}).data
         data["admins"] = [{"id": str(a.user_id), "username": a.user.username, "role": a.role} for a in admins]
         return Response(data)
+
+
+class ChatTranslateView(APIView):
+    """GET/PATCH chats/<id>/translate/ — автоперевод в личке для меня:
+    translate_out («переводить на язык собеседника»), translate_in («переводить
+    сообщения на мой язык»). Отдаёт языки обоих, чтобы клиент показал, что
+    переводить не на что, когда язык один."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _part(self, request, pk):
+        me = getattr(request.user, 'profile', None)
+        chat = Chat.objects.filter(id=pk).first()
+        if not me or not chat:
+            return None, None, Response({"error": "Чат не найден"}, status=404)
+        part = ChatParticipant.objects.filter(chat=chat, user=me).first()
+        if not part:
+            return None, None, Response({"error": "Вы не участник"}, status=403)
+        return chat, part, None
+
+    def _payload(self, chat, part):
+        from .translate import provider, norm_lang
+        peer = chat.participants.exclude(id=part.user_id).first()
+        return {
+            "translate_in": part.translate_in, "translate_out": part.translate_out,
+            "my_language": norm_lang(part.user.language) or "ru",
+            "peer_language": (norm_lang(peer.language) or "ru") if peer else None,
+            "available": bool(provider()) and chat.kind == "direct",
+        }
+
+    def get(self, request, pk):
+        chat, part, err = self._part(request, pk)
+        if err:
+            return err
+        return Response(self._payload(chat, part))
+
+    def patch(self, request, pk):
+        chat, part, err = self._part(request, pk)
+        if err:
+            return err
+        for f in ("translate_in", "translate_out"):
+            if f in request.data:
+                setattr(part, f, bool(request.data.get(f)))
+        part.save(update_fields=["translate_in", "translate_out"])
+        return Response(self._payload(chat, part))
+
+
+class MessageTranslateView(APIView):
+    """POST messages/<id>/translate/ {to} — перевод по запросу из меню
+    сообщения (любой незашифрованный чат, где я участник или читатель)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        from .translate import translate_text, norm_lang, TranslateNotConfigured
+        me = getattr(request.user, 'profile', None)
+        msg = Message.objects.filter(id=pk).select_related('chat', 'sender').first()
+        if not me or not msg or not _can_see_chat(msg.chat, me):
+            return Response({"error": "Сообщение не найдено"}, status=404)
+        if msg.cipher or not (msg.content or "").strip():
+            return Response({"error": "Здесь переводить нечего"}, status=400)
+        to = norm_lang(request.data.get("to")) or norm_lang(me.language) or "ru"
+        tr = dict(msg.translations or {})
+        if to not in tr:
+            try:
+                src = norm_lang(msg.sender.language) if msg.sender_id else ""
+                tr[to] = translate_text(msg.content, to, src)
+            except TranslateNotConfigured:
+                return Response({"error": "Перевод пока не настроен"}, status=503)
+            except Exception:
+                logger.exception("translate on demand %s", pk)
+                return Response({"error": "Не удалось перевести"}, status=502)
+            Message.objects.filter(id=pk).update(translations=tr)
+            msg.translations = tr
+        return Response(MessageSerializer(msg, context={'request': request}).data)
 
 
 class ChannelDetailView(APIView):

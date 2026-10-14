@@ -51,7 +51,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe', 'language']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
@@ -525,7 +525,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden', 'action', 'action_target']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden', 'action', 'action_target']
         read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden', 'action', 'action_target']
 
     def get_action(self, obj):
