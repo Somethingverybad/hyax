@@ -225,10 +225,29 @@ const installDeb = (file) => new Promise((resolve) => {
 // Обновление изнутри (запасной путь, когда electron-updater недоступен):
 // скачиваем установщик во временную папку и открываем его (mac — монтирует
 // DMG, win — запускает NSIS-инсталлятор, linux — AppImage или .deb через pkexec).
+// Бакет недоступен (VPN, DNS, блокировки) — та же ссылка через наш домен:
+// nginx /dl/ проксирует storage.yandexcloud.net/hyax-public/installers/.
+const BUCKET = 'https://storage.yandexcloud.net/hyax-public/installers/';
+const MIRROR = 'https://huyax.e-tree.su/dl/';
+const mirrorUrl = (url) => (typeof url === 'string' && url.startsWith(BUCKET) ? MIRROR + url.slice(BUCKET.length) : null);
+async function fetchWithMirror(url) {
+  const attempt = async (u) => {
+    const resp = await net.fetch(u, { signal: AbortSignal.timeout(20 * 60 * 1000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp;
+  };
+  try { return await attempt(url); }
+  catch (e) {
+    const m = mirrorUrl(url);
+    if (!m) throw e;
+    logLine('download via mirror', String(e.message || e));
+    return attempt(m);
+  }
+}
+
 ipcMain.handle('install-update', async (_e, url, fileName) => {
   try {
-    const resp = await net.fetch(url);
-    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    const resp = await fetchWithMirror(url);
     const tmp = path.join(app.getPath('temp'), fileName || 'hyax-update');
     fs.writeFileSync(tmp, Buffer.from(await resp.arrayBuffer()));
     if (process.platform === 'linux') {
@@ -295,6 +314,16 @@ const updaterSupported = () => {
 };
 ipcMain.handle('install-kind', () => installKind());
 
+// Фид и загрузка electron-updater: сначала бакет, при ошибке — зеркало на
+// нашем домене (и дальше остаёмся на нём до перезапуска).
+let feedOnMirror = false;
+function switchFeedToMirror() {
+  if (feedOnMirror || process.env.HYAX_UPDATE_URL) return false;
+  feedOnMirror = true;
+  autoUpdater.setFeedURL({ provider: 'generic', url: MIRROR });
+  logLine('updater feed → mirror');
+  return true;
+}
 ipcMain.handle('update-check', async () => {
   if (!updaterEnabled()) return { ok: false, reason: 'dev' };
   if (!updaterSupported()) return { ok: false, reason: installKind() };
@@ -302,12 +331,22 @@ ipcMain.handle('update-check', async () => {
     const r = await autoUpdater.checkForUpdates();
     return { ok: true, version: r && r.updateInfo ? r.updateInfo.version : null };
   } catch (e) {
+    if (switchFeedToMirror()) {
+      try { const r = await autoUpdater.checkForUpdates(); return { ok: true, version: r && r.updateInfo ? r.updateInfo.version : null }; }
+      catch (e2) { return { ok: false, error: e2.message }; }
+    }
     return { ok: false, error: e.message };
   }
 });
 ipcMain.handle('update-download', async () => {
   try { await autoUpdater.downloadUpdate(); return { ok: true }; }
-  catch (e) { return { ok: false, error: e.message }; }
+  catch (e) {
+    if (switchFeedToMirror()) {
+      try { await autoUpdater.checkForUpdates(); await autoUpdater.downloadUpdate(); return { ok: true }; }
+      catch (e2) { return { ok: false, error: e2.message }; }
+    }
+    return { ok: false, error: e.message };
+  }
 });
 // Перезапуск с установкой: на Windows тихий NSIS, на mac подмена бандла, на
 // Linux замена AppImage. Откладываем на тик, чтобы ответ IPC успел уйти.
