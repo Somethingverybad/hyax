@@ -3308,11 +3308,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       data-bubble
                       onContextMenu={(e) => {
                         // На десктопе правая кнопка открывает компактное меню
-                        // прямо у курсора (позиция → menuPos).
+                        // прямо у курсора (позиция → menuPos). На Android долгое
+                        // нажатие тоже приходит сюда как contextmenu — это запасной
+                        // путь, когда WebView прошивки (TECNO, баг-репорт 23f85cbe)
+                        // обрывает pointer-события раньше нашего таймера: открываем
+                        // нижнюю шторку, а не меню у «курсора».
                         e.preventDefault();
                         hideKeyboard();
+                        cancelLongPress();
                         setMenuMessage(message);
-                        setMenuPos({ x: e.clientX, y: e.clientY });
+                        setMenuPos(touchInputRef.current ? null : { x: e.clientX, y: e.clientY });
                       }}
                       onClick={() => {
                         if (justSwipedRef.current) return;
