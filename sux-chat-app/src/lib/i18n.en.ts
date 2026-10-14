@@ -1611,5 +1611,14 @@ const en: Record<string, string> = {
   "Треугольник: держите — запись": "Triangle: hold to record",
   "Р.Ё.В.: держите — у собеседника вибрирует": "Ryov: hold to vibrate your contact's phone",
   "Голосовое: держите — запись": "Voice: hold to record",
+  // Полный проход по интерфейсу (2026-10-14)
+  "Скрыть": "Hide",
+  "Скрыть Стену": "Hide the Wall",
+  "Скрыть «Долгий ящик»": "Hide Back Burner",
+  "Скрыто. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы»": "Hidden. You can bring it back in Profile → Appearance → Sections",
+  "Вкладка и строка Стены пропадут. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы».": "The Wall tab and row will disappear. You can bring them back in Profile → Appearance → Sections.",
+  "Разделы": "Sections",
+  "Общая лента: вкладка внизу и строка в списке чатов": "The public feed: the bottom tab and a row in the chat list",
+  "Идеи и предложения разработчику — строка в списке чатов": "Ideas and suggestions for the developer — a row in the chat list",
 };
 export default en;

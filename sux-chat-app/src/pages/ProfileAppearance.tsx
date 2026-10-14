@@ -12,6 +12,7 @@ import { BUILTIN_THEMES, setInstalledThemes, setTheme, useInstalledThemes, useTh
 import { normalizeTheme } from "@/themes/engine";
 import { themeLink } from "@/lib/share";
 import type { ThemeDef } from "@/themes/types";
+import { useSections, setSection, type SectionKey } from "@/lib/sections";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
 export const Swatch = ({ theme }: { theme: ThemeDef }) => {
@@ -151,8 +152,37 @@ const ProfileAppearance = () => {
         <p className="px-1 text-caption text-subtle">
           {tr("Выбор запоминается в профиле и применяется на всех ваших устройствах. Своей темой можно поделиться ссылкой.")}
         </p>
+
+        <SectionsCard />
       </div>
     </div>
+  );
+};
+
+/** Разделы: Стену и «Долгий ящик» можно скрыть и вернуть (lib/sections). */
+const SectionsCard = () => {
+  const sections = useSections();
+  const toggle = async (kind: SectionKey, on: boolean) => {
+    if (!(await setSection(kind, on))) toast.error(tr("Не удалось сохранить"));
+  };
+  const row = (kind: SectionKey, label: string, hint: string) => (
+    <SettingsRow
+      label={tr(label)}
+      hint={tr(hint)}
+      trailing={
+        <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr(label)}
+          checked={sections[kind]} onChange={(e) => void toggle(kind, e.target.checked)} />
+      }
+    />
+  );
+  return (
+    <>
+      <p className="px-1 pt-2 text-small text-subtle">{tr("Разделы")}</p>
+      <SettingsCard>
+        {row("wall", "Стена", "Общая лента: вкладка внизу и строка в списке чатов")}
+        {row("ideabox", "Долгий ящик", "Идеи и предложения разработчику — строка в списке чатов")}
+      </SettingsCard>
+    </>
   );
 };
 

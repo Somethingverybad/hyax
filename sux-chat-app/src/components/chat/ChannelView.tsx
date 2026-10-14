@@ -1,4 +1,6 @@
 import { t as tr, tn, getLang } from "@/lib/i18n";
+import { useNavigate } from "react-router-dom";
+import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
@@ -252,6 +254,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [soundOpen, setSoundOpen] = useState(false);
   const [sound, setSound] = useState<NotificationSoundInfo | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const navigate = useNavigate();
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [reactPickFor, setReactPickFor] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -1248,6 +1251,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           onClose={() => setInfoOpen(false)}
           onChanged={setWallState}
           onOpenProfile={(id) => { setInfoOpen(false); setProfileFor(id); }}
+          onHide={async () => {
+            setInfoOpen(false);
+            if (await setSection("wall", false)) { toast(tr("Скрыто. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы»")); navigate("/chat"); }
+            else toast.error(tr("Не получилось"));
+          }}
         />
       )}
       {infoOpen && channel && !wall && (
@@ -1446,8 +1454,8 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
 };
 
 /** Сведения о Стене: скрытые авторы (вернуть), у админа — баны (снять), выключить Стену. */
-const WallInfo = ({ state, onClose, onChanged, onOpenProfile }: {
-  state: WallState; onClose: () => void; onChanged: (s: WallState) => void; onOpenProfile: (id: string) => void;
+const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
+  state: WallState; onClose: () => void; onChanged: (s: WallState) => void; onOpenProfile: (id: string) => void; onHide: () => void;
 }) => {
   const [bans, setBans] = useState<Awaited<ReturnType<typeof api.getWallBans>> | null>(null);
   useEffect(() => {
@@ -1492,6 +1500,11 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile }: {
               ))}
             </div>
           )}
+          <button type="button" onClick={onHide}
+            className="w-full h-11 rounded-md border border-border text-sm font-medium flex items-center justify-center gap-2 active:bg-surface-2">
+            <EyeOff className="w-4 h-4" /> {tr("Скрыть Стену")}
+          </button>
+          <p className="text-xs text-muted-foreground -mt-2">{tr("Вкладка и строка Стены пропадут. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы».")}</p>
         </div>
       </div>
     </div>

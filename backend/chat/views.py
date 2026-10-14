@@ -778,6 +778,9 @@ def _notify_new_message(message, profile, request):
         # Кто заблокировал отправителя — пуш о его сообщении не получает.
         recipients = recipients.exclude(blocks__blocked_id=profile.id)
         recipients = _without_muted(message.chat, recipients)
+        # Скрыл «Долгий ящик» — его бот больше не пушит.
+        if getattr(message.chat, "kind", "") == "ideabox":
+            recipients = recipients.exclude(ideabox_enabled=False)
         if watching:
             recipients = recipients.exclude(id__in=watching)
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))

@@ -110,7 +110,7 @@ class OwnProfileSerializer(ProfileSerializer):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at', 'email', 'email_verified']
 

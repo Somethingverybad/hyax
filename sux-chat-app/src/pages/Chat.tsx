@@ -72,6 +72,16 @@ interface ProfileType {
 const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wallMode?: boolean } = {}) => {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<ProfileType | null>(() => readCache<ProfileType>("user"));
+  // Разделы скрыли/вернули (lib/sections) — держим свою копию профиля в
+  // актуальном виде, иначе она записала бы в кеш старое значение.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const patch = (e as CustomEvent<Partial<ProfileType>>).detail;
+      if (patch) setUser((u) => (u ? { ...u, ...patch } : u));
+    };
+    window.addEventListener("hyax:profile-patch", on);
+    return () => window.removeEventListener("hyax:profile-patch", on);
+  }, []);
   const [chats, setChats] = useState<ChatType[]>(() => readCache<ChatType[]>("chats") || []);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   // Имя собеседника для шапки: приходит из сайдбара, он единственный, кто его

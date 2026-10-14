@@ -77,7 +77,7 @@
 .mint-nav-pill {
   position: absolute; top: 4px; height: 46px; width: 63px; border-radius: 20px;
   background: var(--mint-nav-on);
-  left: calc(4px + (100% - 8px) / 5 * var(--i) + ((100% - 8px) / 5 - 63px) / 2);
+  left: calc(4px + (100% - 8px) / var(--n, 5) * var(--i) + ((100% - 8px) / var(--n, 5) - 63px) / 2);
   transition: left 320ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) { .mint-nav-pill { transition: none; } }

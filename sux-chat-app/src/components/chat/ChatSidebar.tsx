@@ -4,7 +4,8 @@ import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "lucide-react";
+import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
 import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
@@ -237,6 +238,62 @@ const ChatSidebar = ({
   // Удаление чата: десктоп — меню по правому клику у курсора; телефон —
   // свайп влево открывает красную кнопку.
   const [chatMenu, setChatMenu] = useState<{ x: number; y: number; chatId: string; title: string } | null>(null);
+  // Стену и «Долгий ящик» можно скрыть: правый клик или долгое нажатие по
+  // строке → «Скрыть»; вернуть — «Внешний вид» → «Разделы».
+  const sections = useSections();
+  const [sectionMenu, setSectionMenu] = useState<{ x: number; y: number; kind: SectionKey } | null>(null);
+  const sectionHoldRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; x: number; y: number; fired: boolean }>({ timer: null, x: 0, y: 0, fired: false });
+  // Свайп влево — как у чатов: под строкой кнопка «Скрыть». Открыта одна
+  // кнопка на весь список (общий swipedChatId с ключом __wall / __ideabox).
+  const swipeKey = (kind: SectionKey) => `__${kind}`;
+  const sectionPress = (kind: SectionKey) => ({
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setSectionMenu({ x: e.clientX, y: e.clientY, kind }); },
+    onTouchStart: (e: React.TouchEvent) => {
+      const t0 = e.touches[0]; const h = sectionHoldRef.current;
+      h.x = t0.clientX; h.y = t0.clientY; h.fired = false;
+      if (h.timer) clearTimeout(h.timer);
+      h.timer = setTimeout(() => { h.fired = true; setSectionMenu({ x: h.x, y: h.y, kind }); }, 550);
+    },
+    onTouchMove: (e: React.TouchEvent) => {
+      const t0 = e.touches[0]; const h = sectionHoldRef.current;
+      if (h.timer && (Math.abs(t0.clientX - h.x) > 10 || Math.abs(t0.clientY - h.y) > 10)) { clearTimeout(h.timer); h.timer = null; }
+    },
+    onTouchEnd: (e: React.TouchEvent) => {
+      const h = sectionHoldRef.current;
+      if (h.timer) { clearTimeout(h.timer); h.timer = null; }
+      if (h.fired) return;
+      const t1 = e.changedTouches[0];
+      const dx = t1.clientX - h.x, dy = t1.clientY - h.y;
+      if (Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (dx < -45) { setPinSwipedId(null); setSwipedChatId(swipeKey(kind)); h.fired = true; }
+        else if (dx > 25 && swipedChatId === swipeKey(kind)) { setSwipedChatId(null); h.fired = true; }
+      }
+    },
+  });
+  const swipeStyle = (kind: SectionKey) => ({ transform: swipedChatId === swipeKey(kind) ? "translateX(-80px)" : "translateX(0)" });
+  const hideSwipeButton = (kind: SectionKey) => (
+    <button
+      type="button"
+      onClick={() => { setSwipedChatId(null); void hideSection(kind); }}
+      className="absolute inset-y-0 right-0 w-20 bg-surface-3 text-foreground flex flex-col items-center justify-center gap-0.5"
+      tabIndex={swipedChatId === swipeKey(kind) ? 0 : -1}
+      aria-label={kind === "wall" ? t("Скрыть Стену") : t("Скрыть «Долгий ящик»")}
+    >
+      <EyeOff className="w-5 h-5" />
+      <span className="text-[10px] font-semibold">{t("Скрыть")}</span>
+    </button>
+  );
+  /** Клик после долгого нажатия не открывает раздел — открылось меню. */
+  const sectionClick = (kind: SectionKey, open: () => void) => () => {
+    if (sectionHoldRef.current.fired) { sectionHoldRef.current.fired = false; return; }
+    if (swipedChatId === swipeKey(kind)) { setSwipedChatId(null); return; }
+    open();
+  };
+  const hideSection = async (kind: SectionKey) => {
+    setSectionMenu(null);
+    if (await setSection(kind, false)) toast(t("Скрыто. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы»"));
+    else toast.error(t("Не получилось"));
+  };
   // Секретные чаты: превью у сервера — шифротекст. Расшифровываем на этом
   // устройстве, если ключ здесь; иначе — нейтральная подпись.
   const [secretPreview, setSecretPreview] = useState<Record<string, string>>({});
@@ -899,12 +956,16 @@ const ChatSidebar = ({
             справа над перепиской, а список от него зря уезжал вниз. */}
         <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: mint ? `calc(${isMobileLayout ? "var(--player-h, 0px)" : "0px"} + var(--glass-h, 0px))` : isMobileLayout ? "var(--player-h, 0px)" : "0px", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
-          {onOpenIdeabox && !isCollapsed && (
+          {onOpenIdeabox && !isCollapsed && sections.ideabox && (
+            <div className="relative overflow-hidden">
+            {hideSwipeButton("ideabox")}
             <button
               type="button"
-              onClick={onOpenIdeabox}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 ${
-                ideabox && selectedChatId === ideabox.id ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
+              onClick={sectionClick("ideabox", onOpenIdeabox)}
+              {...sectionPress("ideabox")}
+              style={swipeStyle("ideabox")}
+              className={`relative w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 transition-transform ${
+                ideabox && selectedChatId === ideabox.id ? "bg-surface-3 border-primary" : "bg-background border-transparent hover:bg-surface-2"
               }`}
             >
               {ideabox?.avatar_url ? (
@@ -926,13 +987,18 @@ const ChatSidebar = ({
                 <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
               )}
             </button>
+            </div>
           )}
-          {onOpenWall && !isCollapsed && (
+          {onOpenWall && !isCollapsed && sections.wall && (
+            <div className="relative overflow-hidden hidden md:block">
+            {hideSwipeButton("wall")}
             <button
               type="button"
-              onClick={onOpenWall}
-              className={`w-full hidden md:flex items-center gap-3 px-4 py-3 text-left border-l-4 ${
-                wallSelected ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
+              onClick={sectionClick("wall", onOpenWall)}
+              {...sectionPress("wall")}
+              style={swipeStyle("wall")}
+              className={`relative w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 transition-transform ${
+                wallSelected ? "bg-surface-3 border-primary" : "bg-background border-transparent hover:bg-surface-2"
               }`}
             >
               <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
@@ -944,6 +1010,7 @@ const ChatSidebar = ({
               </div>
               {wallNew ? <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{wallNew}</span> : <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />}
             </button>
+            </div>
           )}
           {onOpenSaved && !isCollapsed && (
             <button
@@ -1294,6 +1361,29 @@ const ChatSidebar = ({
       )}
 
       {/* Меню чата по правому клику (десктоп) */}
+      {sectionMenu && (
+        <div
+          className="fixed inset-0 z-[80]"
+          onClick={() => setSectionMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setSectionMenu(null); }}
+        >
+          <div
+            className="fixed min-w-[190px] bg-card border-2 border-border shadow-xl py-1"
+            style={{
+              left: Math.max(8, Math.min(sectionMenu.x, window.innerWidth - 208)),
+              top: Math.max(8, Math.min(sectionMenu.y, window.innerHeight - 60)),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => void hideSection(sectionMenu.kind)}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
+            >
+              <EyeOff className="w-4 h-4" />{sectionMenu.kind === "wall" ? t("Скрыть Стену") : t("Скрыть «Долгий ящик»")}</button>
+          </div>
+        </div>
+      )}
       {chatMenu && (
         <div
           className="fixed inset-0 z-[80]"

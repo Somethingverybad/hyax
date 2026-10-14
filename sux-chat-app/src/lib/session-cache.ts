@@ -29,6 +29,10 @@ export function writeCache(key: keyof typeof KEYS, value: unknown) {
   } catch {
     // Хранилище переполнено или недоступно — не критично, просто без кеша.
   }
+  // Профиль поменялся — разделы (Стена, «Долгий ящик») перечитают видимость.
+  if (key === "user") {
+    try { window.dispatchEvent(new Event("hyax:sections")); } catch { /* не браузер */ }
+  }
 }
 
 export function clearSessionCache() {

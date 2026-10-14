@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import { readCache } from "@/lib/session-cache";
 import type { WallState } from "@/api/client";
+import { useSections } from "@/lib/sections";
 
 /** Новые посты на Стене — бейдж на вкладке. Состояние кладёт Chat.tsx в кеш
  *  сессии и сообщает событием hyax:wall; при открытии Стены счётчик обнуляется. */
@@ -60,7 +61,10 @@ let lastMintIndex = -1;
 const MintIsland = () => {
   const { pathname } = useLocation();
   const wallNew = useWallNew();
-  const idx = MINT_ITEMS.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
+  // Стену можно скрыть (lib/sections) — тогда вкладок четыре.
+  const sections = useSections();
+  const items = MINT_ITEMS.filter((i) => i.to !== "/wall" || sections.wall);
+  const idx = items.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
   const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
   // Остров висит поверх контента: экраны отступают снизу на его высоту
   // (--mint-nav-space), чтобы последняя строка не пряталась под ним.
@@ -82,9 +86,9 @@ const MintIsland = () => {
   }, [idx]);
   return (
     <div ref={wrapRef} className="mint-nav-wrap flex justify-center pt-2 pad-safe-bottom">
-      <nav className="mint-nav">
-        {pos >= 0 && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
-        {MINT_ITEMS.map(({ to, label, icon, size }) => (
+      <nav className="mint-nav" style={{ ["--n" as string]: items.length }}>
+        {pos >= 0 && pos < items.length && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
+        {items.map(({ to, label, icon, size }) => (
           <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} onClick={tap}
             className={({ isActive }) => cn("mint-nav-item", isActive && "mint-nav-on")}>
             <MintIcon name={icon} size={size} />
@@ -99,10 +103,11 @@ const MintIsland = () => {
 const BottomNav = () => {
   const mint = useMint();
   const wallNew = useWallNew();
+  const sections = useSections();
   if (mint) return <MintIsland />;
   return (
     <nav className="ui-bottom-nav shrink-0 flex border-t border-border bg-background pad-safe-bottom">
-      {ITEMS.map(({ to, label, icon: Icon }) => (
+      {ITEMS.filter((i) => i.to !== "/wall" || sections.wall).map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
