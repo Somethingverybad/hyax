@@ -3,7 +3,10 @@
 Провайдер выбирается по ключам в окружении (первый найденный):
   OPEN_ROUTER_API_KEY — OpenRouter, языковая модель (OPENROUTER_MODEL, по
                         умолчанию anthropic/claude-haiku-4.5): лучшее качество
-                        для живой переписки и сленга;
+                        для живой переписки и сленга. Через свой ретранслятор:
+                        OPENROUTER_BASE_URL (вместо https://openrouter.ai/api/v1)
+                        и OPENROUTER_RELAY_TOKEN (уходит в X-Relay-Token); ключ
+                        тогда может жить только на ретрансляторе;
   YANDEX_TRANSLATE_API_KEY — Яндекс Переводчик (Yandex Cloud, API-ключ
                         сервисного аккаунта с ролью ai.translate.user;
                         YANDEX_FOLDER_ID — если ключ не привязан к каталогу);
@@ -45,11 +48,15 @@ def _openrouter_key():
     return os.environ.get("OPEN_ROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY") or ""
 
 
+def _openrouter_on():
+    return bool(_openrouter_key() or os.environ.get("OPENROUTER_BASE_URL"))
+
+
 def provider():
     p = os.environ.get("TRANSLATE_PROVIDER", "").strip().lower()
     if p:
         return p
-    if _openrouter_key():
+    if _openrouter_on():
         return "openrouter"
     if os.environ.get("YANDEX_TRANSLATE_API_KEY"):
         return "yandex"
@@ -180,9 +187,15 @@ def _openrouter(text, target):
         "profanity as in the original; keep emojis, line breaks, @mentions, URLs, numbers and names as they are. "
         f"If the message is already in {lang} or there is nothing to translate (only emojis, links or numbers), output it unchanged."
     )
+    base = (os.environ.get("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").rstrip("/")
+    headers = {"HTTP-Referer": "https://wyx.su", "X-Title": "WYX"}
+    if _openrouter_key():
+        headers["Authorization"] = f"Bearer {_openrouter_key()}"
+    if os.environ.get("OPENROUTER_RELAY_TOKEN"):
+        headers["X-Relay-Token"] = os.environ["OPENROUTER_RELAY_TOKEN"]
     r = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {_openrouter_key()}", "HTTP-Referer": "https://wyx.su", "X-Title": "WYX"},
+        f"{base}/chat/completions",
+        headers=headers,
         json={
             "model": model,
             "temperature": 0,
