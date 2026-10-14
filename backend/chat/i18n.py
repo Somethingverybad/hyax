@@ -35,7 +35,7 @@ EN = {
     "Входящий звонок": "Incoming call",
     "Входящий видеозвонок": "Incoming video call",
     "{name} звонит в группе": "{name} is calling the group",
-    "Ревёт 📳": "Roaring at you 📳",
+    "Ревёт 📳": "Sending you a Ryov 📳",
     "Вайбометр": "Vibe meter",
     "{name} поднял(а) ваш вайб — уже {n}": "{name} raised your vibe — now {n}",
     "Кто-то поднял ваш вайб — уже {n}": "Someone raised your vibe — now {n}",
