@@ -1599,5 +1599,8 @@ const en: Record<string, string> = {
   "Мягкие карточки, таблетки, тёмно-зелёный": "Soft cards, pill buttons, dark green accents",
   "Звук при нажатии кнопки отправки. Выключите — сообщения будут уходить без звука": "Plays a sound when you tap Send. Turn it off to send messages silently",
   "У кнопки записи в чате есть режим Р.Ё.В.: пока собеседник держит её, ваш телефон вибрирует. Выключите, если не хотите получать такие вибрации": "The record button in a chat has a Ryov mode: while your contact holds it, your phone vibrates. Turn it off if you don't want these vibrations",
+  // Полный проход по интерфейсу (2026-10-14)
+  "Прочитано": "Read",
+  "Доставлено": "Delivered",
 };
 export default en;

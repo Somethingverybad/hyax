@@ -3459,7 +3459,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       }}
                       className={cn(
                       "relative",
-                      !bareBubble && "px-4 py-3 rounded-lg",
+                      // Отступы по макету: 36/17 → 12 px по бокам и ~6 px сверху, время у нижнего края (5 px).
+                      !bareBubble && "px-3 pt-1.5 pb-[5px]",
                       // Цвета пузырей — переменные темы (--bubble-own/-in и их
                       // -fg, см. msg-own/msg-peer в index.css): текст внутри
                       // наследуется, поэтому тема может сделать пузырь и тёмным,
@@ -3635,9 +3636,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           <p className="text-body break-words whitespace-pre-wrap">
                             <FormattedText text={m.content || ""} entities={m.entities} seed={m.id} mentions={m.mentions} myId={userId} onMention={openMention} />
                             {i === albumText.length - 1 && isOwn && !bareBubble && !albumMedia.length && !albumAudio.length && !albumRest.length && (
-                              <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
+                              <span className="float-right ml-3 mt-[5px] inline-flex items-center gap-1 text-[10px] leading-[12px] opacity-[0.55] whitespace-nowrap">
                                 {formatTime(message.created_at)}
-                                {message.pending ? <Clock className="w-3.5 h-3.5" /> : readByOthers(message) ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                                {message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />}
                               </span>
                             )}
                           </p>
@@ -3661,9 +3662,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <div>
                           <GeoCard lat={message.geo_lat} lng={message.geo_lng} />
                           {isOwn && !bareBubble && (
-                            <span className="float-right -mt-4 ml-3 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
+                            <span className="float-right -mt-4 ml-3 inline-flex items-center gap-1 text-[10px] leading-[12px] opacity-[0.55] whitespace-nowrap">
                               {formatTime(message.created_at)}
-                              {message.pending ? <Clock className="w-3.5 h-3.5" /> : readByOthers(message) ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                              {message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />}
                             </span>
                           )}
                         </div>
@@ -3691,9 +3692,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
-                            <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
+                            <span className="float-right ml-3 mt-[5px] inline-flex items-center gap-1 text-[10px] leading-[12px] opacity-[0.55] whitespace-nowrap">
                               {message.is_edited ? `${tr("изм.")} ` : ""}{formatTime(message.created_at)}
-                              {message.pending ? <Clock className="w-3.5 h-3.5" /> : readByOthers(message) ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                              {message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />}
                             </span>
                           )}
                         </p>

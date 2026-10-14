@@ -905,23 +905,35 @@ textarea,
 .msg-own { background-color: hsl(var(--bubble-own)); color: hsl(var(--bubble-own-fg)); }
 .msg-peer { background-color: hsl(var(--bubble-in)); color: hsl(var(--bubble-in-fg)); }
 
-/* Хвостики пузырей: фигурный клин по SVG-маске, цвет наследуется от пузыря,
-   поэтому одинаково работает для своих (красных) и чужих (зелёных). */
+/* Пузырь по макету (Figma «BG», 3× масштаб): скругление 51 → 17 px со всех
+   сторон, хвостик — капля «Intersect» 36.7×48 → 12.23×16.03 px, выступает за
+   край на 16 → 5.34 px и прикрывает скруглённый нижний угол. Форма — маской
+   из assets/bubble/tail.svg (нарисована для входящих, слева; у своих —
+   зеркально), цвет наследуется от пузыря, поэтому подходит любой теме. */
+.msg-bubble { border-radius: 17px; }
 .bubble-own, .bubble-in { position: relative; }
-.bubble-own { border-bottom-right-radius: 4px; }
-.bubble-in { border-bottom-left-radius: 4px; }
 .bubble-own::after, .bubble-in::after {
   content: "";
   position: absolute;
   bottom: 0;
-  width: 9px;
-  height: 14px;
+  width: 12.23px;
+  height: 16.03px;
   background: inherit;
-  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'><path d='M0 0v14h9c-5-1.5-8-6-9-14z'/></svg>") no-repeat center / 100% 100%;
-  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'><path d='M0 0v14h9c-5-1.5-8-6-9-14z'/></svg>") no-repeat center / 100% 100%;
+  -webkit-mask: url("./assets/bubble/tail.svg") no-repeat center / 100% 100%;
+  mask: url("./assets/bubble/tail.svg") no-repeat center / 100% 100%;
 }
-.bubble-own::after { right: -8px; }
-.bubble-in::after { left: -8px; transform: scaleX(-1); }
+.bubble-in::after { left: -5.34px; }
+.bubble-own::after { right: -5.34px; transform: scaleX(-1); }
+/* «Прочитано» — двойная галочка из того же макета (39×23.8 → 13×7.93 px),
+   цвет — цвет подписи времени. */
+.msg-check2 {
+  display: inline-block;
+  width: 13px;
+  height: 7.93px;
+  background: currentColor;
+  -webkit-mask: url("./assets/bubble/checks.svg") no-repeat center / 100% 100%;
+  mask: url("./assets/bubble/checks.svg") no-repeat center / 100% 100%;
+}
 .chat-row:last-child > .chat-row-divider { display: none; }
 @keyframes msg-flash {
   0%, 40% { background: hsl(var(--primary) / 0.18); }
@@ -1038,6 +1050,10 @@ textarea,
 [data-shape="outlined"] .msg-bubble .msg-media { box-shadow: none; }
 [data-shape="outlined"] .bubble-own::after,
 [data-shape="outlined"] .bubble-in::after { display: none; }
+/* У «Необрутализма» своя геометрия: скругление темы и срезанный угол вместо хвостика. */
+[data-shape="outlined"] .msg-bubble { border-radius: var(--radius); }
+[data-shape="outlined"] .bubble-own { border-bottom-right-radius: 4px; }
+[data-shape="outlined"] .bubble-in { border-bottom-left-radius: 4px; }
 [data-shape="outlined"] .msg-note-edge { background-color: hsl(var(--ink)); }
 
 /* Шапка списка чатов, поиск, чипы, аватары. */
