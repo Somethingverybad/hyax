@@ -105,12 +105,29 @@ services:
       HYAX_QUALITY: ${MEDIA_BOT_QUALITY:-720}
       HYAX_PARALLEL: ${MEDIA_BOT_PARALLEL:-2}
       COOKIES_DIR: /cookies
+      # Из Москвы YouTube закрыт — yt-dlp ходит через прокси в Нидерландах
+      # (сервис ytproxy ниже). Внутренний api — напрямую.
+      HTTPS_PROXY: http://ytproxy:8888
+      HTTP_PROXY: http://ytproxy:8888
+      NO_PROXY: api,localhost,127.0.0.1
     volumes:
       # Не только на чтение: yt-dlp продлевает сессию и переписывает файл —
       # иначе куки протухают за считаные дни.
       - ./bots/media-bot/cookies:/cookies
     depends_on:
       - api
+      - ytproxy
+    networks:
+      - sux_chat_network
+
+  # TLS-обёртка до прокси на нидерландском сервере (bots/ytproxy/nginx.conf).
+  ytproxy:
+    image: nginx:stable-alpine
+    container_name: sux_chat_ytproxy
+    restart: unless-stopped
+    volumes:
+      - ./bots/ytproxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./bots/ytproxy/certs:/certs:ro
     networks:
       - sux_chat_network
 
