@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { api, type ChatActionInfo } from "@/api/client";
+import { api, actionName, type ChatActionInfo } from "@/api/client";
+import { getLang } from "@/lib/i18n";
 
 let cache: ChatActionInfo[] | null = null;
 /** Каталог действий — один раз за сессию (меняется только в админке). */
@@ -16,12 +17,14 @@ export const ActionGrid = ({ onPick, compact }: { onPick: (a: ChatActionInfo) =>
   useEffect(() => { loadActions().then(setList).catch(() => {}); }, []);
   if (!list.length) return <p className="text-sm text-muted-foreground text-center py-6">Загрузка…</p>;
   return (
-    <div className={compact ? "grid grid-cols-3 gap-2 p-2" : "grid grid-cols-2 gap-2 px-4 py-3"}>
+    // Узкий экран — одна колонка: длинные названия («Послать лучи добра»,
+    // «Twirl at the temple») иначе обрезались многоточием.
+    <div className={compact ? "grid grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 gap-2 p-2" : "grid grid-cols-1 min-[480px]:grid-cols-2 gap-2 px-4 py-3"}>
       {list.map((a) => (
         <button key={a.id} type="button" onClick={() => onPick(a)}
           className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-surface-4 text-left active:opacity-70">
-          <span className="text-xl leading-none">{a.emoji}</span>
-          <span className="text-sm truncate">{a.name}</span>
+          <span className="text-xl leading-none shrink-0">{a.emoji}</span>
+          <span className="text-sm leading-snug break-words min-w-0">{actionName(a, getLang())}</span>
         </button>
       ))}
     </div>

@@ -290,5 +290,9 @@ const en: Record<string, string> = {
   "Цвет ауры видят собеседники, пока вы в сети.": "Contacts see your aura colour while you're online.",
   "Автоперевод в личных чатах": "Auto-translation in direct chats",
   "Это умолчание для всех личных чатов; в меню чата можно включить или выключить перевод для конкретного собеседника. Переводится только если языки у вас разные.": "This is the default for all direct chats; in a chat's menu you can turn translation on or off for that contact. Translation happens only when your languages differ.",
+  "Звук уведомлений группы": "Group notification sound",
+  "Обычный — выбери свой, его услышат все участники": "Default — pick one and all members will hear it",
+  "Звук группы": "Group sound",
+  "Все участники услышат «{name}»": "All members will hear “{name}”",
 };
 export default en;

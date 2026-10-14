@@ -7,6 +7,7 @@ import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLang, t as tr, LANG_NAMES, type Lang } from "@/lib/i18n";
+import { actionPhrase } from "@/api/client";
 import type { ChatTranslate } from "@/api/client";
 import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
@@ -104,7 +105,7 @@ interface Message {
   /** Приходит с бэкенда, если сообщение — стикер. */
   sticker?: { id: string; file_url: string; emoji?: string } | null;
   /** Сообщение-жест: «😉 Вася подмигивает Пете» (chat/ChatAction). */
-  action?: { id: number; slug: string; name: string; verb: string; emoji: string } | null;
+  action?: { id: number; slug: string; name: string; verb: string; emoji: string; phrase_en?: string; phrase_ko?: string } | null;
   action_target?: { id: string; username: string } | null;
   /** Аудио-стикер: звук, который слышит получатель. */
   sound?: { id: string; slug: string; name: string; url: string } | null;
@@ -3197,8 +3198,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               );
             }
             if (message.action) {
-              const who = isOwn ? "Вы" : message.sender?.username || tr("Кто-то");
-              const whom = message.action_target?.id === userId ? "вам" : message.action_target?.username || "";
+              // По-русски «Вы подмигиваете» не склеить из «Вы» + «подмигивает»,
+              // в en/ko глагол тоже зависит от лица — своё действие подписываем ником.
+              const who = isOwn ? (myLang === "ru" ? tr("Вы") : (message.sender?.username || "")) : message.sender?.username || tr("Кто-то");
+              const whom = message.action_target?.id === userId ? ({ en: "you", ko: "당신" } as Record<string, string>)[myLang] || tr("вам") : message.action_target?.username || "";
+              const phrase = actionPhrase(message.action, myLang, who, whom);
               return (
                 <div key={message._key ?? message.id} id={`msg-${message.id}`} className="flex justify-center my-1.5" data-message-id={message.id}>
                   <button type="button"
@@ -3206,7 +3210,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     onContextMenu={(e) => { e.preventDefault(); hideKeyboard(); setMenuMessage(message); setMenuPos({ x: e.clientX, y: e.clientY }); }}
                     className={cn("max-w-[85%] px-3.5 py-1.5 rounded-full bg-surface-3 text-small text-foreground/90 text-center", message.pending && "opacity-60")}>
                     <span className="mr-1">{message.action.emoji}</span>
-                    <b>{who}</b> {message.action.verb} <b>{whom}</b>
+                    {myLang === "ru" ? <><b>{who}</b> {message.action.verb} <b>{whom}</b></> : <span>{phrase}</span>}
                   </button>
                 </div>
               );
@@ -4506,6 +4510,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           isAdmin={isGroupAdmin}
           initialName={headerTitle || group.name || tr("Группа")}
           initialAvatar={group.avatar_url}
+          initialSound={(group as { notify_sound?: NotificationSoundInfo | null }).notify_sound ?? null}
           onClose={() => setGroupOpen(false)}
           onUpdated={(patch) => {
             if (patch.name !== undefined) setHeaderTitle(patch.name);

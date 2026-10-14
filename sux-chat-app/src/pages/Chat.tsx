@@ -561,9 +561,13 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                m.video_url ? "Видео-сообщение" :
                m.voice_url ? "Голосовое сообщение" :
                m.file_url ? "Файл" : "Новое сообщение");
+            // Из группы — заголовок с названием группы, в тексте автор: сразу
+            // видно, откуда сообщение. Личное — просто имя собеседника.
+            const chatRow = chatsRef.current.find((c) => String(c.id) === String(chatId)) as (ChatType & { is_group?: boolean; kind?: string; name?: string; notify_sound?: { url?: string } | null }) | undefined;
+            const fromGroup = !!chatRow?.is_group && chatRow?.kind !== "channel";
             showDesktopNotification({
-              title: m.sender?.username || "Новое сообщение",
-              body: preview.slice(0, 150),
+              title: fromGroup ? (chatRow?.name || "Группа") : (m.sender?.username || "Новое сообщение"),
+              body: (fromGroup && m.sender?.username ? `${m.sender.username}: ${preview}` : preview).slice(0, 150),
               tag: chatId ? String(chatId) : undefined,
               avatar: m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
               onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
@@ -573,7 +577,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             // Порядок: аудио-стикер сообщения → «мой звук» отправителя → receive.
             if (!Capacitor.isNativePlatform()) {
               try {
-                const custom = m.sound?.url || m.sender?.notify_sound?.url;
+                const custom = m.sound?.url || (chatsRef.current.find((c) => String(c.id) === String(chatId)) as { notify_sound?: { url?: string } | null } | undefined)?.notify_sound?.url || m.sender?.notify_sound?.url;
                 void playSfx(custom ? mediaUrl(custom) : "/sounds/receive.mp3", { volume: 0.6 });
               } catch { /* без звука не критично */ }
             }

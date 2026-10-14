@@ -1,6 +1,9 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Aura } from "@/components/Aura";
-import { X, Camera, UserPlus, Users, Check } from "lucide-react";
+import { X, Camera, UserPlus, Users, Check, Music2 } from "lucide-react";
+import SoundPickerSheet from "@/components/SoundPicker";
+import type { NotificationSoundInfo } from "@/api/client";
 import Identicon from "@/components/Identicon";
 import UserProfileModal from "@/components/UserProfileModal";
 import { api, mediaUrl } from "@/api/client";
@@ -18,6 +21,7 @@ const GroupSettingsModal = ({
   isAdmin,
   initialName,
   initialAvatar,
+  initialSound,
   onClose,
   onUpdated,
 }: {
@@ -27,6 +31,8 @@ const GroupSettingsModal = ({
   isAdmin: boolean;
   initialName: string;
   initialAvatar?: string | null;
+  /** Общий звук уведомлений группы (задаёт админ). */
+  initialSound?: NotificationSoundInfo | null;
   onClose: () => void;
   onUpdated: (patch: { name?: string; avatar_url?: string | null }) => void;
 }) => {
@@ -38,6 +44,17 @@ const GroupSettingsModal = ({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Person[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [sound, setSound] = useState<NotificationSoundInfo | null>(initialSound ?? null);
+  const [soundOpen, setSoundOpen] = useState(false);
+  const pickSound = async (s: NotificationSoundInfo | null) => {
+    setSoundOpen(false);
+    const prev = sound;
+    setSound(s);
+    try {
+      await api.configureGroup(chatId, { notifySoundId: s ? s.id : null });
+      toast.success(s ? t("Все участники услышат «{name}»", { name: s.name }) : t("Обычный звук"));
+    } catch { setSound(prev); toast.error(t("Не удалось сохранить")); }
+  };
   // Тап по участнику открывает его карточку — ту же, что из шапки личного чата.
   const [profileFor, setProfileFor] = useState<string | null>(null);
 
@@ -152,6 +169,25 @@ const GroupSettingsModal = ({
             <h2 className="text-center text-xl font-bold">{name || "Группа"}</h2>
           )}
         </div>
+
+        {/* Звук группы: с ним все её сообщения приходят у всех участников. */}
+        {isAdmin ? (
+          <button type="button" onClick={() => setSoundOpen(true)} className="mt-4 w-full flex items-center gap-3 py-2.5 text-left">
+            <Music2 className="w-5 h-5 text-primary shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{t("Звук уведомлений группы")}</span>
+              <span className="block text-xs text-muted-foreground truncate">{sound ? sound.name : t("Обычный — выбери свой, его услышат все участники")}</span>
+            </span>
+          </button>
+        ) : sound ? (
+          <div className="mt-4 flex items-center gap-3 py-2.5">
+            <Music2 className="w-5 h-5 text-primary shrink-0" />
+            <span className="text-sm">{t("Звук группы")}: {sound.name}</span>
+          </div>
+        ) : null}
+        {soundOpen && (
+          <SoundPickerSheet title={t("Звук уведомлений группы")} current={sound?.id || null} onClose={() => setSoundOpen(false)} onPick={(s) => void pickSound(s)} />
+        )}
 
         {/* Участники */}
         <div className="mt-5">

@@ -330,7 +330,17 @@ export interface PinnedInfo {
 export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null; anim?: string | null }
 
 /** Действие в чате: кнопка name, в сообщении — «<emoji> <ник> <verb> <адресат>». */
-export interface ChatActionInfo { id: number; slug: string; name: string; verb: string; emoji: string; premium?: boolean }
+export interface ChatActionInfo { id: number; slug: string; name: string; verb: string; emoji: string; premium?: boolean; name_en?: string; name_ko?: string; phrase_en?: string; phrase_ko?: string }
+
+/** Название действия на языке интерфейса (каталог хранит en/ko рядом с русским). */
+export function actionName(a: { name: string; name_en?: string; name_ko?: string }, lang: string): string {
+  return (lang === "en" && a.name_en) || (lang === "ko" && a.name_ko) || a.name;
+}
+/** Фраза действия: «Вася подмигивает Пете» / «Vasya winks at Petya» / «…에게 윙크해요». */
+export function actionPhrase(a: { verb: string; phrase_en?: string; phrase_ko?: string }, lang: string, who: string, whom: string): string {
+  const tpl = (lang === "en" && a.phrase_en) || (lang === "ko" && a.phrase_ko) || "";
+  return tpl ? tpl.replace("{who}", who).replace("{whom}", whom) : `${who} ${a.verb} ${whom}`;
+}
 
 /** Бан на Стене: until пусто — навсегда. */
 export interface WallBan { until: string | null; reason: string; created_at: string }
@@ -1610,10 +1620,12 @@ export const api = {
   },
 
   // Настройки группы (название, аватар) — только для админа-создателя.
-  configureGroup: async (chatId: string, data: { name?: string; avatarUrl?: string }): Promise<ChatInfo> => {
-    const body: Record<string, string> = {};
+  configureGroup: async (chatId: string, data: { name?: string; avatarUrl?: string; notifySoundId?: string | null }): Promise<ChatInfo> => {
+    const body: Record<string, string | null> = {};
     if (data.name !== undefined) body.name = data.name;
     if (data.avatarUrl !== undefined) body.avatar_url = data.avatarUrl;
+    // Общий звук группы: с ним все её сообщения приходят всем участникам.
+    if (data.notifySoundId !== undefined) body.notify_sound_id = data.notifySoundId;
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/configure/`, {
       method: "POST",
       headers: authHeaders(),
