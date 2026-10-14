@@ -172,6 +172,13 @@ class FriendshipSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'friend', 'status', 'created_at']
 
 class ChatSerializer(serializers.ModelSerializer):
+    # Звук уведомлений чата: у канала — для подписчиков, у группы — для всех
+    # участников (задаёт админ), пуш идёт с ним (views._notify_new_message).
+    notify_sound = serializers.SerializerMethodField()
+
+    def get_notify_sound(self, obj):
+        return NotificationSoundSerializer(obj.notify_sound).data if getattr(obj, 'notify_sound_id', None) else None
+
     # Участники отдаются вместе со списком чатов. Раньше клиент запрашивал их
     # отдельно на каждый чат: на экран из десяти чатов уходило одиннадцать
     # запросов, и до их ответа вместо имени показывался идентификатор.
@@ -221,7 +228,7 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound']
 
     def get_pinned_at(self, obj):
         v = getattr(obj, 'my_pinned_at', None)
@@ -532,7 +539,8 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_action(self, obj):
         """Действие («подмигивает»): клиент рисует сообщение-жест по центру."""
         a = obj.action
-        return {"id": a.id, "slug": a.slug, "name": a.name, "verb": a.verb, "emoji": a.emoji} if a else None
+        return {"id": a.id, "slug": a.slug, "name": a.name, "verb": a.verb, "emoji": a.emoji,
+                "phrase_en": a.phrase_en, "phrase_ko": a.phrase_ko} if a else None
 
     def get_action_target(self, obj):
         t = obj.action_target
@@ -722,4 +730,4 @@ class MusicTrackSerializer(serializers.ModelSerializer):
 class ChatActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatAction
-        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium']
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko']

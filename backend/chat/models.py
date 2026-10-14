@@ -1044,9 +1044,22 @@ class ChatAction(models.Model):
     order = models.PositiveSmallIntegerField(default=100)
     is_active = models.BooleanField(default=True)
     premium = models.BooleanField(default=False)
+    # Переводы: кнопка и фраза-шаблон с {who} и {whom} (порядок слов в языках
+    # разный, поэтому не глагол, а вся фраза). Пусто — показываем по-русски.
+    name_en = models.CharField(max_length=40, blank=True, default="")
+    name_ko = models.CharField(max_length=40, blank=True, default="")
+    phrase_en = models.CharField(max_length=120, blank=True, default="")
+    phrase_ko = models.CharField(max_length=120, blank=True, default="")
 
     class Meta:
         ordering = ["order", "name"]
+
+    def phrase(self, lang, who, whom):
+        """Текст действия на языке lang: «Вася подмигивает Пете» / «Vasya winks at Petya»."""
+        tpl = {"en": self.phrase_en, "ko": self.phrase_ko}.get(lang or "", "")
+        if tpl:
+            return tpl.replace("{who}", who).replace("{whom}", whom)
+        return f"{who} {self.verb} {whom}"
 
     def __str__(self):
         return f"{self.emoji} {self.name}"

@@ -342,6 +342,11 @@ class ChatViewSet(viewsets.ModelViewSet):
         if avatar_url is not None:
             chat.avatar_url = avatar_url or None
             fields.append('avatar_url')
+        if 'notify_sound_id' in request.data:
+            # Один звук на всю группу: с ним приходят все её сообщения у всех.
+            sid = request.data.get('notify_sound_id')
+            chat.notify_sound = NotificationSound.objects.filter(id=sid, is_active=True).first() if sid else None
+            fields.append('notify_sound')
         if fields:
             chat.save(update_fields=fields)
         return Response(self.get_serializer(chat).data)
@@ -663,14 +668,26 @@ def _notify_new_message(message, profile, request):
                 preview = "Новое сообщение"
         # У поста канала заголовок пуша — имя канала, а не автора.
         push_title = message.chat.name if getattr(message.chat, "kind", "") == "channel" else profile.username
+        # Группа: заголовок — название группы, в тексте — кто написал. Так по
+        # пушу сразу видно, что это из группы, а не лично.
+        is_group_chat = bool(getattr(message.chat, "is_group", False)) and getattr(message.chat, "kind", "") != "channel"
+        if is_group_chat:
+            push_title = (message.chat.name or "").strip() or "Группа"
+            if not message.action_id:
+                preview = f"{profile.username}: {preview}"
         # Действие: адресату — «подмигивает вам», остальным в группе — «подмигивает Имя».
         if message.action_id and message.action_target_id:
             _act = message.action
             _tgt = recipients.filter(id=message.action_target_id)
-            if _tgt.exists():
-                notify_profiles(_tgt, title=push_title, body=f"{_act.emoji} {profile.username} {_act.verb} вам"[:150],
+            for _t in _tgt:
+                # Адресату — на его языке: «подмигивает вам» / «winks at you» / «…당신에게…».
+                _lang = (getattr(_t, "language", "") or "")[:2]
+                _you = {"en": "you", "ko": "당신"}.get(_lang, "вам")
+                notify_profiles(Profile.objects.filter(id=_t.id), title=push_title,
+                                body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you)}"[:150],
                                 extra={"chat_id": str(message.chat.id)},
-                                sound=profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None)
+                                sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
+                                       else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None))
             recipients = recipients.exclude(id=message.action_target_id)
             preview = f"{_act.emoji} {profile.username} {_act.verb} {message.action_target.username}"
         notify_profiles(
