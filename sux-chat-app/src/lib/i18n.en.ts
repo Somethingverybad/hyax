@@ -288,5 +288,7 @@ const en: Record<string, string> = {
   "Язык интерфейса. Поменять можно в профиле.": "Interface language. You can change it in your profile.",
   "Как выглядит приложение. Темы можно менять и устанавливать чужие.": "How the app looks. You can switch themes and install others' later.",
   "Цвет ауры видят собеседники, пока вы в сети.": "Contacts see your aura colour while you're online.",
+  "Автоперевод в личных чатах": "Auto-translation in direct chats",
+  "Это умолчание для всех личных чатов; в меню чата можно включить или выключить перевод для конкретного собеседника. Переводится только если языки у вас разные.": "This is the default for all direct chats; in a chat's menu you can turn translation on or off for that contact. Translation happens only when your languages differ.",
 };
 export default en;

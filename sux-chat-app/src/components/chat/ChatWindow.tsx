@@ -414,7 +414,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   // «Сообщение съели»: удалённое сообщение ещё EAT_MS рисуется с анимацией
   // (ротик идёт слева направо и откусывает пузырь), потом пропадает.
-  const EAT_MS = 700;
+  const EAT_MS = 800;
   const [eatingIds, setEatingIds] = useState<Set<string>>(new Set());
   const eatThenHide = (ids: string[]) => {
     if (!ids.length) return;

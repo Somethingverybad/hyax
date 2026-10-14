@@ -180,7 +180,7 @@ export interface AdminMetrics {
   hours: { hour: number; messages: number }[];
 }
 
-export interface ChatTranslate { translate_in: boolean; translate_out: boolean; my_language: string; peer_language: string | null; available: boolean }
+export interface ChatTranslate { translate_in: boolean; translate_out: boolean; explicit_in?: boolean; explicit_out?: boolean; my_language: string; peer_language: string | null; available: boolean }
 
 export interface DeviceSession {
   device_id: string; name: string; platform: string; app_version: string;
@@ -233,6 +233,9 @@ export interface Profile {
   aura_anim?: boolean;
   /** Язык интерфейса и переводов: ru | en | ko. */
   language?: string;
+  /** Автоперевод по умолчанию для всех личек (в чате можно переопределить). */
+  translate_in_default?: boolean;
+  translate_out_default?: boolean;
   /** Почта для восстановления пароля (только свой профиль); verified — подтверждена кодом. */
   email?: string;
   email_verified?: boolean;
@@ -1928,7 +1931,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

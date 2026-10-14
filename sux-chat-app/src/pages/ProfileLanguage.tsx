@@ -11,6 +11,13 @@ import { getLang, setLang, LANGS, LANG_NAMES, useT, type Lang } from "@/lib/i18n
 const ProfileLanguage = () => {
   const t = useT();
   const [cur, setCur] = useState<Lang>(getLang());
+  const [me, setMe] = useState<Profile | null>(() => readCache<Profile>("user"));
+  const setDefault = async (k: "translate_in_default" | "translate_out_default", v: boolean) => {
+    if (!me?.id) return;
+    const next = { ...me, [k]: v }; setMe(next);
+    try { const upd = await api.updateProfile(me.id, { [k]: v }); setMe(upd); writeCache("user", { ...me, ...upd }); }
+    catch { toast.error(t("Не удалось сохранить")); setMe(me); }
+  };
   const pick = async (l: Lang) => {
     setCur(l); setLang(l);
     const me = readCache<Profile>("user");
@@ -31,6 +38,17 @@ const ProfileLanguage = () => {
           ))}
         </div>
         <p className="text-caption text-subtle px-1 mt-3">{t("Язык интерфейса. Поменять можно в профиле.")}</p>
+
+        <p className="px-1 pt-5 pb-2 text-small text-subtle">{t("Автоперевод в личных чатах")}</p>
+        <div className="ui-card rounded-lg bg-surface-2 border border-border divide-y divide-border">
+          {([["translate_out_default", t("Переводить мои сообщения на язык собеседника")], ["translate_in_default", t("Переводить сообщения собеседника на мой язык")]] as const).map(([k, label]) => (
+            <label key={k} className="flex items-center gap-3 px-4 py-3">
+              <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={!!me?.[k]} onChange={(e) => void setDefault(k, e.target.checked)} />
+              <span className="text-body">{label}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-caption text-subtle px-1 mt-3">{t("Это умолчание для всех личных чатов; в меню чата можно включить или выключить перевод для конкретного собеседника. Переводится только если языки у вас разные.")}</p>
       </div>
     </div>
   );
