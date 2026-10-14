@@ -1557,5 +1557,6 @@ const en: Record<string, string> = {
   "🕳 Бездна": "🕳 Abyss",
   "🔄 Обновить": "🔄 Refresh",
   "✅ Реализовано": "✅ Done",
+  "Сообщение уже на вашем языке": "This message is already in your language",
 };
 export default en;

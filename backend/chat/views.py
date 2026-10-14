@@ -3284,7 +3284,7 @@ class MessageTranslateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        from .translate import translate_text, norm_lang, TranslateNotConfigured
+        from .translate import translate_text, norm_lang, same_text, TranslateNotConfigured
         me = getattr(request.user, 'profile', None)
         msg = Message.objects.filter(id=pk).select_related('chat', 'sender').first()
         if not me or not msg or not _can_see_chat(msg.chat, me):
@@ -3293,10 +3293,15 @@ class MessageTranslateView(APIView):
             return Response({"error": "Здесь переводить нечего"}, status=400)
         to = norm_lang(request.data.get("to")) or norm_lang(me.language) or "ru"
         tr = dict(msg.translations or {})
+        if to in tr and same_text(tr[to], msg.content):
+            tr.pop(to)  # старый «перевод», равный оригиналу, — переводим заново
         if to not in tr:
             try:
                 src = norm_lang(msg.sender.language) if msg.sender_id else ""
-                tr[to] = translate_text(msg.content, to, src)
+                out = translate_text(msg.content, to, src)
+                if same_text(out, msg.content):
+                    return Response({"error": "Сообщение уже на вашем языке"}, status=422)
+                tr[to] = out
             except TranslateNotConfigured:
                 return Response({"error": "Перевод пока не настроен"}, status=503)
             except Exception:
