@@ -935,6 +935,21 @@ textarea,
   mask: url("./assets/bubble/checks.svg") no-repeat center / 100% 100%;
 }
 .chat-row:last-child > .chat-row-divider { display: none; }
+/* Панель записи: кнопки выезжают из кнопки записи справа налево по очереди
+   (--rec-dx — откуда, --rec-delay — когда; задаёт recItemStyle), маленькие
+   над ними — следом снизу вверх. Сворачивание — тем же путём обратно. */
+@keyframes rec-item-in { from { opacity: 0; transform: translateX(var(--rec-dx, 0px)) scale(.55); } to { opacity: 1; transform: none; } }
+@keyframes rec-item-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(var(--rec-dx, 0px)) scale(.55); } }
+@keyframes rec-above-in { from { opacity: 0; transform: translate(-50%, 10px) scale(.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes rec-field-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+.rec-item { animation: rec-item-in 280ms cubic-bezier(.2, .8, .2, 1) both; animation-delay: var(--rec-delay, 0ms); }
+.rec-panel-out .rec-item { animation: rec-item-out 170ms ease-in both; animation-delay: var(--rec-delay-out, 0ms); }
+.rec-above { animation: rec-above-in 220ms cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--rec-delay, 0ms) + 150ms); }
+.rec-panel-out .rec-above { animation: none; opacity: 0; transition: opacity 100ms; }
+.rec-field-in { animation: rec-field-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rec-item, .rec-above, .rec-field-in, .rec-panel-out .rec-item { animation: none !important; }
+}
 @keyframes msg-flash {
   0%, 40% { background: hsl(var(--primary) / 0.18); }
   100% { background: transparent; }

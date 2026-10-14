@@ -493,10 +493,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // голосовое (над ним — запись без рук), треугольник (над ним — переворот и
   // камера), Р.Ё.В. и «свернуть»; поле текста на это время прячется. Удержание
   // самой кнопки по-прежнему сразу пишет голосовое.
-  const [recExpanded, setRecExpanded] = useState(false);
+  const [recExpanded, setRecExpandedState] = useState(false);
+  const recExpandedRef = useRef(false);
+  // Поле текста после первого раскрытия проявляется плавно (анимация
+  // перезапускается, когда оно выходит из display: none).
+  const fieldAnimRef = useRef(false);
+  const setRecExpanded = (v: boolean) => { recExpandedRef.current = v; if (v) fieldAnimRef.current = true; setRecExpandedState(v); };
+  // Сворачивание с анимацией: ряд уезжает обратно к кнопке, потом снимается.
+  const [recClosing, setRecClosing] = useState(false);
+  const recCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeKindRef = useRef<ComposerMode>("audio");
   const pressFromPanelRef = useRef(false);
-  const collapseRec = () => { setRecExpanded(false); setRecordKind("audio"); activeKindRef.current = "audio"; };
+  const collapseRec = () => {
+    setRecordKind("audio"); activeKindRef.current = "audio";
+    if (!recExpandedRef.current || recCloseTimerRef.current) return;
+    setRecClosing(true);
+    recCloseTimerRef.current = setTimeout(() => {
+      recCloseTimerRef.current = null;
+      setRecClosing(false);
+      setRecExpanded(false);
+    }, 250);
+  };
   const [roving, setRoving] = useState(false);
   // Фронтальная/задняя камера для видео-сообщений (выбор до записи: удержание
   // занимает единственный палец, переключать во время съёмки нечем).
@@ -2829,6 +2846,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     </span>
   ) : null;
 
+  /** Порядок выезда кнопок панели: r — номер справа (0 — ближняя к кнопке
+   *  записи). Выезжают по очереди справа налево, уезжают — слева направо. */
+  const recN = onRov && !saved ? 4 : 3;
+  const recItemStyle = (r: number) => ({
+    "--rec-dx": `${r * 64}px`,
+    "--rec-delay": `${r * 35}ms`,
+    "--rec-delay-out": `${(recN - 1 - r) * 20}ms`,
+  } as React.CSSProperties);
+
   /** Кнопка записи нужного вида: держать — запись (Р.Ё.В. — вибрация), у
    *  основной кнопки тап раскрывает панель. */
   const recButton = (kind: ComposerMode, main = false) => {
@@ -4372,7 +4398,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </Button>
             )}
 
-            <div className={cn("mint-field-wrap flex-1 relative", recExpanded && !hasDraft && "hidden")}>
+            <div className={cn("mint-field-wrap flex-1 relative", recExpanded && !hasDraft && "hidden", fieldAnimRef.current && !recExpanded && "rec-field-in")}>
               {/* Поле растёт под текст до четырёх строк: раньше это был
                   однострочный input (проп multiline ничего не делал), и
                   длинное сообщение набиралось вслепую. */}
@@ -4468,12 +4494,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             ) : (
               <>
                 {recExpanded ? (
-                  <div className="flex-1 flex items-end justify-around gap-2 min-w-0">
+                  <div className={cn("flex-1 flex items-end justify-around gap-2 min-w-0", recClosing && "rec-panel-out")}>
                     {/* Голосовое; над ним — запись без рук. */}
-                    <span className="relative shrink-0">
+                    <span className="rec-item relative shrink-0" style={recItemStyle(recN - 1)}>
                       {!recording && recPhase === "idle" && !recLocked && (
                         <button type="button" onClick={() => void startHandsFree()} disabled={uploading}
-                          className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-9 h-9 rounded-full border bg-surface-2 text-foreground border-border shadow-md flex items-center justify-center active:opacity-80 disabled:opacity-50"
+                          className="rec-above absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-9 h-9 rounded-full border bg-surface-2 text-foreground border-border shadow-md flex items-center justify-center active:opacity-80 disabled:opacity-50"
                           aria-label={tr("Записать без рук")} title={tr("Записать без рук")}>
                           <Lock className="w-4 h-4" />
                         </button>
@@ -4482,9 +4508,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {recButton("audio")}
                     </span>
                     {/* Треугольник; над ним — переворот треугольника и камера. */}
-                    <span className="relative shrink-0">
+                    <span className="rec-item relative shrink-0" style={recItemStyle(recN - 2)}>
                       {!recording && recPhase === "idle" && !recLocked && (
-                        <span className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 flex flex-col items-center gap-2">
+                        <span className="rec-above absolute left-1/2 bottom-full mb-2 -translate-x-1/2 flex flex-col items-center gap-2">
                           <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} disabled={uploading}
                             className={cn("w-9 h-9 rounded-full border shadow-md flex items-center justify-center transition-colors",
                               facing === "user" ? "bg-foreground text-background border-foreground" : "bg-surface-2 text-foreground border-border")}
@@ -4503,12 +4529,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {recordKind === "video" && lockIndicator}
                       {recButton("video")}
                     </span>
-                    {onRov && !saved && <span className="relative shrink-0">{recButton("rov")}</span>}
-                    <button type="button" onClick={collapseRec} disabled={recording || recLocked || recPhase !== "idle" || roving}
-                      className="ui-compose-btn h-11 w-11 shrink-0 rounded-md border bg-surface-2 text-foreground border-border flex items-center justify-center disabled:opacity-40"
-                      aria-label={tr("Свернуть")} title={tr("Свернуть")}>
-                      <X className="w-5 h-5" />
-                    </button>
+                    {onRov && !saved && <span className="rec-item relative shrink-0" style={recItemStyle(1)}>{recButton("rov")}</span>}
+                    <span className="rec-item relative shrink-0" style={recItemStyle(0)}>
+                      <button type="button" onClick={collapseRec} disabled={recording || recLocked || recPhase !== "idle" || roving}
+                        className="ui-compose-btn h-11 w-11 shrink-0 rounded-md border bg-surface-2 text-foreground border-border flex items-center justify-center disabled:opacity-40"
+                        aria-label={tr("Свернуть")} title={tr("Свернуть")}>
+                        <X className="w-5 h-5" />
+                      </button>
+                    </span>
                   </div>
                 ) : (
                   <span className="relative shrink-0 md:ml-3">
