@@ -472,7 +472,11 @@ class ChatViewSet(viewsets.ModelViewSet):
             )
         ).filter(
             participant_count=len(participant_uuids),
-            matching_participants=len(participant_uuids)
+            matching_participants=len(participant_uuids),
+            # Только обычная личка: секретный чат или группа из тех же двух
+            # людей — другой чат. Иначе после удаления обычной лички при живом
+            # секретном чате новую было не создать — возвращался секретный.
+            kind='direct', is_group=False,
         ).distinct()
         
         print("Existing chats found:", existing_chats.count())

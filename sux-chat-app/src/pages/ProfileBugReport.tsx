@@ -39,6 +39,21 @@ const ProfileBugReport = () => {
     return () => URL.revokeObjectURL(url);
   }, [shot]);
 
+  // Ctrl/Cmd+V с картинкой в буфере — скриншот к отчёту, где бы ни стоял
+  // курсор на этом экране (в поле текста или нет).
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const item = Array.from(e.clipboardData?.items || []).find((i) => i.kind === "file" && i.type.startsWith("image/"));
+      const f = item?.getAsFile();
+      if (!f) return;
+      e.preventDefault();
+      void pick(new File([f], f.name || "screenshot.png", { type: f.type }));
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pick = async (f: File | null) => {
     if (!f) return;
     try {
@@ -104,7 +119,7 @@ const ProfileBugReport = () => {
             value={text}
             onChange={(e) => setText(e.target.value.slice(0, 4000))}
             rows={5}
-            placeholder="Что делал, что ожидал, что произошло"
+            placeholder="Что делал, что ожидал, что произошло. Скриншот можно вставить через Ctrl+V"
             className="w-full rounded-md bg-surface-4 border border-transparent px-3 py-2 text-body outline-none resize-none focus:border-amber"
           />
         </div>

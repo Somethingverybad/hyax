@@ -1243,18 +1243,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     (async () => {
       // Секретный чат уже открывали в этой сессии — лента готова в памяти.
       const sess = secretSession.get(chatId);
-      if (sess && sess.messages.length) {
+      const sessMsgs = sess ? sess.messages.filter((m) => belongsTo(m, chatId)) : [];
+      if (sess && sessMsgs.length) {
         syncedAtRef.current = sess.syncedAt;
         setHasMore(sess.hasMore);
-        setMessages(sess.messages);
+        setMessages(sessMsgs);
         scrollToBottomOnOpen();
         await syncSince(chatId);
         primedRef.current = true;
         void anchorUnread(chatId);
         return;
       }
-      const cached = await readMessages(chatId);
+      const cachedRaw = await readMessages(chatId);
       if (!alive) return;
+      // Чужие сообщения в кэше чата (остатки прежних сбоев) — выбрасываем.
+      const cached = cachedRaw ? { ...cachedRaw, messages: cachedRaw.messages.filter((m: Message) => belongsTo(m, chatId)) } : null;
       if (cached && cached.messages.length) {
         syncedAtRef.current = cached.syncedAt;
         setHasMore(cached.hasMore);
@@ -1392,10 +1395,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       eatThenHide(toEat);
       setTimeout(() => setMessages((prev) => prev.filter((m) => !toEat.includes(m.id))), EAT_MS + 50);
     }
+    const cur = chatIdRef.current || "";
     setMessages(prev => {
       const gone = new Set(deleted.filter((id) => hiddenIds.has(id)));
-      const byId = new Map(prev.filter(m => !gone.has(m.id)).map(m => [m.id, m]));
+      const byId = new Map(prev.filter(m => !gone.has(m.id) && belongsTo(m, cur)).map(m => [m.id, m]));
       for (const d of incoming) {
+        if (!belongsTo(d, cur)) continue;
         const local = byId.get(d.id);
         byId.set(d.id, local ? { ...local, ...d, pending: false } : d);
       }
@@ -1523,7 +1528,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         clearTimeout(markReadTimerRef.current);
         markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 400);
       }
-      setMessages(prev => { void writeMessages(id, prev, r.now, hasMoreRef.current); return prev; });
+      setMessages(prev => { void writeMessages(id, prev.filter((m) => belongsTo(m, id)), r.now, hasMoreRef.current); return prev; });
     } catch {
       console.log("Не удалось синхронизировать сообщения");
     }
@@ -2033,10 +2038,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   useEffect(() => {
-    if (!isSecret || !chatId) return;
-    const done = messages.filter((m) => !m.pending);
+    // Только когда описание чата уже этого чата: при переключении с секретного
+    // на группу есть кадр, где chatId новый, а chatInfo и лента — ещё старые,
+    // и лента секретного чата сохранялась под id группы. Группа потом брала её
+    // отсюда — «сообщения из другого чата» (баг-репорт a4fdd793).
+    if (!isSecret || !chatId || chatInfo?.id !== chatId) return;
+    const done = messages.filter((m) => !m.pending && belongsTo(m, chatId));
     if (done.length) secretSession.set(chatId, { messages: done, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
-  }, [messages, isSecret, chatId]);
+  }, [messages, isSecret, chatId, chatInfo?.id]);
 
   // ---- Секретные вложения: шифруем файл на устройстве, грузим шифротекст ----
   const SECRET_MAX = 50 * 1024 * 1024;
@@ -4659,6 +4668,11 @@ const chatInfoCache = new Map<string, ChatFull>();
 const secretPlain = new Map<string, { cipher: string; p: SecretPayload | null }>();
 const secretBlobs = new Map<string, Partial<Message>>();
 const secretSession = new Map<string, { messages: Message[]; syncedAt: string | null; hasMore: boolean }>();
+/** Сообщение из этого чата? Поле chat приходит с сервера; у временных его нет — свои. */
+function belongsTo(m: Message, chatId: string): boolean {
+  const c = (m as { chat?: string | null }).chat;
+  return !c || String(c) === String(chatId);
+}
 /** Пришедшее с сервера сообщение — сразу в готовом виде, если уже расшифровано. */
 function prefillSecret<T extends Message>(m: T): T {
   if (!m.cipher) return m;
