@@ -301,10 +301,10 @@ def wanted_targets(message, sender):
 
 
 def translate_transcript(message_id):
-    """Перевести расшифровку голосового на язык каждого попросившего, если в
-    личке у него «переводить сообщения собеседника на мой язык» или у автора
-    «переводить мои сообщения» и язык речи другой. Синхронно — зовётся из
-    фонового потока whisper или schedule_transcript."""
+    """Перевести расшифровку голосового на язык каждого участника, если у него
+    «переводить сообщения собеседника на мой язык» или у автора «переводить мои
+    сообщения» и язык речи другой. Синхронно — зовётся из фонового потока
+    whisper или schedule_transcript."""
     from .models import ChatParticipant, Message, Profile
     msg = Message.objects.select_related("chat", "sender").filter(id=message_id).first()
     if not msg or msg.transcript_status != "done" or not (msg.voice_transcript or "").strip():
@@ -316,17 +316,22 @@ def translate_transcript(message_id):
     src = norm_lang(msg.transcript_lang) or (norm_lang(msg.sender.language) if msg.sender_id else "") or "ru"
     tr = dict(msg.transcript_translations or {})
     changed = False
-    for pid in (msg.transcript_for or []):
-        if pid == str(msg.sender_id) or pid not in parts:
+    # Расшифровку видят все участники чата (не только попросивший), поэтому
+    # переводим каждому, у кого включено «на мой язык» или у автора «мои
+    # сообщения», — по одному разу на язык.
+    for pid, p in parts.items():
+        if pid == str(msg.sender_id):
             continue
-        p = parts[pid]
         tgt = norm_lang(p.user.language) or "ru"
         if tgt == src or tgt in tr:
             continue
         if not (effective(p, "translate_in") or (author and effective(author, "translate_out"))):
             continue
         try:
-            tr[tgt] = translate_text(msg.voice_transcript, tgt, src)
+            out = translate_text(msg.voice_transcript, tgt, src)
+            if not out or same_text(out, msg.voice_transcript):
+                continue
+            tr[tgt] = out
             changed = True
         except TranslateNotConfigured:
             return
