@@ -4,12 +4,17 @@
   OPEN_ROUTER_API_KEY — OpenRouter, языковая модель (OPENROUTER_MODEL, по
                         умолчанию anthropic/claude-haiku-4.5): лучшее качество
                         для живой переписки и сленга;
+  YANDEX_TRANSLATE_API_KEY — Яндекс Переводчик (Yandex Cloud, API-ключ
+                        сервисного аккаунта с ролью ai.translate.user;
+                        YANDEX_FOLDER_ID — если ключ не привязан к каталогу);
   GEMINI_API_KEY      — Google Gemini (бесплатный тариф);
   DEEPL_API_KEY       — DeepL Free (500 000 знаков в месяц);
   LIBRETRANSLATE_URL  — свой LibreTranslate (бесплатно, качество слабее).
 TRANSLATE_PROVIDER=openrouter|gemini|deepl|libre задаёт провайдера явно.
-Если основной провайдер не ответил, а LibreTranslate настроен, перевод
-делает он — лучше слабый перевод, чем никакого.
+Если провайдер не ответил, перевод делает следующий настроенный (Яндекс,
+затем LibreTranslate) — лучше слабый перевод, чем никакого; упавший
+провайдер пропускаем 10 минут, чтобы не ждать его отказа на каждом сообщении
+(OpenRouter, например, закрыт для российских адресов — сразу 403).
 Без ключей перевод не настроен: эндпоинты отвечают 503, автоперевод молчит.
 
 Автоперевод работает в личных незашифрованных чатах: при отправке сервер
@@ -23,6 +28,7 @@ import logging
 import os
 import re
 import threading
+import time
 
 import httpx
 
@@ -45,6 +51,8 @@ def provider():
         return p
     if _openrouter_key():
         return "openrouter"
+    if os.environ.get("YANDEX_TRANSLATE_API_KEY"):
+        return "yandex"
     if os.environ.get("GEMINI_API_KEY"):
         return "gemini"
     if os.environ.get("DEEPL_API_KEY"):
@@ -85,6 +93,8 @@ def same_text(a, b):
 def _call(p, text, target, source):
     if p == "openrouter":
         return _openrouter(text, target)
+    if p == "yandex":
+        return _yandex(text, target, source)
     if p == "gemini":
         return _gemini(text, target)
     if p == "deepl":
@@ -102,16 +112,59 @@ def translate_text(text, target, source=""):
     source = detect_lang(text, source)
     if source == target:
         return text
-    p = provider()
-    try:
-        return _call(p, text, target, source)
-    except TranslateNotConfigured:
-        raise
-    except Exception:
-        if p == "libre" or not os.environ.get("LIBRETRANSLATE_URL"):
+    chain = _chain()
+    if not chain:
+        raise TranslateNotConfigured()
+    now = time.time()
+    alive = [p for p in chain if _down.get(p, 0) <= now] or chain[-1:]
+    last = None
+    for p in alive:
+        try:
+            out = _call(p, text, target, source)
+            _down.pop(p, None)
+            return out
+        except TranslateNotConfigured:
             raise
-        logger.exception("translate: %s не ответил, перевожу через LibreTranslate", p)
-        return _libre(text, target, source)
+        except Exception as e:
+            last = e
+            if p != chain[-1]:
+                _down[p] = now + DOWN_FOR
+            status = getattr(getattr(e, "response", None), "status_code", "")
+            logger.warning("translate: %s не ответил (%s %s), пробую следующий", p, type(e).__name__, status)
+    raise last
+
+
+DOWN_FOR = 600
+_down = {}
+
+
+def _chain():
+    """Основной провайдер и запасные, которые настроены, — по порядку."""
+    p = provider()
+    order = [p] if p else []
+    if os.environ.get("YANDEX_TRANSLATE_API_KEY") and "yandex" not in order:
+        order.append("yandex")
+    if os.environ.get("LIBRETRANSLATE_URL") and "libre" not in order:
+        order.append("libre")
+    return order
+
+
+def _yandex(text, target, source):
+    """Яндекс Переводчик (Translate API v2). Источник — подсказка: если язык
+    текста определили по письменности, передаём, иначе Яндекс определит сам."""
+    body = {"targetLanguageCode": target, "texts": [text], "format": "PLAIN_TEXT"}
+    if norm_lang(source):
+        body["sourceLanguageCode"] = norm_lang(source)
+    if os.environ.get("YANDEX_FOLDER_ID"):
+        body["folderId"] = os.environ["YANDEX_FOLDER_ID"]
+    r = httpx.post(
+        "https://translate.api.cloud.yandex.net/translate/v2/translate",
+        headers={"Authorization": f"Api-Key {os.environ['YANDEX_TRANSLATE_API_KEY']}"},
+        json=body,
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()["translations"][0]["text"]
 
 
 def _openrouter(text, target):
