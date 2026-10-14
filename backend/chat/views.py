@@ -3233,14 +3233,18 @@ class ChatTranslateView(APIView):
         return chat, part, None
 
     def _payload(self, chat, part):
-        from .translate import provider, norm_lang, effective
+        from .translate import provider, norm_lang, effective, translatable
+        others = list(chat.participants.exclude(id=part.user_id).values_list("language", flat=True))
         peer = chat.participants.exclude(id=part.user_id).first()
         return {
             "translate_in": effective(part, "translate_in"), "translate_out": effective(part, "translate_out"),
             "explicit_in": part.translate_in is not None, "explicit_out": part.translate_out is not None,
             "my_language": norm_lang(part.user.language) or "ru",
             "peer_language": (norm_lang(peer.language) or "ru") if peer else None,
-            "available": bool(provider()) and chat.kind == "direct",
+            "available": bool(provider()) and translatable(chat),
+            "is_group": bool(chat.is_group),
+            # Языки остальных участников — в группе их может быть несколько.
+            "peer_languages": sorted({norm_lang(l) or "ru" for l in others}),
         }
 
     def get(self, request, pk):

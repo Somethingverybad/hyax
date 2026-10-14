@@ -180,7 +180,7 @@ export interface AdminMetrics {
   hours: { hour: number; messages: number }[];
 }
 
-export interface ChatTranslate { translate_in: boolean; translate_out: boolean; explicit_in?: boolean; explicit_out?: boolean; my_language: string; peer_language: string | null; available: boolean }
+export interface ChatTranslate { translate_in: boolean; translate_out: boolean; explicit_in?: boolean; explicit_out?: boolean; my_language: string; peer_language: string | null; available: boolean; is_group?: boolean; peer_languages?: string[] }
 
 export interface DeviceSession {
   device_id: string; name: string; platform: string; app_version: string;

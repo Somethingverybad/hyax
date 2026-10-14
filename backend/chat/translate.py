@@ -102,11 +102,23 @@ def _libre(text, target, source):
     return r.json()["translatedText"]
 
 
+def translatable(chat):
+    """Где работает автоперевод: личка и группа (не канал, не секретный чат,
+    не Стена). Тип у групп в базе непоследователен — часть записана как
+    direct, часть как group, — поэтому группу узнаём по флагу is_group."""
+    if getattr(chat, "kind", "") in ("channel", "secret", "wall", "saved", "ideabox", "system"):
+        return False
+    return chat.kind in ("direct", "group") or bool(getattr(chat, "is_group", False))
+
+
 def wanted_targets(message, sender):
     """Языки, на которые нужен перевод этого сообщения (личка, не секретный чат)."""
     from .models import ChatParticipant
     chat = message.chat
-    if chat.kind != "direct" or not (message.content or "").strip():
+    # Личка и группа: каждому участнику — на его язык, если у него «переводить
+    # на мой язык» или у отправителя «переводить мои сообщения»; в группе
+    # языков может быть несколько — переводим на каждый один раз.
+    if not translatable(chat) or not (message.content or "").strip():
         return []
     parts = list(ChatParticipant.objects.filter(chat=chat).select_related("user"))
     me = next((p for p in parts if p.user_id == sender.id), None)
@@ -132,7 +144,7 @@ def translate_transcript(message_id):
     msg = Message.objects.select_related("chat", "sender").filter(id=message_id).first()
     if not msg or msg.transcript_status != "done" or not (msg.voice_transcript or "").strip():
         return
-    if msg.voice_transcript == "(тишина)" or msg.chat.kind != "direct" or not provider():
+    if msg.voice_transcript == "(тишина)" or not translatable(msg.chat) or not provider():
         return
     parts = {str(p.user_id): p for p in ChatParticipant.objects.filter(chat=msg.chat).select_related("user")}
     author = parts.get(str(msg.sender_id))

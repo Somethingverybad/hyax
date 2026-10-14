@@ -39,7 +39,7 @@ const ProfileLanguage = () => {
         </div>
         <p className="text-caption text-subtle px-1 mt-3">{t("Язык интерфейса. Поменять можно в профиле.")}</p>
 
-        <p className="px-1 pt-5 pb-2 text-small text-subtle">{t("Автоперевод в личных чатах")}</p>
+        <p className="px-1 pt-5 pb-2 text-small text-subtle">{t("Автоперевод в чатах")}</p>
         <div className="ui-card rounded-lg bg-surface-2 border border-border divide-y divide-border">
           {([["translate_out_default", t("Переводить мои сообщения на язык собеседника")], ["translate_in_default", t("Переводить сообщения собеседника на мой язык")]] as const).map(([k, label]) => (
             <label key={k} className="flex items-center gap-3 px-4 py-3">
@@ -48,7 +48,7 @@ const ProfileLanguage = () => {
             </label>
           ))}
         </div>
-        <p className="text-caption text-subtle px-1 mt-3">{t("Это умолчание для всех личных чатов; в меню чата можно включить или выключить перевод для конкретного собеседника. Переводится только если языки у вас разные.")}</p>
+        <p className="text-caption text-subtle px-1 mt-3">{t("Это умолчание для личных чатов и групп; в меню чата можно включить или выключить перевод отдельно для него. Переводится только на другой язык: в группе — на языки тех участников, у кого он отличается.")}</p>
       </div>
     </div>
   );

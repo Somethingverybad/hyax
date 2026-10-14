@@ -294,5 +294,13 @@ const en: Record<string, string> = {
   "Обычный — выбери свой, его услышат все участники": "Default — pick one and all members will hear it",
   "Звук группы": "Group sound",
   "Все участники услышат «{name}»": "All members will hear “{name}”",
+  "У всех участников ваш язык — переводить нечего.": "All members share your language — nothing to translate.",
+  "Переводить мои сообщения на языки участников": "Translate my messages into the members' languages",
+  "Переводить сообщения участников на мой язык": "Translate members' messages into my language",
+  "Ваш язык": "Your language",
+  "в группе": "in the group",
+  "у собеседника": "contact",
+  "Автоперевод в чатах": "Auto-translation in chats",
+  "Это умолчание для личных чатов и групп; в меню чата можно включить или выключить перевод отдельно для него. Переводится только на другой язык: в группе — на языки тех участников, у кого он отличается.": "This is the default for direct chats and groups; in a chat's menu you can turn translation on or off just for that chat. Only different languages are translated: in a group, into the languages of members whose language differs.",
 };
 export default en;

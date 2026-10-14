@@ -2924,7 +2924,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setKeyOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <KeyRound className="w-5 h-5 text-foreground/80" />{tr("Ключ шифрования")}</button>
                     )}
-                    {!isSecret && peer && !peer.is_bot && !saved && (
+                    {!isSecret && !saved && ((peer && !peer.is_bot) || isGroup) && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setTranslateOpen(true); api.getChatTranslate(chatId!).then(setTrSettings).catch(() => setTrSettings(null)); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <Languages className="w-5 h-5 text-foreground/80" />{tr("Перевод")}
                       </button>
@@ -4546,10 +4546,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             {!trSettings ? <p className="text-small text-subtle">{tr("Загрузка…")}</p> : (
               <>
                 {!trSettings.available && <p className="text-small text-subtle">{tr("Перевод пока не настроен")}</p>}
-                {trSettings.available && trSettings.peer_language && trSettings.peer_language === trSettings.my_language && (
+                {trSettings.available && !trSettings.is_group && trSettings.peer_language && trSettings.peer_language === trSettings.my_language && (
                   <p className="text-small text-subtle">{tr("У вас с собеседником один язык — переводить нечего.")}</p>
                 )}
-                {([["translate_out", tr("Переводить мои сообщения на язык собеседника")], ["translate_in", tr("Переводить сообщения собеседника на мой язык")]] as const).map(([k, label]) => (
+                {trSettings.available && trSettings.is_group && (trSettings.peer_languages || []).every((l) => l === trSettings.my_language) && (
+                  <p className="text-small text-subtle">{tr("У всех участников ваш язык — переводить нечего.")}</p>
+                )}
+                {(trSettings.is_group
+                  ? ([["translate_out", tr("Переводить мои сообщения на языки участников")], ["translate_in", tr("Переводить сообщения участников на мой язык")]] as const)
+                  : ([["translate_out", tr("Переводить мои сообщения на язык собеседника")], ["translate_in", tr("Переводить сообщения собеседника на мой язык")]] as const)
+                ).map(([k, label]) => (
                   <label key={k} className="flex items-center gap-3 py-2">
                     <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={!!trSettings[k]}
                       onChange={async (e) => {
@@ -4560,7 +4566,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <span className="text-body">{label}</span>
                   </label>
                 ))}
-                <p className="text-caption text-subtle">{LANG_NAMES[(trSettings.my_language as Lang) || "ru"]} → {trSettings.peer_language ? LANG_NAMES[(trSettings.peer_language as Lang) || "ru"] : "?"}</p>
+                <p className="text-caption text-subtle">
+                  {tr("Ваш язык")}: {LANG_NAMES[(trSettings.my_language as Lang) || "ru"]} · {trSettings.is_group ? tr("в группе") : tr("у собеседника")}: {
+                    (trSettings.is_group ? (trSettings.peer_languages || []) : [trSettings.peer_language || "ru"]).map((l) => LANG_NAMES[(l as Lang)] || l).join(", ")
+                  }
+                </p>
               </>
             )}
           </div>
