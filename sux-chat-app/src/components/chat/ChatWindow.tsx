@@ -2798,7 +2798,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const menuItems = menuMessage
     ? [
         { label: tr("Реакция"), icon: <Smile className="w-5 h-5" />, show: !menuMessage.pending && !!menuPos, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
-        { label: tr("Ответить"), icon: <Reply className="w-5 h-5" />, show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
+        { label: tr("Ответить"), icon: <Reply className="w-5 h-5" />, show: true, onClick: () => {
+          setReplyTo(menuMessage); closeMenu();
+          // Фокус в поле ввода — сразу, в том же касании: iOS открывает
+          // клавиатуру только из обработчика жеста; кадром позже — на случай,
+          // если поле перерисовалось вместе с плашкой ответа.
+          textareaRef.current?.focus();
+          requestAnimationFrame(() => textareaRef.current?.focus());
+        } },
         { label: tr("Действие…"), icon: <Sparkles className="w-5 h-5" />, show: !!menuMessage.sender?.id && menuMessage.sender.id !== userId && !saved && !isSecret && !menuMessage.pending, onClick: () => { setActionFor({ id: menuMessage.sender!.id, username: menuMessage.sender!.username || "" }); closeMenu(); } },
         { label: tr("Скопировать"), icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
         { label: menuMessage.translations?.[myLang] ? (showOrig.has(menuMessage.id) ? tr("Показать перевод") : tr("Показать оригинал")) : tr("Перевести"), icon: <Languages className="w-5 h-5" />,
