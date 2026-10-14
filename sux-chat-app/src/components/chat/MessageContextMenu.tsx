@@ -37,6 +37,7 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
   onMoreReactions: () => void;
   onClose: () => void;
 }) => {
+  const openedAt = useRef(Date.now());
   const bubbleRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [geo, setGeo] = useState<{ from: number; top: number; left: number; width: number; height: number; clipped: boolean; menuLeft: number; menuW: number; barLeft: number; barW: number } | null>(null);
@@ -116,7 +117,11 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
         transition: "background 180ms ease-out, backdrop-filter 180ms ease-out, -webkit-backdrop-filter 180ms ease-out",
       }}
       onClick={onClose}
-      onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+      // Android: долгое нажатие открыло меню по таймеру, а системный
+      // contextmenu приходит через полсекунды уже сюда, в подложку, — и
+      // закрывал меню (баг-репорт 23f85cbe). Первую секунду после открытия
+      // такие события не считаем «кликом мимо».
+      onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) onClose(); }}
     >
       {geo && (
         <>
