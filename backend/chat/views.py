@@ -2873,6 +2873,13 @@ class PushRegisterView(APIView):
         secret = (request.data.get("secret") or "").strip()
         if secret:
             defaults["secret"] = secret[:64]
+        # device_id связывает токен с сеансом (chat/devices.py): «выйти с
+        # устройства» удаляет и его пуш-токен, иначе пуши шли бы на чужой телефон.
+        did = (request.data.get("device_id") or "").strip()[:64] or None
+        if did:
+            # unique (user, device_id): прежний токен этого устройства уходит.
+            PushToken.objects.filter(user=profile, device_id=did).exclude(token=token).delete()
+            defaults["device_id"] = did
         device, created = PushToken.objects.update_or_create(token=token, defaults=defaults)
         return Response({"ok": True, "created": created})
 

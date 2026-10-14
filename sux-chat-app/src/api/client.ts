@@ -2203,11 +2203,14 @@ export const api = {
 
   // Регистрация FCM-токена устройства. Профиль берётся из сессии на сервере.
   registerPushToken: async (token: string, platform: string, secret?: string): Promise<any> => {
+    let device_id: string | undefined;
+    try { device_id = (await import("@/lib/secret")).deviceId(); } catch { /* без него тоже зарегистрируемся */ }
     const res = await fetchWithAuth(`${API_URL}/push/register/`, {
       method: "POST",
       headers: authHeaders(),
-      // secret — ключ шифрования пушей с устройства (см. lib/pushSecret.ts).
-      body: JSON.stringify({ token, platform, secret: secret || undefined }),
+      // secret — ключ шифрования пушей с устройства (см. lib/pushSecret.ts);
+      // device_id — чтобы «выйти с устройства» убирал и пуш-токен.
+      body: JSON.stringify({ token, platform, secret: secret || undefined, device_id }),
     });
     if (!res.ok) throw new Error("Не удалось зарегистрировать устройство");
     return res.json();

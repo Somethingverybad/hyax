@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Device, Profile
+from .models import Device, Profile, PushToken
 
 from .device_auth import DEVICE_RE, _cache, check_token  # noqa: F401
 
@@ -111,6 +111,7 @@ class DeviceRevokeView(APIView):
         d.revoked_at = timezone.now()
         d.save(update_fields=["revoked_at"])
         _cache.pop((me.id, device_id), None)
+        PushToken.objects.filter(user=me, device_id=device_id).delete()  # пуши туда больше не идут
         _notify(me, {"device_id": device_id})
         return Response({"ok": True, "self": device_id == _current_did(request)})
 
@@ -127,6 +128,9 @@ class DevicesRevokeOthersView(APIView):
         cur = _current_did(request)
         now = timezone.now()
         n = Device.objects.filter(profile=me, revoked_at__isnull=True).exclude(device_id=cur).update(revoked_at=now)
+        # Пуш-токены остальных устройств — долой; без device_id (старые клиенты) тоже:
+        # кому из них можно доверять, уже не известно, перерегистрируются при запуске.
+        PushToken.objects.filter(user=me).exclude(device_id=cur).delete()
         me.sessions_valid_from = now
         me.save(update_fields=["sessions_valid_from"])
         # Текущий токен выдан раньше now — переоформляем его, чтобы это
