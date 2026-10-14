@@ -94,6 +94,8 @@ T = {
 },
 }
 
+VER = {"en": "Current version", "ko": "현재 버전"}
+
 SWITCH = '<span class="lang"><a href="/" data-lang="ru"{ru}>RU</a><a href="/en/" data-lang="en"{en}>EN</a><a href="/ko/" data-lang="ko"{ko}>KO</a></span>'
 ALT = '<link rel="alternate" hreflang="ru" href="https://wyx.su/">\n<link rel="alternate" hreflang="en" href="https://wyx.su/en/">\n<link rel="alternate" hreflang="ko" href="https://wyx.su/ko/">\n<link rel="alternate" hreflang="x-default" href="https://wyx.su/">\n'
 # Автовыбор: первый визит на корень без явного выбора — уводим на язык браузера.
@@ -126,7 +128,8 @@ def translate(html, lang):
     out = out.replace('<html lang="ru">', f'<html lang="{lang}">')
     for k, v in d.items():
         out = out.replace(f'content="{k}"', f'content="{v}"').replace(f"<title>{k}</title>", f"<title>{v}</title>")
-    out = out.replace('href="/terms"', 'href="/terms"').replace('href="/privacy"', 'href="/privacy"')
+    # Строка версии собирается скриптом страницы — подпись в нём тоже переводим.
+    out = out.replace('"Текущая версия "', '"' + VER[lang] + ' "')
     return out
 
 def with_nav(html, lang):

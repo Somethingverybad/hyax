@@ -181,7 +181,7 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
 <script>
   // Версия — из манифеста обновлений; без него подпись просто не показывается.
   fetch("/apk/version.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
-    if (v && v.version) document.getElementById("ver").textContent = "Текущая версия " + v.version;
+    if (v && v.version) document.getElementById("ver").textContent = "Current version " + v.version;
   }).catch(function () {});
 </script>
 </body>
