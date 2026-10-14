@@ -3416,6 +3416,71 @@ class ChatTranslateView(APIView):
         return Response(self._payload(chat, part))
 
 
+def _translate_voice(request, msg, me, to):
+    """Перевод расшифровки голосового на язык to. Расшифровки ещё нет —
+    запрашиваем её и переводим сразу после (в фоне); ответ — сообщение как
+    есть, текст и перевод приедут через sync."""
+    from .translate import translate_text, norm_lang, same_text, TranslateNotConfigured, provider
+    if msg.chat.kind == "secret":
+        return Response({"error": "Голосовые секретного чата сервер не расшифрует"}, status=400)
+    if not provider():
+        return Response({"error": "Перевод пока не настроен"}, status=503)
+    text = (msg.voice_transcript or "").strip()
+    if msg.transcript_status == "done" and text:
+        if text == "(тишина)":
+            return Response({"error": "Здесь переводить нечего"}, status=400)
+        tr = dict(msg.transcript_translations or {})
+        if to in tr and same_text(tr[to], text):
+            tr.pop(to)
+        if to not in tr:
+            src = norm_lang(msg.transcript_lang) or (norm_lang(msg.sender.language) if msg.sender_id else "") or "ru"
+            try:
+                out = translate_text(text, to, src)
+            except TranslateNotConfigured:
+                return Response({"error": "Перевод пока не настроен"}, status=503)
+            except Exception:
+                logger.exception("translate voice on demand %s", msg.id)
+                return Response({"error": "Не удалось перевести"}, status=502)
+            if same_text(out, text):
+                return Response({"error": "Сообщение уже на вашем языке"}, status=422)
+            tr[to] = out
+            msg.transcript_translations = tr
+            msg.save(update_fields=["transcript_translations", "updated_at"])
+        return Response(MessageSerializer(msg, context={'request': request}).data)
+    me_id, update = str(me.id), []
+    if me_id not in (msg.transcript_for or []):
+        msg.transcript_for = [*(msg.transcript_for or []), me_id]
+        update.append("transcript_for")
+    start = msg.transcript_status not in ("done", "pending")
+    if start:
+        msg.transcript_status = "pending"
+        update.append("transcript_status")
+    if update:
+        msg.save(update_fields=[*update, "updated_at"])
+    import threading
+    threading.Thread(target=_transcribe_then_translate, args=(str(msg.id), to, start), daemon=True).start()
+    return Response(MessageSerializer(msg, context={'request': request}).data)
+
+
+def _transcribe_then_translate(message_id, to, start):
+    """Фон: расшифровать (или дождаться чужой расшифровки) и перевести на to."""
+    import time
+    from .transcribe import transcribe_message
+    from .translate import translate_transcript_to
+    try:
+        if start:
+            transcribe_message(message_id)
+        else:
+            for _ in range(90):
+                st = Message.objects.filter(id=message_id).values_list("transcript_status", flat=True).first()
+                if st != "pending":
+                    break
+                time.sleep(1)
+        translate_transcript_to(message_id, to)
+    except Exception:
+        logger.exception("transcribe+translate %s", message_id)
+
+
 class MessageTranslateView(APIView):
     """POST messages/<id>/translate/ {to} — перевод по запросу из меню
     сообщения (любой незашифрованный чат, где я участник или читатель)."""
@@ -3427,9 +3492,12 @@ class MessageTranslateView(APIView):
         msg = Message.objects.filter(id=pk).select_related('chat', 'sender').first()
         if not me or not msg or not _can_see_chat(msg.chat, me):
             return Response({"error": "Сообщение не найдено"}, status=404)
+        to = norm_lang(request.data.get("to")) or norm_lang(me.language) or "ru"
+        # Голосовое — переводим расшифровку (из меню, если автоперевод не сработал).
+        if not msg.cipher and msg.voice_url and not (msg.content or "").strip():
+            return _translate_voice(request, msg, me, to)
         if msg.cipher or not (msg.content or "").strip():
             return Response({"error": "Здесь переводить нечего"}, status=400)
-        to = norm_lang(request.data.get("to")) or norm_lang(me.language) or "ru"
         tr = dict(msg.translations or {})
         if to in tr and same_text(tr[to], msg.content):
             tr.pop(to)  # старый «перевод», равный оригиналу, — переводим заново

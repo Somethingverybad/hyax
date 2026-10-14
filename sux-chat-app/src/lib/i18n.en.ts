@@ -1602,5 +1602,14 @@ const en: Record<string, string> = {
   // Полный проход по интерфейсу (2026-10-14)
   "Прочитано": "Read",
   "Доставлено": "Delivered",
+  // Полный проход по интерфейсу (2026-10-14)
+  "Расшифровываю и перевожу…": "Transcribing and translating…",
+  "Удерживайте кнопку": "Hold the button",
+  "Записать без рук": "Record hands-free",
+  "Записать треугольник": "Record a triangle",
+  "Голосовое: держите — запись, тап — треугольник и Р.Ё.В.": "Voice: hold to record, tap for triangle and Ryov",
+  "Треугольник: держите — запись": "Triangle: hold to record",
+  "Р.Ё.В.: держите — у собеседника вибрирует": "Ryov: hold to vibrate your contact's phone",
+  "Голосовое: держите — запись": "Voice: hold to record",
 };
 export default en;

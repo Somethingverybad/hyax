@@ -342,6 +342,30 @@ def translate_transcript(message_id):
         msg.save(update_fields=["transcript_translations", "updated_at"])
 
 
+def translate_transcript_to(message_id, to):
+    """Перевести готовую расшифровку на язык to — по запросу из меню, без
+    оглядки на галки автоперевода."""
+    from .models import Message
+    msg = Message.objects.filter(id=message_id).first()
+    text = (getattr(msg, "voice_transcript", "") or "").strip()
+    if not msg or msg.transcript_status != "done" or not text or text == "(тишина)":
+        return
+    to = norm_lang(to)
+    tr = dict(msg.transcript_translations or {})
+    src = norm_lang(msg.transcript_lang) or "ru"
+    if not to or to == src or (to in tr and not same_text(tr[to], text)):
+        return
+    try:
+        out = translate_text(text, to, src)
+    except Exception:
+        logger.exception("translate transcript to %s: %s", to, message_id)
+        return
+    if out and not same_text(out, text):
+        tr[to] = out
+        msg.transcript_translations = tr
+        msg.save(update_fields=["transcript_translations", "updated_at"])
+
+
 def schedule_transcript(message_id):
     threading.Thread(target=translate_transcript, args=(message_id,), daemon=True).start()
 

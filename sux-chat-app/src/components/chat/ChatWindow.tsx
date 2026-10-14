@@ -488,8 +488,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Кнопка справа от поля ввода работает в трёх режимах: голосовое → видео →
   // Р.Ё.В. Короткий тап переключает режим, удержание запускает действие.
   type ComposerMode = RecordKind | "rov";
-  const MODES: ComposerMode[] = ["audio", "video", "rov"];
   const [recordKind, setRecordKind] = useState<ComposerMode>("audio");
+  // Панель записи: тап по кнопке записи раскрывает ряд кнопок на ширину строки —
+  // голосовое (над ним — запись без рук), треугольник (над ним — переворот и
+  // камера), Р.Ё.В. и «свернуть»; поле текста на это время прячется. Удержание
+  // самой кнопки по-прежнему сразу пишет голосовое.
+  const [recExpanded, setRecExpanded] = useState(false);
+  const activeKindRef = useRef<ComposerMode>("audio");
+  const pressFromPanelRef = useRef(false);
+  const collapseRec = () => { setRecExpanded(false); setRecordKind("audio"); activeKindRef.current = "audio"; };
   const [roving, setRoving] = useState(false);
   // Фронтальная/задняя камера для видео-сообщений (выбор до записи: удержание
   // занимает единственный палец, переключать во время съёмки нечем).
@@ -2428,6 +2435,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  // Перевод голосового по запросу: расшифровка есть — переводим её сразу; нет —
+  // сервер расшифрует и переведёт, текст и перевод приедут через sync.
+  const translateVoice = async (m: Message) => {
+    closeMenu();
+    setHiddenTranscripts((s) => { if (!s.has(m.id)) return s; const n = new Set(s); n.delete(m.id); return n; });
+    setShowOrig((s) => { const k = `t:${m.id}`; if (!s.has(k)) return s; const n = new Set(s); n.delete(k); return n; });
+    const ready = m.transcript_status === "done" && !!m.voice_transcript;
+    if (!ready) setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, transcript_status: "pending" } : x)));
+    try {
+      const upd = await api.translateMessage(m.id, myLang);
+      setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, ...upd, _key: x._key, _dims: x._dims } : x)));
+      if (!ready) toast(tr("Расшифровываю и перевожу…"));
+    } catch (e: any) {
+      if (!ready) setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, transcript_status: m.transcript_status } : x)));
+      toast.error(e?.message || tr("Не удалось перевести"));
+    }
+  };
+
   // Вернулись в приложение с открытой перепиской — то, что на экране,
   // прочитано: пока приложение было в фоне, syncSince отметку не ставил.
   useEffect(() => {
@@ -2605,9 +2630,60 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       .then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: heavy ? ImpactStyle.Medium : ImpactStyle.Light }))
       .catch(() => {});
   };
-  const beginRecording = (e: React.PointerEvent) => {
+  /** Запустить запись нужного вида (по таймеру удержания или кнопкой «без рук»). */
+  const startNow = async (kind: ComposerMode) => {
+    startingRef.current = true;
+    setRecPhase("starting");
+    recHaptic(false);
+    const ok = await startRec(kind as RecordKind, facing, (auto) => {
+      // Минута вышла, запись остановилась сама — отправляем, что есть.
+      startedRef.current = false;
+      recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
+      cancelArmedRef.current = false; setCancelArmed(false);
+      setRecPhase("idle");
+      if (auto) recHaptic(false);
+      void processRecording(auto).then(collapseRec);
+    });
+    startingRef.current = false;
+    if (!ok) {
+      setRecPhase("idle");
+      toast.error(kind === "video" ? tr("Нет доступа к камере") : tr("Нет доступа к микрофону"));
+      return;
+    }
+    startedRef.current = true;
+    // Палец отпустили ещё во время инициализации устройства — завершаем
+    // запись сразу, как только она стартовала.
+    if (stopRequestedRef.current) {
+      startedRef.current = false;
+      const cancel = cancelArmedRef.current;
+      const result = await stopRec(cancel);
+      setRecPhase("idle");
+      if (!result && !cancel) toast(tr("Удерживайте кнопку, пока идёт запись"));
+      await processRecording(result);
+      collapseRec();
+      return;
+    }
+    setRecPhase("idle");
+    recHaptic(true);
+  };
+
+  /** «Без рук»: голосовое пишется сразу закреплённым, отправка — тапом по кнопке. */
+  const startHandsFree = async () => {
+    if (uploading || recLockedRef.current || startingRef.current || startedRef.current) return;
+    activeKindRef.current = "audio"; pressFromPanelRef.current = true; setRecordKind("audio");
+    stopRequestedRef.current = false;
+    cancelArmedRef.current = false; setCancelArmed(false);
+    recLockedRef.current = true; setRecLocked(true); lockGestureRef.current = false; setLockProgress(1);
+    await startNow("audio");
+    if (!startedRef.current) { recLockedRef.current = false; setRecLocked(false); setLockProgress(0); }
+  };
+
+  const beginRecording = (e: React.PointerEvent, kind: ComposerMode = "audio", fromPanel = false) => {
     if (uploading) return;
     if (recLockedRef.current) { setRecPressed(true); return; } // тап по закреплённой — отправка на pointerup
+    activeKindRef.current = kind;
+    pressFromPanelRef.current = fromPanel;
+    if (kind !== recordKind) setRecordKind(kind);
     pressStartedAtRef.current = Date.now();
     setRecPressed(true);
     // Забираем указатель себе: иначе движение пальца уходит странице как
@@ -2622,7 +2698,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     // Р.Ё.В: держим — у собеседника вибрирует. Ни микрофон, ни камера не
     // нужны, поэтому отдельная короткая ветка.
-    if (recordKind === "rov") {
+    if (kind === "rov") {
       holdTimerRef.current = setTimeout(() => {
         startedRef.current = true;
         setRoving(true);
@@ -2630,40 +2706,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       }, HOLD_MS);
       return;
     }
-    holdTimerRef.current = setTimeout(async () => {
-      startingRef.current = true;
-      setRecPhase("starting");
-      recHaptic(false);
-      const ok = await startRec(recordKind as RecordKind, facing, (auto) => {
-        // Минута вышла, запись остановилась сама — отправляем, что есть.
-        startedRef.current = false;
-        recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
-        cancelArmedRef.current = false; setCancelArmed(false);
-        setRecPhase("idle");
-        if (auto) recHaptic(false);
-        void processRecording(auto);
-      });
-      startingRef.current = false;
-      if (!ok) {
-        setRecPhase("idle");
-        toast.error(recordKind === "video" ? tr("Нет доступа к камере") : tr("Нет доступа к микрофону"));
-        return;
-      }
-      startedRef.current = true;
-      // Палец отпустили ещё во время инициализации устройства — завершаем
-      // запись сразу, как только она стартовала.
-      if (stopRequestedRef.current) {
-        startedRef.current = false;
-        const cancel = cancelArmedRef.current;
-        const result = await stopRec(cancel);
-        setRecPhase("idle");
-        if (!result && !cancel) toast(tr("Удерживайте кнопку, пока идёт запись"));
-        await processRecording(result);
-        return;
-      }
-      setRecPhase("idle");
-      recHaptic(true);
-    }, HOLD_MS);
+    holdTimerRef.current = setTimeout(() => { void startNow(kind); }, HOLD_MS);
   };
 
   const moveRecording = (e: React.PointerEvent) => {
@@ -2671,8 +2714,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!from || recLockedRef.current) return;
     // Влево — отмена, вверх — закрепить (палец можно отпустить), как в Telegram.
     const up = from.y - e.clientY;
-    if (startedRef.current && recordKind !== "rov") setLockProgress(Math.max(0, Math.min(1, up / 70)));
-    if (up > 70 && startedRef.current && recordKind !== "rov") {
+    if (startedRef.current && activeKindRef.current !== "rov") setLockProgress(Math.max(0, Math.min(1, up / 70)));
+    if (up > 70 && startedRef.current && activeKindRef.current !== "rov") {
       recLockedRef.current = true; setRecLocked(true); lockGestureRef.current = true;
       setLockProgress(1);
       cancelArmedRef.current = false; setCancelArmed(false);
@@ -2696,6 +2739,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setRecPhase("idle");
     if (!cancel) recHaptic(false);
     await processRecording(result);
+    collapseRec();
   };
 
   const finishRecording = async (forceCancel = false) => {
@@ -2725,7 +2769,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
 
     // Р.Ё.В: отпустили — вибрация у собеседника гаснет.
-    if (recordKind === "rov") {
+    if (activeKindRef.current === "rov") {
       cancelArmedRef.current = false;
       setCancelArmed(false);
       if (startedRef.current) {
@@ -2733,16 +2777,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         setRoving(false);
         onRov?.(false);
       } else if (!forceCancel) {
-        setRecordKind((k) => MODES[(MODES.indexOf(k) + 1) % MODES.length]);
+        toast(tr("Удерживайте кнопку"));
       }
       return;
     }
 
-    // Запись так и не началась → это был тап: переключаем режим (если не отмена).
+    // Запись так и не началась → это был тап: по основной кнопке — раскрыть
+    // панель записи, по кнопке панели — подсказать, что её надо держать.
     if (!startedRef.current) {
       cancelArmedRef.current = false;
       setCancelArmed(false);
-      if (!forceCancel) setRecordKind((k) => MODES[(MODES.indexOf(k) + 1) % MODES.length]);
+      if (!forceCancel) {
+        if (pressFromPanelRef.current) toast(tr("Удерживайте кнопку"));
+        else { hideKeyboard(); setRecExpanded(true); }
+      }
       return;
     }
 
@@ -2756,8 +2804,65 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setRecPhase("idle");
     if (!cancel) recHaptic(false);
     await processRecording(result);
+    collapseRec();
   };
 
+
+  /** Замок над кнопкой записи: пока держишь — открытый, поднимается за
+   *  пальцем; на закреплении захлопывается с «подпрыгиванием». */
+  const lockIndicator = (recLocked || (recording && recPhase === "idle" && recordKind !== "rov")) ? (
+    <span
+      className="pointer-events-none absolute left-1/2 bottom-full flex flex-col items-center gap-1"
+      style={{
+        transform: `translate(-50%, ${-(14 + (recLocked ? 1 : lockProgress) * 28)}px)`,
+        transition: lockProgress === 0 || recLocked ? "transform 180ms ease-out" : "none",
+      }}
+      aria-hidden
+    >
+      {!recLocked && <ChevronUp className="w-4 h-4 text-muted-foreground" style={{ opacity: 1 - lockProgress }} />}
+      <span className={cn(
+        "w-9 h-9 rounded-full flex items-center justify-center shadow-md border",
+        recLocked ? "bg-primary text-primary-foreground border-primary lock-pop" : "bg-surface-2 text-foreground border-border",
+      )}>
+        {recLocked ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" style={{ transform: `rotate(${-lockProgress * 12}deg)` }} />}
+      </span>
+    </span>
+  ) : null;
+
+  /** Кнопка записи нужного вида: держать — запись (Р.Ё.В. — вибрация), у
+   *  основной кнопки тап раскрывает панель. */
+  const recButton = (kind: ComposerMode, main = false) => {
+    const mine = recordKind === kind;
+    const busy = mine && (recording || roving || recPhase !== "idle");
+    return (
+      <button
+        type="button"
+        onPointerDown={(e) => beginRecording(e, kind, !main)}
+        onPointerMove={moveRecording}
+        onPointerUp={() => finishRecording()}
+        onPointerCancel={() => finishRecording(true)}
+        disabled={uploading || (recLocked && !mine)}
+        style={{ touchAction: "none" }}
+        className={cn(
+          "ui-compose-btn h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
+          // Вдавливается сразу на касание — до того, как проснётся микрофон.
+          recPressed && mine && "scale-90",
+          busy ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
+        )}
+        aria-label={kind === "video" ? tr("Записать треугольник") : kind === "rov" ? tr("Держать — вибрация собеседнику") : tr("Записать голосовое")}
+        title={main ? tr("Голосовое: держите — запись, тап — треугольник и Р.Ё.В.")
+          : kind === "video" ? tr("Треугольник: держите — запись")
+          : kind === "rov" ? tr("Р.Ё.В.: держите — у собеседника вибрирует")
+          : tr("Голосовое: держите — запись")}
+      >
+        {uploading && main ? <Loader2 className="w-5 h-5 animate-spin" />
+          : recLocked && mine ? (mintM ? <MintIcon name="send" size={[10, 18]} className="ml-[2px]" /> : <Send className="w-5 h-5" />)
+          : kind === "video" ? (mintM ? <MintIcon name="camera" size={[22, 17]} /> : <Video className="w-5 h-5" />)
+          : kind === "rov" ? (mintM ? <MintIcon name="rev" size={21} className={cn(roving && "animate-pulse")} /> : <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />)
+          : mintM ? <MintIcon name="mic" size={[16, 23]} /> : <Mic className="w-5 h-5" />}
+      </button>
+    );
+  };
 
   // Объектные URL живут до конца сессии страницы — освобождаем при уходе
   // из чата, чтобы память не копилась от фотографий.
@@ -2854,6 +2959,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const m = menuMessage;
             if (m.translations?.[myLang]) { closeMenu(); setShowOrig((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; }); }
             else void translateOne(m);
+          } },
+        // Голосовое: перевод расшифровки — на случай, если автоперевод не сработал.
+        { label: menuMessage.transcript_translations?.[myLang] ? (showOrig.has(`t:${menuMessage.id}`) ? tr("Показать перевод") : tr("Показать оригинал")) : tr("Перевести"), icon: <Languages className="w-5 h-5" />,
+          show: !isSecret && !!menuMessage.voice_url && !menuMessage.content?.trim() && !menuMessage.pending,
+          onClick: () => {
+            const m = menuMessage;
+            if (m.transcript_translations?.[myLang]) { closeMenu(); setShowOrig((s) => { const k = `t:${m.id}`; const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; }); }
+            else void translateVoice(m);
           } },
         { label: pinned?.id === menuMessage.id ? tr("Открепить") : tr("Закрепить"), icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
         { label: tr("Переслать"), icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
@@ -4258,7 +4371,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </Button>
             )}
 
-            <div className="mint-field-wrap flex-1 relative">
+            <div className={cn("mint-field-wrap flex-1 relative", recExpanded && !hasDraft && "hidden")}>
               {/* Поле растёт под текст до четырёх строк: раньше это был
                   однострочный input (проп multiline ничего не делал), и
                   длинное сообщение набиралось вслепую. */}
@@ -4353,91 +4466,55 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </Button>
             ) : (
               <>
-                {recordKind === "video" && !recording && (
-                  <button
-                    type="button"
-                    onClick={toggleNoteFlip}
-                    disabled={uploading}
-                    className="ui-compose-btn h-11 w-11 shrink-0 rounded-md border bg-surface-2 text-foreground border-border flex items-center justify-center"
-                    title={noteFlip ? tr("Треугольник вершиной вниз (нажми — вверх)") : tr("Треугольник вершиной вверх (нажми — вниз)")}
-                    aria-label={noteFlip ? tr("Треугольник вершиной вверх") : tr("Треугольник вершиной вниз")}
-                    aria-pressed={noteFlip}
-                  >
-                    <TriangleIcon className={cn("w-5 h-5 transition-transform duration-300", noteFlip && "rotate-180")} />
-                  </button>
-                )}
-                {recordKind === "video" && !recording && (
-                  <button
-                    type="button"
-                    onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-                    disabled={uploading}
-                    className={cn(
-                      "ui-compose-btn h-11 w-11 shrink-0 rounded-md border flex items-center justify-center transition-colors",
-                      // Фронтальная активна — плитка инвертирована; задняя — обычная плитка.
-                      facing === "user"
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-surface-2 text-foreground border-border"
-                    )}
-                    title={facing === "user" ? tr("Камера: фронтальная (нажми — задняя)") : tr("Камера: задняя (нажми — фронтальная)")}
-                    aria-label={tr("Переключить камеру")}
-                    aria-pressed={facing === "user"}
-                  >
-                    <SwitchCamera className="w-5 h-5" />
-                  </button>
-                )}
-                <span className="relative shrink-0 md:ml-3">
-                {/* Замок над кнопкой: пока держишь — открытый, поднимается за
-                    пальцем; на закреплении захлопывается с «подпрыгиванием». */}
-                {(recLocked || (recording && recPhase === "idle" && recordKind !== "rov")) && (
-                  <span
-                    className="pointer-events-none absolute left-1/2 bottom-full flex flex-col items-center gap-1"
-                    style={{
-                      transform: `translate(-50%, ${-(14 + (recLocked ? 1 : lockProgress) * 28)}px)`,
-                      transition: lockProgress === 0 || recLocked ? "transform 180ms ease-out" : "none",
-                    }}
-                    aria-hidden
-                  >
-                    {!recLocked && <ChevronUp className="w-4 h-4 text-muted-foreground" style={{ opacity: 1 - lockProgress }} />}
-                    <span className={cn(
-                      "w-9 h-9 rounded-full flex items-center justify-center shadow-md border",
-                      recLocked ? "bg-primary text-primary-foreground border-primary lock-pop" : "bg-surface-2 text-foreground border-border",
-                    )}>
-                      {recLocked ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" style={{ transform: `rotate(${-lockProgress * 12}deg)` }} />}
+                {recExpanded ? (
+                  <div className="flex-1 flex items-end justify-around gap-2 min-w-0">
+                    {/* Голосовое; над ним — запись без рук. */}
+                    <span className="relative shrink-0">
+                      {!recording && recPhase === "idle" && !recLocked && (
+                        <button type="button" onClick={() => void startHandsFree()} disabled={uploading}
+                          className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-9 h-9 rounded-full border bg-surface-2 text-foreground border-border shadow-md flex items-center justify-center active:opacity-80 disabled:opacity-50"
+                          aria-label={tr("Записать без рук")} title={tr("Записать без рук")}>
+                          <Lock className="w-4 h-4" />
+                        </button>
+                      )}
+                      {recordKind === "audio" && lockIndicator}
+                      {recButton("audio")}
                     </span>
+                    {/* Треугольник; над ним — переворот треугольника и камера. */}
+                    <span className="relative shrink-0">
+                      {!recording && recPhase === "idle" && !recLocked && (
+                        <span className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 flex flex-col items-center gap-2">
+                          <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} disabled={uploading}
+                            className={cn("w-9 h-9 rounded-full border shadow-md flex items-center justify-center transition-colors",
+                              facing === "user" ? "bg-foreground text-background border-foreground" : "bg-surface-2 text-foreground border-border")}
+                            title={facing === "user" ? tr("Камера: фронтальная (нажми — задняя)") : tr("Камера: задняя (нажми — фронтальная)")}
+                            aria-label={tr("Переключить камеру")} aria-pressed={facing === "user"}>
+                            <SwitchCamera className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={toggleNoteFlip} disabled={uploading}
+                            className="w-9 h-9 rounded-full border bg-surface-2 text-foreground border-border shadow-md flex items-center justify-center"
+                            title={noteFlip ? tr("Треугольник вершиной вниз (нажми — вверх)") : tr("Треугольник вершиной вверх (нажми — вниз)")}
+                            aria-label={noteFlip ? tr("Треугольник вершиной вверх") : tr("Треугольник вершиной вниз")} aria-pressed={noteFlip}>
+                            <TriangleIcon className={cn("w-4 h-4 transition-transform duration-300", noteFlip && "rotate-180")} />
+                          </button>
+                        </span>
+                      )}
+                      {recordKind === "video" && lockIndicator}
+                      {recButton("video")}
+                    </span>
+                    {onRov && !saved && <span className="relative shrink-0">{recButton("rov")}</span>}
+                    <button type="button" onClick={collapseRec} disabled={recording || recLocked || recPhase !== "idle" || roving}
+                      className="ui-compose-btn h-11 w-11 shrink-0 rounded-md border bg-surface-2 text-foreground border-border flex items-center justify-center disabled:opacity-40"
+                      aria-label={tr("Свернуть")} title={tr("Свернуть")}>
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="relative shrink-0 md:ml-3">
+                    {lockIndicator}
+                    {recButton("audio", true)}
                   </span>
                 )}
-                <button
-                  type="button"
-                  onPointerDown={beginRecording}
-                  onPointerMove={moveRecording}
-                  onPointerUp={() => finishRecording()}
-                  onPointerCancel={() => finishRecording(true)}
-                  disabled={uploading}
-                  style={{ touchAction: "none" }}
-                  className={cn(
-                    "ui-compose-btn h-11 w-11 shrink-0 rounded-md flex items-center justify-center transition-[color,background-color,transform] duration-150 disabled:opacity-50",
-                    // Вдавливается сразу на касание — до того, как проснётся микрофон.
-                    recPressed && "scale-90",
-                    recording || roving || recPhase !== "idle" ? "bg-foreground text-background" : "bg-primary md:bg-primary-deep text-primary-foreground"
-                  )}
-                  aria-label={
-                    recordKind === "video" ? tr("Записать видео")
-                      : recordKind === "rov" ? tr("Держать — вибрация собеседнику")
-                      : tr("Записать голосовое")
-                  }
-                  title={
-                    recordKind === "video" ? tr("Видео (тап — Р.Ё.В)")
-                      : recordKind === "rov" ? tr("Р.Ё.В: держи — у собеседника вибрирует (тап — голосовое)")
-                      : tr("Голосовое (тап — видео)")
-                  }
-                >
-                  {uploading ? <Loader2 className="w-5 h-5 animate-spin" />
-                    : recLocked ? (mintM ? <MintIcon name="send" size={[10, 18]} className="ml-[2px]" /> : <Send className="w-5 h-5" />)
-                    : recordKind === "video" ? (mintM ? <MintIcon name="camera" size={[22, 17]} /> : <Video className="w-5 h-5" />)
-                    : recordKind === "rov" ? (mintM ? <MintIcon name="rev" size={21} className={cn(roving && "animate-pulse")} /> : <Vibrate className={cn("w-5 h-5", roving && "animate-pulse")} />)
-                    : mintM ? <MintIcon name="mic" size={[16, 23]} /> : <Mic className="w-5 h-5" />}
-                </button>
-                </span>
               </>
             )}
           </div>
