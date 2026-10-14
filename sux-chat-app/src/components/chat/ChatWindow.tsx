@@ -6,7 +6,9 @@ import { outbox, mergePending } from "@/lib/outbox";
 import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles } from "lucide-react";
+import { getLang, t as tr, LANG_NAMES, type Lang } from "@/lib/i18n";
+import type { ChatTranslate } from "@/api/client";
+import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -121,6 +123,8 @@ interface Message {
   video_mirror?: boolean;
   video_flip?: boolean;
   video_poster?: string | null; // первый кадр кружка (data: из секретного описания)
+  /** Переводы текста по языкам (chat/translate.py): {"en": "...", "ko": "..."}. */
+  translations?: Record<string, string> | null;
   /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
   /** Кадр-превью видео с сервера. */
   poster_url?: string | null;
@@ -241,14 +245,14 @@ export interface LatestMessage { id: string; text: string; sender_id: string; cr
 
 /** Тот же текст превью, что строит сервер (ChatSerializer.get_last_message). */
 function previewText(m: { content?: string | null; entities?: TextEntity[] | null; sticker?: unknown; video_url?: string | null; voice_url?: string | null; file_url?: string | null; geo_lat?: number | null }): string {
-  if (m.geo_lat != null) return "📍 Геопозиция";
+  if (m.geo_lat != null) return tr("📍 Геопозиция");
   const t = maskPreview(m.content || "", m.entities).trim();
   if (t) return t.slice(0, 120);
-  if (m.sticker) return "Стикер";
-  if (m.video_url) return "Видео-сообщение";
-  if (m.voice_url) return "Голосовое сообщение";
-  if (m.file_url) return "Файл";
-  return "Сообщение";
+  if (m.sticker) return tr("Стикер");
+  if (m.video_url) return tr("Видео-сообщение");
+  if (m.voice_url) return tr("Голосовое сообщение");
+  if (m.file_url) return tr("Файл");
+  return tr("Сообщение");
 }
 
 /** Вторая галочка: сообщение прочитал кто-то кроме автора (в группе — хоть один). */
@@ -535,9 +539,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       const r = await api.pinMessage(m.id, pin);
       setPinned(r.pinned_message);
-      toast.success(pin ? "Закреплено" : "Откреплено");
+      toast.success(pin ? "Закреплено" : tr("Откреплено"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось");
+      toast.error(e?.message || tr("Не удалось"));
     }
   };
 
@@ -597,7 +601,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setSelected(null);
       if (targetId === chatId) syncSince();
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось переслать");
+      toast.error(e?.message || tr("Не удалось переслать"));
     }
   };
 
@@ -607,7 +611,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!id) {
       try { id = (await api.getSavedChat()).id; } catch { toast.error("Избранное недоступно"); return; }
     }
-    await forwardTo([m], id, "Добавлено в избранное");
+    await forwardTo([m], id, tr("Добавлено в избранное"));
   };
   /** Пакет из режима выбора — в избранное. */
   const selectionToSaved = async () => {
@@ -616,15 +620,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!id) {
       try { id = (await api.getSavedChat()).id; } catch { toast.error("Избранное недоступно"); return; }
     }
-    await forwardTo(list, id, list.length > 1 ? `В избранное: ${list.length}` : "Добавлено в избранное");
+    await forwardTo(list, id, list.length > 1 ? `В избранное: ${list.length}` : tr("Добавлено в избранное"));
   };
 
   /** Название чата для списка пересылки. */
   const chatLabel = (c: ChatPick) => {
-    if (c.kind === "channel") return c.name || "Канал";
-    if (c.is_group) return c.name || "Группа";
+    if (c.kind === "channel") return c.name || tr("Канал");
+    if (c.is_group) return c.name || tr("Группа");
     const other = c.participants?.find((p) => p.id !== userId);
-    return other?.username || c.name || "Чат";
+    return other?.username || c.name || tr("Чат");
   };
   const [addQuery, setAddQuery] = useState("");
   const [addResults, setAddResults] = useState<Profile[]>([]);
@@ -632,7 +636,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Двойной тап считаем сами: событие dblclick в WKWebView до нас не доходит —
   // экран уже слушает касания для свайпа и удержания.
-  const lastTapRef = useRef<{ id: string; at: number } | null>(null);
+  const lastTapRef = useRef<{ id: string; at: number; n: number } | null>(null);
+  // Перевод: мой язык, кому показываем оригинал вместо перевода, шторка настроек.
+  const myLang = getLang();
+  const [showOrig, setShowOrig] = useState<Set<string>>(() => new Set());
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [trSettings, setTrSettings] = useState<ChatTranslate | null>(null);
+  const translateOne = async (m: Message) => {
+    closeMenu();
+    try {
+      const upd = await api.translateMessage(m.id, myLang);
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, translations: upd.translations } : x)));
+      setShowOrig((s) => { const n = new Set(s); n.delete(m.id); return n; });
+    } catch (e: any) { toast.error(e?.message || tr("Не удалось перевести")); }
+  };
   // Касание это было или мышь: на касании двойной тап считаем сами, а
   // системное событие двойного щелчка на iPhone приходит следом — без этой
   // метки реакция ставилась и тут же снималась двумя запросами подряд.
@@ -811,7 +828,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           setInline((prev) => (prev && prev.queryId === query_id && prev.results === null ? { ...prev, error: `@${p.bot} не отвечает` } : prev));
         }, 12000);
       } catch (e: any) {
-        setInline((prev) => (prev && prev.bot === p.bot ? { ...prev, error: e?.message || "Бот не найден" } : prev));
+        setInline((prev) => (prev && prev.bot === p.bot ? { ...prev, error: e?.message || tr("Бот не найден") } : prev));
       }
     }, 450);
   };
@@ -1719,7 +1736,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const queue: Track[] = audios.map((x) => ({
       id: x.id,
       raw: x.file_url as string,
-      title: (x.file_name || "Аудио").replace(/\.[^.]+$/, ""),
+      title: (x.file_name || tr("Аудио")).replace(/\.[^.]+$/, ""),
       artist: x.sender?.username,
     }));
     const idx = Math.max(0, audios.findIndex((x) => x.id === m.id));
@@ -1792,12 +1809,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const prev = lastTapRef.current;
     const now = performance.now();
     if (prev && prev.id === message.id && now - prev.at < 320) {
-      lastTapRef.current = null;
       cancelLongPress();
+      // Третий тап подряд — скопировать текст (на Android удержание не везде
+      // срабатывает, а копировать хочется чаще всего). Второй — сердце.
+      if (prev.n >= 2) {
+        lastTapRef.current = null;
+        if (message.content?.trim()) void copyMessage(message);
+        return;
+      }
+      lastTapRef.current = { id: message.id, at: now, n: prev.n + 1 };
       if (!message.pending) toggleReaction(message, DEFAULT_REACTION);
       return;
     }
-    lastTapRef.current = { id: message.id, at: now };
+    lastTapRef.current = { id: message.id, at: now, n: 1 };
     startLongPress(message);
   };
   const msgPointerMove = (e: React.PointerEvent, message: Message, isOwn: boolean) => {
@@ -1882,14 +1906,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
-    if (m.geo_lat != null) return "📍 Геопозиция";
+    if (m.geo_lat != null) return tr("📍 Геопозиция");
     const t = maskPreview(m.content || "", m.entities).trim();
     if (t) return t;
-    if (m.sticker?.file_url) return "Стикер";
-    if (m.video_url) return "Видео-сообщение";
-    if (m.voice_url) return "Голосовое сообщение";
-    if (m.file_url) return "Файл";
-    return "Сообщение";
+    if (m.sticker?.file_url) return tr("Стикер");
+    if (m.video_url) return tr("Видео-сообщение");
+    if (m.voice_url) return tr("Голосовое сообщение");
+    if (m.file_url) return tr("Файл");
+    return tr("Сообщение");
   };
 
   /** Стикер уходит так же, как текст: появляется в ленте сразу, с той же
@@ -1944,7 +1968,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages((prev) => prev.some((m) => m.id === sent.id) ? prev.filter((m) => m.id !== tempId) : prev.map((m) => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId } : m)));
     } catch (e: any) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      toast.error(e?.message || "Не удалось отправить");
+      toast.error(e?.message || tr("Не удалось отправить"));
     }
   };
   /** Из панели стикеров: в личке — собеседнику, в группе — спросим кому. */
@@ -2000,8 +2024,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     file: Blob, meta: Omit<SecretMedia, "key" | "iv" | "size">, caption: { t: string; e: TextEntity[] } | null,
     replyId: string | undefined, onProgress: (p: number) => void,
   ): Promise<Message> => {
-    if (!skey || !chatId) throw new Error("Нет ключа");
-    if (file.size > SECRET_MAX) throw new Error("В секретный чат — файлы до 50 МБ");
+    if (!skey || !chatId) throw new Error(tr("Нет ключа"));
+    if (file.size > SECRET_MAX) throw new Error(tr("В секретный чат — файлы до 50 МБ"));
     const enc = await encryptFile(file);
     const up = await api.uploadFile(new File([enc.blob], "secret.bin", { type: "application/octet-stream" }), undefined, onProgress);
     const payload: SecretPayload = { t: caption?.t || "", e: caption?.e || [], m: { ...meta, key: enc.key, iv: enc.iv, size: file.size } };
@@ -2047,7 +2071,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           ? prev.filter((m) => m.id !== j.tempId)
           : prev.map((m) => (m.id === j.tempId ? { ...m, ...sent, ...j.local, content: m.content ?? "", entities: m.entities, pending: false, _progress: null, _ready: true, _key: j.tempId } : m)));
       } catch (e) {
-        toast.error((e as Error).message || "Не удалось отправить файл");
+        toast.error((e as Error).message || tr("Не удалось отправить файл"));
         setMessages((prev) => prev.filter((m) => m.id !== j.tempId));
       }
     }
@@ -2073,7 +2097,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         setMessages((prev) => prev.map((m) =>
           m.id === target.id ? { ...m, ...upd, content: newText, entities: newEntities, is_edited: true, _key: m._key, _dims: m._dims } : m));
       } catch {
-        toast.error("Не удалось изменить сообщение");
+        toast.error(tr("Не удалось изменить сообщение"));
         setEditing(target); setDraft(raw);
       }
       return;
@@ -2082,7 +2106,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Разметка (**жирный**, ||спойлер||…) уходит отдельно от текста: сервер
     // хранит чистый текст и диапазоны оформления (lib/format.tsx).
     if (isSecret && (!skey || selectedSound)) {
-      toast.error(!skey ? "Ключ этого секретного чата не на этом устройстве" : "Звуки в секретный чат не отправляются");
+      toast.error(!skey ? "Ключ этого секретного чата не на этом устройстве" : tr("Звуки в секретный чат не отправляются"));
       return;
     }
     const rawText = draftRef.current.trim();
@@ -2135,7 +2159,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         );
       } catch (error: any) {
         console.error("Error sending message:", error);
-        toast.error("Ошибка отправки: " + (error?.message || "Неизвестная ошибка"));
+        toast.error("Ошибка отправки: " + (error?.message || tr("Неизвестная ошибка")));
         setMessages(prev => prev.filter(m => m.id !== tempId));
         setDraft(rawText);
         setSelectedSound(sound);
@@ -2301,7 +2325,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setAddQuery("");
       setAddResults([]);
     } catch {
-      toast.error("Не удалось добавить");
+      toast.error(tr("Не удалось добавить"));
     } finally {
       setAdding(false);
     }
@@ -2312,9 +2336,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success("Скопировано");
+      toast.success(tr("Скопировано"));
     } catch {
-      toast.error("Не удалось скопировать");
+      toast.error(tr("Не удалось скопировать"));
     }
     closeMenu();
   };
@@ -2329,7 +2353,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, ...upd, _key: x._key, _dims: x._dims } : x)));
     } catch {
       setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, transcript_status: "error" } : x)));
-      toast.error("Не удалось расшифровать");
+      toast.error(tr("Не удалось расшифровать"));
     }
   };
 
@@ -2551,7 +2575,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       startingRef.current = false;
       if (!ok) {
         setRecPhase("idle");
-        toast.error(recordKind === "video" ? "Нет доступа к камере" : "Нет доступа к микрофону");
+        toast.error(recordKind === "video" ? "Нет доступа к камере" : tr("Нет доступа к микрофону"));
         return;
       }
       startedRef.current = true;
@@ -2709,9 +2733,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     yesterday.setDate(yesterday.getDate() - 1);
 
     if (date.toDateString() === today.toDateString()) {
-      return "Сегодня";
+      return tr("Сегодня");
     } else if (date.toDateString() === yesterday.toDateString()) {
-      return "Вчера";
+      return tr("Вчера");
     } else {
       return date.toLocaleDateString("ru-RU", {
         day: "numeric",
@@ -2728,7 +2752,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <div className="w-20 h-20 bg-gradient-primary rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-glow">
             <Send className="w-10 h-10 text-primary-foreground" />
           </div>
-          <h3 className="text-xl font-semibold mb-2">Выберите чат</h3>
+          <h3 className="text-xl font-semibold mb-2">{tr("Выберите чат")}</h3>
           <p className="text-muted-foreground">
             Выберите существующий чат или создайте новый
           </p>
@@ -2742,20 +2766,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // телефоне реакции — рядом над пузырём), «Выбрать» — отделено внизу.
   const menuItems = menuMessage
     ? [
-        { label: "Реакция", icon: <Smile className="w-5 h-5" />, show: !menuMessage.pending && !!menuPos, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
-        { label: "Ответить", icon: <Reply className="w-5 h-5" />, show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
-        { label: "Действие…", icon: <Sparkles className="w-5 h-5" />, show: !!menuMessage.sender?.id && menuMessage.sender.id !== userId && !saved && !isSecret && !menuMessage.pending, onClick: () => { setActionFor({ id: menuMessage.sender!.id, username: menuMessage.sender!.username || "" }); closeMenu(); } },
-        { label: "Скопировать", icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
-        { label: pinned?.id === menuMessage.id ? "Открепить" : "Закрепить", icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
-        { label: "Переслать", icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
-        { label: "Редактировать", icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
-        { label: "В избранное", icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
-        { label: "В плейлист", icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && !isSecret && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
-        { label: "Просмотры и реакции", icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
-        { label: "Пожаловаться", icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
-        { label: "Удалить у себя", icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
-        { label: "Удалить у всех", icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
-        { label: "Выбрать", icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
+        { label: tr("Реакция"), icon: <Smile className="w-5 h-5" />, show: !menuMessage.pending && !!menuPos, onClick: () => { const m = menuMessage; closeMenu(); setReactFor(m); } },
+        { label: tr("Ответить"), icon: <Reply className="w-5 h-5" />, show: true, onClick: () => { setReplyTo(menuMessage); closeMenu(); } },
+        { label: tr("Действие…"), icon: <Sparkles className="w-5 h-5" />, show: !!menuMessage.sender?.id && menuMessage.sender.id !== userId && !saved && !isSecret && !menuMessage.pending, onClick: () => { setActionFor({ id: menuMessage.sender!.id, username: menuMessage.sender!.username || "" }); closeMenu(); } },
+        { label: tr("Скопировать"), icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
+        { label: menuMessage.translations?.[myLang] ? (showOrig.has(menuMessage.id) ? tr("Показать перевод") : tr("Показать оригинал")) : tr("Перевести"), icon: <Languages className="w-5 h-5" />,
+          show: !isSecret && !!menuMessage.content?.trim() && !menuMessage.pending,
+          onClick: () => {
+            const m = menuMessage;
+            if (m.translations?.[myLang]) { closeMenu(); setShowOrig((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; }); }
+            else void translateOne(m);
+          } },
+        { label: pinned?.id === menuMessage.id ? "Открепить" : tr("Закрепить"), icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
+        { label: tr("Переслать"), icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
+        { label: tr("Редактировать"), icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
+        { label: tr("В избранное"), icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
+        { label: tr("В плейлист"), icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && !isSecret && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
+        { label: tr("Просмотры и реакции"), icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
+        { label: tr("Пожаловаться"), icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
+        { label: tr("Удалить у себя"), icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
+        { label: tr("Удалить у всех"), icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
+        { label: tr("Выбрать"), icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
       ].filter((i) => i.show)
     : [];
 
@@ -2838,35 +2869,34 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   <span className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
                   <span className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg bg-surface-1 border border-border shadow-xl py-1 flex flex-col">
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); peer ? setProfileOpen(true) : setGroupOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                      {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? "Профиль" : "Настройки группы"}
+                      {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? "Профиль" : tr("Настройки группы")}
                     </button>
                     {mintM && onCall && !saved && (peer || isGroup) && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); onCall(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <Phone className="w-5 h-5 text-foreground/80" />Позвонить
-                      </button>
+                        <Phone className="w-5 h-5 text-foreground/80" />{tr("Позвонить")}</button>
                     )}
                     {mintM && !isGroup && !saved && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setAddOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <UserPlus className="w-5 h-5 text-foreground/80" />Добавить участников
-                      </button>
+                        <UserPlus className="w-5 h-5 text-foreground/80" />{tr("Добавить участников")}</button>
                     )}
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                      <ImageIcon className="w-5 h-5 text-foreground/80" />Обои чата
-                    </button>
+                      <ImageIcon className="w-5 h-5 text-foreground/80" />{tr("Обои чата")}</button>
                     {isSecret && skey && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setKeyOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <KeyRound className="w-5 h-5 text-foreground/80" />Ключ шифрования
+                        <KeyRound className="w-5 h-5 text-foreground/80" />{tr("Ключ шифрования")}</button>
+                    )}
+                    {!isSecret && peer && !peer.is_bot && !saved && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setTranslateOpen(true); api.getChatTranslate(chatId!).then(setTrSettings).catch(() => setTrSettings(null)); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Languages className="w-5 h-5 text-foreground/80" />{tr("Перевод")}
                       </button>
                     )}
                     {isSecret && skey && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); navigate(`/profile/secret-transfer?give=1&chat=${chatId}`); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <Send className="w-5 h-5 text-foreground/80" />Перенести на другое устройство
-                      </button>
+                        <Send className="w-5 h-5 text-foreground/80" />{tr("Перенести на другое устройство")}</button>
                     )}
                     {!isSecret && peer && !peer.is_bot && !saved && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setSecretIntroOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
-                        <Lock className="w-5 h-5 text-online" />Секретный чат
-                      </button>
+                        <Lock className="w-5 h-5 text-online" />{tr("Секретный чат")}</button>
                     )}
                   </span>
                 </>
@@ -2886,7 +2916,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <div ref={headerRef} className="mint-glass mint-glass-over mint-glass-flat relative z-20 shrink-0 pad-safe-top" style={{ marginBottom: "calc(-1 * var(--glass-h, 0px))" }}>
           <div className="mint-head !pb-[11px] !pt-[19px]">
             {onBack ? (
-              <button type="button" onClick={onBack} aria-label="Назад" className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">
+              <button type="button" onClick={onBack} aria-label={tr("Назад")} className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">
                 <MintIcon name="back" size={[7, 13]} />
                 {otherUnread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#345c54] text-white text-[10.7px] leading-[18px] text-center">{otherUnread > 99 ? "99+" : otherUnread}</span>}
               </button>
@@ -2894,8 +2924,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <button type="button" onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)}
               className="mint-pill h-[43px] px-5 min-w-[120px] max-w-[60vw] flex flex-col items-center justify-center">
               <span className="max-w-full truncate text-[16.3px] font-semibold leading-[18px] flex items-center gap-1" style={{ color: "var(--mint-title)" }}>
-                {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label="Секретный чат" />}
-                <span className="truncate">{headerTitle || peer?.username || group?.name || "Чат"}</span>
+                {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
+                <span className="truncate">{headerTitle || peer?.username || group?.name || tr("Чат")}</span>
               </span>
               <span className="max-w-full truncate text-[11.7px] leading-[16px] mint-muted">
                 {peer ? (peer.is_bot ? "бот" : peer.is_online ? "в сети" : lastSeenText(peer.last_seen))
@@ -2905,7 +2935,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </button>
             <span className="relative">
               <Aura active={!!peer && !peer.is_bot && !!peer.is_online} owner={peer} size={43}>
-              <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label="Меню чата"
+              <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label={tr("Меню чата")}
                 className="block w-[43px] h-[43px] rounded-full overflow-hidden border-2 border-white" style={{ boxShadow: "var(--mint-shadow)" }}>
                 {peer ? <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-full h-full !rounded-none" />
                   : group?.avatar_url ? <CachedImg src={mediaUrl(group.avatar_url)} alt="" className="w-full h-full object-cover" />
@@ -2924,7 +2954,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               type="button"
               onClick={onBack}
               className="p-2 -ml-2 text-foreground active:text-primary md:hidden"
-              aria-label="Назад"
+              aria-label={tr("Назад")}
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -2934,15 +2964,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               type="button"
               onClick={() => setProfileOpen(true)}
               className="ui-head-title flex items-center gap-3 flex-1 min-w-0 text-left"
-              title="Профиль собеседника"
+              title={tr("Профиль собеседника")}
             >
               <Aura active={!peer.is_bot && !!peer.is_online} owner={peer} size={42}>
                 <Identicon id={peer.id} avatarUrl={peer.avatar_url} className="w-10 h-10 md:w-11 md:h-11" />
               </Aura>
               <span className="min-w-0 flex flex-col">
                 <span className="text-h1 truncate leading-tight flex items-center gap-1.5">
-                  {isSecret && <Lock className="w-4 h-4 shrink-0 text-online" aria-label="Секретный чат" />}
-                  <span className="truncate">{headerTitle || peer.username || "Чат"}</span>
+                  {isSecret && <Lock className="w-4 h-4 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
+                  <span className="truncate">{headerTitle || peer.username || tr("Чат")}</span>
                 </span>
                 <span className="text-small text-muted-foreground truncate">
                   {!peer.is_bot && (
@@ -2959,7 +2989,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               type="button"
               onClick={() => setGroupOpen(true)}
               className="flex items-center gap-3 flex-1 min-w-0 text-left"
-              title="Настройки группы"
+              title={tr("Настройки группы")}
             >
               {group?.avatar_url ? (
                 <CachedImg src={mediaUrl(group.avatar_url)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
@@ -2967,16 +2997,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <span className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center shrink-0"><Users className="w-5 h-5 text-primary" /></span>
               )}
               <span className="min-w-0 flex flex-col">
-                <span className="text-h1 truncate leading-tight">{headerTitle || group?.name || "Группа"}</span>
-                <span className="text-small text-muted-foreground truncate">Группа</span>
+                <span className="text-h1 truncate leading-tight">{headerTitle || group?.name || tr("Группа")}</span>
+                <span className="text-small text-muted-foreground truncate">{tr("Группа")}</span>
               </span>
             </button>
           ) : (
             <span className="flex items-center gap-3 flex-1 min-w-0">
               {saved && <span className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center shrink-0"><Bookmark className="w-5 h-5 text-amber" /></span>}
               <span className="min-w-0 flex flex-col">
-                <span className="text-h1 truncate leading-tight">{headerTitle || "Чат"}</span>
-                {saved && <span className="text-small text-muted-foreground truncate">Сообщения для себя</span>}
+                <span className="text-h1 truncate leading-tight">{headerTitle || tr("Чат")}</span>
+                {saved && <span className="text-small text-muted-foreground truncate">{tr("Сообщения для себя")}</span>}
               </span>
             </span>
           )}
@@ -2985,7 +3015,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               type="button"
               onClick={() => setAddOpen(true)}
               className="p-2 text-foreground active:text-primary"
-              aria-label="Добавить участников"
+              aria-label={tr("Добавить участников")}
             >
               <UserPlus className="w-5 h-5" />
             </button>
@@ -2995,7 +3025,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               type="button"
               onClick={onCall}
               className="p-2 text-foreground active:text-primary"
-              aria-label="Позвонить"
+              aria-label={tr("Позвонить")}
             >
               <Phone className="w-5 h-5" />
             </button>
@@ -3006,7 +3036,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 type="button"
                 onClick={() => setHeaderMenuOpen((v) => !v)}
                 className="p-2 -mr-2 text-foreground active:text-primary"
-                aria-label="Меню чата"
+                aria-label={tr("Меню чата")}
               >
                 <MoreVertical className="w-5 h-5" />
               </button>
@@ -3024,7 +3054,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         {isSecret && !skey && secretInfo?.state === "pending" && secretInfo.initiator_id !== userId && (
           <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-background/85 backdrop-blur-sm px-4 pt-[calc(var(--glass-h,0px)+20px)] pb-[var(--compose-h,0px)] flex">
             <div className="m-auto w-full pb-4">
-              <SecretChatIntro mode="accept" peerName={peer?.username || "собеседника"} busy={secretBusy}
+              <SecretChatIntro mode="accept" peerName={peer?.username || tr("собеседника")} busy={secretBusy}
                 onConfirm={acceptSecret} onDecline={declineSecret} />
             </div>
           </div>
@@ -3062,7 +3092,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <button type="button" onClick={() => jumpToMessage(pinned.id)} disabled={jumping} className="flex-1 min-w-0 text-left disabled:opacity-60">
             {mintM ? (
               <>
-                <span className="block text-[14.3px] font-medium leading-[18px] truncate" style={{ color: "var(--mint-title)" }}>Закреплённое сообщение</span>
+                <span className="block text-[14.3px] font-medium leading-[18px] truncate" style={{ color: "var(--mint-title)" }}>{tr("Закреплённое сообщение")}</span>
                 <span className="block text-[14.3px] leading-[18px] mint-muted truncate">{pinned.preview}</span>
               </>
             ) : (
@@ -3074,9 +3104,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           </button>
           <button
             type="button"
-            onClick={() => { const m = messages.find((x) => x.id === pinned.id); m ? togglePin(m, false) : api.pinMessage(pinned.id, false).then(() => setPinned(null)).catch(() => toast.error("Не удалось")); }}
+            onClick={() => { const m = messages.find((x) => x.id === pinned.id); m ? togglePin(m, false) : api.pinMessage(pinned.id, false).then(() => setPinned(null)).catch(() => toast.error(tr("Не удалось"))); }}
             className={mintM ? "p-1.5 mint-ink" : "p-1.5 text-muted-foreground"}
-            aria-label="Открепить"
+            aria-label={tr("Открепить")}
           >
             {mintM ? <MintIcon name="pinnedRight" size={[24, 14]} /> : <X className="w-4 h-4" />}
           </button>
@@ -3113,7 +3143,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 disabled={loadingOlder}
                 className="text-xs text-muted-foreground px-3 py-1 bg-muted/50 rounded-full disabled:opacity-60"
               >
-                {loadingOlder ? "Загружаю…" : "Показать более ранние"}
+                {loadingOlder ? "Загружаю…" : tr("Показать более ранние")}
               </button>
             </div>
           )}
@@ -3129,7 +3159,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               );
             }
             if (message.action) {
-              const who = isOwn ? "Вы" : message.sender?.username || "Кто-то";
+              const who = isOwn ? "Вы" : message.sender?.username || tr("Кто-то");
               const whom = message.action_target?.id === userId ? "вам" : message.action_target?.username || "";
               return (
                 <div key={message._key ?? message.id} id={`msg-${message.id}`} className="flex justify-center my-1.5" data-message-id={message.id}>
@@ -3204,7 +3234,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 )}
                 {unreadMarkId === message.id && (
                   <div id="unread-mark" className="ui-unread-mark -mx-3 md:-mx-7 py-1.5 bg-surface-3/80 text-center text-small text-subtle">
-                    <span>Непрочитанные сообщения</span>
+                    <span>{tr("Непрочитанные сообщения")}</span>
                   </div>
                 )}
 
@@ -3238,7 +3268,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   {selected && (
                     <button
                       type="button"
-                      aria-label={selected.has(message.id) ? "Снять выбор" : "Выбрать сообщение"}
+                      aria-label={selected.has(message.id) ? "Снять выбор" : tr("Выбрать сообщение")}
                       onClick={() => toggleSelected(message.id)}
                       className="absolute inset-0 z-10 rounded-lg"
                     >
@@ -3275,7 +3305,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       onClick={(e) => { e.stopPropagation(); if (message.sender?.id) setViewProfileId(message.sender.id); }}
                       disabled={!message.sender?.id}
                       className="shrink-0 rounded-full active:opacity-70"
-                      aria-label={username ? `Профиль ${username}` : "Профиль"}
+                      aria-label={username ? `Профиль ${username}` : tr("Профиль")}
                     >
                       <Aura active={lastInGroup && !!(message.sender as { is_online?: boolean } | undefined)?.is_online} owner={message.sender as never} size={36}>
                         <Identicon
@@ -3376,7 +3406,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {message.reply_to && (
                         <div
                           role="button"
-                          title="К цитируемому сообщению"
+                          title={tr("К цитируемому сообщению")}
                           onClick={(e) => { e.stopPropagation(); jumpToMessage(message.reply_to!.id); }}
                           className={cn(
                             "mb-1 rounded px-2 py-1 border-l-2 text-xs min-w-0 max-w-full cursor-pointer active:bg-black/20",
@@ -3389,7 +3419,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             {message.reply_to.sender_username}
                           </div>
                           <div className="line-clamp-1 break-all opacity-75">
-                            {isSecret ? (messages.find((x) => x.id === message.reply_to!.id)?.content || "Сообщение") : message.reply_to.preview}
+                            {isSecret ? (messages.find((x) => x.id === message.reply_to!.id)?.content || tr("Сообщение")) : message.reply_to.preview}
                           </div>
                         </div>
                       )}
@@ -3415,7 +3445,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Стикер: показываем картинкой без фона пузыря — так же,
                           как это выглядит в мессенджерах. */}
                       {message.sticker?.file_url && (
-                        <StickerView url={message.sticker.file_url} alt={message.sticker.emoji || "Стикер"} className="w-32 h-32 object-contain" />
+                        <StickerView url={message.sticker.file_url} alt={message.sticker.emoji || tr("Стикер")} className="w-32 h-32 object-contain" />
                       )}
 
                       {/* Видео-сообщение: треугольник вершиной вверх (или вниз) */}
@@ -3451,14 +3481,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                                 }}
                                 disabled={message.transcript_status === "pending"}
                                 className="w-8 h-8 shrink-0 rounded-md bg-black/20 text-xs font-semibold disabled:opacity-50"
-                                title={message.transcript_status === "done" ? "Показать расшифровку" : "Расшифровать"}
+                                title={message.transcript_status === "done" ? "Показать расшифровку" : tr("Расшифровать")}
                               >
                                 {message.transcript_status === "pending" ? "…" : "Аа"}
                               </button>
                             )}
                           </div>
                           {message.transcript_status === "pending" && (
-                            <p className="mt-1 text-xs opacity-70">Распознаю…</p>
+                            <p className="mt-1 text-xs opacity-70">{tr("Распознаю…")}</p>
                           )}
                           {message.transcript_status === "error" && (
                             <p className="mt-1 text-xs opacity-70">Не удалось расшифровать — попробуй ещё раз.</p>
@@ -3467,12 +3497,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             <div className="mt-1.5 border-t border-white/15 pt-1.5">
                               <p className="text-body break-words whitespace-pre-wrap opacity-90">{message.voice_transcript}</p>
                               <div className="mt-1 flex items-center gap-3 text-xs opacity-75">
-                                <button type="button" onClick={async (e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(message.voice_transcript || ""); toast.success("Текст скопирован"); } catch { toast.error("Не удалось скопировать"); } }} className="inline-flex items-center gap-1 active:opacity-60">
-                                  <Copy className="w-3.5 h-3.5" /> Скопировать
-                                </button>
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(message.voice_transcript || ""); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось скопировать")); } }} className="inline-flex items-center gap-1 active:opacity-60">
+                                  <Copy className="w-3.5 h-3.5" />{tr("Скопировать")}</button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setHiddenTranscripts((prev) => new Set(prev).add(message.id)); }} className="inline-flex items-center gap-1 active:opacity-60">
-                                  <ChevronUp className="w-3.5 h-3.5" /> Свернуть
-                                </button>
+                                  <ChevronUp className="w-3.5 h-3.5" />{tr("Свернуть")}</button>
                               </div>
                             </div>
                           )}
@@ -3510,7 +3538,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                             ? <img src={`data:image/jpeg;base64,${message._sm.th}`} alt="" className="w-20 h-20 rounded-md object-cover shrink-0" />
                             : <span className="w-12 h-12 rounded-md bg-black/20 flex items-center justify-center shrink-0"><Lock className="w-5 h-5" /></span>}
                           <span className="min-w-0">
-                            <span className="block text-small">{message._sm.state === "error" ? "Не удалось открыть файл" : "Загружаю…"}</span>
+                            <span className="block text-small">{message._sm.state === "error" ? "Не удалось открыть файл" : tr("Загружаю…")}</span>
                             <span className="block text-caption opacity-70 truncate">{message._sm.name} · {Math.max(1, Math.round(message._sm.size / 1024))} КБ</span>
                           </span>
                         </div>
@@ -3534,9 +3562,22 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <p className="text-body break-words whitespace-pre-wrap">
                           {/* Карточка вырезала ссылку из текста — диапазоны оформления к нему
                               уже не подходят, такой текст рисуем без них. */}
-                          {shownText === (message.content || "")
-                            ? <FormattedText text={shownText} entities={message.entities} seed={message.id} mentions={message.mentions} myId={userId} onMention={openMention} />
-                            : <Linkify text={shownText} />}
+                          {(() => {
+                            // Перевод на мой язык показываем вместо оригинала (без оформления —
+                            // диапазоны относятся к исходному тексту); тап по пометке — оригинал.
+                            const tr = message.translations?.[myLang];
+                            const useTr = !!tr && tr !== message.content && !showOrig.has(message.id);
+                            if (useTr) return <Linkify text={tr!} />;
+                            return shownText === (message.content || "")
+                              ? <FormattedText text={shownText} entities={message.entities} seed={message.id} mentions={message.mentions} myId={userId} onMention={openMention} />
+                              : <Linkify text={shownText} />;
+                          })()}
+                          {!!message.translations?.[myLang] && message.translations[myLang] !== message.content && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setShowOrig((s) => { const n = new Set(s); if (n.has(message.id)) n.delete(message.id); else n.add(message.id); return n; }); }}
+                              className="ml-1.5 align-baseline text-[11px] opacity-60 underline underline-offset-2">
+                              {showOrig.has(message.id) ? tr("Показать перевод") : tr("перевод")}
+                            </button>
+                          )}
                           {/* У своих время и галочки внутри пузыря, в конце текста. */}
                           {isOwn && !bareBubble && (
                             <span className="float-right ml-3 mt-1 inline-flex items-center gap-1 text-caption opacity-70 whitespace-nowrap">
@@ -3603,14 +3644,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Не ушло: запись на месте, можно повторить или убрать. */}
                       {message.pending && message._failed && (
                         <div className={cn("mt-1.5 flex items-center gap-3 text-caption", isOwn && !bareBubble ? "opacity-80" : "text-subtle")}>
-                          <span className="text-destructive font-medium">Не отправлено</span>
+                          <span className="text-destructive font-medium">{tr("Не отправлено")}</span>
                           {message._rec && (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">Повторить</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">{tr("Повторить")}</button>
                           )}
                           {message._att && (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendAttachment(message.id, message._att!, { content: message.content || undefined, entities: message.entities || undefined, albumId: message.album_id }); }} className="underline">Повторить</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendAttachment(message.id, message._att!, { content: message.content || undefined, entities: message.entities || undefined, albumId: message.album_id }); }} className="underline">{tr("Повторить")}</button>
                           )}
-                          <button type="button" onClick={(e) => { e.stopPropagation(); discardFailed(message); }} className="underline opacity-80">Удалить</button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); discardFailed(message); }} className="underline opacity-80">{tr("Удалить")}</button>
                         </div>
                       )}
                       {/* Загрузка вложения: полоска и проценты прямо в пузыре. */}
@@ -3725,8 +3766,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               onClick={() => void selectionToSaved()}
               className="h-10 px-3 rounded-md bg-surface-4 text-body flex items-center gap-1.5 disabled:opacity-40"
             >
-              <Bookmark className="w-4 h-4" /> В избранное
-            </button>
+              <Bookmark className="w-4 h-4" />{tr("В избранное")}</button>
           )}
           <button
             type="button"
@@ -3734,24 +3774,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             onClick={() => { const list = selectedMessages(); if (list.length) { setForwardFor(list); } }}
             className="h-10 px-3 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center gap-1.5 disabled:opacity-40"
           >
-            <Forward className="w-4 h-4" /> Переслать
-          </button>
+            <Forward className="w-4 h-4" />{tr("Переслать")}</button>
         </div>
       )}
 
       {/* Поле ввода */}
       {peer?.readonly_bot ? (
-        <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">
-          Это канал обновлений — только чтение
-        </div>
+        <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">{tr("Это канал обновлений — только чтение")}</div>
       ) : isSecret && !skey ? (
         <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 max-h-[75vh] overflow-y-auto">
           {!secretInfo ? (
-            <p className="text-center text-small text-subtle">Загружаю секретный чат…</p>
+            <p className="text-center text-small text-subtle">{tr("Загружаю секретный чат…")}</p>
           ) : secretInfo.state === "declined" ? (
-            <p className="text-center text-small text-subtle">Секретный чат отклонён.</p>
+            <p className="text-center text-small text-subtle">{tr("Секретный чат отклонён.")}</p>
           ) : secretInfo.state === "pending" && secretInfo.initiator_id !== userId ? (
-            <p className="text-center text-small text-subtle">Примите или отклоните секретный чат выше.</p>
+            <p className="text-center text-small text-subtle">{tr("Примите или отклоните секретный чат выше.")}</p>
           ) : secretInfo.state === "pending" ? (
             <p className="text-center text-small text-subtle">
               {hasHalf
@@ -3778,17 +3815,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             даём панели (pad-safe-bottom перебивает padding контейнера). */}
         <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-2">
           {fmtOpen && (
-            <div className="mb-2 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="toolbar" aria-label="Форматирование">
+            <div className="mb-2 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="toolbar" aria-label={tr("Форматирование")}>
               {([
-                ["bold", <Bold key="b" className="w-4 h-4" />, "Жирный"],
-                ["italic", <Italic key="i" className="w-4 h-4" />, "Курсив"],
-                ["underline", <Underline key="u" className="w-4 h-4" />, "Подчёркнутый"],
-                ["strike", <Strikethrough key="s" className="w-4 h-4" />, "Зачёркнутый"],
-                ["code", <Code key="c" className="w-4 h-4" />, "Моноширинный"],
-                ["pre", <Braces key="p" className="w-4 h-4" />, "Блок кода"],
-                ["spoiler", <EyeOff key="sp" className="w-4 h-4" />, "Спойлер"],
-                ["zalgo", <span key="z" className="text-sm font-semibold leading-none">Z&#x0337;&#x0354;&#x0350;</span>, "Зальго"],
-                ["scramble", <Shuffle key="sc" className="w-4 h-4" />, "Перемешать буквы"],
+                ["bold", <Bold key="b" className="w-4 h-4" />, tr("Жирный")],
+                ["italic", <Italic key="i" className="w-4 h-4" />, tr("Курсив")],
+                ["underline", <Underline key="u" className="w-4 h-4" />, tr("Подчёркнутый")],
+                ["strike", <Strikethrough key="s" className="w-4 h-4" />, tr("Зачёркнутый")],
+                ["code", <Code key="c" className="w-4 h-4" />, tr("Моноширинный")],
+                ["pre", <Braces key="p" className="w-4 h-4" />, tr("Блок кода")],
+                ["spoiler", <EyeOff key="sp" className="w-4 h-4" />, tr("Спойлер")],
+                ["zalgo", <span key="z" className="text-sm font-semibold leading-none">Z&#x0337;&#x0354;&#x0350;</span>, tr("Зальго")],
+                ["scramble", <Shuffle key="sc" className="w-4 h-4" />, tr("Перемешать буквы")],
               ] as [EntityType, ReactNode, string][]).map(([type, icon, label]) => (
                 <button
                   key={type}
@@ -3814,7 +3851,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <div className="text-xs font-medium text-primary">Редактирование</div>
                 <div className="text-sm text-muted-foreground truncate">{editing.content}</div>
               </div>
-              <button type="button" onClick={cancelEdit} className="px-1 text-muted-foreground hover:text-foreground" aria-label="Отменить">
+              <button type="button" onClick={cancelEdit} className="px-1 text-muted-foreground hover:text-foreground" aria-label={tr("Отменить")}>
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -3823,7 +3860,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <div className="mb-2 flex items-stretch gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary overflow-hidden">
               <div className="flex-1 min-w-0 px-3 py-2">
                 <div className="text-xs font-medium text-primary truncate">
-                  {replyTo.sender?.username || "Ответ"}
+                  {replyTo.sender?.username || tr("Ответ")}
                 </div>
                 <div className="text-sm text-muted-foreground truncate">
                   {replyPreviewText(replyTo)}
@@ -3833,14 +3870,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 type="button"
                 onClick={() => setReplyTo(null)}
                 className="px-3 text-muted-foreground hover:text-foreground"
-                aria-label="Отменить ответ"
+                aria-label={tr("Отменить ответ")}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
           {mentionHints.length > 0 && !inline && (
-            <div className="mb-2 rounded-lg bg-surface-2 border border-border overflow-hidden max-h-64 overflow-y-auto" role="listbox" aria-label="Упомянуть участника">
+            <div className="mb-2 rounded-lg bg-surface-2 border border-border overflow-hidden max-h-64 overflow-y-auto" role="listbox" aria-label={tr("Упомянуть участника")}>
               {mentionHints.map((p, i) => (
                 <button
                   key={p.id}
@@ -3867,7 +3904,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               {inline.error ? (
                 <p className="px-3 pb-2 text-small text-subtle">{inline.error}</p>
               ) : inline.results && inline.results.length === 0 ? (
-                <p className="px-3 pb-2 text-small text-subtle">Ничего не нашлось</p>
+                <p className="px-3 pb-2 text-small text-subtle">{tr("Ничего не нашлось")}</p>
               ) : inline.results && (
                 <div className="max-h-64 overflow-y-auto">
                   {inline.results.map((r) => (
@@ -3915,7 +3952,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
               <span className="text-sm">Сообщение удалено</span>
-              <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
+              <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">{tr("Отменить")}</button>
             </div>
           )}
           {attachments.length > 10 && (
@@ -3929,7 +3966,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-secondary border border-border">
                   {a.mode === "photo" ? (
                     // Тап по фото — редактор: рисовалка, кадр, поворот (PhotoEditor).
-                    <button type="button" onClick={() => setEditFor(a)} className="w-full h-full" aria-label="Редактировать фото">
+                    <button type="button" onClick={() => setEditFor(a)} className="w-full h-full" aria-label={tr("Редактировать фото")}>
                       <img src={a.url} alt="" className="w-full h-full object-cover" />
                       <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
                     </button>
@@ -4076,8 +4113,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   )}
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
-                    <FileText className="w-4 h-4 text-primary" /> Файл
-                  </button>
+                    <FileText className="w-4 h-4 text-primary" />{tr("Файл")}</button>
                   {!isSecret && (
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); hideKeyboard(); setGeoOpen(true); }}>
@@ -4094,7 +4130,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               size="icon"
               onClick={() => setStickersOpen((v) => !v)}
               className="mint-stk ui-compose-btn h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
-              aria-label="Стикеры"
+              aria-label={tr("Стикеры")}
             >
               {mintM ? <MintIcon name="sticker" size={[18, 20]} className="mint-ink" /> : <Smile className="w-5 h-5" />}
             </Button>
@@ -4106,7 +4142,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   длинное сообщение набиралось вслепую. */}
               <textarea
                 ref={textareaRef}
-                placeholder="Сообщение..."
+                placeholder={tr("Сообщение...")}
                 defaultValue=""
                 rows={1}
                 // Явно: без этих атрибутов iOS не включал автоисправление и
@@ -4221,7 +4257,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         : "bg-surface-2 text-foreground border-border"
                     )}
                     title={facing === "user" ? "Камера: фронтальная (нажми — задняя)" : "Камера: задняя (нажми — фронтальная)"}
-                    aria-label="Переключить камеру"
+                    aria-label={tr("Переключить камеру")}
                     aria-pressed={facing === "user"}
                   >
                     <SwitchCamera className="w-5 h-5" />
@@ -4265,7 +4301,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   aria-label={
                     recordKind === "video" ? "Записать видео"
                       : recordKind === "rov" ? "Держать — вибрация собеседнику"
-                      : "Записать голосовое"
+                      : tr("Записать голосовое")
                   }
                   title={
                     recordKind === "video" ? "Видео (тап — Р.Ё.В)"
@@ -4325,7 +4361,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <input
               value={addQuery}
               onChange={(e) => searchPeople(e.target.value)}
-              placeholder="Имя пользователя"
+              placeholder={tr("Имя пользователя")}
               className="w-full bg-secondary/50 px-4 py-3 outline-none"
               autoFocus
             />
@@ -4353,9 +4389,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               type="button"
               onClick={() => setAddOpen(false)}
               className="w-full px-4 py-3 text-muted-foreground border-t border-border active:bg-secondary"
-            >
-              Закрыть
-            </button>
+            >{tr("Закрыть")}</button>
           </div>
         </div>
       )}
@@ -4417,7 +4451,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           chatId={group.id}
           userId={userId}
           isAdmin={isGroupAdmin}
-          initialName={headerTitle || group.name || "Группа"}
+          initialName={headerTitle || group.name || tr("Группа")}
           initialAvatar={group.avatar_url}
           onClose={() => setGroupOpen(false)}
           onUpdated={(patch) => {
@@ -4446,6 +4480,34 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <WallpaperSheet chat={chatInfo} onClose={() => setWallpaperOpen(false)} onChanged={loadChatInfo} />
       )}
       {burst && <StickerBurst key={burst.key} url={burst.url} onDone={() => setBurst(null)} />}
+      {translateOpen && (
+        <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={() => setTranslateOpen(false)}>
+          <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[420px] pad-safe-bottom p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2"><span className="font-semibold flex-1">{tr("Перевод")}</span>
+              <button type="button" onClick={() => setTranslateOpen(false)} aria-label={tr("Закрыть")}><X className="w-5 h-5" /></button></div>
+            {!trSettings ? <p className="text-small text-subtle">{tr("Загрузка…")}</p> : (
+              <>
+                {!trSettings.available && <p className="text-small text-subtle">{tr("Перевод пока не настроен")}</p>}
+                {trSettings.available && trSettings.peer_language && trSettings.peer_language === trSettings.my_language && (
+                  <p className="text-small text-subtle">{tr("У вас с собеседником один язык — переводить нечего.")}</p>
+                )}
+                {([["translate_out", tr("Переводить мои сообщения на язык собеседника")], ["translate_in", tr("Переводить сообщения собеседника на мой язык")]] as const).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-3 py-2">
+                    <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={!!trSettings[k]}
+                      onChange={async (e) => {
+                        const v = e.target.checked;
+                        setTrSettings({ ...trSettings, [k]: v });
+                        try { setTrSettings(await api.setChatTranslate(chatId!, { [k]: v })); } catch { toast.error(tr("Не удалось сохранить")); }
+                      }} />
+                    <span className="text-body">{label}</span>
+                  </label>
+                ))}
+                <p className="text-caption text-subtle">{LANG_NAMES[(trSettings.my_language as Lang) || "ru"]} → {trSettings.peer_language ? LANG_NAMES[(trSettings.peer_language as Lang) || "ru"] : "?"}</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {secretIntroOpen && peer && (
         <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={() => !secretBusy && setSecretIntroOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
@@ -4458,14 +4520,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={() => setKeyOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="ui-card rounded-lg bg-surface-2 border border-border p-5 w-full max-w-sm text-center">
             <KeyRound className="w-7 h-7 mx-auto text-online" />
-            <p className="mt-2 text-h2 text-foreground">Ключ шифрования</p>
+            <p className="mt-2 text-h2 text-foreground">{tr("Ключ шифрования")}</p>
             <p className="mt-3 text-[28px] leading-snug tracking-wider">{fingerprintEmoji(skey.fp)}</p>
             <p className="mt-3 font-mono text-small text-foreground break-words">{skey.fp}</p>
             <p className="mt-3 text-caption text-subtle leading-relaxed">
-              Если у {peer?.username || "собеседника"} на экране то же самое — переписку никто не подменил.
+              Если у {peer?.username || tr("собеседника")} на экране то же самое — переписку никто не подменил.
               Сверьте голосом или при встрече.
             </p>
-            <button type="button" onClick={() => setKeyOpen(false)} className="mt-4 h-10 w-full rounded-md border border-border text-body active:bg-surface-3">Закрыть</button>
+            <button type="button" onClick={() => setKeyOpen(false)} className="mt-4 h-10 w-full rounded-md border border-border text-body active:bg-surface-3">{tr("Закрыть")}</button>
           </div>
         </div>
       )}
@@ -4482,7 +4544,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
               <span className="text-xl">{actionTargetPick.emoji}</span>
               <span className="font-semibold flex-1">{actionTargetPick.name} — кому?</span>
-              <button type="button" onClick={() => setActionTargetPick(null)} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+              <button type="button" onClick={() => setActionTargetPick(null)} aria-label={tr("Закрыть")}><X className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
               {(group?.participants || []).filter((p) => p.id !== userId).map((p) => (
@@ -4497,7 +4559,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {reportFor && (
-        <ReportSheet target={{ type: "message", id: reportFor.id }} title="Жалоба на сообщение" onClose={() => setReportFor(null)} />
+        <ReportSheet target={{ type: "message", id: reportFor.id }} title={tr("Жалоба на сообщение")} onClose={() => setReportFor(null)} />
       )}
       {editFor && (
         <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => void applyEdit(editFor, f)} />
@@ -4507,14 +4569,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <ShareToChat
           open
           text=""
-          title={forwardFor.length > 1 ? `Переслать ${forwardFor.length}` : "Переслать"}
+          title={forwardFor.length > 1 ? `Переслать ${forwardFor.length}` : tr("Переслать")}
           includeChannels
           excludeChatId={chatId}
           onClose={() => setForwardFor(null)}
           onPick={(id, label) => {
             const m = forwardFor;
-            forwardTo(m, id, label === "Избранное"
-              ? (m.length > 1 ? `В избранное: ${m.length}` : "Добавлено в избранное")
+            forwardTo(m, id, label === tr("Избранное")
+              ? (m.length > 1 ? `В избранное: ${m.length}` : tr("Добавлено в избранное"))
               : (m.length > 1 ? `Переслано ${m.length}: ${label}` : `Переслано: ${label}`));
           }}
           // Наружу — текстом сообщений; вложения через системное «Поделиться»
@@ -4525,7 +4587,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             if (typeof nav.share === "function") {
               try { await nav.share({ text }); return; } catch (e: any) { if (e?.name === "AbortError") return; }
             }
-            try { await navigator.clipboard.writeText(text); toast.success("Текст скопирован"); } catch { toast.error("Не удалось поделиться"); }
+            try { await navigator.clipboard.writeText(text); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось поделиться")); }
           } : undefined}
         />
       )}
@@ -4538,27 +4600,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           localMap={localImagesRef.current}
           onClose={() => setViewer(null)}
           actions={[
-            { label: "Переслать", icon: <Forward className="w-5 h-5 text-subtle" />, onClick: () => {
+            { label: tr("Переслать"), icon: <Forward className="w-5 h-5 text-subtle" />, onClick: () => {
               const cur = viewer.items[viewer.index];
               const m = messages.find((x) => x.id === cur?.messageId);
               setViewer(null);
               if (m) { setForwardFor([m]); }
             } },
-            { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
+            { label: tr("Добавить в сохранёнки"), icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
               const cur = viewer.items[viewer.index];
               if (!cur) return;
               try {
                 const r = await api.addSavedImage(cur.messageId);
-                toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки лежат в профиле — кому они видны, настраивается в разделе «Конфиденциальность»" });
-              } catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+                toast.success(r.already ? "Уже в сохранёнках" : tr("Добавлено в сохранёнки"), { description: "Сохранёнки лежат в профиле — кому они видны, настраивается в разделе «Конфиденциальность»" });
+              } catch (e: any) { toast.error(e?.message || tr("Не удалось сохранить")); }
             } },
-            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
+            { label: tr("Скачать"), icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
               const cur = viewer.items[viewer.index];
               if (!cur) return;
               const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
               handleSaveFile(url, cur.name);
             } },
-          ].filter((a) => !isSecret || a.label === "Скачать")}
+          ].filter((a) => !isSecret || a.label === tr("Скачать"))}
         />
       )}
     </div>

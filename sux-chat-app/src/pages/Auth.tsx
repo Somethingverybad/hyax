@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ const Auth = () => {
 
   const goToPassword = () => {
     if (!username.trim()) {
-      toast.error("Введите логин");
+      toast.error(t("Введите логин"));
       return;
     }
     setStep(1);
@@ -98,11 +99,11 @@ const Auth = () => {
         await api.login(username, password);
       }
 
-      toast.success("Ого! Заработало");
+      toast.success(t("Ого! Заработало"));
       navigate(next, { replace: true });
     } catch (error: any) {
       // Сервер отвечает подробностями в теле — показываем их, а не «Login failed 401».
-      let text = error?.message || "Произошла ошибка";
+      let text = error?.message || t("Произошла ошибка");
       try {
         const body = JSON.parse(error?.fullResponse || "{}");
         text = body.detail || body.error || Object.values(body)?.[0] || text;
@@ -160,7 +161,7 @@ const Auth = () => {
               <div className="w-full shrink-0 space-y-4 px-0.5">
                 <div className="space-y-2">
                   <Label htmlFor="username" className="text-small font-normal text-subtle">
-                    {isLogin ? "Логин" : "Имя пользователя"}
+                    {isLogin ? "Логин" : t("Имя пользователя")}
                   </Label>
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-subtle pointer-events-none" />
@@ -200,7 +201,7 @@ const Auth = () => {
                   disabled={!username.trim()}
                   className="ui-btn w-full h-13 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-body tracking-[0.18em] uppercase disabled:opacity-40 flex items-center justify-between px-5"
                 >
-                  <span>Далее</span>
+                  <span>{t("Далее")}</span>
                   <ArrowRight className="w-5 h-5" />
                 </Button>
               </div>
@@ -216,9 +217,7 @@ const Auth = () => {
                   <span className="font-medium text-foreground">{username || "…"}</span>
                 </button>
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-small font-normal text-subtle">
-                    Пароль
-                  </Label>
+                  <Label htmlFor="password" className="text-small font-normal text-subtle">{t("Пароль")}</Label>
                   <Input
                     id="password"
                     ref={passwordRef}
@@ -242,9 +241,9 @@ const Auth = () => {
                     />
                     <span>
                       Мне есть 17 лет, я принимаю{" "}
-                      <a href="/terms" onClick={(e) => { e.preventDefault(); setLegal("terms"); }} className="text-primary underline">правила</a>
+                      <a href="/terms" onClick={(e) => { e.preventDefault(); setLegal("terms"); }} className="text-primary underline">{t("правила")}</a>
                       {" "}и{" "}
-                      <a href="/privacy" onClick={(e) => { e.preventDefault(); setLegal("privacy"); }} className="text-primary underline">политику конфиденциальности</a>.
+                      <a href="/privacy" onClick={(e) => { e.preventDefault(); setLegal("privacy"); }} className="text-primary underline">{t("политику конфиденциальности")}</a>.
                       Недопустимый контент и оскорбления запрещены.
                     </span>
                   </label>
@@ -256,13 +255,11 @@ const Auth = () => {
                 >
                   {loading ? (
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Загрузка...
-                    </div>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("Загрузка...")}</div>
                   ) : isLogin ? (
-                    "Войти в WYX"
+                    t("Войти в WYX")
                   ) : (
-                    "Создать аккаунт"
+                    t("Создать аккаунт")
                   )}
                 </Button>
               </div>
@@ -277,15 +274,13 @@ const Auth = () => {
             onClick={() => { setIsLogin(!isLogin); setStep(0); setPassword(""); }}
             className="text-body text-subtle"
           >
-            {isLogin ? "Нет аккаунта? " : "Уже есть аккаунт? "}
-            <span className="text-primary font-semibold underline underline-offset-4">{isLogin ? "Зарегистрируйтесь" : "Войдите"}</span>
+            {isLogin ? "Нет аккаунта? " : t("Уже есть аккаунт? ")}
+            <span className="text-primary font-semibold underline underline-offset-4">{isLogin ? "Зарегистрируйтесь" : t("Войдите")}</span>
           </button>
         </div>
         {isLogin && (
           <div className="mt-3 text-center">
-            <button type="button" onClick={() => setForgot(true)} className="text-small text-subtle underline underline-offset-4">
-              Забыли пароль?
-            </button>
+            <button type="button" onClick={() => setForgot(true)} className="text-small text-subtle underline underline-offset-4">{t("Забыли пароль?")}</button>
           </div>
         )}
       </Card>

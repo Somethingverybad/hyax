@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "sonner";
 import { X } from "lucide-react";
@@ -27,7 +28,7 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
     try {
       await api.forgotPassword(login.trim());
       setStep(1);
-      toast.success("Если к аккаунту привязана почта, код уже в пути");
+      toast.success(t("Если к аккаунту привязана почта, код уже в пути"));
     } catch (err: any) { toast.error(err?.message || "Не удалось отправить код"); }
     finally { setBusy(false); }
   };
@@ -38,7 +39,7 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
     setBusy(true);
     try {
       await api.resetPassword(login.trim(), code, password);
-      toast.success("Пароль изменён — войдите с новым");
+      toast.success(t("Пароль изменён — войдите с новым"));
       onDone(login.trim());
     } catch (err: any) { toast.error(err?.message || "Не удалось сменить пароль"); }
     finally { setBusy(false); }
@@ -48,31 +49,29 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center" onClick={onClose}>
       <div className="w-full md:max-w-md bg-card border-t-2 md:border-2 border-border md:rounded-lg p-5 pad-safe-bottom space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2">
-          <h2 className="text-h2 flex-1">Восстановить пароль</h2>
-          <button type="button" onClick={onClose} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+          <h2 className="text-h2 flex-1">{t("Восстановить пароль")}</h2>
+          <button type="button" onClick={onClose} aria-label={t("Закрыть")}><X className="w-5 h-5" /></button>
         </div>
         {step === 0 ? (
           <form onSubmit={send} className="space-y-3">
-            <p className="text-small text-subtle">
-              Код придёт на почту, привязанную в настройках профиля. Если почты нет — восстановить пароль не получится.
-            </p>
-            <Label htmlFor="fp-login" className="text-small font-normal text-subtle">Ник или почта</Label>
+            <p className="text-small text-subtle">{t("Код придёт на почту, привязанную в настройках профиля. Если почты нет — восстановить пароль не получится.")}</p>
+            <Label htmlFor="fp-login" className="text-small font-normal text-subtle">{t("Ник или почта")}</Label>
             <Input id="fp-login" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} className={inputCls} />
-            <Button type="submit" className="w-full h-12" disabled={busy || !login.trim()}>{busy ? "Отправляю…" : "Отправить код"}</Button>
+            <Button type="submit" className="w-full h-12" disabled={busy || !login.trim()}>{busy ? "Отправляю…" : t("Отправить код")}</Button>
           </form>
         ) : (
           <form onSubmit={reset} className="space-y-3">
-            <Label htmlFor="fp-code" className="text-small font-normal text-subtle">Код из письма</Label>
+            <Label htmlFor="fp-code" className="text-small font-normal text-subtle">{t("Код из письма")}</Label>
             <Input id="fp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="000000"
               className={`${inputCls} tracking-[0.3em] text-center text-lg`} />
-            <Label htmlFor="fp-password" className="text-small font-normal text-subtle">Новый пароль</Label>
+            <Label htmlFor="fp-password" className="text-small font-normal text-subtle">{t("Новый пароль")}</Label>
             <Input id="fp-password" type="password" autoComplete="new-password" value={password}
               onChange={(e) => setPassword(e.target.value)} className={inputCls} />
             <Button type="submit" className="w-full h-12" disabled={busy || code.length < 6 || password.length < 6}>
-              {busy ? "Сохраняю…" : "Сменить пароль"}
+              {busy ? "Сохраняю…" : t("Сменить пароль")}
             </Button>
-            <button type="button" className="w-full text-small text-subtle py-2" onClick={() => setStep(0)}>Отправить код ещё раз</button>
+            <button type="button" className="w-full text-small text-subtle py-2" onClick={() => setStep(0)}>{t("Отправить код ещё раз")}</button>
           </form>
         )}
       </div>

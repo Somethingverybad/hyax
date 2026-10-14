@@ -6,6 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
+import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT, t } from "@/lib/i18n";
+import { Globe } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -18,7 +20,7 @@ import { Aura, DEFAULT_AURA } from "@/components/Aura";
 import { FadeImg } from "@/components/LoadingSkeleton";
 import ImageCropper from "@/components/ImageCropper";
 
-const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
+const SAVED_ACCESS: Record<string, string> = { all: t("все"), selected: t("избранные"), none: t("только вы") };
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
@@ -62,6 +64,7 @@ export interface Profile {
  * не меняется: он живёт отдельно и используется только для входа.
  */
 const ProfilePage = () => {
+  const t = useT();
   const navigate = useNavigate();
   const theme = useTheme();
   // Стартуем из кеша сессии — экран рисуется сразу, сеть обновит фоном.
@@ -81,6 +84,7 @@ const ProfilePage = () => {
         setProfile(p);
         writeCache("user", p);
         applyServerSettings(p);
+        applyProfileLang(p);
       } catch {
         navigate("/auth", { replace: true });
       }
@@ -105,9 +109,9 @@ const ProfilePage = () => {
         writeCache("user", next);
         return next;
       });
-      toast.success("Аватар обновлён");
+      toast.success(t("Аватар обновлён"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось загрузить аватар");
+      toast.error(e?.message || t("Не удалось загрузить аватар"));
     } finally {
       setUploading(null);
     }
@@ -125,7 +129,7 @@ const ProfilePage = () => {
         writeCache("user", next);
         return next;
       });
-      toast.success("Обложка обновлена");
+      toast.success(t("Обложка обновлена"));
     } catch (e: any) {
       toast.error(e?.message || "Не удалось загрузить обложку");
     } finally {
@@ -157,7 +161,7 @@ const ProfilePage = () => {
   const copy = async (value: string, what: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast.success("Скопировано");
+      toast.success(t("Скопировано"));
     } catch {
       toast.error(`Не удалось скопировать ${what}`);
     }
@@ -195,7 +199,7 @@ const ProfilePage = () => {
         toast.success(
           Capacitor.getPlatform() === "ios"
             ? "Установлена последняя версия. Обновления для iOS приходят через TestFlight"
-            : "Установлена последняя версия",
+            : t("Установлена последняя версия"),
         );
         return;
       }
@@ -206,7 +210,7 @@ const ProfilePage = () => {
       else if (r.result === "error") toast.error(describeUpdateError(r), { duration: 12000 });
       else toast.success(`Доступна версия ${found.version} — открываю загрузку`);
     } catch {
-      toast.error("Не удалось проверить обновления");
+      toast.error(t("Не удалось проверить обновления"));
     } finally {
       setChecking(false);
     }
@@ -242,8 +246,8 @@ const ProfilePage = () => {
         <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">
             <span />
-            <span className="mint-title">Профиль</span>
-            <button type="button" onClick={() => navigate("/profile/edit")} aria-label="Редактировать профиль"
+            <span className="mint-title">{t("Профиль")}</span>
+            <button type="button" onClick={() => navigate("/profile/edit")} aria-label={t("Редактировать профиль")}
               className="mint-lime w-[56px] h-[33px] inline-flex items-center justify-center">
               <MintIcon name="pencil" size={[17, 18]} />
             </button>
@@ -251,12 +255,12 @@ const ProfilePage = () => {
         </div>
       ) : (
       <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center gap-2">
-        <span className="text-h1 flex-1">Профиль</span>
+        <span className="text-h1 flex-1">{t("Профиль")}</span>
         <button
           type="button"
           onClick={() => navigate("/profile/edit")}
           className="w-10 h-10 -mr-2 flex items-center justify-center text-primary active:opacity-60"
-          aria-label="Редактировать профиль"
+          aria-label={t("Редактировать профиль")}
         >
           <Pencil className="w-5 h-5" />
         </button>
@@ -289,7 +293,7 @@ const ProfilePage = () => {
                   type="button"
                   onClick={removeCover}
                   className="w-9 h-9 rounded-full bg-black/45 text-white flex items-center justify-center active:opacity-70"
-                  aria-label="Убрать обложку"
+                  aria-label={t("Убрать обложку")}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -299,7 +303,7 @@ const ProfilePage = () => {
                 onClick={() => coverRef.current?.click()}
                 disabled={uploading !== null}
                 className="w-9 h-9 rounded-full bg-black/45 text-white flex items-center justify-center active:opacity-70 disabled:opacity-40"
-                aria-label={profile?.cover_url ? "Сменить обложку" : "Поставить обложку"}
+                aria-label={profile?.cover_url ? "Сменить обложку" : t("Поставить обложку")}
               >
                 <Camera className="w-4 h-4" />
               </button>
@@ -313,7 +317,7 @@ const ProfilePage = () => {
                 ? "absolute bottom-0 left-1/2 -translate-x-1/2 w-[93px] h-[93px] rounded-[17px] bg-surface-3 border-2 border-white disabled:opacity-60"
                 : "absolute -bottom-8 left-4 w-[88px] h-[88px] rounded-lg bg-surface-3 border-4 border-background disabled:opacity-60"}
               style={mint ? { boxShadow: "0 4.3px 13.3px rgb(0 0 0 / 0.25)" } : undefined}
-              aria-label="Сменить аватар"
+              aria-label={t("Сменить аватар")}
             >
               <Aura active={online} owner={profile} size={mint ? 93 : 88} className="w-full h-full">
                 {profile?.avatar_url ? (
@@ -336,12 +340,12 @@ const ProfilePage = () => {
           <div className={mint ? "shrink-0 pt-[12px] text-center" : "shrink-0 pt-10"}>
             <div className={mint ? "flex items-center justify-center gap-2" : "flex items-center gap-2"}>
               <p className={mint ? "text-[21.3px] leading-tight font-semibold truncate" : "text-[24px] leading-tight font-semibold truncate"} style={mint ? { color: "var(--mint-title)" } : undefined}>{profile?.username || "…"}</p>
-              <span className={`${mint ? "w-3 h-3" : "w-2.5 h-2.5"} shrink-0 rounded-full ${online ? (mint ? "bg-[#6ede32]" : "bg-online") : "bg-subtle"}`} title={online ? "В сети" : "Скрыт"} aria-hidden />
+              <span className={`${mint ? "w-3 h-3" : "w-2.5 h-2.5"} shrink-0 rounded-full ${online ? (mint ? "bg-[#6ede32]" : "bg-online") : "bg-subtle"}`} title={online ? "В сети" : t("Скрыт")} aria-hidden />
             </div>
-            {(!mint || bio) && <p className={mint ? "mt-1 text-[12.7px] mint-muted truncate" : "mt-1 text-body text-subtle truncate"}>{bio || "Статус не указан"}</p>}
+            {(!mint || bio) && <p className={mint ? "mt-1 text-[12.7px] mint-muted truncate" : "mt-1 text-body text-subtle truncate"}>{bio || t("Статус не указан")}</p>}
             {uploading && (
               <p className="mt-1 text-caption text-subtle">
-                {uploading === "cover" ? "Загружаем обложку…" : "Загружаем аватар…"}
+                {uploading === "cover" ? "Загружаем обложку…" : t("Загружаем аватар…")}
               </p>
             )}
           </div>
@@ -362,14 +366,14 @@ const ProfilePage = () => {
           <SettingsCard>
             <SettingsRow
               icon={Tag}
-              label="Никнейм"
+              label={t("Никнейм")}
               value={profile?.username || "…"}
               trailing={
                 <button
                   type="button"
-                  onClick={() => copy(profile?.username || "", "никнейм")}
+                  onClick={() => copy(profile?.username || "", t("никнейм"))}
                   className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
-                  aria-label="Скопировать никнейм"
+                  aria-label={t("Скопировать никнейм")}
                 >
                   {mint ? <MintIcon name="rowCopy" size={14} /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -377,27 +381,27 @@ const ProfilePage = () => {
             />
             <SettingsRow
               icon={AlignLeft}
-              label="О себе"
-              value={bio || "Не указано"}
+              label={t("О себе")}
+              value={bio || t("Не указано")}
               onClick={() => navigate("/profile/edit")}
             />
             <SettingsRow
               icon={Flame}
-              label="Аура"
-              value={profile?.aura_text || (profile?.aura_color ? "без подписи" : "по умолчанию")}
+              label={t("Аура")}
+              value={profile?.aura_text || (profile?.aura_color ? "без подписи" : t("по умолчанию"))}
               trailing={<span className="w-3 h-3 rounded-full shrink-0" style={{ background: profile?.aura_color || DEFAULT_AURA }} aria-hidden />}
               onClick={() => navigate("/profile/aura")}
             />
             <SettingsRow
               icon={AtSign}
-              label="Имя пользователя"
+              label={t("Имя пользователя")}
               value={profile?.username ? "@" + profile.username : "…"}
               trailing={
                 <button
                   type="button"
-                  onClick={() => copy(profile?.username ? "@" + profile.username : "", "имя")}
+                  onClick={() => copy(profile?.username ? "@" + profile.username : "", t("имя"))}
                   className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
-                  aria-label="Скопировать имя пользователя"
+                  aria-label={t("Скопировать имя пользователя")}
                 >
                   {mint ? <MintIcon name="rowCopy" size={14} /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -408,53 +412,64 @@ const ProfilePage = () => {
           <SettingsCard>
             <SettingsRow
               icon={Images}
-              label="Сохранёнки"
+              label={t("Сохранёнки")}
               hint={`Видят: ${SAVED_ACCESS[profile?.saved_visibility || "all"]}`}
               value={saved ? pluralPhotos(saved.count) : "…"}
               onClick={() => setGalleryOpen(true)}
             />
             <SettingsRow
               icon={Bell}
-              label="Уведомления"
-              value={profile?.notify_sound ? profile.notify_sound.name : "Обычный звук"}
+              label={t("Уведомления")}
+              value={profile?.notify_sound ? profile.notify_sound.name : t("Обычный звук")}
               onClick={() => navigate("/profile/notifications")}
             />
             <SettingsRow
               icon={Sticker}
-              label="Стикерпаки"
-              hint="Свои наборы и добавление по ссылке"
+              label={t("Стикерпаки")}
+              hint={t("Свои наборы и добавление по ссылке")}
               onClick={() => navigate("/profile/stickerpacks")}
             />
             <SettingsRow
               icon={Lock}
-              label="Конфиденциальность"
+              label={t("Конфиденциальность")}
               onClick={() => navigate("/profile/privacy")}
             />
             <SettingsRow
               icon={Palette}
-              label="Внешний вид"
+              label={t("Внешний вид")}
               value={theme.name}
               onClick={() => navigate("/profile/appearance")}
+            />
+            <SettingsRow
+              icon={Globe}
+              label={t("Язык")}
+              value={LANG_NAMES[getLang()]}
+              onClick={async () => {
+                // Три языка по кругу: ru → en → ko. Локально сразу, на сервер — для переводов.
+                const next = LANGS[(LANGS.indexOf(getLang()) + 1) % LANGS.length];
+                setLang(next);
+                if (profile?.id) { try { const upd = await api.updateProfile(profile.id, { language: next }); setProfile(upd); writeCache("user", upd); } catch { /* останется локально */ } }
+              }}
             />
           </SettingsCard>
 
           <SettingsCard>
             <SettingsRow
               icon={RefreshCw}
-              label="Проверить обновления"
+              label={t("Проверить обновления")}
               value={checking ? "Проверяю…" : APP_VERSION}
               onClick={checkUpdates}
             />
             <SettingsRow
               icon={Bug}
-              label="Сообщить о проблеме"
-              hint="Скриншот и лог уйдут разработчикам"
+              label={t("Сообщить о проблеме")}
+              hint={t("Скриншот и лог уйдут разработчикам")}
               onClick={() => navigate("/profile/bugreport")}
             />
             <SettingsRow
               icon={Eraser}
-              label={clearing ? "Очищаю…" : confirmClear ? "Нажми ещё раз — точно очистить" : "Очистить кэш"}
-              hint={confirmClear ? "Ленты и медиа перекачаются, вход и тема останутся" : "Если что-то отображается неправильно"}
+              label={clearing ? "Очищаю…" : confirmClear ? "Нажми ещё раз — точно очистить" : t("Очистить кэш")}
+              hint={confirmClear ? "Ленты и медиа перекачаются, вход и тема останутся" : t("Если что-то отображается неправильно")}
               onClick={clearCache}
               danger={confirmClear}
               trailing={<span />}
@@ -464,8 +479,8 @@ const ProfilePage = () => {
           <SettingsCard>
             <SettingsRow
               icon={Lightbulb}
-              label="Долгий ящик"
-              hint="Идеи для WYX: предложить, голосовать, что уже сделано"
+              label={t("Долгий ящик")}
+              hint={t("Идеи для WYX: предложить, голосовать, что уже сделано")}
               onClick={() => navigate("/profile/ideas")}
             />
           </SettingsCard>
@@ -474,21 +489,21 @@ const ProfilePage = () => {
             <SettingsCard>
               <SettingsRow
                 icon={Activity}
-                label="Мониторинг"
-                hint="Онлайн, пользователи, нагрузка сервера"
+                label={t("Мониторинг")}
+                hint={t("Онлайн, пользователи, нагрузка сервера")}
                 onClick={() => navigate("/monitoring")}
               />
               <SettingsRow
                 icon={Sparkles}
-                label="Уровни вайбометра"
-                hint="Пороги, цвета, свечение, длина шкалы"
+                label={t("Уровни вайбометра")}
+                hint={t("Пороги, цвета, свечение, длина шкалы")}
                 onClick={() => navigate("/profile/vibe-levels")}
               />
             </SettingsCard>
           )}
 
           <SettingsCard>
-            <SettingsRow icon={LogOut} label="Выйти" danger onClick={logout} trailing={<span />} />
+            <SettingsRow icon={LogOut} label={t("Выйти")} danger onClick={logout} trailing={<span />} />
           </SettingsCard>
 
           {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
@@ -503,14 +518,14 @@ const ProfilePage = () => {
 
       <ShareToChat
         open={shareOpen}
-        title="Отправить профиль"
+        title={t("Отправить профиль")}
         text={profile?.username ? profileLink(profile.username) : ""}
         onClose={() => setShareOpen(false)}
         onShareOutside={async () => {
           if (!profile?.username) return;
           const r = await shareProfile(profile.username);
-          if (r === "copied") toast.success("Ссылка скопирована");
-          else if (r === "error") toast.error("Не удалось поделиться");
+          if (r === "copied") toast.success(t("Ссылка скопирована"));
+          else if (r === "error") toast.error(t("Не удалось поделиться"));
         }}
       />
 

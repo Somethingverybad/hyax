@@ -1,3 +1,4 @@
+import { t as tr } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -83,8 +84,8 @@ const ProfileAppearance = () => {
   }, []);
 
   const share = async (t: ThemeDef) => {
-    try { await navigator.clipboard.writeText(themeLink(t.id)); toast.success("Ссылка скопирована"); }
-    catch { toast.error("Не удалось скопировать"); }
+    try { await navigator.clipboard.writeText(themeLink(t.id)); toast.success(tr("Ссылка скопирована")); }
+    catch { toast.error(tr("Не удалось скопировать")); }
     setMenuFor(null);
   };
   const remove = async (t: ThemeDef) => {
@@ -96,12 +97,12 @@ const ProfileAppearance = () => {
       setInstalledThemes(rest);
       if (current.id === t.id) setTheme(BUILTIN_THEMES[1]);
       toast.success(t.mine ? "Тема удалена" : "Тема убрана");
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Внешний вид" />
+      <ScreenHeader title={tr("Внешний вид")} />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <p className="px-1 text-small text-subtle">Встроенные</p>
@@ -121,7 +122,7 @@ const ProfileAppearance = () => {
                 active={current.id === t.id}
                 onPick={() => setTheme(t)}
                 menu={
-                  <button type="button" onClick={() => setMenuFor(menuFor === t.id ? null : t.id)} className="w-11 h-16 flex items-center justify-center text-subtle active:opacity-60" aria-label="Действия">
+                  <button type="button" onClick={() => setMenuFor(menuFor === t.id ? null : t.id)} className="w-11 h-16 flex items-center justify-center text-subtle active:opacity-60" aria-label={tr("Действия")}>
                     <MoreHorizontal className="w-5 h-5" />
                   </button>
                 }
@@ -131,8 +132,8 @@ const ProfileAppearance = () => {
                   {t.mine && (
                     <button type="button" onClick={() => navigate(`/profile/themes/${t.id}`)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5"><Pencil className="w-4 h-4" /> Изменить</button>
                   )}
-                  <button type="button" onClick={() => share(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5"><Link2 className="w-4 h-4" /> Поделиться</button>
-                  <button type="button" onClick={() => remove(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium text-destructive inline-flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> {t.mine ? "Удалить" : "Убрать"}</button>
+                  <button type="button" onClick={() => share(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5"><Link2 className="w-4 h-4" />{tr("Поделиться")}</button>
+                  <button type="button" onClick={() => remove(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium text-destructive inline-flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> {t.mine ? "Удалить" : tr("Убрать")}</button>
                 </div>
               )}
             </div>

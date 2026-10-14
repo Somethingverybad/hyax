@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { Capacitor } from "@capacitor/core";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -74,7 +75,7 @@ const ProfileNotifications = () => {
       await api.updateProfile(prev.id, patchData);
       return true;
     } catch {
-      toast.error("Не удалось сохранить");
+      toast.error(t("Не удалось сохранить"));
       setProfile(prev);
       writeCache("user", prev);
       return false;
@@ -86,18 +87,18 @@ const ProfileNotifications = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Уведомления" />
+      <ScreenHeader title={t("Уведомления")} />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <SettingsCard>
           <SettingsRow
-            label="Звук отправки сообщений"
+            label={t("Звук отправки сообщений")}
             hint={sfxSend ? "Короткий звук при каждой отправке" : "Отправка без звука"}
             trailing={
               <input
                 type="checkbox"
                 className="w-5 h-5 accent-primary shrink-0"
-                aria-label="Звук отправки сообщений"
+                aria-label={t("Звук отправки сообщений")}
                 checked={sfxSend}
                 onChange={(e) => { setSfxSend(e.target.checked); setSetting("sfx_send", e.target.checked); }}
               />
@@ -111,7 +112,7 @@ const ProfileNotifications = () => {
                 звонит система. */}
             <SettingsRow
               icon={Phone}
-              label="Звук звонка"
+              label={t("Звук звонка")}
               hint={ringtoneLabel(profile.ringtone, ringName)}
               onClick={() => setRingOpen(true)}
             />
@@ -124,7 +125,7 @@ const ProfileNotifications = () => {
                 звуком (если у сообщения нет своего аудио-стикера). */}
             <SettingsRow
               icon={Music2}
-              label="Мой звук уведомлений"
+              label={t("Мой звук уведомлений")}
               hint={
                 profile.notify_sound
                   ? `${profile.notify_sound.name} — так звучат мои сообщения у других`
@@ -134,7 +135,7 @@ const ProfileNotifications = () => {
             />
             <SettingsRow
               icon={Library}
-              label="Паки звуков"
+              label={t("Паки звуков")}
               hint="Базовые есть у всех, чужие — по ссылке автора"
               onClick={() => navigate("/profile/soundpacks")}
             />
@@ -146,11 +147,11 @@ const ProfileNotifications = () => {
             {/* Р.Ё.В: вибрация, которую шлёт собеседник, пока держит палец.
                 Выключено — сервер такие сигналы до нас не доводит. */}
             <SettingsRow
-              label="Принимать Р.Ё.В"
+              label={t("Принимать Р.Ё.В")}
               hint="Вибрация, пока собеседник держит палец"
               trailing={
                 <Toggle
-                  label="Принимать Р.Ё.В"
+                  label={t("Принимать Р.Ё.В")}
                   checked={profile.rov_enabled !== false}
                   onChange={(v) => patch({ rov_enabled: v }, { ...profile, rov_enabled: v }, profile)}
                 />
@@ -160,11 +161,11 @@ const ProfileNotifications = () => {
                 вместо текста; сам пуш при этом всё равно зашифрован. */}
             {Capacitor.isNativePlatform() && (
               <SettingsRow
-                label="Текст в уведомлениях"
+                label={t("Текст в уведомлениях")}
                 hint="Выключи — в пуше будет только «Новое сообщение»"
                 trailing={
                   <Toggle
-                    label="Текст в уведомлениях"
+                    label={t("Текст в уведомлениях")}
                     checked={profile.push_preview !== false}
                     onChange={(v) => patch({ push_preview: v }, { ...profile, push_preview: v }, profile)}
                   />
@@ -180,8 +181,8 @@ const ProfileNotifications = () => {
           <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[420px] pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
               <Phone className="w-5 h-5 text-primary" />
-              <span className="font-semibold flex-1">Звук звонка</span>
-              <button type="button" onClick={() => { stopPreview.current?.(); setRingOpen(false); }} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+              <span className="font-semibold flex-1">{t("Звук звонка")}</span>
+              <button type="button" onClick={() => { stopPreview.current?.(); setRingOpen(false); }} aria-label={t("Закрыть")}><X className="w-5 h-5" /></button>
             </div>
             <div className="py-1">
               {BUILTIN_RINGTONES.map((r) => {
@@ -207,7 +208,7 @@ const ProfileNotifications = () => {
       )}
       {ringCatalog && profile && (
         <SoundPicker
-          title="Звук звонка"
+          title={t("Звук звонка")}
           current={(profile.ringtone || "").startsWith("sound:") ? profile.ringtone!.slice(6) : null}
           onClose={() => setRingCatalog(false)}
           onPick={async (s) => {
@@ -218,7 +219,7 @@ const ProfileNotifications = () => {
       )}
       {pickerOpen && profile && (
         <SoundPicker
-          title="Мой звук уведомлений"
+          title={t("Мой звук уведомлений")}
           current={profile.notify_sound?.id || null}
           onClose={() => setPickerOpen(false)}
           onPick={async (s) => {
@@ -228,7 +229,7 @@ const ProfileNotifications = () => {
               { ...profile, notify_sound: s },
               profile,
             );
-            if (ok) toast.success(s ? `Теперь твои сообщения звучат как «${s.name}»` : "Обычный звук");
+            if (ok) toast.success(s ? `Теперь твои сообщения звучат как «${s.name}»` : t("Обычный звук"));
           }}
         />
       )}

@@ -33,6 +33,7 @@ import { api, mediaUrl } from "@/api/client";
 import { preloadImage } from "@/lib/imageCache";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
+import { applyProfileLang, getLang, t } from "@/lib/i18n";
 import UpdateBanner from "@/components/UpdateBanner";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
@@ -268,7 +269,7 @@ const ChatSidebar = ({
       await onRefresh?.();
     } catch (e: any) {
       setPinOverride((p) => { const { [chat.id]: _, ...rest } = p; return rest; });
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || t("Не получилось"));
     }
   };
   const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
@@ -306,6 +307,9 @@ const ChatSidebar = ({
         setCurrentUser(profile);
         writeCache("user", profile);
         applyServerSettings(profile);
+        applyProfileLang(profile);
+        // Первый вход: язык устройства — в профиль, чтобы переводы знали, на что переводить.
+        if (!(profile as { language?: string }).language) { api.updateProfile(profile.id, { language: getLang() }).catch(() => {}); }
         // Свой аватар и обложку — в память сразу: профиль откроется без скелетона.
         if (profile.avatar_url) preloadImage(mediaUrl(profile.avatar_url));
         if ((profile as { cover_url?: string | null }).cover_url) preloadImage(mediaUrl((profile as { cover_url?: string | null }).cover_url!));
@@ -316,7 +320,7 @@ const ChatSidebar = ({
       console.error("Error fetching current user profile:", error);
       // Молчим, если профиль уже показан из кеша: ругаться на фоновое
       // обновление незачем, пользователь видит рабочий экран.
-      if (!currentUser) toast.error("Не удалось загрузить профиль");
+      if (!currentUser) toast.error(t("Не удалось загрузить профиль"));
     }
   };
 
@@ -484,7 +488,7 @@ const ChatSidebar = ({
       toast.success("Группа создана");
       resetDialog();
       onChatCreated();
-      handleSelectChat(chat.id, chat.name || "Группа");
+      handleSelectChat(chat.id, chat.name || t("Группа"));
     } catch {
       toast.error("Не удалось создать группу");
     }
@@ -504,12 +508,12 @@ const ChatSidebar = ({
       console.log(`Deleting chat ${chatId}...`);
       await api.deleteChat(chatId);
       
-      toast.success("Чат удален");
+      toast.success(t("Чат удален"));
       onChatDeleted(chatId);
       
     } catch (error: any) {
       console.error("Error deleting chat:", error);
-      toast.error("Не удалось удалить чат");
+      toast.error(t("Не удалось удалить чат"));
     } finally {
       setDeletingChats(prev => ({ ...prev, [chatId]: false }));
     }
@@ -548,9 +552,9 @@ const ChatSidebar = ({
           {mint && (
             <>
               <button type="button" onClick={() => setEditMode((v) => !v)} className="mint-pill mint-btn mint-ink">
-                {editMode ? "Готово" : "Изм."}
+                {editMode ? "Готово" : t("Изм.")}
               </button>
-              <span className="mint-title">Чаты</span>
+              <span className="mint-title">{t("Чаты")}</span>
             </>
           )}
           {!isMobileLayout && isCollapsed && (
@@ -559,7 +563,7 @@ const ChatSidebar = ({
               size="icon"
               onClick={onToggleCollapse}
               className="h-9 w-8 -ml-2 text-muted-foreground"
-              title={isCollapsed ? "Развернуть сайдбар" : "Свернуть сайдбар"}
+              title={isCollapsed ? "Развернуть сайдбар" : t("Свернуть сайдбар")}
             >
               {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
             </Button>
@@ -571,7 +575,7 @@ const ChatSidebar = ({
                 onClick={onOpenProfile}
                 disabled={!onOpenProfile}
                 className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                title="Профиль"
+                title={t("Профиль")}
               >
                 {/* Свой статус — аурой вокруг аватара, как у собеседников; «Скрыт» — без неё. */}
                 <Aura active={!!currentUser && !currentUser.hide_online} owner={currentUser} size={40}>
@@ -583,7 +587,7 @@ const ChatSidebar = ({
                 </Aura>
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 text-h2 md:text-[15px]">
-                    <span className="truncate">{currentUser?.username || "Загрузка…"}</span>
+                    <span className="truncate">{currentUser?.username || t("Загрузка…")}</span>
                     {!isMobileLayout && (
                       <span
                         role="button"
@@ -591,8 +595,8 @@ const ChatSidebar = ({
                         onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleCollapse?.(); }}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); onToggleCollapse?.(); } }}
                         className="shrink-0 text-subtle hover:text-foreground"
-                        title="Свернуть сайдбар"
-                        aria-label="Свернуть сайдбар"
+                        title={t("Свернуть сайдбар")}
+                        aria-label={t("Свернуть сайдбар")}
                       >
                         <ChevronDownIcon className="w-4 h-4" />
                       </span>
@@ -601,7 +605,7 @@ const ChatSidebar = ({
                   {/* Вместо «В сети» — значение своей ауры; «Скрыт» остаётся подписью:
                       ауры при нём нет, и без подписи было бы непонятно почему. */}
                   {currentUser?.hide_online ? (
-                    <span className="ui-status-chip inline-block text-small text-subtle">Скрыт</span>
+                    <span className="ui-status-chip inline-block text-small text-subtle">{t("Скрыт")}</span>
                   ) : currentUser?.aura_text ? (
                     <span className="block text-small text-subtle truncate">{currentUser.aura_text}</span>
                   ) : null}
@@ -611,7 +615,7 @@ const ChatSidebar = ({
                 type="button"
                 onClick={onOpenProfile}
                 className="ui-icon-btn p-2 text-muted-foreground active:text-foreground"
-                aria-label="Настройки"
+                aria-label={t("Настройки")}
               >
                 <SettingsIcon className="w-6 h-6" />
               </button>
@@ -621,13 +625,13 @@ const ChatSidebar = ({
           <Dialog>
             <DialogTrigger asChild>
               {mint ? (
-                <button type="button" className="mint-lime w-[56px] h-[33px] flex items-center justify-center text-[30px] font-light leading-none pb-1" aria-label="Новый чат" title="Новый чат">+</button>
+                <button type="button" className="mint-lime w-[56px] h-[33px] flex items-center justify-center text-[30px] font-light leading-none pb-1" aria-label={t("Новый чат")} title={t("Новый чат")}>+</button>
               ) : (
               <button
                 type="button"
                 className="ui-plus w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:brightness-90 hover:brightness-110"
-                aria-label="Новый чат"
-                title="Новый чат"
+                aria-label={t("Новый чат")}
+                title={t("Новый чат")}
               >
                 <PlusIcon className="w-6 h-6 md:w-5 md:h-5" />
               </button>
@@ -635,48 +639,36 @@ const ChatSidebar = ({
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
-                <DialogTitle>{mode === "group" ? "Новая группа" : mode === "channel" ? "Новый канал" : "Найти"}</DialogTitle>
+                <DialogTitle>{mode === "group" ? "Новая группа" : mode === "channel" ? "Новый канал" : t("Найти")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="flex gap-2">
-                  <Button type="button" variant={mode === "user" ? "default" : "outline"} className="flex-1" onClick={() => setMode("user")}>
-                    Личный
-                  </Button>
+                  <Button type="button" variant={mode === "user" ? "default" : "outline"} className="flex-1" onClick={() => setMode("user")}>{t("Личный")}</Button>
                   <Button type="button" variant={mode === "group" ? "default" : "outline"} className="flex-1" onClick={() => setMode("group")}>
-                    <Users className="w-4 h-4 mr-1.5" />
-                    Группа
-                  </Button>
+                    <Users className="w-4 h-4 mr-1.5" />{t("Группа")}</Button>
                   <Button type="button" variant={mode === "channel" ? "default" : "outline"} className="flex-1" onClick={() => setMode("channel")}>
-                    <Radio className="w-4 h-4 mr-1.5" />
-                    Канал
-                  </Button>
+                    <Radio className="w-4 h-4 mr-1.5" />{t("Канал")}</Button>
                 </div>
 
                 {mode === "channel" && (
                   <div className="space-y-3">
-                    <Input placeholder="Название канала" value={chName} onChange={(e) => setChName(e.target.value)} className="bg-secondary/50" />
-                    <Input placeholder="@username (необязательно)" value={chUsername} onChange={(e) => setChUsername(e.target.value)} className="bg-secondary/50" />
-                    <textarea placeholder="Описание (необязательно)" value={chDesc} onChange={(e) => setChDesc(e.target.value)} rows={3} className="w-full bg-secondary/50 px-3 py-2 outline-none resize-none text-sm" />
+                    <Input placeholder={t("Название канала")} value={chName} onChange={(e) => setChName(e.target.value)} className="bg-secondary/50" />
+                    <Input placeholder={t("@username (необязательно)")} value={chUsername} onChange={(e) => setChUsername(e.target.value)} className="bg-secondary/50" />
+                    <textarea placeholder={t("Описание (необязательно)")} value={chDesc} onChange={(e) => setChDesc(e.target.value)} rows={3} className="w-full bg-secondary/50 px-3 py-2 outline-none resize-none text-sm" />
                     <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <input type="checkbox" checked={chSign} onChange={(e) => setChSign(e.target.checked)} />
-                      Показывать авторов постов
-                    </label>
-                    <Button type="button" onClick={createChannel} disabled={chBusy || chName.trim().length < 2} className="w-full bg-gradient-primary">
-                      Создать канал
-                    </Button>
-                    <div className="flex items-center gap-3 text-caption text-subtle"><span className="flex-1 h-px bg-border" />или по ссылке<span className="flex-1 h-px bg-border" /></div>
-                    <Input placeholder="Ссылка на публичный канал или @имя" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} className="bg-secondary/50" inputMode="url" autoCapitalize="off" />
+                      <input type="checkbox" checked={chSign} onChange={(e) => setChSign(e.target.checked)} />{t("Показывать авторов постов")}</label>
+                    <Button type="button" onClick={createChannel} disabled={chBusy || chName.trim().length < 2} className="w-full bg-gradient-primary">{t("Создать канал")}</Button>
+                    <div className="flex items-center gap-3 text-caption text-subtle"><span className="flex-1 h-px bg-border" />{t("или по ссылке")}<span className="flex-1 h-px bg-border" /></div>
+                    <Input placeholder={t("Ссылка на публичный канал или @имя")} value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} className="bg-secondary/50" inputMode="url" autoCapitalize="off" />
                     <p className="text-caption text-subtle">Публичный канал появится у вас как канал WYX и будет обновляться сам. Реакции и комментарии — только от людей из WYX.</p>
-                    <Button type="button" variant="outline" onClick={addTelegram} disabled={chBusy || !tgUrl.trim()} className="w-full">
-                      Добавить по ссылке
-                    </Button>
+                    <Button type="button" variant="outline" onClick={addTelegram} disabled={chBusy || !tgUrl.trim()} className="w-full">{t("Добавить по ссылке")}</Button>
                   </div>
                 )}
 
                 {groupMode && (
                   <>
                     <Input
-                      placeholder="Название группы"
+                      placeholder={t("Название группы")}
                       value={groupName}
                       onChange={(e) => setGroupName(e.target.value)}
                       className="bg-secondary/50"
@@ -701,9 +693,7 @@ const ChatSidebar = ({
 
                 {mode === "user" && (
                   <div className="rounded-lg bg-secondary/50 p-3 space-y-2">
-                    <p className="text-sm">
-                      Поиска по людям нет. Чтобы начать переписку, отправьте человеку ссылку на свой профиль — она откроется у него прямо в WYX.
-                    </p>
+                    <p className="text-sm">{t("Поиска по людям нет. Чтобы начать переписку, отправьте человеку ссылку на свой профиль — она откроется у него прямо в WYX.")}</p>
                     <Button
                       type="button"
                       variant="secondary"
@@ -712,19 +702,18 @@ const ChatSidebar = ({
                       onClick={async () => {
                         if (!username) return;
                         const r = await shareProfile(username);
-                        if (r === "copied") sonnerToast.success("Ссылка скопирована");
-                        else if (r === "error") sonnerToast.error("Не удалось поделиться");
+                        if (r === "copied") sonnerToast.success(t("Ссылка скопирована"));
+                        else if (r === "error") sonnerToast.error(t("Не удалось поделиться"));
                       }}
                     >
-                      <Share2 className="w-4 h-4 mr-2" /> Поделиться профилем
-                    </Button>
+                      <Share2 className="w-4 h-4 mr-2" />{t("Поделиться профилем")}</Button>
                   </div>
                 )}
 
                 {mode !== "channel" && (
                 <>
                 <Input
-                  placeholder={mode === "group" ? "Точный ник участника" : "Найти канал…"}
+                  placeholder={mode === "group" ? "Точный ник участника" : t("Найти канал…")}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -748,7 +737,7 @@ const ChatSidebar = ({
                             </Avatar>
                             <span className="font-medium">{user.username}</span>
                             {(user as any).is_bot && (
-                              <span className="text-caption text-subtle uppercase tracking-wide">бот</span>
+                              <span className="text-caption text-subtle uppercase tracking-wide">{t("бот")}</span>
                             )}
                           </div>
                           {groupMode && groupMembers.some((m) => m.id === user.id) ? (
@@ -780,7 +769,7 @@ const ChatSidebar = ({
                     ))}
                     {searchResults.length === 0 && (mode !== "user" || channelResults.length === 0) && (
                       <div className="text-center text-muted-foreground py-8">
-                        {searchQuery ? "Ничего не найдено" : mode === "group" ? "Введите ник участника целиком" : "Введите название канала"}
+                        {searchQuery ? "Ничего не найдено" : mode === "group" ? "Введите ник участника целиком" : t("Введите название канала")}
                       </div>
                     )}
                   </div>
@@ -811,7 +800,7 @@ const ChatSidebar = ({
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
-              placeholder={mint ? "Поиск чатов" : "Поиск чатов и людей по нику"}
+              placeholder={mint ? "Поиск чатов" : t("Поиск чатов и людей по нику")}
               className={mint ? "flex-1 min-w-0 bg-transparent outline-none text-[14.3px] text-foreground placeholder:text-[var(--mint-muted)]" : "flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"}
             />
           </label>
@@ -821,9 +810,9 @@ const ChatSidebar = ({
             ? "mint-card mt-[11px] h-[47px] flex items-center gap-2 px-[10px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             : "mt-2.5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 pb-1"}>
             {([
-              { id: "all", label: "Все" },
-              { id: "unread", label: "Непрочитанные", count: unreadChats },
-              { id: "channels", label: "Каналы" },
+              { id: "all", label: t("Все") },
+              { id: "unread", label: t("Непрочитанные"), count: unreadChats },
+              { id: "channels", label: t("Каналы") },
             ] as const).map((t) => (
               <button
                 key={t.id}
@@ -889,8 +878,8 @@ const ChatSidebar = ({
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-h2 md:text-[15px] truncate">Долгий ящик</p>
-                <p className="text-small text-subtle truncate">Идеи и предложения разработчику</p>
+                <p className="text-h2 md:text-[15px] truncate">{t("Долгий ящик")}</p>
+                <p className="text-small text-subtle truncate">{t("Идеи и предложения разработчику")}</p>
               </div>
               {ideabox && ideabox.unread > 0 ? (
                 <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-[12px] leading-none font-semibold flex items-center justify-center">
@@ -913,8 +902,8 @@ const ChatSidebar = ({
                 <Newspaper className="w-6 h-6 md:w-5 md:h-5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-h2 md:text-[15px] truncate">Стена</p>
-                <p className="text-small text-subtle truncate">{wallNew ? `Общая лента · новых: ${wallNew}` : "Общая лента — пишут все"}</p>
+                <p className="text-h2 md:text-[15px] truncate">{t("Стена")}</p>
+                <p className="text-small text-subtle truncate">{wallNew ? `Общая лента · новых: ${wallNew}` : t("Общая лента — пишут все")}</p>
               </div>
               {wallNew ? <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{wallNew}</span> : <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />}
             </button>
@@ -931,15 +920,15 @@ const ChatSidebar = ({
                 <StarIcon className="w-6 h-6 md:w-5 md:h-5 text-amber" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-h2 md:text-[15px] truncate">Избранное</p>
-                <p className="text-small text-subtle truncate">Сообщения для себя</p>
+                <p className="text-h2 md:text-[15px] truncate">{t("Избранное")}</p>
+                <p className="text-small text-subtle truncate">{t("Сообщения для себя")}</p>
               </div>
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>
           )}
           {peopleHit && !isCollapsed && (
             <div className="px-4 pt-2 pb-1">
-              <p className="text-caption uppercase tracking-wide text-subtle mb-1">Люди</p>
+              <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Люди")}</p>
               <button type="button" onClick={() => { setListFilter(""); void createChat(peopleHit.id); }}
                 className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
                 <Aura active={!!(peopleHit as { is_online?: boolean }).is_online} owner={peopleHit as never} size={46}><Identicon id={peopleHit.id} avatarUrl={peopleHit.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
@@ -991,14 +980,14 @@ const ChatSidebar = ({
               const isChannel = (chat as any).kind === "channel" || isWall;
               // Формируем название чата
               let chatTitle = isWall ? "Стена" : isChannel
-                ? ((chat as any).name || "Канал")
-                : chat.is_group ? (chat.name || "Группа") : "Без названия";
+                ? ((chat as any).name || t("Канал"))
+                : chat.is_group ? (chat.name || t("Группа")) : t("Без названия");
 
               if (isChannel || chat.is_group) {
                 // название уже задано
               } else if (displayParticipants.length > 0) {
                 const names = displayParticipants.map(p => p.username).filter(Boolean);
-                chatTitle = names.join(", ") || "Без названия";
+                chatTitle = names.join(", ") || t("Без названия");
               } else if (participants.length === 0) {
                 chatTitle = `Чат ${chat.id.slice(0, 8)}...`;
               }
@@ -1016,10 +1005,10 @@ const ChatSidebar = ({
                     onClick={() => togglePin(chat)}
                     className="absolute inset-y-0 left-0 w-20 bg-amber text-background flex flex-col items-center justify-center gap-0.5 md:hidden"
                     tabIndex={pinSwipedId === chat.id ? 0 : -1}
-                    aria-label={pinnedAt(chat) ? "Открепить чат" : "Закрепить чат"}
+                    aria-label={pinnedAt(chat) ? "Открепить чат" : t("Закрепить чат")}
                   >
                     <Pin className="w-5 h-5" />
-                    <span className="text-[10px] font-semibold">{pinnedAt(chat) ? "Открепить" : "Закрепить"}</span>
+                    <span className="text-[10px] font-semibold">{pinnedAt(chat) ? "Открепить" : t("Закрепить")}</span>
                   </button>
 
                   {/* Красная кнопка удаления — открывается свайпом влево (телефон) */}
@@ -1028,7 +1017,7 @@ const ChatSidebar = ({
                     onClick={() => deleteChat(chat.id, chatTitle, true)}
                     className="absolute inset-y-0 right-0 w-20 bg-destructive text-white flex items-center justify-center md:hidden"
                     tabIndex={swipedChatId === chat.id ? 0 : -1}
-                    aria-label="Удалить чат"
+                    aria-label={t("Удалить чат")}
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
@@ -1125,19 +1114,19 @@ const ChatSidebar = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <p className="text-h2 md:text-[15px] truncate min-w-0 flex items-center gap-1.5">
-                            {pinnedAt(chat) && <Pin className="w-3.5 h-3.5 text-amber shrink-0" aria-label="Закреплён" />}
+                            {pinnedAt(chat) && <Pin className="w-3.5 h-3.5 text-amber shrink-0" aria-label={t("Закреплён")} />}
                             {isChannel && !isWall && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
-                            {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label="Секретный чат" />}
+                            {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label={t("Секретный чат")} />}
                             <span className="truncate">{chatTitle}</span>
                           </p>
                           {mint && editMode ? (
                             <span className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                              <span role="button" tabIndex={0} aria-label={pinnedAt(chat) ? "Открепить" : "Закрепить"}
+                              <span role="button" tabIndex={0} aria-label={pinnedAt(chat) ? "Открепить" : t("Закрепить")}
                                 onClick={(e) => { e.stopPropagation(); void togglePin(chat); }}
                                 className={`mint-round !w-8 !h-8 ${pinnedAt(chat) ? "mint-lime" : "mint-pill mint-ink"}`}>
                                 <Pin className="w-4 h-4" />
                               </span>
-                              <span role="button" tabIndex={0} aria-label="Удалить чат"
+                              <span role="button" tabIndex={0} aria-label={t("Удалить чат")}
                                 onClick={(e) => { e.stopPropagation(); void deleteChat(chat.id, chatTitle); }}
                                 className="mint-round !w-8 !h-8 mint-pill text-destructive">
                                 <Trash2 className="w-4 h-4" />
@@ -1177,20 +1166,20 @@ const ChatSidebar = ({
                             {isLoading
                               ? "Загрузка…"
                               : isWall
-                                ? ((chat as any).unread_count ? `Общая лента · новых: ${(chat as any).unread_count}` : "Общая лента — пишут все")
+                                ? ((chat as any).unread_count ? `Общая лента · новых: ${(chat as any).unread_count}` : t("Общая лента — пишут все"))
                               : (chat as any).kind === "secret" && !(chat as any).last_message
                                 ? ((chat as any).secret?.state === "pending"
-                                    ? ((chat as any).secret?.initiator_id === currentUser?.id ? "Ждём, когда собеседник примет" : "Приглашение в секретный чат")
-                                    : (chat as any).secret?.state === "declined" ? "Секретный чат отклонён" : "Секретный чат")
+                                    ? ((chat as any).secret?.initiator_id === currentUser?.id ? "Ждём, когда собеседник примет" : t("Приглашение в секретный чат"))
+                                    : (chat as any).secret?.state === "declined" ? "Секретный чат отклонён" : t("Секретный чат"))
                               : (chat as any).last_message
                                 ? `${(chat as any).last_message.sender_id === currentUser?.id ? "Вы: " : ""}${
                                     (chat as any).last_message.cipher
-                                      ? (secretPreview[chat.id + (chat as any).last_message.cipher.slice(0, 16)] ?? "🔒 Зашифрованное сообщение")
+                                      ? (secretPreview[chat.id + (chat as any).last_message.cipher.slice(0, 16)] ?? t("🔒 Зашифрованное сообщение"))
                                       : (chat as any).last_message.text}`
-                                : "Сообщений пока нет"}
+                                : t("Сообщений пока нет")}
                           </p>
                           {(chat as any).unread_mention && (
-                            <span aria-label="Вас упомянули" title="Вас упомянули или ответили вам"
+                            <span aria-label={t("Вас упомянули")} title={t("Вас упомянули или ответили вам")}
                               className="shrink-0 w-[22px] h-[22px] rounded-full bg-primary text-primary-foreground text-[13px] font-bold leading-none flex items-center justify-center">
                               @
                             </span>
@@ -1220,7 +1209,7 @@ const ChatSidebar = ({
             <div className={`text-center text-muted-foreground py-8 ${
               isCollapsed ? "px-2 text-xs" : "px-4"
             }`}>
-              {isCollapsed ? "Нет чатов" : "Нет чатов. Создайте первый чат!"}
+              {isCollapsed ? "Нет чатов" : t("Нет чатов. Создайте первый чат!")}
               {/* У нового человека чатов нет и писать некому — единственный путь
                   к первому диалогу — отдать друзьям ссылку на свой профиль. Та же
                   системная «Поделиться», что и в профиле, с откатом в буфер. */}
@@ -1231,8 +1220,8 @@ const ChatSidebar = ({
                   onClick={async () => {
                     if (!currentUser?.username) return;
                     const r = await shareProfile(currentUser.username);
-                    if (r === "copied") sonnerToast.success("Ссылка на профиль скопирована — отправьте её друзьям");
-                    else if (r === "error") sonnerToast.error("Не удалось поделиться");
+                    if (r === "copied") sonnerToast.success(t("Ссылка на профиль скопирована — отправьте её друзьям"));
+                    else if (r === "error") sonnerToast.error(t("Не удалось поделиться"));
                   }}
                   className={mint
                     ? "mint-dark-pill mt-4 h-[42px] px-5 text-[12.7px] inline-flex items-center justify-center gap-[11px]"
@@ -1257,7 +1246,7 @@ const ChatSidebar = ({
             size="icon" 
             onClick={onLogout}
             className="w-full h-10"
-            title="Выйти"
+            title={t("Выйти")}
           >
             <LogOut className="w-4 h-4" />
           </Button>
@@ -1284,9 +1273,7 @@ const ChatSidebar = ({
               onClick={() => deleteChat(chatMenu.chatId, chatMenu.title)}
               className="w-full px-4 py-2 text-left text-sm text-destructive hover:bg-secondary flex items-center gap-2"
             >
-              <Trash2 className="w-4 h-4" />
-              Удалить чат
-            </button>
+              <Trash2 className="w-4 h-4" />{t("Удалить чат")}</button>
           </div>
         </div>
       )}

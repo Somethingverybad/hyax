@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Aura } from "@/components/Aura";
 import { useNavigate } from "react-router-dom";
@@ -10,7 +11,7 @@ import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
 import { Ban, Lock, FileText, ShieldCheck, Trash2, Images, Mail, KeyRound, MonitorSmartphone } from "lucide-react";
 
-const SAVED_ACCESS: Record<string, string> = { all: "Все", selected: "Избранные", none: "Никто" };
+const SAVED_ACCESS: Record<string, string> = { all: t("Все"), selected: t("Избранные"), none: t("Никто") };
 
 type Blocked = { id: string; username: string; avatar_url?: string | null };
 
@@ -41,7 +42,7 @@ const ProfilePrivacy = () => {
       // Каталог звуков изменился: паки 18+ появились или пропали.
       void syncNotificationSounds().catch(() => {});
     } catch {
-      toast.error("Не удалось сохранить");
+      toast.error(t("Не удалось сохранить"));
       setProfile(prev); writeCache("user", prev);
     }
   };
@@ -55,7 +56,7 @@ const ProfilePrivacy = () => {
     try {
       await api.updateProfile(prev.id, { [key]: value } as any);
     } catch {
-      toast.error("Не удалось сохранить");
+      toast.error(t("Не удалось сохранить"));
       setProfile(prev); writeCache("user", prev);
     }
   };
@@ -68,7 +69,7 @@ const ProfilePrivacy = () => {
     try {
       await api.updateProfile(prev.id, { hide_online: value });
     } catch {
-      toast.error("Не удалось сохранить");
+      toast.error(t("Не удалось сохранить"));
       setProfile(prev); writeCache("user", prev);
     }
   };
@@ -78,40 +79,40 @@ const ProfilePrivacy = () => {
       await api.unblockUser(b.id);
       setList((l) => (l || []).filter((x) => x.id !== b.id));
       toast.success(`${b.username} разблокирован`);
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Конфиденциальность" />
+      <ScreenHeader title={t("Конфиденциальность")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle flex items-center gap-2"><Ban className="w-4 h-4" /> Заблокированные</p>
+        <p className="px-1 text-small text-subtle flex items-center gap-2"><Ban className="w-4 h-4" />{t("Заблокированные")}</p>
         <SettingsCard>
           {list === null ? (
-            <div className="px-4 py-4 text-small text-subtle">Загрузка…</div>
+            <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>
           ) : list.length === 0 ? (
             <div className="px-4 py-4 text-small text-subtle">Никого. Заблокировать можно из карточки пользователя — его сообщения и пуши перестанут приходить.</div>
           ) : list.map((b) => (
             <div key={b.id} className="min-h-14 px-4 py-2 flex items-center gap-3">
               <Aura active={!!(b as { is_online?: boolean }).is_online} owner={b as never} size={36}><Identicon id={b.id} avatarUrl={b.avatar_url} className="w-9 h-9 rounded-md shrink-0" /></Aura>
               <span className="flex-1 text-body truncate">{b.username}</span>
-              <button type="button" onClick={() => unblock(b)} className="text-small text-primary active:opacity-60">Разблокировать</button>
+              <button type="button" onClick={() => unblock(b)} className="text-small text-primary active:opacity-60">{t("Разблокировать")}</button>
             </div>
           ))}
         </SettingsCard>
 
-        <p className="px-1 pt-2 text-small text-subtle">Статус</p>
+        <p className="px-1 pt-2 text-small text-subtle">{t("Статус")}</p>
         <SettingsCard>
           <SettingsRow
-            label="Скрыть, что я в сети"
+            label={t("Скрыть, что я в сети")}
             hint={profile?.hide_online
               ? "Статус «Скрыт»: собеседники видят вас не в сети"
-              : "Собеседники видят, когда вы в сети"}
+              : t("Собеседники видят, когда вы в сети")}
             trailing={
               <input
                 type="checkbox"
                 className="w-5 h-5 accent-primary shrink-0"
-                aria-label="Скрыть, что я в сети"
+                aria-label={t("Скрыть, что я в сети")}
                 checked={!!profile?.hide_online}
                 disabled={!profile}
                 onChange={(e) => setHidden(e.target.checked)}
@@ -123,7 +124,7 @@ const ProfilePrivacy = () => {
         <SettingsCard>
           <SettingsRow
             icon={Images}
-            label="Кто видит сохранёнки"
+            label={t("Кто видит сохранёнки")}
             value={SAVED_ACCESS[profile?.saved_visibility || "all"]}
             onClick={() => navigate("/profile/saved-access")}
           />
@@ -131,15 +132,15 @@ const ProfilePrivacy = () => {
 
         <SettingsCard>
           <SettingsRow
-            label="Показывать время последнего входа"
+            label={t("Показывать время последнего входа")}
             hint={profile?.show_last_seen === false
               ? "Собеседники не увидят, когда вы заходили"
-              : "Собеседники видят «в сети 5 минут назад»"}
+              : t("Собеседники видят «в сети 5 минут назад»")}
             trailing={
               <input
                 type="checkbox"
                 className="w-5 h-5 accent-primary shrink-0"
-                aria-label="Показывать время последнего входа"
+                aria-label={t("Показывать время последнего входа")}
                 checked={profile?.show_last_seen !== false}
                 disabled={!profile || !!profile?.hide_online}
                 onChange={(e) => setFlag("show_last_seen", e.target.checked)}
@@ -153,16 +154,16 @@ const ProfilePrivacy = () => {
           </p>
         )}
 
-        <p className="px-1 pt-2 text-small text-subtle">Контент</p>
+        <p className="px-1 pt-2 text-small text-subtle">{t("Контент")}</p>
         <SettingsCard>
           <SettingsRow
-            label="Показывать 18+"
-            hint={profile?.allow_adult ? "Паки для взрослых и посты Стены без отметки «4+» видны" : "Паки для взрослых и посты Стены без отметки «4+» скрыты"}
+            label={t("Показывать 18+")}
+            hint={profile?.allow_adult ? "Паки для взрослых и посты Стены без отметки «4+» видны" : t("Паки для взрослых и посты Стены без отметки «4+» скрыты")}
             trailing={
               <input
                 type="checkbox"
                 className="w-5 h-5 accent-primary shrink-0"
-                aria-label="Показывать 18+"
+                aria-label={t("Показывать 18+")}
                 checked={!!profile?.allow_adult}
                 disabled={!profile}
                 onChange={(e) => (e.target.checked ? setConfirmAdult(true) : setAdult(false))}
@@ -175,41 +176,41 @@ const ProfilePrivacy = () => {
                 Паки с пометкой 18+ могут содержать грубую лексику и материалы для взрослых. Включая показ, вы подтверждаете, что вам есть 18 лет.
               </p>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setAdult(true)} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-small font-medium active:opacity-90">Мне есть 18, включить</button>
-                <button type="button" onClick={() => setConfirmAdult(false)} className="flex-1 h-10 rounded-md bg-surface-4 text-small font-medium active:opacity-90">Отмена</button>
+                <button type="button" onClick={() => setAdult(true)} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-small font-medium active:opacity-90">{t("Мне есть 18, включить")}</button>
+                <button type="button" onClick={() => setConfirmAdult(false)} className="flex-1 h-10 rounded-md bg-surface-4 text-small font-medium active:opacity-90">{t("Отмена")}</button>
               </div>
             </div>
           )}
         </SettingsCard>
 
         <SettingsCard>
-          <SettingsRow icon={FileText} label="Правила" onClick={() => navigate("/terms")} />
-          <SettingsRow icon={ShieldCheck} label="Политика конфиденциальности" onClick={() => navigate("/privacy")} />
+          <SettingsRow icon={FileText} label={t("Правила")} onClick={() => navigate("/terms")} />
+          <SettingsRow icon={ShieldCheck} label={t("Политика конфиденциальности")} onClick={() => navigate("/privacy")} />
         </SettingsCard>
 
         <SettingsCard>
           <SettingsRow
             icon={MonitorSmartphone}
-            label="Устройства"
-            hint="Где выполнен вход; выйти с любого или со всех"
+            label={t("Устройства")}
+            hint={t("Где выполнен вход; выйти с любого или со всех")}
             onClick={() => navigate("/profile/devices")}
           />
           <SettingsRow
             icon={KeyRound}
-            label="Перенести секретные чаты"
-            hint="Ключи на другое ваше устройство — по QR или коду"
+            label={t("Перенести секретные чаты")}
+            hint={t("Ключи на другое ваше устройство — по QR или коду")}
             onClick={() => navigate("/profile/secret-transfer")}
           />
           <SettingsRow
             icon={Mail}
-            label="Почта для восстановления"
-            hint={profile?.email_verified ? profile.email : "Без неё забытый пароль не вернуть"}
+            label={t("Почта для восстановления")}
+            hint={profile?.email_verified ? profile.email : t("Без неё забытый пароль не вернуть")}
             onClick={() => navigate("/profile/email")}
           />
           <SettingsRow
             icon={Trash2}
-            label="Удалить аккаунт"
-            hint="Безвозвратно, со всеми сообщениями"
+            label={t("Удалить аккаунт")}
+            hint={t("Безвозвратно, со всеми сообщениями")}
             danger
             onClick={() => navigate("/profile/delete")}
           />
@@ -217,9 +218,7 @@ const ProfilePrivacy = () => {
 
         <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 flex gap-3">
           <Lock className="w-5 h-5 text-subtle shrink-0 mt-0.5" />
-          <p className="text-small text-subtle">
-            Остальные настройки — кто видит профиль и обложку — пока в разработке.
-          </p>
+          <p className="text-small text-subtle">{t("Остальные настройки — кто видит профиль и обложку — пока в разработке.")}</p>
         </div>
       </div>
     </div>

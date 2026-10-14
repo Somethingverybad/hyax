@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Mail, ShieldCheck } from "lucide-react";
@@ -83,7 +84,7 @@ const ProfileEmail = () => {
             <Input id="email" type="email" inputMode="email" autoComplete="email" value={email}
               onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={inputCls} />
             <Button type="submit" className="w-full h-12" disabled={busy || !email.trim()}>
-              {busy ? "Отправляю…" : "Отправить код"}
+              {busy ? "Отправляю…" : t("Отправить код")}
             </Button>
           </form>
         ) : (

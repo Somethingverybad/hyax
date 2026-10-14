@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bookmark, Share2, Users, Radio, Newspaper } from "lucide-react";
@@ -23,11 +24,11 @@ type Row = { id: string; title: string; kind: "saved" | "group" | "direct" | "ch
 const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeChatId?: string): Row[] => chats
   .filter((c) => (includeChannels || c.kind !== "channel") && c.id !== excludeChatId)
   .map((c): Row => {
-    if (c.kind === "saved") return { id: c.id, title: "Избранное", kind: "saved" };
-    if (c.kind === "channel") return { id: c.id, title: c.name || "Канал", kind: "channel", avatar: c.avatar_url };
-    if (c.is_group) return { id: c.id, title: c.name || "Группа", kind: "group", avatar: c.avatar_url };
+    if (c.kind === "saved") return { id: c.id, title: t("Избранное"), kind: "saved" };
+    if (c.kind === "channel") return { id: c.id, title: c.name || t("Канал"), kind: "channel", avatar: c.avatar_url };
+    if (c.is_group) return { id: c.id, title: c.name || t("Группа"), kind: "group", avatar: c.avatar_url };
     const peer = (c.participants || []).find((p: any) => p.id !== me);
-    return { id: c.id, title: peer?.username || c.name || "Чат", kind: "direct", peerId: peer?.id, avatar: peer?.avatar_url };
+    return { id: c.id, title: peer?.username || c.name || t("Чат"), kind: "direct", peerId: peer?.id, avatar: peer?.avatar_url };
   })
   // «Избранное» — первой строкой, как в пересылке сообщений.
   .sort((a, b) => Number(b.kind === "saved") - Number(a.kind === "saved"));
@@ -68,7 +69,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
             .filter((c: any) => c.my_role === "owner" || c.my_role === "admin").map((c: any) => c.id));
           list = list.filter((r) => r.kind !== "channel" || mine.has(r.id));
         }
-        if (includeWall) list = [{ id: "wall", title: "Стена", kind: "wall" }, ...list];
+        if (includeWall) list = [{ id: "wall", title: t("Стена"), kind: "wall" }, ...list];
         setRows(list);
       } catch { setRows([]); }
     })();
@@ -88,7 +89,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
       toast.success(row.kind === "saved" ? "Добавлено в избранное" : `Отправлено: ${row.title}`);
       onClose();
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось отправить");
+      toast.error(e?.message || t("Не удалось отправить"));
     } finally { setBusy(false); }
   };
 
@@ -123,11 +124,11 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 space-y-2">
           {rows === null ? (
-            <p className="text-small text-subtle">Загрузка…</p>
+            <p className="text-small text-subtle">{t("Загрузка…")}</p>
           ) : rows.length === 0 ? (
             <p className="text-small text-subtle">Пока некуда отправлять — нет переписок.</p>
           ) : shown.length === 0 ? (
-            <p className="text-small text-subtle">Ничего не нашлось</p>
+            <p className="text-small text-subtle">{t("Ничего не нашлось")}</p>
           ) : shown.map((r) => (
             <button
               key={r.id}
@@ -168,9 +169,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                 onClick={() => { onClose(); onShareToWall(); }}
                 className="w-full h-12 rounded-md bg-surface-4 text-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
               >
-                <Newspaper className="w-5 h-5 text-primary" />
-                Опубликовать на Стене
-              </button>
+                <Newspaper className="w-5 h-5 text-primary" />{t("Опубликовать на Стене")}</button>
             )}
             {onShareOutside && (
               <button

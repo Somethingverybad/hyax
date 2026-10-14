@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -185,7 +186,7 @@ const ProfileSecretTransfer = () => {
             <p className="text-center text-xl font-mono tracking-[0.2em]">{targetCheck}</p>
             {linkPub && <p className="text-center text-caption text-subtle">Ключ пришёл из QR — совпадение проверено автоматически.</p>}
             <Button type="button" className="w-full h-12" disabled={busy} onClick={give}>{busy ? "Отправляю…" : "Совпадает — отправить ключи"}</Button>
-            <button type="button" className="w-full text-small text-subtle py-2" onClick={() => { setTarget(null); setCode(""); if (linkId) navigate("/profile/secret-transfer", { replace: true }); }}>Отмена</button>
+            <button type="button" className="w-full text-small text-subtle py-2" onClick={() => { setTarget(null); setCode(""); if (linkId) navigate("/profile/secret-transfer", { replace: true }); }}>{t("Отмена")}</button>
           </div>
         )}
 
@@ -194,7 +195,7 @@ const ProfileSecretTransfer = () => {
             <p className="text-body">{onlyChat ? (sent.n ? "Ключ чата отправлен." : "Ключ этого чата отдать нельзя.") : `Отправлено секретных чатов: ${sent.n}.`}</p>
             {sent.skipped > 0 && <p className="text-small text-subtle">Не перенеслись: {sent.skipped}. Это чаты, созданные до обновления — их ключи устройство отдать не может. Создайте такой чат заново.</p>}
             <p className="text-small text-subtle">Собеседникам ушло сообщение, что вы добавили устройство. Новое устройство подхватит чаты само.</p>
-            <Button type="button" className="w-full h-12" onClick={() => navigate(-1)}>Готово</Button>
+            <Button type="button" className="w-full h-12" onClick={() => navigate(-1)}>{t("Готово")}</Button>
           </div>
         )}
       </div>

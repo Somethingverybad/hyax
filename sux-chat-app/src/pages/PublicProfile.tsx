@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
@@ -69,7 +70,7 @@ const PublicProfile = () => {
       }
       navigate("/chat", { replace: true, state: { chatId } });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось открыть чат");
+      toast.error(e?.message || t("Не удалось открыть чат"));
       setBusy(false);
     }
   };
@@ -77,13 +78,13 @@ const PublicProfile = () => {
   const share = async () => {
     if (!card) return;
     const r = await shareProfile(card.username);
-    if (r === "copied") toast.success("Ссылка скопирована");
-    else if (r === "error") toast.error("Не удалось поделиться");
+    if (r === "copied") toast.success(t("Ссылка скопирована"));
+    else if (r === "error") toast.error(t("Не удалось поделиться"));
   };
 
   const copy = async (value: string) => {
-    try { await navigator.clipboard.writeText(value); toast.success("Скопировано"); }
-    catch { toast.error("Не удалось скопировать"); }
+    try { await navigator.clipboard.writeText(value); toast.success(t("Скопировано")); }
+    catch { toast.error(t("Не удалось скопировать")); }
   };
 
   const isMe = !!card && !!me && card.id === me;
@@ -94,11 +95,11 @@ const PublicProfile = () => {
         <button type="button" onClick={() => navigate("/chat", { replace: true })} className="w-10 h-10 rounded-md flex items-center justify-center bg-surface-2" aria-label="К чатам">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <span className="text-body font-semibold">Профиль</span>
+        <span className="text-body font-semibold">{t("Профиль")}</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-[calc(var(--sab)+32px)]">
-        {state === "loading" && <div className="mt-16 text-center text-subtle text-small">Загрузка…</div>}
+        {state === "loading" && <div className="mt-16 text-center text-subtle text-small">{t("Загрузка…")}</div>}
         {state === "missing" && (
           <div className="mt-16 text-center space-y-2">
             <p className="text-body font-semibold">Такого пользователя нет</p>
@@ -119,20 +120,19 @@ const PublicProfile = () => {
               <Identicon id={card.id} avatarUrl={card.avatar_url || null} className="w-[104px] h-[104px] rounded-lg shrink-0" />
               <div className="min-w-0">
                 <h2 className="text-[24px] leading-tight font-semibold truncate">{card.username}</h2>
-                <p className="mt-2 text-body text-subtle truncate">{card.bio ? card.bio.split("\n")[0] : "Статус не указан"}</p>
-                {card.is_bot && <span className="mt-1 inline-block text-caption text-subtle uppercase tracking-wide">бот</span>}
+                <p className="mt-2 text-body text-subtle truncate">{card.bio ? card.bio.split("\n")[0] : t("Статус не указан")}</p>
+                {card.is_bot && <span className="mt-1 inline-block text-caption text-subtle uppercase tracking-wide">{t("бот")}</span>}
               </div>
             </div>
 
             <div className="flex gap-3">
               {!isMe && (
                 <button type="button" onClick={write} disabled={busy} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50">
-                  <MessageSquare className="w-4 h-4" /> {busy ? "Открываю…" : card.is_bot ? "Начать" : "Написать"}
+                  <MessageSquare className="w-4 h-4" /> {busy ? "Открываю…" : card.is_bot ? "Начать" : t("Написать")}
                 </button>
               )}
               <button type="button" onClick={share} className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90">
-                <Share2 className="w-4 h-4" /> Поделиться
-              </button>
+                <Share2 className="w-4 h-4" />{t("Поделиться")}</button>
             </div>
             {isMe && <p className="text-caption text-subtle -mt-2">Это ваш профиль — так его увидят те, кому вы отправите ссылку.</p>}
 
@@ -140,7 +140,7 @@ const PublicProfile = () => {
 
             {card.bio && (
               <div className="rounded-lg bg-surface-4 p-4">
-                <p className="text-h2 mb-2">О себе</p>
+                <p className="text-h2 mb-2">{t("О себе")}</p>
                 <p className="text-body text-muted-foreground whitespace-pre-wrap break-words">{card.bio}</p>
               </div>
             )}
@@ -148,25 +148,25 @@ const PublicProfile = () => {
             {saved && saved.count > 0 && (
               <div className="rounded-lg bg-surface-4 p-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-h2 flex-1">Сохранёнки</span>
+                  <span className="text-h2 flex-1">{t("Сохранёнки")}</span>
                   <span className="text-small text-subtle">{pluralPhotos(saved.count)}</span>
                 </div>
                 <div className="mt-3 grid grid-cols-5 gap-1.5">
                   {saved.items.map((it) => <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[8px] ring-1 ring-border" onClick={() => setGalleryOpen(true)} />)}
                 </div>
                 <button type="button" onClick={() => setGalleryOpen(true)} className="mt-3 -mb-4 -mx-4 px-4 h-11 w-[calc(100%+32px)] border-t border-border flex items-center text-body active:bg-surface-3">
-                  <span className="flex-1 text-left">Все сохранёнки</span>
+                  <span className="flex-1 text-left">{t("Все сохранёнки")}</span>
                   <ChevronRight className="w-4 h-4 text-subtle" />
                 </button>
               </div>
             )}
 
             <div className="rounded-lg bg-surface-4 p-4">
-              <p className="text-h2 mb-2">Информация</p>
+              <p className="text-h2 mb-2">{t("Информация")}</p>
               {[
-                ["Имя пользователя", "@" + card.username],
-                ["ID пользователя", card.id],
-                ...(card.created_at ? [["Дата регистрации", new Date(card.created_at).toLocaleDateString("ru-RU")]] : []),
+                [t("Имя пользователя"), "@" + card.username],
+                [t("ID пользователя"), card.id],
+                ...(card.created_at ? [[t("Дата регистрации"), new Date(card.created_at).toLocaleDateString("ru-RU")]] : []),
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center gap-3 h-9">
                   <span className="text-small text-subtle w-32 shrink-0">{label}</span>

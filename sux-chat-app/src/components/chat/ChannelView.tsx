@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
@@ -1741,7 +1742,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
                 <input type="checkbox" checked={commentsOn} onChange={(e) => setCommentsOn(e.target.checked)} />
                 Комментарии к постам
               </label>
-              <button type="button" onClick={save} className="w-full py-2.5 bg-primary text-primary-foreground font-semibold">Сохранить</button>
+              <button type="button" onClick={save} className="w-full py-2.5 bg-primary text-primary-foreground font-semibold">{t("Сохранить")}</button>
 
               <div className="pt-2 border-t border-border">
                 <p className="text-sm font-semibold mb-2 flex items-center gap-2"><UserPlus className="w-4 h-4" />Админы</p>

@@ -1,3 +1,4 @@
+import { t as tr } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -16,16 +17,16 @@ import { cn } from "@/lib/utils";
  */
 type Tab = "top" | "new" | "done" | "mine";
 const TABS: { id: Tab; label: string }[] = [
-  { id: "top", label: "Топ" },
-  { id: "new", label: "Бездна" },
-  { id: "done", label: "Реализовано" },
-  { id: "mine", label: "Мои" },
+  { id: "top", label: tr("Топ") },
+  { id: "new", label: tr("Бездна") },
+  { id: "done", label: tr("Реализовано") },
+  { id: "mine", label: tr("Мои") },
 ];
 const EMPTY: Record<Tab, string> = {
-  top: "Открытых идей пока нет — предложите первую.",
-  new: "В бездне пусто.",
-  done: "Пока ничего не реализовано.",
-  mine: "Вы ещё не предлагали идей.",
+  top: tr("Открытых идей пока нет — предложите первую."),
+  new: tr("В бездне пусто."),
+  done: tr("Пока ничего не реализовано."),
+  mine: tr("Вы ещё не предлагали идей."),
 };
 const PAGE = 20;
 const dateFmt = (s: string) => new Date(s).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
@@ -54,7 +55,7 @@ export default function ProfileIdeas() {
       setItems((prev) => (p === 1 || !prev ? d.items : [...prev, ...d.items.filter((i) => !prev.some((x) => x.id === i.id))]));
       setPage(d.page); setPages(d.pages); setCount(d.count); setAdmin(d.is_admin); setVibe(d.my_vibe);
     } catch {
-      if (req === reqRef.current) toast.error("Не удалось загрузить идеи");
+      if (req === reqRef.current) toast.error(tr("Не удалось загрузить идеи"));
     } finally {
       if (req === reqRef.current) setLoading(false);
     }
@@ -71,10 +72,10 @@ export default function ProfileIdeas() {
       const r = await api.ideaAction(idea.id, "vote", value);
       if (r.idea) patch(r.idea);
       if (typeof r.my_vibe === "number") setVibe(r.my_vibe);
-      toast.success("+5 к вайбометру");
+      toast.success(tr("+5 к вайбометру"));
     } catch (e: any) {
       patch(idea);
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || tr("Не получилось"));
     } finally { setBusyId(null); }
   };
 
@@ -87,18 +88,18 @@ export default function ProfileIdeas() {
         setItems((prev) => prev && prev.filter((i) => i.id !== idea.id));
         setCount((c) => Math.max(0, c - 1));
       } else if (r.idea) patch(r.idea);
-      toast.success(act === "hide" ? "Идея убрана" : r.idea?.status === "done" ? "Отмечено: реализовано" : "Отметка снята");
+      toast.success(act === "hide" ? "Идея убрана" : r.idea?.status === "done" ? "Отмечено: реализовано" : tr("Отметка снята"));
     } catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || tr("Не получилось"));
     } finally { setBusyId(null); }
   };
 
   const report = async (idea: IdeaItem) => {
     if (busyId) return;
-    if (!(await confirmDialog("Пожаловаться на эту идею? Её проверит модератор.", { ok: "Пожаловаться" }))) return;
+    if (!(await confirmDialog("Пожаловаться на эту идею? Её проверит модератор.", { ok: tr("Пожаловаться") }))) return;
     setBusyId(idea.id);
-    try { await api.ideaAction(idea.id, "report"); toast.success("Жалоба отправлена — спасибо"); }
-    catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    try { await api.ideaAction(idea.id, "report"); toast.success(tr("Жалоба отправлена — спасибо")); }
+    catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
     finally { setBusyId(null); }
   };
 
@@ -109,20 +110,20 @@ export default function ProfileIdeas() {
     try {
       await api.createIdea(text);
       setDraft("");
-      toast.success("Идея в ящике — спасибо!");
+      toast.success(tr("Идея в ящике — спасибо!"));
       if (tab === "new" || tab === "mine") void load(tab, 1);
       else setParams({ tab: "mine" }, { replace: true });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось отправить");
+      toast.error(e?.message || tr("Не удалось отправить"));
     } finally { setSending(false); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Долгий ящик"
+        title={tr("Долгий ящик")}
         right={vibe !== null ? (
-          <span className="shrink-0 min-w-10 h-10 px-1 inline-flex items-center justify-end gap-1 text-small text-subtle tabular-nums" title="Ваш вайбометр">
+          <span className="shrink-0 min-w-10 h-10 px-1 inline-flex items-center justify-end gap-1 text-small text-subtle tabular-nums" title={tr("Ваш вайбометр")}>
             <Sparkles className="w-4 h-4 text-primary" />{vibe}
           </span>
         ) : undefined}
@@ -134,7 +135,7 @@ export default function ProfileIdeas() {
               value={draft}
               onChange={(e) => setDraft(e.target.value.slice(0, 4000))}
               rows={3}
-              placeholder="Что добавить, что поменять, что бесит?"
+              placeholder={tr("Что добавить, что поменять, что бесит?")}
               className="w-full resize-none bg-background border border-border rounded-md px-3 py-2.5 text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
             />
             <p className="mt-2 text-caption text-subtle leading-snug">
@@ -143,7 +144,7 @@ export default function ProfileIdeas() {
             <div className="mt-2 flex justify-end">
               <button type="button" onClick={submit} disabled={sending || draft.trim().length < 3}
                 className="shrink-0 h-10 px-4 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center gap-2 active:opacity-90 disabled:opacity-50">
-                <Send className="w-4 h-4" />{sending ? "Отправляю…" : "Предложить"}
+                <Send className="w-4 h-4" />{sending ? "Отправляю…" : tr("Предложить")}
               </button>
             </div>
           </section>
@@ -160,7 +161,7 @@ export default function ProfileIdeas() {
           </div>
 
           {items === null ? (
-            <p className="py-10 text-center text-small text-subtle">Загружаю…</p>
+            <p className="py-10 text-center text-small text-subtle">{tr("Загружаю…")}</p>
           ) : items.length === 0 ? (
             <p className="py-10 text-center text-small text-subtle">{EMPTY[tab]}</p>
           ) : (
@@ -174,7 +175,7 @@ export default function ProfileIdeas() {
                       <p className="mt-1.5 text-caption text-subtle flex flex-wrap gap-x-2">
                         <span>{dateFmt(idea.created_at)}</span>
                         {idea.status === "done" && <span className="text-online">✓ реализовано{idea.done_at ? ` ${dateFmt(idea.done_at)}` : ""}</span>}
-                        {idea.mine && <span>ваша идея</span>}
+                        {idea.mine && <span>{tr("ваша идея")}</span>}
                       </p>
                     </div>
                   </div>
@@ -182,7 +183,7 @@ export default function ProfileIdeas() {
                     <VoteBtn up count={idea.likes} chosen={idea.my_vote > 0} disabled={idea.mine || !!idea.my_vote || busyId === idea.id} onClick={() => vote(idea, 1)} />
                     <VoteBtn count={idea.dislikes} chosen={idea.my_vote < 0} disabled={idea.mine || !!idea.my_vote || busyId === idea.id} onClick={() => vote(idea, -1)} />
                     {!idea.mine && !admin && (
-                      <button type="button" onClick={() => report(idea)} disabled={busyId === idea.id} aria-label="Пожаловаться"
+                      <button type="button" onClick={() => report(idea)} disabled={busyId === idea.id} aria-label={tr("Пожаловаться")}
                         className="ml-auto h-9 w-9 rounded-md text-subtle flex items-center justify-center active:bg-surface-3 disabled:opacity-50">
                         <Flag className="w-4 h-4" />
                       </button>
@@ -191,9 +192,9 @@ export default function ProfileIdeas() {
                       <span className="ml-auto flex gap-2">
                         <button type="button" onClick={() => adminAct(idea, "done")} disabled={busyId === idea.id}
                           className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium flex items-center gap-1.5 active:opacity-80 disabled:opacity-50">
-                          {idea.status === "done" ? <><Undo2 className="w-4 h-4" />Снять</> : <><Check className="w-4 h-4" />Реализовано</>}
+                          {idea.status === "done" ? <><Undo2 className="w-4 h-4" />{tr("Снять")}</> : <><Check className="w-4 h-4" />{tr("Реализовано")}</>}
                         </button>
-                        <button type="button" onClick={() => adminAct(idea, "hide")} disabled={busyId === idea.id} aria-label="Убрать идею"
+                        <button type="button" onClick={() => adminAct(idea, "hide")} disabled={busyId === idea.id} aria-label={tr("Убрать идею")}
                           className="h-9 w-9 rounded-md bg-surface-4 text-destructive flex items-center justify-center active:opacity-80 disabled:opacity-50">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -220,7 +221,7 @@ export default function ProfileIdeas() {
 function VoteBtn({ up, count, chosen, disabled, onClick }: { up?: boolean; count: number; chosen: boolean; disabled: boolean; onClick: () => void }) {
   const Icon = up ? ThumbsUp : ThumbsDown;
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={chosen} aria-label={up ? "Нравится" : "Не нравится"}
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={chosen} aria-label={up ? "Нравится" : tr("Не нравится")}
       className={cn("h-9 px-3 rounded-md border text-small font-medium tabular-nums flex items-center gap-1.5 active:opacity-80",
         chosen ? "bg-primary text-primary-foreground border-primary" : "border-border text-foreground",
         disabled && !chosen && "opacity-60")}>

@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
@@ -31,7 +32,7 @@ const WallBadge = ({ n }: { n: number }) => n > 0 ? (
  * до края экрана.
  */
 const ITEMS = [
-  { to: "/chat", label: "Чаты", icon: MessageSquare },
+  { to: "/chat", label: t("Чаты"), icon: MessageSquare },
   { to: "/wall", label: "Стена", icon: Newspaper },
   { to: "/saved", label: "Избранное", icon: Bookmark },
   { to: "/music", label: "Музыка", icon: Music2 },
@@ -42,7 +43,7 @@ const ITEMS = [
 const MINT_ITEMS: { to: string; label: string; icon: MintIconName; size: [number, number] }[] = [
   { to: "/music", label: "Музыка", icon: "navMusic", size: [17, 21] },
   { to: "/saved", label: "Избранное", icon: "navSaved", size: [16, 21] },
-  { to: "/chat", label: "Чаты", icon: "navChat", size: [28, 20] },
+  { to: "/chat", label: t("Чаты"), icon: "navChat", size: [28, 20] },
   { to: "/wall", label: "Стена", icon: "navWall", size: [21, 21] },
   { to: "/profile", label: "Профиль", icon: "navProfile", size: [22, 23] },
 ];
@@ -84,7 +85,7 @@ const MintIsland = () => {
       <nav className="mint-nav">
         {pos >= 0 && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {MINT_ITEMS.map(({ to, label, icon, size }) => (
-          <NavLink key={to} to={to} aria-label={label} title={label} onClick={tap}
+          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} onClick={tap}
             className={({ isActive }) => cn("mint-nav-item", isActive && "mint-nav-on")}>
             <MintIcon name={icon} size={size} />
             {to === "/wall" && <WallBadge n={wallNew} />}
@@ -105,8 +106,8 @@ const BottomNav = () => {
         <NavLink
           key={to}
           to={to}
-          aria-label={label}
-          title={label}
+          aria-label={t(label)}
+          title={t(label)}
           onClick={tap}
           className={({ isActive }) =>
             cn(
@@ -119,7 +120,7 @@ const BottomNav = () => {
           <Icon className="w-6 h-6" />
           {to === "/wall" && <WallBadge n={wallNew} />}
           {/* Подпись видна только в темах, где она предусмотрена (см. index.css). */}
-          <span className="ui-nav-label hidden text-[11px] font-semibold leading-none">{label}</span>
+          <span className="ui-nav-label hidden text-[11px] font-semibold leading-none">{t(label)}</span>
         </NavLink>
       ))}
     </nav>

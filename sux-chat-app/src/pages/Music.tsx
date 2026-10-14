@@ -1,3 +1,4 @@
+import { t as tr } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -104,12 +105,12 @@ const PlayerPanel = () => {
           </button>
         </div>
         {/* Громкость — на десктопе (на телефоне есть кнопки). */}
-        <div className="hidden md:flex items-center gap-2 mt-3 justify-center" title="Громкость">
+        <div className="hidden md:flex items-center gap-2 mt-3 justify-center" title={tr("Громкость")}>
           <button type="button" onClick={() => setVolume(s.volume > 0 ? 0 : 1)} className="w-8 h-8 flex items-center justify-center text-subtle" aria-label={s.volume > 0 ? "Выключить звук" : "Включить звук"}>
             {s.volume === 0 ? <VolumeX className="w-4 h-4" /> : s.volume < 0.5 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
           <input type="range" min={0} max={1} step={0.02} value={s.volume} onChange={(e) => setVolume(Number(e.target.value))}
-            className="w-40 h-1 accent-primary cursor-pointer" aria-label="Громкость" />
+            className="w-40 h-1 accent-primary cursor-pointer" aria-label={tr("Громкость")} />
         </div>
       </div>
     </div>
@@ -168,7 +169,7 @@ const Music = () => {
       setName(""); setCreating(false);
       setLists((l) => [...(l || []), pl]);
       void openList(pl);
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
   const rename = async (pl: Playlist) => {
@@ -177,7 +178,7 @@ const Music = () => {
     try {
       const next = await api.renamePlaylist(pl.id, value);
       setOpen(next); load();
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
   const remove = async (pl: Playlist) => {
@@ -185,7 +186,7 @@ const Music = () => {
     try {
       await api.deletePlaylist(pl.id);
       setOpen(null); load();
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
   /** Ссылка на плейлист: ключ берём у сервера, дальше системное «Поделиться». */
@@ -194,10 +195,10 @@ const Music = () => {
       const token = pl.share_token || (await api.sharePlaylist(pl.id));
       setOpen({ ...pl, share_token: token });
       const how = await sharePlaylistLink(pl.name, token);
-      if (how === "copied") toast.success("Ссылка скопирована");
-      if (how === "error") toast.error("Не удалось поделиться");
+      if (how === "copied") toast.success(tr("Ссылка скопирована"));
+      if (how === "error") toast.error(tr("Не удалось поделиться"));
       load();
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
   const unshare = async (pl: Playlist) => {
@@ -206,7 +207,7 @@ const Music = () => {
       setOpen({ ...pl, share_token: "" });
       toast.success("Ссылка отозвана");
       load();
-    } catch { toast.error("Не получилось"); }
+    } catch { toast.error(tr("Не получилось")); }
   };
 
   /** Отправить трек в чат: список чатов берём тот же, что в списке переписок. */
@@ -220,7 +221,7 @@ const Music = () => {
         .filter((c: any) => c.kind !== "channel")
         .map((c: any) => ({
           id: c.id,
-          title: c.name || (c.participants || []).find((p: any) => p.id !== me)?.username || "Чат",
+          title: c.name || (c.participants || []).find((p: any) => p.id !== me)?.username || tr("Чат"),
           avatar: (c.participants || []).find((p: any) => p.id !== me)?.avatar_url || null,
         })));
     } catch { setChats([]); }
@@ -233,7 +234,7 @@ const Music = () => {
       await api.sendTrackToChat(chatId, { file_url: sendFor.file_url, title: sendFor.title });
       toast.success("Отправлено");
       setSendFor(null);
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
     finally { setBusy(false); }
   };
 
@@ -254,7 +255,7 @@ const Music = () => {
     return (
       <div className="h-screen flex flex-col bg-background">
         <div className="shrink-0 px-2 py-3 pad-safe-top bg-background border-b border-border min-h-14 flex items-center gap-2">
-          <button type="button" onClick={() => { setOpen(null); load(); }} className="ui-icon-btn p-2" aria-label="Назад">
+          <button type="button" onClick={() => { setOpen(null); load(); }} className="ui-icon-btn p-2" aria-label={tr("Назад")}>
             <ChevronLeft className="w-5 h-5" />
           </button>
           <span className="text-h2 flex-1 truncate">{open.name}</span>
@@ -278,7 +279,7 @@ const Music = () => {
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
           {tracks === null ? (
-            <p className="text-small text-subtle">Загрузка…</p>
+            <p className="text-small text-subtle">{tr("Загрузка…")}</p>
           ) : tracks.length === 0 ? (
             <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 text-small text-subtle">
               Пусто. Музыка добавляется из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».
@@ -306,7 +307,7 @@ const Music = () => {
                           type="button"
                           onClick={(e) => { e.stopPropagation(); void pickChat(t); }}
                           className="p-2 text-subtle active:text-primary"
-                          aria-label="Отправить в чат"
+                          aria-label={tr("Отправить в чат")}
                         >
                           <Send className="w-4 h-4" />
                         </button>
@@ -341,10 +342,10 @@ const Music = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
-              <p className="text-h2">Отправить в чат</p>
+              <p className="text-h2">{tr("Отправить в чат")}</p>
               <p className="text-caption text-subtle truncate">{sendFor.title}</p>
               {chats === null ? (
-                <p className="text-small text-subtle">Загрузка…</p>
+                <p className="text-small text-subtle">{tr("Загрузка…")}</p>
               ) : chats.length === 0 ? (
                 <p className="text-small text-subtle">Пока некуда отправлять — нет чатов.</p>
               ) : chats.map((c) => (
@@ -370,7 +371,7 @@ const Music = () => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <div className="shrink-0 px-4 py-3 pad-safe-top bg-background border-b border-border min-h-14 flex items-center gap-2">
-        <span className="text-h1 flex-1">Музыка</span>
+        <span className="text-h1 flex-1">{tr("Музыка")}</span>
         <button
           type="button"
           onClick={() => setCreating((v) => !v)}
@@ -392,14 +393,12 @@ const Music = () => {
               autoFocus
               className="flex-1 h-10 px-3 rounded-md bg-surface-4 outline-none text-body min-w-0"
             />
-            <button type="button" onClick={() => void create()} className="h-10 px-4 rounded-md bg-primary text-primary-foreground text-small font-medium">
-              Создать
-            </button>
+            <button type="button" onClick={() => void create()} className="h-10 px-4 rounded-md bg-primary text-primary-foreground text-small font-medium">{tr("Создать")}</button>
           </div>
         )}
 
         {lists === null ? (
-          <p className="text-small text-subtle">Загрузка…</p>
+          <p className="text-small text-subtle">{tr("Загрузка…")}</p>
         ) : (
           <SettingsCard>
             {lists.map((pl) => (

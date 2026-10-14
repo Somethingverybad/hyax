@@ -180,6 +180,8 @@ export interface AdminMetrics {
   hours: { hour: number; messages: number }[];
 }
 
+export interface ChatTranslate { translate_in: boolean; translate_out: boolean; my_language: string; peer_language: string | null; available: boolean }
+
 export interface DeviceSession {
   device_id: string; name: string; platform: string; app_version: string;
   created_at: string; last_seen: string; current: boolean;
@@ -229,6 +231,8 @@ export interface Profile {
   terms_accepted_at?: string | null;
   /** Анимация ауры — настройка аккаунта, зеркалится в локальную aura_anim. */
   aura_anim?: boolean;
+  /** Язык интерфейса и переводов: ru | en | ko. */
+  language?: string;
   /** Почта для восстановления пароля (только свой профиль); verified — подтверждена кодом. */
   email?: string;
   email_verified?: boolean;
@@ -799,6 +803,25 @@ export const api = {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     return { message: "Logged out" };
+  },
+
+  /** Автоперевод в личке: мои флаги, языки обоих, настроен ли провайдер. */
+  getChatTranslate: async (chatId: string): Promise<ChatTranslate> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/translate/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new Error("Не удалось получить настройки перевода");
+    return res.json();
+  },
+  setChatTranslate: async (chatId: string, data: { translate_in?: boolean; translate_out?: boolean }): Promise<ChatTranslate> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/translate/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(data) });
+    if (!res.ok) throw new Error("Не удалось сохранить настройки перевода");
+    return res.json();
+  },
+  /** Перевод одного сообщения по запросу — на мой язык (или to). */
+  translateMessage: async (messageId: string, to?: string): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/translate/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ to }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || "Не удалось перевести");
+    return body;
   },
 
   /** Устройства с действующим входом (Конфиденциальность → Устройства). */
@@ -1905,7 +1928,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

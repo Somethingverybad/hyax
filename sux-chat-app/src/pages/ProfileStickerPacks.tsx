@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -65,8 +66,8 @@ const ProfileStickerPacks = () => {
   const isMine = (p: { author?: { id?: string } | null }) => !!meId && p.author?.id === meId;
   const sharePack = async (p: { id: string; name: string }) => {
     const r = await shareStickerPack(p.name, p.id);
-    if (r === "copied") toast.success("Ссылка скопирована");
-    else if (r === "error") toast.error("Не удалось поделиться");
+    if (r === "copied") toast.success(t("Ссылка скопирована"));
+    else if (r === "error") toast.error(t("Не удалось поделиться"));
   };
   /** Свой набор — удалить у всех; чужой — убрать из моих. */
   const removePack = async (p: { id: string; name: string; author?: { id?: string } | null }) => {
@@ -75,13 +76,13 @@ const ProfileStickerPacks = () => {
     try {
       if (mine) await api.deleteStickerPack(p.id); else await api.unsaveStickerPack(p.id);
       setPacks((prev) => (prev || []).filter((x) => x.id !== p.id));
-      toast.success(mine ? "Набор удалён" : "Убрано из моих");
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+      toast.success(mine ? "Набор удалён" : t("Убрано из моих"));
+    } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Стикерпаки" />
+      <ScreenHeader title={t("Стикерпаки")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <p className="px-1 text-small text-subtle flex items-center gap-2"><Link2 className="w-4 h-4" /> Набор по ссылке</p>
         <SettingsCard>
@@ -126,7 +127,7 @@ const ProfileStickerPacks = () => {
         <p className="px-1 pt-2 text-small text-subtle">Мои наборы</p>
         <SettingsCard>
           {packs === null ? (
-            <div className="px-4 py-4 text-small text-subtle">Загрузка…</div>
+            <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>
           ) : packs.length === 0 ? (
             <div className="px-4 py-4 text-small text-subtle">Пока пусто. Добавьте набор по ссылке или сохраните чужой.</div>
           ) : packs.map((p) => (
@@ -142,11 +143,11 @@ const ProfileStickerPacks = () => {
               onClick={() => navigate(`/stp/${p.id}`)}
               trailing={
                 <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" aria-label="Поделиться набором" onClick={() => void sharePack(p)}
+                  <button type="button" aria-label={t("Поделиться набором")} onClick={() => void sharePack(p)}
                     className="w-9 h-9 rounded-full flex items-center justify-center text-subtle active:bg-surface-4">
                     <Share2 className="w-4 h-4" />
                   </button>
-                  <button type="button" aria-label={isMine(p) ? "Удалить набор" : "Убрать из моих"} onClick={() => void removePack(p)}
+                  <button type="button" aria-label={isMine(p) ? "Удалить набор" : t("Убрать из моих")} onClick={() => void removePack(p)}
                     className="w-9 h-9 rounded-full flex items-center justify-center text-subtle active:bg-surface-4 active:text-destructive">
                     <Trash2 className="w-4 h-4" />
                   </button>

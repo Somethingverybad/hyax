@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare } from "lucide-react";
@@ -63,7 +64,7 @@ const UserProfileModal = ({
       }
       onClose();
       navigate("/chat", { state: { chatId, title: profile?.username } });
-    } catch (e: any) { toast.error(e?.message || "Не удалось открыть чат"); }
+    } catch (e: any) { toast.error(e?.message || t("Не удалось открыть чат")); }
     finally { setWriting(false); }
   };
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -88,7 +89,7 @@ const UserProfileModal = ({
       if (blocked) { await api.unblockUser(userId); toast.success("Разблокирован"); }
       else { await api.blockUser(userId); toast.success("Заблокирован: его сообщения и пуши больше не придут"); }
       setBlocked(!blocked);
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
   useEffect(() => {
     let alive = true;
@@ -110,8 +111,8 @@ const UserProfileModal = ({
   }, [userId]);
 
   const copy = async (value: string) => {
-    try { await navigator.clipboard.writeText(value); toast.success("Скопировано"); }
-    catch { toast.error("Не удалось скопировать"); }
+    try { await navigator.clipboard.writeText(value); toast.success(t("Скопировано")); }
+    catch { toast.error(t("Не удалось скопировать")); }
   };
 
   return (
@@ -135,13 +136,13 @@ const UserProfileModal = ({
           type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 text-subtle hover:text-foreground"
-          aria-label="Закрыть"
+          aria-label={t("Закрыть")}
         >
           <X className="w-4 h-4" />
         </button>
 
         {loading ? (
-          <div className="py-10 text-center text-small text-subtle">Загрузка…</div>
+          <div className="py-10 text-center text-small text-subtle">{t("Загрузка…")}</div>
         ) : profile ? (
           <div className="space-y-6">
             {/* Обложка — такая же, как человек видит у себя в профиле. */}
@@ -167,7 +168,7 @@ const UserProfileModal = ({
                     <span className="truncate">{profile.aura_text}</span>
                   </p>
                 )}
-                <p className="mt-1 text-body text-subtle truncate">{profile.bio ? profile.bio.split("\n")[0] : "Статус не указан"}</p>
+                <p className="mt-1 text-body text-subtle truncate">{profile.bio ? profile.bio.split("\n")[0] : t("Статус не указан")}</p>
               </div>
             </div>
 
@@ -180,7 +181,7 @@ const UserProfileModal = ({
                   className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  {writing ? "Открываю…" : isBot ? "Начать" : "Написать"}
+                  {writing ? "Открываю…" : isBot ? "Начать" : t("Написать")}
                 </button>
               )}
               {onCall && (
@@ -189,18 +190,14 @@ const UserProfileModal = ({
                   onClick={() => { onCall(); onClose(); }}
                   className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
                 >
-                  <Phone className="w-4 h-4" />
-                  Позвонить
-                </button>
+                  <Phone className="w-4 h-4" />{t("Позвонить")}</button>
               )}
               <button
                 type="button"
                 onClick={() => setShareOpen(true)}
                 className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
               >
-                <Share2 className="w-4 h-4" />
-                Поделиться
-              </button>
+                <Share2 className="w-4 h-4" />{t("Поделиться")}</button>
             </div>
 
             {/* Жалоба и блокировка — вторичные, серые, ниже основных действий. */}
@@ -210,9 +207,7 @@ const UserProfileModal = ({
                 onClick={() => setReportOpen(true)}
                 className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90"
               >
-                <Flag className="w-4 h-4" />
-                Пожаловаться
-              </button>
+                <Flag className="w-4 h-4" />{t("Пожаловаться")}</button>
               <button
                 type="button"
                 onClick={toggleBlock}
@@ -230,7 +225,7 @@ const UserProfileModal = ({
 
             {profile.bio && (
               <div className="rounded-lg bg-surface-4 p-4">
-                <p className="text-h2 mb-2">О себе</p>
+                <p className="text-h2 mb-2">{t("О себе")}</p>
                 <p className="text-body text-muted-foreground whitespace-pre-wrap break-words">{profile.bio}</p>
               </div>
             )}
@@ -238,7 +233,7 @@ const UserProfileModal = ({
             {saved && saved.count > 0 && (
             <div className="rounded-lg bg-surface-4 p-4">
               <div className="flex items-center gap-2">
-                <span className="text-h2 flex-1">Сохранёнки</span>
+                <span className="text-h2 flex-1">{t("Сохранёнки")}</span>
                 <span className="text-small text-subtle">{pluralPhotos(saved.count)}</span>
               </div>
               {saved.items.length > 0 ? (
@@ -249,18 +244,18 @@ const UserProfileModal = ({
                 <p className="mt-2 text-small text-subtle"></p>
               )}
               <button type="button" onClick={() => setGalleryOpen(true)} className="mt-3 -mb-4 -mx-4 px-4 h-11 w-[calc(100%+32px)] border-t border-border flex items-center text-body active:bg-surface-3">
-                <span className="flex-1 text-left">Все сохранёнки</span>
+                <span className="flex-1 text-left">{t("Все сохранёнки")}</span>
                 <ChevronRight className="w-4 h-4 text-subtle" />
               </button>
             </div>
             )}
 
             <div className="rounded-lg bg-surface-4 p-4">
-              <p className="text-h2 mb-2">Информация</p>
+              <p className="text-h2 mb-2">{t("Информация")}</p>
               {[
-                ["Имя пользователя", "@" + profile.username],
-                ["ID пользователя", profile.id],
-                ...(profile.created_at ? [["Дата регистрации", new Date(profile.created_at).toLocaleDateString("ru-RU")]] : []),
+                [t("Имя пользователя"), "@" + profile.username],
+                [t("ID пользователя"), profile.id],
+                ...(profile.created_at ? [[t("Дата регистрации"), new Date(profile.created_at).toLocaleDateString("ru-RU")]] : []),
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center gap-3 h-9 md:h-8">
                   <span className="text-small text-subtle w-32 shrink-0">{label}</span>
@@ -273,9 +268,7 @@ const UserProfileModal = ({
             </div>
           </div>
         ) : (
-          <div className="py-10 text-center text-small text-subtle">
-            Не удалось загрузить профиль
-          </div>
+          <div className="py-10 text-center text-small text-subtle">{t("Не удалось загрузить профиль")}</div>
         )}
       </div>
       {profile && (
@@ -286,8 +279,8 @@ const UserProfileModal = ({
           onClose={() => setShareOpen(false)}
           onShareOutside={async () => {
             const r = await shareProfile(profile.username);
-            if (r === "copied") toast.success("Ссылка скопирована");
-            else if (r === "error") toast.error("Не удалось поделиться");
+            if (r === "copied") toast.success(t("Ссылка скопирована"));
+            else if (r === "error") toast.error(t("Не удалось поделиться"));
           }}
         />
       )}

@@ -206,6 +206,9 @@ const ToastTapDismiss = () => {
 };
 
 const App = () => {
+  // Смена языка перемонтирует дерево: все t() пересчитываются разом.
+  const [langKey, setLangKey] = useState(0);
+  useEffect(() => { const h = () => setLangKey((k) => k + 1); window.addEventListener("hyax:lang", h); return () => window.removeEventListener("hyax:lang", h); }, []);
   // Приложение отрисовалось — заставку из index.html можно убирать (она
   // сама дождётся конца ролика).
   useEffect(() => { window.dispatchEvent(new Event("hyax:ready")); }, []);
@@ -252,7 +255,7 @@ const App = () => {
           {/* Кнопки с исключением из перетаскивания */}
 
           
-          <BrowserRouter>
+          <BrowserRouter key={langKey}>
             <DeepLinks />
             <ShareInboxSheet />
             <ConfirmHost />
