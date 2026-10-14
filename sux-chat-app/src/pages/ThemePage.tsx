@@ -10,6 +10,7 @@ import { setInstalledThemes, setTheme, useInstalledThemes, useTheme } from "@/li
 import { normalizeTheme } from "@/themes/engine";
 import { themeLink } from "@/lib/share";
 import type { ThemeDef } from "@/themes/types";
+import { t as tr } from "@/lib/i18n";
 
 /**
  * Тема по ссылке /t/<id> — как /sp/<id> для звуков: предпросмотр, «Установить»,
@@ -40,8 +41,8 @@ const ThemePage = () => {
       setInstalledThemes([saved, ...installed.filter((t) => t.id !== saved.id)]);
       setThemeState(saved);
       setTheme(saved);
-      toast.success("Тема установлена и включена");
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+      toast.success(tr("Тема установлена и включена"));
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
     finally { setBusy(false); }
   };
 
@@ -52,32 +53,32 @@ const ThemePage = () => {
       await api.uninstallTheme(theme.id);
       setInstalledThemes(installed.filter((t) => t.id !== theme.id));
       setThemeState({ ...theme, installed: false });
-      toast.success("Тема убрана");
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+      toast.success(tr("Тема убрана"));
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
     finally { setBusy(false); }
   };
 
   const share = async () => {
-    try { await navigator.clipboard.writeText(themeLink(id)); toast.success("Ссылка скопирована"); }
-    catch { toast.error("Не удалось скопировать"); }
+    try { await navigator.clipboard.writeText(themeLink(id)); toast.success(tr("Ссылка скопирована")); }
+    catch { toast.error(tr("Не удалось скопировать")); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Тема оформления"
+        title={tr("Тема оформления")}
         onBack={() => (window.history.length > 1 ? navigate(-1) : navigate("/chat", { replace: true }))}
         right={
-          <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label="Поделиться">
+          <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label={tr("Поделиться")}>
             <Share2 className="w-5 h-5" />
           </button>
         }
       />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {theme === undefined ? (
-          <p className="py-10 text-center text-small text-subtle">Загрузка…</p>
+          <p className="py-10 text-center text-small text-subtle">{tr("Загрузка…")}</p>
         ) : theme === null ? (
-          <p className="py-10 text-center text-small text-subtle">Тема не найдена или приватная</p>
+          <p className="py-10 text-center text-small text-subtle">{tr("Тема не найдена или приватная")}</p>
         ) : (
           <>
             <div className="flex items-center gap-4">
@@ -85,10 +86,10 @@ const ThemePage = () => {
                 <Palette className="w-7 h-7 text-primary" />
               </span>
               <div className="min-w-0">
-                <p className="text-[22px] leading-tight font-semibold truncate">{theme.name}</p>
+                <p className="text-[22px] leading-tight font-semibold truncate">{theme.builtin ? tr(theme.name) : theme.name}</p>
                 <p className="mt-1 text-small text-subtle truncate">
-                  {theme.mine ? "Моя тема" : theme.author ? `Автор: ${theme.author}` : "Без автора"}
-                  {theme.installs ? ` · установок: ${theme.installs}` : ""}
+                  {theme.mine ? tr("Моя тема") : theme.author ? tr("Автор: {name}", { name: theme.author }) : tr("Без автора")}
+                  {theme.installs ? ` · ${tr("установок: {n}", { n: theme.installs })}` : ""}
                 </p>
               </div>
             </div>
@@ -96,31 +97,31 @@ const ThemePage = () => {
             <ThemePreview theme={theme} />
 
             {active.id === theme.id ? (
-              <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Тема включена</p>
+              <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> {tr("Тема включена")}</p>
             ) : (
               <button type="button" onClick={theme.installed || theme.mine ? () => setTheme(theme) : install} disabled={busy} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
-                {theme.installed || theme.mine ? <><Check className="w-4 h-4" /> Включить</> : <><Plus className="w-4 h-4" /> Установить</>}
+                {theme.installed || theme.mine ? <><Check className="w-4 h-4" /> {tr("Включить")}</> : <><Plus className="w-4 h-4" /> {tr("Установить")}</>}
               </button>
             )}
 
             {theme.mine && (
-              <button type="button" onClick={() => navigate(`/profile/themes/${theme.id}`)} className="w-full h-11 rounded-md bg-surface-4 font-medium">Изменить тему</button>
+              <button type="button" onClick={() => navigate(`/profile/themes/${theme.id}`)} className="w-full h-11 rounded-md bg-surface-4 font-medium">{tr("Изменить тему")}</button>
             )}
             {theme.installed && !theme.mine && (
               <button type="button" onClick={remove} disabled={busy} className="w-full h-11 rounded-md bg-surface-4 font-medium text-destructive flex items-center justify-center gap-2 disabled:opacity-50">
-                <Trash2 className="w-4 h-4" /> Убрать из моих
+                <Trash2 className="w-4 h-4" /> {tr("Убрать из моих")}
               </button>
             )}
             {!theme.mine && (
               <button type="button" onClick={() => setReportOpen(true)} className="w-full h-11 rounded-md text-small text-subtle flex items-center justify-center gap-2">
-                <Flag className="w-4 h-4" /> Пожаловаться
+                <Flag className="w-4 h-4" /> {tr("Пожаловаться")}
               </button>
             )}
           </>
         )}
       </div>
       {reportOpen && theme && (
-        <ReportSheet target={{ type: "theme", id: theme.id }} title="Пожаловаться на тему" onClose={() => setReportOpen(false)} />
+        <ReportSheet target={{ type: "theme", id: theme.id }} title={tr("Пожаловаться на тему")} onClose={() => setReportOpen(false)} />
       )}
     </div>
   );

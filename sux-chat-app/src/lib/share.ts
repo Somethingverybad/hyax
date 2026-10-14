@@ -8,6 +8,8 @@
  * Через системное меню «Поделиться» (Web Share API — работает в WKWebView и
  * Android WebView), с откатом в буфер обмена.
  */
+import { t } from "./i18n";
+
 export type ShareResult = "shared" | "copied" | "error";
 
 /** Домен ссылок захардкожен: в нативной сборке origin — capacitor://localhost. */
@@ -44,18 +46,18 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
 
 /** Поделиться паком звуков: системное окно «Поделиться», иначе — буфер. */
 export const shareSoundPack = (name: string, id: string) =>
-  shareUrl("WYX", `Пак звуков «${name}» в WYX`, soundPackLink(id));
+  shareUrl("WYX", t("Пак звуков «{name}» в WYX", { name }), soundPackLink(id));
 
 /** Поделиться стикерпаком: системное окно «Поделиться», иначе — буфер. */
 export const shareStickerPack = (name: string, id: string) =>
-  shareUrl("WYX", `Стикеры «${name}» в WYX`, stickerPackLink(id));
+  shareUrl("WYX", t("Стикеры «{name}» в WYX", { name }), stickerPackLink(id));
 
 /** Поделиться плейлистом: системное окно «Поделиться», иначе — буфер. */
 export const sharePlaylistLink = (name: string, token: string) =>
-  shareUrl("WYX", `Плейлист «${name}» в WYX`, playlistLink(token));
+  shareUrl("WYX", t("Плейлист «{name}» в WYX", { name }), playlistLink(token));
 
 export const shareChannel = (ch: { id: string; name: string; username?: string | null }) =>
-  shareUrl("WYX", `Канал «${ch.name}» в WYX`, channelLink(ch));
+  shareUrl("WYX", t("Канал «{name}» в WYX", { name: ch.name }), channelLink(ch));
 
 /** Ссылка на пост канала: та же страница канала, ?post= — к какому посту
  *  прокрутить (см. PublicChannel → ChannelView). */
@@ -65,7 +67,7 @@ export const postLink = (ch: { id: string; username?: string | null }, postId: s
 /** Поделиться постом наружу: первая строка текста поста — как подпись. */
 export const sharePost = (ch: { id: string; name: string; username?: string | null }, postId: string, text?: string | null) => {
   const line = (text || "").trim().split("\n")[0].slice(0, 120);
-  return shareUrl("WYX", line ? `${line} — «${ch.name}» в WYX` : `Пост из канала «${ch.name}» в WYX`, postLink(ch, postId));
+  return shareUrl("WYX", line ? t("{line} — «{name}» в WYX", { line, name: ch.name }) : t("Пост из канала «{name}» в WYX", { name: ch.name }), postLink(ch, postId));
 };
 
 /** Профиль — только ссылкой, без подписи: «Скопировать» в системном меню

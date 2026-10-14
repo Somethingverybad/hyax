@@ -1,3 +1,4 @@
+import { t, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -33,19 +34,19 @@ const StickerPackPage = () => {
     if (!pack || busy) return;
     setBusy(true);
     try {
-      if (pack.is_saved) { await api.unsaveStickerPack(pack.id); toast.success("Пак убран"); }
-      else { await api.saveStickerPack(pack.id); toast.success("Пак добавлен — он появится в панели стикеров"); }
+      if (pack.is_saved) { await api.unsaveStickerPack(pack.id); toast.success(t("Пак убран")); }
+      else { await api.saveStickerPack(pack.id); toast.success(t("Пак добавлен — он появится в панели стикеров")); }
       setPack({ ...pack, is_saved: !pack.is_saved });
     } catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || t("Не получилось"));
     } finally {
       setBusy(false);
     }
   };
 
   const share = async () => {
-    try { await navigator.clipboard.writeText(stickerPackLink(id)); toast.success("Ссылка скопирована"); }
-    catch { toast.error("Не удалось скопировать"); }
+    try { await navigator.clipboard.writeText(stickerPackLink(id)); toast.success(t("Ссылка скопирована")); }
+    catch { toast.error(t("Не удалось скопировать")); }
   };
 
   const mine = !!pack && !!pack.author && pack.author.id === (() => { try { return JSON.parse(localStorage.getItem("cache_user") || "null")?.id; } catch { return null; } })();
@@ -53,19 +54,19 @@ const StickerPackPage = () => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Стикерпак"
+        title={t("Стикерпак")}
         onBack={() => (window.history.length > 1 ? navigate(-1) : navigate("/chat", { replace: true }))}
         right={
-          <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label="Поделиться">
+          <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label={t("Поделиться")}>
             <Share2 className="w-5 h-5" />
           </button>
         }
       />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {pack === undefined ? (
-          <p className="py-10 text-center text-small text-subtle">Загрузка…</p>
+          <p className="py-10 text-center text-small text-subtle">{t("Загрузка…")}</p>
         ) : pack === null ? (
-          <p className="py-10 text-center text-small text-subtle">Пак не найден или приватный</p>
+          <p className="py-10 text-center text-small text-subtle">{t("Пак не найден или приватный")}</p>
         ) : (
           <>
             <div className="flex items-center gap-4">
@@ -75,7 +76,7 @@ const StickerPackPage = () => {
               <div className="min-w-0">
                 <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>
                 <p className="mt-1 text-small text-subtle truncate">
-                  {pack.author?.username ? `Автор: ${pack.author.username}` : "Без автора"} · {pack.stickers_count} стикеров
+                  {pack.author?.username ? t("Автор: {name}", { name: pack.author.username }) : t("Без автора")} · {tn(pack.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}
                 </p>
               </div>
             </div>
@@ -89,25 +90,25 @@ const StickerPackPage = () => {
                 disabled={busy}
                 className={`w-full h-11 rounded-md font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50 ${pack.is_saved ? "bg-surface-4 text-foreground" : "bg-primary text-primary-foreground"}`}
               >
-                {pack.is_saved ? <><Trash2 className="w-4 h-4" /> Убрать из моих</> : <><Plus className="w-4 h-4" /> Добавить себе</>}
+                {pack.is_saved ? <><Trash2 className="w-4 h-4" /> {t("Убрать из моих")}</> : <><Plus className="w-4 h-4" /> {t("Добавить себе")}</>}
               </button>
             )}
             {mine && (
               <div className="space-y-2">
-                <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>
+                <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> {t("Это твой пак — он уже у тебя")}</p>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={async () => {
-                    if (!(await confirmDialog(`Удалить набор «${pack.name}» у всех, кто его сохранил? Это необратимо.`))) return;
+                    if (!(await confirmDialog(t("Удалить набор «{name}» у всех, кто его сохранил? Это необратимо.", { name: pack.name })))) return;
                     setBusy(true);
-                    try { await api.deleteStickerPack(pack.id); toast.success("Набор удалён"); navigate("/profile/stickerpacks", { replace: true }); }
-                    catch (e: any) { toast.error(e?.message || "Не получилось"); }
+                    try { await api.deleteStickerPack(pack.id); toast.success(t("Набор удалён")); navigate("/profile/stickerpacks", { replace: true }); }
+                    catch (e: any) { toast.error(e?.message || t("Не получилось")); }
                     finally { setBusy(false); }
                   }}
                   className="w-full h-11 rounded-md bg-surface-4 text-destructive font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50"
                 >
-                  <Trash2 className="w-4 h-4" /> Удалить набор
+                  <Trash2 className="w-4 h-4" /> {t("Удалить набор")}
                 </button>
               </div>
             )}
@@ -120,7 +121,7 @@ const StickerPackPage = () => {
                   <StickerView url={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" />
                 </div>
               ))}
-              {stickers.length === 0 && <p className="col-span-4 py-6 text-center text-small text-subtle">Стикеры ещё грузятся</p>}
+              {stickers.length === 0 && <p className="col-span-4 py-6 text-center text-small text-subtle">{t("Стикеры ещё грузятся")}</p>}
             </div>}
           </>
         )}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { applog } from "@/lib/applog";
+import { t as tr } from "@/lib/i18n";
 import { clearMessageCache } from "@/lib/messageCache";
 import { getPushSecret } from "@/lib/pushSecret";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -75,7 +76,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   // Имя собеседника для шапки: приходит из сайдбара, он единственный, кто его
   // вычисляет — участники грузятся отдельно от списка чатов.
-  const [selectedChatTitle, setSelectedChatTitle] = useState<string>("Чат");
+  const [selectedChatTitle, setSelectedChatTitle] = useState<string>(() => tr("Чат"));
   // Подсказка типа выбранного чата: канал из поиска может отсутствовать в
   // списке chats (пока не подписан), поэтому храним kind отдельно.
   const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
@@ -107,7 +108,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         writeCache("saved", c);
         if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); }
       })
-      .catch(() => { if (savedMode && !cached?.id) toast.error("Не удалось открыть Избранное"); });
+      .catch(() => { if (savedMode && !cached?.id) toast.error(tr("Не удалось открыть Избранное")); });
     return () => { alive = false; };
   }, [savedMode]);
 
@@ -209,7 +210,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Показываем, кто нас ревёт: вибрация вибрацией, но на десктопе её нет.
   useEffect(() => {
     onRovState((active, from) => {
-      if (active) toast(`${from || "Собеседник"} ревёт`, { id: "rov", duration: 60000 });
+      if (active) toast(from ? tr("{name} ревёт", { name: from }) : tr("Собеседник ревёт"), { id: "rov", duration: 60000 });
       else toast.dismiss("rov");
     });
     return () => onRovState(null);
@@ -434,7 +435,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               chatId: msg.data.chat_id,
               fromUserId: msg.data.from_user_id,
               fromUsername: msg.data.from_username,
-              chatName: msg.data.chat_name || "Группа",
+              chatName: msg.data.chat_name || tr("Группа"),
             });
             return;
           }
@@ -526,11 +527,11 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           const ban = msg.data.ban || null;
           setWall((w) => { const n = w ? { ...w, ban } : w; if (n) writeCache("wall", n); return n; });
           window.dispatchEvent(new CustomEvent("hyax:wall-ban", { detail: ban }));
-          toast(ban ? "Вам запретили писать на Стену" : "Вам снова можно писать на Стену", { id: "wall-ban" });
+          toast(ban ? tr("Вам запретили писать на Стену") : tr("Вам снова можно писать на Стену"), { id: "wall-ban" });
         } else if (msg?.data?.type === "vibe") {
           // Подняли вайб: тост с именем (или без — анонимно) и свежее число в кеше профиля.
           const who = msg.data.from?.username;
-          toast.success(who ? `${who} поднял(а) ваш вайб` : "Кто-то поднял ваш вайб", { description: `Вайбометр: ${msg.data.vibe}`, id: "vibe" });
+          toast.success(who ? tr("{name} поднял(а) ваш вайб", { name: who }) : tr("Кто-то поднял ваш вайб"), { description: tr("Вайбометр: {n}", { n: msg.data.vibe }), id: "vibe" });
           playSfx("sent");
           setUser((u) => { if (!u) return u; const n = { ...u, vibe: msg.data.vibe }; writeCache("user", n); return n; });
         } else if (msg?.data?.type === "rov") {
@@ -557,16 +558,16 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           if (m && senderId && senderId !== user.id && !active) {
             const preview =
               (m.content || "").trim() ||
-              (m.sticker ? "Стикер" :
-               m.video_url ? "Видео-сообщение" :
-               m.voice_url ? "Голосовое сообщение" :
-               m.file_url ? "Файл" : "Новое сообщение");
+              (m.sticker ? tr("Стикер") :
+               m.video_url ? tr("Видео-сообщение") :
+               m.voice_url ? tr("Голосовое сообщение") :
+               m.file_url ? tr("Файл") : tr("Новое сообщение"));
             // Из группы — заголовок с названием группы, в тексте автор: сразу
             // видно, откуда сообщение. Личное — просто имя собеседника.
             const chatRow = chatsRef.current.find((c) => String(c.id) === String(chatId)) as (ChatType & { is_group?: boolean; kind?: string; name?: string; notify_sound?: { url?: string } | null }) | undefined;
             const fromGroup = !!chatRow?.is_group && chatRow?.kind !== "channel";
             showDesktopNotification({
-              title: fromGroup ? (chatRow?.name || "Группа") : (m.sender?.username || "Новое сообщение"),
+              title: fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
               body: (fromGroup && m.sender?.username ? `${m.sender.username}: ${preview}` : preview).slice(0, 150),
               tag: chatId ? String(chatId) : undefined,
               avatar: m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
@@ -680,7 +681,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             chatId: c.chatId,
             fromUserId: c.fromUserId,
             fromUsername: c.fromUsername,
-            chatName: c.chatName || chat?.name || "Группа",
+            chatName: c.chatName || chat?.name || tr("Группа"),
           });
           await group?.accept();
           if (c.chatId) setSelectedChatId(c.chatId);
@@ -775,8 +776,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Стена — своя вкладка (/wall) и строка над списком на десктопе; в самом списке её нет.
   const openWall = () => {
     if (isMobile) { navigate("/wall"); return; }
-    if (!wall) { toast.error("Стена ещё не загрузилась"); return; }
-    setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle("Стена");
+    if (!wall) { toast.error(tr("Стена ещё не загрузилась")); return; }
+    setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle(tr("Стена"));
   };
   const ideaboxChat = chats.find((c) => (c as any).kind === "ideabox") || null;
   const openIdeabox = async () => {
@@ -785,9 +786,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       if (!ideaboxChat) await refreshChats();
       setSelectedChatId(id);
       setSelectedKind("ideabox");
-      setSelectedChatTitle("Долгий ящик");
+      setSelectedChatTitle(tr("Долгий ящик"));
     } catch (e) {
-      toast.error((e as Error).message || "Не удалось открыть");
+      toast.error((e as Error).message || tr("Не удалось открыть"));
     }
   };
   // В группе «собеседника» нет: find(!= me) вернул бы первого участника, и
@@ -800,10 +801,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Заголовок шапки берём из самого чата, а не из selectedChatTitle: при
   // открытии из пуша тайтл не передавался и висел от предыдущего диалога.
   const chatHeaderTitle = isSavedOpen
-    ? "Избранное"
+    ? tr("Избранное")
     : selectedChat
     ? selectedChat.is_group
-      ? selectedChat.name || "Группа"
+      ? selectedChat.name || tr("Группа")
       : peer?.username || selectedChatTitle
     : selectedChatTitle;
 
@@ -918,7 +919,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       state={groupState === "outgoing" ? "outgoing" : groupState === "incoming" ? "incoming" : "active"}
       peer={{
         id: groupInvite?.chatId || selectedChatId || "group",
-        name: groupInvite?.chatName || (groupPeers.length <= 1 && groupPeers[0] ? personInfo(groupPeers[0]).name : selectedChat?.name || "Групповой звонок"),
+        name: groupInvite?.chatName || (groupPeers.length <= 1 && groupPeers[0] ? personInfo(groupPeers[0]).name : selectedChat?.name || tr("Групповой звонок")),
       }}
       isGroup
       participants={groupParticipants}
@@ -1102,7 +1103,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                   onWallChanged={() => { void refreshWall(); }}
                 />
               ) : (
-                <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Загрузка…</p>
+                <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
               )}
             </div>
             <BottomNav />
@@ -1125,10 +1126,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           reactionEvent={reactionEvent}
             reactionEvent={reactionEvent}
                   reactionEvent={reactionEvent}
-                  title="Избранное"
+                  title={tr("Избранное")}
                 />
               ) : (
-                <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Загрузка…</p>
+                <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
               )}
             </div>
             <BottomNav />
@@ -1274,9 +1275,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             <div className="w-24 h-24 mx-auto mb-6">
               <Identicon id="hyax-empty" avatarUrl={null} className="w-24 h-24" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Выберите чат</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">{tr("Выберите чат")}</h2>
             <p className="text-muted-foreground max-w-md">
-              Слева — список чатов. Откройте любой, чтобы начать переписку или позвонить.
+              {tr("Слева — список чатов. Откройте любой, чтобы начать переписку или позвонить.")}
             </p>
           </div>
         </div>

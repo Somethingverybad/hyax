@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { t } from "@/lib/i18n";
 
 type CallType = "audio" | "video";
 export type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
@@ -94,7 +95,7 @@ export class OneToOneCallService {
       callId: data.callId,
       chatId: data.chatId,
       fromUserId: data.fromUserId,
-      fromUsername: data.fromUsername || "Неизвестный",
+      fromUsername: data.fromUsername || t("Неизвестный"),
       fromUserAvatar: data.fromUserAvatar,
       callType: data.callType || "audio",
     });
@@ -143,7 +144,7 @@ export class OneToOneCallService {
       console.log('✅ [CallService] call_invite отправлен');
     } catch (error) {
       console.error('❌ [CallService] Ошибка при звонке:', error);
-      this.onError?.("Не удалось получить доступ к микрофону");
+      this.onError?.(t("Не удалось получить доступ к микрофону"));
       this.cleanupLocalStream();
       this.resetState();
     }
@@ -176,7 +177,7 @@ export class OneToOneCallService {
         },
       });
     } catch {
-      this.onError?.("Не удалось получить доступ к микрофону");
+      this.onError?.(t("Не удалось получить доступ к микрофону"));
       this.cleanupLocalStream();
       this.resetState();
     }
@@ -280,7 +281,7 @@ export class OneToOneCallService {
         callId,
         chatId: data.chat_id || this.chatId,
         fromUserId,
-        fromUsername: data.from_username || "Неизвестный",
+        fromUsername: data.from_username || t("Неизвестный"),
         fromUserAvatar: data.from_user_avatar,
         callType: data.call_type || "audio",
       });
@@ -489,7 +490,7 @@ export class OneToOneCallService {
         },
       });
     } catch {
-      this.onError?.("Не удалось обработать входящий звонок");
+      this.onError?.(t("Не удалось обработать входящий звонок"));
       this.finishCall("failed");
     }
   }
@@ -507,7 +508,7 @@ export class OneToOneCallService {
       console.log('✅ [CallService.handleAnswer] Remote description установлен');
     } catch (error) {
       console.error('❌ [CallService.handleAnswer] Ошибка:', error);
-      this.onError?.("Не удалось установить ответ звонка");
+      this.onError?.(t("Не удалось установить ответ звонка"));
       this.finishCall("failed");
     }
   }
@@ -524,7 +525,7 @@ export class OneToOneCallService {
       console.log('✅ [CallService.handleIceCandidate] ICE кандидат добавлен');
     } catch (error) {
       console.error('❌ [CallService.handleIceCandidate] Ошибка:', error);
-      this.onError?.("Не удалось добавить ICE-кандидат");
+      this.onError?.(t("Не удалось добавить ICE-кандидат"));
     }
   }
 

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Eye, X } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
+import { t, getLang } from "@/lib/i18n";
 
 type Data = Awaited<ReturnType<typeof api.messageViewers>>;
 
@@ -10,8 +11,8 @@ const fmt = (iso: string) => {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
   return today
-    ? d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-    : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    ? d.toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString(getLang(), { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" });
 };
 
 /**
@@ -47,27 +48,27 @@ const ViewersSheet = ({ messageId, onClose, onOpenProfile }: { messageId: string
           <div className="md:hidden mx-auto mb-2 h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
           <div className="flex items-center gap-2">
             <Eye className="w-5 h-5 text-primary" />
-            <p className="text-h2 flex-1">Просмотры и реакции</p>
-            <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label="Закрыть"><X className="w-4 h-4" /></button>
+            <p className="text-h2 flex-1">{t("Просмотры и реакции")}</p>
+            <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label={t("Закрыть")}><X className="w-4 h-4" /></button>
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(var(--sab)+16px)] md:pb-4 space-y-4">
           {data === undefined ? (
-            <p className="text-small text-subtle">Загрузка…</p>
+            <p className="text-small text-subtle">{t("Загрузка…")}</p>
           ) : data === null ? (
-            <p className="text-small text-subtle">Не удалось загрузить</p>
+            <p className="text-small text-subtle">{t("Не удалось загрузить")}</p>
           ) : (
             <>
               <section className="space-y-1.5">
-                <p className="text-caption text-subtle uppercase tracking-wide">Прочитали{data.read_by.length ? ` · ${data.read_by.length}` : ""}</p>
+                <p className="text-caption text-subtle uppercase tracking-wide">{t("Прочитали")}{data.read_by.length ? ` · ${data.read_by.length}` : ""}</p>
                 {data.read_by.length === 0
-                  ? <p className="text-small text-subtle">Пока никто. Тех, кто скрыл статус «в сети», здесь не будет.</p>
+                  ? <p className="text-small text-subtle">{t("Пока никто. Тех, кто скрыл статус «в сети», здесь не будет.")}</p>
                   : data.read_by.map((r) => <Row key={r.id} id={r.id} username={r.username} avatar={r.avatar_url} right={fmt(r.read_at)} />)}
               </section>
               <section className="space-y-1.5">
-                <p className="text-caption text-subtle uppercase tracking-wide">Реакции{data.reactions.length ? ` · ${data.reactions.reduce((n, g) => n + g.users.length, 0)}` : ""}</p>
+                <p className="text-caption text-subtle uppercase tracking-wide">{t("Реакции")}{data.reactions.length ? ` · ${data.reactions.reduce((n, g) => n + g.users.length, 0)}` : ""}</p>
                 {data.reactions.length === 0
-                  ? <p className="text-small text-subtle">Реакций нет</p>
+                  ? <p className="text-small text-subtle">{t("Реакций нет")}</p>
                   : data.reactions.map((g) => (
                     <div key={g.emoji} className="space-y-1.5">
                       {g.users.map((u) => <Row key={g.emoji + u.id} id={u.id} username={u.username} avatar={u.avatar_url} right={g.emoji} />)}

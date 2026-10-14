@@ -85,7 +85,7 @@ const ProfileEdit = () => {
             disabled={saving || !dirty || !valid}
             className="px-2 h-10 text-body font-medium text-primary active:opacity-60 disabled:opacity-40"
           >
-            {saving ? "Сохраняем…" : t("Сохранить")}
+            {saving ? t("Сохраняем…") : t("Сохранить")}
           </button>
         }
       />
@@ -96,7 +96,7 @@ const ProfileEdit = () => {
           <input id="edit-username" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={50}
             className="mint-card mt-[10px] w-full h-[39px] px-[19px] text-[14.3px] text-foreground outline-none" />
           <p className="mt-[10px] text-[11.7px] leading-[14px]" style={{ color: "var(--mint-hint)" }}>
-            Имя, которое видят собеседники. Логин для входа не меняется
+            {t("Имя, которое видят собеседники. Логин для входа не меняется")}
           </p>
           {!valid && <p className="mt-1 text-[11.7px] text-destructive">{t("Никнейм короче 2 символов")}</p>}
           <div className="mint-divider -mx-[6px] my-[18px]" />
@@ -105,7 +105,7 @@ const ProfileEdit = () => {
             placeholder={t("Например: на связи после 18:00")}
             className="mint-card mt-[10px] w-full min-h-[68px] px-[19px] py-[12px] text-[14.3px] text-foreground outline-none resize-none placeholder:text-[var(--mint-muted)]" />
           <p className="mt-[10px] text-[11.7px] leading-[14px] flex justify-between gap-3" style={{ color: "var(--mint-hint)" }}>
-            <span>Аватарка и обложка меняются на экране профиля — по кнопке с камерой</span>
+            <span>{t("Аватарка и обложка меняются на экране профиля — по кнопке с камерой")}</span>
             <span className="tabular-nums shrink-0">{bio.length}/{BIO_LIMIT}</span>
           </p>
         </div>
@@ -121,7 +121,7 @@ const ProfileEdit = () => {
             className="w-full h-10 rounded-md bg-surface-4 border border-transparent px-3 text-body outline-none focus:border-amber"
           />
           <p className="text-caption text-subtle">
-            Имя, которое видят собеседники. Логин для входа не меняется.
+            {t("Имя, которое видят собеседники. Логин для входа не меняется.")}
           </p>
           {!valid && (
             <p className="text-caption text-destructive">{t("Никнейм короче 2 символов")}</p>
@@ -144,7 +144,7 @@ const ProfileEdit = () => {
         </div>
 
         <p className="px-1 text-caption text-subtle">
-          Аватар и обложка меняются на экране профиля — по кнопке с камерой.
+          {t("Аватар и обложка меняются на экране профиля — по кнопке с камерой.")}
         </p>
       </div>
       )}

@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t as tr, tn, getLang } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
@@ -68,7 +68,7 @@ interface Post {
 
 
 const fmtTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" });
 
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
@@ -164,14 +164,7 @@ interface ChannelViewProps {
 }
 
 /** Низ экрана на вкладке Стены: под плавающим островом «Мяты» (см. .wall-tab-bottom). */
-const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "навсегда";
-
-/** «1 подписчик», «2 подписчика», «5 подписчиков». */
-const pluralSubs = (n: number) => {
-  const m10 = n % 10, m100 = n % 100;
-  const w = m10 === 1 && m100 !== 11 ? "подписчик" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "подписчика" : "подписчиков";
-  return `${n} ${w}`;
-};
+const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString(getLang(), { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : tr("навсегда");
 
 const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged }: ChannelViewProps) => {
   // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
@@ -207,7 +200,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   /** 403 с wall_ban: показываем плашку вместо композера. */
   const catchBan = (e: any) => {
     const ban = e?.body?.wall_ban;
-    if (ban) { setWallState((w) => (w ? { ...w, ban } : w)); toast.error("Вам запретили писать на Стену"); return true; }
+    if (ban) { setWallState((w) => (w ? { ...w, ban } : w)); toast.error(tr("Вам запретили писать на Стену")); return true; }
     return false;
   };
   // Просмотр картинок канала: список всех картинок ленты и позиция в нём.
@@ -228,7 +221,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [undoBar, setUndoBar] = useState<Post | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commitDelete = (id: string) => {
-    api.removeMessage(id, "all").catch(() => toast.error("Не удалось удалить пост"));
+    api.removeMessage(id, "all").catch(() => toast.error(tr("Не удалось удалить пост")));
     setPosts((prev) => prev.filter((p) => p.id !== id));
     setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
@@ -271,16 +264,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     try {
       if (ids.length === 1) await api.forwardMessage(ids[0], chatId);
       else await api.forwardMany(ids, chatId);
-      toast.success(title === "Избранное" ? "Добавлено в избранное" : `Отправлено: ${title}`);
+      toast.success(title === "Избранное" || title === tr("Избранное") ? tr("Добавлено в избранное") : tr("Отправлено: {title}", { title }));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось переслать");
+      toast.error(e?.message || tr("Не удалось переслать"));
     }
   };
   const sharePostOutside = async (post: Post) => {
     if (!channel) return;
     const r = await sharePost(channel, post.id, post.content);
-    if (r === "copied") toast.success("Ссылка скопирована");
-    else if (r === "error") toast.error("Не удалось поделиться");
+    if (r === "copied") toast.success(tr("Ссылка скопирована"));
+    else if (r === "error") toast.error(tr("Не удалось поделиться"));
   };
   // Пришли по ссылке на пост (PublicChannel положил id в sessionStorage):
   // после загрузки ленты прокручиваем к нему и подсвечиваем.
@@ -362,7 +355,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch (e) {
       if (catchBan(e)) { temp.drop(); return; }
-      toast.error("Не удалось опубликовать видео — нажми «Повторить»");
+      toast.error(tr("Не удалось опубликовать видео — нажми «Повторить»"));
       temp.fail(() => void publishNote(temp, file, seconds, mirror, flip));
     }
   };
@@ -419,7 +412,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       setRecBusy(true);
       const ok = await startRec("video", facing);
       setRecBusy(false);
-      if (!ok) toast.error("Нет доступа к камере");
+      if (!ok) toast.error(tr("Нет доступа к камере"));
       return;
     }
     setRecBusy(true);
@@ -433,7 +426,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       await publishNote(temp, result.file, result.seconds, mirror, noteFlip);
     } catch {
       temp?.drop();
-      toast.error("Не удалось записать видео");
+      toast.error(tr("Не удалось записать видео"));
     } finally {
       setSending(false);
       setRecBusy(false);
@@ -538,7 +531,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     const queue: Track[] = audios.map((x) => ({
       id: x.id,
       raw: x.file_url as string,
-      title: (x.file_name || "Аудио").replace(/\.[^.]+$/, ""),
+      title: (x.file_name || tr("Аудио")).replace(/\.[^.]+$/, ""),
       artist: x.sender?.username,
     }));
     void playQueue(queue, Math.max(0, audios.findIndex((x) => x.id === p.id)));
@@ -696,7 +689,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               wall ? { wall_safe: safe } : undefined,
             ));
           } catch (e) {
-            if (!catchBan(e)) toast.error(`Не удалось опубликовать «${att.file.name}»`);
+            if (!catchBan(e)) toast.error(tr("Не удалось опубликовать «{name}»", { name: att.file.name }));
             temp.drop();
           }
         }
@@ -706,7 +699,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       setComposeOpen(false);
       setTimeout(() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }), 60);
     } catch (e) {
-      if (!catchBan(e)) toast.error((e as any)?.message || "Не удалось опубликовать");
+      if (!catchBan(e)) toast.error((e as any)?.message || tr("Не удалось опубликовать"));
     } finally {
       setSending(false);
     }
@@ -724,36 +717,36 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     try {
       setWallState(await api.muteWallAuthor(a.id, true));
       setPosts((prev) => prev.filter((p) => p.sender?.id !== a.id));
-      toast.success(`${a.username} больше не показывается`, { description: "Вернуть можно в сведениях о Стене" });
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+      toast.success(tr("{name} больше не показывается", { name: a.username }), { description: tr("Вернуть можно в сведениях о Стене") });
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
   const adminPost = async (post: Post, data: { hidden?: boolean; wall_safe?: boolean }) => {
     setMenuFor(null);
     try {
       const fresh = await api.wallAdminPost(post.id, data);
       setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, ...fresh } : p)));
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
   const banAuthor = async (post: Post) => {
     setMenuFor(null);
     const a = post.sender;
     if (!a) return;
-    const raw = prompt(`Запретить ${a.username} писать на Стену. На сколько часов? Пусто — навсегда.`, "24");
+    const raw = prompt(tr("Запретить {name} писать на Стену. На сколько часов? Пусто — навсегда.", { name: a.username }), "24");
     if (raw === null) return;
     const hours = raw.trim() ? Number(raw) : null;
-    if (hours !== null && !(hours > 0)) { toast.error("Число часов"); return; }
-    const reason = prompt("Причина (увидит пользователь)", "Нарушение правил") ?? "";
+    if (hours !== null && !(hours > 0)) { toast.error(tr("Число часов")); return; }
+    const reason = prompt(tr("Причина (увидит пользователь)"), "Нарушение правил") ?? "";
     try {
       await api.banWallUser(a.id, hours, reason);
-      toast.success(hours ? `${a.username}: запрет на ${hours} ч` : `${a.username}: запрет навсегда`);
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+      toast.success(hours ? tr("{name}: запрет на {hours} ч", { name: a.username, hours }) : tr("{name}: запрет навсегда", { name: a.username }));
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
   const doRepost = async (post: Post, wallSafe: boolean) => {
     setRepostFor(null);
     try {
       await api.repostToWall(post.id, wallSafe);
-      toast.success("Опубликовано на Стене");
-    } catch (e: any) { if (!catchBan(e)) toast.error(e?.message || "Не получилось"); }
+      toast.success(tr("Опубликовано на Стене"));
+    } catch (e: any) { if (!catchBan(e)) toast.error(e?.message || tr("Не получилось")); }
   };
 
   /** Реакция на пост — тем же модулем и тем же запросом, что в переписке:
@@ -772,7 +765,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       const ch = await api.subscribeChannel(channelId);
       setChannel((c) => (c ? { ...c, ...ch } : ch));
     } catch {
-      toast.error("Не удалось подписаться");
+      toast.error(tr("Не удалось подписаться"));
     }
   };
 
@@ -782,18 +775,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       setChannel((c) => (c ? { ...c, my_role: null, subscribers_count: Math.max(0, (c.subscribers_count || 1) - 1) } : c));
       setInfoOpen(false);
     } catch {
-      toast.error("Ошибка");
+      toast.error(tr("Ошибка"));
     }
   };
 
   const removeChannel = async () => {
-    if (!(await confirmDialog(`Удалить канал «${channel?.name}»? Это необратимо.`))) return;
+    if (!(await confirmDialog(tr("Удалить канал «{name}»? Это необратимо.", { name: channel?.name ?? "" })))) return;
     try {
       await api.deleteChannel(channelId);
       onDeleted?.();
       onBack?.();
     } catch {
-      toast.error("Не удалось удалить");
+      toast.error(tr("Не удалось удалить"));
     }
   };
 
@@ -817,14 +810,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
           <div className="text-center">
             <Paperclip className="w-8 h-8 mx-auto text-primary" />
-            <p className="mt-2 text-body font-semibold">Отпусти — прикреплю к посту</p>
+            <p className="mt-2 text-body font-semibold">{tr("Отпусти — прикреплю к посту")}</p>
           </div>
         </div>
       )}
       {/* Шапка */}
       <div className="flex items-center gap-3 px-3 pad-safe-top py-2 border-b border-border shrink-0">
         {onBack && (
-          <button type="button" onClick={onBack} className="p-2 -ml-2" aria-label="Назад">
+          <button type="button" onClick={onBack} className="p-2 -ml-2" aria-label={tr("Назад")}>
             <ChevronLeft className="w-6 h-6" />
           </button>
         )}
@@ -841,15 +834,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             </span>
           )}
           <span className="min-w-0">
-            <span className="block text-h1 truncate">{wall ? "Стена" : channel?.name || "Канал"}</span>
+            <span className="block text-h1 truncate">{wall ? tr("Стена") : channel?.name || tr("Канал")}</span>
             <span className="block text-small text-muted-foreground truncate">
-              {wall ? (wallAdmin ? "Общая лента · вы админ" : "Общая лента — пишут все")
-                : `${pluralSubs(channel?.subscribers_count ?? 0)}${channel?.username ? ` · @${channel.username}` : ""}`}
+              {wall ? (wallAdmin ? tr("Общая лента · вы админ") : tr("Общая лента — пишут все"))
+                : `${tn(channel?.subscribers_count ?? 0, "{n} подписчик", "{n} подписчика", "{n} подписчиков")}${channel?.username ? ` · @${channel.username}` : ""}`}
             </span>
           </span>
         </button>
         {channel?.my_role === "owner" && (
-          <button type="button" onClick={() => setInfoOpen(true)} className="p-1" aria-label="Настройки">
+          <button type="button" onClick={() => setInfoOpen(true)} className="p-1" aria-label={tr("Настройки")}>
             <Settings className="w-5 h-5 text-muted-foreground" />
           </button>
         )}
@@ -861,17 +854,17 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           <div className="flex justify-center">
             <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder}
               className="text-xs text-muted-foreground px-3 py-1 bg-surface-2 rounded-full disabled:opacity-60">
-              {loadingOlder ? "Загружаю…" : "Показать старые посты"}
+              {loadingOlder ? tr("Загружаю…") : tr("Показать старые посты")}
             </button>
           </div>
         )}
         {loading ? (
-          <p className="text-center text-sm text-muted-foreground py-10">Загрузка…</p>
+          <p className="text-center text-sm text-muted-foreground py-10">{tr("Загрузка…")}</p>
         ) : posts.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground py-10">
-            {channel?.tg_state === "pending" ? "Подключаем канал по ссылке — посты появятся в течение минуты"
-              : channel?.tg_state === "error" ? "Не удалось подключить канал по ссылке"
-              : wall ? "На Стене пока пусто. Напишите первым." : isAdmin ? "Постов пока нет. Опубликуйте первый." : "В канале пока пусто"}
+            {channel?.tg_state === "pending" ? tr("Подключаем канал по ссылке — посты появятся в течение минуты")
+              : channel?.tg_state === "error" ? tr("Не удалось подключить канал по ссылке")
+              : wall ? tr("На Стене пока пусто. Напишите первым.") : isAdmin ? tr("Постов пока нет. Опубликуйте первый.") : tr("В канале пока пусто")}
           </p>
         ) : (
           feedPosts.map((post) => (
@@ -888,14 +881,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       )}
                       <span className="min-w-0">
                         <span className="block text-body font-semibold truncate">{post.forwarded_chat ? post.forwarded_chat.name : post.sender.username}</span>
-                        {post.forwarded_chat && <span className="block text-caption text-subtle truncate">канал</span>}
+                        {post.forwarded_chat && <span className="block text-caption text-subtle truncate">{tr("канал")}</span>}
                       </span>
                     </button>
                     <span className="ml-auto flex items-center gap-1 shrink-0">
-                      {post.wall_safe && <span className="px-1.5 h-5 rounded-full bg-primary/15 text-[11px] font-semibold text-primary flex items-center" title="Контент 4+">4+</span>}
-                      {post.wall_hidden && <span className="px-1.5 h-5 rounded-full bg-destructive/15 text-[11px] font-semibold text-destructive flex items-center">скрыт</span>}
+                      {post.wall_safe && <span className="px-1.5 h-5 rounded-full bg-primary/15 text-[11px] font-semibold text-primary flex items-center" title={tr("Контент 4+")}>4+</span>}
+                      {post.wall_hidden && <span className="px-1.5 h-5 rounded-full bg-destructive/15 text-[11px] font-semibold text-destructive flex items-center">{tr("скрыт")}</span>}
                       {!post._pending && (
-                        <button type="button" onClick={() => setMenuFor(post)} className="w-8 h-8 -mr-2 rounded-full flex items-center justify-center text-muted-foreground" aria-label="Действия">
+                        <button type="button" onClick={() => setMenuFor(post)} className="w-8 h-8 -mr-2 rounded-full flex items-center justify-center text-muted-foreground" aria-label={tr("Действия")}>
                           <MoreHorizontal className="w-5 h-5" />
                         </button>
                       )}
@@ -917,9 +910,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   onPlayAudio={playAudioFrom} />
                 {post._pending && post._failed && (
                   <div className="mt-2 flex items-center gap-3 text-caption">
-                    <span className="text-destructive font-medium">Не опубликовано</span>
-                    {post._retry && <button type="button" onClick={post._retry} className="underline text-foreground">Повторить</button>}
-                    <button type="button" onClick={() => setPosts((prev) => prev.filter((x) => x.id !== post.id))} className="underline text-subtle">Удалить</button>
+                    <span className="text-destructive font-medium">{tr("Не опубликовано")}</span>
+                    {post._retry && <button type="button" onClick={post._retry} className="underline text-foreground">{tr("Повторить")}</button>}
+                    <button type="button" onClick={() => setPosts((prev) => prev.filter((x) => x.id !== post.id))} className="underline text-subtle">{tr("Удалить")}</button>
                   </div>
                 )}
                 {post._pending && !post._failed && post._progress != null && (
@@ -927,11 +920,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
                       <div className="h-full bg-primary transition-[width] duration-150" style={{ width: `${Math.max(3, post._progress)}%` }} />
                     </div>
-                    <span className="tabular-nums shrink-0">{post._progress < 100 ? `${post._progress}%` : "публикация…"}</span>
+                    <span className="tabular-nums shrink-0">{post._progress < 100 ? `${post._progress}%` : tr("публикация…")}</span>
                   </div>
                 )}
                 <div className="flex items-center gap-4 mt-2 text-caption text-subtle">
-                  <span>{post._pending ? "отправка" : fmtTime(post.created_at)}</span>
+                  <span>{post._pending ? tr("отправка") : fmtTime(post.created_at)}</span>
                   <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{post.views_count ?? 0}</span>
                   {post.sound && <span className="flex items-center gap-1"><Music2 className="w-3.5 h-3.5" />{post.sound.name}</span>}
                 </div>
@@ -940,12 +933,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               <div className="flex items-center gap-2 px-3 py-2 border-t border-border flex-wrap">
                 <ReactionBar
                   reactions={post.reactions}
-                  onToggle={(emoji) => subscribed ? react(post, emoji) : toast.error("Подпишитесь, чтобы реагировать")}
+                  onToggle={(emoji) => subscribed ? react(post, emoji) : toast.error(tr("Подпишитесь, чтобы реагировать"))}
                 />
                 <button
                   type="button"
-                  onClick={() => subscribed ? setReactPickFor(post.id) : toast.error("Подпишитесь, чтобы реагировать")}
-                  aria-label="Добавить реакцию"
+                  onClick={() => subscribed ? setReactPickFor(post.id) : toast.error(tr("Подпишитесь, чтобы реагировать"))}
+                  aria-label={tr("Добавить реакцию")}
                   className="h-8 px-2.5 text-small rounded-full bg-surface-4 text-muted-foreground inline-flex items-center"
                 >
                   ＋
@@ -964,7 +957,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   <button
                     type="button"
                     onClick={() => setShareFor(post)}
-                    aria-label="Поделиться постом"
+                    aria-label={tr("Поделиться постом")}
                     className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground"
                   >
                     <Share2 className="w-4 h-4" />
@@ -974,7 +967,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   <button
                     type="button"
                     onClick={() => startDelete(post)}
-                    aria-label="Удалить пост"
+                    aria-label={tr("Удалить пост")}
                     className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground active:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -992,14 +985,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           {undoBar && (
             <div className="px-3 pb-2 shrink-0">
               <div className="flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
-                <span className="text-sm">Пост удалён</span>
-                <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
+                <span className="text-sm">{tr("Пост удалён")}</span>
+                <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">{tr("Отменить")}</button>
               </div>
             </div>
           )}
           <div className={cn("pad-safe-bottom shrink-0", !onBack && "wall-tab-bottom")} />
           {wallState && !composeOpen && (
-            <button type="button" onClick={() => { setComposeOpen(true); setComposeOpts(false); }} aria-label="Новый пост"
+            <button type="button" onClick={() => { setComposeOpen(true); setComposeOpts(false); }} aria-label={tr("Новый пост")}
               className={cn("absolute right-4 z-20 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform",
                 !onBack ? "bottom-[calc(16px+var(--mint-nav-space,0px)+env(safe-area-inset-bottom,0px))]" : "bottom-[calc(16px+env(safe-area-inset-bottom,0px))]")}>
               <Plus className="w-7 h-7" />
@@ -1010,16 +1003,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               <div className="bg-card border-t-2 border-border rounded-t-2xl pad-safe-bottom px-4 pt-3 pb-3 space-y-3 max-h-[88%] overflow-y-auto" onClick={(e) => e.stopPropagation()} onPaste={onPasteFile}>
                 <div className="flex items-center gap-2">
                   <Newspaper className="w-5 h-5 text-primary" />
-                  <span className="font-semibold flex-1">Новый пост</span>
-                  <button type="button" onClick={() => setComposeOpen(false)} disabled={sending} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+                  <span className="font-semibold flex-1">{tr("Новый пост")}</span>
+                  <button type="button" onClick={() => setComposeOpen(false)} disabled={sending} aria-label={tr("Закрыть")}><X className="w-5 h-5" /></button>
                 </div>
                 {banned && wallState?.ban ? (
                   <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 flex gap-3">
                     <Ban className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
                     <div className="text-small">
-                      <p className="font-semibold">Вам запретили писать на Стену {wallState.ban.until ? `до ${fmtUntil(wallState.ban.until)}` : "навсегда"}</p>
-                      {wallState.ban.reason && <p className="text-subtle mt-0.5">Причина: {wallState.ban.reason}</p>}
-                      <p className="text-subtle mt-0.5">Покайтесь во грехе и возвращайтесь — читать и реагировать можно.</p>
+                      <p className="font-semibold">{wallState.ban.until ? tr("Вам запретили писать на Стену до {date}", { date: fmtUntil(wallState.ban.until) }) : tr("Вам запретили писать на Стену навсегда")}</p>
+                      {wallState.ban.reason && <p className="text-subtle mt-0.5">{tr("Причина: {reason}", { reason: wallState.ban.reason })}</p>}
+                      <p className="text-subtle mt-0.5">{tr("Покайтесь во грехе и возвращайтесь — читать и реагировать можно.")}</p>
                     </div>
                   </div>
                 ) : (
@@ -1027,7 +1020,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     <textarea
                       value={text}
                       onChange={(e) => setText(e.target.value)}
-                      placeholder="Что нового?"
+                      placeholder={tr("Что нового?")}
                       rows={4}
                       autoFocus
                       disabled={sending}
@@ -1038,7 +1031,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                         {attachments.map((a) => (
                           <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
                             {a.mode === "photo" ? (
-                              <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label="Редактировать фото">
+                              <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label={tr("Редактировать фото")}>
                                 <img src={a.url} alt="" className="w-full h-full object-cover" />
                                 <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
                               </button>
@@ -1051,46 +1044,46 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                               </div>
                             )}
                             <button type="button" onClick={() => dropAttachment(a.id)} disabled={sending}
-                              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={`Убрать ${a.file.name}`}>
+                              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={tr("Убрать {name}", { name: a.file.name })}>
                               <X className="w-3 h-3" />
                             </button>
                           </div>
                         ))}
                       </div>
                     )}
-                    {attachments.length > 10 && <p className="text-caption text-subtle">Выбрано {attachments.length} — уйдут по 10 в посте</p>}
+                    {attachments.length > 10 && <p className="text-caption text-subtle">{tr("Выбрано {n} — уйдут по 10 в посте", { n: attachments.length })}</p>}
                     <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e, "photo")} />
                     <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => pick(e, "video")} />
                     <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => pick(e, "audio")} />
                     <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => pick(e, "file")} />
                     <div className="flex items-center gap-2">
                       <div ref={attachRef} className="relative">
-                        <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending} className={cn("h-10 px-3 rounded-full bg-surface-2 border border-border flex items-center gap-2 text-small font-medium", attachments.length > 0 && "text-primary border-primary")} aria-label="Прикрепить">
-                          <Paperclip className="w-4 h-4" /> Медиа{attachments.length ? ` · ${attachments.length}` : ""}
+                        <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending} className={cn("h-10 px-3 rounded-full bg-surface-2 border border-border flex items-center gap-2 text-small font-medium", attachments.length > 0 && "text-primary border-primary")} aria-label={tr("Прикрепить")}>
+                          <Paperclip className="w-4 h-4" /> {tr("Медиа")}{attachments.length ? ` · ${attachments.length}` : ""}
                         </button>
                         {attachOpen && (
                           <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
-                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}><ImageIcon className="w-4 h-4 text-primary" /> Фото</button>
-                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}><Video className="w-4 h-4 text-primary" /> Видео</button>
-                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> Музыка</button>
-                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}><FileText className="w-4 h-4 text-primary" /> Файл</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}><ImageIcon className="w-4 h-4 text-primary" /> {tr("Фото")}</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}><Video className="w-4 h-4 text-primary" /> {tr("Видео")}</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> {tr("Музыка")}</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}><FileText className="w-4 h-4 text-primary" /> {tr("Файл")}</button>
                           </div>
                         )}
                       </div>
-                      <button type="button" onClick={() => setComposeOpts((v) => !v)} aria-label="Настройки поста" aria-expanded={composeOpts}
+                      <button type="button" onClick={() => setComposeOpts((v) => !v)} aria-label={tr("Настройки поста")} aria-expanded={composeOpts}
                         className={cn("h-10 w-10 rounded-full bg-surface-2 border border-border flex items-center justify-center", composeOpts && "text-primary border-primary")}>
                         <SlidersHorizontal className="w-4 h-4" />
                       </button>
                       {!composeOpts && safe && <span className="text-caption text-subtle">4+</span>}
                       <button type="button" onClick={publish} disabled={sending || (!text.trim() && !attachments.length)}
                         className="ml-auto h-10 px-5 rounded-full bg-primary text-primary-foreground font-semibold text-small disabled:opacity-40">
-                        {sending ? "Публикую…" : "Опубликовать"}
+                        {sending ? tr("Публикую…") : tr("Опубликовать")}
                       </button>
                     </div>
                     {composeOpts && (
                       <label className="flex items-start gap-2 text-caption text-subtle rounded-lg bg-surface-2 px-3 py-2.5">
                         <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
-                        <span><b className="text-foreground">Контент 4+</b> — без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+». Выбор запоминается.</span>
+                        <span><b className="text-foreground">{tr("Контент 4+")}</b> {tr("— без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+». Выбор запоминается.")}</span>
                       </label>
                     )}
                   </>
@@ -1104,25 +1097,25 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <div className={cn("pad-safe-bottom px-3 py-2 shrink-0")}>
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
-              <span className="text-sm">Пост удалён</span>
-              <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">Отменить</button>
+              <span className="text-sm">{tr("Пост удалён")}</span>
+              <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">{tr("Отменить")}</button>
             </div>
           )}
           {sound && (
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-              <Music2 className="w-3.5 h-3.5" /> Звук пуша: <b className="text-foreground">{sound.name}</b>
+              <Music2 className="w-3.5 h-3.5" /> {tr("Звук пуша:")} <b className="text-foreground">{sound.name}</b>
               <button type="button" onClick={() => setSound(null)} className="ml-1"><X className="w-3.5 h-3.5" /></button>
             </div>
           )}
           {attachments.length > 10 && (
-            <p className="mb-1 text-caption text-subtle">Выбрано {attachments.length} — уйдут по 10 в посте</p>
+            <p className="mb-1 text-caption text-subtle">{tr("Выбрано {n} — уйдут по 10 в посте", { n: attachments.length })}</p>
           )}
           {attachments.length > 0 && (
             <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
               {attachments.map((a) => (
                 <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
                   {a.mode === "photo" ? (
-                    <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label="Редактировать фото">
+                    <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label={tr("Редактировать фото")}>
                       <img src={a.url} alt="" className="w-full h-full object-cover" />
                       <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
                     </button>
@@ -1135,7 +1128,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     </div>
                   )}
                   <button type="button" onClick={() => dropAttachment(a.id)} disabled={sending}
-                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={`Убрать ${a.file.name}`}>
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={tr("Убрать {name}", { name: a.file.name })}>
                     <X className="w-3 h-3" />
                   </button>
                 </div>
@@ -1146,10 +1139,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             <div className="flex items-center gap-3 mb-2">
               <LivePreview stream={recStream} dimmed={false} facing={facing} flip={noteFlip} onToggleFlip={() => setNoteFlip((v) => !v)} />
               <div className="flex-1 text-sm">
-                <p className="font-semibold text-primary">Запись · {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:{String(recSeconds % 60).padStart(2, "0")}</p>
-                <p className="text-muted-foreground text-xs">Тап по треугольнику — опубликовать</p>
+                <p className="font-semibold text-primary">{tr("Запись")} · {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:{String(recSeconds % 60).padStart(2, "0")}</p>
+                <p className="text-muted-foreground text-xs">{tr("Тап по треугольнику — опубликовать")}</p>
               </div>
-              <button type="button" onClick={cancelNote} className="p-2 text-muted-foreground" aria-label="Отменить"><X className="w-5 h-5" /></button>
+              <button type="button" onClick={cancelNote} className="p-2 text-muted-foreground" aria-label={tr("Отменить")}><X className="w-5 h-5" /></button>
             </div>
           )}
           <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e, "photo")} />
@@ -1158,34 +1151,34 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => pick(e, "file")} />
           <div className="flex items-end gap-2">
             <div ref={attachRef} className="relative shrink-0">
-              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center", attachments.length > 0 && "text-primary border-primary")} aria-label="Прикрепить">
+              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center", attachments.length > 0 && "text-primary border-primary")} aria-label={tr("Прикрепить")}>
                 <Paperclip className="w-5 h-5" />
               </button>
               {attachOpen && (
                 <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}>
-                    <ImageIcon className="w-4 h-4 text-primary" /> Фото
+                    <ImageIcon className="w-4 h-4 text-primary" /> {tr("Фото")}
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}>
-                    <Video className="w-4 h-4 text-primary" /> Видео
+                    <Video className="w-4 h-4 text-primary" /> {tr("Видео")}
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}>
-                    <Music2 className="w-4 h-4 text-primary" /> Музыка
+                    <Music2 className="w-4 h-4 text-primary" /> {tr("Музыка")}
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}>
-                    <FileText className="w-4 h-4 text-primary" /> Файл
+                    <FileText className="w-4 h-4 text-primary" /> {tr("Файл")}
                   </button>
                 </div>
               )}
             </div>
-            <button type="button" onClick={openSounds} disabled={recording} className={cn("w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center", sound && "text-primary border-primary")} aria-label="Звук пуша">
+            <button type="button" onClick={openSounds} disabled={recording} className={cn("w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center", sound && "text-primary border-primary")} aria-label={tr("Звук пуша")}>
               <Music2 className="w-5 h-5" />
             </button>
             <textarea
               value={text}
               onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
-              placeholder={attachments.length ? "Подпись…" : "Написать в канал…"}
+              placeholder={attachments.length ? tr("Подпись…") : tr("Написать в канал…")}
               rows={1}
               disabled={recording}
               className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
@@ -1196,7 +1189,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 onClick={publish}
                 disabled={sending}
                 className="w-11 h-11 shrink-0 rounded-md flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40"
-                aria-label="Опубликовать"
+                aria-label={tr("Опубликовать")}
               >
                 <Send className="w-5 h-5" />
               </button>
@@ -1204,12 +1197,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               <>
                 {recording && (
                   <button type="button" onClick={() => setNoteFlip((v) => !v)} className="w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center"
-                    aria-label={noteFlip ? "Треугольник вершиной вверх" : "Треугольник вершиной вниз"} aria-pressed={noteFlip}>
+                    aria-label={noteFlip ? tr("Треугольник вершиной вверх") : tr("Треугольник вершиной вниз")} aria-pressed={noteFlip}>
                     <TriangleIcon className={`w-5 h-5 transition-transform duration-300${noteFlip ? " rotate-180" : ""}`} />
                   </button>
                 )}
                 {recording && (
-                  <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center" aria-label="Сменить камеру">
+                  <button type="button" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center" aria-label={tr("Сменить камеру")}>
                     <SwitchCamera className="w-5 h-5" />
                   </button>
                 )}
@@ -1219,7 +1212,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   onClick={toggleNote}
                   disabled={sending || recBusy}
                   className={cn("w-11 h-11 shrink-0 rounded-md flex items-center justify-center", recording ? "bg-success text-white" : "bg-primary text-primary-foreground", "disabled:opacity-40")}
-                  aria-label={recording ? "Опубликовать видео" : "Записать видео-сообщение"}
+                  aria-label={recording ? tr("Опубликовать видео") : tr("Записать видео-сообщение")}
                 >
                   {recording ? <Send className="w-5 h-5" /> : <Triangle className="w-5 h-5" />}
                 </button>
@@ -1228,7 +1221,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           </div>
           {soundOpen && (
             <SoundPickerSheet
-              title="Звук уведомления для поста"
+              title={tr("Звук уведомления для поста")}
               current={sound?.id ?? null}
               onClose={() => setSoundOpen(false)}
               onPick={(s) => { setSound(s); setSoundOpen(false); }}
@@ -1242,7 +1235,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // ветка была просто «не админ». Отписка — в инфо-модалке канала.
         <div className="pad-safe-bottom px-3 py-3 shrink-0">
           <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
-            Подписаться
+            {tr("Подписаться")}
           </button>
         </div>
       ) : (
@@ -1274,7 +1267,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <ShareToChat
           open
           text=""
-          title="Поделиться постом"
+          title={tr("Поделиться постом")}
           onClose={() => setShareFor(null)}
           onPick={(chatId, title) => void forwardPost(shareFor, chatId, title)}
           onShareOutside={() => void sharePostOutside(shareFor)}
@@ -1289,13 +1282,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           onIndex={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
           onClose={() => setViewer(null)}
           actions={[
-            { label: "Добавить в сохранёнки", icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
+            { label: tr("Добавить в сохранёнки"), icon: <Bookmark className="w-5 h-5 text-primary" />, onClick: async () => {
               const cur = viewer.items[viewer.index];
               if (!cur) return;
-              try { const r = await api.addSavedImage(cur.messageId); toast.success(r.already ? "Уже в сохранёнках" : "Добавлено в сохранёнки", { description: "Сохранёнки лежат в профиле — кому они видны, настраивается в разделе «Конфиденциальность»" }); }
-              catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+              try { const r = await api.addSavedImage(cur.messageId); toast.success(r.already ? tr("Уже в сохранёнках") : tr("Добавлено в сохранёнки"), { description: tr("Сохранёнки лежат в профиле — кому они видны, настраивается в разделе «Конфиденциальность»") }); }
+              catch (e: any) { toast.error(e?.message || tr("Не удалось сохранить")); }
             } },
-            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
+            { label: tr("Скачать"), icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
               const cur = viewer.items[viewer.index];
               if (!cur) return;
               const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
@@ -1315,31 +1308,31 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
             {menuFor.sender?.id !== userId && (
               <button type="button" onClick={() => void hideAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
-                <EyeOff className="w-5 h-5 text-muted-foreground" /> Скрыть автора {menuFor.sender?.username}
+                <EyeOff className="w-5 h-5 text-muted-foreground" /> {tr("Скрыть автора {name}", { name: menuFor.sender?.username ?? "" })}
               </button>
             )}
             {wallAdmin && (
               <>
                 <button type="button" onClick={() => void adminPost(menuFor, { hidden: !menuFor.wall_hidden })} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
                   {menuFor.wall_hidden ? <Eye className="w-5 h-5 text-muted-foreground" /> : <EyeOff className="w-5 h-5 text-muted-foreground" />}
-                  {menuFor.wall_hidden ? "Показать пост всем" : "Скрыть пост (админ)"}
+                  {menuFor.wall_hidden ? tr("Показать пост всем") : tr("Скрыть пост (админ)")}
                 </button>
                 <button type="button" onClick={() => void adminPost(menuFor, { wall_safe: !menuFor.wall_safe })} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
-                  <ShieldCheck className="w-5 h-5 text-muted-foreground" /> {menuFor.wall_safe ? "Снять отметку «4+»" : "Отметить как «4+»"}
+                  <ShieldCheck className="w-5 h-5 text-muted-foreground" /> {menuFor.wall_safe ? tr("Снять отметку «4+»") : tr("Отметить как «4+»")}
                 </button>
                 {menuFor.sender?.id !== userId && (
                   <button type="button" onClick={() => void banAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
-                    <Ban className="w-5 h-5" /> Запретить {menuFor.sender?.username} писать…
+                    <Ban className="w-5 h-5" /> {tr("Запретить {name} писать…", { name: menuFor.sender?.username ?? "" })}
                   </button>
                 )}
               </>
             )}
             {(wallAdmin || menuFor.sender?.id === userId) && (
               <button type="button" onClick={() => { const p = menuFor; setMenuFor(null); startDelete(p); }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
-                <Trash2 className="w-5 h-5" /> Удалить пост
+                <Trash2 className="w-5 h-5" /> {tr("Удалить пост")}
               </button>
             )}
-            <button type="button" onClick={() => setMenuFor(null)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">Отмена</button>
+            <button type="button" onClick={() => setMenuFor(null)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">{tr("Отмена")}</button>
           </div>
         </div>
       )}
@@ -1352,7 +1345,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <CommentsSheet
           post={commentsFor}
           canComment={wall ? !banned : subscribed}
-          bannedText={wall ? "Вам запретили писать на Стену" : undefined}
+          bannedText={wall ? tr("Вам запретили писать на Стену") : undefined}
           onAuthor={wall ? (id) => setProfileFor(id) : undefined}
           onClose={() => setCommentsFor(null)}
           onCountChange={(n) => setPosts((prev) => prev.map((p) => (p.id === commentsFor.id ? { ...p, comments_count: n } : p)))}
@@ -1395,7 +1388,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
       setComments(fresh);
       onCountChange(fresh.length);
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось");
+      toast.error(e?.message || tr("Не удалось"));
     }
   };
   const del = async (id: string) => {
@@ -1404,7 +1397,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
       const fresh = comments.filter((c) => c.id !== id);
       setComments(fresh);
       onCountChange(fresh.length);
-    } catch { toast.error("Ошибка"); }
+    } catch { toast.error(tr("Ошибка")); }
   };
 
   return (
@@ -1412,14 +1405,14 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
       <div className="bg-card border-t-2 border-border max-h-[75%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
           <MessageCircle className="w-5 h-5 text-primary" />
-          <span className="font-semibold flex-1">Комментарии</span>
+          <span className="font-semibold flex-1">{tr("Комментарии")}</span>
           <button type="button" onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {loading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Загрузка…</p>
+            <p className="text-sm text-muted-foreground text-center py-6">{tr("Загрузка…")}</p>
           ) : comments.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Пока нет комментариев</p>
+            <p className="text-sm text-muted-foreground text-center py-6">{tr("Пока нет комментариев")}</p>
           ) : (
             comments.map((c) => (
               <div key={c.id} className="flex gap-2">
@@ -1430,7 +1423,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
                   </p>
                   <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>
                 </div>
-                <button type="button" onClick={() => del(c.id)} className="p-1 text-muted-foreground shrink-0" aria-label="Удалить">
+                <button type="button" onClick={() => del(c.id)} className="p-1 text-muted-foreground shrink-0" aria-label={tr("Удалить")}>
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -1439,13 +1432,13 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
         </div>
         {canComment ? (
           <div className="flex items-end gap-2 px-3 py-2 border-t border-border shrink-0">
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder="Комментарий…" className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
             <button type="button" onClick={add} disabled={!text.trim()} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
               <Send className="w-5 h-5" />
             </button>
           </div>
         ) : (
-          <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || "Подпишитесь, чтобы комментировать"}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || tr("Подпишитесь, чтобы комментировать")}</p>
         )}
       </div>
     </div>
@@ -1461,40 +1454,40 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile }: {
     if (state.is_admin) api.getWallBans().then(setBans).catch(() => setBans([]));
   }, [state.is_admin]);
   const unmute = async (id: string) => {
-    try { onChanged(await api.muteWallAuthor(id, false)); } catch { toast.error("Не получилось"); }
+    try { onChanged(await api.muteWallAuthor(id, false)); } catch { toast.error(tr("Не получилось")); }
   };
   const unban = async (id: string) => {
-    try { await api.unbanWallUser(id); setBans((b) => (b || []).filter((x) => x.profile.id !== id)); } catch { toast.error("Не получилось"); }
+    try { await api.unbanWallUser(id); setBans((b) => (b || []).filter((x) => x.profile.id !== id)); } catch { toast.error(tr("Не получилось")); }
   };
   return (
     <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
       <div className="bg-card border-t-2 border-border max-h-[80%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
           <Newspaper className="w-5 h-5 text-primary" />
-          <span className="font-semibold flex-1">Стена</span>
+          <span className="font-semibold flex-1">{tr("Стена")}</span>
           <button type="button" onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
-          <p className="text-muted-foreground">Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят только те, кто включил «Показывать 18+».</p>
+          <p className="text-muted-foreground">{tr("Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят только те, кто включил «Показывать 18+».")}</p>
           <div>
-            <p className="font-semibold mb-1">Скрытые авторы</p>
-            {state.muted_authors.length === 0 ? <p className="text-muted-foreground">Никого — всё видно</p> : state.muted_authors.map((a) => (
+            <p className="font-semibold mb-1">{tr("Скрытые авторы")}</p>
+            {state.muted_authors.length === 0 ? <p className="text-muted-foreground">{tr("Никого — всё видно")}</p> : state.muted_authors.map((a) => (
               <div key={a.id} className="flex items-center gap-2 py-1.5">
                 <button type="button" onClick={() => onOpenProfile(a.id)} className="flex-1 text-left truncate">{a.username}</button>
-                <button type="button" onClick={() => void unmute(a.id)} className="text-primary font-medium">Вернуть</button>
+                <button type="button" onClick={() => void unmute(a.id)} className="text-primary font-medium">{tr("Вернуть")}</button>
               </div>
             ))}
           </div>
           {state.is_admin && (
             <div>
-              <p className="font-semibold mb-1">Запреты (админ)</p>
-              {bans === null ? <p className="text-muted-foreground">Загрузка…</p> : bans.length === 0 ? <p className="text-muted-foreground">Никому не запрещено</p> : bans.map((b) => (
+              <p className="font-semibold mb-1">{tr("Запреты (админ)")}</p>
+              {bans === null ? <p className="text-muted-foreground">{tr("Загрузка…")}</p> : bans.length === 0 ? <p className="text-muted-foreground">{tr("Никому не запрещено")}</p> : bans.map((b) => (
                 <div key={b.profile.id} className="flex items-center gap-2 py-1.5">
                   <button type="button" onClick={() => onOpenProfile(b.profile.id)} className="flex-1 min-w-0 text-left">
                     <span className="block truncate">{b.profile.username}</span>
-                    <span className="block text-xs text-muted-foreground truncate">{b.until ? `до ${fmtUntil(b.until)}` : "навсегда"}{b.reason ? ` · ${b.reason}` : ""}</span>
+                    <span className="block text-xs text-muted-foreground truncate">{b.until ? tr("до {date}", { date: fmtUntil(b.until) }) : tr("навсегда")}{b.reason ? ` · ${b.reason}` : ""}</span>
                   </button>
-                  <button type="button" onClick={() => void unban(b.profile.id)} className="text-primary font-medium">Снять</button>
+                  <button type="button" onClick={() => void unban(b.profile.id)} className="text-primary font-medium">{tr("Снять")}</button>
                 </div>
               ))}
             </div>
@@ -1511,14 +1504,14 @@ const RepostSheet = ({ post, onClose, onConfirm }: { post: Post; onClose: () => 
   return (
     <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
       <div className="bg-card border-t-2 border-border pad-safe-bottom px-4 py-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <p className="font-semibold flex items-center gap-2"><Newspaper className="w-5 h-5 text-primary" /> Опубликовать на Стене</p>
+        <p className="font-semibold flex items-center gap-2"><Newspaper className="w-5 h-5 text-primary" /> {tr("Опубликовать на Стене")}</p>
         {post.content && <p className="text-sm text-muted-foreground line-clamp-3">{post.content}</p>}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="w-4 h-4 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
-          <span><b>Контент 4+</b> — без мата и материалов для взрослых</span>
+          <span><b>{tr("Контент 4+")}</b> {tr("— без мата и материалов для взрослых")}</span>
         </label>
-        <p className="text-xs text-muted-foreground">Читатели по тапу на отправителя попадут в ваш канал и смогут подписаться.</p>
-        <button type="button" onClick={() => onConfirm(safe)} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">На Стену</button>
+        <p className="text-xs text-muted-foreground">{tr("Читатели по тапу на отправителя попадут в ваш канал и смогут подписаться.")}</p>
+        <button type="button" onClick={() => onConfirm(safe)} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">{tr("На Стену")}</button>
       </div>
     </div>
   );
@@ -1538,9 +1531,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
     onChanged({ ...channel, muted: next });
     try {
       await api.muteChannel(channel.id, next);
-      toast.success(next ? "Уведомления выключены" : "Уведомления включены");
+      toast.success(next ? tr("Уведомления выключены") : tr("Уведомления включены"));
     } catch {
-      toast.error("Не удалось сохранить");
+      toast.error(tr("Не удалось сохранить"));
       onChanged({ ...channel, muted: !next });
     } finally { setMuteBusy(false); }
   };
@@ -1568,9 +1561,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
       const up = await api.uploadFile(file, undefined, undefined, true);
       const updated = await api.updateChannel(channel.id, { avatar_url: up.file_url });
       onChanged({ ...channel, ...updated });
-      toast.success("Аватар обновлён");
+      toast.success(tr("Аватар обновлён"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось загрузить аватар");
+      toast.error(e?.message || tr("Не удалось загрузить аватар"));
     } finally {
       setAvatarBusy(false);
     }
@@ -1581,9 +1574,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
     try {
       const updated = await api.updateChannel(channel.id, { avatar_url: null });
       onChanged({ ...channel, ...updated, avatar_url: null });
-      toast.success("Аватар убран");
+      toast.success(tr("Аватар убран"));
     } catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || tr("Не получилось"));
     } finally {
       setAvatarBusy(false);
     }
@@ -1597,9 +1590,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
     try {
       const updated = await api.updateChannel(channel.id, { name: name.trim(), description, sign_posts: signPosts, comments_enabled: commentsOn });
       onChanged({ ...channel, ...updated });
-      toast.success("Сохранено");
+      toast.success(tr("Сохранено"));
     } catch (e: any) {
-      toast.error(e?.message || "Ошибка");
+      toast.error(e?.message || tr("Ошибка"));
     }
   };
 
@@ -1613,14 +1606,14 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
       await api.setChannelAdmin(channel.id, u.id, "add");
       setAdmins(await api.getChannelAdmins(channel.id));
       setAdminQuery(""); setAdminResults([]);
-      toast.success(`${u.username} — админ`);
-    } catch { toast.error("Не удалось"); }
+      toast.success(tr("{name} — админ", { name: u.username }));
+    } catch { toast.error(tr("Не удалось")); }
   };
   const removeAdmin = async (id: string) => {
     try {
       await api.setChannelAdmin(channel.id, id, "remove");
       setAdmins(await api.getChannelAdmins(channel.id));
-    } catch { toast.error("Ошибка"); }
+    } catch { toast.error(tr("Ошибка")); }
   };
 
   return (
@@ -1639,7 +1632,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               onClick={() => isAdmin && avatarInput.current?.click()}
               disabled={!isAdmin || avatarBusy}
               className="ui-card w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-3 flex items-center justify-center disabled:opacity-100"
-              aria-label={isAdmin ? "Сменить аватар канала" : undefined}
+              aria-label={isAdmin ? tr("Сменить аватар канала") : undefined}
             >
               {channel.avatar_url
                 ? <img src={mediaUrl(channel.avatar_url)} alt="" className="w-full h-full object-cover" />
@@ -1649,12 +1642,12 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               <div className="min-w-0 flex-1 space-y-1.5">
                 <button type="button" onClick={() => avatarInput.current?.click()} disabled={avatarBusy}
                   className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5 disabled:opacity-50">
-                  <ImageIcon className="w-4 h-4" /> {avatarBusy ? "Загружаю…" : channel.avatar_url ? "Сменить аватар" : "Поставить аватар"}
+                  <ImageIcon className="w-4 h-4" /> {avatarBusy ? tr("Загружаю…") : channel.avatar_url ? tr("Сменить аватар") : tr("Поставить аватар")}
                 </button>
                 {channel.avatar_url && (
                   <button type="button" onClick={dropAvatar} disabled={avatarBusy}
                     className="ml-2 h-9 px-3 rounded-md bg-surface-4 text-small font-medium text-destructive disabled:opacity-50">
-                    Убрать
+                    {tr("Убрать")}
                   </button>
                 )}
               </div>
@@ -1666,7 +1659,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{channel.description}</p>
           )}
           <p className="text-sm text-muted-foreground">
-            {channel.subscribers_count ?? 0} подписчиков{channel.username ? ` · @${channel.username}` : ""}
+            {tn(channel.subscribers_count ?? 0, "{n} подписчик", "{n} подписчика", "{n} подписчиков")}{channel.username ? ` · @${channel.username}` : ""}
           </p>
           {/* Ссылка на канал — как «Поделиться профилем»: открывается в приложении. */}
           <button
@@ -1674,18 +1667,18 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
             onClick={() => setShareOpen(true)}
             className="w-full py-2.5 border border-border font-semibold flex items-center justify-center gap-2"
           >
-            <Share2 className="w-4 h-4" /> Поделиться каналом
+            <Share2 className="w-4 h-4" /> {tr("Поделиться каналом")}
           </button>
           {shareOpen && (
             <ShareToChat
               open
               text={channelLink(channel)}
-              title="Поделиться каналом"
+              title={tr("Поделиться каналом")}
               onClose={() => setShareOpen(false)}
               onShareOutside={async () => {
                 const r = await shareChannel(channel);
-                if (r === "copied") toast.success("Ссылка скопирована");
-                else if (r === "error") toast.error("Не удалось поделиться");
+                if (r === "copied") toast.success(tr("Ссылка скопирована"));
+                else if (r === "error") toast.error(tr("Не удалось поделиться"));
               }}
             />
           )}
@@ -1697,9 +1690,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               className="w-full flex items-center gap-3 py-2.5 text-left disabled:opacity-50">
               {channel.muted ? <BellOff className="w-5 h-5 text-subtle shrink-0" /> : <Bell className="w-5 h-5 text-primary shrink-0" />}
               <span className="min-w-0 flex-1">
-                <span className="block text-body">Уведомления</span>
+                <span className="block text-body">{tr("Уведомления")}</span>
                 <span className="block text-caption text-subtle truncate">
-                  {channel.muted ? "Выключены — посты приходят без звука и пуша" : "Включены"}
+                  {channel.muted ? tr("Выключены — посты приходят без звука и пуша") : tr("Включены")}
                 </span>
               </span>
               <span className={cn("relative w-11 h-6 rounded-full shrink-0 transition-colors", channel.muted ? "bg-surface-4" : "bg-primary")}>
@@ -1715,9 +1708,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               className="w-full flex items-center gap-3 py-2.5 text-left">
               <Music2 className="w-5 h-5 text-primary shrink-0" />
               <span className="min-w-0 flex-1">
-                <span className="block text-body">Звук уведомлений канала</span>
+                <span className="block text-body">{tr("Звук уведомлений канала")}</span>
                 <span className="block text-caption text-subtle truncate">
-                  {channel.notify_sound ? channel.notify_sound.name : "Обычный — выбери свой, его услышат подписчики"}
+                  {channel.notify_sound ? channel.notify_sound.name : tr("Обычный — выбери свой, его услышат подписчики")}
                 </span>
               </span>
               <ChevronRight className="w-4 h-4 text-subtle shrink-0" />
@@ -1727,25 +1720,25 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
           {isOwner ? (
             <>
               <div>
-                <label className="text-xs text-muted-foreground">Название</label>
+                <label className="text-xs text-muted-foreground">{tr("Название")}</label>
                 <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-secondary px-3 py-2 mt-1 outline-none" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Описание</label>
+                <label className="text-xs text-muted-foreground">{tr("Описание")}</label>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full bg-secondary px-3 py-2 mt-1 outline-none resize-none" />
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={signPosts} onChange={(e) => setSignPosts(e.target.checked)} />
-                Показывать автора постов
+                {tr("Показывать автора постов")}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={commentsOn} onChange={(e) => setCommentsOn(e.target.checked)} />
-                Комментарии к постам
+                {tr("Комментарии к постам")}
               </label>
-              <button type="button" onClick={save} className="w-full py-2.5 bg-primary text-primary-foreground font-semibold">{t("Сохранить")}</button>
+              <button type="button" onClick={save} className="w-full py-2.5 bg-primary text-primary-foreground font-semibold">{tr("Сохранить")}</button>
 
               <div className="pt-2 border-t border-border">
-                <p className="text-sm font-semibold mb-2 flex items-center gap-2"><UserPlus className="w-4 h-4" />Админы</p>
+                <p className="text-sm font-semibold mb-2 flex items-center gap-2"><UserPlus className="w-4 h-4" />{tr("Админы")}</p>
                 {admins.map((a: any) => (
                   <div key={a.id} className="flex items-center gap-2 py-1.5 text-sm">
                     <span className="flex-1 truncate">{a.is_bot ? "🤖 " : ""}{a.username}</span>
@@ -1755,7 +1748,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
                     )}
                   </div>
                 ))}
-                <input value={adminQuery} onChange={(e) => searchAdmin(e.target.value)} placeholder="Добавить админа (или бота) по имени…" className="w-full bg-secondary px-3 py-2 mt-2 outline-none text-sm" />
+                <input value={adminQuery} onChange={(e) => searchAdmin(e.target.value)} placeholder={tr("Добавить админа (или бота) по имени…")} className="w-full bg-secondary px-3 py-2 mt-2 outline-none text-sm" />
                 {adminResults.map((u) => (
                   <button key={u.id} type="button" onClick={() => addAdmin(u)} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary border-b border-border/60">
                     {u.is_bot ? "🤖 " : ""}{u.username}
@@ -1764,19 +1757,19 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               </div>
 
               <button type="button" onClick={onDelete} className="w-full py-2.5 border border-destructive text-destructive font-semibold flex items-center justify-center gap-2">
-                <Trash2 className="w-4 h-4" /> Удалить канал
+                <Trash2 className="w-4 h-4" /> {tr("Удалить канал")}
               </button>
             </>
           ) : (
             <button type="button" onClick={onLeave} className="w-full py-2.5 border border-border font-semibold">
-              Отписаться
+              {tr("Отписаться")}
             </button>
           )}
         </div>
       </div>
       {soundOpen && (
         <SoundPickerSheet
-          title="Звук уведомлений канала"
+          title={tr("Звук уведомлений канала")}
           current={channel.notify_sound?.id || null}
           onClose={() => setSoundOpen(false)}
           onPick={async (s) => {
@@ -1785,9 +1778,9 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
             onChanged({ ...channel, notify_sound: s });
             try {
               await api.updateChannel(channel.id, { notify_sound_id: s ? s.id : null });
-              toast.success(s ? `Подписчики услышат «${s.name}»` : "Обычный звук");
+              toast.success(s ? tr("Подписчики услышат «{name}»", { name: s.name }) : tr("Обычный звук"));
             } catch {
-              toast.error("Не удалось сохранить");
+              toast.error(tr("Не удалось сохранить"));
               onChanged({ ...channel, notify_sound: prev });
             }
           }}

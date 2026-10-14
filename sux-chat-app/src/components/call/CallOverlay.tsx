@@ -7,6 +7,7 @@ import { Capacitor } from "@capacitor/core";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 export type CallUiState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
 
@@ -135,9 +136,9 @@ const CallOverlay = ({
         <div className="text-muted-foreground text-sm">
           {state === "active"
             ? isGroup
-              ? `${fmt(seconds)} · участников: ${participants.length + 1}`
+              ? `${fmt(seconds)} · ${t("участников: {n}", { n: participants.length + 1 })}`
               : fmt(seconds)
-            : STATUS[state]}
+            : t(STATUS[state])}
         </div>
 
         {showList && participants.length > 0 && (
@@ -150,14 +151,14 @@ const CallOverlay = ({
                   <div className="min-w-0 flex-1">
                     <div className="text-small font-semibold truncate">{p.name}</div>
                     <div className="text-caption text-subtle">
-                      {p.connected || p.stream ? (v === 0 ? "выключен" : `громкость ${Math.round(v * 100)}%`) : "звоним…"}
+                      {p.connected || p.stream ? (v === 0 ? t("выключен") : t("громкость {percent}%", { percent: Math.round(v * 100) })) : t("звоним…")}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => onVolume(p.id, v === 0 ? 1 : 0)}
                     className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle"
-                    aria-label={v === 0 ? `Включить ${p.name}` : `Выключить ${p.name}`}
+                    aria-label={v === 0 ? t("Включить {name}", { name: p.name }) : t("Выключить {name}", { name: p.name })}
                   >
                     {v === 0 ? <VolumeX className="w-4 h-4" /> : v < 0.6 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                   </button>
@@ -169,7 +170,7 @@ const CallOverlay = ({
                     value={v}
                     onChange={(e) => onVolume(p.id, Number(e.target.value))}
                     className="w-24 h-1 accent-primary shrink-0"
-                    aria-label={`Громкость: ${p.name}`}
+                    aria-label={t("Громкость: {name}", { name: p.name })}
                   />
                 </div>
               );
@@ -185,7 +186,7 @@ const CallOverlay = ({
               type="button"
               onClick={onReject}
               className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
-              aria-label="Отклонить"
+              aria-label={t("Отклонить")}
             >
               <PhoneOff className="w-7 h-7" />
             </button>
@@ -193,7 +194,7 @@ const CallOverlay = ({
               type="button"
               onClick={onAccept}
               className="w-16 h-16 rounded-full bg-success text-success-foreground flex items-center justify-center"
-              aria-label="Принять"
+              aria-label={t("Принять")}
             >
               <Phone className="w-7 h-7" />
             </button>
@@ -207,7 +208,7 @@ const CallOverlay = ({
                 "w-14 h-14 rounded-full border-2 flex items-center justify-center",
                 muted ? "bg-foreground text-background border-foreground" : "border-border"
               )}
-              aria-label={muted ? "Включить микрофон" : "Выключить микрофон"}
+              aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
             >
               {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
             </button>
@@ -218,7 +219,7 @@ const CallOverlay = ({
                 "w-14 h-14 rounded-full border-2 flex items-center justify-center",
                 speaker ? "bg-foreground text-background border-foreground" : "border-border"
               )}
-              aria-label={speaker ? "Выключить громкую связь" : "Включить громкую связь"}
+              aria-label={speaker ? t("Выключить громкую связь") : t("Включить громкую связь")}
             >
               {speaker ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
             </button>
@@ -227,8 +228,8 @@ const CallOverlay = ({
                 type="button"
                 onClick={onAdd}
                 className="w-14 h-14 rounded-full border-2 border-border flex items-center justify-center"
-                aria-label="Добавить участника"
-                title="Добавить участника"
+                aria-label={t("Добавить участника")}
+                title={t("Добавить участника")}
               >
                 <UserPlus className="w-6 h-6" />
               </button>
@@ -237,7 +238,7 @@ const CallOverlay = ({
               type="button"
               onClick={onHangup}
               className="w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
-              aria-label="Завершить"
+              aria-label={t("Завершить")}
             >
               <PhoneOff className="w-6 h-6" />
             </button>

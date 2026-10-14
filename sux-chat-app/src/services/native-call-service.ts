@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { t } from "@/lib/i18n";
 import { nativeCall, type NativeIce, type NativeSdp, type NativePeerState } from "@/lib/nativeCall";
 import type { CallState, IncomingCall } from "@/services/call-service";
 import type { GroupCallInvite, GroupCallState } from "@/services/group-call-service";
@@ -188,7 +189,7 @@ export class NativeCallService extends NativeBase {
       callId: data.callId,
       chatId: data.chatId,
       fromUserId: data.fromUserId,
-      fromUsername: data.fromUsername || "Неизвестный",
+      fromUsername: data.fromUsername || t("Неизвестный"),
       fromUserAvatar: data.fromUserAvatar,
       callType: data.callType || "audio",
     });
@@ -199,7 +200,7 @@ export class NativeCallService extends NativeBase {
     try {
       await nativeCall.start(this.iceServers);
     } catch {
-      this.onError?.("Не удалось получить доступ к микрофону");
+      this.onError?.(t("Не удалось получить доступ к микрофону"));
       return;
     }
     this.callId = this.newCallId();
@@ -214,7 +215,7 @@ export class NativeCallService extends NativeBase {
     try {
       await nativeCall.start(this.iceServers);
     } catch {
-      this.onError?.("Не удалось получить доступ к микрофону");
+      this.onError?.(t("Не удалось получить доступ к микрофону"));
       this.finish("failed");
       return;
     }
@@ -362,7 +363,7 @@ export class NativeGroupCallService extends NativeBase {
     try {
       await nativeCall.start(this.iceServers);
     } catch {
-      this.cb.onError?.("Не удалось получить доступ к микрофону");
+      this.cb.onError?.(t("Не удалось получить доступ к микрофону"));
       return;
     }
     this.callId = this.newCallId();
@@ -384,7 +385,7 @@ export class NativeGroupCallService extends NativeBase {
     try {
       await nativeCall.start(this.iceServers);
     } catch {
-      this.cb.onError?.("Не удалось получить доступ к микрофону");
+      this.cb.onError?.(t("Не удалось получить доступ к микрофону"));
       this.leave();
       return;
     }

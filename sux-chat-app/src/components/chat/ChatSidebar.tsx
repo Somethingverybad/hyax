@@ -33,7 +33,7 @@ import { api, mediaUrl } from "@/api/client";
 import { preloadImage } from "@/lib/imageCache";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
-import { applyProfileLang, getLang, t } from "@/lib/i18n";
+import { applyProfileLang, getLang, t, tn } from "@/lib/i18n";
 import UpdateBanner from "@/components/UpdateBanner";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
@@ -94,6 +94,14 @@ interface ChatSidebarProps {
 // появляются сразу, без ожидания сети. Ключ отдельный от токенов, чтобы
 // чистка сессии его не задевала.
 const PARTICIPANTS_CACHE_KEY = "chat_participants_cache";
+
+/** Локаль дат и времени в строке чата — по языку интерфейса. */
+const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
+
+/** Превью последнего сообщения сервер для вложений шлёт статичной русской
+ *  строкой (chat/serializers.py) — такие переводим, текст людей не трогаем. */
+const SERVER_PREVIEWS = new Set(["Стикер", "Видео-сообщение", "Голосовое сообщение", "Файл", "Сообщение", "📍 Геопозиция", "Зашифрованное сообщение"]);
+const serverPreview = (s: string) => (s && SERVER_PREVIEWS.has(s) ? t(s) : s);
 
 function readParticipantsCache(): {[chatId: string]: any[]} {
   try {
@@ -404,7 +412,7 @@ const ChatSidebar = ({
       if (error?.message === "exists") {
         handleSelectChat(error.chatId);
       } else {
-        toast.error("Ошибка создания чата");
+        toast.error(t("Ошибка создания чата"));
       }
     }
   };
@@ -436,12 +444,12 @@ const ChatSidebar = ({
     setChBusy(true);
     try {
       const ch = await api.addTelegramChannel(url);
-      toast.success(ch.tg_state === "active" ? "Канал подключён" : "Подключаем — посты появятся в течение минуты");
+      toast.success(ch.tg_state === "active" ? t("Канал подключён") : t("Подключаем — посты появятся в течение минуты"));
       resetDialog();
       onChatCreated();
       handleSelectChat(ch.id, ch.name, "channel");
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось подключить канал");
+      toast.error(e?.message || t("Не удалось подключить канал"));
     } finally {
       setChBusy(false);
     }
@@ -449,7 +457,7 @@ const ChatSidebar = ({
 
   const createChannel = async () => {
     const name = chName.trim();
-    if (name.length < 2) { toast.error("Название короче 2 символов"); return; }
+    if (name.length < 2) { toast.error(t("Название короче 2 символов")); return; }
     setChBusy(true);
     try {
       const ch = await api.createChannel({
@@ -458,12 +466,12 @@ const ChatSidebar = ({
         description: chDesc.trim() || undefined,
         sign_posts: chSign,
       });
-      toast.success("Канал создан");
+      toast.success(t("Канал создан"));
       resetDialog();
       onChatCreated();
       handleSelectChat(ch.id, ch.name, "channel");
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось создать канал");
+      toast.error(e?.message || t("Не удалось создать канал"));
     } finally {
       setChBusy(false);
     }
@@ -477,7 +485,7 @@ const ChatSidebar = ({
 
   const createGroup = async () => {
     if (groupMembers.length < 2) {
-      toast.error("Выберите хотя бы двух участников");
+      toast.error(t("Выберите хотя бы двух участников"));
       return;
     }
     try {
@@ -485,12 +493,12 @@ const ChatSidebar = ({
         groupMembers.map((m) => m.id),
         { name: groupName.trim() || groupMembers.map((m) => m.username).join(", ") }
       );
-      toast.success("Группа создана");
+      toast.success(t("Группа создана"));
       resetDialog();
       onChatCreated();
       handleSelectChat(chat.id, chat.name || t("Группа"));
     } catch {
-      toast.error("Не удалось создать группу");
+      toast.error(t("Не удалось создать группу"));
     }
   };
 
@@ -498,7 +506,7 @@ const ChatSidebar = ({
   const deleteChat = async (chatId: string, chatTitle: string, skipConfirm = false) => {
     setChatMenu(null);
     setSwipedChatId(null);
-    if (!skipConfirm && !(await confirmDialog(`Вы уверены, что хотите удалить чат "${chatTitle}"?`))) {
+    if (!skipConfirm && !(await confirmDialog(t("Вы уверены, что хотите удалить чат \"{title}\"?", { title: chatTitle })))) {
       return;
     }
 
@@ -552,7 +560,7 @@ const ChatSidebar = ({
           {mint && (
             <>
               <button type="button" onClick={() => setEditMode((v) => !v)} className="mint-pill mint-btn mint-ink">
-                {editMode ? "Готово" : t("Изм.")}
+                {editMode ? t("Готово") : t("Изм.")}
               </button>
               <span className="mint-title">{t("Чаты")}</span>
             </>
@@ -563,7 +571,7 @@ const ChatSidebar = ({
               size="icon"
               onClick={onToggleCollapse}
               className="h-9 w-8 -ml-2 text-muted-foreground"
-              title={isCollapsed ? "Развернуть сайдбар" : t("Свернуть сайдбар")}
+              title={isCollapsed ? t("Развернуть сайдбар") : t("Свернуть сайдбар")}
             >
               {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
             </Button>
@@ -639,7 +647,7 @@ const ChatSidebar = ({
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
-                <DialogTitle>{mode === "group" ? "Новая группа" : mode === "channel" ? "Новый канал" : t("Найти")}</DialogTitle>
+                <DialogTitle>{mode === "group" ? t("Новая группа") : mode === "channel" ? t("Новый канал") : t("Найти")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="flex gap-2">
@@ -660,7 +668,7 @@ const ChatSidebar = ({
                     <Button type="button" onClick={createChannel} disabled={chBusy || chName.trim().length < 2} className="w-full bg-gradient-primary">{t("Создать канал")}</Button>
                     <div className="flex items-center gap-3 text-caption text-subtle"><span className="flex-1 h-px bg-border" />{t("или по ссылке")}<span className="flex-1 h-px bg-border" /></div>
                     <Input placeholder={t("Ссылка на публичный канал или @имя")} value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} className="bg-secondary/50" inputMode="url" autoCapitalize="off" />
-                    <p className="text-caption text-subtle">Публичный канал появится у вас как канал WYX и будет обновляться сам. Реакции и комментарии — только от людей из WYX.</p>
+                    <p className="text-caption text-subtle">{t("Публичный канал появится у вас как канал WYX и будет обновляться сам. Реакции и комментарии — только от людей из WYX.")}</p>
                     <Button type="button" variant="outline" onClick={addTelegram} disabled={chBusy || !tgUrl.trim()} className="w-full">{t("Добавить по ссылке")}</Button>
                   </div>
                 )}
@@ -713,7 +721,7 @@ const ChatSidebar = ({
                 {mode !== "channel" && (
                 <>
                 <Input
-                  placeholder={mode === "group" ? "Точный ник участника" : t("Найти канал…")}
+                  placeholder={mode === "group" ? t("Точный ник участника") : t("Найти канал…")}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -761,7 +769,7 @@ const ChatSidebar = ({
                           <span className="min-w-0">
                             <span className="block font-medium truncate">{ch.name}</span>
                             <span className="block text-xs text-muted-foreground truncate">
-                              канал · {ch.subscribers_count ?? 0} подписчиков{ch.username ? ` · @${ch.username}` : ""}
+                              {t("канал")} · {tn(ch.subscribers_count ?? 0, "{n} подписчик", "{n} подписчика", "{n} подписчиков")}{ch.username ? ` · @${ch.username}` : ""}
                             </span>
                           </span>
                         </div>
@@ -769,7 +777,7 @@ const ChatSidebar = ({
                     ))}
                     {searchResults.length === 0 && (mode !== "user" || channelResults.length === 0) && (
                       <div className="text-center text-muted-foreground py-8">
-                        {searchQuery ? "Ничего не найдено" : mode === "group" ? "Введите ник участника целиком" : t("Введите название канала")}
+                        {searchQuery ? t("Ничего не найдено") : mode === "group" ? t("Введите ник участника целиком") : t("Введите название канала")}
                       </div>
                     )}
                   </div>
@@ -784,7 +792,7 @@ const ChatSidebar = ({
                     disabled={groupMembers.length < 2}
                     className="w-full bg-gradient-primary"
                   >
-                    Создать группу ({groupMembers.length})
+                    {t("Создать группу ({n})", { n: groupMembers.length })}
                   </Button>
                 )}
               </div>
@@ -800,7 +808,7 @@ const ChatSidebar = ({
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
-              placeholder={mint ? "Поиск чатов" : t("Поиск чатов и людей по нику")}
+              placeholder={mint ? t("Поиск чатов") : t("Поиск чатов и людей по нику")}
               className={mint ? "flex-1 min-w-0 bg-transparent outline-none text-[14.3px] text-foreground placeholder:text-[var(--mint-muted)]" : "flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"}
             />
           </label>
@@ -903,7 +911,7 @@ const ChatSidebar = ({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-h2 md:text-[15px] truncate">{t("Стена")}</p>
-                <p className="text-small text-subtle truncate">{wallNew ? `Общая лента · новых: ${wallNew}` : t("Общая лента — пишут все")}</p>
+                <p className="text-small text-subtle truncate">{wallNew ? t("Общая лента · новых: {n}", { n: wallNew }) : t("Общая лента — пишут все")}</p>
               </div>
               {wallNew ? <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{wallNew}</span> : <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />}
             </button>
@@ -934,7 +942,7 @@ const ChatSidebar = ({
                 <Aura active={!!(peopleHit as { is_online?: boolean }).is_online} owner={peopleHit as never} size={46}><Identicon id={peopleHit.id} avatarUrl={peopleHit.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
                 <span className="min-w-0">
                   <span className="block text-h2 md:text-[15px] truncate">{peopleHit.username}</span>
-                  <span className="block text-small text-subtle truncate">@{peopleHit.username} · написать</span>
+                  <span className="block text-small text-subtle truncate">@{peopleHit.username} · {t("написать")}</span>
                 </span>
               </button>
             </div>
@@ -979,7 +987,7 @@ const ChatSidebar = ({
               const isWall = (chat as any).kind === "wall";
               const isChannel = (chat as any).kind === "channel" || isWall;
               // Формируем название чата
-              let chatTitle = isWall ? "Стена" : isChannel
+              let chatTitle = isWall ? t("Стена") : isChannel
                 ? ((chat as any).name || t("Канал"))
                 : chat.is_group ? (chat.name || t("Группа")) : t("Без названия");
 
@@ -989,7 +997,7 @@ const ChatSidebar = ({
                 const names = displayParticipants.map(p => p.username).filter(Boolean);
                 chatTitle = names.join(", ") || t("Без названия");
               } else if (participants.length === 0) {
-                chatTitle = `Чат ${chat.id.slice(0, 8)}...`;
+                chatTitle = t("Чат {id}...", { id: chat.id.slice(0, 8) });
               }
 
               return (
@@ -1005,10 +1013,10 @@ const ChatSidebar = ({
                     onClick={() => togglePin(chat)}
                     className="absolute inset-y-0 left-0 w-20 bg-amber text-background flex flex-col items-center justify-center gap-0.5 md:hidden"
                     tabIndex={pinSwipedId === chat.id ? 0 : -1}
-                    aria-label={pinnedAt(chat) ? "Открепить чат" : t("Закрепить чат")}
+                    aria-label={pinnedAt(chat) ? t("Открепить чат") : t("Закрепить чат")}
                   >
                     <Pin className="w-5 h-5" />
-                    <span className="text-[10px] font-semibold">{pinnedAt(chat) ? "Открепить" : t("Закрепить")}</span>
+                    <span className="text-[10px] font-semibold">{pinnedAt(chat) ? t("Открепить") : t("Закрепить")}</span>
                   </button>
 
                   {/* Красная кнопка удаления — открывается свайпом влево (телефон) */}
@@ -1121,7 +1129,7 @@ const ChatSidebar = ({
                           </p>
                           {mint && editMode ? (
                             <span className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                              <span role="button" tabIndex={0} aria-label={pinnedAt(chat) ? "Открепить" : t("Закрепить")}
+                              <span role="button" tabIndex={0} aria-label={pinnedAt(chat) ? t("Открепить") : t("Закрепить")}
                                 onClick={(e) => { e.stopPropagation(); void togglePin(chat); }}
                                 className={`mint-round !w-8 !h-8 ${pinnedAt(chat) ? "mint-lime" : "mint-pill mint-ink"}`}>
                                 <Pin className="w-4 h-4" />
@@ -1143,11 +1151,12 @@ const ChatSidebar = ({
                             const d = new Date(iso);
                             const today = new Date(); today.setHours(0, 0, 0, 0);
                             const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+                            const loc = LOCALE[getLang()] || "ru-RU";
                             const label = d >= today
-                              ? d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+                              ? d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" })
                               : d >= yesterday
-                                ? "вчера"
-                                : d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+                                ? t("вчера")
+                                : d.toLocaleDateString(loc, { day: "2-digit", month: "2-digit" });
                             return (
                               <span className="text-caption text-subtle shrink-0 inline-flex items-center gap-1">
                                 {(chat as any).last_message?.sender_id === currentUser?.id && (
@@ -1164,18 +1173,18 @@ const ChatSidebar = ({
                         <div className="flex items-center justify-between gap-2 mt-0.5">
                           <p className="text-body md:text-small text-subtle line-clamp-2 md:line-clamp-1 break-words flex-1 min-w-0">
                             {isLoading
-                              ? "Загрузка…"
+                              ? t("Загрузка…")
                               : isWall
-                                ? ((chat as any).unread_count ? `Общая лента · новых: ${(chat as any).unread_count}` : t("Общая лента — пишут все"))
+                                ? ((chat as any).unread_count ? t("Общая лента · новых: {n}", { n: (chat as any).unread_count }) : t("Общая лента — пишут все"))
                               : (chat as any).kind === "secret" && !(chat as any).last_message
                                 ? ((chat as any).secret?.state === "pending"
-                                    ? ((chat as any).secret?.initiator_id === currentUser?.id ? "Ждём, когда собеседник примет" : t("Приглашение в секретный чат"))
-                                    : (chat as any).secret?.state === "declined" ? "Секретный чат отклонён" : t("Секретный чат"))
+                                    ? ((chat as any).secret?.initiator_id === currentUser?.id ? t("Ждём, когда собеседник примет") : t("Приглашение в секретный чат"))
+                                    : (chat as any).secret?.state === "declined" ? t("Секретный чат отклонён") : t("Секретный чат"))
                               : (chat as any).last_message
-                                ? `${(chat as any).last_message.sender_id === currentUser?.id ? "Вы: " : ""}${
+                                ? `${(chat as any).last_message.sender_id === currentUser?.id ? t("Вы: ") : ""}${
                                     (chat as any).last_message.cipher
                                       ? (secretPreview[chat.id + (chat as any).last_message.cipher.slice(0, 16)] ?? t("🔒 Зашифрованное сообщение"))
-                                      : (chat as any).last_message.text}`
+                                      : serverPreview((chat as any).last_message.text)}`
                                 : t("Сообщений пока нет")}
                           </p>
                           {(chat as any).unread_mention && (
@@ -1209,7 +1218,7 @@ const ChatSidebar = ({
             <div className={`text-center text-muted-foreground py-8 ${
               isCollapsed ? "px-2 text-xs" : "px-4"
             }`}>
-              {isCollapsed ? "Нет чатов" : t("Нет чатов. Создайте первый чат!")}
+              {isCollapsed ? t("Нет чатов") : t("Нет чатов. Создайте первый чат!")}
               {/* У нового человека чатов нет и писать некому — единственный путь
                   к первому диалогу — отдать друзьям ссылку на свой профиль. Та же
                   системная «Поделиться», что и в профиле, с откатом в буфер. */}
@@ -1228,7 +1237,7 @@ const ChatSidebar = ({
                     : "mt-4 h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium inline-flex items-center justify-center gap-2 active:opacity-90"}
                 >
                   {mint ? <MintIcon name="share" size={15} /> : <Share2 className="w-4 h-4" />}
-                  Пригласить друзей
+                  {t("Пригласить друзей")}
                 </button>
               )}
             </div>

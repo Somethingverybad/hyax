@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { t as tr } from "@/lib/i18n";
 
 export type GroupCallState = "idle" | "outgoing" | "incoming" | "active";
 
@@ -114,7 +115,7 @@ export class GroupCallService {
     try {
       await this.ensureMic();
     } catch {
-      this.cb.onError?.("Не удалось получить доступ к микрофону");
+      this.cb.onError?.(tr("Не удалось получить доступ к микрофону"));
       return;
     }
     this.callId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -136,7 +137,7 @@ export class GroupCallService {
     try {
       await this.ensureMic();
     } catch {
-      this.cb.onError?.("Не удалось получить доступ к микрофону");
+      this.cb.onError?.(tr("Не удалось получить доступ к микрофону"));
       this.leave();
       return;
     }

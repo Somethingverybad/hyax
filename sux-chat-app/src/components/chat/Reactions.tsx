@@ -4,6 +4,7 @@ import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { MAIN_REACTIONS, EXTRA_REACTIONS, type ReactionSummary } from "@/lib/reactions";
 import { Smile, Plus } from "lucide-react";
+import { t } from "@/lib/i18n";
 
 /**
  * Реакции — один модуль на переписку и на каналы.
@@ -75,8 +76,8 @@ export const ReactionPicker = ({ open, onPick, onClose }: {
             <button
               key={r.emoji}
               type="button"
-              title={r.label}
-              aria-label={r.label}
+              title={t(r.label)}
+              aria-label={t(r.label)}
               onClick={() => onPick(r.emoji)}
               className="w-12 h-12 rounded-full bg-surface-4 text-[26px] leading-none flex items-center justify-center active:opacity-70"
             >
@@ -87,7 +88,7 @@ export const ReactionPicker = ({ open, onPick, onClose }: {
             <button
               type="button"
               onClick={() => setAll(true)}
-              aria-label="Ещё реакции"
+              aria-label={t("Ещё реакции")}
               className="w-12 h-12 rounded-full bg-surface-4 flex items-center justify-center text-muted-foreground active:opacity-70"
             >
               <Plus className="w-5 h-5" />
@@ -104,7 +105,7 @@ export const AddReactionButton = ({ onClick, className }: { onClick: () => void;
   <button
     type="button"
     onClick={(e) => { e.stopPropagation(); onClick(); }}
-    aria-label="Добавить реакцию"
+    aria-label={t("Добавить реакцию")}
     className={cn("w-8 h-8 rounded-full bg-surface-3 text-muted-foreground flex items-center justify-center active:opacity-70", className)}
   >
     <Smile className="w-4 h-4" />
@@ -139,6 +140,6 @@ export async function sendReaction(
     onDone(r.reactions);
   } catch (e: any) {
     onFail();
-    toast.error(e?.message || "Не удалось поставить реакцию");
+    toast.error(e?.message || t("Не удалось поставить реакцию"));
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, Crop, RotateCw, FlipHorizontal2, Undo2, Eraser, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 /**
  * Редактор фото перед отправкой — как в Telegram: рисовалка, кадрирование,
@@ -304,28 +305,28 @@ const PhotoEditor = ({ file, onCancel, onDone }: {
   return createPortal(
     <div className="fixed inset-0 z-[85] bg-black flex flex-col select-none">
       <div className="flex items-center justify-between px-3 min-h-14 pad-safe-top shrink-0">
-        <button type="button" onClick={tool === "crop" ? () => { setCrop(null); setTool("draw"); } : onCancel} className="w-10 h-10 rounded-full text-white flex items-center justify-center active:opacity-70" aria-label="Отмена">
+        <button type="button" onClick={tool === "crop" ? () => { setCrop(null); setTool("draw"); } : onCancel} className="w-10 h-10 rounded-full text-white flex items-center justify-center active:opacity-70" aria-label={t("Отмена")}>
           <X className="w-6 h-6" />
         </button>
         <div className="flex items-center gap-1">
           {tool === "draw" && (
             <>
-              <button type="button" onClick={undo} disabled={!strokeCount} className="w-10 h-10 rounded-full text-white flex items-center justify-center disabled:opacity-30 active:opacity-70" aria-label="Отменить штрих">
+              <button type="button" onClick={undo} disabled={!strokeCount} className="w-10 h-10 rounded-full text-white flex items-center justify-center disabled:opacity-30 active:opacity-70" aria-label={t("Отменить штрих")}>
                 <Undo2 className="w-5 h-5" />
               </button>
-              <button type="button" onClick={reset} className="w-10 h-10 rounded-full text-white flex items-center justify-center active:opacity-70" aria-label="Сбросить всё">
+              <button type="button" onClick={reset} className="w-10 h-10 rounded-full text-white flex items-center justify-center active:opacity-70" aria-label={t("Сбросить всё")}>
                 <RotateCcw className="w-5 h-5" />
               </button>
             </>
           )}
         </div>
-        <button type="button" onClick={tool === "crop" ? applyCrop : save} disabled={!ready || busy} className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-50 active:opacity-80" aria-label={tool === "crop" ? "Применить" : "Готово"}>
+        <button type="button" onClick={tool === "crop" ? applyCrop : save} disabled={!ready || busy} className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-50 active:opacity-80" aria-label={tool === "crop" ? t("Применить") : t("Готово")}>
           <Check className="w-6 h-6" />
         </button>
       </div>
 
       <div ref={stageRef} className="flex-1 relative min-h-0 overflow-hidden">
-        {!ready && <p className="absolute inset-0 flex items-center justify-center text-white/60 text-small">Загрузка…</p>}
+        {!ready && <p className="absolute inset-0 flex items-center justify-center text-white/60 text-small">{t("Загрузка…")}</p>}
         <canvas
           ref={displayRef}
           className={cn("absolute touch-none", tool === "draw" ? "cursor-crosshair" : "pointer-events-none")}
@@ -376,23 +377,23 @@ const PhotoEditor = ({ file, onCancel, onDone }: {
                   className={cn("w-7 h-7 rounded-full border-2 transition-transform", color === c && !erase ? "border-white scale-125" : "border-white/30")}
                   style={{ background: c }} />
               ))}
-              <button type="button" onClick={() => setErase((v) => !v)} aria-label="Ластик"
+              <button type="button" onClick={() => setErase((v) => !v)} aria-label={t("Ластик")}
                 className={cn("w-8 h-8 rounded-full flex items-center justify-center border-2", erase ? "border-white bg-white/20 text-white" : "border-white/30 text-white/70")}>
                 <Eraser className="w-4 h-4" />
               </button>
             </div>
             <div className="flex items-center justify-center gap-4">
               {SIZES.map((s) => (
-                <button key={s} type="button" onClick={() => setSize(s)} aria-label={`Толщина ${s}`}
+                <button key={s} type="button" onClick={() => setSize(s)} aria-label={t("Толщина {n}", { n: s })}
                   className={cn("w-9 h-9 rounded-full flex items-center justify-center", size === s ? "bg-white/20" : "bg-white/5")}>
                   <span className="rounded-full bg-white" style={{ width: s + 2, height: s + 2 }} />
                 </button>
               ))}
             </div>
             <div className="flex items-center justify-center gap-2 pt-1">
-              <button type="button" onClick={startCrop} disabled={!ready} className={toolBtn}><span className={toolIcon}><Crop className="w-5 h-5" /></span>Кадр</button>
-              <button type="button" onClick={rotate} disabled={!ready} className={toolBtn}><span className={toolIcon}><RotateCw className="w-5 h-5" /></span>Повернуть</button>
-              <button type="button" onClick={flip} disabled={!ready} className={toolBtn}><span className={toolIcon}><FlipHorizontal2 className="w-5 h-5" /></span>Отразить</button>
+              <button type="button" onClick={startCrop} disabled={!ready} className={toolBtn}><span className={toolIcon}><Crop className="w-5 h-5" /></span>{t("Кадр")}</button>
+              <button type="button" onClick={rotate} disabled={!ready} className={toolBtn}><span className={toolIcon}><RotateCw className="w-5 h-5" /></span>{t("Повернуть")}</button>
+              <button type="button" onClick={flip} disabled={!ready} className={toolBtn}><span className={toolIcon}><FlipHorizontal2 className="w-5 h-5" /></span>{t("Отразить")}</button>
             </div>
           </>
         ) : (
@@ -400,7 +401,7 @@ const PhotoEditor = ({ file, onCancel, onDone }: {
             {ASPECTS.map((a) => (
               <button key={a.label} type="button" onClick={() => pickAspect(a.value)}
                 className={cn("shrink-0 h-9 px-3.5 rounded-full text-small font-medium", aspect === a.value ? "bg-white text-black" : "bg-white/10 text-white")}>
-                {a.label}
+                {t(a.label)}
               </button>
             ))}
           </div>

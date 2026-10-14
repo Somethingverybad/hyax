@@ -7,15 +7,16 @@ import { useMediaUrl } from "@/hooks/use-media-url";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
+import { t, tn } from "@/lib/i18n";
 
 /** «1 фото», «12 фото» — слово не склоняется, но пусть будет одной точкой. */
-export const pluralPhotos = (n: number) => `${n} фото`;
+export const pluralPhotos = (n: number) => tn(n, "{n} фото", "{n} фото", "{n} фото");
 
 /** Плитка сохранёнки: картинка грузится через useMediaUrl (медиа за токеном). */
 export const SavedTile = ({ item, className, onClick }: { item: SavedImage; className?: string; onClick?: () => void }) => {
   const url = useMediaUrl(item.file_url);
   return (
-    <button type="button" onClick={onClick} className={`relative overflow-hidden rounded-md bg-surface-3 ${className || ""}`} aria-label={item.file_name || "Сохранёнка"}>
+    <button type="button" onClick={onClick} className={`relative overflow-hidden rounded-md bg-surface-3 ${className || ""}`} aria-label={item.file_name || t("Сохранёнка")}>
       {url ? <img src={url} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" draggable={false} /> : <span className="absolute inset-0 animate-pulse bg-surface-3" />}
     </button>
   );
@@ -57,9 +58,9 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
         return next;
       });
       setOpenIdx(null);
-      toast.success("Удалено из сохранёнок");
+      toast.success(t("Удалено из сохранёнок"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось удалить");
+      toast.error(e?.message || t("Не удалось удалить"));
     }
   };
 
@@ -68,11 +69,11 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
       {mint ? (
         <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">
-            <button type="button" onClick={onClose} aria-label="Назад" className="mint-pill w-[37px] h-[31px] inline-flex items-center justify-center mint-muted">
+            <button type="button" onClick={onClose} aria-label={t("Назад")} className="mint-pill w-[37px] h-[31px] inline-flex items-center justify-center mint-muted">
               <MintIcon name="back" size={[7, 13]} />
             </button>
-            <span className="mint-title truncate">{title || "Сохранёнки"}</span>
-            <button type="button" onClick={() => setOldFirst((v) => !v)} aria-label={oldFirst ? "Сначала новые" : "Сначала старые"}
+            <span className="mint-title truncate">{title || t("Сохранёнки")}</span>
+            <button type="button" onClick={() => setOldFirst((v) => !v)} aria-label={oldFirst ? t("Сначала новые") : t("Сначала старые")}
               className="mint-lime w-[46px] h-[34px] inline-flex items-center justify-center gap-[1px]">
               <MintIcon name="sort" size={[10, 15]} style={{ transform: "rotate(180deg)" }} />
               <MintIcon name="sort" size={[10, 15]} />
@@ -81,19 +82,19 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
         </div>
       ) : (
       <div className="shrink-0 flex items-center gap-2 px-3 py-3 pad-safe-top min-h-14 border-b border-border">
-        <button type="button" onClick={onClose} className="p-2 -ml-2" aria-label="Назад">
+        <button type="button" onClick={onClose} className="p-2 -ml-2" aria-label={t("Назад")}>
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <span className="text-h1 truncate">{title || "Сохранёнки"}</span>
+        <span className="text-h1 truncate">{title || t("Сохранёнки")}</span>
         {items && <span className="ml-auto text-small text-subtle">{items.length}</span>}
       </div>
       )}
       <div className={mint ? "flex-1 overflow-y-auto px-[17px] pb-3 pad-safe-bottom" : "flex-1 overflow-y-auto p-3 pad-safe-bottom"}>
         {items === null ? (
-          <p className="py-10 text-center text-small text-subtle">Загрузка…</p>
+          <p className="py-10 text-center text-small text-subtle">{t("Загрузка…")}</p>
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-small text-subtle px-6">
-            {own ? "Пока пусто. Открой фото в чате, тапни по нему и выбери «Добавить в сохранёнки»." : "Сохранёнок пока нет"}
+            {own ? t("Пока пусто. Открой фото в чате, тапни по нему и выбери «Добавить в сохранёнки».") : t("Сохранёнок пока нет")}
           </p>
         ) : (
           <div className={mint ? "grid grid-cols-3 md:grid-cols-5 gap-[4px]" : "grid grid-cols-3 md:grid-cols-5 gap-1.5"}>
@@ -108,12 +109,12 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
           onIndex={setOpenIdx}
           onClose={() => setOpenIdx(null)}
           actions={[
-            { label: "Скачать", icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
+            { label: t("Скачать"), icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
               const cur = viewerItems[openIdx];
               const url = cur.raw.startsWith("s3://") ? await api.signMedia(cur.raw) : mediaUrl(cur.raw);
               await saveFileToDevice(url, cur.name || "photo.jpg");
             } },
-            ...(own ? [{ label: "Удалить из сохранёнок", icon: <Trash2 className="w-5 h-5" />, danger: true, onClick: () => {
+            ...(own ? [{ label: t("Удалить из сохранёнок"), icon: <Trash2 className="w-5 h-5" />, danger: true, onClick: () => {
               const it = (items || [])[openIdx];
               if (it) void remove(it);
             } }] : []),

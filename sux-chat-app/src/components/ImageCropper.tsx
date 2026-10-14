@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, ZoomIn } from "lucide-react";
+import { t } from "@/lib/i18n";
 
 /**
  * Кадрирование картинки профиля: её двигают пальцем, масштаб — щипком или
@@ -144,11 +145,11 @@ const ImageCropper = ({ file, aspect, outWidth, onCancel, onDone }: {
     <div className="fixed inset-0 z-[80] bg-black/90 flex flex-col">
       {/* pad-safe-top: иначе кнопки уезжают под строку состояния и островок. */}
       <div className="flex items-center justify-between px-4 min-h-14 pad-safe-top shrink-0">
-        <button type="button" onClick={onCancel} className="ui-icon-btn p-2 text-white" aria-label="Отмена">
+        <button type="button" onClick={onCancel} className="ui-icon-btn p-2 text-white" aria-label={t("Отмена")}>
           <X className="w-5 h-5" />
         </button>
-        <span className="text-small text-white/80 px-2 text-center">Двигайте и щипком меняйте масштаб</span>
-        <button type="button" onClick={save} disabled={!img || busy} className="ui-icon-btn p-2 text-white disabled:opacity-50" aria-label="Готово">
+        <span className="text-small text-white/80 px-2 text-center">{t("Двигайте и щипком меняйте масштаб")}</span>
+        <button type="button" onClick={save} disabled={!img || busy} className="ui-icon-btn p-2 text-white disabled:opacity-50" aria-label={t("Готово")}>
           <Check className="w-5 h-5" />
         </button>
       </div>
@@ -189,7 +190,7 @@ const ImageCropper = ({ file, aspect, outWidth, onCancel, onDone }: {
           value={zoom}
           onChange={(e) => applyZoom(Number(e.target.value), frame.w / 2, frame.h / 2)}
           className="flex-1 accent-primary"
-          aria-label="Масштаб"
+          aria-label={t("Масштаб")}
         />
       </div>
     </div>,

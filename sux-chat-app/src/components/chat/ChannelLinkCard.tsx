@@ -4,14 +4,9 @@ import { toast } from "sonner";
 import { Radio, ArrowRight } from "lucide-react";
 import { api, mediaUrl } from "@/api/client";
 import { Linkify, channelLinkRef } from "@/lib/linkify";
+import { t, tn } from "@/lib/i18n";
 
 type Info = { id: string; name: string; username?: string | null; avatar?: string | null; subs: number; subscribed: boolean };
-
-const pluralSubs = (n: number) => {
-  const m10 = n % 10, m100 = n % 100;
-  const w = m10 === 1 && m100 !== 11 ? "подписчик" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "подписчика" : "подписчиков";
-  return `${n} ${w}`;
-};
 
 /**
  * Карточка канала в сообщении — так приходит «Поделиться каналом» и
@@ -55,13 +50,13 @@ const ChannelLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
       // Chat.tsx ловит смену location и открывает канал, даже если мы уже на /chat.
       navigate("/chat", { state: { chatId: info.id, kind: "channel", title: info.name } });
     } catch {
-      toast.error("Не удалось открыть канал");
+      toast.error(t("Не удалось открыть канал"));
     } finally {
       setBusy(false);
     }
   };
 
-  const label = busy ? "Открываю…" : ref.post ? "К посту" : info?.subscribed ? "Открыть" : "Подписаться";
+  const label = busy ? t("Открываю…") : ref.post ? t("К посту") : info?.subscribed ? t("Открыть") : t("Подписаться");
 
   return (
     <button
@@ -78,7 +73,7 @@ const ChannelLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         <span className="min-w-0 flex-1">
           <span className="block text-small font-medium truncate">{info ? info.name : `@${ref.handle}`}</span>
           <span className="block text-caption opacity-70 truncate">
-            {info ? `${ref.post ? "Пост · " : ""}${pluralSubs(info.subs)}${info.username ? ` · @${info.username}` : ""}` : "Загрузка…"}
+            {info ? `${ref.post ? `${t("Пост")} · ` : ""}${tn(info.subs, "{n} подписчик", "{n} подписчика", "{n} подписчиков")}${info.username ? ` · @${info.username}` : ""}` : t("Загрузка…")}
           </span>
         </span>
       </span>

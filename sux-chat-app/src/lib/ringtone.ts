@@ -1,4 +1,5 @@
 import { api, mediaUrl } from "@/api/client";
+import { t as tr } from "@/lib/i18n";
 
 /**
  * Звук входящего звонка (пока только веб и десктоп: на телефонах звонит
@@ -12,17 +13,19 @@ import { api, mediaUrl } from "@/api/client";
 export const RINGTONE_DEFAULT_URL = "https://storage.yandexcloud.net/hyax-public/sounds/ringtone-default.mp3";
 export const RINGTONE_CLASSIC_URL = "https://storage.yandexcloud.net/hyax-public/sounds/ringtone-classic.mp3";
 
+// name — геттер: перевод берётся в момент показа, а не при загрузке модуля
+// (иначе название застыло бы на языке, который был при старте).
 export const BUILTIN_RINGTONES: { id: string; name: string; url: string }[] = [
-  { id: "", name: "Стандартный", url: RINGTONE_DEFAULT_URL },
-  { id: "classic", name: "Классический", url: RINGTONE_CLASSIC_URL },
+  { id: "", get name() { return tr("Стандартный"); }, url: RINGTONE_DEFAULT_URL },
+  { id: "classic", get name() { return tr("Классический"); }, url: RINGTONE_CLASSIC_URL },
 ];
 
 /** Что сейчас выбрано — для подписи в настройках. */
 export function ringtoneLabel(value: string | undefined, catalogName?: string | null): string {
-  if (!value) return "Стандартный";
-  if (value === "classic") return "Классический";
-  if (value.startsWith("sound:")) return catalogName || "Из каталога";
-  return "Стандартный";
+  if (!value) return tr("Стандартный");
+  if (value === "classic") return tr("Классический");
+  if (value.startsWith("sound:")) return catalogName || tr("Из каталога");
+  return tr("Стандартный");
 }
 
 /** Адрес файла для проигрывания; каталог спрашиваем у сервера. */

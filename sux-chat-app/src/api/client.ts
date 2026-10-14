@@ -1,4 +1,11 @@
 import { applog, safePath } from "@/lib/applog";
+import { t as tr } from "@/lib/i18n";
+
+/** Ошибка API на языке интерфейса: и свои подписи, и русские тексты сервера
+ *  переводятся по словарю (ключ — русская строка), остальное как есть. */
+class LError extends Error {
+  constructor(message?: string) { super(message ? tr(String(message)) : message); }
+}
 // Сервер и его CDN-прокси. HTTP (API, медиа, загрузки) идёт через CDN,
 // чтобы клиенты не стучались на сервер напрямую; WebSocket CDN не проксирует,
 // он всегда идёт на сервер. Если CDN не отвечает (не настроен, лежит,
@@ -435,10 +442,10 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
     const probe = await res.clone().json().catch(() => null);
     if (probe && /Сеанс завершён/.test(String(probe.detail || ""))) {
       void import("@/lib/forceLogout").then((m) => m.forceLogout("revoked"));
-      throw new Error("Сеанс завершён — войдите снова");
+      throw new LError("Сеанс завершён — войдите снова");
     }
     const refreshToken = localStorage.getItem("refresh_token");
-    if (!refreshToken) throw new Error("Unauthorized: no refresh token");
+    if (!refreshToken) throw new LError("Unauthorized: no refresh token");
 
     try {
       const refreshRes = await fetchWithFallback(`${API_URL}/token/refresh/`, {
@@ -451,7 +458,7 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
         // Refresh token тоже недействителен (истёк или сеанс отозван) — выходим и чистим кэш.
         const body = await refreshRes.json().catch(() => null);
         void import("@/lib/forceLogout").then((m) => m.forceLogout(/Сеанс завершён/.test(String(body?.detail || "")) ? "revoked" : "expired"));
-        throw new Error("Refresh token expired, please login again");
+        throw new LError("Refresh token expired, please login again");
       }
 
       const data = await refreshRes.json();
@@ -539,7 +546,7 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
   // Если access token устарел — пробуем обновить (та же логика что и в fetchWithAuth)
   if (res.status === 401) {
     const refreshToken = localStorage.getItem("refresh_token");
-    if (!refreshToken) throw new Error("Unauthorized: no refresh token");
+    if (!refreshToken) throw new LError("Unauthorized: no refresh token");
 
     try {
       const refreshRes = await fetchWithFallback(`${API_URL}/token/refresh/`, {
@@ -551,7 +558,7 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
       if (!refreshRes.ok) {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
-        throw new Error("Refresh token expired, please login again");
+        throw new LError("Refresh token expired, please login again");
       }
 
       const data = await refreshRes.json();
@@ -637,11 +644,11 @@ async function uploadInChunksNow(
           body,
         });
         if (!res.ok) {
-          let msg = `Кусок ${i + 1} из ${total}: ошибка ${res.status}`;
+          let msg = tr("Кусок {i} из {n}: ошибка {code}", { i: i + 1, n: total, code: res.status });
           try { msg = (await res.json()).error || msg; } catch { /* не JSON */ }
           // Отказ сервера по сути (не сеть, не перегрузка) повторять бессмысленно.
           const fatal = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429 && res.status !== 409;
-          throw Object.assign(new Error(msg), { fatal });
+          throw Object.assign(new LError(msg), { fatal });
         }
         // Последний кусок: сервер склеил файл и обрабатывает его в фоне
         // (сжатие видео, хранилище) — держим 99%, пока не придёт итог.
@@ -672,7 +679,7 @@ async function uploadInChunksNow(
       throw lastErr;
     }
   }
-  throw new Error("Загрузка не завершилась");
+  throw new LError("Загрузка не завершилась");
 }
 
 /** Ждём, пока сервер обработает склеенный файл. Опросы короткие — каждый
@@ -690,14 +697,14 @@ async function waitUploadDone(uploadId: string, token?: string): Promise<any> {
       if (res.status === 202) continue;
       const data = await res.json().catch(() => ({}));
       if (res.ok) return data;
-      throw new Error(data?.error || `Обработка не удалась (${res.status})`);
+      throw new LError(data?.error || tr("Обработка не удалась ({code})", { code: res.status }));
     } catch (e) {
       // Сетевой сбой посреди ожидания — не повод терять уже залитый файл.
       if (e instanceof TypeError) continue;
       throw e;
     }
   }
-  throw new Error("Сервер слишком долго обрабатывает файл");
+  throw new LError("Сервер слишком долго обрабатывает файл");
 }
 
 async function uploadWithProgress(
@@ -726,17 +733,17 @@ async function uploadWithProgress(
       applog.warn(`upload ✗ ${safePath(target)} ${size}KB → ${xhr.status} ${ms}ms`);
       let detail = "";
       try { detail = JSON.parse(xhr.responseText)?.error || ""; } catch { /* не JSON */ }
-      const err = new Error(detail || (xhr.status === 413 ? "Файл слишком большой для сервера" : `Загрузка не удалась (${xhr.status})`)) as Error & { status?: number };
+      const err = new LError(detail || (xhr.status === 413 ? "Файл слишком большой для сервера" : tr("Загрузка не удалась ({code})", { code: xhr.status }))) as Error & { status?: number };
       err.status = xhr.status;
       reject(err);
     };
     xhr.onerror = () => {
       applog.error(`upload ✗ ${safePath(target)} ${size}KB сеть ${Math.round(performance.now() - started)}ms`);
-      reject(Object.assign(new Error("Сеть оборвала загрузку"), { status: 0 }));
+      reject(Object.assign(new LError("Сеть оборвала загрузку"), { status: 0 }));
     };
     xhr.ontimeout = () => {
       applog.error(`upload ✗ ${safePath(target)} ${size}KB таймаут`);
-      reject(Object.assign(new Error("Загрузка не уложилась во время"), { status: 408 }));
+      reject(Object.assign(new LError("Загрузка не уложилась во время"), { status: 408 }));
     };
     xhr.send(formData);
   });
@@ -770,7 +777,7 @@ export const api = {
       console.log("----------------------------------------");
       console.log("Длина ответа:", fullResponseText.length, "символов");
       
-      const error = new Error(`Register failed: ${res.status} ${res.statusText}`);
+      const error = new LError(`Register failed: ${res.status} ${res.statusText}`);
       (error as any).fullResponse = fullResponseText;
       throw error;
     }
@@ -796,7 +803,7 @@ export const api = {
       console.log("----------------------------------------");
       console.log("Длина ответа:", fullResponseText.length, "символов");
       
-      const error = new Error(`Login failed: ${res.status} ${res.statusText}`);
+      const error = new LError(`Login failed: ${res.status} ${res.statusText}`);
       (error as any).fullResponse = fullResponseText;
       throw error;
     }
@@ -821,39 +828,39 @@ export const api = {
   /** Автоперевод в личке: мои флаги, языки обоих, настроен ли провайдер. */
   getChatTranslate: async (chatId: string): Promise<ChatTranslate> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/translate/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось получить настройки перевода");
+    if (!res.ok) throw new LError("Не удалось получить настройки перевода");
     return res.json();
   },
   setChatTranslate: async (chatId: string, data: { translate_in?: boolean; translate_out?: boolean }): Promise<ChatTranslate> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/translate/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(data) });
-    if (!res.ok) throw new Error("Не удалось сохранить настройки перевода");
+    if (!res.ok) throw new LError("Не удалось сохранить настройки перевода");
     return res.json();
   },
   /** Перевод одного сообщения по запросу — на мой язык (или to). */
   translateMessage: async (messageId: string, to?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/translate/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ to }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось перевести");
+    if (!res.ok) throw new LError(body?.error || "Не удалось перевести");
     return body;
   },
 
   /** Устройства с действующим входом (Конфиденциальность → Устройства). */
   listDevices: async (): Promise<{ current: string; devices: DeviceSession[] }> => {
     const res = await fetchWithAuth(`${API_URL}/account/devices/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось получить устройства");
+    if (!res.ok) throw new LError("Не удалось получить устройства");
     return res.json();
   },
   revokeDevice: async (deviceId: string): Promise<{ ok: boolean; self: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/account/devices/${encodeURIComponent(deviceId)}/revoke/`, { method: "POST", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось завершить сеанс");
+    if (!res.ok) throw new LError(body?.error || "Не удалось завершить сеанс");
     return body;
   },
   /** Выйти везде, кроме этого устройства; сервер выдаёт этому устройству новые токены. */
   revokeOtherDevices: async (): Promise<{ ok: boolean; revoked: number }> => {
     const res = await fetchWithAuth(`${API_URL}/account/devices/revoke-others/`, { method: "POST", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось завершить сеансы");
+    if (!res.ok) throw new LError(body?.error || "Не удалось завершить сеансы");
     if (body.access && body.refresh) { localStorage.setItem("access_token", body.access); localStorage.setItem("refresh_token", body.refresh); }
     return body;
   },
@@ -864,7 +871,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to get current user");
+    if (!res.ok) throw new LError("Failed to get current user");
     return res.json();
   },
 
@@ -885,7 +892,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+    if (!res.ok) throw new LError(`Search failed: ${res.status}`);
     return res.json();
   },
 
@@ -895,8 +902,8 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (res.status === 404) throw new Error("not_found");
-    if (!res.ok) throw new Error(`Profile failed: ${res.status}`);
+    if (res.status === 404) throw new LError("not_found");
+    if (!res.ok) throw new LError(`Profile failed: ${res.status}`);
     return res.json();
   },
 
@@ -922,7 +929,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to get chat participants");
+    if (!res.ok) throw new LError("Failed to get chat participants");
     return res.json();
   },
 
@@ -938,11 +945,11 @@ export const api = {
     if (!res.ok) {
       const errorData = await res.json();
       if (res.status === 400 && errorData.detail?.includes("exists")) {
-        const error = new Error("exists");
+        const error = new LError("exists");
         (error as any).chatId = errorData.chat_id;
         throw error;
       }
-      throw new Error(errorData.detail || "Failed to create chat");
+      throw new LError(errorData.detail || "Failed to create chat");
     }
     return res.json();
   },
@@ -951,7 +958,7 @@ export const api = {
   startBot: async (botId: string): Promise<{ chat_id: string; started: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/bots/${botId}/start/`, { method: "POST", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось начать");
+    if (!res.ok) throw new LError(body?.error || "Не удалось начать");
     return body;
   },
 
@@ -960,7 +967,7 @@ export const api = {
       return await api.createChat([friendId]);
     } catch (error: any) {
       if (error.message === "exists") {
-        const err = new Error("exists") as any;
+        const err = new LError("exists") as any;
         err.chatId = error.chatId;
         throw err;
       }
@@ -972,7 +979,7 @@ export const api = {
   // обращении. В общий список чатов не входит, у него своя вкладка.
   getSavedChat: async (): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/chats/saved/`, { headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось открыть Избранное");
+    if (!res.ok) throw new LError("Не удалось открыть Избранное");
     return res.json();
   },
 
@@ -983,7 +990,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ pin }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось закрепить");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось закрепить");
     return res.json();
   },
 
@@ -992,18 +999,18 @@ export const api = {
   listSavedImages: async (profileId?: string, limit?: number): Promise<{ count: number; items: SavedImage[] }> => {
     const q = new URLSearchParams(); if (profileId) q.set("profile", profileId); if (limit) q.set("limit", String(limit));
     const res = await fetchWithAuth(`${API_URL}/saved-images/${q.toString() ? "?" + q : ""}`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить сохранёнки");
+    if (!res.ok) throw new LError("Не удалось загрузить сохранёнки");
     return res.json();
   },
   addSavedImage: async (messageId: string): Promise<SavedImage & { already?: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/saved-images/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ message_id: messageId }) });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Не удалось сохранить");
+    if (!res.ok) throw new LError(d.error || "Не удалось сохранить");
     return { ...d, already: res.status === 200 };
   },
   deleteSavedImage: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/saved-images/${id}/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok && res.status !== 404) throw new Error("Не удалось удалить");
+    if (!res.ok && res.status !== 404) throw new LError("Не удалось удалить");
   },
   /** Несколько сообщений одним пакетом: копии получают общий album_id и в
    *  ленте получателя склеиваются в один пузырь. */
@@ -1013,7 +1020,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ message_ids: messageIds, chat_id: chatId }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось переслать");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось переслать");
     return res.json();
   },
 
@@ -1023,7 +1030,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ chat_id: chatId }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось переслать");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось переслать");
     return res.json();
   },
 
@@ -1053,21 +1060,21 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ url }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось подключить канал");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось подключить канал");
     return (await res.json()).channel;
   },
 
   createChannel: async (data: { name: string; username?: string; description?: string; sign_posts?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) });
     const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "Не удалось создать канал");
+    if (!res.ok) throw new LError(d.error || "Не удалось создать канал");
     return d.channel;
   },
   /** Канал по ссылке /c/<handle>: @username или id. */
   getChannelByHandle: async (handle: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/by-handle/${encodeURIComponent(handle)}/`, { method: "GET", headers: authHeaders() });
-    if (res.status === 404) throw new Error("not_found");
-    if (!res.ok) throw new Error(`Channel failed: ${res.status}`);
+    if (res.status === 404) throw new LError("not_found");
+    if (!res.ok) throw new LError(`Channel failed: ${res.status}`);
     return res.json();
   },
   getChannel: async (id: string): Promise<any> => {
@@ -1077,7 +1084,7 @@ export const api = {
   updateChannel: async (id: string, data: Record<string, any>): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(data) });
     const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "Ошибка");
+    if (!res.ok) throw new LError(d.error || "Ошибка");
     return d;
   },
   deleteChannel: async (id: string): Promise<void> => {
@@ -1094,12 +1101,12 @@ export const api = {
     fd.append("scope", scope);
     const res = await fetchWithAuthMultipart(`${API_URL}/chats/${chatId}/wallpaper/`, { method: "POST", body: fd });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Не удалось поставить обои");
+    if (!res.ok) throw new LError(d.error || "Не удалось поставить обои");
     return d;
   },
   clearChatWallpaper: async (chatId: string, scope: "chat" | "me", hide = false): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/wallpaper/?scope=${scope}${hide ? "&hide=1" : ""}`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не вышло");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({}))).error || "Не вышло");
   },
   /** Кто прочитал сообщение и кто какие реакции поставил (поимённо). */
   messageViewers: async (messageId: string): Promise<{
@@ -1108,7 +1115,7 @@ export const api = {
   }> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/viewers/`, { method: "GET", headers: authHeaders() });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Не удалось загрузить");
+    if (!res.ok) throw new LError(d.error || "Не удалось загрузить");
     return d;
   },
   /** Inline-бот: «@бот запрос» в поле ввода → запрос боту; результаты придут в
@@ -1116,21 +1123,21 @@ export const api = {
   inlineQuery: async (bot: string, query: string, chatId: string): Promise<{ query_id: string }> => {
     const res = await fetchWithAuth(`${API_URL}/bots/inline/query/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ bot, query, chat_id: chatId }) });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Бот не отвечает");
+    if (!res.ok) throw new LError(d.error || "Бот не отвечает");
     return d;
   },
   /** Выбор результата: в чат уходит сообщение-заглушка «через @бота», бот её заполнит. */
   inlineChoose: async (queryId: string, resultId: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/bots/inline/${queryId}/choose/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ result_id: resultId }) });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Не вышло");
+    if (!res.ok) throw new LError(d.error || "Не вышло");
     return d;
   },
   /** Выключить/включить пуши канала для себя. Возвращает канал с новым muted. */
   muteChannel: async (id: string, muted: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/mute/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ muted }) });
     const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "Не удалось сохранить");
+    if (!res.ok) throw new LError(d.error || "Не удалось сохранить");
     return d;
   },
   leaveChannel: async (id: string): Promise<void> => {
@@ -1143,7 +1150,7 @@ export const api = {
     if (opts.before) q.set("before", opts.before);
     if (opts.since) q.set("since", opts.since);
     const res = await fetchWithAuth(`${API_URL}/channels/${id}/posts/${q.toString() ? "?" + q : ""}`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`posts ${res.status}`);
+    if (!res.ok) throw new LError(`posts ${res.status}`);
     const d = await res.json();
     return { posts: d.posts || [], deleted: d.deleted || [], has_more: !!d.has_more, now: d.now || new Date().toISOString() };
   },
@@ -1159,19 +1166,19 @@ export const api = {
   /** Открыть плейлист по ссылке: вернёт ключ (повторный вызов — тот же). */
   sharePlaylist: async (id: string): Promise<string> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/${id}/share/`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось открыть доступ");
+    if (!res.ok) throw new LError("Не удалось открыть доступ");
     return (await res.json()).share_token as string;
   },
 
   /** Закрыть доступ: прежняя ссылка перестанет работать. */
   unsharePlaylist: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/${id}/share/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok && res.status !== 204) throw new Error("Не удалось закрыть доступ");
+    if (!res.ok && res.status !== 204) throw new LError("Не удалось закрыть доступ");
   },
 
   getSharedPlaylist: async (token: string): Promise<{ playlist: Playlist; owner: string; tracks: PlaylistTrack[] }> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/shared/${token}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Плейлист не найден или ссылка отозвана");
+    if (!res.ok) throw new LError("Плейлист не найден или ссылка отозвана");
     return res.json();
   },
 
@@ -1179,7 +1186,7 @@ export const api = {
   savePlaylistCopy: async (token: string): Promise<Playlist> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/shared/${token}/`, { method: "POST", headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Не удалось сохранить");
+    if (!res.ok) throw new LError(data?.error || "Не удалось сохранить");
     return data.playlist;
   },
 
@@ -1189,7 +1196,7 @@ export const api = {
       method: "POST", headers: authHeaders(),
       body: JSON.stringify({ chat: chatId, content: "", file_url: track.file_url, file_name: `${track.title}.mp3` }),
     });
-    if (!res.ok) throw new Error("Не удалось отправить");
+    if (!res.ok) throw new LError("Не удалось отправить");
   },
 
   /** Нажать кнопку под сообщением бота: data уходит боту событием. */
@@ -1201,7 +1208,7 @@ export const api = {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ data, caps: ["ideas_screen"] }),
     });
     if (!res.ok) {
-      throw new Error((await res.json().catch(() => ({})))?.error || "Кнопка не сработала");
+      throw new LError((await res.json().catch(() => ({})))?.error || "Кнопка не сработала");
     }
     return res.json().catch(() => ({}));
   },
@@ -1209,7 +1216,7 @@ export const api = {
   // ===== ДЕЙСТВИЯ («подмигнуть», «обнять») =====
   getActions: async (): Promise<ChatActionInfo[]> => {
     const res = await fetchWithAuth(`${API_URL}/actions/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return (await res.json()).actions || [];
   },
   /** Отправить действие: в личке адресат — собеседник, в группе — target. */
@@ -1219,19 +1226,19 @@ export const api = {
       body: JSON.stringify({ chat: chatId, content: "", action_id: actionId, target_id: targetId || undefined }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось отправить");
+    if (!res.ok) throw new LError(body?.error || "Не удалось отправить");
     return body;
   },
 
   // ===== СТЕНА (chat/wall.py) =====
   getWall: async (): Promise<WallState> => {
     const res = await fetchWithAuth(`${API_URL}/wall/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
   setWallEnabled: async (enabled: boolean): Promise<WallState> => {
     const res = await fetchWithAuth(`${API_URL}/wall/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ enabled }) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
   markWallSeen: async (): Promise<void> => {
@@ -1243,77 +1250,77 @@ export const api = {
     if (opts.before) q.set("before", opts.before);
     if (opts.since) q.set("since", opts.since);
     const res = await fetchWithAuth(`${API_URL}/wall/posts/${q.toString() ? `?${q}` : ""}`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
   muteWallAuthor: async (profileId: string, mute = true): Promise<WallState> => {
     const res = await fetchWithAuth(`${API_URL}/wall/mute/`, { method: mute ? "POST" : "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body;
   },
   /** Репост поста своего канала на Стену. */
   repostToWall: async (messageId: string, wallSafe: boolean): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/wall/repost/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ message_id: messageId, wall_safe: wallSafe }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { const e: any = new Error(body?.error || "Не получилось"); e.body = body; throw e; }
+    if (!res.ok) { const e: any = new LError(body?.error || "Не получилось"); e.body = body; throw e; }
     return body;
   },
   wallAdminPost: async (messageId: string, data: { hidden?: boolean; wall_safe?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/wall/admin/posts/${messageId}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(data) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body;
   },
   getWallBans: async (): Promise<WallBanRow[]> => {
     const res = await fetchWithAuth(`${API_URL}/wall/admin/bans/`, { method: "GET", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body.bans || [];
   },
   banWallUser: async (profileId: string, hours: number | null, reason: string): Promise<WallBanRow> => {
     const res = await fetchWithAuth(`${API_URL}/wall/admin/bans/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId, hours, reason }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body;
   },
   unbanWallUser: async (profileId: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/wall/admin/bans/`, { method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }) });
-    if (!res.ok) throw new Error("Не получилось");
+    if (!res.ok) throw new LError("Не получилось");
   },
 
   // ===== ВАЙБОМЕТР И ИДЕИ (chat/ideabox.py) =====
   getVibe: async (profileId: string): Promise<VibeState> => {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
   getVibeLevels: async (): Promise<VibeLevelsConfig> => {
     const res = await fetchWithAuth(`${API_URL}/vibe-levels/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
   saveVibeLevels: async (cfg: VibeLevelsConfig): Promise<VibeLevelsConfig> => {
     const res = await fetchWithAuth(`${API_URL}/vibe-levels/`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(cfg) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось сохранить");
+    if (!res.ok) throw new LError(body?.error || "Не удалось сохранить");
     return body;
   },
   raiseVibe: async (profileId: string, anonymous = false): Promise<VibeState> => {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ anonymous }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { const e: any = new Error(body?.error || "Не получилось"); if ("vibe" in body) e.state = body; throw e; }
+    if (!res.ok) { const e: any = new LError(body?.error || "Не получилось"); if ("vibe" in body) e.state = body; throw e; }
     return body;
   },
   createIdea: async (text: string): Promise<{ idea: IdeaItem }> => {
     const res = await fetchWithAuth(`${API_URL}/ideas/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ text }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось отправить");
+    if (!res.ok) throw new LError(body?.error || "Не удалось отправить");
     return body;
   },
   getIdeas: async (sort: "top" | "new" | "done" | "mine", page: number, size = 20): Promise<IdeasPage> => {
     const res = await fetchWithAuth(`${API_URL}/ideas/?sort=${sort}&page=${page}&size=${size}`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
   ideaAction: async (ideaId: string, act: "vote" | "done" | "hide" | "report", value?: 1 | -1): Promise<{ idea?: IdeaItem; my_vibe?: number; ok?: boolean }> => {
@@ -1321,7 +1328,7 @@ export const api = {
       method: "POST", headers: authHeaders(), body: JSON.stringify(value ? { value } : {}),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не получилось");
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body;
   },
 
@@ -1332,7 +1339,7 @@ export const api = {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ emoji }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Не удалось поставить реакцию");
+    if (!res.ok) throw new LError(data?.error || "Не удалось поставить реакцию");
     return data;
   },
 
@@ -1352,7 +1359,7 @@ export const api = {
   addPostComment: async (msgId: string, content: string, parent?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ content, parent }) });
     const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "Ошибка");
+    if (!res.ok) throw new LError(d.error || "Ошибка");
     return d;
   },
   deletePostComment: async (commentId: string): Promise<void> => {
@@ -1376,7 +1383,7 @@ export const api = {
     if (opts.around) q.set("around", opts.around);
     if (opts.limit) q.set("limit", String(opts.limit));
     const res = await fetchWithAuth(`${API_URL}/messages/sync/?${q.toString()}`, { headers: authHeaders() });
-    if (!res.ok) throw new Error(`sync failed: ${res.status}`);
+    if (!res.ok) throw new LError(`sync failed: ${res.status}`);
     return res.json();
   },
 
@@ -1395,7 +1402,7 @@ export const api = {
       body: JSON.stringify({ chat: chatId, content, sound_id: soundId || undefined, reply_to_id: replyToId || undefined, entities: entities?.length ? entities : undefined, ...(extra || {}) }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { const e: any = new Error(body?.error || `HTTP ${res.status}`); e.body = body; throw e; }
+    if (!res.ok) { const e: any = new LError(body?.error || `HTTP ${res.status}`); e.body = body; throw e; }
     return body;
   },
 
@@ -1405,7 +1412,7 @@ export const api = {
       method: "POST",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to mark message as read");
+    if (!res.ok) throw new LError("Failed to mark message as read");
     return res.json();
   },
 
@@ -1415,14 +1422,14 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ chat_id: chatId }),
     });
-    if (!res.ok) throw new Error("Failed to mark chat as read");
+    if (!res.ok) throw new LError("Failed to mark chat as read");
     return res.json();
   },
 
   /** «Долгий ящик» — чат с ботом для идей (создаётся при первом заходе). */
   getIdeabox: async (): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/ideabox/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось открыть долгий ящик");
+    if (!res.ok) throw new LError("Не удалось открыть долгий ящик");
     return res.json();
   },
 
@@ -1430,12 +1437,12 @@ export const api = {
   createSecretChat: async (peerId: string, pub: string, deviceId: string): Promise<Chat> => {
     const res = await fetchWithAuth(`${API_URL}/secret-chats/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ peer_id: peerId, pub, device_id: deviceId }) });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Не удалось создать секретный чат");
+    if (!res.ok) throw new LError(d.error || "Не удалось создать секретный чат");
     return d;
   },
   acceptSecretChat: async (chatId: string, pub: string, deviceId: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/secret-chats/${chatId}/accept/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ pub, device_id: deviceId }) });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не удалось принять");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({}))).error || "Не удалось принять");
   },
   declineSecretChat: async (chatId: string): Promise<void> => {
     await fetchWithAuth(`${API_URL}/secret-chats/${chatId}/decline/`, { method: "POST", headers: authHeaders() });
@@ -1444,12 +1451,12 @@ export const api = {
   sendSecretMessage: async (chatId: string, cipher: string, replyToId?: string, file?: { file_url: string; file_size: number }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ chat: chatId, cipher, reply_to_id: replyToId || undefined, ...(file || {}) }) });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || "Не удалось отправить");
+    if (!res.ok) throw new LError(d.error || "Не удалось отправить");
     return d;
   },
   editSecretMessage: async (messageId: string, cipher: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/edit/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ cipher }) });
-    if (!res.ok) throw new Error("Не удалось изменить");
+    if (!res.ok) throw new LError("Не удалось изменить");
     return res.json();
   },
 
@@ -1457,14 +1464,14 @@ export const api = {
     from: string; to: string; count: number; unit?: "day" | "month"; days: { date: string; count: number }[]; users: { username: string; created_at: string }[];
   }> => {
     const res = await fetchWithAuth(`${API_URL}/admin/registrations/?from=${from}&to=${to}&tz=${tzOffsetMin}`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(res.status === 403 ? "403" : `HTTP ${res.status}`);
+    if (!res.ok) throw new LError(res.status === 403 ? "403" : `HTTP ${res.status}`);
     return res.json();
   },
 
   getAdminMetrics: async (range: string, tzOffsetMin: number): Promise<AdminMetrics> => {
     const res = await fetchWithAuth(`${API_URL}/admin/metrics/?range=${encodeURIComponent(range)}&tz=${tzOffsetMin}`, { method: "GET", headers: authHeaders() });
-    if (res.status === 403) throw new Error("403");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (res.status === 403) throw new LError("403");
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
 
@@ -1473,7 +1480,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to get unread count");
+    if (!res.ok) throw new LError("Failed to get unread count");
     return res.json();
   },
 
@@ -1491,7 +1498,7 @@ export const api = {
       method: "DELETE",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to delete chat");
+    if (!res.ok) throw new LError("Failed to delete chat");
   },
 
   leaveChat: async (chatId: string): Promise<void> => {
@@ -1499,7 +1506,7 @@ export const api = {
       method: "POST",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to leave chat");
+    if (!res.ok) throw new LError("Failed to leave chat");
   },
 
   addFriend: async (friendId: string): Promise<any> => {
@@ -1541,7 +1548,7 @@ export const api = {
     if (!res.ok) {
       const errorText = await res.text();
       console.error("Upload error:", errorText);
-      throw new Error(`File upload failed: ${res.status} ${res.statusText}`);
+      throw new LError(`File upload failed: ${res.status} ${res.statusText}`);
     }
 
     return res.json();
@@ -1595,7 +1602,7 @@ export const api = {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new Error(`Voice upload failed: ${res.status}`);
+    if (!res.ok) throw new LError(`Voice upload failed: ${res.status}`);
     return res.json();
   },
 
@@ -1605,7 +1612,7 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/transcribe/`, {
       method: "POST", headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Не удалось расшифровать");
+    if (!res.ok) throw new LError("Не удалось расшифровать");
     return res.json();
   },
 
@@ -1615,7 +1622,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration, reply_to_id: replyToId || undefined }),
     });
-    if (!res.ok) throw new Error("Не удалось отправить голосовое");
+    if (!res.ok) throw new LError("Не удалось отправить голосовое");
     return res.json();
   },
 
@@ -1633,7 +1640,7 @@ export const api = {
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      throw new Error(e.error || "Не удалось сохранить группу");
+      throw new LError(e.error || "Не удалось сохранить группу");
     }
     return res.json();
   },
@@ -1644,7 +1651,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ participants: participantIds }),
     });
-    if (!res.ok) throw new Error("Не удалось добавить участников");
+    if (!res.ok) throw new LError("Не удалось добавить участников");
     return res.json();
   },
 
@@ -1652,14 +1659,14 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/remove/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ scope }),
     });
-    if (!res.ok) throw new Error("Не удалось удалить");
+    if (!res.ok) throw new LError("Не удалось удалить");
   },
 
   editMessage: async (messageId: string, content: string, entities?: { type: string; offset: number; length: number }[]): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/edit/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ content, entities: entities || [] }),
     });
-    if (!res.ok) throw new Error("Не удалось изменить");
+    if (!res.ok) throw new LError("Не удалось изменить");
     return res.json();
   },
 
@@ -1669,7 +1676,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ chat: chatId, video_url: videoUrl, video_duration: duration, video_mirror: mirror ? "1" : undefined, video_flip: flip ? "1" : undefined, reply_to_id: replyToId || undefined, ...(extra || {}) }),
     });
-    if (!res.ok) throw new Error("Не удалось отправить видео-сообщение");
+    if (!res.ok) throw new LError("Не удалось отправить видео-сообщение");
     return res.json();
   },
 
@@ -1682,7 +1689,7 @@ export const api = {
         method: "GET",
         headers: authHeaders(),
       });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) throw new LError(String(res.status));
       const data = await res.json();
       return data.iceServers || [];
     } catch {
@@ -1698,7 +1705,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("sign failed");
+    if (!res.ok) throw new LError("sign failed");
     const d = await res.json();
     return d.url as string;
   },
@@ -1720,7 +1727,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to load sticker packs");
+    if (!res.ok) throw new LError("Failed to load sticker packs");
     return res.json();
   },
 
@@ -1730,7 +1737,7 @@ export const api = {
       method: "GET",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to load stickers");
+    if (!res.ok) throw new LError("Failed to load stickers");
     return res.json();
   },
 
@@ -1741,7 +1748,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ chat: chatId, geo_lat: lat, geo_lng: lng, reply_to_id: replyToId || undefined }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось отправить");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось отправить");
     return res.json();
   },
 
@@ -1757,7 +1764,7 @@ export const api = {
         effect: effect || undefined,
       }),
     });
-    if (!res.ok) throw new Error("Failed to send sticker");
+    if (!res.ok) throw new LError("Failed to send sticker");
     return res.json();
   },
 
@@ -1771,7 +1778,7 @@ export const api = {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new Error("Не удалось загрузить файл стикера");
+    if (!res.ok) throw new LError("Не удалось загрузить файл стикера");
     return res.json();
   },
 
@@ -1781,7 +1788,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ name, description, is_public: isPublic }),
     });
-    if (!res.ok) throw new Error("Не удалось создать набор");
+    if (!res.ok) throw new LError("Не удалось создать набор");
     return res.json();
   },
 
@@ -1792,13 +1799,13 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify(patch),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Не удалось изменить стикер");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.detail || "Не удалось изменить стикер");
     return res.json();
   },
 
   deleteSticker: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/stickers/${id}/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось удалить стикер");
+    if (!res.ok) throw new LError("Не удалось удалить стикер");
   },
 
   createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0, keyword = ""): Promise<any> => {
@@ -1807,7 +1814,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order, keyword: keyword || undefined }),
     });
-    if (!res.ok) throw new Error("Не удалось добавить стикер");
+    if (!res.ok) throw new LError("Не удалось добавить стикер");
     return res.json();
   },
 
@@ -1817,19 +1824,19 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/pin/`, {
       method: pinned ? "POST" : "DELETE", headers: authHeaders(),
     });
-    if (!res.ok) throw new Error(pinned ? "Не удалось закрепить" : "Не удалось открепить");
+    if (!res.ok) throw new LError(pinned ? "Не удалось закрепить" : "Не удалось открепить");
   },
 
   // ===== ТЕМЫ ОФОРМЛЕНИЯ =====
   /** Мои темы и установленные чужие. Объекты — «сырые», через normalizeTheme. */
   listThemes: async (): Promise<any[]> => {
     const res = await fetchWithAuth(`${API_URL}/themes/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить темы");
+    if (!res.ok) throw new LError("Не удалось загрузить темы");
     return (await res.json()).themes || [];
   },
   getTheme: async (id: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/themes/${id}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Тема не найдена");
+    if (!res.ok) throw new LError("Тема не найдена");
     return res.json();
   },
   /** Создать (без id) или сохранить свою тему. Сервер проверяет схему. */
@@ -1841,22 +1848,22 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось сохранить тему";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
     return res.json();
   },
   deleteTheme: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/themes/${id}/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось удалить тему");
+    if (!res.ok) throw new LError("Не удалось удалить тему");
   },
   installTheme: async (id: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/themes/${id}/install/`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось установить тему");
+    if (!res.ok) throw new LError("Не удалось установить тему");
     return res.json();
   },
   uninstallTheme: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/themes/${id}/install/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось убрать тему");
+    if (!res.ok) throw new LError("Не удалось убрать тему");
   },
   /** Запомнить выбор темы в профиле — он переедет на другие устройства. */
   setActiveTheme: async (themeId: string): Promise<void> => {
@@ -1869,7 +1876,7 @@ export const api = {
   /** Принять правила и политику — для тех, кто регистрировался до их появления. */
   acceptTerms: async (): Promise<Profile> => {
     const res = await fetchWithAuth(`${API_URL}/account/accept-terms/`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось сохранить согласие");
+    if (!res.ok) throw new LError("Не удалось сохранить согласие");
     return res.json();
   },
 
@@ -1878,25 +1885,25 @@ export const api = {
   createKeyTransfer: async (pub: string): Promise<{ id: string; code: string; pub: string; ready: boolean; expires_at: string }> => {
     const res = await fetchWithAuth(`${API_URL}/secret-transfer/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ pub }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось открыть сеанс");
+    if (!res.ok) throw new LError(body?.error || "Не удалось открыть сеанс");
     return body;
   },
   lookupKeyTransfer: async (ref: string): Promise<{ id: string; code: string; pub: string; ready: boolean; expires_at: string }> => {
     const res = await fetchWithAuth(`${API_URL}/secret-transfer/${encodeURIComponent(ref)}/`, { method: "GET", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Сеанс не найден");
+    if (!res.ok) throw new LError(body?.error || "Сеанс не найден");
     return body;
   },
   sendKeyTransferBlob: async (id: string, blob: string, oldPub: string, chats: string[]): Promise<{ ok: boolean; notified: number }> => {
     const res = await fetchWithAuth(`${API_URL}/secret-transfer/${id}/blob/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ blob, old_pub: oldPub, chats }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось отправить ключи");
+    if (!res.ok) throw new LError(body?.error || "Не удалось отправить ключи");
     return body;
   },
   pollKeyTransfer: async (id: string): Promise<{ ready: boolean; blob?: string; old_pub?: string; pub?: string }> => {
     const res = await fetchWithAuth(`${API_URL}/secret-transfer/${id}/blob/`, { method: "GET", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Сеанс истёк");
+    if (!res.ok) throw new LError(body?.error || "Сеанс истёк");
     return body;
   },
 
@@ -1904,29 +1911,29 @@ export const api = {
   setEmail: async (email: string): Promise<{ sent: boolean; email: string }> => {
     const res = await fetchWithAuth(`${API_URL}/account/email/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ email }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось отправить код");
+    if (!res.ok) throw new LError(body?.error || "Не удалось отправить код");
     return body;
   },
   confirmEmail: async (code: string): Promise<Profile> => {
     const res = await fetchWithAuth(`${API_URL}/account/email/confirm/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ code }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось подтвердить");
+    if (!res.ok) throw new LError(body?.error || "Не удалось подтвердить");
     return body;
   },
   unlinkEmail: async (): Promise<Profile> => {
     const res = await fetchWithAuth(`${API_URL}/account/email/`, { method: "DELETE", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error || "Не удалось отвязать");
+    if (!res.ok) throw new LError(body?.error || "Не удалось отвязать");
     return body;
   },
   /** Сброс пароля без входа: код на привязанную почту, затем новый пароль. */
   forgotPassword: async (login: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/auth/password/forgot/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login }) });
-    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body?.error || "Не удалось отправить код"); }
+    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new LError(body?.error || "Не удалось отправить код"); }
   },
   resetPassword: async (login: string, code: string, password: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/auth/password/reset/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, code, password }) });
-    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body?.error || "Не удалось сменить пароль"); }
+    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new LError(body?.error || "Не удалось сменить пароль"); }
   },
 
   deleteAccount: async (password: string): Promise<void> => {
@@ -1938,7 +1945,7 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось удалить аккаунт";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
   },
 
@@ -1955,7 +1962,7 @@ export const api = {
         const body = await res.json();
         msg = body.username?.[0] || body.bio?.[0] || body.aura_color?.[0] || body.error || msg;
       } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
     return res.json();
   },
@@ -1967,7 +1974,7 @@ export const api = {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new Error("Не удалось загрузить аватар");
+    if (!res.ok) throw new LError("Не удалось загрузить аватар");
     return res.json();
   },
 
@@ -1982,7 +1989,7 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось загрузить обложку";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
     return res.json();
   },
@@ -1999,14 +2006,14 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось отправить жалобу";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
   },
 
   /** Кому открыты мои сохранёнки при настройке «избранные люди». */
   listSavedViewers: async (): Promise<{ id: string; username: string; avatar_url?: string | null }[]> => {
     const res = await fetchWithAuth(`${API_URL}/saved-viewers/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить список");
+    if (!res.ok) throw new LError("Не удалось загрузить список");
     return (await res.json()).viewers || [];
   },
 
@@ -2014,33 +2021,33 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/saved-viewers/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не удалось добавить");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({}))).error || "Не удалось добавить");
   },
 
   removeSavedViewer: async (profileId: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/saved-viewers/`, {
       method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
-    if (!res.ok) throw new Error("Не удалось убрать");
+    if (!res.ok) throw new LError("Не удалось убрать");
   },
 
   /** Вся моя музыка одним списком (все плейлисты, без повторов файла). */
   listAllTracks: async (q?: string): Promise<PlaylistTrack[]> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/all-tracks/${q ? `?q=${encodeURIComponent(q)}` : ""}`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить музыку");
+    if (!res.ok) throw new LError("Не удалось загрузить музыку");
     return (await res.json()).tracks || [];
   },
 
   /** Плейлисты: свои, с числом треков. «Моя музыка» заводится сама. */
   listPlaylists: async (): Promise<Playlist[]> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить плейлисты");
+    if (!res.ok) throw new LError("Не удалось загрузить плейлисты");
     return (await res.json()).playlists || [];
   },
 
   getPlaylist: async (id: string): Promise<{ playlist: Playlist; tracks: PlaylistTrack[] }> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/${id}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Плейлист не найден");
+    if (!res.ok) throw new LError("Плейлист не найден");
     return res.json();
   },
 
@@ -2049,7 +2056,7 @@ export const api = {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ name }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Не удалось создать плейлист");
+    if (!res.ok) throw new LError(data?.error || "Не удалось создать плейлист");
     return data;
   },
 
@@ -2058,14 +2065,14 @@ export const api = {
       method: "PATCH", headers: authHeaders(), body: JSON.stringify({ name }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Не удалось переименовать");
+    if (!res.ok) throw new LError(data?.error || "Не удалось переименовать");
     return data;
   },
 
   deletePlaylist: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/${id}/`, { method: "DELETE", headers: authHeaders() });
     if (!res.ok && res.status !== 204) {
-      throw new Error((await res.json().catch(() => ({})))?.error || "Не удалось удалить");
+      throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось удалить");
     }
   },
 
@@ -2076,7 +2083,7 @@ export const api = {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ message_id: messageId }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Не удалось добавить");
+    if (!res.ok) throw new LError(data?.error || "Не удалось добавить");
     return data;
   },
 
@@ -2084,12 +2091,12 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/playlists/${playlistId}/tracks/${trackId}/`, {
       method: "DELETE", headers: authHeaders(),
     });
-    if (!res.ok && res.status !== 204) throw new Error("Не удалось убрать трек");
+    if (!res.ok && res.status !== 204) throw new LError("Не удалось убрать трек");
   },
 
   listBlocks: async (): Promise<{ id: string; username: string; avatar_url?: string | null }[]> => {
     const res = await fetchWithAuth(`${API_URL}/blocks/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить список");
+    if (!res.ok) throw new LError("Не удалось загрузить список");
     return (await res.json()).blocked || [];
   },
 
@@ -2097,45 +2104,45 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/blocks/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
-    if (!res.ok) throw new Error("Не удалось заблокировать");
+    if (!res.ok) throw new LError("Не удалось заблокировать");
   },
 
   unblockUser: async (profileId: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/blocks/`, {
       method: "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }),
     });
-    if (!res.ok) throw new Error("Не удалось разблокировать");
+    if (!res.ok) throw new LError("Не удалось разблокировать");
   },
 
   // ---- Стикерпаки по ссылке ----
 
   getStickerPack: async (id: string): Promise<StickerPackInfo> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Пак не найден");
+    if (!res.ok) throw new LError("Пак не найден");
     return res.json();
   },
 
   saveStickerPack: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/save/`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось добавить пак");
+    if (!res.ok) throw new LError("Не удалось добавить пак");
   },
 
   unsaveStickerPack: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/unsave/`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось убрать пак");
+    if (!res.ok) throw new LError("Не удалось убрать пак");
   },
 
   /** Удалить свой стикерпак целиком (только автор). */
   deleteStickerPack: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/${id}/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Не удалось удалить пак");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({}))).error || "Не удалось удалить пак");
   },
 
   // ---- Паки звуков (подписка, как у стикеров) ----
 
   getSoundPack: async (id: string): Promise<SoundPackInfo> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Пак не найден");
+    if (!res.ok) throw new LError("Пак не найден");
     return res.json();
   },
 
@@ -2149,14 +2156,14 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось импортировать набор";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
     return res.json();
   },
 
   telegramImportProgress: async (packId: string): Promise<{ total: number; done: number; failed: number; finished: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/import-telegram/${packId}/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Импорт не найден");
+    if (!res.ok) throw new LError("Импорт не найден");
     return res.json();
   },
 
@@ -2169,11 +2176,11 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось создать пак";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
     const data = await res.json();
     // Студийная ручка отвечает {pack, created, failed}.
-    if (data?.failed?.length) throw new Error(`Не обработано звуков: ${data.failed.length}`);
+    if (data?.failed?.length) throw new LError(tr("Не обработано звуков: {n}", { n: data.failed.length }));
     return data.pack;
   },
 
@@ -2192,31 +2199,31 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось сохранить обложку";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
     return res.json();
   },
 
   addSoundPack: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/subscribe/`, { method: "POST", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось добавить пак");
+    if (!res.ok) throw new LError("Не удалось добавить пак");
   },
 
   removeSoundPack: async (id: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/pack/${id}/subscribe/`, { method: "DELETE", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось убрать пак");
+    if (!res.ok) throw new LError("Не удалось убрать пак");
   },
 
   /** Свои паки (созданные в приложении или в студии). */
   listMySoundPacks: async (): Promise<SoundPackInfo[]> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/mine/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return ((await res.json()).packs || []) as SoundPackInfo[];
   },
 
   listAddedSoundPacks: async (): Promise<SoundPackInfo[]> => {
     const res = await fetchWithAuth(`${API_URL}/sounds/added/`, { method: "GET", headers: authHeaders() });
-    if (!res.ok) throw new Error("Не удалось загрузить паки");
+    if (!res.ok) throw new LError("Не удалось загрузить паки");
     return (await res.json()).packs || [];
   },
 
@@ -2226,7 +2233,7 @@ export const api = {
     if (!res.ok) {
       let msg = "Не удалось отправить репорт";
       try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new Error(msg);
+      throw new LError(msg);
     }
   },
 
@@ -2235,7 +2242,7 @@ export const api = {
       method: "DELETE",
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Не удалось убрать обложку");
+    if (!res.ok) throw new LError("Не удалось убрать обложку");
   },
 
 
@@ -2250,7 +2257,7 @@ export const api = {
       // device_id — чтобы «выйти с устройства» убирал и пуш-токен.
       body: JSON.stringify({ token, platform, secret: secret || undefined, device_id }),
     });
-    if (!res.ok) throw new Error("Не удалось зарегистрировать устройство");
+    if (!res.ok) throw new LError("Не удалось зарегистрировать устройство");
     return res.json();
   },
 

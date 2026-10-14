@@ -49,17 +49,17 @@ const Row = ({ theme, active, onPick, menu }: { theme: ThemeDef; active: boolean
     >
       <Swatch theme={theme} />
       <span className="min-w-0 flex-1">
-        <span className="block text-body truncate">{theme.name}</span>
+        <span className="block text-body truncate">{theme.builtin ? tr(theme.name) : theme.name}</span>
         <span className="block text-caption text-subtle truncate">
           {theme.builtin
             ? (theme.shape.style === "outlined"
-                ? "Обводки тушью, жёсткие тени"
+                ? tr("Обводки тушью, жёсткие тени")
                 : theme.shape.style === "glass"
-                  ? "Полупрозрачные поверхности, размытие и свечение"
+                  ? tr("Полупрозрачные поверхности, размытие и свечение")
                   : theme.shape.style === "soft"
-                    ? "Мягкие карточки, таблетки, зелёный с салатовым"
-                  : theme.base === "light" ? "Белые карточки, тёмный текст" : "Почти чёрный фон")
-            : `${theme.mine ? "Моя тема" : theme.author ? `Автор: ${theme.author}` : "Без автора"}${theme.installs ? ` · установок: ${theme.installs}` : ""}`}
+                    ? tr("Мягкие карточки, таблетки, зелёный с салатовым")
+                  : theme.base === "light" ? tr("Белые карточки, тёмный текст") : tr("Почти чёрный фон"))
+            : `${theme.mine ? tr("Моя тема") : theme.author ? tr("Автор: {name}", { name: theme.author }) : tr("Без автора")}${theme.installs ? ` · ${tr("установок: {n}", { n: theme.installs })}` : ""}`}
         </span>
       </span>
       {active && <Check className="w-5 h-5 text-primary shrink-0" />}
@@ -91,12 +91,12 @@ const ProfileAppearance = () => {
   const remove = async (t: ThemeDef) => {
     setMenuFor(null);
     try {
-      if (t.mine) { if (!(await confirmDialog(`Удалить тему «${t.name}»? Она пропадёт и у тех, кто её установил.`))) return; await api.deleteTheme(t.id); }
+      if (t.mine) { if (!(await confirmDialog(tr("Удалить тему «{name}»? Она пропадёт и у тех, кто её установил.", { name: t.name })))) return; await api.deleteTheme(t.id); }
       else await api.uninstallTheme(t.id);
       const rest = installed.filter((x) => x.id !== t.id);
       setInstalledThemes(rest);
       if (current.id === t.id) setTheme(BUILTIN_THEMES[1]);
-      toast.success(t.mine ? "Тема удалена" : "Тема убрана");
+      toast.success(t.mine ? tr("Тема удалена") : tr("Тема убрана"));
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
@@ -105,15 +105,15 @@ const ProfileAppearance = () => {
       <ScreenHeader title={tr("Внешний вид")} />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle">Встроенные</p>
+        <p className="px-1 text-small text-subtle">{tr("Встроенные")}</p>
         <SettingsCard>
           {BUILTIN_THEMES.map((t) => <Row key={t.id} theme={t} active={current.id === t.id} onPick={() => setTheme(t)} />)}
         </SettingsCard>
 
-        <p className="px-1 pt-2 text-small text-subtle">Мои и установленные</p>
+        <p className="px-1 pt-2 text-small text-subtle">{tr("Мои и установленные")}</p>
         <SettingsCard>
           {installed.length === 0 && (
-            <div className="px-4 py-4 text-small text-subtle">Пока пусто. Создайте свою тему или установите чужую по ссылке /t/…</div>
+            <div className="px-4 py-4 text-small text-subtle">{tr("Пока пусто. Создайте свою тему или установите чужую по ссылке /t/…")}</div>
           )}
           {installed.map((t) => (
             <div key={t.id} className="relative">
@@ -130,10 +130,10 @@ const ProfileAppearance = () => {
               {menuFor === t.id && (
                 <div className="px-4 pb-3 flex flex-wrap gap-2">
                   {t.mine && (
-                    <button type="button" onClick={() => navigate(`/profile/themes/${t.id}`)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5"><Pencil className="w-4 h-4" /> Изменить</button>
+                    <button type="button" onClick={() => navigate(`/profile/themes/${t.id}`)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5"><Pencil className="w-4 h-4" /> {tr("Изменить")}</button>
                   )}
                   <button type="button" onClick={() => share(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium inline-flex items-center gap-1.5"><Link2 className="w-4 h-4" />{tr("Поделиться")}</button>
-                  <button type="button" onClick={() => remove(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium text-destructive inline-flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> {t.mine ? "Удалить" : tr("Убрать")}</button>
+                  <button type="button" onClick={() => remove(t)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium text-destructive inline-flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> {t.mine ? tr("Удалить") : tr("Убрать")}</button>
                 </div>
               )}
             </div>
@@ -145,11 +145,11 @@ const ProfileAppearance = () => {
           onClick={() => navigate("/profile/themes/new")}
           className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
         >
-          <Plus className="w-5 h-5" /> Создать тему
+          <Plus className="w-5 h-5" /> {tr("Создать тему")}
         </button>
 
         <p className="px-1 text-caption text-subtle">
-          Выбор запоминается в профиле и применяется на всех ваших устройствах. Своей темой можно поделиться ссылкой.
+          {tr("Выбор запоминается в профиле и применяется на всех ваших устройствах. Своей темой можно поделиться ссылкой.")}
         </p>
       </div>
     </div>

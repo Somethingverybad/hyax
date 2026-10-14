@@ -1,3 +1,4 @@
+import { t, tn } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Music2, Play, Square, Share2, Check, Plus, Trash2 } from "lucide-react";
@@ -38,46 +39,46 @@ const SoundPackPage = () => {
   const toggle = (s: { id: string; url: string }) => {
     if (playing === s.id) { audio.pause(); setPlaying(null); return; }
     audio.src = mediaUrl(s.url);
-    audio.play().then(() => setPlaying(s.id)).catch(() => toast.error("Не удалось воспроизвести"));
+    audio.play().then(() => setPlaying(s.id)).catch(() => toast.error(t("Не удалось воспроизвести")));
   };
 
   const act = async () => {
     if (!pack || busy) return;
     setBusy(true);
     try {
-      if (pack.added) { await api.removeSoundPack(pack.id); toast.success("Пак убран"); }
-      else { await api.addSoundPack(pack.id); toast.success("Пак добавлен — звуки появятся в «Мой звук»"); }
+      if (pack.added) { await api.removeSoundPack(pack.id); toast.success(t("Пак убран")); }
+      else { await api.addSoundPack(pack.id); toast.success(t("Пак добавлен — звуки появятся в «Мой звук»")); }
       setPack({ ...pack, added: !pack.added });
       // Каталог изменился — докачиваем/убираем файлы на устройстве.
       void syncNotificationSounds().catch(() => {});
     } catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || t("Не получилось"));
     } finally {
       setBusy(false);
     }
   };
 
   const share = async () => {
-    try { await navigator.clipboard.writeText(soundPackLink(id)); toast.success("Ссылка скопирована"); }
-    catch { toast.error("Не удалось скопировать"); }
+    try { await navigator.clipboard.writeText(soundPackLink(id)); toast.success(t("Ссылка скопирована")); }
+    catch { toast.error(t("Не удалось скопировать")); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Пак звуков"
+        title={t("Пак звуков")}
         onBack={() => (window.history.length > 1 ? navigate(-1) : navigate("/chat", { replace: true }))}
         right={
-          <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label="Поделиться">
+          <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label={t("Поделиться")}>
             <Share2 className="w-5 h-5" />
           </button>
         }
       />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {pack === undefined ? (
-          <p className="py-10 text-center text-small text-subtle">Загрузка…</p>
+          <p className="py-10 text-center text-small text-subtle">{t("Загрузка…")}</p>
         ) : pack === null ? (
-          <p className="py-10 text-center text-small text-subtle">Пак не найден или приватный</p>
+          <p className="py-10 text-center text-small text-subtle">{t("Пак не найден или приватный")}</p>
         ) : (
           <>
             <div className="flex items-center gap-4">
@@ -87,7 +88,7 @@ const SoundPackPage = () => {
               <div className="min-w-0">
                 <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>
                 <p className="mt-1 text-small text-subtle truncate">
-                  {pack.is_default ? "Стандартный пак" : pack.creator ? `Автор: ${pack.creator}` : "Без автора"} · {pack.sounds_count ?? pack.sounds.length} звуков
+                  {pack.is_default ? t("Стандартный пак") : pack.creator ? t("Автор: {name}", { name: pack.creator }) : t("Без автора")} · {tn(pack.sounds_count ?? pack.sounds.length, "{n} звук", "{n} звука", "{n} звуков")}
                 </p>
               </div>
             </div>
@@ -101,11 +102,11 @@ const SoundPackPage = () => {
                 disabled={busy}
                 className={`w-full h-11 rounded-md font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50 ${pack.added ? "bg-surface-4 text-foreground" : "bg-primary text-primary-foreground"}`}
               >
-                {pack.added ? <><Trash2 className="w-4 h-4" /> Убрать из моих</> : <><Plus className="w-4 h-4" /> Добавить себе</>}
+                {pack.added ? <><Trash2 className="w-4 h-4" /> {t("Убрать из моих")}</> : <><Plus className="w-4 h-4" /> {t("Добавить себе")}</>}
               </button>
             )}
-            {pack.mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Это твой пак — он уже у тебя</p>}
-            {pack.is_default && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> Стандартный пак — он есть у всех</p>}
+            {pack.mine && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> {t("Это твой пак — он уже у тебя")}</p>}
+            {pack.is_default && <p className="px-1 text-small text-subtle flex items-center gap-1.5"><Check className="w-4 h-4 text-primary" /> {t("Стандартный пак — он есть у всех")}</p>}
 
             {!pack.adult_locked && <SettingsCard>
               {pack.sounds.map((s) => (

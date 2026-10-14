@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { t } from "@/lib/i18n";
 
 /**
  * Подпись под логотипом на экране входа: цитаты сменяют друг друга.
@@ -7,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
  * Смена идёт по кругу, случайным порядком на каждый запуск, анимация —
  * только прозрачность и сдвиг (их считает композитор, раскладка не
  * пересчитывается). При «уменьшить движение» просто меняем текст.
+ * Строки — русские ключи словаря, переводятся при показе.
  */
 const QUOTES = [
   "Каждый проходит путь самурая, чтобы однажды стать тамагочи…",
@@ -45,7 +47,7 @@ const AuthQuote = ({ className = "" }: { className?: string }) => {
     return () => clearInterval(id);
   }, []);
 
-  const text = QUOTES[order.current[step % QUOTES.length]];
+  const text = t(QUOTES[order.current[step % QUOTES.length]]);
 
   return (
     <p className={`auth-quote min-h-[2.6em] flex items-center justify-center text-center ${className}`}>

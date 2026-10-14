@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { APP_VERSION, APP_BUILD } from "./appVersion";
+import { t } from "./i18n";
 
 /**
  * Проверка обновлений через манифест на сервере (/apk/version.json). Клиент
@@ -134,11 +135,11 @@ export async function startUpdate(info: UpdateInfo): Promise<StartUpdateResult> 
 
 /** Текст для тоста, когда установка не удалась: что случилось и где лежит файл. */
 export function describeUpdateError(r: Extract<StartUpdateResult, { result: "error" }>): string {
-  const base = r.error ? `Не удалось установить обновление: ${r.error}` : "Не удалось скачать обновление";
+  const base = r.error ? t("Не удалось установить обновление: {error}", { error: r.error }) : t("Не удалось скачать обновление");
   if (!r.file) return base;
   return /\.deb$/i.test(r.file)
-    ? `${base}. Файл сохранён: ${r.file} — установи вручную: sudo dpkg -i "${r.file}"`
-    : `${base}. Файл сохранён: ${r.file}`;
+    ? `${base}. ${t("Файл сохранён: {file} — установи вручную: sudo dpkg -i \"{file}\"", { file: r.file })}`
+    : `${base}. ${t("Файл сохранён: {file}", { file: r.file })}`;
 }
 
 /** Обновления iOS приходят через TestFlight — своей ссылки у них обычно нет. */

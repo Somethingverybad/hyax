@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import StickerView from "@/components/chat/StickerView";
 import { useMint, MintIcon } from "@/themes/mint";
@@ -154,7 +155,7 @@ const StickerPicker = ({
     setQueue(tail);
     if (head) { setCropping(head); return; }
     if (addedRef.current) {
-      toast.success(`Добавлено: ${addedRef.current}`);
+      toast.success(t("Добавлено: {n}", { n: addedRef.current }));
       invalidateStickerIndex();
       if (activePackId) setStickers((await api.getStickers(activePackId)) || []);
     }
@@ -167,7 +168,7 @@ const StickerPicker = ({
       await api.createSticker(activePackId, up.file_url, up.file_name, stickers.length + addedRef.current, kw);
       addedRef.current += 1;
     } catch (e: any) {
-      toast.error(e?.message || "Стикер не загрузился");
+      toast.error(e?.message || t("Стикер не загрузился"));
     } finally {
       setBusy(false);
     }
@@ -184,20 +185,20 @@ const StickerPicker = ({
     setPackMenu(false);
     if (!activePack) return;
     const r = await shareStickerPack(activePack.name, activePack.id);
-    if (r === "copied") toast.success("Ссылка скопирована");
-    else if (r === "error") toast.error("Не удалось поделиться");
+    if (r === "copied") toast.success(t("Ссылка скопирована"));
+    else if (r === "error") toast.error(t("Не удалось поделиться"));
   };
   const removePack = async (mine: boolean) => {
     setPackMenu(false);
     if (!activePack) return;
-    if (!(await confirmDialog(mine ? `Удалить набор «${activePack.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${activePack.name}» из моих наборов?`))) return;
+    if (!(await confirmDialog(mine ? t("Удалить набор «{name}» у всех, кто его сохранил? Это необратимо.", { name: activePack.name }) : t("Убрать «{name}» из моих наборов?", { name: activePack.name })))) return;
     try {
       if (mine) await api.deleteStickerPack(activePack.id); else await api.unsaveStickerPack(activePack.id);
       pickerCache.stickers.delete(activePack.id);
       invalidateStickerIndex();
       await loadPacks();
-      toast.success(mine ? "Набор удалён" : "Убрано из моих");
-    } catch (e: any) { toast.error(e?.message || "Не получилось"); }
+      toast.success(mine ? t("Набор удалён") : t("Убрано из моих"));
+    } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
   const authorId = activePack?.author && typeof activePack.author === "object" ? activePack.author.id : (activePack?.author as string | undefined);
   const isAuthor = !!meId && !!authorId && meId === authorId;
@@ -212,7 +213,7 @@ const StickerPicker = ({
       setStickers((prev) => prev.map((x) => (x.id === editing.id ? { ...x, keyword: editKeyword.trim() } : x)));
       invalidateStickerIndex();
       setEditing(null);
-    } catch (e: any) { toast.error(e?.message || "Не удалось сохранить"); }
+    } catch (e: any) { toast.error(e?.message || t("Не удалось сохранить")); }
     finally { setBusy(false); }
   };
   const deleteEditing = async () => {
@@ -223,8 +224,8 @@ const StickerPicker = ({
       setStickers((prev) => prev.filter((x) => x.id !== editing.id));
       invalidateStickerIndex();
       setEditing(null);
-      toast.success("Стикер удалён");
-    } catch (e: any) { toast.error(e?.message || "Не удалось удалить"); }
+      toast.success(t("Стикер удалён"));
+    } catch (e: any) { toast.error(e?.message || t("Не удалось удалить")); }
     finally { setBusy(false); }
   };
 
@@ -237,9 +238,9 @@ const StickerPicker = ({
       setNewPackName("");
       setCreating(false);
       await loadPacks(pack.id);
-      toast.success("Набор создан — теперь добавьте стикеры");
+      toast.success(t("Набор создан — теперь добавьте стикеры"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось создать набор");
+      toast.error(e?.message || t("Не удалось создать набор"));
     } finally {
       setBusy(false);
     }
@@ -280,7 +281,7 @@ const StickerPicker = ({
         <span aria-hidden className="absolute top-0 bottom-0 rounded-full transition-all duration-300"
           style={{ background: "rgb(52 92 84 / 0.15)", left: `${segLeft}%`, width: `${segW}%` }} />
         {segs.map((x) => (
-          <button key={x.id} type="button" onClick={() => setTab(x.id)} className="relative" style={{ width: `${x.w}%` }}>{x.label}</button>
+          <button key={x.id} type="button" onClick={() => setTab(x.id)} className="relative" style={{ width: `${x.w}%` }}>{t(x.label)}</button>
         ))}
       </div>
     </div>
@@ -295,7 +296,7 @@ const StickerPicker = ({
           tab === "stickers" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
         )}
       >
-        Стикеры
+        {t("Стикеры")}
       </button>
       <button
         type="button"
@@ -306,7 +307,7 @@ const StickerPicker = ({
         )}
       >
         <Music2 className="w-3.5 h-3.5" />
-        Звуки
+        {t("Звуки")}
       </button>
       {onSelectAction && (
         <button
@@ -318,7 +319,7 @@ const StickerPicker = ({
           )}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          Действия
+          {t("Действия")}
         </button>
       )}
     </div>
@@ -336,6 +337,8 @@ const StickerPicker = ({
 
 
   // Паки аудио-стикеров и их содержимое.
+  // «Разное» — служебное имя для звуков без пака (его же отдаёт сервер): переводим только его.
+  const packLabel = (n: string) => (n === "Разное" ? t("Разное") : n);
   const soundPackNames = Array.from(new Set(sounds.map((s) => s.pack_name || "Разное")));
   const packCount = (name: string) => sounds.filter((s) => (s.pack_name || "Разное") === name).length;
   const inPack = soundView && soundPackNames.includes(soundView) ? soundView : null;
@@ -363,7 +366,7 @@ const StickerPicker = ({
           type="button"
           onClick={() => preview(sound)}
           className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary"
-          aria-label={playingId === sound.id ? "Остановить" : "Прослушать"}
+          aria-label={playingId === sound.id ? t("Остановить") : t("Прослушать")}
         >
           {playingId === sound.id ? <Square className="w-4 h-4" /> : mint ? <MintIcon name="soundPlay" size={[13, 15]} /> : <Play className="w-4 h-4" />}
         </button>
@@ -375,7 +378,7 @@ const StickerPicker = ({
           <span className="block text-sm truncate">{sound.name}</span>
           {opts?.showPack && (
             <span className="block text-[11px] text-muted-foreground truncate">
-              {sound.pack_name || "Разное"}
+              {packLabel(sound.pack_name || "Разное")}
             </span>
           )}
         </button>
@@ -394,7 +397,7 @@ const StickerPicker = ({
             <input
               value={packMenuQuery}
               onChange={(e) => setPackMenuQuery(e.target.value)}
-              placeholder="Поиск звука по всем пакам…"
+              placeholder={t("Поиск звука по всем пакам…")}
               className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -402,12 +405,12 @@ const StickerPicker = ({
             {gq ? (
               // Результаты поиска по всем пакам
               globalMatches.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Ничего не найдено</p>
+                <p className="text-sm text-muted-foreground text-center py-8">{t("Ничего не найдено")}</p>
               ) : (
                 globalMatches.map((s) => soundRow(s, { showPack: true }))
               )
             ) : soundPackNames.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Звуков пока нет</p>
+              <p className="text-sm text-muted-foreground text-center py-8">{t("Звуков пока нет")}</p>
             ) : (
               soundPackNames.map((name) => (
                 <button
@@ -419,7 +422,7 @@ const StickerPicker = ({
                   <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-secondary">
                     <Music2 className="w-4 h-4" />
                   </span>
-                  <span className="flex-1 truncate text-sm font-medium">{name}</span>
+                  <span className="flex-1 truncate text-sm font-medium">{packLabel(name)}</span>
                   <span className="text-xs text-muted-foreground">{packCount(name)}</span>
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </button>
@@ -431,24 +434,24 @@ const StickerPicker = ({
         // Внутри пака: назад + поиск + звуки
         <>
           <div className="flex items-center gap-1 px-1.5 py-1.5 border-b border-border shrink-0">
-            <button type="button" onClick={backToPacks} className="p-1.5" aria-label="К пакам">
+            <button type="button" onClick={backToPacks} className="p-1.5" aria-label={t("К пакам")}>
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <span className="text-sm font-semibold truncate flex-1">{inPack}</span>
+            <span className="text-sm font-semibold truncate flex-1">{packLabel(inPack)}</span>
           </div>
           <div className="px-2 py-1.5 shrink-0">
             <input
               value={soundQuery}
               onChange={(e) => setSoundQuery(e.target.value)}
-              placeholder="Поиск звука…"
+              placeholder={t("Поиск звука…")}
               className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {packSounds.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Ничего не найдено</p>
+              <p className="text-sm text-muted-foreground text-center py-8">{t("Ничего не найдено")}</p>
             )}
-            {packSounds.map(soundRow)}
+            {packSounds.map((s) => soundRow(s))}
           </div>
         </>
       )}
@@ -463,7 +466,7 @@ const StickerPicker = ({
       <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
         {tabs}
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          Загрузка стикеров…
+          {t("Загрузка стикеров…")}
         </div>
       </div>
     );
@@ -474,7 +477,7 @@ const StickerPicker = ({
       <input
         value={newPackName}
         onChange={(e) => setNewPackName(e.target.value)}
-        placeholder="Название набора"
+        placeholder={t("Название набора")}
         className="flex-1 bg-secondary px-3 py-1.5 text-sm outline-none"
         autoFocus
       />
@@ -484,14 +487,14 @@ const StickerPicker = ({
         disabled={busy || !newPackName.trim()}
         className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-40"
       >
-        Создать
+        {t("Создать")}
       </button>
       <button
         type="button"
         onClick={() => { setCreating(false); setNewPackName(""); }}
         className="px-3 py-1.5 bg-secondary text-xs"
       >
-        Отмена
+        {t("Отмена")}
       </button>
     </div>
   );
@@ -502,14 +505,14 @@ const StickerPicker = ({
         {tabs}
         {creating ? createForm : null}
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <p className="text-sm text-muted-foreground">Наборов пока нет</p>
+          <p className="text-sm text-muted-foreground">{t("Наборов пока нет")}</p>
           {!creating && (
             <button
               type="button"
               onClick={() => setCreating(true)}
               className="px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold"
             >
-              Создать набор
+              {t("Создать набор")}
             </button>
           )}
         </div>
@@ -528,7 +531,7 @@ const StickerPicker = ({
           type="button"
           onClick={() => setCreating(true)}
           className="px-2.5 py-1.5 bg-secondary text-muted-foreground shrink-0"
-          aria-label="Новый набор"
+          aria-label={t("Новый набор")}
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -537,7 +540,7 @@ const StickerPicker = ({
             type="button"
             onClick={() => setEditMode((v) => !v)}
             className={cn("shrink-0 w-8 h-8 rounded-full flex items-center justify-center", editMode ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
-            aria-label={editMode ? "Готово" : "Изменить стикеры"}
+            aria-label={editMode ? t("Готово") : t("Изменить стикеры")}
           >
             {editMode ? <Check className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
           </button>
@@ -547,7 +550,7 @@ const StickerPicker = ({
             type="button"
             onClick={() => setPackMenu(true)}
             className={cn("shrink-0 w-8 h-8 rounded-full flex items-center justify-center", mint ? "mint-ink" : "bg-muted text-muted-foreground")}
-            aria-label="Действия с набором"
+            aria-label={t("Действия с набором")}
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
@@ -581,12 +584,12 @@ const StickerPicker = ({
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
             <p className="px-4 pt-3 pb-2 text-small text-subtle truncate">{activePack.name}</p>
             <button type="button" onClick={() => void sharePack()} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
-              <Share2 className="w-5 h-5 text-primary" /> Поделиться набором
+              <Share2 className="w-5 h-5 text-primary" /> {t("Поделиться набором")}
             </button>
             <button type="button" onClick={() => void removePack(isAuthor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
-              <Trash2 className="w-5 h-5" /> {isAuthor ? "Удалить набор у всех" : "Убрать из моих"}
+              <Trash2 className="w-5 h-5" /> {isAuthor ? t("Удалить набор у всех") : t("Убрать из моих")}
             </button>
-            <button type="button" onClick={() => setPackMenu(false)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">Отмена</button>
+            <button type="button" onClick={() => setPackMenu(false)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">{t("Отмена")}</button>
           </div>
         </div>,
         document.body,
@@ -606,14 +609,14 @@ const StickerPicker = ({
       <div className="flex-1 overflow-y-auto p-2">
         {stickers.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-3">
-            <p className="text-sm text-muted-foreground">В наборе пусто</p>
+            <p className="text-sm text-muted-foreground">{t("В наборе пусто")}</p>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={busy}
               className="px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40"
             >
-              {busy ? "Загрузка…" : "Добавить стикеры"}
+              {busy ? t("Загрузка…") : t("Добавить стикеры")}
             </button>
           </div>
         ) : (
@@ -624,7 +627,7 @@ const StickerPicker = ({
               disabled={busy}
               className={mint ? "aspect-square rounded-[20px] flex items-center justify-center mint-ink disabled:opacity-40" : "aspect-square flex items-center justify-center bg-secondary text-muted-foreground disabled:opacity-40"}
               style={mint ? { background: "rgb(52 92 84 / 0.1)" } : undefined}
-              aria-label="Добавить стикеры"
+              aria-label={t("Добавить стикеры")}
             >
               {mint ? <MintIcon name="stkAdd" size={[22, 24]} /> : <Plus className="w-6 h-6" />}
             </button>
@@ -673,23 +676,23 @@ const StickerPicker = ({
       {asking && createPortal(
         <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }}>
           <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
-            <p className="text-h2">Макрос стикера</p>
-            <p className="text-small text-subtle">Слово, эмодзи или символ: наберёшь его в поле — стикер всплывёт подсказкой. Можно оставить пустым.</p>
+            <p className="text-h2">{t("Макрос стикера")}</p>
+            <p className="text-small text-subtle">{t("Слово, эмодзи или символ: наберёшь его в поле — стикер всплывёт подсказкой. Можно оставить пустым.")}</p>
             <div className="flex items-center gap-3">
               <img src={URL.createObjectURL(asking)} alt="" className="w-16 h-16 rounded-md object-contain bg-surface-4" />
               <input
                 autoFocus
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value.replace(/\s+/g, "").slice(0, 40))}
-                placeholder="привет"
+                placeholder={t("привет")}
                 className="flex-1 h-11 px-3 rounded-md bg-surface-4 text-body outline-none"
               />
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }} className="flex-1 h-11 rounded-md bg-surface-4 text-body">Без макроса</button>
-              <button type="button" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, keyword); }} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold">Добавить</button>
+              <button type="button" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }} className="flex-1 h-11 rounded-md bg-surface-4 text-body">{t("Без макроса")}</button>
+              <button type="button" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, keyword); }} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold">{t("Добавить")}</button>
             </div>
-            {queue.length > 0 && <p className="text-caption text-subtle text-center">Ещё в очереди: {queue.length}</p>}
+            {queue.length > 0 && <p className="text-caption text-subtle text-center">{t("Ещё в очереди: {n}", { n: queue.length })}</p>}
           </div>
         </div>,
         document.body,
@@ -705,13 +708,13 @@ const StickerPicker = ({
                 autoFocus
                 value={editKeyword}
                 onChange={(e) => setEditKeyword(e.target.value.replace(/\s+/g, "").slice(0, 40))}
-                placeholder="Макрос (пусто — не подсказывать)"
+                placeholder={t("Макрос (пусто — не подсказывать)")}
                 className="flex-1 h-11 px-3 rounded-md bg-surface-4 text-body outline-none"
               />
             </div>
             <div className="flex gap-2">
-              <button type="button" disabled={busy} onClick={() => void deleteEditing()} className="h-11 px-4 rounded-md bg-surface-4 text-destructive text-body flex items-center gap-1.5 disabled:opacity-50"><Trash2 className="w-4 h-4" /> Удалить</button>
-              <button type="button" disabled={busy} onClick={() => void saveEdit()} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold disabled:opacity-50">Сохранить</button>
+              <button type="button" disabled={busy} onClick={() => void deleteEditing()} className="h-11 px-4 rounded-md bg-surface-4 text-destructive text-body flex items-center gap-1.5 disabled:opacity-50"><Trash2 className="w-4 h-4" /> {t("Удалить")}</button>
+              <button type="button" disabled={busy} onClick={() => void saveEdit()} className="flex-1 h-11 rounded-md bg-primary text-primary-foreground text-body font-semibold disabled:opacity-50">{t("Сохранить")}</button>
             </div>
           </div>
         </div>,

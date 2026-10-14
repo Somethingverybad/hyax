@@ -1,4 +1,4 @@
-import { t as tr } from "@/lib/i18n";
+import { t as tr, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -25,12 +25,10 @@ const trackToQueue = (t: PlaylistTrack): Track => ({
   id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined,
 });
 
-const pluralTracks = (n: number) => {
-  const d = n % 10, dd = n % 100;
-  if (d === 1 && dd !== 11) return `${n} трек`;
-  if (d >= 2 && d <= 4 && (dd < 10 || dd >= 20)) return `${n} трека`;
-  return `${n} треков`;
-};
+const pluralTracks = (n: number) => tn(n, "{n} трек", "{n} трека", "{n} треков");
+
+/** «Моя музыка» заводит сервер — её имя переводим; свои названия — как есть. */
+const playlistName = (pl: Playlist) => (pl.is_default ? tr(pl.name) : pl.name);
 
 
 /**
@@ -53,10 +51,10 @@ const PlayerPanel = () => {
             <span className="block text-body truncate">{t.title}</span>
             <span className="block text-caption text-subtle tabular-nums">
               {fmtTime(s.time)}{s.duration ? ` / ${fmtTime(s.duration)}` : ""}
-              {s.queue.length > 1 && ` · ${s.index + 1} из ${s.queue.length}`}
+              {s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
             </span>
           </span>
-          <button type="button" onClick={stop} className="p-2 text-subtle" aria-label="Закрыть плеер">
+          <button type="button" onClick={stop} className="p-2 text-subtle" aria-label={tr("Закрыть плеер")}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -76,20 +74,20 @@ const PlayerPanel = () => {
             type="button"
             onClick={toggleShuffle}
             aria-pressed={s.shuffle}
-            aria-label="Перемешать"
+            aria-label={tr("Перемешать")}
             className={cn("w-10 h-10 rounded-full flex items-center justify-center",
               s.shuffle ? "text-primary bg-primary/15" : "text-subtle")}
           >
             <Shuffle className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void prev()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label="Предыдущий">
+            <button type="button" onClick={() => void prev()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label={tr("Предыдущий")}>
               <SkipBack className="w-5 h-5" />
             </button>
-            <button type="button" onClick={() => void toggle()} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center" aria-label={s.playing ? "Пауза" : "Играть"}>
+            <button type="button" onClick={() => void toggle()} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center" aria-label={s.playing ? tr("Пауза") : tr("Играть")}>
               {s.playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
             </button>
-            <button type="button" onClick={() => void next()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label="Следующий">
+            <button type="button" onClick={() => void next()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label={tr("Следующий")}>
               <SkipForward className="w-5 h-5" />
             </button>
           </div>
@@ -97,7 +95,7 @@ const PlayerPanel = () => {
             type="button"
             onClick={cycleRepeat}
             aria-pressed={s.repeat !== "off"}
-            aria-label={s.repeat === "one" ? "Повторять один" : s.repeat === "all" ? "Повторять всё" : "Без повтора"}
+            aria-label={s.repeat === "one" ? tr("Повторять один") : s.repeat === "all" ? tr("Повторять всё") : tr("Без повтора")}
             className={cn("w-10 h-10 rounded-full flex items-center justify-center",
               s.repeat !== "off" ? "text-primary bg-primary/15" : "text-subtle")}
           >
@@ -106,7 +104,7 @@ const PlayerPanel = () => {
         </div>
         {/* Громкость — на десктопе (на телефоне есть кнопки). */}
         <div className="hidden md:flex items-center gap-2 mt-3 justify-center" title={tr("Громкость")}>
-          <button type="button" onClick={() => setVolume(s.volume > 0 ? 0 : 1)} className="w-8 h-8 flex items-center justify-center text-subtle" aria-label={s.volume > 0 ? "Выключить звук" : "Включить звук"}>
+          <button type="button" onClick={() => setVolume(s.volume > 0 ? 0 : 1)} className="w-8 h-8 flex items-center justify-center text-subtle" aria-label={s.volume > 0 ? tr("Выключить звук") : tr("Включить звук")}>
             {s.volume === 0 ? <VolumeX className="w-4 h-4" /> : s.volume < 0.5 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
           <input type="range" min={0} max={1} step={0.02} value={s.volume} onChange={(e) => setVolume(Number(e.target.value))}
@@ -157,7 +155,7 @@ const Music = () => {
       setTracks(r.tracks);
       rememberTracks(pl.id, r.tracks);
     } catch {
-      if (!cachedTracks(pl.id)) { toast.error("Не удалось открыть плейлист"); setOpen(null); }
+      if (!cachedTracks(pl.id)) { toast.error(tr("Не удалось открыть плейлист")); setOpen(null); }
     }
   };
 
@@ -173,7 +171,7 @@ const Music = () => {
   };
 
   const rename = async (pl: Playlist) => {
-    const value = prompt("Название плейлиста", pl.name)?.trim();
+    const value = prompt(tr("Название плейлиста"), pl.name)?.trim();
     if (!value || value === pl.name) return;
     try {
       const next = await api.renamePlaylist(pl.id, value);
@@ -182,7 +180,7 @@ const Music = () => {
   };
 
   const remove = async (pl: Playlist) => {
-    if (!(await confirmDialog(`Удалить плейлист «${pl.name}»? Сама музыка в переписке останется.`))) return;
+    if (!(await confirmDialog(tr("Удалить плейлист «{name}»? Сама музыка в переписке останется.", { name: playlistName(pl) })))) return;
     try {
       await api.deletePlaylist(pl.id);
       setOpen(null); load();
@@ -205,7 +203,7 @@ const Music = () => {
     try {
       await api.unsharePlaylist(pl.id);
       setOpen({ ...pl, share_token: "" });
-      toast.success("Ссылка отозвана");
+      toast.success(tr("Ссылка отозвана"));
       load();
     } catch { toast.error(tr("Не получилось")); }
   };
@@ -232,7 +230,7 @@ const Music = () => {
     setBusy(true);
     try {
       await api.sendTrackToChat(chatId, { file_url: sendFor.file_url, title: sendFor.title });
-      toast.success("Отправлено");
+      toast.success(tr("Отправлено"));
       setSendFor(null);
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
     finally { setBusy(false); }
@@ -247,7 +245,7 @@ const Music = () => {
       rememberTracks(open.id, before.filter((x) => x.id !== t.id));
       load();
     }
-    catch { toast.error("Не удалось убрать трек"); setTracks(before); }
+    catch { toast.error(tr("Не удалось убрать трек")); setTracks(before); }
   };
 
   // ── Плейлист целиком
@@ -258,20 +256,20 @@ const Music = () => {
           <button type="button" onClick={() => { setOpen(null); load(); }} className="ui-icon-btn p-2" aria-label={tr("Назад")}>
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <span className="text-h2 flex-1 truncate">{open.name}</span>
+          <span className="text-h2 flex-1 truncate">{playlistName(open)}</span>
           <button
             type="button"
             onClick={() => void (open.share_token ? unshare(open) : share(open))}
             className={cn("ui-icon-btn p-2", open.share_token ? "text-primary" : "text-muted-foreground")}
-            aria-label={open.share_token ? "Закрыть доступ по ссылке" : "Поделиться плейлистом"}
+            aria-label={open.share_token ? tr("Закрыть доступ по ссылке") : tr("Поделиться плейлистом")}
           >
             <Share2 className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => rename(open)} className="ui-icon-btn p-2 text-muted-foreground" aria-label="Переименовать">
+          <button type="button" onClick={() => rename(open)} className="ui-icon-btn p-2 text-muted-foreground" aria-label={tr("Переименовать")}>
             <Pencil className="w-4 h-4" />
           </button>
           {!open.is_default && (
-            <button type="button" onClick={() => remove(open)} className="ui-icon-btn p-2 text-destructive" aria-label="Удалить плейлист">
+            <button type="button" onClick={() => remove(open)} className="ui-icon-btn p-2 text-destructive" aria-label={tr("Удалить плейлист")}>
               <Trash2 className="w-4 h-4" />
             </button>
           )}
@@ -282,7 +280,7 @@ const Music = () => {
             <p className="text-small text-subtle">{tr("Загрузка…")}</p>
           ) : tracks.length === 0 ? (
             <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 text-small text-subtle">
-              Пусто. Музыка добавляется из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».
+              {tr("Пусто. Музыка добавляется из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
             </div>
           ) : (
             <SettingsCard>
@@ -298,7 +296,7 @@ const Music = () => {
                       </span>
                     }
                     label={t.title}
-                    hint={t.artist || (t.source ? undefined : "Сообщение удалено, музыка осталась")}
+                    hint={t.artist || (t.source ? undefined : tr("Сообщение удалено, музыка осталась"))}
                     value={isNow && player.duration ? fmtTime(player.time) : undefined}
                     onClick={() => void playQueue(tracks.map(trackToQueue), i)}
                     trailing={
@@ -315,7 +313,7 @@ const Music = () => {
                           type="button"
                           onClick={(e) => { e.stopPropagation(); void removeTrack(t); }}
                           className="p-2 text-subtle active:text-destructive"
-                          aria-label="Убрать из плейлиста"
+                          aria-label={tr("Убрать из плейлиста")}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -329,7 +327,7 @@ const Music = () => {
         </div>
         {open.share_token && (
           <p className="px-4 pb-2 text-caption text-subtle">
-            Плейлист открыт по ссылке. Нажмите значок «поделиться» ещё раз, чтобы отозвать её.
+            {tr("Плейлист открыт по ссылке. Нажмите значок «поделиться» ещё раз, чтобы отозвать её.")}
           </p>
         )}
         <PlayerPanel />
@@ -347,7 +345,7 @@ const Music = () => {
               {chats === null ? (
                 <p className="text-small text-subtle">{tr("Загрузка…")}</p>
               ) : chats.length === 0 ? (
-                <p className="text-small text-subtle">Пока некуда отправлять — нет чатов.</p>
+                <p className="text-small text-subtle">{tr("Пока некуда отправлять — нет чатов.")}</p>
               ) : chats.map((c) => (
                 <button
                   key={c.id}
@@ -376,7 +374,7 @@ const Music = () => {
           type="button"
           onClick={() => setCreating((v) => !v)}
           className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
-          aria-label="Новый плейлист"
+          aria-label={tr("Новый плейлист")}
         >
           <Plus className="w-5 h-5" />
         </button>
@@ -389,7 +387,7 @@ const Music = () => {
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void create(); }}
-              placeholder="Название плейлиста"
+              placeholder={tr("Название плейлиста")}
               autoFocus
               className="flex-1 h-10 px-3 rounded-md bg-surface-4 outline-none text-body min-w-0"
             />
@@ -405,7 +403,7 @@ const Music = () => {
               <SettingsRow
                 key={pl.id}
                 icon={pl.is_default ? Music2 : ListMusic}
-                label={pl.name}
+                label={playlistName(pl)}
                 value={pluralTracks(pl.tracks_count || 0)}
                 onClick={() => void openList(pl)}
               />
@@ -414,7 +412,7 @@ const Music = () => {
         )}
 
         <p className="px-1 text-caption text-subtle">
-          Музыка берётся из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».
+          {tr("Музыка берётся из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
         </p>
       </div>
       <PlayerPanel />

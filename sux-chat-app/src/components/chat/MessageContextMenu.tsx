@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MAIN_REACTIONS } from "@/lib/reactions";
+import { t } from "@/lib/i18n";
 
 export type MenuItem = { label: string; icon?: React.ReactNode; danger?: boolean; onClick: () => void };
 
@@ -43,8 +44,10 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
   const [geo, setGeo] = useState<{ from: number; top: number; left: number; width: number; height: number; clipped: boolean; menuLeft: number; menuW: number; barLeft: number; barW: number } | null>(null);
   const [shown, setShown] = useState(false);
 
-  const selectIdx = items.findIndex((i) => i.label === "Выбрать");
-  const mainItems = items.filter((i) => i.label !== "Выбрать");
+  // Пункт «Выбрать» приходит уже переведённым — сравниваем с переводом.
+  const selectLabel = t("Выбрать");
+  const selectIdx = items.findIndex((i) => i.label === selectLabel);
+  const mainItems = items.filter((i) => i.label !== selectLabel);
   const menuH = items.length * ITEM_H + 12 + (selectIdx >= 0 ? 9 : 0);
 
   useLayoutEffect(() => {
@@ -141,7 +144,7 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
               <button
                 key={r.emoji}
                 type="button"
-                aria-label={r.label}
+                aria-label={t(r.label)}
                 onClick={() => onReact(r.emoji)}
                 className={cn("w-11 h-11 rounded-full text-[26px] leading-none flex items-center justify-center active:scale-125 transition-transform", mine.includes(r.emoji) && "bg-primary/20")}
               >
@@ -150,7 +153,7 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
             ))}
             <button
               type="button"
-              aria-label="Ещё реакции"
+              aria-label={t("Ещё реакции")}
               onClick={onMoreReactions}
               className="w-10 h-10 rounded-full bg-surface-4 text-foreground/80 flex items-center justify-center active:opacity-70"
             >

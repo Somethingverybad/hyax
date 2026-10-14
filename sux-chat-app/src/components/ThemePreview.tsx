@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { Check, CheckCheck, Plus, Search } from "lucide-react";
 import { paintTheme } from "@/themes/engine";
 import type { ThemeDef } from "@/themes/types";
+import { t as tr } from "@/lib/i18n";
 
 /**
  * Окно предпросмотра темы: кусочек списка чатов и переписки, собранный из тех
@@ -24,8 +25,8 @@ const ThemePreview = ({ theme, className = "" }: { theme: ThemeDef; className?: 
       <div className="px-3 pt-3 pb-2 flex items-center gap-2">
         <span className="ui-me-avatar w-8 h-8 rounded-full bg-surface-4 shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className="block text-small font-semibold truncate">{theme.name || "Моя тема"}</span>
-          <span className="ui-status-chip inline-block text-[11px] text-online">В сети</span>
+          <span className="block text-small font-semibold truncate">{theme.name ? (theme.builtin ? tr(theme.name) : theme.name) : tr("Моя тема")}</span>
+          <span className="ui-status-chip inline-block text-[11px] text-online">{tr("В сети")}</span>
         </span>
         <span className="ui-plus w-8 h-8 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center" style={{ width: 32, height: 32 }}>
           <Plus className="w-4 h-4" />
@@ -33,12 +34,12 @@ const ThemePreview = ({ theme, className = "" }: { theme: ThemeDef; className?: 
       </div>
       <div className="px-3">
         <div className="ui-search flex items-center gap-2 h-8 px-2.5 rounded-md bg-surface-1 text-subtle text-[12px]">
-          <Search className="w-3.5 h-3.5" /> Поиск чатов
+          <Search className="w-3.5 h-3.5" /> {tr("Поиск чатов")}
         </div>
         <div className="mt-2 flex gap-1.5">
-          <span className="ui-chip ui-chip-on h-6 px-2.5 rounded-full bg-primary text-primary-foreground text-[11px] font-medium inline-flex items-center">Все</span>
+          <span className="ui-chip ui-chip-on h-6 px-2.5 rounded-full bg-primary text-primary-foreground text-[11px] font-medium inline-flex items-center">{tr("Все")}</span>
           <span className="ui-chip h-6 px-2.5 rounded-full bg-surface-1 text-muted-foreground text-[11px] font-medium inline-flex items-center gap-1">
-            Непрочитанные
+            {tr("Непрочитанные")}
             <span className="ui-chip-count min-w-[15px] h-[15px] px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-semibold inline-flex items-center justify-center">2</span>
           </span>
         </div>
@@ -54,7 +55,7 @@ const ThemePreview = ({ theme, className = "" }: { theme: ThemeDef; className?: 
                 <span className="text-[10px] text-subtle inline-flex items-center gap-0.5"><CheckCheck className="w-3 h-3 text-primary" />09:46</span>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] text-subtle truncate">Видел новую тему?</span>
+                <span className="text-[12px] text-subtle truncate">{tr("Видел новую тему?")}</span>
                 <span className="min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">2</span>
               </div>
             </div>
@@ -64,11 +65,11 @@ const ThemePreview = ({ theme, className = "" }: { theme: ThemeDef; className?: 
       {/* переписка */}
       <div className="px-3 py-2.5 space-y-1.5" style={{ background: "hsl(var(--chat-canvas))" }}>
         <div className="flex">
-          <div className="msg-bubble msg-peer px-2.5 py-1.5 rounded-lg text-[12px] max-w-[75%]">Привет! Как тебе тема?</div>
+          <div className="msg-bubble msg-peer px-2.5 py-1.5 rounded-lg text-[12px] max-w-[75%]">{tr("Привет! Как тебе тема?")}</div>
         </div>
         <div className="flex justify-end">
           <div className="msg-bubble msg-own px-2.5 py-1.5 rounded-lg text-[12px] max-w-[75%]">
-            Выглядит бодро
+            {tr("Выглядит бодро")}
             <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] opacity-70">09:47 <Check className="w-3 h-3" /></span>
           </div>
         </div>
@@ -76,13 +77,13 @@ const ThemePreview = ({ theme, className = "" }: { theme: ThemeDef; className?: 
       {/* карточка настроек, поле и кнопки */}
       <div className="px-3 py-2.5 space-y-2">
         <div className="ui-card rounded-lg bg-surface-2 border border-border divide-y divide-border">
-          <div className="px-3 h-8 flex items-center justify-between text-[12px]"><span>Уведомления</span><span className="text-muted-foreground">Обычный звук</span></div>
-          <div className="px-3 h-8 flex items-center text-[12px] text-destructive">Удалить аккаунт</div>
+          <div className="px-3 h-8 flex items-center justify-between text-[12px]"><span>{tr("Уведомления")}</span><span className="text-muted-foreground">{tr("Обычный звук")}</span></div>
+          <div className="px-3 h-8 flex items-center text-[12px] text-destructive">{tr("Удалить аккаунт")}</div>
         </div>
         <div className="flex gap-2">
-          <input readOnly tabIndex={-1} value="Сообщение…" className="flex-1 min-w-0 h-8 px-2.5 rounded-md bg-surface-2 border border-border text-[12px] text-subtle outline-none" />
-          <button type="button" tabIndex={-1} className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-[12px] font-semibold">Отправить</button>
-          <button type="button" tabIndex={-1} className="h-8 px-3 rounded-md bg-surface-4 text-[12px] font-medium">Отмена</button>
+          <input readOnly tabIndex={-1} value={tr("Сообщение…")} className="flex-1 min-w-0 h-8 px-2.5 rounded-md bg-surface-2 border border-border text-[12px] text-subtle outline-none" />
+          <button type="button" tabIndex={-1} className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-[12px] font-semibold">{tr("Отправить")}</button>
+          <button type="button" tabIndex={-1} className="h-8 px-3 rounded-md bg-surface-4 text-[12px] font-medium">{tr("Отмена")}</button>
         </div>
       </div>
     </div>

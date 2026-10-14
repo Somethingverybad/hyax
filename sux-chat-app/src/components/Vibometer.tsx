@@ -3,6 +3,7 @@ import { Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import { useVibeLevels, vibeState } from "@/lib/vibeLevels";
+import { t } from "@/lib/i18n";
 
 /** Шкала и цвет — по уровням, которые настраивает админ (lib/vibeLevels.ts).
  *  Счётчик без предела. */
@@ -46,7 +47,7 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
     } catch (e: any) {
       if (e?.state) { setVibe(e.state.vibe); setVoted(e.state.voted); setCanVote(e.state.can_vote); }
       else { setVibe((v) => (v ?? 1) - 1); setCanVote(true); }
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || t("Не получилось"));
     } finally { setBusy(false); }
   };
   const v = vibe ?? 0;
@@ -55,11 +56,11 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
     <div className="rounded-lg bg-surface-4 p-4">
       <div className="flex items-center gap-2">
         <Sparkles className="w-4 h-4 text-primary shrink-0" />
-        <span className="text-h2 flex-1">Вайбометр</span>
+        <span className="text-h2 flex-1">{t("Вайбометр")}</span>
         {st.level && (
           <span className="px-2 h-6 rounded-full text-caption font-semibold flex items-center"
             style={{ color: st.level.color, background: `color-mix(in srgb, ${st.level.color} 16%, transparent)` }}>
-            {st.level.name}
+            {t(st.level.name)}
           </span>
         )}
         <span className="text-[22px] leading-none font-semibold tabular-nums" style={st.level ? { color: st.level.color } : undefined}>{vibe === null ? "…" : v}</span>
@@ -67,17 +68,17 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
       <VibeBar vibe={vibe} />
       {own ? null : voted ? (
         <p className="mt-3 h-10 rounded-md bg-surface-2 text-small text-subtle flex items-center justify-center gap-2">
-          <Check className="w-4 h-4" />Вы подняли вайб
+          <Check className="w-4 h-4" />{t("Вы подняли вайб")}
         </p>
       ) : canVote ? (
         <>
           <button type="button" onClick={raise} disabled={busy}
             className="mt-3 w-full h-10 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-60">
-            <Sparkles className="w-4 h-4" />Поднять вайб +1
+            <Sparkles className="w-4 h-4" />{t("Поднять вайб +1")}
           </button>
           <label className="mt-2 flex items-center gap-2 text-caption text-subtle">
             <input type="checkbox" className="w-4 h-4 accent-primary" checked={anon} onChange={(e) => setAnon(e.target.checked)} />
-            Анонимно — без моего имени в уведомлении
+            {t("Анонимно — без моего имени в уведомлении")}
           </label>
         </>
       ) : null}

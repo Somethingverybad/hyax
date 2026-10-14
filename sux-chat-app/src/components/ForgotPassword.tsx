@@ -29,7 +29,7 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
       await api.forgotPassword(login.trim());
       setStep(1);
       toast.success(t("Если к аккаунту привязана почта, код уже в пути"));
-    } catch (err: any) { toast.error(err?.message || "Не удалось отправить код"); }
+    } catch (err: any) { toast.error(err?.message || t("Не удалось отправить код")); }
     finally { setBusy(false); }
   };
 
@@ -41,7 +41,7 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
       await api.resetPassword(login.trim(), code, password);
       toast.success(t("Пароль изменён — войдите с новым"));
       onDone(login.trim());
-    } catch (err: any) { toast.error(err?.message || "Не удалось сменить пароль"); }
+    } catch (err: any) { toast.error(err?.message || t("Не удалось сменить пароль")); }
     finally { setBusy(false); }
   };
 
@@ -57,7 +57,7 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
             <p className="text-small text-subtle">{t("Код придёт на почту, привязанную в настройках профиля. Если почты нет — восстановить пароль не получится.")}</p>
             <Label htmlFor="fp-login" className="text-small font-normal text-subtle">{t("Ник или почта")}</Label>
             <Input id="fp-login" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} className={inputCls} />
-            <Button type="submit" className="w-full h-12" disabled={busy || !login.trim()}>{busy ? "Отправляю…" : t("Отправить код")}</Button>
+            <Button type="submit" className="w-full h-12" disabled={busy || !login.trim()}>{busy ? t("Отправляю…") : t("Отправить код")}</Button>
           </form>
         ) : (
           <form onSubmit={reset} className="space-y-3">
@@ -69,7 +69,7 @@ const ForgotPassword = ({ initialLogin, onClose, onDone }: { initialLogin?: stri
             <Input id="fp-password" type="password" autoComplete="new-password" value={password}
               onChange={(e) => setPassword(e.target.value)} className={inputCls} />
             <Button type="submit" className="w-full h-12" disabled={busy || code.length < 6 || password.length < 6}>
-              {busy ? "Сохраняю…" : t("Сменить пароль")}
+              {busy ? t("Сохраняю…") : t("Сменить пароль")}
             </Button>
             <button type="button" className="w-full text-small text-subtle py-2" onClick={() => setStep(0)}>{t("Отправить код ещё раз")}</button>
           </form>

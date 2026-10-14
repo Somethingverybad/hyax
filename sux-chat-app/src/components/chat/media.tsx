@@ -5,6 +5,7 @@ import { Paperclip, Download, Play, Pause, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
+import { t as tr } from "@/lib/i18n";
 
 /**
  * Медиа сообщений, общие для переписки (ChatWindow) и ленты канала
@@ -47,7 +48,7 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
   const s = usePlayer();
   const cur = currentTrack();
   const mine = !!cur && cur.raw === raw;
-  const title = (name || "Аудио").replace(/\.[^.]+$/, "");
+  const title = (name || tr("Аудио")).replace(/\.[^.]+$/, "");
   const frac = mine && s.duration ? Math.min(1, s.time / s.duration) : 0;
 
   // Длинное название прокручиваем, а не растягиваем пузырь: с названиями вроде
@@ -69,7 +70,7 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
       "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-[min(72vw,22rem)]",
       isOwn ? "bg-primary/20 border-primary/30" : "bg-muted border-border",
     )}>
-      <button type="button" onClick={() => onPlay?.()} disabled={!onPlay} className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center bg-black/20 disabled:opacity-50" aria-label={mine && s.playing ? "Пауза" : "Играть"}>
+      <button type="button" onClick={() => onPlay?.()} disabled={!onPlay} className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center bg-black/20 disabled:opacity-50" aria-label={mine && s.playing ? tr("Пауза") : tr("Играть")}>
         {mine && s.playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </button>
       <div className="flex-1 min-w-0">
@@ -87,14 +88,14 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
           <div className="h-full rounded-full bg-current opacity-80" style={{ width: `${frac * 100}%` }} />
         </div>
         <div className="mt-0.5 text-[11px] opacity-85 tabular-nums">
-          {mine ? `${fmtTime(s.time)}${s.duration ? ` / ${fmtTime(s.duration)}` : ""}` : "Нажми, чтобы слушать"}
+          {mine ? `${fmtTime(s.time)}${s.duration ? ` / ${fmtTime(s.duration)}` : ""}` : tr("Нажми, чтобы слушать")}
         </div>
       </div>
       <button
         type="button"
         onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "audio"); }}
         className="p-1 rounded hover:bg-background/50 transition-colors shrink-0"
-        title="Сохранить файл"
+        title={tr("Сохранить файл")}
       >
         <Download className="w-4 h-4" />
       </button>
@@ -231,7 +232,7 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
       {src && (
         <img
           src={src}
-          alt={name || "Изображение"}
+          alt={name || tr("Изображение")}
           loading="lazy"
           className={cn("w-full h-full object-contain cursor-pointer block transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
           onLoad={() => setLoaded(true)}
@@ -267,7 +268,7 @@ const VideoViewer = ({ src, poster, onClose }: { src: string; poster?: string | 
         onClick={onClose}
         className="absolute left-3 w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center active:opacity-70"
         style={{ top: "calc(var(--sat) + 0.5rem)" }}
-        aria-label="Закрыть"
+        aria-label={tr("Закрыть")}
       >
         <X className="w-6 h-6" />
       </button>
@@ -305,7 +306,7 @@ const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: strin
       )}
       <button
         type="button"
-        aria-label="Смотреть"
+        aria-label={tr("Смотреть")}
         disabled={!src}
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         className="absolute inset-0 flex items-center justify-center"
@@ -348,12 +349,12 @@ export const MessageFile = ({ raw, name, isOwn, onSave }: {
         rel="noopener noreferrer"
         className="flex-1 min-w-0 text-sm break-all line-clamp-2 hover:underline"
       >
-        {name || "Файл"}
+        {name || tr("Файл")}
       </a>
       <button
         onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "file"); }}
         className="p-1 rounded hover:bg-background/50 transition-colors"
-        title="Сохранить файл"
+        title={tr("Сохранить файл")}
       >
         <Download className="w-4 h-4" />
       </button>
@@ -476,7 +477,7 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
       ))}
       {item.pending && item.progress != null && (
         <div className="absolute inset-0 bg-black/45 flex items-center justify-center text-white text-sm font-semibold tabular-nums">
-          {item.failed ? "✕" : item.progress === -1 ? "ждёт" : item.progress === -2 ? "сжатие" : item.progress < 100 ? `${item.progress}%` : "…"}
+          {item.failed ? "✕" : item.progress === -1 ? tr("ждёт") : item.progress === -2 ? tr("сжатие") : item.progress < 100 ? `${item.progress}%` : "…"}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t, getLang } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare } from "lucide-react";
@@ -14,6 +14,8 @@ import ShareToChat from "@/components/ShareToChat";
 import { toast } from "sonner";
 import { useSwipeDismiss } from "@/lib/useSwipeDismiss";
 import Vibometer from "@/components/Vibometer";
+
+const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
 
 interface UserProfile {
   id: string;
@@ -86,8 +88,8 @@ const UserProfileModal = ({
   const toggleBlock = async () => {
     if (blocked === null) return;
     try {
-      if (blocked) { await api.unblockUser(userId); toast.success("Разблокирован"); }
-      else { await api.blockUser(userId); toast.success("Заблокирован: его сообщения и пуши больше не придут"); }
+      if (blocked) { await api.unblockUser(userId); toast.success(t("Разблокирован")); }
+      else { await api.blockUser(userId); toast.success(t("Заблокирован: его сообщения и пуши больше не придут")); }
       setBlocked(!blocked);
     } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
@@ -158,7 +160,7 @@ const UserProfileModal = ({
               <div className="min-w-0">
                 <h2 className="text-[24px] leading-tight font-semibold text-foreground truncate">{profile.username}</h2>
                 <p className={`mt-1 text-small truncate ${profile.is_online ? "text-online" : "text-subtle"}`}>
-                  {profile.is_online ? "в сети" : lastSeenText(profile.last_seen)}
+                  {profile.is_online ? t("в сети") : lastSeenText(profile.last_seen)}
                 </p>
                 {/* Значение ауры — здесь его видно и на телефоне, где нет наведения. */}
                 {profile.aura_text && (
@@ -181,7 +183,7 @@ const UserProfileModal = ({
                   className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  {writing ? "Открываю…" : isBot ? "Начать" : t("Написать")}
+                  {writing ? t("Открываю…") : isBot ? t("Начать") : t("Написать")}
                 </button>
               )}
               {onCall && (
@@ -215,7 +217,7 @@ const UserProfileModal = ({
                 className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-primary font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50"
               >
                 <Ban className="w-4 h-4" />
-                {blocked ? "Разблокировать" : "Заблокировать"}
+                {blocked ? t("Разблокировать") : t("Заблокировать")}
               </button>
             </div>
 
@@ -255,12 +257,12 @@ const UserProfileModal = ({
               {[
                 [t("Имя пользователя"), "@" + profile.username],
                 [t("ID пользователя"), profile.id],
-                ...(profile.created_at ? [[t("Дата регистрации"), new Date(profile.created_at).toLocaleDateString("ru-RU")]] : []),
+                ...(profile.created_at ? [[t("Дата регистрации"), new Date(profile.created_at).toLocaleDateString(LOCALE[getLang()] || "ru-RU")]] : []),
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center gap-3 h-9 md:h-8">
                   <span className="text-small text-subtle w-32 shrink-0">{label}</span>
                   <span className="text-small text-muted-foreground flex-1 min-w-0 truncate">{value}</span>
-                  <button type="button" onClick={() => copy(value)} className="p-1.5 text-subtle active:text-foreground" aria-label={`Скопировать: ${label}`}>
+                  <button type="button" onClick={() => copy(value)} className="p-1.5 text-subtle active:text-foreground" aria-label={t("Скопировать: {label}", { label })}>
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
@@ -274,7 +276,7 @@ const UserProfileModal = ({
       {profile && (
         <ShareToChat
           open={shareOpen}
-          title={`Отправить профиль ${profile.username}`}
+          title={t("Отправить профиль {name}", { name: profile.username })}
           text={profileLink(profile.username)}
           onClose={() => setShareOpen(false)}
           onShareOutside={async () => {
@@ -285,10 +287,10 @@ const UserProfileModal = ({
         />
       )}
       {galleryOpen && profile && (
-        <SavedGallery profileId={profile.id} own={false} title={`Сохранёнки ${profile.username}`} onClose={() => setGalleryOpen(false)} />
+        <SavedGallery profileId={profile.id} own={false} title={t("Сохранёнки {name}", { name: profile.username })} onClose={() => setGalleryOpen(false)} />
       )}
       {reportOpen && (
-        <ReportSheet target={{ type: "user", id: userId }} title={`Жалоба на ${profile?.username || "пользователя"}`} onClose={() => setReportOpen(false)} />
+        <ReportSheet target={{ type: "user", id: userId }} title={profile?.username ? t("Жалоба на {name}", { name: profile.username }) : t("Жалоба на пользователя")} onClose={() => setReportOpen(false)} />
       )}
     </div>
   );

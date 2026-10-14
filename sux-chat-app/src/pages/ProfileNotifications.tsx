@@ -47,10 +47,14 @@ const ProfileNotifications = () => {
     stopPreview.current?.();
     stopPreview.current = previewRingtone(await resolveRingtoneUrl(value));
   };
+  // Подписи встроенных звонков (lib/ringtone) — русские ключи словаря;
+  // название звука из каталога — как его назвал автор, не переводим.
+  const ringLabel = (value: string | undefined) =>
+    (value || "").startsWith("sound:") && ringName ? ringName : t(ringtoneLabel(value, ringName));
   const setRingtone = async (value: string, name?: string) => {
     if (!profile) return;
     const ok = await patch({ ringtone: value }, { ...profile, ringtone: value }, profile);
-    if (ok) toast.success(`Звонок: ${name || ringtoneLabel(value)}`);
+    if (ok) toast.success(t("Звонок: {name}", { name: name || ringLabel(value) }));
   };
 
   useEffect(() => {
@@ -93,7 +97,7 @@ const ProfileNotifications = () => {
         <SettingsCard>
           <SettingsRow
             label={t("Звук отправки сообщений")}
-            hint={sfxSend ? "Короткий звук при каждой отправке" : "Отправка без звука"}
+            hint={sfxSend ? t("Короткий звук при каждой отправке") : t("Отправка без звука")}
             trailing={
               <input
                 type="checkbox"
@@ -113,7 +117,7 @@ const ProfileNotifications = () => {
             <SettingsRow
               icon={Phone}
               label={t("Звук звонка")}
-              hint={ringtoneLabel(profile.ringtone, ringName)}
+              hint={ringLabel(profile.ringtone)}
               onClick={() => setRingOpen(true)}
             />
           </SettingsCard>
@@ -128,15 +132,15 @@ const ProfileNotifications = () => {
               label={t("Мой звук уведомлений")}
               hint={
                 profile.notify_sound
-                  ? `${profile.notify_sound.name} — так звучат мои сообщения у других`
-                  : "Обычный — выбери свой, его услышат собеседники"
+                  ? t("{name} — так звучат мои сообщения у других", { name: profile.notify_sound.name })
+                  : t("Обычный — выбери свой, его услышат собеседники")
               }
               onClick={() => setPickerOpen(true)}
             />
             <SettingsRow
               icon={Library}
               label={t("Паки звуков")}
-              hint="Базовые есть у всех, чужие — по ссылке автора"
+              hint={t("Базовые есть у всех, чужие — по ссылке автора")}
               onClick={() => navigate("/profile/soundpacks")}
             />
           </SettingsCard>
@@ -148,7 +152,7 @@ const ProfileNotifications = () => {
                 Выключено — сервер такие сигналы до нас не доводит. */}
             <SettingsRow
               label={t("Принимать Р.Ё.В")}
-              hint="Вибрация, пока собеседник держит палец"
+              hint={t("Вибрация, пока собеседник держит палец")}
               trailing={
                 <Toggle
                   label={t("Принимать Р.Ё.В")}
@@ -162,7 +166,7 @@ const ProfileNotifications = () => {
             {Capacitor.isNativePlatform() && (
               <SettingsRow
                 label={t("Текст в уведомлениях")}
-                hint="Выключи — в пуше будет только «Новое сообщение»"
+                hint={t("Выключи — в пуше будет только «Новое сообщение»")}
                 trailing={
                   <Toggle
                     label={t("Текст в уведомлениях")}
@@ -188,9 +192,9 @@ const ProfileNotifications = () => {
               {BUILTIN_RINGTONES.map((r) => {
                 const on = (profile.ringtone || "") === r.id;
                 return (
-                  <button key={r.id || "default"} type="button" onClick={() => { void preview(r.id); void setRingtone(r.id, r.name); }}
+                  <button key={r.id || "default"} type="button" onClick={() => { void preview(r.id); void setRingtone(r.id, t(r.name)); }}
                     className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
-                    <span className="flex-1">{r.name}</span>
+                    <span className="flex-1">{t(r.name)}</span>
                     {on && <Check className="w-5 h-5 text-primary" />}
                   </button>
                 );
@@ -198,10 +202,10 @@ const ProfileNotifications = () => {
               <button type="button" onClick={() => { stopPreview.current?.(); setRingOpen(false); setRingCatalog(true); }}
                 className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
                 <Library className="w-5 h-5 text-primary" />
-                <span className="flex-1">{(profile.ringtone || "").startsWith("sound:") ? `Из каталога: ${ringName || "…"}` : "Выбрать из каталога звуков…"}</span>
+                <span className="flex-1">{(profile.ringtone || "").startsWith("sound:") ? t("Из каталога: {name}", { name: ringName || "…" }) : t("Выбрать из каталога звуков…")}</span>
                 {(profile.ringtone || "").startsWith("sound:") && <Check className="w-5 h-5 text-primary" />}
               </button>
-              <p className="px-4 py-2 text-caption text-subtle">Тап по варианту — короткий прослух. На телефоне звонит система, этот звук — для веб-версии и компьютера.</p>
+              <p className="px-4 py-2 text-caption text-subtle">{t("Тап по варианту — короткий прослух. На телефоне звонит система, этот звук — для веб-версии и компьютера.")}</p>
             </div>
           </div>
         </div>
@@ -229,7 +233,7 @@ const ProfileNotifications = () => {
               { ...profile, notify_sound: s },
               profile,
             );
-            if (ok) toast.success(s ? `Теперь твои сообщения звучат как «${s.name}»` : t("Обычный звук"));
+            if (ok) toast.success(s ? t("Теперь твои сообщения звучат как «{name}»", { name: s.name }) : t("Обычный звук"));
           }}
         />
       )}

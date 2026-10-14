@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Image as ImageIcon, Users, User, Trash2, EyeOff, X, Film } from "lucide-react";
 import { api, type Chat } from "@/api/client";
 import { getSetting, setSetting } from "@/lib/settings";
+import { t } from "@/lib/i18n";
 
 /**
  * Обои чата. Общие (видят оба собеседника) и личные (поверх общих, только у
@@ -24,9 +25,9 @@ const WallpaperSheet = ({ chat, onClose, onChanged }: { chat: Chat; onClose: () 
     setBusy(true);
     try {
       await api.setChatWallpaper(chat.id, f, scopeRef.current);
-      toast.success(scopeRef.current === "chat" ? "Обои поставлены для всех" : "Обои поставлены только у вас");
+      toast.success(scopeRef.current === "chat" ? t("Обои поставлены для всех") : t("Обои поставлены только у вас"));
       onChanged(); onClose();
-    } catch (e: any) { toast.error(e?.message || "Не удалось поставить обои"); }
+    } catch (e: any) { toast.error(e?.message || t("Не удалось поставить обои")); }
     finally { setBusy(false); }
   };
   const clear = async (scope: "chat" | "me", hide = false) => {
@@ -34,9 +35,9 @@ const WallpaperSheet = ({ chat, onClose, onChanged }: { chat: Chat; onClose: () 
     setBusy(true);
     try {
       await api.clearChatWallpaper(chat.id, scope, hide);
-      toast.success(scope === "chat" ? "Обои чата убраны" : hide ? "У вас обоев не будет" : "Снова как у чата");
+      toast.success(scope === "chat" ? t("Обои чата убраны") : hide ? t("У вас обоев не будет") : t("Снова как у чата"));
       onChanged(); onClose();
-    } catch (e: any) { toast.error(e?.message || "Не вышло"); }
+    } catch (e: any) { toast.error(e?.message || t("Не вышло")); }
     finally { setBusy(false); }
   };
 
@@ -48,54 +49,54 @@ const WallpaperSheet = ({ chat, onClose, onChanged }: { chat: Chat; onClose: () 
         <div className="md:hidden mx-auto mb-1 h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
         <div className="flex items-center gap-2">
           <ImageIcon className="w-5 h-5 text-primary" />
-          <p className="text-h2 flex-1">Обои чата</p>
-          <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label="Закрыть"><X className="w-4 h-4" /></button>
+          <p className="text-h2 flex-1">{t("Обои чата")}</p>
+          <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label={t("Закрыть")}><X className="w-4 h-4" /></button>
         </div>
-        <p className="text-caption text-subtle">Фото, gif или видео с устройства. Растягиваются на весь экран чата.</p>
+        <p className="text-caption text-subtle">{t("Фото, gif или видео с устройства. Растягиваются на весь экран чата.")}</p>
 
         <button type="button" disabled={busy} onClick={() => pick("chat")} className={row}>
           <Users className="w-5 h-5 text-primary shrink-0" />
           <span className="min-w-0 flex-1">
-            <span className="block text-body">{isChannel ? "Поставить для канала" : "Поставить для всех"}</span>
-            <span className="block text-caption text-subtle">{isChannel ? "Увидят все подписчики" : "Увидит и собеседник"}</span>
+            <span className="block text-body">{isChannel ? t("Поставить для канала") : t("Поставить для всех")}</span>
+            <span className="block text-caption text-subtle">{isChannel ? t("Увидят все подписчики") : t("Увидит и собеседник")}</span>
           </span>
         </button>
         <button type="button" disabled={busy} onClick={() => pick("me")} className={row}>
           <User className="w-5 h-5 text-primary shrink-0" />
           <span className="min-w-0 flex-1">
-            <span className="block text-body">Поставить только для себя</span>
-            <span className="block text-caption text-subtle">Поверх общих, у собеседника останутся его</span>
+            <span className="block text-body">{t("Поставить только для себя")}</span>
+            <span className="block text-caption text-subtle">{t("Поверх общих, у собеседника останутся его")}</span>
           </span>
         </button>
         {chat.wallpaper && (
           <button type="button" disabled={busy} onClick={() => clear("me", true)} className={row}>
             <EyeOff className="w-5 h-5 text-primary shrink-0" />
-            <span className="min-w-0 flex-1"><span className="block text-body">Скрыть обои у себя</span><span className="block text-caption text-subtle">Общие останутся у собеседника</span></span>
+            <span className="min-w-0 flex-1"><span className="block text-body">{t("Скрыть обои у себя")}</span><span className="block text-caption text-subtle">{t("Общие останутся у собеседника")}</span></span>
           </button>
         )}
         {chat.my_wallpaper && (
           <button type="button" disabled={busy} onClick={() => clear("me")} className={row}>
             <Trash2 className="w-5 h-5 text-primary shrink-0" />
-            <span className="min-w-0 flex-1"><span className="block text-body">Убрать свои настройки</span><span className="block text-caption text-subtle">Показывать как у чата</span></span>
+            <span className="min-w-0 flex-1"><span className="block text-body">{t("Убрать свои настройки")}</span><span className="block text-caption text-subtle">{t("Показывать как у чата")}</span></span>
           </button>
         )}
         {chat.wallpaper && (
           <button type="button" disabled={busy} onClick={() => clear("chat")} className={row}>
             <Trash2 className="w-5 h-5 text-destructive shrink-0" />
-            <span className="min-w-0 flex-1"><span className="block text-body">Убрать обои для всех</span></span>
+            <span className="min-w-0 flex-1"><span className="block text-body">{t("Убрать обои для всех")}</span></span>
           </button>
         )}
 
         <label className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 bg-surface-4">
           <Film className="w-5 h-5 text-primary shrink-0" />
           <span className="min-w-0 flex-1">
-            <span className="block text-body">Анимация обоев</span>
-            <span className="block text-caption text-subtle">{anim ? "Видео-обои двигаются" : "Вместо видео — неподвижный кадр (экономит батарею)"}</span>
+            <span className="block text-body">{t("Анимация обоев")}</span>
+            <span className="block text-caption text-subtle">{anim ? t("Видео-обои двигаются") : t("Вместо видео — неподвижный кадр (экономит батарею)")}</span>
           </span>
           <input type="checkbox" className="w-5 h-5 accent-primary" checked={anim} onChange={(e) => { setAnim(e.target.checked); setSetting("wallpaper_anim", e.target.checked); }} />
         </label>
 
-        {busy && <p className="text-small text-subtle text-center">Загружаю и обрабатываю…</p>}
+        {busy && <p className="text-small text-subtle text-center">{t("Загружаю и обрабатываю…")}</p>}
         <input ref={fileRef} type="file" accept="image/*,video/*,.gif" hidden onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }} />
       </div>
     </div>,

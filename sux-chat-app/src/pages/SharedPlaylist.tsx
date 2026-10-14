@@ -1,3 +1,4 @@
+import { t as tr, tn } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -38,34 +39,36 @@ const SharedPlaylist = () => {
     setSaving(true);
     try {
       const copy = await api.savePlaylistCopy(token);
-      toast.success(`Плейлист «${copy.name}» у вас`);
+      toast.success(tr("Плейлист «{name}» у вас", { name: copy.is_default ? tr(copy.name) : copy.name }));
       navigate("/music");
     } catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || tr("Не получилось"));
     } finally { setSaving(false); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
       <div className="shrink-0 px-2 py-3 pad-safe-top bg-background border-b border-border min-h-14 flex items-center gap-2">
-        <button type="button" onClick={() => navigate("/music")} className="ui-icon-btn p-2" aria-label="К музыке">
+        <button type="button" onClick={() => navigate("/music")} className="ui-icon-btn p-2" aria-label={tr("К музыке")}>
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <span className="text-h2 flex-1 truncate">{data?.playlist.name || "Плейлист"}</span>
+        <span className="text-h2 flex-1 truncate">{(data?.playlist.is_default ? tr(data.playlist.name) : data?.playlist.name) || tr("Плейлист")}</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {state === "loading" && <p className="text-small text-subtle">Загрузка…</p>}
+        {state === "loading" && <p className="text-small text-subtle">{tr("Загрузка…")}</p>}
         {state === "missing" && (
           <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-1">
-            <p className="text-body font-semibold">Плейлиста нет</p>
-            <p className="text-small text-subtle">Ссылка отозвана или неверна.</p>
+            <p className="text-body font-semibold">{tr("Плейлиста нет")}</p>
+            <p className="text-small text-subtle">{tr("Ссылка отозвана или неверна.")}</p>
           </div>
         )}
         {state === "ok" && data && (
           <>
             <p className="px-1 text-small text-subtle">
-              Плейлист <b>{data.owner}</b> · {data.tracks.length} треков
+              {/* Имя владельца — жирным: шаблон делим по {owner}, порядок слов задаёт перевод. */}
+              {(() => { const [before, after = ""] = tr("Плейлист {owner}").split("{owner}"); return <>{before}<b>{data.owner}</b>{after}</>; })()}
+              {" · "}{tn(data.tracks.length, "{n} трек", "{n} трека", "{n} треков")}
             </p>
             <button
               type="button"
@@ -73,11 +76,11 @@ const SharedPlaylist = () => {
               disabled={saving}
               className="w-full h-11 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50"
             >
-              <Download className="w-4 h-4" /> {saving ? "Сохраняю…" : "Сохранить себе"}
+              <Download className="w-4 h-4" /> {saving ? tr("Сохраняю…") : tr("Сохранить себе")}
             </button>
 
             {data.tracks.length === 0 ? (
-              <p className="px-1 text-small text-subtle">Плейлист пуст.</p>
+              <p className="px-1 text-small text-subtle">{tr("Плейлист пуст.")}</p>
             ) : (
               <SettingsCard>
                 {data.tracks.map((t, i) => {

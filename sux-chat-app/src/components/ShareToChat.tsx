@@ -86,7 +86,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
     setBusy(true);
     try {
       await api.sendMessage(row.id, text);
-      toast.success(row.kind === "saved" ? "Добавлено в избранное" : `Отправлено: ${row.title}`);
+      toast.success(row.kind === "saved" ? t("Добавлено в избранное") : t("Отправлено: {title}", { title: row.title }));
       onClose();
     } catch (e: any) {
       toast.error(e?.message || t("Не удалось отправить"));
@@ -116,7 +116,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по чатам"
+              placeholder={t("Поиск по чатам")}
               className="w-full h-10 px-3 rounded-md bg-surface-4 text-body outline-none"
             />
           )}
@@ -126,7 +126,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
           {rows === null ? (
             <p className="text-small text-subtle">{t("Загрузка…")}</p>
           ) : rows.length === 0 ? (
-            <p className="text-small text-subtle">Пока некуда отправлять — нет переписок.</p>
+            <p className="text-small text-subtle">{t("Пока некуда отправлять — нет переписок.")}</p>
           ) : shown.length === 0 ? (
             <p className="text-small text-subtle">{t("Ничего не нашлось")}</p>
           ) : shown.map((r) => (
@@ -178,7 +178,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                 className="w-full h-12 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
               >
                 <Share2 className="w-5 h-5" />
-                Поделиться за пределами WYX
+                {t("Поделиться за пределами WYX")}
               </button>
             )}
           </div>

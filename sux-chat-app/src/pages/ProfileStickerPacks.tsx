@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -49,7 +49,9 @@ const ProfileStickerPacks = () => {
           setProgress(null);
           setBusy(false);
           load();
-          toast.success(`Набор «${started.name}» добавлен${p.failed ? `, не скачалось: ${p.failed}` : ""}`);
+          toast.success(p.failed
+            ? t("Набор «{name}» добавлен, не скачалось: {failed}", { name: started.name, failed: p.failed })
+            : t("Набор «{name}» добавлен", { name: started.name }));
           navigate(`/stp/${started.pack_id}`);
         } catch {
           setProgress(null); setBusy(false); load();
@@ -57,7 +59,7 @@ const ProfileStickerPacks = () => {
       };
       timer.current = setTimeout(poll, 900);
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось импортировать");
+      toast.error(e?.message || t("Не удалось импортировать"));
       setBusy(false);
     }
   };
@@ -72,11 +74,11 @@ const ProfileStickerPacks = () => {
   /** Свой набор — удалить у всех; чужой — убрать из моих. */
   const removePack = async (p: { id: string; name: string; author?: { id?: string } | null }) => {
     const mine = isMine(p);
-    if (!(await confirmDialog(mine ? `Удалить набор «${p.name}» у всех, кто его сохранил? Это необратимо.` : `Убрать «${p.name}» из моих наборов?`))) return;
+    if (!(await confirmDialog(mine ? t("Удалить набор «{name}» у всех, кто его сохранил? Это необратимо.", { name: p.name }) : t("Убрать «{name}» из моих наборов?", { name: p.name })))) return;
     try {
       if (mine) await api.deleteStickerPack(p.id); else await api.unsaveStickerPack(p.id);
       setPacks((prev) => (prev || []).filter((x) => x.id !== p.id));
-      toast.success(mine ? "Набор удалён" : t("Убрано из моих"));
+      toast.success(mine ? t("Набор удалён") : t("Убрано из моих"));
     } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
 
@@ -84,14 +86,14 @@ const ProfileStickerPacks = () => {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title={t("Стикерпаки")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle flex items-center gap-2"><Link2 className="w-4 h-4" /> Набор по ссылке</p>
+        <p className="px-1 text-small text-subtle flex items-center gap-2"><Link2 className="w-4 h-4" /> {t("Набор по ссылке")}</p>
         <SettingsCard>
           <div className="px-4 py-3 space-y-2.5">
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") importPack(); }}
-              placeholder="Ссылка на набор стикеров"
+              placeholder={t("Ссылка на набор стикеров")}
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
@@ -103,12 +105,12 @@ const ProfileStickerPacks = () => {
               disabled={!url.trim() || busy}
               className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold disabled:opacity-40"
             >
-              {busy ? "Импортирую…" : "Добавить набор"}
+              {busy ? t("Импортирую…") : t("Добавить набор")}
             </button>
             {progress && (
               <div className="space-y-1.5">
                 <p className="text-caption text-subtle truncate">
-                  «{progress.name}» — {progress.done} из {progress.total || "?"}
+                  {t("«{name}» — {done} из {total}", { name: progress.name, done: progress.done, total: progress.total || "?" })}
                 </p>
                 <div className="h-1.5 rounded-full bg-surface-4 overflow-hidden">
                   <div
@@ -119,17 +121,17 @@ const ProfileStickerPacks = () => {
               </div>
             )}
             <p className="text-caption text-subtle">
-              Вставьте ссылку на набор стикеров — он появится в ваших наборах. Анимированные стикеры станут картинками.
+              {t("Вставьте ссылку на набор стикеров — он появится в ваших наборах. Анимированные стикеры станут картинками.")}
             </p>
           </div>
         </SettingsCard>
 
-        <p className="px-1 pt-2 text-small text-subtle">Мои наборы</p>
+        <p className="px-1 pt-2 text-small text-subtle">{t("Мои наборы")}</p>
         <SettingsCard>
           {packs === null ? (
             <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>
           ) : packs.length === 0 ? (
-            <div className="px-4 py-4 text-small text-subtle">Пока пусто. Добавьте набор по ссылке или сохраните чужой.</div>
+            <div className="px-4 py-4 text-small text-subtle">{t("Пока пусто. Добавьте набор по ссылке или сохраните чужой.")}</div>
           ) : packs.map((p) => (
             <SettingsRow
               key={p.id}
@@ -139,7 +141,7 @@ const ProfileStickerPacks = () => {
                   : <StickerIcon className="w-5 h-5 text-primary shrink-0" />
               }
               label={p.name}
-              hint={`${p.stickers_count} стикеров${p.author?.username ? ` · ${p.author.username}` : ""}`}
+              hint={`${tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}${p.author?.username ? ` · ${p.author.username}` : ""}`}
               onClick={() => navigate(`/stp/${p.id}`)}
               trailing={
                 <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -147,7 +149,7 @@ const ProfileStickerPacks = () => {
                     className="w-9 h-9 rounded-full flex items-center justify-center text-subtle active:bg-surface-4">
                     <Share2 className="w-4 h-4" />
                   </button>
-                  <button type="button" aria-label={isMine(p) ? "Удалить набор" : t("Убрать из моих")} onClick={() => void removePack(p)}
+                  <button type="button" aria-label={isMine(p) ? t("Удалить набор") : t("Убрать из моих")} onClick={() => void removePack(p)}
                     className="w-9 h-9 rounded-full flex items-center justify-center text-subtle active:bg-surface-4 active:text-destructive">
                     <Trash2 className="w-4 h-4" />
                   </button>

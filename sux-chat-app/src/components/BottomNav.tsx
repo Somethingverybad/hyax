@@ -21,7 +21,7 @@ const useWallNew = () => {
   return n;
 };
 const WallBadge = ({ n }: { n: number }) => n > 0 ? (
-  <span className="absolute top-1.5 right-[calc(50%-18px)] min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-4 text-center" aria-label={`Новых постов: ${n}`}>{n > 99 ? "99+" : n}</span>
+  <span className="absolute top-1.5 right-[calc(50%-18px)] min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-4 text-center" aria-label={t("Новых постов: {n}", { n })}>{n > 99 ? "99+" : n}</span>
 ) : null;
 
 /**
@@ -32,7 +32,7 @@ const WallBadge = ({ n }: { n: number }) => n > 0 ? (
  * до края экрана.
  */
 const ITEMS = [
-  { to: "/chat", label: t("Чаты"), icon: MessageSquare },
+  { to: "/chat", label: "Чаты", icon: MessageSquare },
   { to: "/wall", label: "Стена", icon: Newspaper },
   { to: "/saved", label: "Избранное", icon: Bookmark },
   { to: "/music", label: "Музыка", icon: Music2 },
@@ -43,7 +43,7 @@ const ITEMS = [
 const MINT_ITEMS: { to: string; label: string; icon: MintIconName; size: [number, number] }[] = [
   { to: "/music", label: "Музыка", icon: "navMusic", size: [17, 21] },
   { to: "/saved", label: "Избранное", icon: "navSaved", size: [16, 21] },
-  { to: "/chat", label: t("Чаты"), icon: "navChat", size: [28, 20] },
+  { to: "/chat", label: "Чаты", icon: "navChat", size: [28, 20] },
   { to: "/wall", label: "Стена", icon: "navWall", size: [21, 21] },
   { to: "/profile", label: "Профиль", icon: "navProfile", size: [22, 23] },
 ];

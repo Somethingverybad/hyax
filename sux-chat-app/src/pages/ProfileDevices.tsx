@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t, getLang } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Smartphone, Monitor, Globe, Tablet, LogOut } from "lucide-react";
@@ -17,32 +17,40 @@ const Icon = ({ platform }: { platform: string }) =>
   : platform === "desktop" ? <Monitor className="w-5 h-5" />
   : platform === "ipad" ? <Tablet className="w-5 h-5" /> : <Globe className="w-5 h-5" />;
 
+const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
+
+/** Вызывать только в рендере: фразы и формат даты — на текущем языке. */
 const when = (iso: string) => {
   const d = new Date(iso); const diff = (Date.now() - d.getTime()) / 60000;
-  if (diff < 2) return "только что";
-  if (diff < 60) return `${Math.round(diff)} мин назад`;
-  if (diff < 60 * 24) return `${Math.round(diff / 60)} ч назад`;
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  if (diff < 2) return t("только что");
+  if (diff < 60) return t("{n} мин назад", { n: Math.round(diff) });
+  if (diff < 60 * 24) return t("{n} ч назад", { n: Math.round(diff / 60) });
+  const loc = LOCALE[getLang()] || "ru-RU";
+  return d.toLocaleDateString(loc, { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" });
 };
+
+/** Имя устройства клиент собирает по-русски («Mac · приложение», «Компьютер ·
+ *  браузер») и оно так и лежит на сервере — части переводим при показе. */
+const deviceLabel = (d: DeviceSession) => (d.name || d.platform).split(" · ").map((part) => t(part)).join(" · ");
 
 const ProfileDevices = () => {
   const [list, setList] = useState<DeviceSession[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = () => api.listDevices().then((r) => setList(r.devices)).catch(() => { setList([]); toast.error("Не удалось загрузить устройства"); });
+  const load = () => api.listDevices().then((r) => setList(r.devices)).catch(() => { setList([]); toast.error(t("Не удалось загрузить устройства")); });
   useEffect(() => { void load(); }, []);
 
   const revoke = async (d: DeviceSession) => {
-    if (!(await confirmDialog(`Выйти на устройстве «${d.name || d.platform}»? Переписка и кэш там будут стёрты.`, { ok: t("Выйти") }))) return;
+    if (!(await confirmDialog(t("Выйти на устройстве «{name}»? Переписка и кэш там будут стёрты.", { name: deviceLabel(d) }), { ok: t("Выйти") }))) return;
     setBusy(d.device_id);
     try { await api.revokeDevice(d.device_id); setList((l) => (l || []).filter((x) => x.device_id !== d.device_id)); toast.success(t("Сеанс завершён")); }
     catch (e: any) { toast.error(e?.message || t("Не получилось")); }
     finally { setBusy(null); }
   };
   const revokeOthers = async () => {
-    if (!(await confirmDialog("Выйти со всех устройств, кроме этого? На них сотрётся кэш переписки.", { ok: "Выйти везде" }))) return;
+    if (!(await confirmDialog(t("Выйти со всех устройств, кроме этого? На них сотрётся кэш переписки."), { ok: t("Выйти везде") }))) return;
     setBusy("all");
-    try { const r = await api.revokeOtherDevices(); toast.success(r.revoked ? `Завершено сеансов: ${r.revoked}` : "Других сеансов не было"); void load(); }
+    try { const r = await api.revokeOtherDevices(); toast.success(r.revoked ? t("Завершено сеансов: {n}", { n: r.revoked }) : t("Других сеансов не было")); void load(); }
     catch (e: any) { toast.error(e?.message || t("Не получилось")); }
     finally { setBusy(null); }
   };
@@ -62,12 +70,12 @@ const ProfileDevices = () => {
                 <div className="flex items-center gap-3 px-4 py-3">
                   <Icon platform={current.platform} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-body truncate">{current.name || current.platform}</p>
-                    <p className="text-small text-subtle">WYX {current.app_version} · сейчас</p>
+                    <p className="text-body truncate">{deviceLabel(current)}</p>
+                    <p className="text-small text-subtle">WYX {current.app_version} · {t("сейчас")}</p>
                   </div>
                 </div>
               ) : (
-                <p className="px-4 py-3 text-small text-subtle">Вход сделан до появления списка устройств. Выйдите и войдите снова, чтобы оно здесь появилось.</p>
+                <p className="px-4 py-3 text-small text-subtle">{t("Вход сделан до появления списка устройств. Выйдите и войдите снова, чтобы оно здесь появилось.")}</p>
               )}
             </div>
 
@@ -78,7 +86,7 @@ const ProfileDevices = () => {
                 <div key={d.device_id} className="flex items-center gap-3 px-4 py-3">
                   <Icon platform={d.platform} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-body truncate">{d.name || d.platform}</p>
+                    <p className="text-body truncate">{deviceLabel(d)}</p>
                     <p className="text-small text-subtle">WYX {d.app_version} · {when(d.last_seen)}</p>
                   </div>
                   <button type="button" disabled={busy === d.device_id} onClick={() => revoke(d)}
@@ -90,7 +98,7 @@ const ProfileDevices = () => {
 
             <Button type="button" variant="secondary" className="w-full h-12" disabled={busy === "all"} onClick={revokeOthers}>{t("Выйти со всех остальных устройств")}</Button>
             <p className="text-caption text-subtle px-1">
-              На отозванном устройстве приложение само выходит и стирает кэш переписки, ключи секретных чатов и файлы. Если оно офлайн — сделает это при следующем запуске.
+              {t("На отозванном устройстве приложение само выходит и стирает кэш переписки, ключи секретных чатов и файлы. Если оно офлайн — сделает это при следующем запуске.")}
             </p>
           </>
         )}

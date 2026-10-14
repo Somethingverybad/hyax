@@ -11,7 +11,8 @@ import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
 import { Ban, Lock, FileText, ShieldCheck, Trash2, Images, Mail, KeyRound, MonitorSmartphone } from "lucide-react";
 
-const SAVED_ACCESS: Record<string, string> = { all: t("Все"), selected: t("Избранные"), none: t("Никто") };
+// Русские подписи — ключи словаря; переводятся в месте показа.
+const SAVED_ACCESS: Record<string, string> = { all: "Все", selected: "Избранные", none: "Никто" };
 
 type Blocked = { id: string; username: string; avatar_url?: string | null };
 
@@ -78,7 +79,7 @@ const ProfilePrivacy = () => {
     try {
       await api.unblockUser(b.id);
       setList((l) => (l || []).filter((x) => x.id !== b.id));
-      toast.success(`${b.username} разблокирован`);
+      toast.success(t("{name} разблокирован", { name: b.username }));
     } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
 
@@ -91,7 +92,7 @@ const ProfilePrivacy = () => {
           {list === null ? (
             <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>
           ) : list.length === 0 ? (
-            <div className="px-4 py-4 text-small text-subtle">Никого. Заблокировать можно из карточки пользователя — его сообщения и пуши перестанут приходить.</div>
+            <div className="px-4 py-4 text-small text-subtle">{t("Никого. Заблокировать можно из карточки пользователя — его сообщения и пуши перестанут приходить.")}</div>
           ) : list.map((b) => (
             <div key={b.id} className="min-h-14 px-4 py-2 flex items-center gap-3">
               <Aura active={!!(b as { is_online?: boolean }).is_online} owner={b as never} size={36}><Identicon id={b.id} avatarUrl={b.avatar_url} className="w-9 h-9 rounded-md shrink-0" /></Aura>
@@ -106,7 +107,7 @@ const ProfilePrivacy = () => {
           <SettingsRow
             label={t("Скрыть, что я в сети")}
             hint={profile?.hide_online
-              ? "Статус «Скрыт»: собеседники видят вас не в сети"
+              ? t("Статус «Скрыт»: собеседники видят вас не в сети")
               : t("Собеседники видят, когда вы в сети")}
             trailing={
               <input
@@ -125,7 +126,7 @@ const ProfilePrivacy = () => {
           <SettingsRow
             icon={Images}
             label={t("Кто видит сохранёнки")}
-            value={SAVED_ACCESS[profile?.saved_visibility || "all"]}
+            value={t(SAVED_ACCESS[profile?.saved_visibility || "all"])}
             onClick={() => navigate("/profile/saved-access")}
           />
         </SettingsCard>
@@ -134,7 +135,7 @@ const ProfilePrivacy = () => {
           <SettingsRow
             label={t("Показывать время последнего входа")}
             hint={profile?.show_last_seen === false
-              ? "Собеседники не увидят, когда вы заходили"
+              ? t("Собеседники не увидят, когда вы заходили")
               : t("Собеседники видят «в сети 5 минут назад»")}
             trailing={
               <input
@@ -150,7 +151,7 @@ const ProfilePrivacy = () => {
         </SettingsCard>
         {profile?.hide_online && (
           <p className="px-1 text-caption text-subtle">
-            Пока включено «Скрыть, что я в сети», время последнего входа не показывается никому.
+            {t("Пока включено «Скрыть, что я в сети», время последнего входа не показывается никому.")}
           </p>
         )}
 
@@ -158,7 +159,7 @@ const ProfilePrivacy = () => {
         <SettingsCard>
           <SettingsRow
             label={t("Показывать 18+")}
-            hint={profile?.allow_adult ? "Паки для взрослых и посты Стены без отметки «4+» видны" : t("Паки для взрослых и посты Стены без отметки «4+» скрыты")}
+            hint={profile?.allow_adult ? t("Паки для взрослых и посты Стены без отметки «4+» видны") : t("Паки для взрослых и посты Стены без отметки «4+» скрыты")}
             trailing={
               <input
                 type="checkbox"
@@ -173,7 +174,7 @@ const ProfilePrivacy = () => {
           {confirmAdult && (
             <div className="px-4 py-3 space-y-3">
               <p className="text-small text-subtle">
-                Паки с пометкой 18+ могут содержать грубую лексику и материалы для взрослых. Включая показ, вы подтверждаете, что вам есть 18 лет.
+                {t("Паки с пометкой 18+ могут содержать грубую лексику и материалы для взрослых. Включая показ, вы подтверждаете, что вам есть 18 лет.")}
               </p>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setAdult(true)} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-small font-medium active:opacity-90">{t("Мне есть 18, включить")}</button>

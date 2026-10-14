@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t, getLang } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
@@ -18,6 +18,8 @@ import { shareProfile, PUBLIC_ORIGIN } from "@/lib/share";
  * же страница плюс ссылка на установку. Без сессии уводим на вход и
  * возвращаемся сюда через ?next=.
  */
+const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
+
 type Card = { id: string; username: string; avatar_url?: string | null; cover_url?: string | null; bio?: string | null; is_bot?: boolean; created_at?: string | null };
 
 const PublicProfile = () => {
@@ -92,7 +94,7 @@ const PublicProfile = () => {
   return (
     <div className="h-full bg-background text-foreground flex flex-col">
       <div className="pad-safe-top px-3 py-2 flex items-center gap-2 shrink-0">
-        <button type="button" onClick={() => navigate("/chat", { replace: true })} className="w-10 h-10 rounded-md flex items-center justify-center bg-surface-2" aria-label="К чатам">
+        <button type="button" onClick={() => navigate("/chat", { replace: true })} className="w-10 h-10 rounded-md flex items-center justify-center bg-surface-2" aria-label={t("К чатам")}>
           <ArrowLeft className="w-5 h-5" />
         </button>
         <span className="text-body font-semibold">{t("Профиль")}</span>
@@ -102,11 +104,11 @@ const PublicProfile = () => {
         {state === "loading" && <div className="mt-16 text-center text-subtle text-small">{t("Загрузка…")}</div>}
         {state === "missing" && (
           <div className="mt-16 text-center space-y-2">
-            <p className="text-body font-semibold">Такого пользователя нет</p>
-            <p className="text-small text-subtle">Ссылка устарела или ник изменился.</p>
+            <p className="text-body font-semibold">{t("Такого пользователя нет")}</p>
+            <p className="text-small text-subtle">{t("Ссылка устарела или ник изменился.")}</p>
           </div>
         )}
-        {state === "error" && <div className="mt-16 text-center text-small text-subtle">Не удалось загрузить профиль.</div>}
+        {state === "error" && <div className="mt-16 text-center text-small text-subtle">{t("Не удалось загрузить профиль.")}</div>}
 
         {state === "ok" && card && (
           <div className="mt-4 space-y-5 max-w-md mx-auto">
@@ -128,13 +130,13 @@ const PublicProfile = () => {
             <div className="flex gap-3">
               {!isMe && (
                 <button type="button" onClick={write} disabled={busy} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50">
-                  <MessageSquare className="w-4 h-4" /> {busy ? "Открываю…" : card.is_bot ? "Начать" : t("Написать")}
+                  <MessageSquare className="w-4 h-4" /> {busy ? t("Открываю…") : card.is_bot ? t("Начать") : t("Написать")}
                 </button>
               )}
               <button type="button" onClick={share} className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90">
                 <Share2 className="w-4 h-4" />{t("Поделиться")}</button>
             </div>
-            {isMe && <p className="text-caption text-subtle -mt-2">Это ваш профиль — так его увидят те, кому вы отправите ссылку.</p>}
+            {isMe && <p className="text-caption text-subtle -mt-2">{t("Это ваш профиль — так его увидят те, кому вы отправите ссылку.")}</p>}
 
             <div className="border-t border-border" />
 
@@ -166,12 +168,12 @@ const PublicProfile = () => {
               {[
                 [t("Имя пользователя"), "@" + card.username],
                 [t("ID пользователя"), card.id],
-                ...(card.created_at ? [[t("Дата регистрации"), new Date(card.created_at).toLocaleDateString("ru-RU")]] : []),
+                ...(card.created_at ? [[t("Дата регистрации"), new Date(card.created_at).toLocaleDateString(LOCALE[getLang()] || "ru-RU")]] : []),
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center gap-3 h-9">
                   <span className="text-small text-subtle w-32 shrink-0">{label}</span>
                   <span className="text-small text-muted-foreground flex-1 min-w-0 truncate">{value}</span>
-                  <button type="button" onClick={() => copy(value)} className="p-1.5 text-subtle active:text-foreground" aria-label={`Скопировать: ${label}`}>
+                  <button type="button" onClick={() => copy(value)} className="p-1.5 text-subtle active:text-foreground" aria-label={t("Скопировать: {label}", { label })}>
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
@@ -180,8 +182,8 @@ const PublicProfile = () => {
 
             {!Capacitor.isNativePlatform() && (
               <p className="text-caption text-subtle text-center">
-                Удобнее в приложении —{" "}
-                <a href={`${PUBLIC_ORIGIN}/apk/`} className="underline text-foreground">скачать WYX</a>
+                {t("Удобнее в приложении —")}{" "}
+                <a href={`${PUBLIC_ORIGIN}/apk/`} className="underline text-foreground">{t("скачать WYX")}</a>
               </p>
             )}
           </div>
@@ -189,7 +191,7 @@ const PublicProfile = () => {
       </div>
 
       {galleryOpen && card && (
-        <SavedGallery profileId={card.id} own={isMe} title={isMe ? "Мои сохранёнки" : `Сохранёнки ${card.username}`} onClose={() => setGalleryOpen(false)} />
+        <SavedGallery profileId={card.id} own={isMe} title={isMe ? t("Мои сохранёнки") : t("Сохранёнки {name}", { name: card.username })} onClose={() => setGalleryOpen(false)} />
       )}
     </div>
   );

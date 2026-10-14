@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { toast } from "sonner";
 import { applog, safePath } from "./applog";
+import { t } from "./i18n";
 
 /**
  * Сохранить файл (трек, документ, картинку) на устройство.
@@ -18,10 +19,10 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
   if (w.electronAPI?.saveFile) {
     try {
       const r = await w.electronAPI.saveFile(url, fileName);
-      if (r.success) toast.success("Файл сохранён");
-      else if (!r.canceled) toast.error("Не удалось сохранить: " + (r.error || "неизвестная ошибка"));
+      if (r.success) toast.success(t("Файл сохранён"));
+      else if (!r.canceled) toast.error(t("Не удалось сохранить: {error}", { error: r.error || t("неизвестная ошибка") }));
     } catch {
-      toast.error("Не удалось сохранить файл");
+      toast.error(t("Не удалось сохранить файл"));
     }
     return;
   }
@@ -29,7 +30,7 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
   if (Capacitor.isNativePlatform()) {
     applog.info(`file save native ${safePath(url)} ${fileName}`);
     const id = `save-${Date.now()}`;
-    toast.loading("Скачиваю…", { id });
+    toast.loading(t("Скачиваю…"), { id });
     // Имя — как у файла в сообщении, но без символов, которые не переживут
     // файловую систему; расширение сохраняем, по нему Файлы поймут тип.
     const safeName = (fileName || "file").replace(/[/\\:*?"<>|]+/g, "_").slice(0, 120);
@@ -54,7 +55,7 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
       toast.dismiss(id);
       applog.warn(`file save native failed: ${String((e as { message?: string })?.message || e)}`);
       // Запасной путь — прежний: пусть хотя бы откроется в браузере.
-      toast.error("Не удалось сохранить — открываю в браузере");
+      toast.error(t("Не удалось сохранить — открываю в браузере"));
       window.open(url, "_blank");
     }
     return;

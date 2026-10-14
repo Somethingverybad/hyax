@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -38,19 +39,19 @@ const SoundPackNew = () => {
   };
 
   const create = async () => {
-    if (!name.trim()) { toast.error("Придумайте название пака"); return; }
-    if (!files.length) { toast.error("Добавьте хотя бы один звук"); return; }
+    if (!name.trim()) { toast.error(t("Придумайте название пака")); return; }
+    if (!files.length) { toast.error(t("Добавьте хотя бы один звук")); return; }
     setBusy(true);
     try {
       const pack = await api.createSoundPack(name.trim(), files);
-      if (cover) await api.setSoundPackCover(pack.id, cover).catch(() => toast.error("Пак создан, но обложка не загрузилась"));
+      if (cover) await api.setSoundPackCover(pack.id, cover).catch(() => toast.error(t("Пак создан, но обложка не загрузилась")));
       // Каталог изменился — докачиваем файлы на устройстве.
       void syncNotificationSounds().catch(() => {});
-      toast.success("Пак создан");
+      toast.success(t("Пак создан"));
       navigate(`/sp/${pack.id}`, { replace: true });
       void shareSoundPack(pack.name, pack.id);
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось создать пак");
+      toast.error(e?.message || t("Не удалось создать пак"));
     } finally {
       setBusy(false);
     }
@@ -59,10 +60,10 @@ const SoundPackNew = () => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Новый пак звуков"
+        title={t("Новый пак звуков")}
         right={
           <button type="button" onClick={create} disabled={busy} className="px-3 h-10 text-body font-semibold text-primary disabled:opacity-50">
-            {busy ? "…" : "Создать"}
+            {busy ? "…" : t("Создать")}
           </button>
         }
       />
@@ -72,7 +73,7 @@ const SoundPackNew = () => {
             type="button"
             onClick={() => coverInput.current?.click()}
             className="ui-card w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-surface-3"
-            aria-label="Обложка пака"
+            aria-label={t("Обложка пака")}
           >
             <img src={coverUrl || packCover(null)} alt="" className="w-full h-full object-cover" />
           </button>
@@ -80,11 +81,11 @@ const SoundPackNew = () => {
             <input
               value={name}
               onChange={(e) => setName(e.target.value.slice(0, 64))}
-              placeholder="Название пака"
+              placeholder={t("Название пака")}
               className="w-full h-11 px-3 rounded-md bg-surface-2 border border-border text-body outline-none focus:border-amber"
             />
             <p className="text-caption text-subtle flex items-center gap-1.5">
-              <ImageIcon className="w-3.5 h-3.5" /> {cover ? "Обложка выбрана" : "Обложка необязательна — подставим свою"}
+              <ImageIcon className="w-3.5 h-3.5" /> {cover ? t("Обложка выбрана") : t("Обложка необязательна — подставим свою")}
             </p>
           </div>
         </div>
@@ -96,7 +97,7 @@ const SoundPackNew = () => {
           onClick={() => soundInput.current?.click()}
           className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 active:opacity-90"
         >
-          <Plus className="w-5 h-5" /> Добавить звуки
+          <Plus className="w-5 h-5" /> {t("Добавить звуки")}
         </button>
 
         {files.length > 0 && (
@@ -108,9 +109,9 @@ const SoundPackNew = () => {
                   value={f.title}
                   onChange={(e) => setFiles((prev) => prev.map((x, j) => (j === i ? { ...x, title: e.target.value.slice(0, 64) } : x)))}
                   className="flex-1 min-w-0 h-9 px-2 rounded-md bg-surface-3 border border-transparent text-body outline-none focus:border-amber"
-                  aria-label="Название звука"
+                  aria-label={t("Название звука")}
                 />
-                <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="p-1.5 text-subtle active:opacity-60" aria-label="Убрать">
+                <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="p-1.5 text-subtle active:opacity-60" aria-label={t("Убрать")}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -119,7 +120,7 @@ const SoundPackNew = () => {
         )}
 
         <p className="px-1 text-caption text-subtle">
-          Названия звуков видят те, кто добавит пак. После создания появится ссылка — по ней пак ставят себе одним нажатием.
+          {t("Названия звуков видят те, кто добавит пак. После создания появится ссылка — по ней пак ставят себе одним нажатием.")}
         </p>
       </div>
     </div>

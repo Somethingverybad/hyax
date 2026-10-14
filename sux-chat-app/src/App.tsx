@@ -1,4 +1,5 @@
 import { ConfirmHost } from "@/lib/confirm";
+import { t as tr, tn } from "@/lib/i18n";
 import { toast as sonnerToast } from "sonner";
 import { Toaster } from "@/components/ui/toaster";
 import ProfilePage from "./pages/Profile";
@@ -133,7 +134,7 @@ const DeepLinks = () => {
   useEffect(() => {
     const h = (e: Event) => {
       const reason = (e as CustomEvent).detail?.reason;
-      sonnerToast(reason === "revoked" ? "Сеанс завершён с другого устройства" : "Войдите снова");
+      sonnerToast(reason === "revoked" ? tr("Сеанс завершён с другого устройства") : tr("Войдите снова"));
       navRef.current("/auth", { replace: true });
     };
     window.addEventListener("hyax:force-logout", h);
@@ -178,7 +179,7 @@ const ShareInboxSheet = () => {
       open
       includeChannels
       includeWall
-      title={n ? `Отправить ${n === 1 ? "файл" : n < 5 ? `${n} файла` : `${n} файлов`}` : "Отправить в WYX"}
+      title={n ? (n === 1 ? tr("Отправить файл") : tn(n, "Отправить {n} файл", "Отправить {n} файла", "Отправить {n} файлов")) : tr("Отправить в WYX")}
       text={payload.text}
       onClose={() => setPayload(null)}
       onPick={(chatId, chatTitle, kind) => {

@@ -8,6 +8,7 @@ import { setInstalledThemes, setTheme, getInstalledThemes } from "@/lib/theme";
 import { normalizeTheme } from "@/themes/engine";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { packCover } from "@/lib/packCover";
+import { t as tr, tn } from "@/lib/i18n";
 
 type Info = { title: string; subtitle: string; cover?: string | null; added: boolean; mine: boolean };
 
@@ -29,16 +30,16 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
       try {
         if (target.kind === "sound") {
           const p = await api.getSoundPack(target.id);
-          return { title: p.name, subtitle: `Пак звуков · ${p.sounds_count ?? p.sounds.length} звуков`, cover: packCover(p.cover_url), added: p.added || p.mine || p.is_default, mine: p.mine || p.is_default };
+          return { title: p.name, subtitle: `${tr("Пак звуков")} · ${tn(p.sounds_count ?? p.sounds.length, "{n} звук", "{n} звука", "{n} звуков")}`, cover: packCover(p.cover_url), added: p.added || p.mine || p.is_default, mine: p.mine || p.is_default };
         }
         if (target.kind === "sticker") {
           const p = await api.getStickerPack(target.id);
           const first = (await api.getStickers(target.id).catch(() => []))[0];
           const mine = !!p.author && p.author.id === (() => { try { return JSON.parse(localStorage.getItem("cache_user") || "null")?.id; } catch { return null; } })();
-          return { title: p.name, subtitle: `Стикерпак · ${p.stickers_count} стикеров`, cover: first?.file_url, added: p.is_saved || mine, mine };
+          return { title: p.name, subtitle: `${tr("Стикерпак")} · ${tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}`, cover: first?.file_url, added: p.is_saved || mine, mine };
         }
         const t = normalizeTheme(await api.getTheme(target.id));
-        return { title: t.name, subtitle: t.author ? `Тема · автор ${t.author}` : "Тема оформления", added: !!t.installed || !!t.mine, mine: !!t.mine };
+        return { title: t.name, subtitle: t.author ? tr("Тема · автор {author}", { author: t.author }) : tr("Тема оформления"), added: !!t.installed || !!t.mine, mine: !!t.mine };
       } catch {
         return null;
       }
@@ -62,9 +63,9 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         setTheme(saved);
       }
       setInfo({ ...info, added: true });
-      toast.success(target.kind === "theme" ? "Тема установлена и включена" : "Добавлено");
+      toast.success(target.kind === "theme" ? tr("Тема установлена и включена") : tr("Добавлено"));
     } catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || tr("Не получилось"));
     } finally {
       setBusy(false);
     }
@@ -84,7 +85,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
           {info?.cover ? <img src={info.cover.startsWith("/media/") ? mediaUrl(info.cover) : info.cover} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-primary" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-small font-medium truncate">{info ? info.title : "Загрузка…"}</span>
+          <span className="block text-small font-medium truncate">{info ? info.title : tr("Загрузка…")}</span>
           <span className="block text-caption opacity-70 truncate">{info ? info.subtitle : " "}</span>
         </span>
       </span>
@@ -92,7 +93,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         <span className="block px-2.5 pb-2">
           {info.added ? (
             <span className="h-8 w-full rounded-md bg-surface-4 text-caption font-medium flex items-center justify-center gap-1.5">
-              <Check className="w-3.5 h-3.5" /> {info.mine ? "Уже у вас" : "Добавлено"}
+              <Check className="w-3.5 h-3.5" /> {info.mine ? tr("Уже у вас") : tr("Добавлено")}
             </span>
           ) : (
             <span
@@ -103,7 +104,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
               aria-disabled={busy}
               className="h-8 w-full rounded-md bg-primary text-primary-foreground text-caption font-semibold flex items-center justify-center gap-1.5 active:opacity-90"
             >
-              <Plus className="w-3.5 h-3.5" /> {busy ? "…" : "Добавить себе"}
+              <Plus className="w-3.5 h-3.5" /> {busy ? "…" : tr("Добавить себе")}
             </span>
           )}
         </span>

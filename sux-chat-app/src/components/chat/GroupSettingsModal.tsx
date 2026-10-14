@@ -71,9 +71,9 @@ const GroupSettingsModal = ({
       const updated = await api.configureGroup(chatId, { avatarUrl: up.file_url });
       setAvatar(updated.avatar_url ?? null);
       onUpdated({ avatar_url: updated.avatar_url ?? null });
-      toast.success("Аватар обновлён");
+      toast.success(t("Аватар обновлён"));
     } catch (err: any) {
-      toast.error(err?.message || "Не удалось загрузить аватар");
+      toast.error(err?.message || t("Не удалось загрузить аватар"));
     } finally {
       setSaving(false);
     }
@@ -86,9 +86,9 @@ const GroupSettingsModal = ({
     try {
       const updated = await api.configureGroup(chatId, { name: n });
       onUpdated({ name: updated.name });
-      toast.success("Название сохранено");
+      toast.success(t("Название сохранено"));
     } catch (err: any) {
-      toast.error(err?.message || "Не удалось сохранить");
+      toast.error(err?.message || t("Не удалось сохранить"));
     } finally {
       setSaving(false);
     }
@@ -109,9 +109,9 @@ const GroupSettingsModal = ({
       await api.addChatParticipants(chatId, [p.id]);
       setMembers((prev) => [...prev, p]);
       setResults((prev) => prev.filter((r) => r.id !== p.id));
-      toast.success(`${p.username} добавлен`);
+      toast.success(t("{name} добавлен", { name: p.username }));
     } catch (err: any) {
-      toast.error(err?.message || "Не удалось добавить");
+      toast.error(err?.message || t("Не удалось добавить"));
     }
   };
 
@@ -121,7 +121,7 @@ const GroupSettingsModal = ({
         className="w-full max-w-sm max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl p-5 relative"
         onClick={(e) => e.stopPropagation()}
       >
-        <button type="button" onClick={onClose} className="absolute top-3 right-3 p-2 text-muted-foreground hover:text-foreground" aria-label="Закрыть">
+        <button type="button" onClick={onClose} className="absolute top-3 right-3 p-2 text-muted-foreground hover:text-foreground" aria-label={t("Закрыть")}>
           <X className="w-5 h-5" />
         </button>
 
@@ -157,16 +157,16 @@ const GroupSettingsModal = ({
                 onBlur={saveName}
                 onKeyDown={(e) => e.key === "Enter" && saveName()}
                 className="flex-1 bg-secondary border-2 border-border rounded-lg px-3 py-2 text-center font-semibold"
-                placeholder="Название группы"
+                placeholder={t("Название группы")}
               />
               {name.trim() && name !== initialName && (
-                <button type="button" onClick={saveName} className="p-2 text-primary" aria-label="Сохранить">
+                <button type="button" onClick={saveName} className="p-2 text-primary" aria-label={t("Сохранить")}>
                   <Check className="w-5 h-5" />
                 </button>
               )}
             </div>
           ) : (
-            <h2 className="text-center text-xl font-bold">{name || "Группа"}</h2>
+            <h2 className="text-center text-xl font-bold">{name || t("Группа")}</h2>
           )}
         </div>
 
@@ -193,11 +193,11 @@ const GroupSettingsModal = ({
         <div className="mt-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
-              Участники · {members.length}
+              {t("Участники")} · {members.length}
             </span>
             {isAdmin && (
               <button type="button" onClick={() => setAddOpen((v) => !v)} className="flex items-center gap-1 text-sm text-primary">
-                <UserPlus className="w-4 h-4" /> Добавить
+                <UserPlus className="w-4 h-4" /> {t("Добавить")}
               </button>
             )}
           </div>
@@ -207,7 +207,7 @@ const GroupSettingsModal = ({
               <input
                 value={query}
                 onChange={(e) => search(e.target.value)}
-                placeholder="Поиск по нику…"
+                placeholder={t("Поиск по нику…")}
                 className="w-full bg-secondary border-2 border-border rounded-lg px-3 py-2 text-sm"
               />
               {results.map((p) => (
@@ -236,7 +236,7 @@ const GroupSettingsModal = ({
               >
                 <Aura active={!!(m as { is_online?: boolean }).is_online} owner={m as never} size={32}><Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" /></Aura>
                 <span className="text-sm truncate flex-1">{m.username}</span>
-                {m.id === userId && <span className="text-caption text-subtle">вы</span>}
+                {m.id === userId && <span className="text-caption text-subtle">{t("вы")}</span>}
               </button>
             ))}
           </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "./i18n";
 
 /**
  * Подтверждение «точно удалить?» своим окном вместо window.confirm. Нативный
@@ -14,8 +15,8 @@ let listener: ((r: Req) => void) | null = null;
 
 export function confirmDialog(message: string, opts: { ok?: string; danger?: boolean } = {}): Promise<boolean> {
   return new Promise((resolve) => {
-    if (!listener) { resolve(window.confirm(message)); return; }
-    listener({ message, ok: opts.ok || "Удалить", danger: opts.danger ?? true, resolve });
+    if (!listener) { resolve(window.confirm(t(message))); return; }
+    listener({ message, ok: opts.ok || t("Удалить"), danger: opts.danger ?? true, resolve });
   });
 }
 
@@ -38,15 +39,15 @@ export const ConfirmHost = () => {
         className="w-full md:max-w-sm bg-card border-t-2 md:border-2 border-border md:rounded-lg p-5 pad-safe-bottom space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-body whitespace-pre-line">{req.message}</p>
+        <p className="text-body whitespace-pre-line">{t(req.message)}</p>
         <div className="flex gap-2">
           <button type="button" autoFocus onClick={() => done(false)}
             className="flex-1 h-11 rounded-md bg-surface-4 text-foreground text-small font-medium active:opacity-80">
-            Отмена
+            {t("Отмена")}
           </button>
           <button type="button" onClick={() => done(true)}
             className={`flex-1 h-11 rounded-md text-small font-medium active:opacity-80 ${req.danger ? "bg-destructive text-white" : "bg-primary text-primary-foreground"}`}>
-            {req.ok}
+            {t(req.ok)}
           </button>
         </div>
       </div>

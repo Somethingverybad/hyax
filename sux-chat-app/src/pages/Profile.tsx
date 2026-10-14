@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
-import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT, t } from "@/lib/i18n";
+import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
 import { Globe } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
@@ -20,7 +20,8 @@ import { Aura, DEFAULT_AURA } from "@/components/Aura";
 import { FadeImg } from "@/components/LoadingSkeleton";
 import ImageCropper from "@/components/ImageCropper";
 
-const SAVED_ACCESS: Record<string, string> = { all: t("все"), selected: t("избранные"), none: t("только вы") };
+// Русские подписи — ключи словаря; переводятся в месте показа.
+const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
@@ -131,7 +132,7 @@ const ProfilePage = () => {
       });
       toast.success(t("Обложка обновлена"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось загрузить обложку");
+      toast.error(e?.message || t("Не удалось загрузить обложку"));
     } finally {
       setUploading(null);
     }
@@ -147,7 +148,7 @@ const ProfilePage = () => {
         return next;
       });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось убрать обложку");
+      toast.error(e?.message || t("Не удалось убрать обложку"));
     }
   };
 
@@ -158,12 +159,12 @@ const ProfilePage = () => {
     navigate("/auth", { replace: true });
   };
 
-  const copy = async (value: string, what: string) => {
+  const copy = async (value: string, failMsg: string) => {
     try {
       await navigator.clipboard.writeText(value);
       toast.success(t("Скопировано"));
     } catch {
-      toast.error(`Не удалось скопировать ${what}`);
+      toast.error(failMsg);
     }
   };
 
@@ -198,17 +199,17 @@ const ProfilePage = () => {
       if (!found) {
         toast.success(
           Capacitor.getPlatform() === "ios"
-            ? "Установлена последняя версия. Обновления для iOS приходят через TestFlight"
+            ? t("Установлена последняя версия. Обновления для iOS приходят через TestFlight")
             : t("Установлена последняя версия"),
         );
         return;
       }
       const r = await startUpdate(found);
-      if (r.result === "installer") toast.success(`Версия ${found.version}: установщик запущен`);
-      else if (r.result === "restart") toast.success(`Версия ${found.version} установлена — перезапускаюсь`);
-      else if (r.result === "cancelled") toast("Установка отменена");
+      if (r.result === "installer") toast.success(t("Версия {version}: установщик запущен", { version: found.version }));
+      else if (r.result === "restart") toast.success(t("Версия {version} установлена — перезапускаюсь", { version: found.version }));
+      else if (r.result === "cancelled") toast(t("Установка отменена"));
       else if (r.result === "error") toast.error(describeUpdateError(r), { duration: 12000 });
-      else toast.success(`Доступна версия ${found.version} — открываю загрузку`);
+      else toast.success(t("Доступна версия {version} — открываю загрузку", { version: found.version }));
     } catch {
       toast.error(t("Не удалось проверить обновления"));
     } finally {
@@ -303,7 +304,7 @@ const ProfilePage = () => {
                 onClick={() => coverRef.current?.click()}
                 disabled={uploading !== null}
                 className="w-9 h-9 rounded-full bg-black/45 text-white flex items-center justify-center active:opacity-70 disabled:opacity-40"
-                aria-label={profile?.cover_url ? "Сменить обложку" : t("Поставить обложку")}
+                aria-label={profile?.cover_url ? t("Сменить обложку") : t("Поставить обложку")}
               >
                 <Camera className="w-4 h-4" />
               </button>
@@ -340,12 +341,12 @@ const ProfilePage = () => {
           <div className={mint ? "shrink-0 pt-[12px] text-center" : "shrink-0 pt-10"}>
             <div className={mint ? "flex items-center justify-center gap-2" : "flex items-center gap-2"}>
               <p className={mint ? "text-[21.3px] leading-tight font-semibold truncate" : "text-[24px] leading-tight font-semibold truncate"} style={mint ? { color: "var(--mint-title)" } : undefined}>{profile?.username || "…"}</p>
-              <span className={`${mint ? "w-3 h-3" : "w-2.5 h-2.5"} shrink-0 rounded-full ${online ? (mint ? "bg-[#6ede32]" : "bg-online") : "bg-subtle"}`} title={online ? "В сети" : t("Скрыт")} aria-hidden />
+              <span className={`${mint ? "w-3 h-3" : "w-2.5 h-2.5"} shrink-0 rounded-full ${online ? (mint ? "bg-[#6ede32]" : "bg-online") : "bg-subtle"}`} title={online ? t("В сети") : t("Скрыт")} aria-hidden />
             </div>
             {(!mint || bio) && <p className={mint ? "mt-1 text-[12.7px] mint-muted truncate" : "mt-1 text-body text-subtle truncate"}>{bio || t("Статус не указан")}</p>}
             {uploading && (
               <p className="mt-1 text-caption text-subtle">
-                {uploading === "cover" ? "Загружаем обложку…" : t("Загружаем аватар…")}
+                {uploading === "cover" ? t("Загружаем обложку…") : t("Загружаем аватар…")}
               </p>
             )}
           </div>
@@ -358,7 +359,7 @@ const ProfilePage = () => {
               : "shrink-0 h-10 rounded-md bg-surface-4 text-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90"}
           >
             {mint ? <MintIcon name="share" size={15} /> : <Share2 className="w-4 h-4" />}
-            Поделиться профилем
+            {t("Поделиться профилем")}
           </button>
 
           {profile?.id && <Vibometer profileId={profile.id} own initial={(profile as { vibe?: number }).vibe} />}
@@ -371,7 +372,7 @@ const ProfilePage = () => {
               trailing={
                 <button
                   type="button"
-                  onClick={() => copy(profile?.username || "", t("никнейм"))}
+                  onClick={() => copy(profile?.username || "", t("Не удалось скопировать никнейм"))}
                   className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
                   aria-label={t("Скопировать никнейм")}
                 >
@@ -388,7 +389,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Flame}
               label={t("Аура")}
-              value={profile?.aura_text || (profile?.aura_color ? "без подписи" : t("по умолчанию"))}
+              value={profile?.aura_text || (profile?.aura_color ? t("без подписи") : t("по умолчанию"))}
               trailing={<span className="w-3 h-3 rounded-full shrink-0" style={{ background: profile?.aura_color || DEFAULT_AURA }} aria-hidden />}
               onClick={() => navigate("/profile/aura")}
             />
@@ -399,7 +400,7 @@ const ProfilePage = () => {
               trailing={
                 <button
                   type="button"
-                  onClick={() => copy(profile?.username ? "@" + profile.username : "", t("имя"))}
+                  onClick={() => copy(profile?.username ? "@" + profile.username : "", t("Не удалось скопировать имя"))}
                   className="p-1.5 -mr-1.5 text-subtle active:text-foreground"
                   aria-label={t("Скопировать имя пользователя")}
                 >
@@ -413,7 +414,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Images}
               label={t("Сохранёнки")}
-              hint={`Видят: ${SAVED_ACCESS[profile?.saved_visibility || "all"]}`}
+              hint={t("Видят: {who}", { who: t(SAVED_ACCESS[profile?.saved_visibility || "all"]) })}
               value={saved ? pluralPhotos(saved.count) : "…"}
               onClick={() => setGalleryOpen(true)}
             />
@@ -437,7 +438,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={Palette}
               label={t("Внешний вид")}
-              value={theme.name}
+              value={theme.builtin ? t(theme.name) : theme.name}
               onClick={() => navigate("/profile/appearance")}
             />
             <SettingsRow
@@ -452,7 +453,7 @@ const ProfilePage = () => {
             <SettingsRow
               icon={RefreshCw}
               label={t("Проверить обновления")}
-              value={checking ? "Проверяю…" : APP_VERSION}
+              value={checking ? t("Проверяю…") : APP_VERSION}
               onClick={checkUpdates}
             />
             <SettingsRow
@@ -463,8 +464,8 @@ const ProfilePage = () => {
             />
             <SettingsRow
               icon={Eraser}
-              label={clearing ? "Очищаю…" : confirmClear ? "Нажми ещё раз — точно очистить" : t("Очистить кэш")}
-              hint={confirmClear ? "Ленты и медиа перекачаются, вход и тема останутся" : t("Если что-то отображается неправильно")}
+              label={clearing ? t("Очищаю…") : confirmClear ? t("Нажми ещё раз — точно очистить") : t("Очистить кэш")}
+              hint={confirmClear ? t("Ленты и медиа перекачаются, вход и тема останутся") : t("Если что-то отображается неправильно")}
               onClick={clearCache}
               danger={confirmClear}
               trailing={<span />}
@@ -505,7 +506,7 @@ const ProfilePage = () => {
               всех платформах (число коммитов); у iOS свой счётчик в TestFlight,
               его показываем рядом, если он отличается. */}
           <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
-            WYX {APP_VERSION} · сборка {APP_BUILD}
+            {t("WYX {version} · сборка {build}", { version: APP_VERSION, build: APP_BUILD })}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
           </div>
         </div>

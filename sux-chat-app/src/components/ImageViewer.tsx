@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api, mediaUrl } from "@/api/client";
+import { t as tr } from "@/lib/i18n";
 
 export interface ViewerAction {
   label: string;
@@ -239,7 +240,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
             }}
           />
         ) : (
-          <div className="text-white/60 text-small">Загрузка…</div>
+          <div className="text-white/60 text-small">{tr("Загрузка…")}</div>
         )}
       </div>
 
@@ -248,14 +249,14 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
         style={{ top: "calc(var(--sat) + 0.5rem)", opacity: drag ? Math.max(0, 1 - drag / 120) : 1 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button type="button" onClick={onClose} className={chrome} aria-label="Закрыть">
+        <button type="button" onClick={onClose} className={chrome} aria-label={tr("Закрыть")}>
           <X className="w-6 h-6" />
         </button>
         {items.length > 1 && (
-          <span className="px-2.5 py-1 rounded-full bg-black/55 text-white/90 text-small tabular-nums">{index + 1} из {items.length}</span>
+          <span className="px-2.5 py-1 rounded-full bg-black/55 text-white/90 text-small tabular-nums">{tr("{n} из {total}", { n: index + 1, total: items.length })}</span>
         )}
         {actions.length > 0 ? (
-          <button type="button" onClick={() => setMenuOpen((v) => !v)} className={chrome} aria-label="Меню">
+          <button type="button" onClick={() => setMenuOpen((v) => !v)} className={chrome} aria-label={tr("Меню")}>
             <MoreVertical className="w-6 h-6" />
           </button>
         ) : <span className="w-10" />}
@@ -265,14 +266,14 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
       {items.length > 1 && index > 0 && (
         <button type="button" onClick={(e) => { e.stopPropagation(); go(-1); }}
           className="hidden md:flex absolute z-10 left-3 w-10 h-10 rounded-full bg-black/40 text-white items-center justify-center"
-          aria-label="Предыдущая">
+          aria-label={tr("Предыдущая")}>
           <ChevronLeft className="w-6 h-6" />
         </button>
       )}
       {items.length > 1 && index < items.length - 1 && (
         <button type="button" onClick={(e) => { e.stopPropagation(); go(1); }}
           className="hidden md:flex absolute z-10 right-3 w-10 h-10 rounded-full bg-black/40 text-white items-center justify-center"
-          aria-label="Следующая">
+          aria-label={tr("Следующая")}>
           <ChevronRight className="w-6 h-6" />
         </button>
       )}
@@ -301,7 +302,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
             onClick={() => setMenuOpen(false)}
             className="mt-2 w-full h-12 rounded-lg bg-surface-1 text-body font-semibold md:hidden"
           >
-            Отмена
+            {tr("Отмена")}
           </button>
         </div>
       )}

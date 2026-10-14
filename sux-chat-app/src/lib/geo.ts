@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { t } from "./i18n";
 
 /**
  * Геопозиция для отправки в чат. В приложении на телефоне — плагин
@@ -54,25 +55,25 @@ export const openAppSettings = () => { window.open("app-settings:", "_system"); 
 
 export async function getPosition(): Promise<GeoFix> {
   if (Capacitor.isNativePlatform()) {
-    if (!(await ensureGeoPermission())) throw new GeoError("denied", MESSAGES.denied);
+    if (!(await ensureGeoPermission())) throw new GeoError("denied", t(MESSAGES.denied));
     const { Geolocation } = await import("@capacitor/geolocation");
     try {
       const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
       return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? null };
     } catch (e: any) {
       const msg = String(e?.message || "");
-      if (/denied|permission/i.test(msg)) throw new GeoError("denied", MESSAGES.denied);
-      if (/timeout/i.test(msg)) throw new GeoError("timeout", MESSAGES.timeout);
-      throw new GeoError("unavailable", MESSAGES.unavailable);
+      if (/denied|permission/i.test(msg)) throw new GeoError("denied", t(MESSAGES.denied));
+      if (/timeout/i.test(msg)) throw new GeoError("timeout", t(MESSAGES.timeout));
+      throw new GeoError("unavailable", t(MESSAGES.unavailable));
     }
   }
-  if (!("geolocation" in navigator)) throw new GeoError("unavailable", MESSAGES.unavailable);
+  if (!("geolocation" in navigator)) throw new GeoError("unavailable", t(MESSAGES.unavailable));
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? null }),
-      (e) => reject(e.code === e.PERMISSION_DENIED ? new GeoError("denied", MESSAGES.denied)
-        : e.code === e.TIMEOUT ? new GeoError("timeout", MESSAGES.timeout)
-        : new GeoError("unavailable", MESSAGES.unavailable)),
+      (e) => reject(e.code === e.PERMISSION_DENIED ? new GeoError("denied", t(MESSAGES.denied))
+        : e.code === e.TIMEOUT ? new GeoError("timeout", t(MESSAGES.timeout))
+        : new GeoError("unavailable", t(MESSAGES.unavailable))),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
   });
@@ -83,9 +84,9 @@ export function mapLinks(lat: number, lng: number): { label: string; url: string
   const platform = Capacitor.getPlatform();
   const apple = platform === "ios" || /Mac/i.test(navigator.platform || "");
   return [
-    { label: "Яндекс Карты", url: `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map` },
-    ...(apple ? [{ label: "Apple Карты", url: `https://maps.apple.com/?ll=${lat},${lng}&q=${lat},${lng}` }] : []),
-    { label: "Google Карты", url: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` },
+    { label: t("Яндекс Карты"), url: `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map` },
+    ...(apple ? [{ label: t("Apple Карты"), url: `https://maps.apple.com/?ll=${lat},${lng}&q=${lat},${lng}` }] : []),
+    { label: t("Google Карты"), url: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` },
   ];
 }
 

@@ -7,9 +7,11 @@ import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { toast } from "sonner";
 import { Check, Search, X } from "lucide-react";
+import { t as tr } from "@/lib/i18n";
 
 type Person = { id: string; username: string; avatar_url?: string | null };
 
+// Подписи по-русски — это ключи словаря, переводятся в месте показа.
 const MODES: { value: NonNullable<Profile["saved_visibility"]>; label: string; hint: string }[] = [
   { value: "all", label: "Все", hint: "Сохранёнки видит любой, кто открыл профиль" },
   { value: "selected", label: "Избранные люди", hint: "Только те, кого вы добавили в список" },
@@ -62,7 +64,7 @@ const ProfileSavedAccess = () => {
     try {
       await api.updateProfile(prev.id, { saved_visibility: value });
     } catch {
-      toast.error("Не удалось сохранить");
+      toast.error(tr("Не удалось сохранить"));
       setProfile(prev); writeCache("user", prev);
     }
   };
@@ -95,7 +97,7 @@ const ProfileSavedAccess = () => {
     setQuery(""); setByNick([]);
     try { await api.addSavedViewer(p.id); }
     catch (e: any) {
-      toast.error(e?.message || "Не получилось");
+      toast.error(e?.message || tr("Не получилось"));
       setViewers((l) => (l || []).filter((v) => v.id !== p.id));
     }
   };
@@ -104,19 +106,19 @@ const ProfileSavedAccess = () => {
     const before = viewers || [];
     setViewers(before.filter((v) => v.id !== p.id));
     try { await api.removeSavedViewer(p.id); }
-    catch { toast.error("Не получилось"); setViewers(before); }
+    catch { toast.error(tr("Не получилось")); setViewers(before); }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Кто видит сохранёнки" />
+      <ScreenHeader title={tr("Кто видит сохранёнки")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <SettingsCard>
           {MODES.map((m) => (
             <SettingsRow
               key={m.value}
-              label={m.label}
-              hint={m.hint}
+              label={tr(m.label)}
+              hint={tr(m.hint)}
               onClick={() => void setMode(m.value)}
               trailing={mode === m.value ? <Check className="w-5 h-5 text-primary shrink-0" /> : undefined}
             />
@@ -125,17 +127,17 @@ const ProfileSavedAccess = () => {
 
         {mode === "selected" && (
           <>
-            <p className="px-1 pt-2 text-small text-subtle">Кому открыто</p>
+            <p className="px-1 pt-2 text-small text-subtle">{tr("Кому открыто")}</p>
             <SettingsCard>
               {viewers === null ? (
-                <div className="px-4 py-4 text-small text-subtle">Загрузка…</div>
+                <div className="px-4 py-4 text-small text-subtle">{tr("Загрузка…")}</div>
               ) : viewers.length === 0 ? (
-                <div className="px-4 py-4 text-small text-subtle">Пока никого. Сохранёнки видите только вы — найдите человека ниже и добавьте.</div>
+                <div className="px-4 py-4 text-small text-subtle">{tr("Пока никого. Сохранёнки видите только вы — найдите человека ниже и добавьте.")}</div>
               ) : viewers.map((p) => (
                 <div key={p.id} className="min-h-14 px-4 py-2 flex items-center gap-3">
                   <Aura active={!!(p as { is_online?: boolean }).is_online} owner={p as never} size={36}><Identicon id={p.id} avatarUrl={p.avatar_url} className="w-9 h-9 rounded-md shrink-0" /></Aura>
                   <span className="flex-1 text-body truncate">{p.username}</span>
-                  <button type="button" onClick={() => void remove(p)} className="text-small text-primary active:opacity-60">Убрать</button>
+                  <button type="button" onClick={() => void remove(p)} className="text-small text-primary active:opacity-60">{tr("Убрать")}</button>
                 </div>
               ))}
             </SettingsCard>
@@ -146,22 +148,22 @@ const ProfileSavedAccess = () => {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Имя или ник"
+                  placeholder={tr("Имя или ник")}
                   className="flex-1 bg-transparent outline-none text-body min-w-0"
-                  aria-label="Поиск человека"
+                  aria-label={tr("Поиск человека")}
                 />
                 {query && (
-                  <button type="button" onClick={() => setQuery("")} className="text-subtle" aria-label="Очистить">
+                  <button type="button" onClick={() => setQuery("")} className="text-subtle" aria-label={tr("Очистить")}>
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              {found.length === 0 && searching && <p className="text-small text-subtle px-1">Ищу…</p>}
+              {found.length === 0 && searching && <p className="text-small text-subtle px-1">{tr("Ищу…")}</p>}
               {found.length === 0 && !searching && (
                 <p className="text-small text-subtle px-1">
                   {q
-                    ? "Никого не нашлось. С кем переписки ещё не было — введите ник целиком."
-                    : "Здесь люди, с которыми у вас есть переписка. Кого нет в списке — введите его ник целиком."}
+                    ? tr("Никого не нашлось. С кем переписки ещё не было — введите ник целиком.")
+                    : tr("Здесь люди, с которыми у вас есть переписка. Кого нет в списке — введите его ник целиком.")}
                 </p>
               )}
               {found.map((p) => (
@@ -174,7 +176,7 @@ const ProfileSavedAccess = () => {
                   >
                     <Aura active={!!(p as { is_online?: boolean }).is_online} owner={p as never} size={32}><Identicon id={p.id} avatarUrl={p.avatar_url} className="w-8 h-8 rounded-md shrink-0" /></Aura>
                     <span className="flex-1 text-body truncate">{p.username}</span>
-                    <span className="text-small text-subtle">добавить</span>
+                    <span className="text-small text-subtle">{tr("добавить")}</span>
                   </button>
               ))}
             </div>

@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t as tr } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -43,7 +43,7 @@ const ProfileSecretTransfer = () => {
   const [busy, setBusy] = useState(false);
 
   const startReceive = async () => {
-    if (!secretSupported()) { toast.error("На этом устройстве секретные чаты не поддерживаются"); return; }
+    if (!secretSupported()) { toast.error(tr("На этом устройстве секретные чаты не поддерживаются")); return; }
     setBusy(true); setExpired(false);
     try {
       const kp = await transferKeyPair();
@@ -54,7 +54,7 @@ const ProfileSecretTransfer = () => {
       const link = `${PUBLIC_ORIGIN}/kt/${s.id}#${encodeURIComponent(kp.pub)}`;
       setQr(await QRCode.toDataURL(link, { margin: 1, width: 260, errorCorrectionLevel: "M" }));
       setMode("receive");
-    } catch (e: any) { toast.error(e?.message || "Не удалось открыть сеанс"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не удалось открыть сеанс")); }
     finally { setBusy(false); }
   };
 
@@ -71,15 +71,15 @@ const ProfileSecretTransfer = () => {
         const r = await api.pollKeyTransfer(session.id);
         if (r.ready && r.blob && r.old_pub && privRef.current) {
           stop = true;
-          if (r.pub && r.pub !== session.pub) { toast.error("Ключ сеанса не совпадает — перенос отменён"); setExpired(true); return; }
+          if (r.pub && r.pub !== session.pub) { toast.error(tr("Ключ сеанса не совпадает — перенос отменён")); setExpired(true); return; }
           const list = await openKeys(session.id, privRef.current, r.old_pub, r.blob);
           const n = await importChatKeys(list);
-          toast.success(n ? `Перенесено секретных чатов: ${n}` : "Ключей для переноса не нашлось");
+          toast.success(n ? tr("Перенесено секретных чатов: {n}", { n }) : tr("Ключей для переноса не нашлось"));
           navigate("/chat", { replace: true });
           return;
         }
       } catch (e: any) {
-        stop = true; setExpired(true); toast.error(e?.message || "Сеанс истёк");
+        stop = true; setExpired(true); toast.error(e?.message || tr("Сеанс истёк"));
         return;
       }
       setTimeout(tick, 3000);
@@ -99,10 +99,10 @@ const ProfileSecretTransfer = () => {
     setBusy(true);
     try {
       const s = await api.lookupKeyTransfer(ref);
-      if (linkPub && s.pub !== linkPub) throw new Error("Ключ в QR не совпадает с сеансом — перенос отменён");
+      if (linkPub && s.pub !== linkPub) throw new Error(tr("Ключ в QR не совпадает с сеансом — перенос отменён"));
       setTarget(s);
       setTargetCheck(await transferCode(s.pub));
-    } catch (e: any) { toast.error(e?.message || "Сеанс не найден"); }
+    } catch (e: any) { toast.error(e?.message || tr("Сеанс не найден")); }
     finally { setBusy(false); }
   };
   useEffect(() => { if (linkId) void lookup(linkId); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [linkId]);
@@ -118,7 +118,7 @@ const ProfileSecretTransfer = () => {
       const blob = await sealKeys(target.id, kp.priv, target.pub, keys);
       await api.sendKeyTransferBlob(target.id, blob, kp.pub, keys.map((k) => k.chatId));
       setSent({ n: keys.length, skipped });
-    } catch (e: any) { toast.error(e?.message || "Не удалось отправить ключи"); }
+    } catch (e: any) { toast.error(e?.message || tr("Не удалось отправить ключи")); }
     finally { setBusy(false); }
   };
 
@@ -127,24 +127,23 @@ const ProfileSecretTransfer = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Перенос секретных чатов" />
+      <ScreenHeader title={tr("Перенос секретных чатов")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {mode === "pick" && (
           <>
             <div className={card}>
-              <p className="text-body font-medium flex items-center gap-2"><KeyRound className="w-4 h-4" /> Ключи живут только на устройствах</p>
+              <p className="text-body font-medium flex items-center gap-2"><KeyRound className="w-4 h-4" /> {tr("Ключи живут только на устройствах")}</p>
               <p className="text-small text-subtle">
-                Секретный чат читается там, где его создали или приняли. Чтобы продолжить его на другом своём устройстве,
-                ключи переносятся запечатанными: сервер видит только шифротекст, а QR и код нужны лишь для проверки.
+                {tr("Секретный чат читается там, где его создали или приняли. Чтобы продолжить его на другом своём устройстве, ключи переносятся запечатанными: сервер видит только шифротекст, а QR и код нужны лишь для проверки.")}
               </p>
             </div>
             <button type="button" onClick={startReceive} disabled={busy} className={`${card} w-full text-left active:opacity-80`}>
-              <p className="text-body font-medium flex items-center gap-2"><Smartphone className="w-4 h-4" /> Получить ключи на это устройство</p>
-              <p className="text-small text-subtle">Это устройство новое. Покажем QR и код, которые нужно открыть там, где чаты уже читаются.</p>
+              <p className="text-body font-medium flex items-center gap-2"><Smartphone className="w-4 h-4" /> {tr("Получить ключи на это устройство")}</p>
+              <p className="text-small text-subtle">{tr("Это устройство новое. Покажем QR и код, которые нужно открыть там, где чаты уже читаются.")}</p>
             </button>
             <button type="button" onClick={() => setMode("give")} className={`${card} w-full text-left active:opacity-80`}>
-              <p className="text-body font-medium flex items-center gap-2"><Send className="w-4 h-4" /> Отправить ключи с этого устройства</p>
-              <p className="text-small text-subtle">Здесь чаты читаются. Введите код с нового устройства или отсканируйте его QR камерой телефона.</p>
+              <p className="text-body font-medium flex items-center gap-2"><Send className="w-4 h-4" /> {tr("Отправить ключи с этого устройства")}</p>
+              <p className="text-small text-subtle">{tr("Здесь чаты читаются. Введите код с нового устройства или отсканируйте его QR камерой телефона.")}</p>
             </button>
           </>
         )}
@@ -153,18 +152,18 @@ const ProfileSecretTransfer = () => {
           <div className={card}>
             {expired ? (
               <>
-                <p className="text-body">Сеанс истёк: ключи не пришли за 10 минут.</p>
-                <Button type="button" className="w-full h-12" onClick={startReceive} disabled={busy}>Начать заново</Button>
+                <p className="text-body">{tr("Сеанс истёк: ключи не пришли за 10 минут.")}</p>
+                <Button type="button" className="w-full h-12" onClick={startReceive} disabled={busy}>{tr("Начать заново")}</Button>
               </>
             ) : (
               <>
-                <p className="text-small text-subtle">На устройстве, где секретные чаты читаются: Конфиденциальность → Перенести секретные чаты → «Отправить ключи». Отсканируйте QR камерой телефона или введите код.</p>
-                {qr && <img src={qr} alt="QR для переноса" className="mx-auto rounded-lg bg-white p-2" width={260} height={260} />}
-                <p className="text-center text-small text-subtle">Код сеанса</p>
+                <p className="text-small text-subtle">{tr("На устройстве, где секретные чаты читаются: Конфиденциальность → Перенести секретные чаты → «Отправить ключи». Отсканируйте QR камерой телефона или введите код.")}</p>
+                {qr && <img src={qr} alt={tr("QR для переноса")} className="mx-auto rounded-lg bg-white p-2" width={260} height={260} />}
+                <p className="text-center text-small text-subtle">{tr("Код сеанса")}</p>
                 <p className="text-center text-[28px] font-semibold tracking-[0.3em] font-mono">{session.code}</p>
-                <p className="text-center text-small text-subtle">Код проверки — должен совпасть на обоих экранах</p>
+                <p className="text-center text-small text-subtle">{tr("Код проверки — должен совпасть на обоих экранах")}</p>
                 <p className="text-center text-xl font-mono tracking-[0.2em]">{check}</p>
-                <p className="text-center text-caption text-subtle">Ждём ключи…</p>
+                <p className="text-center text-caption text-subtle">{tr("Ждём ключи…")}</p>
               </>
             )}
           </div>
@@ -172,30 +171,30 @@ const ProfileSecretTransfer = () => {
 
         {mode === "give" && !target && (
           <form onSubmit={(e) => { e.preventDefault(); void lookup(code); }} className={card}>
-            <p className="text-small text-subtle">{onlyChat ? "Переносим ключ этого чата. " : ""}Код сеанса с нового устройства — 6 цифр под его QR. На нём: Конфиденциальность → Перенести секретные чаты → «Получить ключи», или откройте там этот чат.</p>
+            <p className="text-small text-subtle">{onlyChat ? tr("Переносим ключ этого чата.") + " " : ""}{tr("Код сеанса с нового устройства — 6 цифр под его QR. На нём: Конфиденциальность → Перенести секретные чаты → «Получить ключи», или откройте там этот чат.")}</p>
             <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="000000"
               className={`${inputCls} tracking-[0.3em] text-center text-lg`} />
-            <Button type="submit" className="w-full h-12" disabled={busy || code.length < 6}>{busy ? "Ищу…" : "Найти сеанс"}</Button>
+            <Button type="submit" className="w-full h-12" disabled={busy || code.length < 6}>{busy ? tr("Ищу…") : tr("Найти сеанс")}</Button>
           </form>
         )}
 
         {mode === "give" && target && !sent && (
           <div className={card}>
-            <p className="text-small text-subtle">Сверьте код проверки с экраном нового устройства. Если он другой — не отправляйте: кто-то подменил сеанс.</p>
+            <p className="text-small text-subtle">{tr("Сверьте код проверки с экраном нового устройства. Если он другой — не отправляйте: кто-то подменил сеанс.")}</p>
             <p className="text-center text-xl font-mono tracking-[0.2em]">{targetCheck}</p>
-            {linkPub && <p className="text-center text-caption text-subtle">Ключ пришёл из QR — совпадение проверено автоматически.</p>}
-            <Button type="button" className="w-full h-12" disabled={busy} onClick={give}>{busy ? "Отправляю…" : "Совпадает — отправить ключи"}</Button>
-            <button type="button" className="w-full text-small text-subtle py-2" onClick={() => { setTarget(null); setCode(""); if (linkId) navigate("/profile/secret-transfer", { replace: true }); }}>{t("Отмена")}</button>
+            {linkPub && <p className="text-center text-caption text-subtle">{tr("Ключ пришёл из QR — совпадение проверено автоматически.")}</p>}
+            <Button type="button" className="w-full h-12" disabled={busy} onClick={give}>{busy ? tr("Отправляю…") : tr("Совпадает — отправить ключи")}</Button>
+            <button type="button" className="w-full text-small text-subtle py-2" onClick={() => { setTarget(null); setCode(""); if (linkId) navigate("/profile/secret-transfer", { replace: true }); }}>{tr("Отмена")}</button>
           </div>
         )}
 
         {sent && (
           <div className={card}>
-            <p className="text-body">{onlyChat ? (sent.n ? "Ключ чата отправлен." : "Ключ этого чата отдать нельзя.") : `Отправлено секретных чатов: ${sent.n}.`}</p>
-            {sent.skipped > 0 && <p className="text-small text-subtle">Не перенеслись: {sent.skipped}. Это чаты, созданные до обновления — их ключи устройство отдать не может. Создайте такой чат заново.</p>}
-            <p className="text-small text-subtle">Собеседникам ушло сообщение, что вы добавили устройство. Новое устройство подхватит чаты само.</p>
-            <Button type="button" className="w-full h-12" onClick={() => navigate(-1)}>{t("Готово")}</Button>
+            <p className="text-body">{onlyChat ? (sent.n ? tr("Ключ чата отправлен.") : tr("Ключ этого чата отдать нельзя.")) : tr("Отправлено секретных чатов: {n}.", { n: sent.n })}</p>
+            {sent.skipped > 0 && <p className="text-small text-subtle">{tr("Не перенеслись: {n}. Это чаты, созданные до обновления — их ключи устройство отдать не может. Создайте такой чат заново.", { n: sent.skipped })}</p>}
+            <p className="text-small text-subtle">{tr("Собеседникам ушло сообщение, что вы добавили устройство. Новое устройство подхватит чаты само.")}</p>
+            <Button type="button" className="w-full h-12" onClick={() => navigate(-1)}>{tr("Готово")}</Button>
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/api/client";
 import { clearSessionCache } from "@/lib/session-cache";
 import { clearMessageCache } from "@/lib/messageCache";
+import { t } from "@/lib/i18n";
 
 /**
  * Удаление аккаунта. Требование App Store (5.1.1(v)): аккаунт, созданный в
@@ -27,28 +28,26 @@ const ProfileDeleteAccount = () => {
       clearSessionCache();
       void clearMessageCache();
       await api.logout();
-      toast.success("Аккаунт удалён");
+      toast.success(t("Аккаунт удалён"));
       navigate("/auth", { replace: true });
     } catch (err: any) {
-      toast.error(err?.message || "Не удалось удалить аккаунт");
+      toast.error(err?.message || t("Не удалось удалить аккаунт"));
       setBusy(false);
     }
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title="Удалить аккаунт" />
+      <ScreenHeader title={t("Удалить аккаунт")} />
       <form onSubmit={submit} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-2">
-          <p className="text-body font-medium text-destructive flex items-center gap-2"><Trash2 className="w-4 h-4" /> Это навсегда</p>
+          <p className="text-body font-medium text-destructive flex items-center gap-2"><Trash2 className="w-4 h-4" /> {t("Это навсегда")}</p>
           <p className="text-small text-subtle">
-            Сразу и без возможности восстановить удалятся: профиль, все ваши сообщения, личные чаты,
-            «Избранное», ваши каналы, боты, паки стикеров и звуков. Группы останутся у участников,
-            но без ваших сообщений. Логин освободится.
+            {t("Сразу и без возможности восстановить удалятся: профиль, все ваши сообщения, личные чаты, «Избранное», ваши каналы, боты, паки стикеров и звуков. Группы останутся у участников, но без ваших сообщений. Логин освободится.")}
           </p>
         </div>
         <div className="space-y-2">
-          <label htmlFor="del-password" className="text-small text-subtle">Пароль от аккаунта</label>
+          <label htmlFor="del-password" className="text-small text-subtle">{t("Пароль от аккаунта")}</label>
           <Input
             id="del-password"
             type="password"
@@ -63,7 +62,7 @@ const ProfileDeleteAccount = () => {
           disabled={!password || busy}
           className="w-full h-12 rounded-md bg-destructive text-destructive-foreground font-semibold active:opacity-90 disabled:opacity-40"
         >
-          {busy ? "Удаляю…" : "Удалить аккаунт навсегда"}
+          {busy ? t("Удаляю…") : t("Удалить аккаунт навсегда")}
         </button>
       </form>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { api, actionName, type ChatActionInfo } from "@/api/client";
-import { getLang } from "@/lib/i18n";
+import { getLang, t } from "@/lib/i18n";
 
 let cache: ChatActionInfo[] | null = null;
 /** Каталог действий — один раз за сессию (меняется только в админке). */
@@ -15,7 +15,7 @@ export async function loadActions(): Promise<ChatActionInfo[]> {
 export const ActionGrid = ({ onPick, compact }: { onPick: (a: ChatActionInfo) => void; compact?: boolean }) => {
   const [list, setList] = useState<ChatActionInfo[]>(cache || []);
   useEffect(() => { loadActions().then(setList).catch(() => {}); }, []);
-  if (!list.length) return <p className="text-sm text-muted-foreground text-center py-6">Загрузка…</p>;
+  if (!list.length) return <p className="text-sm text-muted-foreground text-center py-6">{t("Загрузка…")}</p>;
   return (
     // Узкий экран — одна колонка: длинные названия («Послать лучи добра»,
     // «Twirl at the temple») иначе обрезались многоточием.
@@ -37,7 +37,7 @@ const ActionSheet = ({ title, onClose, onPick }: { title: string; onClose: () =>
     <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[420px] max-h-[70%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <span className="font-semibold flex-1 truncate">{title}</span>
-        <button type="button" onClick={onClose} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+        <button type="button" onClick={onClose} aria-label={t("Закрыть")}><X className="w-5 h-5" /></button>
       </div>
       <div className="flex-1 overflow-y-auto"><ActionGrid onPick={onPick} /></div>
     </div>

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type VibeLevel } from "@/api/client";
 import { loadVibeLevels, vibeState } from "@/lib/vibeLevels";
+import { t } from "@/lib/i18n";
 
 /**
  * Профиль → Уровни вайбометра (только админ). С порога шкала и число в
@@ -24,7 +25,7 @@ export default function ProfileVibeLevels() {
     api.getVibeLevels().then((c) => {
       setBar(String(c.bar_length));
       setRows(c.levels.map((l) => ({ ...l, key: newKey() })));
-    }).catch(() => toast.error("Не удалось загрузить уровни"));
+    }).catch(() => toast.error(t("Не удалось загрузить уровни")));
   }, []);
 
   const patch = (key: string, p: Partial<VibeLevel>) => setRows((r) => r && r.map((x) => (x.key === key ? { ...x, ...p } : x)));
@@ -45,9 +46,9 @@ export default function ProfileVibeLevels() {
       setRows(saved.levels.map((l) => ({ ...l, key: newKey() })));
       setBar(String(saved.bar_length));
       void loadVibeLevels(true);
-      toast.success("Уровни сохранены");
+      toast.success(t("Уровни сохранены"));
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось сохранить");
+      toast.error(e?.message || t("Не удалось сохранить"));
     } finally { setBusy(false); }
   };
 
@@ -58,11 +59,11 @@ export default function ProfileVibeLevels() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Уровни вайбометра"
+        title={t("Уровни вайбометра")}
         right={
           <button type="button" onClick={save} disabled={busy || !rows}
             className="px-2 h-10 text-body font-medium text-primary active:opacity-60 disabled:opacity-40">
-            {busy ? "Сохраняю…" : "Готово"}
+            {busy ? t("Сохраняю…") : t("Готово")}
           </button>
         }
       />
@@ -71,62 +72,62 @@ export default function ProfileVibeLevels() {
           <section className="ui-card rounded-lg bg-surface-2 border border-border p-4 space-y-3">
             <label className="flex items-center gap-3">
               <span className="flex-1">
-                <span className="block text-body">Длина шкалы</span>
-                <span className="block text-caption text-subtle">Баллов на полную шкалу на последнем уровне (и до первого)</span>
+                <span className="block text-body">{t("Длина шкалы")}</span>
+                <span className="block text-caption text-subtle">{t("Баллов на полную шкалу на последнем уровне (и до первого)")}</span>
               </span>
               <input type="number" min={1} inputMode="numeric" value={bar} onChange={(e) => setBar(e.target.value)}
                 className="w-24 h-10 px-3 rounded-md bg-background border border-border text-body text-right tabular-nums" />
             </label>
             <div className="border-t border-border pt-3">
               <div className="flex items-center gap-3">
-                <span className="flex-1 text-small text-subtle">Предпросмотр для</span>
+                <span className="flex-1 text-small text-subtle">{t("Предпросмотр для")}</span>
                 <input type="number" min={0} inputMode="numeric" value={preview} onChange={(e) => setPreview(e.target.value)}
                   className="w-24 h-9 px-3 rounded-md bg-background border border-border text-small text-right tabular-nums" />
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <span className="flex-1 text-small" style={st.level ? { color: st.level.color } : undefined}>{st.level ? st.level.name : "Без уровня"}</span>
+                <span className="flex-1 text-small" style={st.level ? { color: st.level.color } : undefined}>{st.level ? t(st.level.name) : t("Без уровня")}</span>
                 <span className="text-small tabular-nums" style={st.level ? { color: st.level.color } : undefined}>{pv}</span>
               </div>
               <div className="mt-2 h-2 rounded-full bg-background">
                 <div className={`h-full rounded-full ${st.level ? "" : "bg-primary"} ${st.glow ? "vibe-glow-bar" : ""}`}
                   style={{ width: `${Math.max(4, st.fill * 100)}%`, ...(st.level ? { background: st.level.color, ["--vibe-c" as string]: st.level.color } : {}) }} />
               </div>
-              <p className="mt-1.5 text-caption text-subtle">{st.next ? `Следующий — «${st.next.name}» с ${st.next.min_vibe}` : "Последний уровень"}</p>
+              <p className="mt-1.5 text-caption text-subtle">{st.next ? t("Следующий — «{name}» с {n}", { name: t(st.next.name), n: st.next.min_vibe }) : t("Последний уровень")}</p>
             </div>
           </section>
 
           {rows === null ? (
-            <p className="py-8 text-center text-small text-subtle">Загружаю…</p>
+            <p className="py-8 text-center text-small text-subtle">{t("Загружаю…")}</p>
           ) : (
             <>
-              {rows.length === 0 && <p className="py-4 text-center text-small text-subtle">Уровней нет — шкала просто заполняется до длины шкалы.</p>}
+              {rows.length === 0 && <p className="py-4 text-center text-small text-subtle">{t("Уровней нет — шкала просто заполняется до длины шкалы.")}</p>}
               {[...rows].sort((a, b) => a.min_vibe - b.min_vibe).map((r) => (
                 <section key={r.key} className="ui-card rounded-lg bg-surface-2 border border-border p-3.5 space-y-2.5">
                   <div className="flex items-center gap-2">
-                    <input type="color" value={r.color} onChange={(e) => patch(r.key, { color: e.target.value })} aria-label="Цвет"
+                    <input type="color" value={r.color} onChange={(e) => patch(r.key, { color: e.target.value })} aria-label={t("Цвет")}
                       className="w-10 h-10 shrink-0 rounded-md border border-border bg-transparent p-0.5" />
-                    <input value={r.name} maxLength={40} onChange={(e) => patch(r.key, { name: e.target.value })} placeholder="Название, например «Бронза»"
+                    <input value={r.name} maxLength={40} onChange={(e) => patch(r.key, { name: e.target.value })} placeholder={t("Название, например «Бронза»")}
                       className="flex-1 min-w-0 h-10 px-3 rounded-md bg-background border border-border text-body" />
-                    <button type="button" onClick={() => setRows((x) => x && x.filter((y) => y.key !== r.key))} aria-label="Удалить уровень"
+                    <button type="button" onClick={() => setRows((x) => x && x.filter((y) => y.key !== r.key))} aria-label={t("Удалить уровень")}
                       className="w-10 h-10 shrink-0 rounded-md bg-surface-4 text-destructive flex items-center justify-center active:opacity-80">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-small text-subtle">С</span>
+                    <span className="text-small text-subtle">{t("С")}</span>
                     <input type="number" min={1} inputMode="numeric" value={r.min_vibe || ""} onChange={(e) => patch(r.key, { min_vibe: parseInt(e.target.value, 10) || 0 })}
                       className="w-24 h-9 px-3 rounded-md bg-background border border-border text-small text-right tabular-nums" />
-                    <span className="text-small text-subtle flex-1">баллов</span>
+                    <span className="text-small text-subtle flex-1">{t("баллов")}</span>
                     <label className="flex items-center gap-2 text-small">
                       <input type="checkbox" checked={r.glow} onChange={(e) => patch(r.key, { glow: e.target.checked })} className="w-4 h-4 accent-[hsl(var(--primary))]" />
-                      Свечение
+                      {t("Свечение")}
                     </label>
                   </div>
                 </section>
               ))}
               <button type="button" onClick={add}
                 className="w-full h-11 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:bg-surface-3">
-                <Plus className="w-4 h-4" />Добавить уровень
+                <Plus className="w-4 h-4" />{t("Добавить уровень")}
               </button>
             </>
           )}

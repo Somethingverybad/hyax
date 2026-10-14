@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Copy } from "lucide-react";
 import { Linkify } from "./linkify";
+import { t as tr } from "@/lib/i18n";
 
 /**
  * Форматирование текста сообщений.
@@ -210,7 +211,7 @@ function Scramble({ text, seed, children }: { text: string; seed: number; childr
       className={state === "mixed" ? "fmt-scramble" : undefined}
       onClick={(e) => { if (state === "mixed") { e.stopPropagation(); run(); } }}
       role={state === "mixed" ? "button" : undefined}
-      title={state === "mixed" ? "Нажмите, чтобы собрать" : undefined}
+      title={state === "mixed" ? tr("Нажмите, чтобы собрать") : undefined}
     >
       {children(shown)}
     </span>
@@ -221,14 +222,14 @@ function Spoiler({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   if (open) return <span className="fmt-spoiler-open">{children}</span>;
   return (
-    <span className="fmt-spoiler" role="button" aria-label="Спойлер" onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
+    <span className="fmt-spoiler" role="button" aria-label={tr("Спойлер")} onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
       <span className="fmt-spoiler-text">{children}</span>
     </span>
   );
 }
 
 const copyCode = (text: string) => {
-  navigator.clipboard?.writeText(text).then(() => toast.success("Код скопирован")).catch(() => {});
+  navigator.clipboard?.writeText(text).then(() => toast.success(tr("Код скопирован"))).catch(() => {});
 };
 
 /**

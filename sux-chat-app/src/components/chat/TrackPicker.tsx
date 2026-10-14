@@ -1,3 +1,4 @@
+import { t as tr } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Music2, Search, X } from "lucide-react";
@@ -34,15 +35,15 @@ const TrackPicker = ({ onPick, onClose }: { onPick: (t: PlaylistTrack) => void; 
         <div className="shrink-0 px-4 pt-4 pb-2 space-y-2">
           <div className="md:hidden mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
           <div className="flex items-center gap-2">
-            <p className="text-h2 flex-1">Из моей музыки</p>
-            <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label="Закрыть"><X className="w-4 h-4" /></button>
+            <p className="text-h2 flex-1">{tr("Из моей музыки")}</p>
+            <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label={tr("Закрыть")}><X className="w-4 h-4" /></button>
           </div>
           <div className="relative">
             <Search className="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Поиск по названию или исполнителю"
+              placeholder={tr("Поиск по названию или исполнителю")}
               autoFocus
               className="w-full h-10 pl-9 pr-3 rounded-md bg-surface-4 text-body outline-none"
             />
@@ -51,11 +52,11 @@ const TrackPicker = ({ onPick, onClose }: { onPick: (t: PlaylistTrack) => void; 
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(var(--sab)+16px)] md:pb-4 space-y-1.5">
           {tracks === null ? (
-            <p className="text-small text-subtle py-2">Загрузка…</p>
+            <p className="text-small text-subtle py-2">{tr("Загрузка…")}</p>
           ) : tracks.length === 0 ? (
-            <p className="text-small text-subtle py-2">В плейлистах пока пусто — добавляйте музыку из сообщений через «В плейлист».</p>
+            <p className="text-small text-subtle py-2">{tr("В плейлистах пока пусто — добавляйте музыку из сообщений через «В плейлист».")}</p>
           ) : shown.length === 0 ? (
-            <p className="text-small text-subtle py-2">Ничего не нашлось</p>
+            <p className="text-small text-subtle py-2">{tr("Ничего не нашлось")}</p>
           ) : shown.map((t) => (
             <button
               key={t.id}
@@ -67,7 +68,7 @@ const TrackPicker = ({ onPick, onClose }: { onPick: (t: PlaylistTrack) => void; 
               <span className="min-w-0 flex-1">
                 <span className="block text-body truncate">{t.title}</span>
                 <span className="block text-caption text-subtle truncate">
-                  {[t.artist, t.duration ? fmtTime(t.duration) : "", t.playlist_name].filter(Boolean).join(" · ")}
+                  {[t.artist, t.duration ? fmtTime(t.duration) : "", t.playlist_name === "Моя музыка" ? tr(t.playlist_name) : t.playlist_name].filter(Boolean).join(" · ")}
                 </span>
               </span>
             </button>

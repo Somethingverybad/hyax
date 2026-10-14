@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X, Download, RefreshCw } from "lucide-react";
 import { checkForUpdate, startUpdate, describeUpdateError, type UpdateInfo } from "@/lib/updateCheck";
 import { toast } from "sonner";
+import { t } from "@/lib/i18n";
 
 const DISMISS_KEY = "update_dismissed_version";
 
@@ -69,7 +70,7 @@ const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
         setBusy(true);
         const r = await api.downloadUpdate();
         setBusy(false);
-        if (!r?.ok) toast.error("Не удалось скачать обновление");
+        if (!r?.ok) toast.error(t("Не удалось скачать обновление"));
       } else if (upd.state === "downloaded") {
         api.applyUpdate();
       }
@@ -78,14 +79,14 @@ const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
       <div className={shell}>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">
-            {upd.state === "downloaded" ? "Обновление готово" : "Вжух — и новая версия, закачаешься"}
+            {upd.state === "downloaded" ? t("Обновление готово") : t("Вжух — и новая версия, закачаешься")}
           </div>
           <div className="text-xs opacity-80 truncate">
             {upd.state === "downloading"
-              ? `Качаю… ${upd.percent}%`
+              ? t("Качаю… {percent}%", { percent: upd.percent })
               : upd.state === "downloaded"
-              ? `Версия ${upd.version} установится при перезапуске`
-              : `Версия ${upd.version}${"notes" in upd && upd.notes ? ` — ${upd.notes}` : ""}`}
+              ? t("Версия {version} установится при перезапуске", { version: upd.version })
+              : `${t("Версия {version}", { version: upd.version })}${"notes" in upd && upd.notes ? ` — ${upd.notes}` : ""}`}
           </div>
         </div>
         {upd.state !== "downloading" && (
@@ -96,11 +97,11 @@ const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
             className="shrink-0 flex items-center gap-1 bg-primary-foreground text-primary text-sm font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
           >
             {upd.state === "downloaded" ? <RefreshCw className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-            {upd.state === "downloaded" ? "Перезапустить" : busy ? "Качаю…" : "Обновить"}
+            {upd.state === "downloaded" ? t("Перезапустить") : busy ? t("Качаю…") : t("Обновить")}
           </button>
         )}
         {upd.state !== "downloading" && (
-          <button type="button" onClick={close} className="shrink-0 p-1.5" aria-label="Закрыть">
+          <button type="button" onClick={close} className="shrink-0 p-1.5" aria-label={t("Закрыть")}>
             <X className="w-4 h-4" />
           </button>
         )}
@@ -117,9 +118,9 @@ const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
     setBusy(true);
     try {
       const r = await startUpdate(info);
-      if (r.result === "installer") toast.success("Установщик запущен — следуй подсказкам");
-      else if (r.result === "restart") toast.success("Обновление установлено — перезапускаюсь");
-      else if (r.result === "cancelled") toast("Установка отменена");
+      if (r.result === "installer") toast.success(t("Установщик запущен — следуй подсказкам"));
+      else if (r.result === "restart") toast.success(t("Обновление установлено — перезапускаюсь"));
+      else if (r.result === "cancelled") toast(t("Установка отменена"));
       else if (r.result === "error") toast.error(describeUpdateError(r), { duration: 12000 });
     } finally {
       setBusy(false);
@@ -131,9 +132,9 @@ const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
   return (
     <div className={shell}>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">Вжух — и новая версия, закачаешься</div>
+        <div className="text-sm font-semibold truncate">{t("Вжух — и новая версия, закачаешься")}</div>
         <div className="text-xs opacity-80 truncate">
-          Версия {info.version}{info.notes ? ` — ${info.notes}` : ""}
+          {t("Версия {version}", { version: info.version })}{info.notes ? ` — ${info.notes}` : ""}
         </div>
       </div>
       {canAct && (
@@ -144,10 +145,10 @@ const UpdateBanner = ({ rounded }: { rounded?: boolean } = {}) => {
           className="shrink-0 flex items-center gap-1 bg-primary-foreground text-primary text-sm font-semibold px-3 py-1.5 rounded-full disabled:opacity-60"
         >
           <Download className="w-4 h-4" />
-          {info.desktop ? (busy ? "Качаю…" : "Обновить") : "Скачать"}
+          {info.desktop ? (busy ? t("Качаю…") : t("Обновить")) : t("Скачать")}
         </button>
       )}
-      <button type="button" onClick={close} className="shrink-0 p-1.5" aria-label="Закрыть">
+      <button type="button" onClick={close} className="shrink-0 p-1.5" aria-label={t("Закрыть")}>
         <X className="w-4 h-4" />
       </button>
     </div>

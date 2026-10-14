@@ -4,6 +4,7 @@
  * хранится в профиле (Profile.language) и зеркалится в localStorage, чтобы
  * экран входа и первый кадр были на нужном языке до загрузки профиля.
  */
+import { syncNativeLang } from "./nativeLang";
 import en from "./i18n.en";
 import ko from "./i18n.ko";
 
@@ -33,8 +34,17 @@ export function setLang(l: Lang) {
   current = l;
   try { localStorage.setItem(KEY, l); } catch { /* ок */ }
   try { document.documentElement.lang = l; } catch { /* ок */ }
+  notifyShell(l);
   window.dispatchEvent(new CustomEvent("hyax:lang", { detail: l }));
 }
+
+/** Оболочке десктопа (трей, тосты, диалоги main-процесса) и нативу — тот же язык. */
+function notifyShell(l: Lang) {
+  try { (window as any).electronAPI?.setLang?.(l); } catch { /* не десктоп */ }
+  // Нативу (звонки, каналы уведомлений, расширения iOS) — тоже.
+  try { syncNativeLang(l); } catch { /* браузер */ }
+}
+try { notifyShell(current); document.documentElement.lang = current; } catch { /* SSR/тест */ }
 
 /** Язык из профиля (после входа / обновления профиля) — в зеркало. */
 export function applyProfileLang(p: { language?: string | null } | null | undefined) {
@@ -45,7 +55,28 @@ export function applyProfileLang(p: { language?: string | null } | null | undefi
 /** Перевод строки. Плейсхолдеры {name} подставляются из vars. */
 export function t(s: string, vars?: Record<string, string | number>): string {
   let out = (DICT[current] && DICT[current][s]) || s;
-  if (vars) for (const k of Object.keys(vars)) out = out.replace(new RegExp(`\\{${k}\\}`, "g"), String(vars[k]));
+  if (vars) for (const k of Object.keys(vars)) { const v = String(vars[k]); out = out.replace(new RegExp(`\\{${k}\\}`, "g"), () => v); }
+  return out;
+}
+
+/**
+ * Склонение по числу. Формы русские (одна/две/пять), в них можно писать {n}:
+ * tn(n, "{n} подписчик", "{n} подписчика", "{n} подписчиков"). Ключ словаря —
+ * три формы через «|»; в en значение «one|other», в ko — одна форма.
+ */
+export function tn(n: number, one: string, few: string, many: string, vars?: Record<string, string | number>): string {
+  const key = `${one}|${few}|${many}`;
+  const tr = DICT[current] && DICT[current][key];
+  let out: string;
+  if (tr) {
+    const forms = tr.split("|");
+    out = current === "en" ? (Math.abs(n) === 1 ? forms[0] : forms[1] ?? forms[0]) : forms[0];
+  } else {
+    const a = Math.abs(n) % 100, b = a % 10;
+    out = a > 10 && a < 20 ? many : b > 1 && b < 5 ? few : b === 1 ? one : many;
+  }
+  out = out.replace(/\{n\}/g, () => String(n));
+  if (vars) for (const k of Object.keys(vars)) { const v = String(vars[k]); out = out.replace(new RegExp(`\\{${k}\\}`, "g"), () => v); }
   return out;
 }
 

@@ -117,7 +117,8 @@ const Auth = () => {
       } catch {
         // тело не JSON — оставляем исходное сообщение
       }
-      toast.error(String(text));
+      // Тело ответа сервера не проходит через LError — переводим по словарю здесь.
+      toast.error(t(String(text)));
     } finally {
       setLoading(false);
     }
@@ -132,7 +133,7 @@ const Auth = () => {
         <SuprematistBackdrop />
         {/* Девиз в углу, как на макете: три слова столбиком и черта под ними. */}
         <div className="relative text-right text-[11px] leading-[1.45] font-semibold tracking-[0.12em] text-foreground/80">
-          ЛЮДИ.<br />СООБЩЕНИЯ.<br />БЛИЖЕ.
+          {t("ЛЮДИ.")}<br />{t("СООБЩЕНИЯ.")}<br />{t("БЛИЖЕ.")}
           <span className="mt-1.5 ml-auto block w-10 h-[2px] bg-foreground/70" />
         </div>
 
@@ -146,14 +147,14 @@ const Auth = () => {
 
           <div className="text-center mb-2 md:mb-3">
             <h1 className="text-[34px] md:text-[38px] font-extrabold text-foreground leading-none tracking-tight">WYX</h1>
-            <p className="text-caption text-subtle mt-1.5 tracking-[0.22em] uppercase">народный мессенджер</p>
+            <p className="text-caption text-subtle mt-1.5 tracking-[0.22em] uppercase">{t("народный мессенджер")}</p>
             <span className="mt-2.5 mx-auto block w-9 h-[3px] rounded-full bg-foreground/80" />
           </div>
 
           {isLogin ? (
             <AuthQuote className="text-subtle mt-1.5 mb-2 text-small" />
           ) : (
-            <p className="text-subtle text-center mt-1.5 mb-2 text-small">ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!</p>
+            <p className="text-subtle text-center mt-1.5 mb-2 text-small">{t("ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!")}</p>
           )}
         </div>
 
@@ -168,7 +169,7 @@ const Auth = () => {
               <div className="w-full shrink-0 space-y-4 px-0.5">
                 <div className="space-y-2">
                   <Label htmlFor="username" className="text-small font-normal text-subtle">
-                    {isLogin ? "Логин" : t("Имя пользователя")}
+                    {isLogin ? t("Логин") : t("Имя пользователя")}
                   </Label>
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-subtle pointer-events-none" />
@@ -194,7 +195,7 @@ const Auth = () => {
                         type="button"
                         onClick={() => { setUsername(""); usernameRef.current?.focus(); }}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-subtle active:opacity-60"
-                        aria-label="Очистить"
+                        aria-label={t("Очистить")}
                         tabIndex={-1}
                       >
                         <X className="w-4 h-4" />
@@ -247,11 +248,11 @@ const Auth = () => {
                       tabIndex={step === 1 ? 0 : -1}
                     />
                     <span>
-                      Мне есть 17 лет, я принимаю{" "}
+                      {t("Мне есть 17 лет, я принимаю")}{" "}
                       <a href="/terms" onClick={(e) => { e.preventDefault(); setLegal("terms"); }} className="text-primary underline">{t("правила")}</a>
-                      {" "}и{" "}
+                      {" "}{t("и")}{" "}
                       <a href="/privacy" onClick={(e) => { e.preventDefault(); setLegal("privacy"); }} className="text-primary underline">{t("политику конфиденциальности")}</a>.
-                      Недопустимый контент и оскорбления запрещены.
+                      {" "}{t("Недопустимый контент и оскорбления запрещены.")}
                     </span>
                   </label>
                 )}
@@ -281,8 +282,8 @@ const Auth = () => {
             onClick={() => { setIsLogin(!isLogin); setStep(0); setPassword(""); }}
             className="text-body text-subtle"
           >
-            {isLogin ? "Нет аккаунта? " : t("Уже есть аккаунт? ")}
-            <span className="text-primary font-semibold underline underline-offset-4">{isLogin ? "Зарегистрируйтесь" : t("Войдите")}</span>
+            {isLogin ? t("Нет аккаунта? ") : t("Уже есть аккаунт? ")}
+            <span className="text-primary font-semibold underline underline-offset-4">{isLogin ? t("Зарегистрируйтесь") : t("Войдите")}</span>
           </button>
         </div>
         {isLogin && (

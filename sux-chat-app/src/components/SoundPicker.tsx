@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Play, Search, Share2, Square, X } from "lucide-react";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
@@ -16,6 +17,8 @@ import { shareSoundPack } from "@/lib/share";
  * послушать, не выбирая; «Без звука» возвращает обычный.
  */
 const NO_PACK = "Отдельные звуки";
+/** Подпись пака: служебные имена (NO_PACK и серверное «Разное») — переводим, имена паков — как есть. */
+const packLabel = (name: string) => (name === NO_PACK || name === "Разное" ? t(name) : name);
 
 const SoundRow = ({ sound, selected, onPick }: {
   sound: NotificationSoundInfo | null; selected: boolean; onPick: () => void;
@@ -37,7 +40,7 @@ const SoundRow = ({ sound, selected, onPick }: {
         {playing ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </button>
       <button type="button" onClick={onPick} className="flex-1 min-w-0 text-left">
-        <span className="block text-body truncate">{sound ? sound.name : "Без звука"}</span>
+        <span className="block text-body truncate">{sound ? sound.name : t("Без звука")}</span>
       </button>
       {selected && <Check className="w-4 h-4 text-primary shrink-0" />}
     </div>
@@ -62,10 +65,10 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
 
   const share = async (name: string, id: string | null | undefined) => {
     setMenuFor(null);
-    if (!id) { toast.error("У этого пака нет ссылки"); return; }
+    if (!id) { toast.error(t("У этого пака нет ссылки")); return; }
     const r = await shareSoundPack(name, id);
-    if (r === "copied") toast.success("Ссылка скопирована");
-    else if (r === "error") toast.error("Не удалось поделиться");
+    if (r === "copied") toast.success(t("Ссылка скопирована"));
+    else if (r === "error") toast.error(t("Не удалось поделиться"));
   };
 
   useEffect(() => { api.getNotificationSounds().then(setSounds).catch(() => setSounds([])); }, []);
@@ -98,7 +101,7 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
       <div className="w-full md:w-[420px] max-h-[80vh] bg-surface-2 rounded-t-[16px] md:rounded-lg flex flex-col pb-[var(--sab)]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 h-14 shrink-0">
           <span className="text-h2 flex-1 truncate">{title}</span>
-          <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label="Закрыть"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label={t("Закрыть")}><X className="w-4 h-4" /></button>
         </div>
 
         <div className="px-3 pb-2 shrink-0">
@@ -107,13 +110,13 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по звукам и пакам"
+              placeholder={t("Поиск по звукам и пакам")}
               className="flex-1 min-w-0 bg-transparent outline-none text-body"
               autoCapitalize="off"
               autoCorrect="off"
             />
             {query && (
-              <button type="button" onClick={() => setQuery("")} className="p-1 text-subtle" aria-label="Очистить">
+              <button type="button" onClick={() => setQuery("")} className="p-1 text-subtle" aria-label={t("Очистить")}>
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -122,10 +125,10 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
 
         <div className="overflow-y-auto">
           {!q && <SoundRow sound={null} selected={!current} onPick={() => onPick(null)} />}
-          {sounds === null && <p className="px-4 py-6 text-small text-subtle text-center">Загрузка…</p>}
+          {sounds === null && <p className="px-4 py-6 text-small text-subtle text-center">{t("Загрузка…")}</p>}
           {sounds && !found && (
             <p className="px-4 py-6 text-small text-subtle text-center">
-              {q ? "Ничего не нашлось" : "Каталог звуков пуст"}
+              {q ? t("Ничего не нашлось") : t("Каталог звуков пуст")}
             </p>
           )}
 
@@ -155,10 +158,10 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
                   className="w-full sticky top-0 z-10 flex items-center gap-2 px-3 h-10 bg-surface-3 border-b border-border/60 text-left"
                 >
                   <ChevronDown className={cn("w-4 h-4 text-subtle transition-transform", !expanded && "-rotate-90")} />
-                  <span className="flex-1 min-w-0 truncate text-small font-medium">{pack}</span>
+                  <span className="flex-1 min-w-0 truncate text-small font-medium">{packLabel(pack)}</span>
                   <span className="text-caption text-subtle">{list.length}</span>
                   {list[0]?.pack && (
-                    <span role="button" tabIndex={0} aria-label={`Поделиться паком «${pack}»`}
+                    <span role="button" tabIndex={0} aria-label={t("Поделиться паком «{name}»", { name: packLabel(pack) })}
                       onClick={(e) => { e.stopPropagation(); void share(pack, list[0]?.pack); }}
                       onTouchStart={(e) => e.stopPropagation()}
                       className="-mr-1 w-8 h-8 flex items-center justify-center rounded-md text-subtle active:bg-surface-4 active:text-foreground">
@@ -173,9 +176,9 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
                       onClick={() => share(pack, list[0]?.pack)}
                       className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-small font-medium inline-flex items-center gap-1.5"
                     >
-                      <Share2 className="w-4 h-4" /> Поделиться паком
+                      <Share2 className="w-4 h-4" /> {t("Поделиться паком")}
                     </button>
-                    <button type="button" onClick={() => setMenuFor(null)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium">Отмена</button>
+                    <button type="button" onClick={() => setMenuFor(null)} className="h-9 px-3 rounded-md bg-surface-4 text-small font-medium">{t("Отмена")}</button>
                   </div>
                 )}
                 {expanded && list.map((s) => (

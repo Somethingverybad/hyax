@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ScreenHeader from "@/components/ScreenHeader";
 import { APP_NAME, SUPPORT_EMAIL, LEGAL_UPDATED } from "@/lib/brand";
+import { getLang } from "@/lib/i18n";
 
-type Lang = "ru" | "en";
+type Lang = "ru" | "en" | "ko";
 export type LegalKind = "terms" | "privacy";
 type Section = { h: string; p: string[] };
 type Doc = { title: string; updated: string; intro: string; sections: Section[] };
@@ -69,6 +70,36 @@ const TERMS: Record<Lang, Doc> = {
         "The app is provided “as is”. We do our best to keep it running but do not guarantee uninterrupted service and are not liable for data loss.",
       ] },
       { h: "Contact", p: [`Questions and complaints: ${mail}`] },
+    ],
+  },
+  ko: {
+    title: "이용 규칙",
+    updated: `최종 수정일: ${LEGAL_UPDATED}`,
+    intro: `${APP_NAME}는 메신저입니다. 가입하고 이용하면 이 규칙에 동의하는 것으로 봅니다. 동의하지 않는다면 앱을 이용하지 말고 계정을 삭제해 주세요.`,
+    sections: [
+      { h: "이용 대상", p: [
+        "앱은 17세 이상 이용자를 대상으로 합니다. 18+ 표시가 있는 콘텐츠는 이용자가 직접 설정에서 표시를 켜고 18세 이상임을 확인하기 전까지 숨겨집니다.",
+      ] },
+      { h: "금지 사항", p: [
+        "허용되지 않는 콘텐츠와 모욕적인 행동에는 무관용 원칙을 적용합니다. 다음을 보내거나, 채널에 게시하거나, 스티커 팩과 사운드 팩에 올리는 것은 금지됩니다:",
+        "• 음란물 및 미성년자에 대한 모든 성적 대상화;\n• 협박, 따돌림, 괴롭힘, 폭력 선동과 혐오 조장;\n• 본인 동의 없는 타인의 개인정보;\n• 스팸, 사기, 악성 링크와 파일;\n• 법을 위반하거나 타인의 저작권을 침해하는 것.",
+        "법으로 금지되지 않은 성인용 콘텐츠라도 팩에 올릴 때는 반드시 18+ 표시를 해야 합니다.",
+      ] },
+      { h: "신고와 차단", p: [
+        "모든 메시지, 사용자, 채널, 팩을 신고할 수 있습니다: 메시지 메뉴 또는 사용자 카드 → ‘신고’. 신고는 운영자가 24시간 이내에 검토하며, 규칙을 위반한 콘텐츠는 삭제되고 작성자는 접근 권한을 잃습니다.",
+        "어떤 사용자든 그 사용자의 카드에서 차단할 수 있습니다. 차단하면 그 사용자의 메시지와 알림이 즉시 오지 않습니다. 차단 목록은 ‘프로필 → 개인정보’에 있습니다.",
+      ] },
+      { h: "이용자의 콘텐츠", p: [
+        "이용자가 보내는 모든 것은 이용자의 것으로 남습니다. 이용자는 저희가 메신저 운영만을 위해 이를 보관하고 받는 사람에게 전달하는 것을 허락합니다. 내용에 대한 책임은 보낸 사람에게 있습니다.",
+      ] },
+      { h: "계정", p: [
+        "비밀번호는 남에게 알리지 말고 안전하게 관리해 주세요. 저희는 이메일이나 전화번호를 수집하지 않으므로 이를 통해 비밀번호를 복구할 수 없습니다. 계정과 모든 데이터는 ‘프로필 → 개인정보 → 계정 삭제’에서 삭제할 수 있습니다.",
+        "이 규칙을 위반한 계정은 저희가 이용을 제한하거나 삭제할 수 있습니다.",
+      ] },
+      { h: "보증 없음", p: [
+        "앱은 ‘있는 그대로’ 제공됩니다. 앱이 잘 작동하도록 노력하지만, 중단 없는 서비스를 약속하지 않으며 데이터 손실에 대해 책임지지 않습니다.",
+      ] },
+      { h: "문의", p: [`문의 및 신고: ${mail}`] },
     ],
   },
 };
@@ -148,18 +179,65 @@ const PRIVACY: Record<Lang, Doc> = {
       ] },
     ],
   },
+  ko: {
+    title: "개인정보 처리방침",
+    updated: `최종 수정일: ${LEGAL_UPDATED}`,
+    intro: `이 문서는 ${APP_NAME}가 어떤 데이터를 수집하는지, 왜 수집하는지, 어떻게 삭제할 수 있는지 설명합니다. 앱에는 광고, 분석 도구, 외부 추적기가 없으며, 데이터를 판매하거나 광고 목적으로 제공하지 않습니다.`,
+    sections: [
+      { h: "보관하는 데이터", p: [
+        "• 계정: 아이디, 비밀번호(해시 형태로만), 닉네임, 소개, 아바타, 커버 이미지. 전화번호, 이메일, 연락처 목록은 요청하지 않습니다.",
+        "• 대화: 메시지, 사진, 동영상, 파일, 음성 메시지와 그 받아쓰기, 반응, 채널의 글과 댓글. 음성 받아쓰기는 저희 서버에서 처리하며, 오디오를 외부 서비스에 보내지 않습니다.",
+        "• 이용자가 만든 스티커 팩과 사운드 팩, 저장한 이미지, 차단 목록.",
+        "• 알림용 기기 토큰과 가입일.",
+        "• 이용자가 보낸 경우, 신고와 버그 리포트: 설명, 스크린샷, 세션의 기술 로그. 로그에는 메시지 본문과 토큰이 들어가지 않습니다.",
+      ] },
+      { h: "기기 접근 권한", p: [
+        "카메라, 마이크, 사진은 이용자가 직접 촬영하거나, 녹음·녹화하거나, 통화하거나, 파일을 첨부할 때만 사용됩니다. 통화는 기기 사이에서 직접 연결되거나 저희 중계 서버를 거치며, 녹음되지 않습니다.",
+      ] },
+      { h: "데이터를 제공받는 곳", p: [
+        "• 이용자 메시지의 수신자와 이용자 채널의 구독자.",
+        "• Apple(APNs)과 Google(Firebase Cloud Messaging)의 알림 전송 서비스: 기기 토큰과 암호화된 알림 내용이 전달되며, 이 내용은 이용자의 기기에서만 복호화할 수 있습니다.",
+        "• 클라우드 저장소 Yandex Object Storage: 대화 속 사진, 동영상, 파일이 이곳에 보관되며, 권한을 확인한 뒤 임시 링크로 접근할 수 있습니다.",
+        "• 운영자: 신고된 콘텐츠.",
+        "• 정부 기관: 법률에 따라 요구되는 경우에만.",
+      ] },
+      { h: "보관 기간과 삭제 방법", p: [
+        "데이터는 계정이 있는 동안 보관됩니다. 메시지는 나에게서만 또는 모두에게서 삭제할 수 있습니다. 계정은 앱의 ‘프로필 → 개인정보 → 계정 삭제’에서 삭제합니다. 계정을 삭제하면 프로필, 이용자의 메시지, 개인 채팅, 채널, 팩, 알림 토큰이 즉시 함께 삭제되며, 클라우드 저장소의 첨부 파일은 즉시 접근할 수 없게 되고 30일 이내에 완전히 지워집니다.",
+        `앱에 로그인할 수 없다면 ${mail}로 연락해 주세요. 요청에 따라 계정을 삭제해 드립니다.`,
+      ] },
+      { h: "보안", p: [
+        "서버와의 연결에는 HTTPS를 사용하고, 비밀번호는 해시 형태로, 사진·동영상·파일은 비공개 저장소에 보관합니다. 아바타, 커버, 스티커, 소리, 음성 메시지는 무작위 이름을 가진 직접 링크로 열리며, 이 링크는 대화 참여자가 받습니다. 대화에는 종단간 암호화가 적용되지 않습니다. 메시지는 서버에 보관됩니다.",
+      ] },
+      { h: "아동", p: [
+        "앱은 17세 미만을 대상으로 하지 않으며, 저희는 17세 미만 이용자의 데이터를 고의로 수집하지 않습니다.",
+      ] },
+      { h: "변경 및 문의", p: [
+        `처리방침에 중요한 변경이 있으면 앱에서 알려 드립니다. 데이터 관련 문의: ${mail}`,
+      ] },
+    ],
+  },
+};
+
+/** Кнопка языка: подпись и aria-label — на том языке, на который переключаем. */
+const SWITCH: Record<Lang, { code: string; label: string }> = {
+  ru: { code: "RU", label: "Переключить на русский" },
+  en: { code: "EN", label: "Switch to English" },
+  ko: { code: "KO", label: "한국어로 보기" },
 };
 
 /**
  * Правила и политика конфиденциальности. Страницы публичные (без входа):
  * на них ведут экран регистрации, профиль и карточка приложения в сторах.
- * Два языка — ревьюер стора читает по-английски.
+ * Текст — на языке интерфейса; кнопка переключает на английский (ревьюер
+ * стора читает по-английски), а с английского интерфейса — на русский.
  */
 export const LegalView = ({ kind: initial, onClose }: { kind: LegalKind; onClose: () => void }) => {
   // Переход между двумя документами — внутри, без маршрутов: тот же экран
   // открывается шторкой поверх регистрации, и уход по ссылке сбросил бы форму.
   const [kind, setKind] = useState<LegalKind>(initial);
-  const [lang, setLang] = useState<Lang>(() => (navigator.language || "ru").toLowerCase().startsWith("ru") ? "ru" : "en");
+  const home: Lang = getLang();
+  const [lang, setLang] = useState<Lang>(home);
+  const next: Lang = lang !== home ? home : home === "en" ? "ru" : "en";
   const doc = (kind === "terms" ? TERMS : PRIVACY)[lang];
 
   return (
@@ -170,11 +248,11 @@ export const LegalView = ({ kind: initial, onClose }: { kind: LegalKind; onClose
         right={
           <button
             type="button"
-            onClick={() => setLang(lang === "ru" ? "en" : "ru")}
+            onClick={() => setLang(next)}
             className="w-10 h-10 flex items-center justify-center text-small font-semibold text-primary active:opacity-60"
-            aria-label={lang === "ru" ? "Switch to English" : "Переключить на русский"}
+            aria-label={SWITCH[next].label}
           >
-            {lang === "ru" ? "EN" : "RU"}
+            {SWITCH[next].code}
           </button>
         }
       />

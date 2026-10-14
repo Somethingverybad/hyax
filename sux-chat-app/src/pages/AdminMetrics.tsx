@@ -8,6 +8,7 @@ import {
 import { Activity, Cpu, Database, HardDrive, MemoryStick, MessageSquare, Phone, RefreshCw, Users, UserPlus, Radio } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type AdminMetrics } from "@/api/client";
+import { t as tr, tn, getLang } from "@/lib/i18n";
 
 /**
  * Мониторинг для админов: онлайн, пользователи, сообщения, нагрузка сервера.
@@ -19,6 +20,7 @@ import { api, type AdminMetrics } from "@/api/client";
  */
 
 type Range = "24h" | "7d" | "30d";
+// Подписи — русские ключи словаря, переводятся при показе.
 const RANGES: { id: Range; label: string }[] = [
   { id: "24h", label: "24 часа" },
   { id: "7d", label: "7 дней" },
@@ -53,12 +55,14 @@ function usePalette() {
   }), [dark]);
 }
 
-const nf = new Intl.NumberFormat("ru-RU");
-const fmt = (n: number | null | undefined) => (n == null ? "—" : nf.format(n));
+// Формат чисел — по языку интерфейса; один объект на язык.
+const nfByLang: Record<string, Intl.NumberFormat> = {};
+const nf = () => { const l = getLang(); return nfByLang[l] || (nfByLang[l] = new Intl.NumberFormat(l)); };
+const fmt = (n: number | null | undefined) => (n == null ? "—" : nf().format(n));
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return "—";
-  const u = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+  const u = getLang() === "ru" ? ["Б", "КБ", "МБ", "ГБ", "ТБ"] : ["B", "KB", "MB", "GB", "TB"];
   let i = 0;
   let v = n;
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
@@ -67,16 +71,16 @@ function bytes(n: number | null | undefined): string {
 
 function duration(s: number): string {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d ? `${d} д ${h} ч` : h ? `${h} ч ${m} мин` : `${m} мин`;
+  return d ? tr("{d} д {h} ч", { d, h }) : h ? tr("{h} ч {m} мин", { h, m }) : tr("{m} мин", { m });
 }
 
 const timeFmt = (range: Range) => (t: number) => {
   const d = new Date(t);
-  const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  return range === "24h" ? hm : `${d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })} ${hm}`;
+  const hm = d.toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" });
+  return range === "24h" ? hm : `${d.toLocaleDateString(getLang(), { day: "2-digit", month: "2-digit" })} ${hm}`;
 };
-const dayFmt = (t: number) => new Date(t).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-const timeAt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
+const dayFmt = (t: number) => new Date(t).toLocaleDateString(getLang(), { day: "2-digit", month: "2-digit" });
+const timeAt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(getLang(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
 
 // ---------- мелкие детали ----------
 
@@ -111,7 +115,7 @@ function Tile({ icon: Icon, label, value, sub, accent }: { icon: typeof Users; l
 /** Полоса заполнения с порогами: до 70 % — обычный цвет, до 90 % — внимание, выше — критично. */
 function Meter({ icon: Icon, label, pct, detail, pal }: { icon: typeof Cpu; label: string; pct: number | null; detail: string; pal: ReturnType<typeof usePalette> }) {
   const p = pct == null ? null : Math.max(0, Math.min(100, pct));
-  const level = p == null ? "" : p >= 90 ? "критично" : p >= 70 ? "много" : "";
+  const level = p == null ? "" : p >= 90 ? tr("критично") : p >= 70 ? tr("много") : "";
   const color = p == null ? pal.grid : p >= 90 ? pal.crit : p >= 70 ? pal.warn : pal.s1;
   return (
     <div className="min-w-0">
@@ -156,7 +160,7 @@ function ChartTip({ active, payload, label, labelFmt, unit }: {
         <div key={p.name} className="flex items-center gap-1.5 text-foreground">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
           <span className="text-subtle">{p.name}</span>
-          <span className="ml-auto pl-3 font-medium tabular-nums">{p.value == null ? "—" : `${nf.format(p.value)}${unit || ""}`}</span>
+          <span className="ml-auto pl-3 font-medium tabular-nums">{p.value == null ? "—" : `${nf().format(p.value)}${unit || ""}`}</span>
         </div>
       ))}
     </div>
@@ -180,7 +184,7 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
   const navigate = useNavigate();
   const [all, setAll] = useState(false);
   const LIMIT = 12;
-  if (!users.length) return <p className="text-small text-subtle">Сейчас никого нет.</p>;
+  if (!users.length) return <p className="text-small text-subtle">{tr("Сейчас никого нет.")}</p>;
   const shown = all ? users : users.slice(0, LIMIT);
   return (
     <>
@@ -197,13 +201,13 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
               <span className="flex-1 min-w-0">
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="text-body text-foreground truncate">{u.username}</span>
-                  {u.role === "admin" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">админ</span>}
-                  {u.role === "support" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">поддержка</span>}
-                  {u.hidden && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle" title="Прячет «в сети» от собеседников">скрыт</span>}
+                  {u.role === "admin" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">{tr("админ")}</span>}
+                  {u.role === "support" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">{tr("поддержка")}</span>}
+                  {u.hidden && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle" title={tr("Прячет «в сети» от собеседников")}>{tr("скрыт")}</span>}
                 </span>
                 <span className="block text-caption text-subtle leading-snug">
-                  {u.active ? "на экране" : "в фоне"}
-                  {u.devices > 1 ? ` · ${u.devices} устройства` : ""}
+                  {u.active ? tr("на экране") : tr("в фоне")}
+                  {u.devices > 1 ? ` · ${tn(u.devices, "{n} устройство", "{n} устройства", "{n} устройств")}` : ""}
                   {u.online_s != null ? ` · ${duration(u.online_s)}` : ""}
                 </span>
               </span>
@@ -213,7 +217,7 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
       </ul>
       {users.length > LIMIT && (
         <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-small text-primary active:opacity-60">
-          {all ? "Свернуть" : `Показать всех (${users.length})`}
+          {all ? tr("Свернуть") : tr("Показать всех ({n})", { n: users.length })}
         </button>
       )}
     </>
@@ -222,7 +226,7 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
 
 /** Регистрации за выбранный период: даты — в часовом поясе админа. */
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const monthFmt = (t: number) => new Date(t).toLocaleDateString("ru-RU", { month: "short", year: "2-digit" });
+const monthFmt = (t: number) => new Date(t).toLocaleDateString(getLang(), { month: "short", year: "2-digit" });
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDay(d); };
 function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
   const [from, setFrom] = useState(daysAgo(6));
@@ -236,39 +240,40 @@ function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
       .catch((e) => { if (!off) setErr((e as Error).message); });
     return () => { off = true; };
   }, [from, to]);
+  // Подписи — русские ключи словаря, переводятся при показе.
   const presets: [string, string, string][] = [
     ["Сегодня", daysAgo(0), daysAgo(0)], ["Вчера", daysAgo(1), daysAgo(1)],
     ["7 дней", daysAgo(6), daysAgo(0)], ["30 дней", daysAgo(29), daysAgo(0)], ["Всё время", "2025-01-01", daysAgo(0)],
   ];
   const axis = { stroke: pal.axis, fontSize: 11, tickLine: false, axisLine: false } as const;
   return (
-    <Card title="Регистрации за период" sub="Новые люди без ботов, ваше время">
+    <Card title={tr("Регистрации за период")} sub={tr("Новые люди без ботов, ваше время")}>
       <div className="flex flex-wrap items-center gap-2">
         {presets.map(([label, f, t]) => (
           <button key={label} type="button" onClick={() => { setFrom(f); setTo(t); }}
             className={`h-8 px-3 rounded-md text-small border ${from === f && to === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-foreground hover:bg-surface-3"}`}>
-            {label}
+            {tr(label)}
           </button>
         ))}
         <span className="inline-flex items-center gap-1.5 text-small text-subtle">
           <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)}
-            className="h-8 px-2 rounded-md bg-background border border-border text-foreground" aria-label="С" />
+            className="h-8 px-2 rounded-md bg-background border border-border text-foreground" aria-label={tr("С даты")} />
           —
           <input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)}
-            className="h-8 px-2 rounded-md bg-background border border-border text-foreground" aria-label="По" />
+            className="h-8 px-2 rounded-md bg-background border border-border text-foreground" aria-label={tr("По")} />
         </span>
       </div>
-      {err ? <p className="mt-3 text-small text-subtle">Не удалось загрузить: {err}</p> : data && (
+      {err ? <p className="mt-3 text-small text-subtle">{tr("Не удалось загрузить: {err}", { err })}</p> : data && (
         <div className="mt-3 grid grid-cols-1 md:grid-cols-[auto,1fr] gap-4 items-start">
           <div>
             <div className="text-[40px] leading-none font-semibold text-foreground tabular-nums">{fmt(data.count)}</div>
-            <div className="mt-1 text-caption text-subtle">{data.count === 1 ? "регистрация" : "регистраций"}</div>
+            <div className="mt-1 text-caption text-subtle">{tn(data.count, "регистрация", "регистрации", "регистраций")}</div>
             {data.users.length > 0 && (
               <ul className="mt-3 max-h-40 overflow-y-auto pr-2 space-y-0.5 text-small">
                 {data.users.map((u) => (
                   <li key={u.username + u.created_at} className="flex justify-between gap-3">
                     <span className="truncate text-foreground">{u.username}</span>
-                    <span className="shrink-0 text-subtle tabular-nums">{new Date(u.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}</span>
+                    <span className="shrink-0 text-subtle tabular-nums">{new Date(u.created_at).toLocaleDateString(getLang(), { day: "2-digit", month: "2-digit" })}</span>
                   </li>
                 ))}
               </ul>
@@ -281,8 +286,8 @@ function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
                   <CartesianGrid vertical={false} stroke={pal.grid} strokeOpacity={0.6} />
                   <XAxis dataKey="t" tickFormatter={data.unit === "month" ? monthFmt : dayFmt} minTickGap={22} {...axis} />
                   <YAxis allowDecimals={false} width={32} {...axis} />
-                  <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString("ru-RU", data.unit === "month" ? { month: "long", year: "numeric" } : { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
-                  <Bar name="регистраций" dataKey="count" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString(getLang(), data.unit === "month" ? { month: "long", year: "numeric" } : { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
+                  <Bar name={tr("регистраций")} dataKey="count" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -311,7 +316,7 @@ export default function AdminMetrics() {
       setError(null);
       setUpdatedAt(new Date());
     } catch (e) {
-      setError((e as Error).message || "Не удалось загрузить");
+      setError((e as Error).message || tr("Не удалось загрузить"));
     } finally {
       setLoading(false);
     }
@@ -331,7 +336,7 @@ export default function AdminMetrics() {
   // Пока точек мало, линия из одной-двух точек не видна — рисуем их кружками.
   const sparseDot = samplePoints < 12 ? { r: 3, strokeWidth: 0 } : false;
   const hasDailyPeaks = !!data?.daily.some((p) => p.peak_online != null);
-  const sampling = live?.sampling_since ? `Снимки онлайна и нагрузки идут с ${timeAt(live.sampling_since)}` : "Снимки онлайна и нагрузки ещё не начались";
+  const sampling = live?.sampling_since ? tr("Снимки онлайна и нагрузки идут с {time}", { time: timeAt(live.sampling_since) }) : tr("Снимки онлайна и нагрузки ещё не начались");
 
   const axis = { stroke: pal.axis, fontSize: 11, tickLine: false, axisLine: false } as const;
   const grid = <CartesianGrid vertical={false} stroke={pal.grid} strokeDasharray="0" strokeOpacity={0.6} />;
@@ -339,9 +344,9 @@ export default function AdminMetrics() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title="Мониторинг"
+        title={tr("Мониторинг")}
         right={
-          <button type="button" onClick={() => load(range)} disabled={loading} aria-label="Обновить"
+          <button type="button" onClick={() => load(range)} disabled={loading} aria-label={tr("Обновить данные")}
             className="w-10 h-10 shrink-0 inline-flex items-center justify-center text-primary active:opacity-60 disabled:opacity-40">
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -352,22 +357,22 @@ export default function AdminMetrics() {
         <div className="max-w-6xl mx-auto px-4 py-4 space-y-3">
           {/* Фильтр периода — один ряд над графиками; плитки «сейчас» от него не зависят. */}
           <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label="Период">
+            <div className="inline-flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label={tr("Период")}>
               {RANGES.map((r) => (
                 <button key={r.id} type="button" role="tab" aria-selected={range === r.id} onClick={() => setRange(r.id)}
                   className={`px-3 h-8 rounded text-small transition-colors ${range === r.id ? "bg-primary text-primary-foreground font-medium" : "text-foreground hover:bg-surface-3"}`}>
-                  {r.label}
+                  {tr(r.label)}
                 </button>
               ))}
             </div>
             <span className="ml-auto text-caption text-subtle tabular-nums">
-              {updatedAt ? `обновлено ${updatedAt.toLocaleTimeString("ru-RU")}` : loading ? "загружаю…" : ""}
+              {updatedAt ? tr("обновлено {time}", { time: updatedAt.toLocaleTimeString(getLang()) }) : loading ? tr("загружаю…") : ""}
             </span>
           </div>
 
           {error && (
             <Card>
-              <p className="text-body text-foreground">{error === "403" ? "Раздел только для администраторов." : `Не удалось загрузить: ${error}`}</p>
+              <p className="text-body text-foreground">{error === "403" ? tr("Раздел только для администраторов.") : tr("Не удалось загрузить: {err}", { err: error })}</p>
             </Card>
           )}
 
@@ -375,50 +380,50 @@ export default function AdminMetrics() {
             <>
               {/* ---- сейчас ---- */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Tile icon={Activity} label="В сети сейчас" value={fmt(live.online)}
+                <Tile icon={Activity} label={tr("В сети сейчас")} value={fmt(live.online)}
                   accent={<span className="ml-auto inline-flex items-center gap-1" style={{ color: pal.good }}><span className="w-2 h-2 rounded-full animate-pulse" style={{ background: pal.good }} />live</span>}
-                  sub={<>на связи {fmt(live.connected)} · сокетов {fmt(live.sockets)}</>} />
-                <Tile icon={Users} label="Пользователей" value={fmt(tot.users)}
-                  sub={<>+{fmt(tot.users_24h)} за сутки · +{fmt(tot.users_7d)} за неделю</>} />
-                <Tile icon={UserPlus} label="Заходили за сутки" value={fmt(tot.seen_24h)}
-                  sub={<>за 7 дней {fmt(tot.seen_7d)} · за 30 дней {fmt(tot.seen_30d)}</>} />
-                <Tile icon={MessageSquare} label="Сообщений за сутки" value={fmt(tot.messages_24h)}
-                  sub={<>всего {fmt(tot.messages)}</>} />
-                <Tile icon={Activity} label="Пик за сутки" value={fmt(tot.peak_24h)}
-                  sub={tot.peak_all != null ? <>рекорд {fmt(tot.peak_all)} · {timeAt(tot.peak_all_at)}</> : "снимков пока нет"} />
-                <Tile icon={Radio} label="Чаты" value={fmt(tot.chats_direct + tot.chats_group)}
-                  sub={<>личных {fmt(tot.chats_direct)} · групп {fmt(tot.chats_group)} · каналов {fmt(tot.channels)}</>} />
-                <Tile icon={Phone} label="Звонков за сутки" value={fmt(tot.calls_24h)} sub={<>ботов в системе {fmt(tot.bots)}</>} />
-                <Tile icon={Database} label="База данных" value={bytes(live.db_size)}
-                  sub={<>процесс API {bytes(live.rss)} · работает {duration(live.uptime_s)}</>} />
+                  sub={tr("на связи {connected} · сокетов {sockets}", { connected: fmt(live.connected), sockets: fmt(live.sockets) })} />
+                <Tile icon={Users} label={tr("Пользователей")} value={fmt(tot.users)}
+                  sub={tr("+{day} за сутки · +{week} за неделю", { day: fmt(tot.users_24h), week: fmt(tot.users_7d) })} />
+                <Tile icon={UserPlus} label={tr("Заходили за сутки")} value={fmt(tot.seen_24h)}
+                  sub={tr("за 7 дней {week} · за 30 дней {month}", { week: fmt(tot.seen_7d), month: fmt(tot.seen_30d) })} />
+                <Tile icon={MessageSquare} label={tr("Сообщений за сутки")} value={fmt(tot.messages_24h)}
+                  sub={tr("всего {n}", { n: fmt(tot.messages) })} />
+                <Tile icon={Activity} label={tr("Пик за сутки")} value={fmt(tot.peak_24h)}
+                  sub={tot.peak_all != null ? tr("рекорд {n} · {time}", { n: fmt(tot.peak_all), time: timeAt(tot.peak_all_at) }) : tr("снимков пока нет")} />
+                <Tile icon={Radio} label={tr("Чаты")} value={fmt(tot.chats_direct + tot.chats_group)}
+                  sub={tr("личных {direct} · групп {groups} · каналов {channels}", { direct: fmt(tot.chats_direct), groups: fmt(tot.chats_group), channels: fmt(tot.channels) })} />
+                <Tile icon={Phone} label={tr("Звонков за сутки")} value={fmt(tot.calls_24h)} sub={tr("ботов в системе {n}", { n: fmt(tot.bots) })} />
+                <Tile icon={Database} label={tr("База данных")} value={bytes(live.db_size)}
+                  sub={tr("процесс API {rss} · работает {uptime}", { rss: bytes(live.rss), uptime: duration(live.uptime_s) })} />
               </div>
 
               <RegistrationsCard pal={pal} />
 
               {/* ---- кто в сети ---- */}
-              <Card title={`Сейчас в сети · ${fmt(live.users_online?.length ?? 0)}`}
-                sub="Зелёная точка — приложение открыто на экране, серая — свёрнуто, но соединение живо">
+              <Card title={tr("Сейчас в сети · {n}", { n: fmt(live.users_online?.length ?? 0) })}
+                sub={tr("Зелёная точка — приложение открыто на экране, серая — свёрнуто, но соединение живо")}>
                 <OnlineList users={live.users_online || []} pal={pal} />
               </Card>
 
               {/* ---- сервер ---- */}
-              <Card title="Сервер" sub={`${live.cores ?? "?"} ядер · нагрузка ${live.load ? live.load.map((x) => x.toFixed(2)).join(" / ") : "—"} (1 / 5 / 15 мин)`}>
+              <Card title={tr("Сервер")} sub={tr("{cores} ядер · нагрузка {load} (1 / 5 / 15 мин)", { cores: live.cores ?? "?", load: live.load ? live.load.map((x) => x.toFixed(2)).join(" / ") : "—" })}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Meter icon={Cpu} label="Процессор" pct={live.cpu} pal={pal}
-                    detail={live.cpu == null ? "появится через минуту" : "среднее за последнюю минуту"} />
-                  <Meter icon={MemoryStick} label="Память" pal={pal}
+                  <Meter icon={Cpu} label={tr("Процессор")} pct={live.cpu} pal={pal}
+                    detail={live.cpu == null ? tr("появится через минуту") : tr("среднее за последнюю минуту")} />
+                  <Meter icon={MemoryStick} label={tr("Память")} pal={pal}
                     pct={live.mem_used != null && live.mem_total ? (100 * live.mem_used) / live.mem_total : null}
-                    detail={`${bytes(live.mem_used)} из ${bytes(live.mem_total)}`} />
-                  <Meter icon={HardDrive} label="Диск" pal={pal}
+                    detail={tr("{used} из {total}", { used: bytes(live.mem_used), total: bytes(live.mem_total) })} />
+                  <Meter icon={HardDrive} label={tr("Диск")} pal={pal}
                     pct={live.disk_used != null && live.disk_total ? (100 * live.disk_used) / live.disk_total : null}
-                    detail={`${bytes(live.disk_used)} из ${bytes(live.disk_total)}`} />
+                    detail={tr("{used} из {total}", { used: bytes(live.disk_used), total: bytes(live.disk_total) })} />
                 </div>
               </Card>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {/* ---- онлайн ---- */}
-                <Card title="Онлайн" sub={`Пользователей с открытым приложением, шаг ${data.step_s / 60 >= 60 ? `${data.step_s / 3600} ч` : `${data.step_s / 60} мин`}. ${sampling}`}>
-                  <Legend items={[{ color: pal.s1, label: "в среднем" }, { color: pal.s2, label: "пик" }]} />
+                <Card title={tr("Онлайн")} sub={tr("Пользователей с открытым приложением, шаг {step}. {sampling}", { step: data.step_s / 60 >= 60 ? tr("{h} ч", { h: data.step_s / 3600 }) : tr("{m} мин", { m: data.step_s / 60 }), sampling })}>
+                  <Legend items={[{ color: pal.s1, label: tr("в среднем") }, { color: pal.s2, label: tr("пик") }]} />
                   <div className="relative h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
@@ -426,17 +431,17 @@ export default function AdminMetrics() {
                         <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tFmt} minTickGap={28} {...axis} />
                         <YAxis allowDecimals={false} width={36} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={tFmt} />} cursor={{ stroke: pal.axis, strokeWidth: 1 }} />
-                        <Area name="в среднем" dataKey="online_avg" type="monotone" stroke={pal.s1} strokeWidth={2} fill={pal.s1} fillOpacity={0.16} dot={sparseDot && { ...sparseDot, fill: pal.s1 }} connectNulls={false} isAnimationActive={false} />
-                        <Line name="пик" dataKey="online_max" type="monotone" stroke={pal.s2} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s2 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} connectNulls={false} isAnimationActive={false} />
+                        <Area name={tr("в среднем")} dataKey="online_avg" type="monotone" stroke={pal.s1} strokeWidth={2} fill={pal.s1} fillOpacity={0.16} dot={sparseDot && { ...sparseDot, fill: pal.s1 }} connectNulls={false} isAnimationActive={false} />
+                        <Line name={tr("пик")} dataKey="online_max" type="monotone" stroke={pal.s2} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s2 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} connectNulls={false} isAnimationActive={false} />
                       </ComposedChart>
                     </ResponsiveContainer>
-                    {!hasSamples && <Empty>{samplePoints ? "Снимки только начали копиться — линия появится со следующей точкой." : "Снимков за этот период ещё нет — точки появляются раз в минуту."}</Empty>}
+                    {!hasSamples && <Empty>{samplePoints ? tr("Снимки только начали копиться — линия появится со следующей точкой.") : tr("Снимков за этот период ещё нет — точки появляются раз в минуту.")}</Empty>}
                   </div>
                 </Card>
 
                 {/* ---- нагрузка ---- */}
-                <Card title="Нагрузка сервера" sub="Процессор и память хоста, % (среднее за шаг)">
-                  <Legend items={[{ color: pal.s1, label: "процессор" }, { color: pal.s2, label: "память" }]} />
+                <Card title={tr("Нагрузка сервера")} sub={tr("Процессор и память хоста, % (среднее за шаг)")}>
+                  <Legend items={[{ color: pal.s1, label: tr("процессор") }, { color: pal.s2, label: tr("память") }]} />
                   <div className="relative h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
@@ -444,16 +449,16 @@ export default function AdminMetrics() {
                         <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tFmt} minTickGap={28} {...axis} />
                         <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} width={46} tickFormatter={(v: number) => `${v}%`} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={tFmt} unit="%" />} cursor={{ stroke: pal.axis, strokeWidth: 1 }} />
-                        <Line name="процессор" dataKey="cpu" type="monotone" stroke={pal.s1} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s1 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
-                        <Line name="память" dataKey="mem" type="monotone" stroke={pal.s2} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s2 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
+                        <Line name={tr("процессор")} dataKey="cpu" type="monotone" stroke={pal.s1} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s1 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
+                        <Line name={tr("память")} dataKey="mem" type="monotone" stroke={pal.s2} strokeWidth={2} dot={sparseDot && { ...sparseDot, fill: pal.s2 }} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
-                    {!hasSamples && <Empty>{samplePoints ? "Нагрузка пишется вместе со снимками онлайна — линия появится со следующей точкой." : "Нагрузка пишется вместе со снимками онлайна."}</Empty>}
+                    {!hasSamples && <Empty>{samplePoints ? tr("Нагрузка пишется вместе со снимками онлайна — линия появится со следующей точкой.") : tr("Нагрузка пишется вместе со снимками онлайна.")}</Empty>}
                   </div>
                 </Card>
 
                 {/* ---- сообщения ---- */}
-                <Card title="Сообщения" sub="Отправлено за шаг, без удалённых у всех">
+                <Card title={tr("Сообщения")} sub={tr("Отправлено за шаг, без удалённых у всех")}>
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={data.timeline} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap={2}>
@@ -461,14 +466,14 @@ export default function AdminMetrics() {
                         <XAxis dataKey="t" tickFormatter={tFmt} minTickGap={28} {...axis} />
                         <YAxis allowDecimals={false} width={36} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={tFmt} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
-                        <Bar name="сообщений" dataKey="messages" fill={pal.s1} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+                        <Bar name={tr("сообщений")} dataKey="messages" fill={pal.s1} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </Card>
 
                 {/* ---- по часам суток ---- */}
-                <Card title="Активность по часам" sub="Сообщения за 30 дней по часу суток, ваше время">
+                <Card title={tr("Активность по часам")} sub={tr("Сообщения за 30 дней по часу суток, ваше время")}>
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={data.hours} margin={{ top: 6, right: 6, bottom: 0, left: 0 }} barCategoryGap={2}>
@@ -476,7 +481,7 @@ export default function AdminMetrics() {
                         <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}`} interval={2} {...axis} />
                         <YAxis allowDecimals={false} width={36} {...axis} />
                         <Tooltip content={<ChartTip labelFmt={(h) => `${String(h).padStart(2, "0")}:00–${String((h + 1) % 24).padStart(2, "0")}:00`} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
-                        <Bar name="сообщений" dataKey="messages" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                        <Bar name={tr("сообщений")} dataKey="messages" fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -485,30 +490,31 @@ export default function AdminMetrics() {
 
               {/* ---- по дням: разные величины — отдельные графики, без второй оси ---- */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Подписи — русские ключи словаря, переводятся при показе. */}
                 {([
                   { key: "registrations", title: "Регистрации", sub: "Новых пользователей в день", empty: false },
                   { key: "writers", title: "Писали сообщения", sub: "Разных людей в день", empty: false },
                   { key: "peak_online", title: "Пик онлайна по дням", sub: "Максимум одновременно", empty: !hasDailyPeaks },
                 ] as const).map((c) => (
-                  <Card key={c.key} title={c.title} sub={`${c.sub}, 30 дней`}>
+                  <Card key={c.key} title={tr(c.title)} sub={tr("{sub}, 30 дней", { sub: tr(c.sub) })}>
                     <div className="relative h-44">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={data.daily} margin={{ top: 6, right: 4, bottom: 0, left: 0 }} barCategoryGap={2}>
                           {grid}
                           <XAxis dataKey="t" tickFormatter={dayFmt} minTickGap={22} {...axis} />
                           <YAxis allowDecimals={false} width={32} {...axis} />
-                          <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
-                          <Bar name={c.title.toLowerCase()} dataKey={c.key} fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                          <Tooltip content={<ChartTip labelFmt={(t) => new Date(t).toLocaleDateString(getLang(), { day: "numeric", month: "long", weekday: "short" })} />} cursor={{ fill: pal.grid, fillOpacity: 0.35 }} />
+                          <Bar name={tr(c.title).toLowerCase()} dataKey={c.key} fill={pal.s1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
                         </BarChart>
                       </ResponsiveContainer>
-                      {c.empty && <Empty>Появится, когда накопятся снимки за целый день.</Empty>}
+                      {c.empty && <Empty>{tr("Появится, когда накопятся снимки за целый день.")}</Empty>}
                     </div>
                   </Card>
                 ))}
               </div>
 
               <p className="text-caption text-subtle pb-4">
-                «В сети» — приложение открыто на экране; «на связи» — сокет открыт, в том числе свёрнутым приложением. Боты не считаются.
+                {tr("«В сети» — приложение открыто на экране; «на связи» — сокет открыт, в том числе свёрнутым приложением. Боты не считаются.")}
               </p>
             </>
           )}

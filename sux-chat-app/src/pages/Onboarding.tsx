@@ -62,7 +62,7 @@ const Onboarding = () => {
                   <span style={{ background: th.colors.background }} /><span style={{ background: th.colors.primary }} />
                   <span style={{ background: th.colors.surface2 }} /><span style={{ background: th.colors.foreground }} />
                 </span>
-                <span className="text-body flex-1 text-left">{th.name}</span>
+                <span className="text-body flex-1 text-left">{t(th.name)}</span>
                 {theme.id === th.id && <Check className="w-5 h-5 text-primary" />}
               </button>
             ))}

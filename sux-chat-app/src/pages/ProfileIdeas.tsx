@@ -1,4 +1,4 @@
-import { t as tr } from "@/lib/i18n";
+import { t as tr, getLang } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -16,20 +16,22 @@ import { cn } from "@/lib/utils";
  * старых версий приложения.
  */
 type Tab = "top" | "new" | "done" | "mine";
+// Подписи — русские ключи словаря, переводятся при показе (tr() здесь,
+// при импорте модуля, застыл бы на языке первого запуска).
 const TABS: { id: Tab; label: string }[] = [
-  { id: "top", label: tr("Топ") },
-  { id: "new", label: tr("Бездна") },
-  { id: "done", label: tr("Реализовано") },
-  { id: "mine", label: tr("Мои") },
+  { id: "top", label: "Топ" },
+  { id: "new", label: "Бездна" },
+  { id: "done", label: "Реализовано" },
+  { id: "mine", label: "Мои" },
 ];
 const EMPTY: Record<Tab, string> = {
-  top: tr("Открытых идей пока нет — предложите первую."),
-  new: tr("В бездне пусто."),
-  done: tr("Пока ничего не реализовано."),
-  mine: tr("Вы ещё не предлагали идей."),
+  top: "Открытых идей пока нет — предложите первую.",
+  new: "В бездне пусто.",
+  done: "Пока ничего не реализовано.",
+  mine: "Вы ещё не предлагали идей.",
 };
 const PAGE = 20;
-const dateFmt = (s: string) => new Date(s).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+const dateFmt = (s: string) => new Date(s).toLocaleDateString(getLang(), { day: "numeric", month: "short" });
 
 export default function ProfileIdeas() {
   const [params, setParams] = useSearchParams();
@@ -88,7 +90,7 @@ export default function ProfileIdeas() {
         setItems((prev) => prev && prev.filter((i) => i.id !== idea.id));
         setCount((c) => Math.max(0, c - 1));
       } else if (r.idea) patch(r.idea);
-      toast.success(act === "hide" ? "Идея убрана" : r.idea?.status === "done" ? "Отмечено: реализовано" : tr("Отметка снята"));
+      toast.success(act === "hide" ? tr("Идея убрана") : r.idea?.status === "done" ? tr("Отмечено: реализовано") : tr("Отметка снята"));
     } catch (e: any) {
       toast.error(e?.message || tr("Не получилось"));
     } finally { setBusyId(null); }
@@ -96,7 +98,7 @@ export default function ProfileIdeas() {
 
   const report = async (idea: IdeaItem) => {
     if (busyId) return;
-    if (!(await confirmDialog("Пожаловаться на эту идею? Её проверит модератор.", { ok: tr("Пожаловаться") }))) return;
+    if (!(await confirmDialog(tr("Пожаловаться на эту идею? Её проверит модератор."), { ok: tr("Пожаловаться") }))) return;
     setBusyId(idea.id);
     try { await api.ideaAction(idea.id, "report"); toast.success(tr("Жалоба отправлена — спасибо")); }
     catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
@@ -139,12 +141,12 @@ export default function ProfileIdeas() {
               className="w-full resize-none bg-background border border-border rounded-md px-3 py-2.5 text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
             />
             <p className="mt-2 text-caption text-subtle leading-snug">
-              Идею увидят все — без вашего имени. Голос за чужую идею: +5 к вайбометру, лайк вашей: +10 вам.
+              {tr("Идею увидят все — без вашего имени. Голос за чужую идею: +5 к вайбометру, лайк вашей: +10 вам.")}
             </p>
             <div className="mt-2 flex justify-end">
               <button type="button" onClick={submit} disabled={sending || draft.trim().length < 3}
                 className="shrink-0 h-10 px-4 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center gap-2 active:opacity-90 disabled:opacity-50">
-                <Send className="w-4 h-4" />{sending ? "Отправляю…" : tr("Предложить")}
+                <Send className="w-4 h-4" />{sending ? tr("Отправляю…") : tr("Предложить")}
               </button>
             </div>
           </section>
@@ -155,7 +157,7 @@ export default function ProfileIdeas() {
                   onClick={() => setParams({ tab: t.id }, { replace: true })}
                   className={cn("shrink-0 h-9 px-3 rounded-full text-small font-medium border",
                     tab === t.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-foreground active:bg-surface-3")}>
-                  {t.label}
+                  {tr(t.label)}
                 </button>
               ))}
           </div>
@@ -163,7 +165,7 @@ export default function ProfileIdeas() {
           {items === null ? (
             <p className="py-10 text-center text-small text-subtle">{tr("Загружаю…")}</p>
           ) : items.length === 0 ? (
-            <p className="py-10 text-center text-small text-subtle">{EMPTY[tab]}</p>
+            <p className="py-10 text-center text-small text-subtle">{tr(EMPTY[tab])}</p>
           ) : (
             <ul className="space-y-2">
               {items.map((idea, i) => (
@@ -174,7 +176,7 @@ export default function ProfileIdeas() {
                       <p className="text-body whitespace-pre-wrap break-words">{idea.text}</p>
                       <p className="mt-1.5 text-caption text-subtle flex flex-wrap gap-x-2">
                         <span>{dateFmt(idea.created_at)}</span>
-                        {idea.status === "done" && <span className="text-online">✓ реализовано{idea.done_at ? ` ${dateFmt(idea.done_at)}` : ""}</span>}
+                        {idea.status === "done" && <span className="text-online">✓ {tr("реализовано")}{idea.done_at ? ` ${dateFmt(idea.done_at)}` : ""}</span>}
                         {idea.mine && <span>{tr("ваша идея")}</span>}
                       </p>
                     </div>
@@ -209,7 +211,7 @@ export default function ProfileIdeas() {
           {items && page < pages && (
             <button type="button" onClick={() => load(tab, page + 1)} disabled={loading}
               className="w-full h-11 rounded-md border border-border text-small font-medium active:bg-surface-3 disabled:opacity-50">
-              {loading ? "Загружаю…" : `Показать ещё (${count - items.length})`}
+              {loading ? tr("Загружаю…") : tr("Показать ещё ({n})", { n: count - items.length })}
             </button>
           )}
         </div>
@@ -221,7 +223,7 @@ export default function ProfileIdeas() {
 function VoteBtn({ up, count, chosen, disabled, onClick }: { up?: boolean; count: number; chosen: boolean; disabled: boolean; onClick: () => void }) {
   const Icon = up ? ThumbsUp : ThumbsDown;
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={chosen} aria-label={up ? "Нравится" : tr("Не нравится")}
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={chosen} aria-label={up ? tr("Нравится") : tr("Не нравится")}
       className={cn("h-9 px-3 rounded-md border text-small font-medium tabular-nums flex items-center gap-1.5 active:opacity-80",
         chosen ? "bg-primary text-primary-foreground border-primary" : "border-border text-foreground",
         disabled && !chosen && "opacity-60")}>

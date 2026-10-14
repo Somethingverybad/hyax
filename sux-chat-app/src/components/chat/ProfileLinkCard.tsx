@@ -6,6 +6,7 @@ import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { Linkify, profileLinkName } from "@/lib/linkify";
 import { readCache } from "@/lib/session-cache";
+import { t } from "@/lib/i18n";
 
 type Info = { id: string; username: string; avatar?: string | null; subtitle: string };
 
@@ -29,7 +30,7 @@ const ProfileLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         id: p.id,
         username: p.username,
         avatar: p.avatar_url,
-        subtitle: p.is_bot ? "Бот" : (p.bio || "").split("\n")[0] || "Профиль в WYX",
+        subtitle: p.is_bot ? t("Бот") : (p.bio || "").split("\n")[0] || t("Профиль в WYX"),
       }))
       .catch(() => alive && setInfo(null));
     return () => { alive = false; };
@@ -58,7 +59,7 @@ const ProfileLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
       // Chat.tsx ловит смену location и открывает этот чат, даже если мы уже на /chat.
       navigate("/chat", { state: { chatId, title: info.username } });
     } catch {
-      toast.error("Не удалось открыть чат");
+      toast.error(t("Не удалось открыть чат"));
     } finally {
       setBusy(false);
     }
@@ -74,14 +75,14 @@ const ProfileLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         <Identicon id={info?.id || username} avatarUrl={info?.avatar} className="w-10 h-10" />
         <span className="min-w-0 flex-1">
           <span className="block text-small font-medium truncate">{info ? info.username : username}</span>
-          <span className="block text-caption opacity-70 truncate">{info ? info.subtitle : "Загрузка…"}</span>
+          <span className="block text-caption opacity-70 truncate">{info ? info.subtitle : t("Загрузка…")}</span>
         </span>
       </span>
       {info && (
         <span className="block px-2.5 pb-2">
           {isMe ? (
             <span className="h-8 w-full rounded-md bg-surface-4 text-caption font-medium flex items-center justify-center">
-              Это вы
+              {t("Это вы")}
             </span>
           ) : (
             <span
@@ -92,7 +93,7 @@ const ProfileLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
               aria-disabled={busy}
               className="h-8 w-full rounded-md bg-primary text-primary-foreground text-caption font-semibold flex items-center justify-center gap-1.5 active:opacity-90"
             >
-              <MessageSquare className="w-3.5 h-3.5" /> {busy ? "Открываю…" : "Написать"}
+              <MessageSquare className="w-3.5 h-3.5" /> {busy ? t("Открываю…") : t("Написать")}
             </span>
           )}
         </span>

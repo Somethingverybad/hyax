@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
+import { t } from "@/lib/i18n";
 
 /**
  * Шапка подэкрана: стрелка назад, заголовок по центру, необязательное
@@ -37,7 +38,7 @@ const ScreenHeader = ({
       <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
         <div className="mint-head !pt-[19px] !pb-[12px]">
           {left ?? (
-            <button type="button" onClick={onBack ?? (() => navigate(-1))} aria-label="Назад"
+            <button type="button" onClick={onBack ?? (() => navigate(-1))} aria-label={t("Назад")}
               className="mint-pill w-[37px] h-[31px] inline-flex items-center justify-center mint-muted">
               <MintIcon name="back" size={[7, 13]} />
             </button>
@@ -55,7 +56,7 @@ const ScreenHeader = ({
           type="button"
           onClick={onBack ?? (() => navigate(-1))}
           className="w-10 h-10 -m-1 flex items-center justify-center active:opacity-60"
-          aria-label="Назад"
+          aria-label={t("Назад")}
         >
           <ChevronLeft className="w-6 h-6" />
         </button>

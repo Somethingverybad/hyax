@@ -10,6 +10,7 @@ import { setInstalledThemes, setTheme, useInstalledThemes, useTheme } from "@/li
 import { DARK, LIGHT, NEO } from "@/themes/builtin";
 import { contrastIssues, normalizeTheme } from "@/themes/engine";
 import { SHAPE_LIMITS, type ColorKey, type ThemeDef } from "@/themes/types";
+import { t as tr } from "@/lib/i18n";
 
 /** Цвета, сгруппированные по смыслу: показываем не все 29 подряд. */
 const GROUPS: { title: string; items: { key: ColorKey; label: string }[] }[] = [
@@ -114,8 +115,8 @@ const ThemeEditor = () => {
   const fromBuiltin = (src: ThemeDef) => setDraft((d) => ({ ...d, base: src.base, colors: { ...src.colors }, shape: { ...src.shape } }));
 
   const save = async () => {
-    if (!draft.name.trim()) { toast.error("Придумайте название темы"); return; }
-    if (blocking) { toast.error("Слишком низкий контраст — текст не читается"); return; }
+    if (!draft.name.trim()) { toast.error(tr("Придумайте название темы")); return; }
+    if (blocking) { toast.error(tr("Слишком низкий контраст — текст не читается")); return; }
     setBusy(true);
     try {
       const saved = normalizeTheme(await api.saveTheme({
@@ -124,10 +125,10 @@ const ThemeEditor = () => {
       }));
       setInstalledThemes([saved, ...installed.filter((t) => t.id !== saved.id)]);
       setTheme(saved);
-      toast.success(isNew ? "Тема создана и включена" : "Тема сохранена");
+      toast.success(isNew ? tr("Тема создана и включена") : tr("Тема сохранена"));
       navigate("/profile/appearance", { replace: true });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось сохранить");
+      toast.error(e?.message || tr("Не удалось сохранить"));
     } finally {
       setBusy(false);
     }
@@ -136,10 +137,10 @@ const ThemeEditor = () => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title={isNew ? "Новая тема" : "Тема"}
+        title={isNew ? tr("Новая тема") : tr("Тема")}
         right={
           <button type="button" onClick={save} disabled={busy} className="px-3 h-10 text-body font-semibold text-primary disabled:opacity-50" >
-            {busy ? "…" : "Готово"}
+            {busy ? "…" : tr("Готово")}
           </button>
         }
       />
@@ -147,53 +148,53 @@ const ThemeEditor = () => {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {preview && <ThemePreview theme={theme} />}
         <button type="button" onClick={() => setPreview((v) => !v)} className="w-full h-9 rounded-md bg-surface-4 text-small font-medium inline-flex items-center justify-center gap-1.5">
-          {preview ? <><EyeOff className="w-4 h-4" /> Скрыть предпросмотр</> : <><Eye className="w-4 h-4" /> Показать предпросмотр</>}
+          {preview ? <><EyeOff className="w-4 h-4" /> {tr("Скрыть предпросмотр")}</> : <><Eye className="w-4 h-4" /> {tr("Показать предпросмотр")}</>}
         </button>
 
         {issues.length > 0 && (
           <div className="rounded-lg bg-surface-2 border border-border p-3 space-y-1">
-            <p className="text-small font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber" /> Плохо читается</p>
+            <p className="text-small font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber" /> {tr("Плохо читается")}</p>
             {issues.map((i) => (
-              <p key={i.pair} className="text-caption text-subtle">{i.pair}: контраст {i.ratio}{i.fatal ? " — так сохранить нельзя" : ""}</p>
+              <p key={i.pair} className="text-caption text-subtle">{tr(i.fatal ? "{pair}: контраст {ratio} — так сохранить нельзя" : "{pair}: контраст {ratio}", { pair: tr(i.pair), ratio: i.ratio })}</p>
             ))}
           </div>
         )}
 
         <SettingsCard>
           <label className="px-4 py-2.5 flex items-center gap-3">
-            <span className="text-body shrink-0">Название</span>
+            <span className="text-body shrink-0">{tr("Название")}</span>
             <input
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value.slice(0, 40) }))}
-              placeholder="Моя тема"
+              placeholder={tr("Моя тема")}
               className="flex-1 min-w-0 h-9 px-2.5 rounded-md bg-surface-3 border border-border text-body outline-none focus:border-amber"
             />
           </label>
-          <Toggle label="Тёмная основа" hint="Светлые значки статус-бара и системных панелей" checked={draft.base === "dark"} onChange={(v) => setDraft((d) => ({ ...d, base: v ? "dark" : "light" }))} />
-          <Toggle label="Открыть по ссылке" hint="Выключено — тему видите только вы" checked={isPublic} onChange={setIsPublic} />
+          <Toggle label={tr("Тёмная основа")} hint={tr("Светлые значки статус-бара и системных панелей")} checked={draft.base === "dark"} onChange={(v) => setDraft((d) => ({ ...d, base: v ? "dark" : "light" }))} />
+          <Toggle label={tr("Открыть по ссылке")} hint={tr("Выключено — тему видите только вы")} checked={isPublic} onChange={setIsPublic} />
         </SettingsCard>
 
-        <p className="px-1 pt-1 text-small text-subtle flex items-center gap-2"><Shuffle className="w-4 h-4" /> Взять за основу</p>
+        <p className="px-1 pt-1 text-small text-subtle flex items-center gap-2"><Shuffle className="w-4 h-4" /> {tr("Взять за основу")}</p>
         <div className="flex gap-2">
           {[LIGHT, DARK, NEO].map((t) => (
-            <button key={t.id} type="button" onClick={() => fromBuiltin(t)} className="flex-1 h-10 rounded-md bg-surface-4 text-small font-medium active:opacity-80">{t.name}</button>
+            <button key={t.id} type="button" onClick={() => fromBuiltin(t)} className="flex-1 h-10 rounded-md bg-surface-4 text-small font-medium active:opacity-80">{tr(t.name)}</button>
           ))}
         </div>
 
         {GROUPS.map((g) => (
           <div key={g.title} className="space-y-2">
-            <p className="px-1 pt-2 text-small text-subtle">{g.title}</p>
+            <p className="px-1 pt-2 text-small text-subtle">{tr(g.title)}</p>
             <SettingsCard>
               {g.items.map(({ key, label }) => (
                 <label key={key} className="px-4 py-2.5 flex items-center gap-3">
-                  <span className="min-w-0 flex-1 text-body">{label}</span>
+                  <span className="min-w-0 flex-1 text-body">{tr(label)}</span>
                   <span className="text-caption text-subtle tabular-nums">{draft.colors[key]}</span>
                   <input
                     type="color"
                     value={draft.colors[key]}
                     onChange={(e) => setColor(key, e.target.value)}
                     className="w-10 h-8 rounded-md bg-transparent border border-border shrink-0"
-                    aria-label={label}
+                    aria-label={tr(label)}
                   />
                 </label>
               ))}
@@ -201,24 +202,24 @@ const ThemeEditor = () => {
           </div>
         ))}
 
-        <p className="px-1 pt-2 text-small text-subtle">Форма</p>
+        <p className="px-1 pt-2 text-small text-subtle">{tr("Форма")}</p>
         <SettingsCard>
 
-          <Slider label="Скругление карточек" value={draft.shape.radius} min={SHAPE_LIMITS.radius[0]} max={SHAPE_LIMITS.radius[1]} onChange={(radius) => setShape({ radius })} />
-          <Slider label="Скругление полей" value={draft.shape.radiusField} min={SHAPE_LIMITS.radiusField[0]} max={SHAPE_LIMITS.radiusField[1]} onChange={(radiusField) => setShape({ radiusField })} />
+          <Slider label={tr("Скругление карточек")} value={draft.shape.radius} min={SHAPE_LIMITS.radius[0]} max={SHAPE_LIMITS.radius[1]} onChange={(radius) => setShape({ radius })} />
+          <Slider label={tr("Скругление полей")} value={draft.shape.radiusField} min={SHAPE_LIMITS.radiusField[0]} max={SHAPE_LIMITS.radiusField[1]} onChange={(radiusField) => setShape({ radiusField })} />
           {draft.shape.style === "outlined" && (
             <>
-              <Slider label="Толщина обводки" value={draft.shape.borderWidth} min={SHAPE_LIMITS.borderWidth[0]} max={SHAPE_LIMITS.borderWidth[1]} onChange={(borderWidth) => setShape({ borderWidth })} />
-              <Slider label="Сдвиг тени" value={draft.shape.shadowOffset} min={SHAPE_LIMITS.shadowOffset[0]} max={SHAPE_LIMITS.shadowOffset[1]} onChange={(shadowOffset) => setShape({ shadowOffset })} />
+              <Slider label={tr("Толщина обводки")} value={draft.shape.borderWidth} min={SHAPE_LIMITS.borderWidth[0]} max={SHAPE_LIMITS.borderWidth[1]} onChange={(borderWidth) => setShape({ borderWidth })} />
+              <Slider label={tr("Сдвиг тени")} value={draft.shape.shadowOffset} min={SHAPE_LIMITS.shadowOffset[0]} max={SHAPE_LIMITS.shadowOffset[1]} onChange={(shadowOffset) => setShape({ shadowOffset })} />
             </>
           )}
-          <Slider label="Толщина иконок" value={draft.shape.iconStroke} min={SHAPE_LIMITS.iconStroke[0]} max={SHAPE_LIMITS.iconStroke[1]} step={0.5} unit="" onChange={(iconStroke) => setShape({ iconStroke })} />
-          <Toggle label="Чаты карточками" hint="Каждая строка списка — отдельная карточка" checked={draft.shape.rowCards} onChange={(rowCards) => setShape({ rowCards })} />
-          <Toggle label="Плавающая панель снизу" hint="С подписями под значками" checked={draft.shape.floatingNav} onChange={(floatingNav) => setShape({ floatingNav })} />
+          <Slider label={tr("Толщина иконок")} value={draft.shape.iconStroke} min={SHAPE_LIMITS.iconStroke[0]} max={SHAPE_LIMITS.iconStroke[1]} step={0.5} unit="" onChange={(iconStroke) => setShape({ iconStroke })} />
+          <Toggle label={tr("Чаты карточками")} hint={tr("Каждая строка списка — отдельная карточка")} checked={draft.shape.rowCards} onChange={(rowCards) => setShape({ rowCards })} />
+          <Toggle label={tr("Плавающая панель снизу")} hint={tr("С подписями под значками")} checked={draft.shape.floatingNav} onChange={(floatingNav) => setShape({ floatingNav })} />
         </SettingsCard>
 
         <p className="px-1 pb-2 text-caption text-subtle">
-          Тема — это только цвета и параметры формы. Сервер проверяет их перед сохранением, поэтому чужая тема не может сломать приложение.
+          {tr("Тема — это только цвета и параметры формы. Сервер проверяет их перед сохранением, поэтому чужая тема не может сломать приложение.")}
         </p>
       </div>
     </div>
