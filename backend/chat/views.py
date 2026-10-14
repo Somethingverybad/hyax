@@ -2368,6 +2368,35 @@ class VoiceUploadView(APIView):
 
 # Картинки профиля: аватар и обложка. Отличаются каталогом, полем модели и
 # лимитом размера — проверки и удаление прежнего файла общие.
+def _shrink_image(abs_path, max_side):
+    """Ужать картинку до max_side по большей стороне (ffmpeg, Pillow в образе
+    нет). Тяжёлый PNG/WebP после ужатия переводим в JPEG — аватар 4 МБ на
+    iPhone декодировался секунды и при каждом переходе показывал скелетон
+    (баг-репорт 170e4253). GIF не трогаем — анимация. Возвращает итоговый путь."""
+    import subprocess
+    root, ext = os.path.splitext(abs_path)
+    ext = ext.lower()
+    if ext == ".gif":
+        return abs_path
+    tmp = f"{root}.tmp{ext}"
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", abs_path, "-vf", f"scale=min({max_side}\\,iw):-2", "-q:v", "4", tmp],
+                       check=True, timeout=60)
+        os.replace(tmp, abs_path)
+        if ext in (".png", ".webp") and os.path.getsize(abs_path) > 400 * 1024:
+            jpg = f"{root}.jpg"
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", abs_path, "-q:v", "4", jpg], check=True, timeout=60)
+            os.remove(abs_path)
+            return jpg
+    except Exception:
+        logger.warning("ужатие картинки не удалось: %s", abs_path)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    return abs_path
+
+
 def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
     """Кладёт картинку в MEDIA_ROOT/<subdir> и прописывает путь в профиль.
 
@@ -2408,9 +2437,13 @@ def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
 
     suffix = f"_{uuid.uuid4().hex[:8]}" if stamped else ""
     file_path = os.path.join(subdir, f"{prefix}_{profile.id}{suffix}{file_extension}")
-    with open(os.path.join(settings.MEDIA_ROOT, file_path), 'wb+') as destination:
+    abs_path = os.path.join(settings.MEDIA_ROOT, file_path)
+    with open(abs_path, 'wb+') as destination:
         for chunk in file.chunks():
             destination.write(chunk)
+    # Аватар — до 640 px по стороне, обложка — до 1600: в интерфейсе больше не нужно.
+    final = _shrink_image(abs_path, 640 if subdir == 'avatars' else 1600)
+    file_path = os.path.relpath(final, settings.MEDIA_ROOT)
 
     file_url = f'/media/{file_path}'
     setattr(profile, field, file_url)

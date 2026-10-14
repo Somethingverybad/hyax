@@ -55,6 +55,13 @@ class DeviceJWTAuthentication(JWTAuthentication):
         profile = getattr(user, "profile", None)
         if profile is not None:
             check_token(profile.id, validated_token)
+            # «Был в сети» — по любому запросу, не только по сокету: у кого
+            # сокет не держится, last_seen отставал на дни (баг-репорт 170e4253).
+            try:
+                from .presence import touch_last_seen
+                touch_last_seen(profile.id)
+            except Exception:
+                pass
         return user
 
 
