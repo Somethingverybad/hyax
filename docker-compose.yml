@@ -51,6 +51,10 @@ services:
       - ./certbot/certs:/etc/letsencrypt:ro
     env_file:
       - .env
+    environment:
+      # Свой LibreTranslate (сервис translate ниже) — запасной бесплатный
+      # переводчик; GEMINI_API_KEY или DEEPL_API_KEY в .env имеют приоритет.
+      LIBRETRANSLATE_URL: http://translate:5000
     expose:
       - "8000"
     depends_on:
@@ -163,6 +167,18 @@ services:
     networks:
       - sux_chat_network
 
+  # Перевод сообщений (chat/translate.py): LibreTranslate с моделями ru/en/ko.
+  # Наружу не торчит, только в сети compose. Первый старт качает модели.
+  translate:
+    image: libretranslate/libretranslate:latest
+    container_name: sux_chat_translate
+    restart: unless-stopped
+    command: --load-only ru,en,ko --disable-web-ui --threads 2 --host 0.0.0.0 --port 5000
+    volumes:
+      - translate_models:/home/libretranslate/.local
+    networks:
+      - sux_chat_network
+
 networks:
   sux_chat_network:
     external: true  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
@@ -180,4 +196,5 @@ networks:
         - subnet: fd7a:1e9a:c0de::/64
 
 volumes:
+  translate_models:
   postgres_data:
