@@ -215,7 +215,7 @@ const installDeb = (file) => new Promise((resolve) => {
     logLine('deb install exit', code);
     if (code === 0) {
       resolve({ ok: true, restart: true });
-      setTimeout(() => { app.relaunch(); app.quit(); }, 500);
+      setTimeout(() => { app.isQuitting = true; app.relaunch(); app.quit(); }, 500);
     } else {
       resolve({ ok: false, error: code === 126 || code === 127 ? 'cancelled' : `dpkg exit ${code}`, file });
     }
@@ -290,7 +290,11 @@ autoUpdater.on('update-available', (info) => sendUpdate({
 autoUpdater.on('update-not-available', () => sendUpdate({ state: 'none' }));
 autoUpdater.on('download-progress', (p) => sendUpdate({ state: 'downloading', percent: Math.round(p.percent || 0) }));
 autoUpdater.on('update-downloaded', (info) => sendUpdate({ state: 'downloaded', version: info.version }));
-autoUpdater.on('error', (err) => sendUpdate({ state: 'error', message: String((err && err.message) || err) }));
+autoUpdater.on('error', (err) => {
+  // Установка сорвалась — снова «крестик в трей», а не выход.
+  app.isQuitting = false;
+  sendUpdate({ state: 'error', message: String((err && err.message) || err) });
+});
 
 const updaterEnabled = () => app.isPackaged || !!process.env.HYAX_UPDATE_URL;
 
@@ -350,7 +354,17 @@ ipcMain.handle('update-download', async () => {
 });
 // Перезапуск с установкой: на Windows тихий NSIS, на mac подмена бандла, на
 // Linux замена AppImage. Откладываем на тик, чтобы ответ IPC успел уйти.
-ipcMain.on('update-apply', () => { setImmediate(() => autoUpdater.quitAndInstall(false, true)); });
+// Флаг выхода — ДО quitAndInstall: на macOS Squirrel сначала закрывает окна и
+// только потом шлёт before-quit, и «крестик — в трей» перехватывал закрытие:
+// окно пряталось, выход отменялся, обновление не ставилось.
+ipcMain.on('update-apply', () => {
+  app.isQuitting = true;
+  setImmediate(() => {
+    try { autoUpdater.quitAndInstall(false, true); }
+    catch (e) { app.isQuitting = false; logLine('quitAndInstall failed', e && e.message); sendUpdate({ state: 'error', message: String((e && e.message) || e) }); }
+  });
+});
+try { require('electron').autoUpdater.on('before-quit-for-update', () => { app.isQuitting = true; }); } catch {}
 // Плюс проверка раз в час: приложение на десктопе живёт неделями.
 setInterval(() => { if (updaterEnabled() && updaterSupported()) autoUpdater.checkForUpdates().catch(() => {}); }, 60 * 60 * 1000);
 
