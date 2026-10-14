@@ -112,12 +112,6 @@ h2 { margin: 0 0 18px; font-size: 24px; font-weight: 600; color: var(--title); t
 .card .ico svg { width: 22px; height: 22px; }
 .card h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--title); }
 .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
-.dl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
-@media (max-width: 1000px) { .dl { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 700px) { .dl { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 460px) { .dl { grid-template-columns: 1fr; } }
-.dl .card { display: flex; flex-direction: column; }
-.dl .card .links { margin-top: auto; padding-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 999px;
   background: var(--surface4); color: var(--ink); font-size: 13.5px; font-weight: 600;
@@ -159,6 +153,38 @@ footer .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6p
 .crypto .num sup { font-size: 10px; }
 .crypto .note { padding: 10px 12px; border-radius: 10px; background: var(--surface4); color: var(--title); font-size: 13.5px; }
 
-/* Шаги установки в карточке загрузки. */
-.dl .steps { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
-.dl .steps li { margin: 0 0 6px; }
+
+/* Загрузка: своя платформа — крупно, остальные — списком под кнопкой. */
+.dl-main { max-width: 560px; margin: 0 auto; }
+.dl-main .plat { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 26px 26px 24px; }
+.dl-main .plat h3 { font-size: 20px; margin-bottom: 8px; }
+.dl-main .plat .links { padding-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+.dl-main .plat .chip { height: 42px; padding: 0 20px; font-size: 15px; background: var(--primary); color: var(--primary-fg); }
+.dl-main .plat .chip + .chip { background: var(--surface4); color: var(--ink); }
+.steps { margin: 12px 0 0; padding-left: 20px; color: var(--muted); font-size: 14.5px; line-height: 1.5; }
+.steps li { margin: 0 0 6px; }
+.dl-more-wrap { text-align: center; margin: 18px 0 0; }
+.dl-more { border: 0; cursor: pointer; font: inherit; }
+.dl-more .if-open, .dl-more[aria-expanded="true"] .if-closed { display: none; }
+.dl-more[aria-expanded="true"] .if-open { display: inline; }
+.dl-others { max-width: 560px; margin: 14px auto 0; padding: 4px 0; }
+.dl-others[hidden] { display: none; }
+.dl-others .plat { display: flex; align-items: center; gap: 16px; padding: 14px 20px; }
+.dl-others .plat + .plat { border-top: 1px solid var(--surface4); }
+.dl-others .plat-text { flex: 1; min-width: 0; }
+.dl-others .plat h3 { margin: 0 0 2px; font-size: 15px; }
+.dl-others .plat p { font-size: 13.5px; }
+.dl-others .steps { display: none; }
+.dl-others .links { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; flex: none; }
+@media (max-width: 520px) {
+  .dl-others .plat { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .dl-others .links { justify-content: flex-start; }
+  .dl-main .plat { padding: 22px 18px 20px; }
+}
+
+/* Переключатель языка в шапке: компактная таблетка RU · EN · KO. */
+.nav { align-items: center; }
+.nav .lang { display: inline-flex; gap: 2px; padding: 3px; margin-left: 6px; background: var(--surface); border-radius: 999px; }
+.nav .lang a { padding: 6px 10px; font-size: 13px; font-weight: 600; }
+.nav .lang a[aria-current="page"] { background: var(--surface4); }
+@media (max-width: 560px) { .nav .lang { margin-left: 2px; } .nav .lang a { padding: 5px 8px; font-size: 12px; } }

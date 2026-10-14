@@ -35,7 +35,7 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
       <a href="#download">Download</a>
       <a href="#crypto" class="hide-sm">Encryption</a>
       <a href="/terms" class="hide-sm">Rules</a>
-      <a href="/privacy">Privacy</a>
+      <a href="/privacy" class="hide-sm">Privacy</a>
     <span class="lang"><a href="/" data-lang="ru">RU</a><a href="/en/" data-lang="en" aria-current="page">EN</a><a href="/ko/" data-lang="ko">KO</a></span>
     </nav>
   </div>
@@ -131,39 +131,53 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
 
   <section class="wrap" id="download">
     <h2>Download</h2>
-    <div class="dl">
-      <div class="card">
-        <h3>iPhone</h3>
-        <p>Via TestFlight, Apple's app for beta versions.</p>
-        <ol class="steps">
-          <li>Install TestFlight from the App Store — the first button.</li>
-          <li>On the same iPhone, open the invitation — the second button.</li>
-          <li>In TestFlight, tap “Accept”, then “Install”.</li>
-          <li>Launch WYX from the Home Screen. Updates arrive through TestFlight — turn on automatic updates there.</li>
-        </ol>
+    <!-- Платформа посетителя — крупной карточкой (скрипт ниже переносит её сюда),
+         остальные — списком по кнопке «Другие платформы». Без скрипта виден весь список. -->
+    <div class="dl-main" id="dl-main" hidden></div>
+    <div class="dl-more-wrap"><button type="button" class="pill soft dl-more" id="dl-more" aria-expanded="false" aria-controls="dl-others" hidden><span class="if-closed">Other platforms</span><span class="if-open">Hide</span></button></div>
+    <div class="dl-others card" id="dl-others">
+      <div class="plat" data-p="ios">
+        <div class="plat-text">
+          <h3>iPhone</h3>
+          <p>Via TestFlight, Apple's app for beta versions.</p>
+          <ol class="steps">
+            <li>Install TestFlight from the App Store — the first button.</li>
+            <li>On the same iPhone, open the invitation — the second button.</li>
+            <li>In TestFlight, tap “Accept”, then “Install”.</li>
+            <li>Launch WYX from the Home Screen. Updates arrive through TestFlight — turn on automatic updates there.</li>
+          </ol>
+        </div>
         <div class="links">
           <a class="chip" href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a>
           <a class="chip" href="https://testflight.apple.com/join/UdUbyFJp">Invitation</a>
         </div>
       </div>
-      <div class="card">
-        <h3>Android</h3>
-        <p>Install file; allow the source when installing.</p>
+      <div class="plat" data-p="android">
+        <div class="plat-text">
+          <h3>Android</h3>
+          <p>Install file; allow the source when installing.</p>
+        </div>
         <div class="links"><a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax.apk" download>APK</a></div>
       </div>
-      <div class="card">
-        <h3>macOS</h3>
-        <p>One image for Intel and Apple Silicon, notarized by Apple.</p>
+      <div class="plat" data-p="mac">
+        <div class="plat-text">
+          <h3>macOS</h3>
+          <p>One image for Intel and Apple Silicon, notarized by Apple.</p>
+        </div>
         <div class="links"><a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg" download>DMG</a></div>
       </div>
-      <div class="card">
-        <h3>Windows</h3>
-        <p>One installer for x64 and ARM.</p>
+      <div class="plat" data-p="win">
+        <div class="plat-text">
+          <h3>Windows</h3>
+          <p>One installer for x64 and ARM.</p>
+        </div>
         <div class="links"><a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe" download>Installer</a></div>
       </div>
-      <div class="card">
-        <h3>Linux</h3>
-        <p>x86_64. deb for Debian and Ubuntu, AppImage for the rest.</p>
+      <div class="plat" data-p="linux">
+        <div class="plat-text">
+          <h3>Linux</h3>
+          <p>x86_64. deb for Debian and Ubuntu, AppImage for the rest.</p>
+        </div>
         <div class="links">
           <a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-linux.deb" download>deb</a>
           <a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-linux.AppImage" download>AppImage</a>
@@ -172,6 +186,25 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
       </div>
     </div>
     <p class="ver" id="ver"></p>
+    <script>
+    (function () {
+      var ua = navigator.userAgent, pf = navigator.platform || "";
+      var k = /iPhone|iPad|iPod/.test(ua) || (pf === "MacIntel" && navigator.maxTouchPoints > 1) ? "ios"
+        : /Android/.test(ua) ? "android"
+        : /Mac/.test(pf) || /Mac OS X/.test(ua) ? "mac"
+        : /Win/.test(pf) || /Windows/.test(ua) ? "win"
+        : /Linux/.test(pf) || /Linux|X11/.test(ua) ? "linux" : "";
+      var main = document.getElementById("dl-main"), others = document.getElementById("dl-others"), btn = document.getElementById("dl-more");
+      var el = k && others.querySelector('[data-p="' + k + '"]');
+      if (!el) return; // платформа не определилась — оставляем весь список
+      main.appendChild(el); main.hidden = false;
+      others.hidden = true; btn.hidden = false;
+      btn.addEventListener("click", function () {
+        var open = others.hidden; others.hidden = !open;
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    })();
+    </script>
   </section>
 </main>
 

@@ -35,7 +35,7 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
       <a href="#download">다운로드</a>
       <a href="#crypto" class="hide-sm">암호화</a>
       <a href="/terms" class="hide-sm">이용 규칙</a>
-      <a href="/privacy">개인정보</a>
+      <a href="/privacy" class="hide-sm">개인정보</a>
     <span class="lang"><a href="/" data-lang="ru">RU</a><a href="/en/" data-lang="en">EN</a><a href="/ko/" data-lang="ko" aria-current="page">KO</a></span>
     </nav>
   </div>
@@ -131,39 +131,53 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
 
   <section class="wrap" id="download">
     <h2>다운로드</h2>
-    <div class="dl">
-      <div class="card">
-        <h3>iPhone</h3>
-        <p>Apple의 베타 앱인 TestFlight로 설치해요.</p>
-        <ol class="steps">
-          <li>App Store에서 TestFlight를 설치하세요 — 첫 번째 버튼.</li>
-          <li>같은 iPhone에서 초대를 여세요 — 두 번째 버튼.</li>
-          <li>TestFlight에서 ‘수락’, 그다음 ‘설치’를 누르세요.</li>
-          <li>홈 화면에서 WYX를 실행하세요. 업데이트는 TestFlight로 오니, 자동 업데이트를 켜 두세요.</li>
-        </ol>
+    <!-- Платформа посетителя — крупной карточкой (скрипт ниже переносит её сюда),
+         остальные — списком по кнопке «Другие платформы». Без скрипта виден весь список. -->
+    <div class="dl-main" id="dl-main" hidden></div>
+    <div class="dl-more-wrap"><button type="button" class="pill soft dl-more" id="dl-more" aria-expanded="false" aria-controls="dl-others" hidden><span class="if-closed">다른 플랫폼</span><span class="if-open">접기</span></button></div>
+    <div class="dl-others card" id="dl-others">
+      <div class="plat" data-p="ios">
+        <div class="plat-text">
+          <h3>iPhone</h3>
+          <p>Apple의 베타 앱인 TestFlight로 설치해요.</p>
+          <ol class="steps">
+            <li>App Store에서 TestFlight를 설치하세요 — 첫 번째 버튼.</li>
+            <li>같은 iPhone에서 초대를 여세요 — 두 번째 버튼.</li>
+            <li>TestFlight에서 ‘수락’, 그다음 ‘설치’를 누르세요.</li>
+            <li>홈 화면에서 WYX를 실행하세요. 업데이트는 TestFlight로 오니, 자동 업데이트를 켜 두세요.</li>
+          </ol>
+        </div>
         <div class="links">
           <a class="chip" href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a>
           <a class="chip" href="https://testflight.apple.com/join/UdUbyFJp">초대</a>
         </div>
       </div>
-      <div class="card">
-        <h3>Android</h3>
-        <p>설치 파일. 설치할 때 출처를 허용하세요.</p>
+      <div class="plat" data-p="android">
+        <div class="plat-text">
+          <h3>Android</h3>
+          <p>설치 파일. 설치할 때 출처를 허용하세요.</p>
+        </div>
         <div class="links"><a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax.apk" download>APK</a></div>
       </div>
-      <div class="card">
-        <h3>macOS</h3>
-        <p>Intel과 Apple Silicon 공용 이미지, Apple 공증 완료.</p>
+      <div class="plat" data-p="mac">
+        <div class="plat-text">
+          <h3>macOS</h3>
+          <p>Intel과 Apple Silicon 공용 이미지, Apple 공증 완료.</p>
+        </div>
         <div class="links"><a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-mac.dmg" download>DMG</a></div>
       </div>
-      <div class="card">
-        <h3>Windows</h3>
-        <p>x64와 ARM 공용 설치 파일.</p>
+      <div class="plat" data-p="win">
+        <div class="plat-text">
+          <h3>Windows</h3>
+          <p>x64와 ARM 공용 설치 파일.</p>
+        </div>
         <div class="links"><a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-windows.exe" download>설치 파일</a></div>
       </div>
-      <div class="card">
-        <h3>Linux</h3>
-        <p>x86_64. Debian과 Ubuntu는 deb, 나머지는 AppImage.</p>
+      <div class="plat" data-p="linux">
+        <div class="plat-text">
+          <h3>Linux</h3>
+          <p>x86_64. Debian과 Ubuntu는 deb, 나머지는 AppImage.</p>
+        </div>
         <div class="links">
           <a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-linux.deb" download>deb</a>
           <a class="chip" href="https://storage.yandexcloud.net/hyax-public/installers/hyax-linux.AppImage" download>AppImage</a>
@@ -172,6 +186,25 @@ document.addEventListener("click",function(e){var a=e.target.closest&&e.target.c
       </div>
     </div>
     <p class="ver" id="ver"></p>
+    <script>
+    (function () {
+      var ua = navigator.userAgent, pf = navigator.platform || "";
+      var k = /iPhone|iPad|iPod/.test(ua) || (pf === "MacIntel" && navigator.maxTouchPoints > 1) ? "ios"
+        : /Android/.test(ua) ? "android"
+        : /Mac/.test(pf) || /Mac OS X/.test(ua) ? "mac"
+        : /Win/.test(pf) || /Windows/.test(ua) ? "win"
+        : /Linux/.test(pf) || /Linux|X11/.test(ua) ? "linux" : "";
+      var main = document.getElementById("dl-main"), others = document.getElementById("dl-others"), btn = document.getElementById("dl-more");
+      var el = k && others.querySelector('[data-p="' + k + '"]');
+      if (!el) return; // платформа не определилась — оставляем весь список
+      main.appendChild(el); main.hidden = false;
+      others.hidden = true; btn.hidden = false;
+      btn.addEventListener("click", function () {
+        var open = others.hidden; others.hidden = !open;
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    })();
+    </script>
   </section>
 </main>
 
