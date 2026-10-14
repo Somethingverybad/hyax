@@ -444,12 +444,7 @@ const ProfilePage = () => {
               icon={Globe}
               label={t("Язык")}
               value={LANG_NAMES[getLang()]}
-              onClick={async () => {
-                // Три языка по кругу: ru → en → ko. Локально сразу, на сервер — для переводов.
-                const next = LANGS[(LANGS.indexOf(getLang()) + 1) % LANGS.length];
-                setLang(next);
-                if (profile?.id) { try { const upd = await api.updateProfile(profile.id, { language: next }); setProfile(upd); writeCache("user", upd); } catch { /* останется локально */ } }
-              }}
+              onClick={() => navigate("/profile/language")}
             />
           </SettingsCard>
 
