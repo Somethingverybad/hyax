@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import type { ChatTranslate } from "@/api/client";
-import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles } from "lucide-react";
+import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -51,6 +51,7 @@ import ShareToChat from "@/components/ShareToChat";
 import PhotoEditor from "@/components/PhotoEditor";
 import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
+import ChatMediaSheet from "./ChatMediaSheet";
 import { WallpaperVideo } from "./ChatWallpaper";
 import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
@@ -774,6 +775,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const myLang = getLang();
   const [showOrig, setShowOrig] = useState<Set<string>>(() => new Set());
   const [translateOpen, setTranslateOpen] = useState(false);
+  // «Медиа и файлы»: фото, видео, музыка, голосовые и файлы переписки.
+  const [mediaOpen, setMediaOpen] = useState(false);
+  useEffect(() => { setMediaOpen(false); }, [chatId]);
   const [trSettings, setTrSettings] = useState<ChatTranslate | null>(null);
   const translateOne = async (m: Message) => {
     closeMenu();
@@ -3243,6 +3247,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setAddOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <UserPlus className="w-5 h-5 text-foreground/80" />{tr("Добавить участников")}</button>
                     )}
+                    {!isSecret && !reqPending && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setMediaOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Images className="w-5 h-5 text-foreground/80" />{tr("Медиа и файлы")}</button>
+                    )}
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       <ImageIcon className="w-5 h-5 text-foreground/80" />{tr("Обои чата")}</button>
                     {isSecret && skey && (
@@ -4869,6 +4877,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
       {wallpaperOpen && chatInfo && (
         <WallpaperSheet chat={chatInfo} onClose={() => setWallpaperOpen(false)} onChanged={loadChatInfo} />
+      )}
+      {mediaOpen && chatId && (
+        <ChatMediaSheet chatId={chatId} title={title || peer?.username || group?.name || undefined}
+          onClose={() => setMediaOpen(false)} onJump={(id) => { setMediaOpen(false); void jumpToMessage(id); }} />
       )}
       {burst && <StickerBurst key={burst.key} url={burst.url} onDone={() => setBurst(null)} />}
       {translateOpen && (

@@ -344,6 +344,9 @@ export interface PinnedInfo {
   preview: string;
 }
 
+/** Разделы «Медиа и файлы» (GET messages/media/). */
+export type MediaKind = "photo" | "video" | "music" | "voice" | "file";
+
 export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null; anim?: string | null }
 
 /** Действие в чате: кнопка name, в сообщении — «<emoji> <ник> <verb> <адресат>». */
@@ -1413,6 +1416,14 @@ export const api = {
     return res.json();
   },
 
+  /** «Медиа и файлы» чата: раздел, новые первыми; counts — в первой странице. */
+  getChatMedia: async (chatId: string, type: MediaKind, before?: string): Promise<{ results: any[]; has_more: boolean; counts?: Record<MediaKind, number> }> => {
+    const q = new URLSearchParams({ chat: chatId, type });
+    if (before) q.set("before", before);
+    const res = await fetchWithAuth(`${API_URL}/messages/media/?${q}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось загрузить");
+    return res.json();
+  },
   getMessages: async (chatId: string): Promise<any[]> => {
     const res = await fetchWithAuth(`${API_URL}/messages/?chat=${chatId}`, {
       method: "GET",

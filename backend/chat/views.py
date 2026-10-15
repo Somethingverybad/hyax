@@ -990,6 +990,31 @@ def _can_post_to(chat, profile):
     return True
 
 
+# Разделы «Медиа и файлы» чата: по расширению вложения (оно есть и в s3://,
+# и в /media/...). Видео-сообщения («треугольники») — к видео.
+MEDIA_KINDS = ("photo", "video", "music", "voice", "file")
+_IMG_RE = r"\.(jpe?g|png|webp|gif|heic|heif|bmp|avif)(\?.*)?$"
+_VID_RE = r"\.(mp4|mov|m4v|webm|mkv|3gp)(\?.*)?$"
+_AUD_RE = r"\.(mp3|m4a|aac|ogg|oga|opus|flac|wav|weba|aiff?)(\?.*)?$"
+
+
+def _media_q(kind):
+    has_file = models.Q(file_url__isnull=False) & ~models.Q(file_url="")
+    img = has_file & models.Q(file_url__iregex=_IMG_RE)
+    vid = has_file & models.Q(file_url__iregex=_VID_RE)
+    aud = has_file & models.Q(file_url__iregex=_AUD_RE)
+    if kind == "photo":
+        return img & models.Q(download_only=False)
+    if kind == "video":
+        return (vid & models.Q(download_only=False)) | (models.Q(video_url__isnull=False) & ~models.Q(video_url=""))
+    if kind == "music":
+        return aud
+    if kind == "voice":
+        return models.Q(voice_url__isnull=False) & ~models.Q(voice_url="")
+    # Файлы — всё прочее и картинки/видео, отправленные «Файлом».
+    return has_file & ~aud & (models.Q(download_only=True) | (~models.Q(file_url__iregex=_IMG_RE) & ~models.Q(file_url__iregex=_VID_RE)))
+
+
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     queryset = Message.objects.all()
@@ -1034,6 +1059,40 @@ class MessageViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
         return queryset.order_by('created_at')
+
+    @action(detail=False, methods=['get'], url_path='media')
+    def media(self, request):
+        """Медиа чата по разделам: GET ?chat=<id>&type=photo|video|music|voice|file
+        [&before=<ISO>&limit=60] → {results, has_more[, counts]} — новые первыми.
+        Видимость — как у ленты (удалённые, «у себя», заблокированные).
+        Секретный чат сервер не разберёт: вложения там зашифрованы."""
+        chat_id = request.query_params.get('chat')
+        kind = request.query_params.get('type') or 'photo'
+        if not chat_id or kind not in MEDIA_KINDS:
+            return Response({"error": "Нужны chat и type"}, status=400)
+        base = self.get_queryset().filter(models.Q(cipher__isnull=True) | models.Q(cipher=''))
+        counts = None
+        if not request.query_params.get('before'):
+            counts = {k: base.filter(_media_q(k)).count() for k in MEDIA_KINDS}
+        qs = base.filter(_media_q(kind)).order_by('-created_at')
+        before = request.query_params.get('before')
+        if before:
+            from django.utils.dateparse import parse_datetime
+            dt = parse_datetime(before)
+            if dt:
+                qs = qs.filter(created_at__lt=dt)
+        try:
+            limit = max(1, min(100, int(request.query_params.get('limit') or 60)))
+        except ValueError:
+            limit = 60
+        rows = list(qs[:limit + 1])
+        out = {
+            "results": MessageSerializer(rows[:limit], many=True, context={'request': request}).data,
+            "has_more": len(rows) > limit,
+        }
+        if counts is not None:
+            out["counts"] = counts
+        return Response(out)
 
     @action(detail=False, methods=['post'], url_path='effects_seen')
     def effects_seen(self, request):
