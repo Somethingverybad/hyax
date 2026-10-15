@@ -3446,7 +3446,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <div
         ref={scrollRef}
         onScroll={onFeedScroll}
-        className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6", wallpaper && "!bg-transparent")}
+        className={cn("flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden overscroll-contain chat-scroll px-3 md:px-7 py-4 md:py-6", wallpaper && "!bg-transparent")}
         onTouchStart={(e) => { feedTouchRef.current = true; markUserScroll(); kbSwipeRef.current = { y: e.touches[0].clientY, done: false }; }}
         onTouchMoveCapture={markUserScroll}
         onWheel={markUserScroll}
@@ -3462,7 +3462,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         }}
 
       >
-        <div ref={feedRef} className={cn("max-w-4xl mx-auto space-y-2", mintM && pinned && "pt-[56px]")}>
+        {/* mt-auto: короткая переписка (часто секретный чат) прижата к полю
+            ввода, как длинная, а не висит под шапкой с пустотой снизу
+            (баг-репорт 54ff0f55). */}
+        <div ref={feedRef} className={cn("mt-auto w-full max-w-4xl mx-auto space-y-2", mintM && pinned && "pt-[56px]")}>
           {hasMore && (
             <div className="flex justify-center">
               <button
