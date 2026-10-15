@@ -2515,6 +2515,96 @@ class StickerViewSet(viewsets.ModelViewSet):
 
 
 # Загрузка стикеров
+# ── Анимированные стикеры и аватары ─────────────────────────────────────
+# GIF и короткое видео (до ANIM_SECONDS) переводим в mp4 без звука: меньше и
+# плавнее GIF. Рядом кладём первый кадр: <база>.mp4 и <база>.mp4.jpg, а в
+# адрес пишем кадр — старые клиенты, пуши и CallKit видят обычную картинку,
+# новые по «.mp4.jpg» понимают, что рядом видео, и проигрывают его.
+ANIM_EXTS = (".gif", ".mp4", ".mov", ".m4v", ".webm", ".mkv")
+ANIM_SECONDS = 5
+ANIM_MAX_MB = 25
+
+
+def _has_alpha(src, ext):
+    """Есть ли в анимации прозрачность (GIF, webm с альфой) — mp4 её не хранит."""
+    import subprocess
+    import re
+    if ext not in (".gif", ".webm"):
+        return False
+    cmd = ["ffmpeg", "-v", "error"] + (["-c:v", "libvpx-vp9"] if ext == ".webm" else [])
+    cmd += ["-t", str(ANIM_SECONDS), "-i", src, "-vf",
+            "alphaextract,signalstats,metadata=print:key=lavfi.signalstats.YMIN:file=-", "-f", "null", "-"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except Exception:
+        return False
+    vals = [int(v) for v in re.findall(r"lavfi\.signalstats\.YMIN=(\d+)", r.stdout or "")]
+    return bool(vals) and min(vals) < 250
+
+
+def _animated_media(src, ext, kind, dest_rel_base):
+    """GIF или видео → анимация. kind="sticker" — вписать в 512 с пропорциями,
+    прозрачный — анимированным WebP (иначе в mp4 вышел бы чёрный фон);
+    kind="avatar" — квадрат по центру, 512. Возвращает /media/... или None."""
+    import subprocess
+    abs_base = os.path.join(settings.MEDIA_ROOT, dest_rel_base)
+    os.makedirs(os.path.dirname(abs_base), exist_ok=True)
+    if kind == "avatar":
+        vf = "crop='min(iw,ih)':'min(iw,ih)',scale='trunc(min(512,iw)/2)*2':-2"
+    else:
+        vf = "scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+    made = []
+    try:
+        if kind == "sticker" and _has_alpha(src, ext):
+            out = abs_base + ".webp"
+            made.append(out)
+            dec = ["-c:v", "libvpx-vp9"] if ext == ".webm" else []
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *dec, "-t", str(ANIM_SECONDS), "-i", src, "-an",
+                            "-vf", vf + ",fps=20", "-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "70", "-loop", "0", out],
+                           check=True, timeout=180)
+            return "/media/" + dest_rel_base + ".webp"
+        out = abs_base + ".mp4"
+        made += [out, out + ".jpg"]
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-t", str(ANIM_SECONDS), "-i", src, "-an",
+                        "-vf", vf + ",fps=30,format=yuv420p", "-c:v", "libx264", "-crf", "26", "-preset", "veryfast",
+                        "-movflags", "+faststart", out], check=True, timeout=180)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", out, "-frames:v", "1", "-q:v", "3", out + ".jpg"],
+                       check=True, timeout=60)
+        return "/media/" + dest_rel_base + ".mp4.jpg"
+    except Exception:
+        logger.exception("анимация %s → %s не получилась", src, kind)
+        for f in made:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        return None
+
+
+def _save_upload_tmp(file, ext):
+    """Загруженный файл — во временный, ffmpeg читает с диска."""
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=ext)
+    with os.fdopen(fd, "wb") as out:
+        for chunk in file.chunks():
+            out.write(chunk)
+    return path
+
+
+def _remove_media(url):
+    """Удалить файл из MEDIA_ROOT по /media/... (с видео рядом с кадром)."""
+    if not url or not url.startswith("/media/"):
+        return
+    path = os.path.join(settings.MEDIA_ROOT, url.replace("/media/", "", 1))
+    paths = [path] + ([path[:-4]] if path.endswith(".mp4.jpg") else [])
+    for p in paths:
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except OSError:
+            pass
+
+
 class StickerUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
@@ -2527,20 +2617,34 @@ class StickerUploadView(APIView):
         if not file:
             return Response({"error": "No file provided"}, status=400)
         
-        # Проверяем размер файла (макс. 5MB для стикеров)
-        if file.size > 5 * 1024 * 1024:
-            return Response({"error": "File too large (max 5MB for stickers)"}, status=400)
-        
-        # Проверяем, что это изображение
-        allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
         file_extension = os.path.splitext(file.name)[1].lower()
+        animated = file_extension in ANIM_EXTS
+        # Картинка — до 5 МБ; GIF и видео — до 25 МБ (сожмутся в mp4).
+        if file.size > (ANIM_MAX_MB if animated else 5) * 1024 * 1024:
+            return Response({"error": "Файл слишком большой" if animated else "File too large (max 5MB for stickers)"}, status=400)
+
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.webp'] + list(ANIM_EXTS)
         if file_extension not in allowed_extensions:
-            return Response({"error": "Only image files are allowed for stickers"}, status=400)
-        
+            return Response({"error": "Только картинка, GIF или видео"}, status=400)
+
         try:
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
+
+        # GIF и видео до 5 с — анимированный стикер (mp4 или прозрачный WebP).
+        if animated:
+            tmp = _save_upload_tmp(file, file_extension)
+            try:
+                url = _animated_media(tmp, file_extension, "sticker", f"stickers/{uuid.uuid4()}")
+            finally:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            if not url:
+                return Response({"error": "Не удалось обработать анимацию"}, status=400)
+            return Response({"file_url": url, "file_name": file.name})
         
         # Генерируем уникальное имя файла
         unique_filename = f"{uuid.uuid4()}{file_extension}"
@@ -2664,7 +2768,9 @@ def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
 
     allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
     file_extension = os.path.splitext(file.name)[1].lower()
-    if file_extension not in allowed_extensions:
+    # Аватар может быть анимированным: GIF или видео до 5 с → mp4.
+    animated = subdir == 'avatars' and file_extension in ANIM_EXTS
+    if file_extension not in allowed_extensions and not animated:
         return Response({"error": "Only image files are allowed"}, status=400)
 
     try:
@@ -2672,18 +2778,27 @@ def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
     except Profile.DoesNotExist:
         return Response({"error": "Profile not found"}, status=400)
 
+    if animated:
+        tmp = _save_upload_tmp(file, file_extension)
+        try:
+            url = _animated_media(tmp, file_extension, "avatar", f"{subdir}/{prefix}_{profile.id}_{uuid.uuid4().hex[:8]}")
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        if not url:
+            return Response({"error": "Не удалось обработать анимацию"}, status=400)
+        _remove_media(getattr(profile, field, None))
+        setattr(profile, field, url)
+        profile.save(update_fields=[field])
+        return url
+
     target_dir = os.path.join(settings.MEDIA_ROOT, subdir)
     os.makedirs(target_dir, exist_ok=True)
 
     # Прежний файл удаляем, иначе в media копятся хвосты от каждой замены.
-    previous = getattr(profile, field, None)
-    if previous:
-        old_full_path = os.path.join(settings.MEDIA_ROOT, previous.replace('/media/', ''))
-        if os.path.exists(old_full_path):
-            try:
-                os.remove(old_full_path)
-            except OSError:
-                pass
+    _remove_media(getattr(profile, field, None))
 
     suffix = f"_{uuid.uuid4().hex[:8]}" if stamped else ""
     file_path = os.path.join(subdir, f"{prefix}_{profile.id}{suffix}{file_extension}")
@@ -2701,6 +2816,35 @@ def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
     return file_url
 
 
+class AnimatedAvatarUploadView(APIView):
+    """POST avatar/animated/ — GIF или видео до 5 с → аватар-видео для группы
+    или канала (квадрат 512, mp4 и кадр рядом). Отдаёт {file_url}; ставит его
+    чату сам клиент — так же, как обычную картинку."""
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file provided"}, status=400)
+        ext = os.path.splitext(file.name)[1].lower()
+        if ext not in ANIM_EXTS:
+            return Response({"error": "Нужен GIF или видео"}, status=400)
+        if file.size > ANIM_MAX_MB * 1024 * 1024:
+            return Response({"error": "Файл слишком большой"}, status=400)
+        tmp = _save_upload_tmp(file, ext)
+        try:
+            url = _animated_media(tmp, ext, "avatar", f"avatars/chat_{uuid.uuid4().hex}")
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        if not url:
+            return Response({"error": "Не удалось обработать анимацию"}, status=400)
+        return Response({"file_url": url})
+
+
 # Загрузка аватаров
 class AvatarUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
@@ -2713,7 +2857,8 @@ class AvatarUploadView(APIView):
         # удаляется, хвостов в media не копится.
         result = _save_profile_image(
             request, field='avatar_url', subdir='avatars', prefix='avatar',
-            max_mb=5, stamped=True,
+            max_mb=ANIM_MAX_MB if os.path.splitext(getattr(request.FILES.get('file'), 'name', ''))[1].lower() in ANIM_EXTS else 5,
+            stamped=True,
         )
         if isinstance(result, Response):
             return result

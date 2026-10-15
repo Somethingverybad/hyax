@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import ImageViewer from "@/components/ImageViewer";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { mediaUrl } from "@/api/client";
+import { animVideo } from "@/lib/animMedia";
+import LoopVideo from "@/components/LoopVideo";
 
 /**
  * Аватар в чужом профиле: по нажатию открывается крупно — тем же
@@ -31,7 +34,18 @@ export default function AvatarZoom({ url, name, children, className }: {
       >
         {children}
       </button>
-      {open && createPortal(
+      {open && animVideo(url) && createPortal(
+        // Видео-аватар: просмотрщик фото видео не показывает — крупно поверх
+        // экрана, закрыть — нажатием.
+        <div onPointerDown={stop} onTouchStart={stop} onTouchMove={stop} onTouchEnd={stop}
+          onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+          className="fixed inset-0 z-[120] bg-black/90 flex items-center justify-center"
+          role="dialog" aria-label={t("Аватар")}>
+          <LoopVideo src={mediaUrl(animVideo(url)!)} poster={mediaUrl(url)} className="w-[min(92vw,92vh)] h-[min(92vw,92vh)] rounded-lg object-cover" />
+        </div>,
+        document.body,
+      )}
+      {open && !animVideo(url) && createPortal(
         <div onClick={stop} onPointerDown={stop} onTouchStart={stop} onTouchMove={stop} onTouchEnd={stop}>
           <ImageViewer
             items={[{ raw: url, name: `${name || "avatar"}.jpg`, messageId: "avatar" }]}

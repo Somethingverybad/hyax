@@ -2035,7 +2035,15 @@ export const api = {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new LError("Не удалось загрузить аватар");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось загрузить аватар");
+    return res.json();
+  },
+  /** GIF или видео до 5 с → видео-аватар группы или канала (ставит его клиент). */
+  uploadAnimatedAvatar: async (file: File): Promise<{ file_url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/avatar/animated/`, { method: "POST", body: formData });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось загрузить аватар");
     return res.json();
   },
 

@@ -32,6 +32,8 @@ import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
+import CachedImg from "@/components/CachedImg";
+import { isAnimatedFile } from "@/lib/animMedia";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -898,7 +900,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               <Newspaper className="w-5 h-5 text-primary" />
             </span>
           ) : avatarUrl ? (
-            <img src={avatarUrl} alt="" className="w-10 h-10 shrink-0 rounded-md object-cover" />
+            <CachedImg src={avatarUrl} alt="" className="w-10 h-10 shrink-0 rounded-md object-cover" />
           ) : (
             <span className="w-10 h-10 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
               <Radio className="w-5 h-5 text-primary" />
@@ -1684,7 +1686,8 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
       // local=true — аватар должен лежать открыто, как у групп: вложения
       // сообщений уходят в закрытое хранилище (ссылка s3://…), и в списке
       // чатов такой аватар не открывался — вместо картинки была пустая рамка.
-      const up = await api.uploadFile(file, undefined, undefined, true);
+      // GIF и видео — видео-аватар: сервер сделает квадрат и mp4 до 5 секунд.
+      const up = isAnimatedFile(file) ? await api.uploadAnimatedAvatar(file) : await api.uploadFile(file, undefined, undefined, true);
       const updated = await api.updateChannel(channel.id, { avatar_url: up.file_url });
       onChanged({ ...channel, ...updated });
       toast.success(tr("Аватар обновлён"));
@@ -1761,7 +1764,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               aria-label={isAdmin ? tr("Сменить аватар канала") : undefined}
             >
               {channel.avatar_url
-                ? <img src={mediaUrl(channel.avatar_url)} alt="" className="w-full h-full object-cover" />
+                ? <CachedImg src={mediaUrl(channel.avatar_url)} alt="" className="w-full h-full object-cover" />
                 : <Radio className="w-7 h-7 text-primary" />}
             </button>
             {isAdmin && (
@@ -1779,7 +1782,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               </div>
             )}
           </div>
-          <input ref={avatarInput} type="file" accept="image/*" hidden onChange={(e) => { pickAvatar(e.target.files?.[0]); e.target.value = ""; }} />
+          <input ref={avatarInput} type="file" accept="image/*,video/*" hidden onChange={(e) => { pickAvatar(e.target.files?.[0]); e.target.value = ""; }} />
 
           {!isOwner && channel.description && (
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{channel.description}</p>

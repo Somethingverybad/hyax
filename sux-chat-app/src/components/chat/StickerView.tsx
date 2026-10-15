@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { AnimationItem } from "lottie-web";
 import { mediaUrl } from "@/api/client";
 import { useCachedImage } from "@/lib/imageCache";
+import { animVideo } from "@/lib/animMedia";
+import LoopVideo from "@/components/LoopVideo";
 
 /**
  * Стикер любого формата: .webp/.png/.gif — картинка; .webm — видео
@@ -27,6 +29,7 @@ const loadTgs = (url: string) => {
 
 export const isTgs = (u?: string | null) => !!u && /\.tgs(\?|$)/i.test(u);
 export const isWebm = (u?: string | null) => !!u && /\.webm(\?|$)/i.test(u);
+export const isMp4 = (u?: string | null) => !!u && /\.mp4(\?|$)/i.test(u);
 
 const StickerView = ({ url, alt, className, loop = true }: { url: string; alt?: string; className?: string; loop?: boolean }) => {
   const src = mediaUrl(url);
@@ -60,6 +63,9 @@ const StickerView = ({ url, alt, className, loop = true }: { url: string; alt?: 
   if (isWebm(src)) {
     return <video src={src} className={className} autoPlay loop={loop} muted playsInline aria-label={alt} />;
   }
+  // GIF или видео, переведённые сервером в mp4: в адресе кадр, видео рядом.
+  const vid = animVideo(src) || (isMp4(src) ? src : null);
+  if (vid) return <LoopVideo src={vid} poster={vid === src ? undefined : src} className={className} alt={alt} loop={loop} />;
   return <CachedImg src={src} alt={alt || ""} className={className} />;
 };
 

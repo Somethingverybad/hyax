@@ -69,6 +69,7 @@ urlpatterns = [
     path('stickers/upload/', StickerUploadView.as_view(), name='sticker-upload'),
     path('voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('avatar/upload/', AvatarUploadView.as_view(), name='avatar-upload'),
+    path('avatar/animated/', AnimatedAvatarUploadView.as_view(), name='avatar-animated'),
     path('cover/upload/', CoverUploadView.as_view(), name='cover-upload'),
     path('reports/', ReportView.as_view(), name='reports'),
     path('blocks/', BlockView.as_view(), name='blocks'),

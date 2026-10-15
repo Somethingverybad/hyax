@@ -2,6 +2,8 @@ import { useRef } from "react";
 import { useCachedImage } from "@/lib/imageCache";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { mediaUrl } from "@/api/client";
+import { animVideo } from "@/lib/animMedia";
+import LoopVideo from "@/components/LoopVideo";
 
 /**
  * Аватар пользователя. Если фото нет — геометрическая фигура в духе
@@ -67,6 +69,11 @@ const Identicon = ({ id, avatarUrl, className = "w-10 h-10" }: IdenticonProps) =
   if (avatarUrl) {
     // Пока картинка достаётся из кэша — скелетон того же размера.
     if (!cached) { waited.current = true; return <LoadingSkeleton className={`ui-avatar ${className} rounded-md shrink-0`} />; }
+    // Видео-аватар (GIF или видео до 5 с): кадр из кэша, видео — пока на экране.
+    const vid = animVideo(avatarUrl);
+    if (vid) {
+      return <LoopVideo src={mediaUrl(vid)} poster={cached} className={`ui-avatar ${className} rounded-md object-cover shrink-0 select-none`} />;
+    }
     return (
       <img
         src={cached}

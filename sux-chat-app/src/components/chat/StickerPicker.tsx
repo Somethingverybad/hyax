@@ -16,6 +16,7 @@ import { readCache } from "@/lib/session-cache";
 import { invalidateStickerIndex } from "@/lib/stickerIndex";
 import type { NotificationSoundInfo, ChatActionInfo } from "@/api/client";
 import { ActionGrid } from "@/components/chat/ActionSheet";
+import { isAnimatedFile } from "@/lib/animMedia";
 
 interface Sticker {
   id: string;
@@ -151,12 +152,18 @@ const StickerPicker = ({
     if (fileRef.current) fileRef.current.value = "";
     addedRef.current = 0;
     setQueue(list.slice(1));
-    setCropping(list[0]);
+    take(list[0]);
+  };
+  // GIF и видео не кадрируем (обрезка картинкой убила бы анимацию) — сразу
+  // к макросу; сервер сам впишет в 512 и переведёт в mp4 до 5 секунд.
+  const take = (f: File) => {
+    if (isAnimatedFile(f)) { setKeyword(""); setAsking(f); }
+    else setCropping(f);
   };
   const nextInQueue = async (rest: File[]) => {
     const [head, ...tail] = rest;
     setQueue(tail);
-    if (head) { setCropping(head); return; }
+    if (head) { take(head); return; }
     if (addedRef.current) {
       toast.success(t("Добавлено: {n}", { n: addedRef.current }));
       invalidateStickerIndex();
@@ -696,7 +703,7 @@ const StickerPicker = ({
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         multiple
         className="hidden"
         onChange={(e) => addFiles(e.target.files)}
@@ -779,8 +786,11 @@ const StickerPicker = ({
           <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
             <p className="text-h2">{t("Макрос стикера")}</p>
             <p className="text-small text-subtle">{t("Слово, эмодзи или символ: наберёшь его в поле — стикер всплывёт подсказкой. Можно оставить пустым.")}</p>
+            {isAnimatedFile(asking) && <p className="text-caption text-subtle">{t("Анимированный стикер: длиннее 5 секунд — обрежется, звук уберётся.")}</p>}
             <div className="flex items-center gap-3">
-              <img src={URL.createObjectURL(asking)} alt="" className="w-16 h-16 rounded-md object-contain bg-surface-4" />
+              {asking.type.startsWith("video/")
+                ? <video src={URL.createObjectURL(asking)} autoPlay loop muted playsInline className="w-16 h-16 rounded-md object-contain bg-surface-4" />
+                : <img src={URL.createObjectURL(asking)} alt="" className="w-16 h-16 rounded-md object-contain bg-surface-4" />}
               <input
                 autoFocus
                 value={keyword}

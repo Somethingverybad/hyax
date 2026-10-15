@@ -9,6 +9,8 @@ import Identicon from "@/components/Identicon";
 import UserProfileModal from "@/components/UserProfileModal";
 import { api, mediaUrl } from "@/api/client";
 import { toast } from "sonner";
+import CachedImg from "@/components/CachedImg";
+import { isAnimatedFile } from "@/lib/animMedia";
 
 interface Person { id: string; username: string; avatar_url?: string | null }
 
@@ -91,7 +93,8 @@ const GroupSettingsModal = ({
     if (!file) return;
     setSaving(true);
     try {
-      const up = await api.uploadFile(file, undefined, undefined, true);
+      // GIF и видео — видео-аватар: сервер сделает квадрат и mp4 до 5 секунд.
+      const up = isAnimatedFile(file) ? await api.uploadAnimatedAvatar(file) : await api.uploadFile(file, undefined, undefined, true);
       const updated = await api.configureGroup(chatId, { avatarUrl: up.file_url });
       setAvatar(updated.avatar_url ?? null);
       onUpdated({ avatar_url: updated.avatar_url ?? null });
@@ -158,7 +161,7 @@ const GroupSettingsModal = ({
             className="relative w-24 h-24 rounded-2xl overflow-hidden bg-secondary flex items-center justify-center"
           >
             {avatar ? (
-              <img src={mediaUrl(avatar)} alt="" className="w-full h-full object-cover" />
+              <CachedImg src={mediaUrl(avatar)} alt="" className="w-full h-full object-cover" />
             ) : (
               <Users className="w-10 h-10 text-primary" />
             )}
@@ -168,7 +171,7 @@ const GroupSettingsModal = ({
               </span>
             )}
           </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickAvatar} />
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={pickAvatar} />
         </div>
 
         {/* Название */}

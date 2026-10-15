@@ -4,6 +4,8 @@ import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
+import { animVideo, isAnimatedFile } from "@/lib/animMedia";
+import LoopVideo from "@/components/LoopVideo";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
@@ -13,7 +15,7 @@ import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { useTheme } from "@/lib/theme";
-import { checkForUpdate, startUpdate, describeUpdateError } from "@/lib/updateCheck";
+import { checkForUpdate, startUpdate, describeUpdateError, updatesViaPlay, PLAY_URL } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { Aura, DEFAULT_AURA } from "@/components/Aura";
@@ -95,7 +97,10 @@ const ProfilePage = () => {
   const pickImage = (kind: "avatar" | "cover", file: File | null) => {
     const input = kind === "avatar" ? avatarRef.current : coverRef.current;
     if (input) input.value = "";
-    if (file) setCropping({ file, kind });
+    if (!file) return;
+    // GIF и видео обрезать картинкой нельзя — сервер сам сделает квадрат и mp4 до 5 с.
+    if (kind === "avatar" && isAnimatedFile(file)) { void changeAvatar(file); return; }
+    setCropping({ file, kind });
   };
 
   const changeAvatar = async (file: File | null) => {
@@ -193,6 +198,10 @@ const ProfilePage = () => {
   const [checking, setChecking] = useState(false);
   const checkUpdates = async () => {
     if (checking) return;
+    if (updatesViaPlay()) {
+      window.open(PLAY_URL, "_blank");
+      return;
+    }
     setChecking(true);
     try {
       const found = await checkForUpdate();
@@ -276,7 +285,7 @@ const ProfilePage = () => {
       <div className="flex-1 overflow-y-auto">
         <div className={mint ? "min-h-full px-[17px] pb-4 space-y-[11px] flex flex-col" : "min-h-full px-4 pb-4 space-y-3 flex flex-col"}
           style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
-          <input ref={avatarRef} type="file" accept="image/*" className="hidden"
+          <input ref={avatarRef} type="file" accept="image/*,video/*" className="hidden"
                  onChange={(e) => pickImage("avatar", e.target.files?.[0] || null)} />
           <input ref={coverRef} type="file" accept="image/*" className="hidden"
                  onChange={(e) => pickImage("cover", e.target.files?.[0] || null)} />
@@ -324,7 +333,9 @@ const ProfilePage = () => {
                 {profile?.avatar_url ? (
                   // Размер явный: обёртка ауры высотой по содержимому, а у FadeImg
                   // содержимое абсолютное — с h-full аватар схлопывался в ноль.
-                  <FadeImg src={mediaUrl(profile.avatar_url)} className={mint ? "w-[89px] h-[89px] rounded-[15px]" : "w-20 h-20 rounded-[6px]"} />
+                  animVideo(profile.avatar_url)
+                    ? <LoopVideo src={mediaUrl(animVideo(profile.avatar_url)!)} poster={mediaUrl(profile.avatar_url)} className={`${mint ? "w-[89px] h-[89px] rounded-[15px]" : "w-20 h-20 rounded-[6px]"} object-cover`} />
+                    : <FadeImg src={mediaUrl(profile.avatar_url)} className={mint ? "w-[89px] h-[89px] rounded-[15px]" : "w-20 h-20 rounded-[6px]"} />
                 ) : (
                   <span className="w-full h-full flex items-center justify-center text-4xl font-bold text-primary">
                     {(profile?.username || "?")[0]?.toUpperCase()}
