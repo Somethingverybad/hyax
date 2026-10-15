@@ -1642,5 +1642,10 @@ const en: Record<string, string> = {
   "Растворение": "Dissolved",
   "Временная настройка: чтобы посмотреть каждую анимацию по очереди": "Temporary setting to preview each animation one by one",
   "Анимированные эмодзи: Noto Emoji, Google, CC BY 4.0": "Animated emoji: Noto Emoji by Google, CC BY 4.0",
+  "Открыть аватар": "Open profile photo",
+  "Вайб за фото: {n}": "Vibe for this photo: {n}",
+  "Поднять вайб": "Raise vibe",
+  "Отправить фото": "Send photo",
+  "Вы уже подняли вайб за эту сохранёнку": "You've already raised the vibe for this photo",
 };
 export default en;

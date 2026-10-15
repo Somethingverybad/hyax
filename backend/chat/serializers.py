@@ -717,10 +717,26 @@ class PostCommentSerializer(serializers.ModelSerializer):
 
 
 class SavedImageSerializer(serializers.ModelSerializer):
+    # Вайб за картинку: сколько раз подняли и поднимал ли я (SavedImageVibe).
+    # Список отдаёт их аннотацией (SavedImagesView), одиночный — запросом.
+    vibes = serializers.SerializerMethodField()
+    vibed = serializers.SerializerMethodField()
+
     class Meta:
         model = SavedImage
-        fields = ['id', 'file_url', 'file_name', 'created_at']
+        fields = ['id', 'file_url', 'file_name', 'created_at', 'vibes', 'vibed']
         read_only_fields = fields
+
+    def get_vibes(self, obj):
+        v = getattr(obj, '_vibes', None)
+        return v if v is not None else obj.vibes.count()
+
+    def get_vibed(self, obj):
+        v = getattr(obj, '_vibed', None)
+        if v is not None:
+            return bool(v)
+        me = self.context.get('me')
+        return bool(me) and obj.vibes.filter(voter=me).exists()
 
 
 class MusicTrackSerializer(serializers.ModelSerializer):

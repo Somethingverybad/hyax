@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Download, Trash2 } from "lucide-react";
+import { ChevronLeft, Download, Heart, Share2, Trash2 } from "lucide-react";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { toast } from "sonner";
 import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
+import ShareToChat from "@/components/ShareToChat";
+import { cn } from "@/lib/utils";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
 import { t, tn } from "@/lib/i18n";
@@ -12,12 +14,18 @@ import { t, tn } from "@/lib/i18n";
 /** «1 фото», «12 фото» — слово не склоняется, но пусть будет одной точкой. */
 export const pluralPhotos = (n: number) => tn(n, "{n} фото", "{n} фото", "{n} фото");
 
-/** Плитка сохранёнки: картинка грузится через useMediaUrl (медиа за токеном). */
+/** Плитка сохранёнки: картинка грузится через useMediaUrl (медиа за токеном).
+ *  Внизу — сердечко со счётчиком, если за неё уже поднимали вайб. */
 export const SavedTile = ({ item, className, onClick }: { item: SavedImage; className?: string; onClick?: () => void }) => {
   const url = useMediaUrl(item.file_url);
   return (
     <button type="button" onClick={onClick} className={`relative overflow-hidden rounded-md bg-surface-3 ${className || ""}`} aria-label={item.file_name || t("Сохранёнка")}>
       {url ? <img src={url} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" draggable={false} /> : <span className="absolute inset-0 animate-pulse bg-surface-3" />}
+      {(item.vibes || 0) > 0 && (
+        <span className="absolute left-1.5 bottom-1.5 h-5 px-1.5 rounded-full bg-black/55 text-white text-[11px] font-semibold tabular-nums flex items-center gap-1">
+          <Heart className={cn("w-3 h-3", item.vibed && "text-[#ff3b5c]")} fill="currentColor" strokeWidth={0} />{item.vibes}
+        </span>
+      )}
     </button>
   );
 };
@@ -48,6 +56,37 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
     api.listSavedImages(profileId).then((d) => alive && setItems(d.items)).catch(() => alive && setItems([]));
     return () => { alive = false; };
   }, [profileId]);
+
+  // Вайб за картинку: двойной тап по ней в просмотре или сердечко внизу.
+  // Рисуем сразу, ответ сервера поправит счётчик; уже поднятый — ничего.
+  const patch = (id: string, p: Partial<SavedImage>) => setItems((prev) => (prev || []).map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const raise = async (it: SavedImage) => {
+    if (own || it.vibed) return;
+    patch(it.id, { vibed: true, vibes: (it.vibes || 0) + 1 });
+    try {
+      const r = await api.raiseSavedVibe(it.id);
+      patch(it.id, { vibed: r.vibed, vibes: r.vibes });
+    } catch (e: any) {
+      if (e?.state) patch(it.id, { vibed: e.state.vibed, vibes: e.state.vibes });
+      else patch(it.id, { vibed: false, vibes: it.vibes || 0 });
+      if (e?.status !== 409) toast.error(e?.message || t("Не получилось"));
+    }
+  };
+  // «Поделиться»: в чат — сообщением с этой картинкой, наружу — системным окном.
+  const [shareFor, setShareFor] = useState<SavedImage | null>(null);
+  const sendTo = async (it: SavedImage, chatId: string, title: string) => {
+    try {
+      await api.sendMessageWithFile(chatId, { file_url: it.file_url, file_name: it.file_name || "photo.jpg", file_size: 0 });
+      toast.success(t("Отправлено: {title}", { title }));
+    } catch (e: any) {
+      toast.error(e?.message || t("Не удалось отправить"));
+    }
+  };
+  const shareOutside = async (it: SavedImage) => {
+    const url = it.file_url.startsWith("s3://") ? await api.signMedia(it.file_url) : mediaUrl(it.file_url);
+    await saveFileToDevice(url, it.file_name || "photo.jpg");
+  };
+  const cur = openIdx !== null ? (items || [])[openIdx] : null;
 
   const remove = async (it: SavedImage) => {
     try {
@@ -108,6 +147,26 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
           index={openIdx}
           onIndex={setOpenIdx}
           onClose={() => setOpenIdx(null)}
+          onDoubleTap={own ? undefined : () => { if (cur) void raise(cur); }}
+          footer={cur && (
+            <div className="flex items-center gap-1 rounded-full bg-black/55 backdrop-blur-md p-1 text-white">
+              <button
+                type="button"
+                onClick={() => void raise(cur)}
+                disabled={own}
+                aria-pressed={!!cur.vibed}
+                aria-label={own ? t("Вайб за фото: {n}", { n: cur.vibes || 0 }) : cur.vibed ? t("Вы подняли вайб") : t("Поднять вайб")}
+                className="h-11 min-w-11 px-3 rounded-full flex items-center justify-center gap-1.5 active:scale-90 transition-transform disabled:active:scale-100"
+              >
+                <Heart className={cn("w-6 h-6", cur.vibed && "text-[#ff3b5c]")} fill={cur.vibed ? "currentColor" : "none"} />
+                {(cur.vibes || 0) > 0 && <span className="text-small font-semibold tabular-nums">{cur.vibes}</span>}
+              </button>
+              <button type="button" onClick={() => setShareFor(cur)} aria-label={t("Поделиться")}
+                className="h-11 w-11 rounded-full flex items-center justify-center active:scale-90 transition-transform">
+                <Share2 className="w-5 h-5" />
+              </button>
+            </div>
+          )}
           actions={[
             { label: t("Скачать"), icon: <Download className="w-5 h-5 text-subtle" />, onClick: async () => {
               const cur = viewerItems[openIdx];
@@ -121,6 +180,14 @@ const SavedGallery = ({ profileId, own, title, onClose, onChanged }: {
           ]}
         />
       )}
+      <ShareToChat
+        open={!!shareFor}
+        title={t("Отправить фото")}
+        text=""
+        onClose={() => setShareFor(null)}
+        onPick={(chatId, title) => { if (shareFor) void sendTo(shareFor, chatId, title); }}
+        onShareOutside={() => { if (shareFor) void shareOutside(shareFor); }}
+      />
     </div>
   );
 };

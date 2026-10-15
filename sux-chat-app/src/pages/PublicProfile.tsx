@@ -5,6 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { MessageSquare, Share2, ArrowLeft, Copy, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
+import AvatarZoom from "@/components/AvatarZoom";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import { api, mediaUrl, type SavedImage } from "@/api/client";
 import { shareProfile, PUBLIC_ORIGIN } from "@/lib/share";
@@ -119,7 +120,9 @@ const PublicProfile = () => {
               </div>
             )}
             <div className="flex items-center gap-5">
-              <Identicon id={card.id} avatarUrl={card.avatar_url || null} className="w-[104px] h-[104px] rounded-lg shrink-0" />
+              <AvatarZoom url={card.avatar_url} name={card.username}>
+                <Identicon id={card.id} avatarUrl={card.avatar_url || null} className="w-[104px] h-[104px] rounded-lg shrink-0" />
+              </AvatarZoom>
               <div className="min-w-0">
                 <h2 className="text-[24px] leading-tight font-semibold truncate">{card.username}</h2>
                 <p className="mt-2 text-body text-subtle truncate">{card.bio ? card.bio.split("\n")[0] : t("Статус не указан")}</p>

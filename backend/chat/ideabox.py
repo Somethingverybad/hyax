@@ -347,7 +347,7 @@ def _me(request):
     return me if me and not me.is_bot else None
 
 
-def _notify_vibe(target, voter, anonymous):
+def _notify_vibe(target, voter, anonymous, saved=False, push=True):
     """Сказать человеку, что его вайб подняли: в персональный сокет (веб и
     десктоп) и пушем. Анонимно — без имени; в пуше kind=vibe, по тапу
     клиент открывает свой профиль."""
@@ -363,10 +363,13 @@ def _notify_vibe(target, voter, anonymous):
             })
     except Exception:
         logger.exception("vibe: сокет не ответил")
+    if not push:
+        return
     try:
         from .fcm import notify_profiles
         # На языке того, чей вайб подняли (notify_profiles знает его язык).
         body = (L("Кто-то поднял ваш вайб — уже {n}", n=target.vibe) if anonymous
+                else L("{name} поднял(а) ваш вайб за сохранёнку — уже {n}", name=voter.username, n=target.vibe) if saved
                 else L("{name} поднял(а) ваш вайб — уже {n}", name=voter.username, n=target.vibe))
         notify_profiles(Profile.objects.filter(id=target.id), title=L("Вайбометр"), body=body,
                         extra={"kind": "vibe", "profile_id": str(target.id)})

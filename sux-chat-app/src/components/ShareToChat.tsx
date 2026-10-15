@@ -22,7 +22,9 @@ import { readCache } from "@/lib/session-cache";
 type Row = { id: string; title: string; kind: "saved" | "group" | "direct" | "channel" | "wall"; peerId?: string; avatar?: string | null };
 
 const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeChatId?: string): Row[] => chats
-  .filter((c) => (includeChannels || c.kind !== "channel") && c.id !== excludeChatId)
+  // Секретные чаты — мимо: отсюда уходит открытый текст или файл без
+  // шифрования, а в секретном чате сервер не должен видеть ничего.
+  .filter((c) => (includeChannels || c.kind !== "channel") && c.kind !== "secret" && c.id !== excludeChatId)
   .map((c): Row => {
     if (c.kind === "saved") return { id: c.id, title: t("Избранное"), kind: "saved" };
     if (c.kind === "channel") return { id: c.id, title: c.name || t("Канал"), kind: "channel", avatar: c.avatar_url };

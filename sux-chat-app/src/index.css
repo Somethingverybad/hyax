@@ -1509,3 +1509,13 @@ textarea,
     border-right: 1px solid hsl(var(--border));
   }
 }
+
+/* Сердечко двойного тапа в просмотре сохранёнки (ImageViewer, onDoubleTap). */
+.viewer-heart { color: #ff3b5c; filter: drop-shadow(0 4px 14px rgb(0 0 0 / .35)); animation: viewer-heart .9s cubic-bezier(.2, .9, .3, 1.2) forwards; }
+@keyframes viewer-heart {
+  0% { transform: scale(.2) rotate(-8deg); opacity: 0; }
+  18% { transform: scale(1.15) rotate(4deg); opacity: 1; }
+  32% { transform: scale(.95) rotate(0deg); }
+  70% { transform: scale(1) translateY(0); opacity: 1; }
+  100% { transform: scale(.9) translateY(-40px); opacity: 0; }
+}

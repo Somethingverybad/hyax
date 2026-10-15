@@ -89,6 +89,7 @@ urlpatterns = [
     path('music/', MusicView.as_view(), name='music'),
     path('music/<uuid:pk>/', MusicView.as_view(), name='music-item'),
     path('saved-images/<uuid:pk>/', SavedImagesView.as_view(), name='saved-image'),
+    path('saved-images/<uuid:pk>/vibe/', SavedImageVibeView.as_view(), name='saved-image-vibe'),
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
     path('bots/', BotsView.as_view(), name='bots'),
     path('bots/<uuid:pk>/', BotDetailView.as_view(), name='bot-detail'),

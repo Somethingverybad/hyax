@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { X, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, MoreVertical, ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api, mediaUrl } from "@/api/client";
 import { t as tr } from "@/lib/i18n";
@@ -47,15 +47,22 @@ const resolveUrl = async (raw: string, localMap?: Map<string, string>) => {
  *  во весь экран оказывается прямо под ними. */
 const chrome = "w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center active:opacity-70";
 
-const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
+const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoubleTap, footer }: {
   items: ViewerItem[];
   index: number;
   onIndex: (i: number) => void;
   onClose: () => void;
   actions: ViewerAction[];
   localMap?: Map<string, string>;
+  /** Двойной тап по картинке — своё действие (сохранёнки: поднять вайб) с
+   *  сердечком на месте тапа вместо зума; приблизить можно щипком. */
+  onDoubleTap?: () => void;
+  /** Панель внизу (сохранёнки: сердечко и «Поделиться»). */
+  footer?: ReactNode;
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Сердечки двойного тапа: каждое живёт, пока идёт его анимация.
+  const [hearts, setHearts] = useState<{ id: number; x: number; y: number }[]>([]);
   const [url, setUrl] = useState("");
   const item = items[index];
   // Зум: масштаб и сдвиг картинки. Щипок — масштаб вокруг пальцев, один
@@ -188,6 +195,13 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
       lastTap.current = null;
       if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
       if (!onImage) return;
+      if (onDoubleTap) {
+        const id = Date.now() + Math.random();
+        setHearts((h) => [...h, { id, x: e.clientX, y: e.clientY }]);
+        window.setTimeout(() => setHearts((h) => h.filter((x) => x.id !== id)), 900);
+        onDoubleTap();
+        return;
+      }
       const cur = tRef.current;
       setT(cur.s > 1 ? { s: 1, x: 0, y: 0 } : zoomAt(cur, 2.5, rel(e.clientX, e.clientY)));
       return;
@@ -276,6 +290,22 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
           aria-label={tr("Следующая")}>
           <ChevronRight className="w-6 h-6" />
         </button>
+      )}
+
+      {hearts.map((h) => (
+        <Heart key={h.id} className="viewer-heart absolute z-10 w-24 h-24 pointer-events-none" fill="currentColor" strokeWidth={0}
+          style={{ left: h.x - 48, top: h.y - 48 }} aria-hidden />
+      ))}
+
+      {footer && (
+        <div
+          className="absolute inset-x-0 z-10 flex justify-center px-3 transition-opacity"
+          style={{ bottom: "calc(var(--sab) + 0.75rem)", opacity: drag ? Math.max(0, 1 - drag / 120) : 1 }}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {footer}
+        </div>
       )}
 
       {menuOpen && <div className="absolute inset-0 z-10 bg-black/40" aria-hidden onClick={() => setMenuOpen(false)} />}

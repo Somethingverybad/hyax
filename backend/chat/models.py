@@ -701,6 +701,18 @@ class SavedImage(models.Model):
         constraints = [models.UniqueConstraint(fields=["owner", "file_url"], name="uniq_saved_image_per_owner")]
 
 
+class SavedImageVibe(models.Model):
+    """«Поднять вайб» за чужую сохранёнку (двойной тап или сердечко в
+    просмотре): +1 к вайбометру владельца, один раз от человека на картинку."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    image = models.ForeignKey(SavedImage, on_delete=models.CASCADE, related_name="vibes")
+    voter = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["image", "voter"], name="saved_vibe_once")]
+
+
 class MusicTrack(models.Model):
     """Музыка в Creative Space: общая библиотека, каждый загружает своё,
     удалить может только владелец. Длительность считает ffprobe при загрузке."""

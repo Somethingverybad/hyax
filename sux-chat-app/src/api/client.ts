@@ -304,6 +304,10 @@ export interface SavedImage {
   file_url: string;
   file_name: string;
   created_at: string;
+  /** Сколько раз за эту картинку подняли вайб владельцу. */
+  vibes?: number;
+  /** Я уже поднимал вайб за неё. */
+  vibed?: boolean;
 }
 
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
@@ -1312,6 +1316,13 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/vibe-levels/`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(cfg) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(body?.error || "Не удалось сохранить");
+    return body;
+  },
+  /** Поднять вайб владельцу за его сохранёнку (раз на картинку). */
+  raiseSavedVibe: async (savedId: string): Promise<{ vibes: number; vibed: boolean; vibe?: number }> => {
+    const res = await fetchWithAuth(`${API_URL}/saved-images/${savedId}/vibe/`, { method: "POST", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { const e: any = new LError(body?.error || "Не получилось"); if ("vibes" in body) e.state = body; e.status = res.status; throw e; }
     return body;
   },
   raiseVibe: async (profileId: string, anonymous = false): Promise<VibeState> => {

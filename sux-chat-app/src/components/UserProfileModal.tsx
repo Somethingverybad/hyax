@@ -6,6 +6,7 @@ import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
 import Identicon from "@/components/Identicon";
+import AvatarZoom from "@/components/AvatarZoom";
 import { Aura, DEFAULT_AURA } from "@/components/Aura";
 import { api, mediaUrl } from "@/api/client";
 import { lastSeenText } from "@/lib/lastSeen";
@@ -154,9 +155,11 @@ const UserProfileModal = ({
               </div>
             )}
             <div className="flex items-center gap-5 pr-8">
-              <Aura active={!!profile.is_online} owner={profile} size={104}>
-                <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
-              </Aura>
+              <AvatarZoom url={profile.avatar_url} name={profile.username}>
+                <Aura active={!!profile.is_online} owner={profile} size={104}>
+                  <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[104px] h-[104px] rounded-lg shrink-0" />
+                </Aura>
+              </AvatarZoom>
               <div className="min-w-0">
                 <h2 className="text-[24px] leading-tight font-semibold text-foreground truncate">{profile.username}</h2>
                 <p className={`mt-1 text-small truncate ${profile.is_online ? "text-online" : "text-subtle"}`}>

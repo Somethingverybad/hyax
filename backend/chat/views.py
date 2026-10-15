@@ -4039,6 +4039,43 @@ class PostViewMark(APIView):
 
 
 
+class SavedImageVibeView(APIView):
+    """POST /saved-images/<id>/vibe/ — поднять вайб владельцу за эту
+    сохранёнку (двойной тап или сердечко в просмотре): +1 к его вайбометру,
+    один раз от человека на картинку. Свои не считаются. Пуш владельцу — не
+    чаще раза в 10 минут от одного человека: пролистал галерею двойными
+    тапами — одно уведомление, а не двадцать."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk=None):
+        from django.db import IntegrityError, transaction
+        from datetime import timedelta
+        from .moderation import can_see_saved
+        from .ideabox import _notify_vibe
+        me = getattr(request.user, 'profile', None)
+        item = SavedImage.objects.filter(id=pk).select_related('owner').first()
+        if me is None or not item or not can_see_saved(item.owner_id, me.id):
+            return Response({"error": "Не найдено"}, status=404)
+        owner = item.owner
+        state = lambda: {"vibes": item.vibes.count(), "vibed": item.vibes.filter(voter=me).exists()}
+        if owner.id == me.id:
+            return Response({**state(), "error": "Свой вайб не поднять"}, status=400)
+        if owner.is_bot:
+            return Response({**state(), "error": "У ботов вайбометра нет"}, status=400)
+        try:
+            with transaction.atomic():
+                vote = SavedImageVibe.objects.create(image=item, voter=me)
+                Profile.objects.filter(id=owner.id).update(vibe=models.F('vibe') + 1)
+        except IntegrityError:
+            return Response({**state(), "error": "Вы уже подняли вайб за эту сохранёнку"}, status=409)
+        owner.refresh_from_db(fields=['vibe'])
+        recent = SavedImageVibe.objects.filter(
+            voter=me, image__owner=owner, created_at__gte=timezone.now() - timedelta(minutes=10),
+        ).exclude(id=vote.id).exists()
+        _notify_vibe(owner, me, anonymous=False, saved=True, push=not recent)
+        return Response({**state(), "vibe": owner.vibe})
+
+
 class SavedImagesView(APIView):
     """Сохранёнки. GET — свои или чужие (?profile=<id>, ?limit=N); POST
     {message_id} — сохранить картинку из сообщения (нужен доступ к чату);
@@ -4060,6 +4097,11 @@ class SavedImagesView(APIView):
             limit = min(int(request.query_params.get('limit', 200)), 500)
         except ValueError:
             limit = 200
+        # Вайб за каждую картинку: сколько подняли и поднимал ли я.
+        qs = qs.annotate(
+            _vibes=models.Count('vibes', distinct=True),
+            _vibed=models.Exists(SavedImageVibe.objects.filter(image_id=models.OuterRef('pk'), voter=profile)),
+        )
         return Response({"count": total, "items": SavedImageSerializer(qs[:limit], many=True).data})
 
     def post(self, request):
