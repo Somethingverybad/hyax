@@ -23,6 +23,9 @@ import java.io.File;
 final class MessageChannels {
 
     static final String MESSAGES = "messages_v2";
+    /** «Без звука» в настройках уведомлений: обычные сообщения сервер шлёт
+     *  сюда — баннер и вибрация есть, звука нет (chat/fcm.py SILENT_CHANNEL). */
+    static final String MESSAGES_SILENT = "messages_silent";
     static final String SOUND_GROUP = "sounds";
     private static final String[] LEGACY = {"messages", "fcm_fallback_notification_channel"};
 
@@ -101,6 +104,18 @@ final class MessageChannels {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
             ch.setSound(sound, attrs);
+            ch.enableVibration(true);
+            nm.createNotificationChannel(ch);
+        }
+
+        String silentTitle = NativeLang.str(ctx, R.string.channel_messages_silent);
+        NotificationChannel silent = nm.getNotificationChannel(MESSAGES_SILENT);
+        if (silent != null) {
+            rename(nm, silent, silentTitle);
+        } else {
+            NotificationChannel ch = new NotificationChannel(
+                MESSAGES_SILENT, silentTitle, NotificationManager.IMPORTANCE_HIGH);
+            ch.setSound(null, null);
             ch.enableVibration(true);
             nm.createNotificationChannel(ch);
         }

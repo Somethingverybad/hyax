@@ -87,6 +87,9 @@ class Profile(models.Model):
     translate_out_default = models.BooleanField(default=False)
     # Стена: переводить чужие посты на мой язык (None — как translate_in_default).
     translate_wall = models.BooleanField(null=True, blank=True, default=None)
+    # Уведомления без звука: обычные сообщения приходят беззвучно, звук,
+    # который мне отправили специально (аудио-стикер), играет (chat/fcm.py).
+    notify_silent = models.BooleanField(default=False)
 
     @property
     def email_verified(self):

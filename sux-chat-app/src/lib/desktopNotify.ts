@@ -57,6 +57,8 @@ export function showDesktopNotification(opts: {
   tag?: string;
   avatar?: string;
   onClick?: () => void;
+  /** Без системного звука («Звук входящих» выключен). */
+  silent?: boolean;
 }): void {
   // Windows и Linux в Electron: свой тост в углу экрана (как у Telegram), а не
   // системный центр уведомлений — он там прячет баннеры и теряет клик.
@@ -73,6 +75,7 @@ export function showDesktopNotification(opts: {
       body: opts.body,
       tag: opts.tag,
       icon: NOTIFY_ICON,
+      silent: opts.silent,
     });
     n.onclick = () => {
       try {

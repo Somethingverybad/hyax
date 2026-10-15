@@ -74,16 +74,22 @@ def _encrypt(secret_b64: str, payload: dict) -> str | None:
         return None
 
 
+# «Без звука» (Profile.notify_silent): обычные сообщения — в беззвучный
+# канал Android и без звука в APNs. Звук, отправленный специально (аудио-
+# стикер сообщения), играет всё равно — тогда notify_profiles(keep_sound=True).
+SILENT_CHANNEL = "messages_silent"
+
+
 def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | None,
-                       placeholder: str = PLACEHOLDER_BODY):
+                       placeholder: str = PLACEHOLDER_BODY, silent: bool = False):
     """Пуш с текстом внутри шифрованного блоба. Android — data-only, уведомление
     строит CallMessagingService; iOS — alert с mutable-content и заглушкой,
     текст подставляет Notification Service Extension. Звук не секрет — он в
     открытых полях, чтобы система сыграла его как обычно."""
     from firebase_admin import messaging
 
-    ios_sound = f"{sound}.caf" if sound else "receive.caf"
-    android_channel = f"snd_{sound}" if sound else "messages_v2"
+    ios_sound = None if silent else (f"{sound}.caf" if sound else "receive.caf")
+    android_channel = SILENT_CHANNEL if silent else (f"snd_{sound}" if sound else "messages_v2")
     dead = []
     for token, secret, platform in entries:
         blob = _encrypt(secret, {"title": title, "body": body, **{k: str(v) for k, v in data.items()}, "sound": sound or ""})
@@ -116,7 +122,7 @@ def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | 
         PushToken.objects.filter(token__in=dead).delete()
 
 
-def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None):
+def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None, silent: bool = False):
     """Выполняется в отдельном потоке: пуш не должен задерживать ответ API."""
     app = _firebase_app()
     if app is None:
@@ -137,6 +143,10 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
     # скачивания файла. Если канала на устройстве ещё нет, система возьмёт
     # канал по умолчанию — звук будет обычный, но уведомление не потеряется.
     android_channel = f"snd_{sound}" if sound else "messages_v2"
+    # Без звука: в APNs звук не указываем, на Android — беззвучный канал
+    # (его заводит приложение; в старой версии его нет — будет звук по умолчанию).
+    if silent:
+        ios_sound, android_sound, android_channel = None, None, SILENT_CHANNEL
 
     message = messaging.MulticastMessage(
         tokens=tokens,
@@ -189,7 +199,8 @@ def _fcm_tokens(profiles, platforms=None, exclude_device=None):
 
 
 def notify_profiles(profiles, title, body, extra: dict | None = None,
-                    sound: str | None = None, platforms=None, hide_body_for=None):
+                    sound: str | None = None, platforms=None, hide_body_for=None,
+                    keep_sound: bool = False):
     """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне.
     platforms — ограничить платформы (например, только android, если iOS
     уже получил VoIP-пуш о звонке). hide_body_for — id профилей, которым
@@ -198,14 +209,17 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
     title и body — готовая строка (имя, текст сообщения) или перевод на язык
     получателя: i18n.L("Входящий звонок") либо функция lang -> str. Получатели
     делятся по Profile.language, каждому — свой текст; заглушка «Новое
-    сообщение» тоже на его языке."""
+    сообщение» тоже на его языке.
+
+    Кто выключил звук уведомлений (Profile.notify_silent), получает пуш без
+    звука — если только keep_sound: звук сообщению приложили специально."""
     from .models import PushToken
     from .i18n import norm, render, tr
 
     qs = PushToken.objects.filter(user__in=profiles).exclude(platform="ios_voip")
     if platforms:
         qs = qs.filter(platform__in=platforms)
-    rows = list(qs.values_list("token", "secret", "platform", "user_id", "user__language"))
+    rows = list(qs.values_list("token", "secret", "platform", "user_id", "user__language", "user__notify_silent"))
     if not rows:
         return
     hide = set(hide_body_for or ())
@@ -215,21 +229,22 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
     # к уже загруженным объектам, база в фоне им не нужна.
     groups = {}
     for r in rows:
-        groups.setdefault((norm(r[4]), r[3] in hide), []).append(r)
+        silent = bool(r[5]) and not keep_sound
+        groups.setdefault((norm(r[4]), r[3] in hide, silent), []).append(r)
     batches = []
-    for (lang, hidden), group in groups.items():
+    for (lang, hidden, silent), group in groups.items():
         placeholder = tr(PLACEHOLDER_BODY, lang)
         batches.append((group, render(title, lang),
-                        placeholder if hidden else render(body, lang), placeholder))
+                        placeholder if hidden else render(body, lang), placeholder, silent))
 
     def run():
-        for group, title_text, body_text, placeholder in batches:
+        for group, title_text, body_text, placeholder, silent in batches:
             plain = [r[0] for r in group if not r[1]]
             enc = [(r[0], r[1], r[2]) for r in group if r[1]]
             if plain:
-                _deliver(plain, title_text, body_text, extra, sound)
+                _deliver(plain, title_text, body_text, extra, None if silent else sound, silent=silent)
             if enc and _firebase_app() is not None:
-                _deliver_encrypted(enc, title_text, body_text, extra, sound, placeholder)
+                _deliver_encrypted(enc, title_text, body_text, extra, None if silent else sound, placeholder, silent=silent)
 
     threading.Thread(target=run, daemon=True).start()
 

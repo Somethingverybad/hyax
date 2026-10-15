@@ -110,6 +110,27 @@ const ProfileNotifications = () => {
           />
         </SettingsCard>
 
+        {profile && (
+          <SettingsCard>
+            {/* Звук входящих: выключен — обычные сообщения приходят без звука
+                (пуши и звук в приложении), а звук, который мне отправили
+                специально (аудио-стикер), играет всё равно. */}
+            <SettingsRow
+              label={t("Звук входящих сообщений")}
+              hint={profile.notify_silent
+                ? t("Выключен — сообщения приходят без звука. Звук, который вам отправили специально, всё равно проиграется")
+                : t("Включён — у сообщений звук отправителя или обычный")}
+              trailing={
+                <Toggle
+                  label={t("Звук входящих сообщений")}
+                  checked={!profile.notify_silent}
+                  onChange={(v) => patch({ notify_silent: !v }, { ...profile, notify_silent: !v }, profile)}
+                />
+              }
+            />
+          </SettingsCard>
+        )}
+
         {profile && !Capacitor.isNativePlatform() && (
           <SettingsCard>
             {/* Звук входящего звонка — пока только веб и десктоп: на телефоне

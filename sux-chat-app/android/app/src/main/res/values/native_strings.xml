@@ -4,6 +4,7 @@
 <resources>
     <!-- Каналы уведомлений (Настройки → Приложения → WYX → Уведомления) -->
     <string name="channel_messages">Сообщения</string>
+    <string name="channel_messages_silent">Сообщения без звука</string>
     <string name="channel_calls">Звонки</string>
     <string name="channel_group_sounds">Аудио-стикеры</string>
     <!-- Входящий звонок и разговор -->

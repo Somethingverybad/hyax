@@ -42,6 +42,7 @@ export interface Profile {
   bio?: string | null;
   status?: string;
   push_preview?: boolean;
+  notify_silent?: boolean;
   rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
   /** Звук входящего звонка: "" — стандартный, "classic", "sound:<id>" (lib/ringtone.ts). */

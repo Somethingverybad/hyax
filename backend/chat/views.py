@@ -853,6 +853,9 @@ def _notify_new_message(message, profile, request):
                    else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None),
             # Кому выключено превью — «Новое сообщение» вместо текста.
             hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
+            # Звук приложили к сообщению специально — играет и у тех, кто
+            # выключил звук уведомлений.
+            keep_sound=bool(message.sound_id),
         )
     except Exception:
         logger.exception("push: не удалось поставить отправку")

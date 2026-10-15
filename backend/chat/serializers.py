@@ -51,7 +51,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe', 'language']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'notify_silent', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe', 'language']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
