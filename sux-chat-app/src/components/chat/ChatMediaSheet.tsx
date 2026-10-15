@@ -50,7 +50,8 @@ const fmtSize = (b?: number | null) => {
 };
 const monthKey = (iso: string) => iso.slice(0, 7);
 const monthTitle = (iso: string) => {
-  const s = new Date(iso).toLocaleDateString(getLang(), { month: "long", year: "numeric" });
+  // «октябрь 2026 г.» → «Октябрь 2026», как подпись раздела галереи.
+  const s = new Date(iso).toLocaleDateString(getLang(), { month: "long", year: "numeric" }).replace(/\s*г\.$/, "");
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 const dayTime = (iso: string) => new Date(iso).toLocaleString(getLang(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
