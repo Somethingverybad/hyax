@@ -4,4 +4,4 @@ export const APP_NAME = "WYX";
 /** Почта для обращений по правилам, жалобам и персональным данным. */
 export const SUPPORT_EMAIL = "Ancher001@yandex.ru";
 /** Дата последней правки правил и политики. */
-export const LEGAL_UPDATED = "2026-09-20";
+export const LEGAL_UPDATED = "2026-10-15";

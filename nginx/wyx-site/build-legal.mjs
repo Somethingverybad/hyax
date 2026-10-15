@@ -1,7 +1,8 @@
 // Собирает privacy.html и terms.html для wyx.su из текстов приложения
 // (sux-chat-app/src/pages/Legal.tsx), чтобы сайт и экран в приложении не
-// разъезжались. Запуск: node nginx/wyx-site/build-legal.mjs
-import { readFileSync, writeFileSync } from "node:fs";
+// разъезжались, и страницу удаления аккаунта (DELETION ниже).
+// Запуск: node nginx/wyx-site/build-legal.mjs
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -108,8 +109,74 @@ const page = ({ kind, docs, other, path }) => `<!doctype html>
 </html>
 `;
 
+// Удаление аккаунта отдельной страницей: Google Play требует ссылку, по которой
+// без входа в приложение видно, как удалить аккаунт и что при этом удаляется.
+// Лежит каталогом (delete-account/index.html): адрес /delete-account/ отдаёт
+// общий location nginx, отдельный маршрут в wyx.conf не нужен.
+// Что удаляется — по DeleteAccountView (backend/chat/account.py).
+const DELETION = {
+  ru: {
+    title: `Удаление аккаунта ${APP_NAME}`,
+    intro: "Аккаунт можно удалить в любой момент — в приложении или письмом. Удаление необратимо: восстановить аккаунт и переписку будет нельзя.",
+    sections: [
+      { h: "В приложении", p: ["Откройте «Профиль → Конфиденциальность → Удалить аккаунт» и подтвердите паролем. Аккаунт удаляется сразу."] },
+      { h: "Если войти не получается", p: [`Напишите на ${SUPPORT_EMAIL} и укажите логин аккаунта — удалим по запросу.`] },
+      { h: "Что удаляется", p: [
+        "Сразу: профиль и почта для восстановления, ваши сообщения, личные чаты и «Избранное», созданные вами каналы, стикерпаки и паки звуков, ваши боты, токены уведомлений и список заблокированных.",
+        "Вложения — фото, видео, файлы, голосовые — становятся недоступны сразу и стираются из облачного хранилища в течение 30 дней.",
+      ] },
+      { h: "Что остаётся", p: [
+        "Группы, в которых вы состояли, остаются у других участников — уже без ваших сообщений.",
+        "Жалобы, которые вы отправляли или которые подавали на вас, остаются у модераторов без привязки к аккаунту.",
+        "Копии секретных чатов на устройствах собеседников хранятся у них: удалить их с чужих устройств мы не можем.",
+      ] },
+    ],
+  },
+  en: {
+    title: `Deleting your ${APP_NAME} account`,
+    intro: "You can delete your account at any time — in the app or by email. Deletion is permanent: the account and its chats cannot be restored.",
+    sections: [
+      { h: "In the app", p: ["Open Profile → Privacy → Delete account and confirm with your password. The account is deleted immediately."] },
+      { h: "If you can't sign in", p: [`Email ${SUPPORT_EMAIL} with your account login, and we will delete it on request.`] },
+      { h: "What is deleted", p: [
+        "Immediately: your profile and recovery email, your messages, direct chats and Saved messages, channels you created, your sticker and sound packs, your bots, notification tokens and your block list.",
+        "Attachments — photos, videos, files, voice messages — become inaccessible immediately and are erased from cloud storage within 30 days.",
+      ] },
+      { h: "What remains", p: [
+        "Groups you were in stay with the other members, without your messages.",
+        "Reports you sent or that were filed about you stay with moderators, no longer linked to your account.",
+        "Copies of secret chats on your contacts' devices stay on those devices; we cannot delete them from other people's phones.",
+      ] },
+    ],
+  },
+  ko: {
+    title: `${APP_NAME} 계정 삭제`,
+    intro: "계정은 언제든지 앱에서 또는 이메일로 삭제할 수 있습니다. 삭제는 되돌릴 수 없으며, 계정과 대화를 복구할 수 없습니다.",
+    sections: [
+      { h: "앱에서 삭제", p: ["프로필 → 개인정보 → 계정 삭제를 열고 비밀번호로 확인하세요. 계정은 즉시 삭제됩니다."] },
+      { h: "로그인할 수 없는 경우", p: [`${SUPPORT_EMAIL}로 계정 아이디를 적어 보내 주시면 요청에 따라 삭제해 드립니다.`] },
+      { h: "삭제되는 정보", p: [
+        "즉시: 프로필과 복구 이메일, 내가 보낸 메시지, 1:1 채팅과 저장한 메시지, 내가 만든 채널, 스티커 팩과 사운드 팩, 내 봇, 알림 토큰, 차단 목록.",
+        "첨부 파일(사진, 동영상, 파일, 음성 메시지)은 즉시 접근할 수 없게 되며 30일 이내에 클라우드 저장소에서 삭제됩니다.",
+      ] },
+      { h: "남는 정보", p: [
+        "참여했던 그룹은 다른 참여자에게 남지만, 내 메시지는 삭제됩니다.",
+        "내가 보낸 신고와 나에 대한 신고는 계정과 연결되지 않은 상태로 운영진에게 남습니다.",
+        "상대방 기기에 있는 비밀 채팅 사본은 그 기기에 남으며, 다른 사람의 기기에서는 삭제할 수 없습니다.",
+      ] },
+    ],
+  },
+};
+
 const terms = { kind: "terms", docs: TERMS, path: "/terms" };
 const privacy = { kind: "privacy", docs: PRIVACY, path: "/privacy" };
+const deletion = {
+  kind: "delete",
+  docs: Object.fromEntries(LANGS.map((l) => [l, { ...DELETION[l], updated: PRIVACY[l].updated }])),
+  path: "/delete-account/",
+};
 writeFileSync(join(here, "terms.html"), page({ ...terms, other: privacy }));
 writeFileSync(join(here, "privacy.html"), page({ ...privacy, other: terms }));
-console.log(`terms.html и privacy.html собраны (${APP_NAME}, редакция ${LEGAL_UPDATED})`);
+mkdirSync(join(here, "delete-account"), { recursive: true });
+writeFileSync(join(here, "delete-account", "index.html"), page({ ...deletion, other: privacy }));
+console.log(`terms.html, privacy.html и delete-account/index.html собраны (${APP_NAME}, редакция ${LEGAL_UPDATED})`);

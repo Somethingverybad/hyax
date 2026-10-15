@@ -152,6 +152,8 @@ def _issue_code(profile, email, purpose):
     if recent:
         return None, "Код уже отправлен — проверьте почту или подождите минуту"
     code = f"{secrets.randbelow(10**6):06d}"
+    # Старые коды с адресами не копим: политика обещает, что коды не живут дольше нужного.
+    EmailCode.objects.filter(created_at__lt=timezone.now() - timedelta(days=1)).delete()
     EmailCode.objects.filter(profile=profile, purpose=purpose, used_at__isnull=True).update(used_at=timezone.now())
     row = EmailCode.objects.create(profile=profile, email=email, code=code, purpose=purpose)
     subject, text, html = code_email(code, purpose, lang_of(profile))
@@ -221,6 +223,8 @@ class EmailView(APIView):
         profile.email = ""
         profile.email_verified_at = None
         profile.save(update_fields=["email", "email_verified_at"])
+        # В кодах тоже лежит адрес — отвязал почту, значит, её у нас не остаётся.
+        EmailCode.objects.filter(profile=profile).delete()
         return Response(OwnProfileSerializer(profile).data)
 
 
@@ -240,6 +244,7 @@ class EmailConfirmView(APIView):
         profile.email = row.email
         profile.email_verified_at = timezone.now()
         profile.save(update_fields=["email", "email_verified_at"])
+        EmailCode.objects.filter(profile=profile, purpose="verify").delete()
         return Response(OwnProfileSerializer(profile).data)
 
 
@@ -275,4 +280,5 @@ class PasswordResetView(APIView):
         user = profile.user
         user.set_password(password)
         user.save(update_fields=["password"])
+        EmailCode.objects.filter(profile=profile, purpose="reset").delete()
         return Response({"ok": True})

@@ -1111,7 +1111,9 @@ class ChatAction(models.Model):
 class EmailCode(models.Model):
     """Одноразовый код из письма: привязка почты (verify) или сброс пароля
     (reset). Живёт 15 минут, 5 попыток ввода, повторная отправка не чаще
-    раза в минуту (chat/account.py)."""
+    раза в минуту (chat/account.py). Удаляется после использования и при отвязке
+    почты (так обещает политика конфиденциальности); коды старше суток стираются
+    при выдаче следующего."""
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="email_codes")
     email = models.EmailField()
     code = models.CharField(max_length=8)
