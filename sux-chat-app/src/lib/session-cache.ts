@@ -37,6 +37,8 @@ export function writeCache(key: keyof typeof KEYS, value: unknown) {
 
 export function clearSessionCache() {
   Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
+  // Черновики сообщений (lib/drafts) — тоже данные аккаунта.
+  try { localStorage.removeItem("hyax:drafts"); } catch { /* приватный режим */ }
   // Выход из аккаунта: общий сокет (lib/userSocket) и звонок закрываются.
   try { window.dispatchEvent(new Event("hyax:session-cleared")); } catch { /* не браузер */ }
 }

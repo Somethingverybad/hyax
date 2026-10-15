@@ -1,5 +1,6 @@
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { allDrafts } from "@/lib/drafts";
 import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
@@ -181,6 +182,13 @@ const ChatSidebar = ({
   }, [listFilter, userId]);
   // Фильтр-чипы под поиском: все чаты, только с непрочитанным, только каналы.
   const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
+  // Черновики (lib/drafts): в строке чата вместо последнего сообщения.
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => allDrafts());
+  useEffect(() => {
+    const on = () => setDrafts(allDrafts());
+    window.addEventListener("hyax:drafts", on);
+    return () => window.removeEventListener("hyax:drafts", on);
+  }, []);
   const unreadChats = chats.filter((c) => ((c as any).unread_count || 0) > 0).length;
   // Режим диалога «Новый чат»: личный · группа · канал.
   const [mode, setMode] = useState<"user" | "group" | "channel">("user");
@@ -1320,6 +1328,8 @@ const ChatSidebar = ({
                                 ? ((chat as any).secret?.state === "pending"
                                     ? ((chat as any).secret?.initiator_id === currentUser?.id ? t("Ждём, когда собеседник примет") : t("Приглашение в секретный чат"))
                                     : (chat as any).secret?.state === "declined" ? t("Секретный чат отклонён") : t("Секретный чат"))
+                              : drafts[chat.id] && chat.id !== selectedChatId && (chat as any).kind !== "secret"
+                                ? <><span className="text-destructive">{t("Черновик:")}</span> {drafts[chat.id].replace(/\s+/g, " ").slice(0, 140)}</>
                               : (chat as any).last_message
                                 ? `${(chat as any).last_message.sender_id === currentUser?.id ? t("Вы: ") : ""}${
                                     (chat as any).last_message.cipher

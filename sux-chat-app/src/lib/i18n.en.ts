@@ -1656,6 +1656,7 @@ const en: Record<string, string> = {
   "Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз": "No camera access. Allow it in your browser or system settings and tap again",
   "Нет доступа к камере. Разрешите его в настройках телефона": "No camera access. Allow it in your phone settings",
   "Сетка": "Grid",
+  "Черновик:": "Draft:",
   "Переводить посты на мой язык": "Translate posts into my language",
   "Посты на другом языке показываются в переводе. Нажмите «перевод» под постом, чтобы увидеть оригинал. Любой пост можно перевести и через меню «⋯».": "Posts in other languages are shown translated. Tap “translation” under a post to see the original. Any post can also be translated from the “⋯” menu.",
   "Имя из переписок или точный ник": "Name from your chats or exact username",

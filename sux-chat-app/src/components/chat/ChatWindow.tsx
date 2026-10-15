@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode } from "react";
+import { getDraftText, saveDraftText } from "@/lib/drafts";
 import CachedImg from "@/components/CachedImg";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
@@ -1288,7 +1289,51 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     fitTextarea();
     updateStickerHints(text);
     updateInline(text);
+    scheduleDraftSave();
   };
+
+  // ---- Черновики (lib/drafts) ----
+  // Ушли в другой чат — текст поля сохраняется черновиком этого чата, поле
+  // очищается; вернулись — черновик снова в поле. Пишем и по ходу набора,
+  // чтобы черновик пережил закрытие приложения. Текст правки сообщения —
+  // не черновик; в секретных чатах черновиков нет вовсе.
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  const draftChatRef = useRef<string | null>(null);
+  const draftTimerRef = useRef<number | null>(null);
+  const noDrafts = (id: string) =>
+    chatInfoCache.get(id)?.kind === "secret" || chats?.find((c) => c.id === id)?.kind === "secret";
+  const savedDraft = (id: string | null | undefined) => (id && !noDrafts(id) ? getDraftText(id) : "");
+  const flushDraft = () => {
+    if (draftTimerRef.current) { clearTimeout(draftTimerRef.current); draftTimerRef.current = null; }
+    const id = draftChatRef.current;
+    if (!id || editingRef.current || noDrafts(id)) return;
+    saveDraftText(id, draftRef.current);
+  };
+  function scheduleDraftSave() {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = window.setTimeout(flushDraft, 400);
+  }
+  useLayoutEffect(() => {
+    const prev = draftChatRef.current;
+    if (prev === chatId) return;
+    flushDraft();
+    draftChatRef.current = chatId;
+    // Ответ и правка относятся к сообщениям прежнего чата.
+    if (editingRef.current) { editingRef.current = null; setEditing(null); }
+    setReplyTo(null);
+    setDraft(savedDraft(chatId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+  // Окно закрыли (назад к списку) — дописанное сохраняем сразу.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => () => flushDraft(), []);
+  // Поле могло появиться позже текста (загрузка, плашка секретного чата) —
+  // подставляем в него текущий черновик.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el && el.value !== draftRef.current) { el.value = draftRef.current; fitTextarea(); }
+  });
 
   // Панель форматирования: видна, пока в поле выделен текст. Кнопки
   // оборачивают выделение разметкой (или снимают её), выделение остаётся на
@@ -2054,10 +2099,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const startEdit = (message: Message) => {
     closeMenu();
     setReplyTo(null);
+    // Недописанный черновик сохраняем до того, как поле займёт текст правки.
+    flushDraft();
+    editingRef.current = message;
     setEditing(message);
     setDraft(toMarkup(message.content || "", message.entities));
   };
-  const cancelEdit = () => { setEditing(null); setDraft(""); };
+  // После правки в поле возвращается черновик этого чата, если он был.
+  const cancelEdit = () => { editingRef.current = null; setEditing(null); setDraft(savedDraft(chatId)); };
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
@@ -2274,8 +2323,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const { text: newText, entities: newEntities } = parseMarkup(raw);
       const target = editing;
       if (!newText.trim()) { cancelEdit(); return; }
+      editingRef.current = null;
       setEditing(null);
-      setDraft("");
+      setDraft(savedDraft(chatId));
       try {
         const upd = isSecret
           ? (skey ? await api.editSecretMessage(target.id, await encryptPayload(skey.key, { t: newText, e: newEntities })) : Promise.reject(new Error("no key")))
@@ -4532,6 +4582,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   updateStickerHints(e.target.value);
                   updateInline(e.target.value);
                   updateMentions();
+                  scheduleDraftSave();
                 }}
                 onSelect={() => { if (mentionHints.length || mentionAtRef.current) updateMentions(); }}
                 onKeyDown={(e) => {
