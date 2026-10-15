@@ -1,7 +1,7 @@
 import { WebSocketService } from "@/services/websocket";
 import { t } from "@/lib/i18n";
 import { nativeCall, type NativeIce, type NativeSdp, type NativePeerState } from "@/lib/nativeCall";
-import type { CallState, IncomingCall } from "@/services/call-service";
+import { sdpCanVideo, type CallMedia, type CallState, type IncomingCall } from "@/services/call-service";
 import type { GroupCallInvite, GroupCallState } from "@/services/group-call-service";
 import { myDeviceId } from "./deviceId";
 
@@ -26,6 +26,8 @@ abstract class NativeBase {
   protected chatId: string | null = null;
   protected peers = new Set<string>();
   protected muted = false;
+  /** Личный звонок: соединения с видеоканалом (групповой — пока без видео). */
+  protected videoCalls = false;
   private listeners: Array<Promise<{ remove: () => Promise<void> } | undefined>> = [];
 
   constructor(ws: WebSocketService, userId: string, iceServers: RTCIceServer[]) {
@@ -61,6 +63,8 @@ abstract class NativeBase {
   }
 
   protected abstract onPeerState(peerId: string, state: string): void;
+  /** SDP собеседника — по нему видно, умеет ли он видео. */
+  protected onRemoteSdp(_sdp: string): void {}
 
   protected send(type: string, extra: SignalData): void {
     this.ws.send({ type, data: { chat_id: this.chatId, call_id: this.callId, ...extra } });
@@ -75,7 +79,7 @@ abstract class NativeBase {
   protected async addPeer(peerId: string, offer: boolean): Promise<void> {
     if (this.peers.has(peerId)) return;
     this.peers.add(peerId);
-    await nativeCall.createPeer(peerId);
+    await nativeCall.createPeer(peerId, this.videoCalls);
     if (offer) await nativeCall.createOffer(peerId);
   }
 
@@ -88,10 +92,14 @@ abstract class NativeBase {
     switch (signalType) {
       case "webrtc_offer":
         this.peers.add(from);
-        await nativeCall.setRemote(from, "offer", data.offer?.sdp || "");
+        this.onRemoteSdp(data.offer?.sdp || "");
+        await nativeCall.setRemote(from, "offer", data.offer?.sdp || "", this.videoCalls);
         break;
       case "webrtc_answer":
-        if (this.peers.has(from)) await nativeCall.setRemote(from, "answer", data.answer?.sdp || "");
+        if (this.peers.has(from)) {
+          this.onRemoteSdp(data.answer?.sdp || "");
+          await nativeCall.setRemote(from, "answer", data.answer?.sdp || "", this.videoCalls);
+        }
         break;
       case "webrtc_ice_candidate":
         if (this.peers.has(from) && data.candidate) {
@@ -142,6 +150,13 @@ export class NativeCallService extends NativeBase {
   onRemoteStream?: (stream: MediaStream) => void;
   onCallEnded?: (reason: string) => void;
   onError?: (message: string) => void;
+  onMedia?: (media: CallMedia) => void;
+  // Видео: камеру и картинку ведёт нативный плагин, здесь — флаги для экрана.
+  private videoOn = false;
+  private front = true;
+  private canFlip = false;
+  private peerCanVideo = false;
+  private remoteVideo = false;
 
   constructor(options: {
     wsService: WebSocketService;
@@ -153,8 +168,11 @@ export class NativeCallService extends NativeBase {
     onRemoteStream?: (stream: MediaStream) => void;
     onCallEnded?: (reason: string) => void;
     onError?: (message: string) => void;
+    onMedia?: (media: CallMedia) => void;
   }) {
     super(options.wsService, options.userId, options.iceServers);
+    this.videoCalls = true;
+    this.onMedia = options.onMedia;
     this.chatId = options.chatId || null;
     this.onStateChange = options.onStateChange;
     this.onIncomingCall = options.onIncomingCall;
@@ -165,6 +183,64 @@ export class NativeCallService extends NativeBase {
 
   updateChatId(chatId: string): void {
     this.chatId = chatId;
+  }
+
+  // ===== Видео =====
+
+  getMedia(): CallMedia {
+    return {
+      localVideo: null,
+      localOn: this.videoOn,
+      remoteVideo: this.remoteVideo,
+      peerCanVideo: this.peerCanVideo,
+      canFlip: this.canFlip,
+      front: this.front,
+      noiseSuppression: true,
+      native: true,
+      canNoise: false,
+    };
+  }
+
+  private emitMedia(): void {
+    this.onMedia?.(this.getMedia());
+  }
+
+  protected onRemoteSdp(sdp: string): void {
+    this.peerCanVideo = sdpCanVideo(sdp);
+    this.emitMedia();
+  }
+
+  /** Камера: ошибки — как у браузера (name NotAllowedError / NotFoundError),
+   *  чтобы экран звонка показал ту же подсказку. */
+  async setVideo(on: boolean): Promise<void> {
+    try {
+      const r = await nativeCall.setVideo(on);
+      this.videoOn = r.on;
+      this.front = r.front;
+      this.canFlip = r.canFlip;
+    } catch (e) {
+      const msg = String((e as { message?: string })?.message || e);
+      const err = new Error(msg);
+      err.name = /denied/.test(msg) ? "NotAllowedError" : /no_camera/.test(msg) ? "NotFoundError" : "Error";
+      throw err;
+    }
+    if (this.callId) this.send("webrtc_media", { to_user_id: this.targetUserId, video: this.videoOn });
+    this.emitMedia();
+  }
+
+  async flipCamera(): Promise<void> {
+    const r = await nativeCall.flipCamera();
+    this.front = r.front;
+    this.emitMedia();
+  }
+
+  private resetMedia(): void {
+    this.videoOn = false;
+    this.front = true;
+    this.canFlip = false;
+    this.peerCanVideo = false;
+    this.remoteVideo = false;
+    this.emitMedia();
   }
 
   getState(): CallState {
@@ -267,6 +343,11 @@ export class NativeCallService extends NativeBase {
       case "call_end":
         this.finish((data.status as string) || "ended");
         break;
+      case "webrtc_media":
+        // Собеседник включил или выключил камеру.
+        this.remoteVideo = !!data.video;
+        this.emitMedia();
+        break;
       default:
         // Пока здесь не ответили, медиасигналы звонящего не наши (он шлёт
         // их на все мои устройства) — отвечает только принявшее звонок.
@@ -277,7 +358,11 @@ export class NativeCallService extends NativeBase {
   }
 
   protected onPeerState(_peerId: string, state: string): void {
-    if (state === "connected") this.setState("active");
+    if (state === "connected") {
+      this.setState("active");
+      // Камеру могли включить, пока звонок ещё звонил, — тот сигнал собеседник пропустил.
+      if (this.videoOn) this.send("webrtc_media", { to_user_id: this.targetUserId, video: true });
+    }
     if (state === "failed") this.finish("failed");
   }
 
@@ -285,6 +370,10 @@ export class NativeCallService extends NativeBase {
    *  нативном движке остаётся, здесь только забываем о нём. */
   detach(): { callId: string; chatId: string; peerId: string } | null {
     if (!this.callId || !this.targetUserId) return null;
+    // Групповой звонок пока без видео: камеру выключаем.
+    if (this.videoOn) void nativeCall.setVideo(false).catch(() => {});
+    void nativeCall.setVideoLayout(null, null).catch(() => {});
+    this.resetMedia();
     const out = { callId: this.callId, chatId: this.chatId || "", peerId: this.targetUserId };
     this.peers.clear();
     this.callId = null;
@@ -301,6 +390,7 @@ export class NativeCallService extends NativeBase {
 
   private finish(reason: string): void {
     void this.cleanupMedia();
+    this.resetMedia();
     this.callId = null;
     this.targetUserId = null;
     this.isCaller = false;

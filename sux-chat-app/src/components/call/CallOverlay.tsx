@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { playRingtone, resolveRingtoneUrl } from "@/lib/ringtone";
 import { readCache } from "@/lib/session-cache";
 import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
+import type { VideoRect } from "@/lib/nativeCall";
 import { Capacitor } from "@capacitor/core";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2 } from "lucide-react";
 import { toast } from "sonner";
@@ -53,6 +54,10 @@ interface CallOverlayProps {
 export interface CallVideo {
   local: MediaStream | null;
   remote: MediaStream | null;
+  /** Моя камера включена. */
+  localOn: boolean;
+  /** Камера собеседника включена. */
+  remoteOn: boolean;
   /** У собеседника версия с видео — камеру можно включать. */
   available: boolean;
   busy?: boolean;
@@ -61,6 +66,9 @@ export interface CallVideo {
   mirrored: boolean;
   onToggle: () => void;
   onFlip: () => void;
+  /** Приложение: видео рисует нативный движок под прозрачной страницей,
+   *  потоков в JS нет — сюда отдаём, где рисовать (null — не рисовать). */
+  nativeLayout?: (remote: VideoRect | null, local: VideoRect | null) => void;
 }
 
 /** Поток в <video>: звук играет RemoteAudio, поэтому здесь всегда без звука. */
@@ -150,6 +158,49 @@ const CallOverlay = ({
     return () => clearInterval(id);
   }, [state]);
 
+  // Нативное видео: рамки-заглушки на странице, по ним движок ставит картинку.
+  const fullRef = useRef<HTMLDivElement>(null);
+  const cornerRef = useRef<HTMLDivElement>(null);
+  const nativeLayout = video?.nativeLayout;
+  const remoteOn = !!video?.remoteOn;
+  const localOn = !!video?.localOn;
+  const nativeShown = !!nativeLayout && state !== "idle" && !(minimized && state !== "incoming") && (remoteOn || localOn);
+  const layoutRef = useRef(nativeLayout);
+  layoutRef.current = nativeLayout;
+  useLayoutEffect(() => {
+    if (!nativeLayout) return;
+    document.documentElement.classList.toggle("native-video", nativeShown);
+    if (!nativeShown) {
+      nativeLayout(null, null);
+      return;
+    }
+    const rect = (el: HTMLElement | null): VideoRect | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    };
+    // Собеседник без камеры — своё видео во весь экран, иначе окошком в углу.
+    const push = () => {
+      const full = rect(fullRef.current);
+      nativeLayout(remoteOn ? full : null, localOn ? (remoteOn ? rect(cornerRef.current) : full) : null);
+    };
+    push();
+    const ro = new ResizeObserver(push);
+    if (fullRef.current) ro.observe(fullRef.current);
+    if (cornerRef.current) ro.observe(cornerRef.current);
+    window.addEventListener("resize", push);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", push);
+    };
+  }, [nativeLayout, nativeShown, remoteOn, localOn]);
+  // Экран звонка закрылся — страницу вернуть, видео из-под неё убрать.
+  useEffect(() => () => {
+    if (!layoutRef.current) return;
+    document.documentElement.classList.remove("native-video");
+    layoutRef.current(null, null);
+  }, []);
+
   if (state === "idle") return null;
 
   const showList = state === "active" || state === "connecting" || (state === "outgoing" && participants.length > 1);
@@ -175,7 +226,9 @@ const CallOverlay = ({
   }
 
   // Видео собеседника — во весь экран, поверх него имя, таймер и кнопки.
-  const onVideo = !!video?.remote;
+  // В приложении во весь экран и своё видео, пока собеседник без камеры.
+  const native = !!nativeLayout;
+  const onVideo = native ? remoteOn || localOn : !!video?.remote;
   const chromeBtn = onVideo
     ? "text-white bg-black/30 active:bg-black/50 hover:bg-black/40"
     : "text-muted-foreground active:bg-surface-3 hover:bg-surface-2";
@@ -188,7 +241,8 @@ const CallOverlay = ({
 
   return (
     <div
-      className={cn("fixed inset-0 z-[60] flex flex-col items-center justify-between", onVideo ? "bg-black text-white" : "bg-background")}
+      className={cn("call-layer fixed inset-0 z-[60] flex flex-col items-center justify-between",
+        onVideo ? native ? "bg-transparent text-white" : "bg-black text-white" : "bg-background")}
       style={{
         paddingTop: "calc(var(--sat) + 2rem)",
         paddingBottom: "calc(var(--sab) + 2.5rem)",
@@ -197,13 +251,19 @@ const CallOverlay = ({
       {audio}
       {onVideo && (
         <>
-          <VideoView stream={video!.remote!} className="absolute inset-0 w-full h-full object-cover" />
+          {native
+            ? <div ref={fullRef} className="absolute inset-0 pointer-events-none" aria-hidden />
+            : <VideoView stream={video!.remote!} className="absolute inset-0 w-full h-full object-cover" />}
           <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" aria-hidden />
           <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" aria-hidden />
         </>
       )}
-      {/* Своя камера — окошком в углу. */}
-      {video?.local && (
+      {/* Своя камера — окошком в углу (в приложении — рамка, картинка под ней). */}
+      {native && remoteOn && localOn && (
+        <div ref={cornerRef} className="absolute right-3 z-10 w-28 h-40 md:w-40 md:h-56 rounded-xl border border-white/20 pointer-events-none"
+          style={{ top: "calc(var(--sat) + 3.75rem)" }} aria-hidden />
+      )}
+      {!native && video?.local && (
         <div className="absolute right-3 z-10 w-28 h-40 md:w-40 md:h-56 rounded-xl overflow-hidden shadow-xl border border-white/20 bg-black"
           style={{ top: "calc(var(--sat) + 3.75rem)" }}>
           <VideoView stream={video.local} mirrored={video.mirrored} className="w-full h-full object-cover" />
@@ -334,21 +394,21 @@ const CallOverlay = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (!video.available && !video.local) {
+                  if (!video.available && !video.localOn) {
                     toast(t("У собеседника версия без видеозвонков — видео появится, когда он обновит приложение"));
                     return;
                   }
                   video.onToggle();
                 }}
                 disabled={video.busy}
-                className={cn(roundBtn(!!video.local), !video.available && !video.local && "opacity-50")}
-                aria-label={video.local ? t("Выключить камеру") : t("Включить камеру")}
-                title={video.local ? t("Выключить камеру") : t("Включить камеру")}
+                className={cn(roundBtn(video.localOn), !video.available && !video.localOn && "opacity-50")}
+                aria-label={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
+                title={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
               >
-                {video.local ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+                {video.localOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
               </button>
             )}
-            {video?.local && video.canFlip && (
+            {video?.localOn && video.canFlip && (
               <button type="button" onClick={video.onFlip} className={roundBtn(false)} aria-label={t("Переключить камеру")} title={t("Переключить камеру")}>
                 <SwitchCamera className="w-6 h-6" />
               </button>

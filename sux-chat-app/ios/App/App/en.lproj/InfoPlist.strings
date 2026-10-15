@@ -3,6 +3,6 @@
 "NSLocationWhenInUseUsageDescription" = "Your location is used only to send it to a chat, and only when you choose “Location” yourself.";
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "WYX doesn't track your location in the background. Your location is determined once, when you send it to a chat yourself.";
 "NSLocationAlwaysUsageDescription" = "WYX doesn't track your location in the background. Your location is determined once, when you send it to a chat yourself.";
-"NSCameraUsageDescription" = "The camera is used for video messages and photos in chats.";
+"NSCameraUsageDescription" = "The camera is used for video calls, video messages and photos in chats.";
 "NSMicrophoneUsageDescription" = "The microphone is used for calls and voice messages.";
 "NSPhotoLibraryUsageDescription" = "Photo access lets you attach pictures to messages.";

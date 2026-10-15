@@ -1524,3 +1524,18 @@ textarea,
 .call-bar-dot { animation: call-bar-dot 1.4s ease-in-out infinite; }
 @keyframes call-bar-dot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .call-bar-dot { animation: none; } }
+
+/* Видеозвонок в приложении: картинку рисует нативный движок ПОД страницей
+   (NativeCallPlugin.setVideoLayout), страница на это время прозрачна и
+   видно только экран звонка (components/call/CallOverlay). */
+html.native-video,
+html.native-video body,
+html.native-video #root {
+  background: transparent !important;
+}
+html.native-video #root {
+  visibility: hidden;
+}
+html.native-video .call-layer {
+  visibility: visible;
+}

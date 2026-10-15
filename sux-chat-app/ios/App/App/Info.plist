@@ -48,7 +48,7 @@
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>WYX не следит за вашим местоположением в фоне. Геопозиция определяется один раз — когда вы сами отправляете её в чат.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Камера нужна для видео-сообщений и фото в переписке.</string>
+	<string>Камера нужна для видеозвонков, видео-сообщений и фото в переписке.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Микрофон нужен для звонков и голосовых сообщений.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

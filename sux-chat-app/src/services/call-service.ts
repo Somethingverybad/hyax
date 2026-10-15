@@ -44,6 +44,12 @@ export type CallMedia = {
   /** Фронтальная камера — превью зеркалим. */
   front: boolean;
   noiseSuppression: boolean;
+  /** Моя камера включена (в приложении потока в JS нет — только флаг). */
+  localOn: boolean;
+  /** Видео рисует нативный движок под страницей (приложение). */
+  native?: boolean;
+  /** Шумодав переключается (пока только в браузере). */
+  canNoise?: boolean;
 };
 
 const NS_KEY = "hyax:call-noise-suppression";
@@ -51,7 +57,7 @@ const readNs = () => { try { return localStorage.getItem(NS_KEY) !== "0"; } catc
 
 /** Есть ли видеоканал «отправка и приём» в SDP собеседника — значит, у него
  *  новая версия с видео. Приложения на телефонах пока отвечают без видео. */
-function sdpCanVideo(sdp?: string): boolean {
+export function sdpCanVideo(sdp?: string): boolean {
   if (!sdp) return false;
   const parts = sdp.split(/\r?\nm=/);
   const video = parts.find((p, i) => (i === 0 ? p.startsWith("m=video") : p.startsWith("video")));
@@ -128,6 +134,8 @@ export class OneToOneCallService {
       canFlip: this.canFlip,
       front: this.front,
       noiseSuppression: this.noiseSuppression,
+      localOn: !!this.localVideoTrack,
+      canNoise: true,
     };
   }
 
@@ -575,6 +583,9 @@ export class OneToOneCallService {
       console.log(`🔌 [CallService] Connection state: ${state}`);
       if (state === "connected") {
         this.setState("active");
+        // Камеру могли включить, пока звонок ещё звонил, — тот сигнал
+        // собеседник пропустил (до ответа медиасигналы не принимаются).
+        if (this.localVideoTrack) this.sendMedia();
       }
       if (state === "failed" || state === "disconnected" || state === "closed") {
         console.error(`❌ [CallService] Соединение ${state}`);

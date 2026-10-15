@@ -2,6 +2,7 @@ import Foundation
 import Capacitor
 import WebRTC
 import AVFoundation
+import UIKit
 
 /// Медиа-слой звонков на нативном WebRTC.
 ///
@@ -28,6 +29,10 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "end", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setMuted", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setPeerVolume", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setVideo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "flipCamera", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setVideoLayout", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
     ]
 
     private static let factory: RTCPeerConnectionFactory = {
@@ -45,6 +50,25 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     private var audioTrack: RTCAudioTrack?
     private var iceServers: [RTCIceServer] = []
     private let queue = DispatchQueue(label: "hyax.nativecall")
+
+    // ── Видео (личные звонки) ────────────────────────────────────────────
+    // Видеоканал добавляется в соединение сразу (пустой) — камера потом
+    // подставляется в него без пересогласования, как в веб-версии. Картинку
+    // рисуют нативные окна под прозрачным WebView: кнопки звонка остаются
+    // вёрсткой поверх видео, а их места страница сообщает через setVideoLayout.
+    private var videoPeers = Set<String>()
+    private var videoSource: RTCVideoSource?
+    private var videoTrack: RTCVideoTrack?
+    private var capturer: RTCCameraVideoCapturer?
+    private var front = true
+    private var remoteVideoTracks: [String: RTCVideoTrack] = [:]
+    private var remoteView: RTCMTLVideoView?
+    private var localView: RTCCameraPreviewView?
+    private var webViewWasOpaque = true
+    private var webViewBackground: UIColor?
+    private var webScrollBackground: UIColor?
+    /// Видео сейчас под страницей (WebView сделан прозрачным).
+    private var layoutActive = false
 
     public override func load() {
         NativeCallAudio.shared.prepare()
@@ -93,7 +117,9 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("peerId обязателен")
             return
         }
+        let video = call.getBool("video") ?? false
         queue.async {
+            if video { self.videoPeers.insert(peerId) }
             _ = self.peer(for: peerId)
             call.resolve()
         }
@@ -106,7 +132,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         queue.async {
             let pc = self.peer(for: peerId)
-            pc.offer(for: Self.mediaConstraints) { sdp, error in
+            pc.offer(for: self.constraints(peerId)) { sdp, error in
                 guard let sdp else {
                     call.reject(error?.localizedDescription ?? "offer не создан")
                     return
@@ -128,7 +154,9 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("нужны peerId, type и sdp")
             return
         }
+        let video = call.getBool("video") ?? false
         queue.async {
+            if video { self.videoPeers.insert(peerId) }
             let pc = self.peer(for: peerId)
             let desc = RTCSessionDescription(type: type == "offer" ? .offer : .answer, sdp: sdp)
             pc.setRemoteDescription(desc) { error in
@@ -140,9 +168,20 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
                     call.resolve()
                     return
                 }
+                // Видеоканал из предложения: «и отправляю, и принимаю», чтобы
+                // включать камеру без пересогласования. Предложение без
+                // видео (старые клиенты) — канала нет, звонок голосовой.
+                if self.videoPeers.contains(peerId) {
+                    for t in pc.transceivers where t.mediaType == .video {
+                        var err: NSError?
+                        t.setDirection(.sendRecv, error: &err)
+                        t.sender.streamIds = ["hyax"]
+                        if let track = self.videoTrack { t.sender.track = track }
+                    }
+                }
                 // На входящий offer сразу отвечаем: лишний круг через JS
                 // только добавил бы задержку перед первым звуком.
-                pc.answer(for: Self.mediaConstraints) { answer, error in
+                pc.answer(for: self.constraints(peerId)) { answer, error in
                     guard let answer else {
                         call.reject(error?.localizedDescription ?? "answer не создан")
                         return
@@ -188,8 +227,184 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         queue.async {
             self.peers.keys.forEach { self.drop($0) }
             self.audioTrack = nil
+            self.stopCamera()
+            self.videoPeers.removeAll()
+            self.remoteVideoTracks.removeAll()
             NativeCallAudio.shared.endCall()
+            DispatchQueue.main.async { self.applyLayout(remote: nil, local: nil) }
             call.resolve()
+        }
+    }
+
+    // MARK: - Видео
+
+    /// Камера вкл/выкл. Разрешения нет — reject("denied"): iOS второй раз не
+    /// спрашивает, страница предложит открыть настройки.
+    @objc func setVideo(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        if !on {
+            queue.async {
+                self.setSenders(nil)
+                self.stopCamera()
+                call.resolve(["on": false, "front": self.front, "canFlip": Self.canFlip])
+            }
+            return
+        }
+        let go = {
+            self.queue.async {
+                guard self.startCamera() else { call.reject("no_camera"); return }
+                self.setSenders(self.videoTrack)
+                call.resolve(["on": true, "front": self.front, "canFlip": Self.canFlip])
+            }
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: go()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in granted ? go() : call.reject("denied") }
+        default: call.reject("denied")
+        }
+    }
+
+    @objc func flipCamera(_ call: CAPPluginCall) {
+        queue.async {
+            guard self.capturer != nil else { call.resolve(["front": self.front]); return }
+            self.front.toggle()
+            if !self.startCamera() { self.front.toggle(); _ = self.startCamera() }
+            call.resolve(["front": self.front])
+        }
+    }
+
+    /// Где рисовать видео: прямоугольники в точках относительно WebView
+    /// (те же CSS-пиксели). remote — собеседник, local — своё превью;
+    /// оба null — видео нет, WebView снова непрозрачный.
+    @objc func setVideoLayout(_ call: CAPPluginCall) {
+        let remote = Self.rect(call.getObject("remote"))
+        let local = Self.rect(call.getObject("local"))
+        DispatchQueue.main.async {
+            self.applyLayout(remote: remote, local: local)
+            call.resolve()
+        }
+    }
+
+    /// Настройки приложения в системе: после отказа iOS доступ к камере
+    /// второй раз не спрашивает, дать его можно только там.
+    @objc func openSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            call.resolve()
+        }
+    }
+
+    private static var canFlip: Bool {
+        RTCCameraVideoCapturer.captureDevices().contains { $0.position == .front }
+            && RTCCameraVideoCapturer.captureDevices().contains { $0.position == .back }
+    }
+
+    private static func rect(_ o: JSObject?) -> CGRect? {
+        guard let o, let w = o["w"] as? Double, let h = o["h"] as? Double, w > 0, h > 0 else { return nil }
+        return CGRect(x: (o["x"] as? Double) ?? 0, y: (o["y"] as? Double) ?? 0, width: w, height: h)
+    }
+
+    /// Камера с нужной стороны (на очереди плагина).
+    private func startCamera() -> Bool {
+        let devices = RTCCameraVideoCapturer.captureDevices()
+        guard let device = devices.first(where: { $0.position == (front ? .front : .back) }) ?? devices.first else { return false }
+        if videoSource == nil {
+            let source = NativeCallPlugin.factory.videoSource()
+            videoSource = source
+            capturer = RTCCameraVideoCapturer(delegate: source)
+            videoTrack = NativeCallPlugin.factory.videoTrack(with: source, trackId: "hyax-video")
+        }
+        guard let capturer else { return false }
+        // Формат ближе к 1280×720: картинка чёткая, а нагрузка умеренная.
+        let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
+        let target: Int32 = 1280 * 720
+        let format = formats.min { a, b in
+            let da = CMVideoFormatDescriptionGetDimensions(a.formatDescription), db = CMVideoFormatDescriptionGetDimensions(b.formatDescription)
+            return abs(da.width * da.height - target) < abs(db.width * db.height - target)
+        }
+        guard let format else { return false }
+        let fps = min(30, Int(format.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 30))
+        capturer.startCapture(with: device, format: format, fps: fps)
+        DispatchQueue.main.async { self.localView?.captureSession = capturer.captureSession }
+        return true
+    }
+
+    private func stopCamera() {
+        capturer?.stopCapture()
+        capturer = nil
+        videoTrack = nil
+        videoSource = nil
+        DispatchQueue.main.async { self.localView?.captureSession = nil }
+    }
+
+    private func setSenders(_ track: RTCVideoTrack?) {
+        for (id, pc) in peers where videoPeers.contains(id) {
+            for t in pc.transceivers where t.mediaType == .video { t.sender.track = track }
+        }
+    }
+
+    fileprivate func storeRemoteVideo(_ peerId: String, _ track: RTCVideoTrack) {
+        queue.async {
+            self.remoteVideoTracks[peerId] = track
+            DispatchQueue.main.async { if let v = self.remoteView { track.add(v) } }
+        }
+    }
+
+    /// Нативные окна под WebView. Видео есть — WebView прозрачный, иначе
+    /// снова непрозрачный (так быстрее рисуется всё остальное приложение).
+    private func applyLayout(remote: CGRect?, local: CGRect?) {
+        guard let web = bridge?.webView, let host = web.superview else { return }
+        let origin = web.frame.origin
+        if let remote {
+            if remoteView == nil {
+                let v = RTCMTLVideoView(frame: .zero)
+                v.videoContentMode = .scaleAspectFill
+                v.backgroundColor = .black
+                host.insertSubview(v, belowSubview: web)
+                remoteView = v
+                remoteVideoTracks.values.forEach { $0.add(v) }
+            }
+            remoteView?.frame = remote.offsetBy(dx: origin.x, dy: origin.y)
+            remoteView?.isHidden = false
+        } else {
+            remoteView?.isHidden = true
+        }
+        if let local {
+            if localView == nil {
+                let v = RTCCameraPreviewView(frame: .zero)
+                v.backgroundColor = .black
+                v.clipsToBounds = true
+                v.layer.cornerRadius = 12
+                if let rv = remoteView { host.insertSubview(v, aboveSubview: rv) } else { host.insertSubview(v, belowSubview: web) }
+                localView = v
+                v.captureSession = capturer?.captureSession
+            }
+            // Во весь экран (собеседник без видео) — без скругления.
+            localView?.layer.cornerRadius = remote == nil ? 0 : 12
+            localView?.frame = local.offsetBy(dx: origin.x, dy: origin.y)
+            localView?.isHidden = false
+            if let lv = localView { host.bringSubviewToFront(lv); host.bringSubviewToFront(web) }
+        } else {
+            localView?.isHidden = true
+        }
+        let anyVideo = remote != nil || local != nil
+        if anyVideo && !layoutActive {
+            layoutActive = true
+            webViewWasOpaque = web.isOpaque
+            webViewBackground = web.backgroundColor
+            webScrollBackground = web.scrollView.backgroundColor
+            web.isOpaque = false
+            web.backgroundColor = .clear
+            web.scrollView.backgroundColor = .clear
+        } else if !anyVideo && layoutActive {
+            layoutActive = false
+            web.isOpaque = webViewWasOpaque
+            web.backgroundColor = webViewBackground
+            web.scrollView.backgroundColor = webScrollBackground
+            remoteView?.removeFromSuperview(); remoteView = nil
+            localView?.captureSession = nil
+            localView?.removeFromSuperview(); localView = nil
         }
     }
 
@@ -227,6 +442,13 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     private static let mediaConstraints = RTCMediaConstraints(
         mandatoryConstraints: ["OfferToReceiveAudio": "true"],
         optionalConstraints: nil)
+    private static let videoConstraints = RTCMediaConstraints(
+        mandatoryConstraints: ["OfferToReceiveAudio": "true", "OfferToReceiveVideo": "true"],
+        optionalConstraints: nil)
+
+    private func constraints(_ peerId: String) -> RTCMediaConstraints {
+        videoPeers.contains(peerId) ? Self.videoConstraints : Self.mediaConstraints
+    }
 
     private func peer(for peerId: String) -> RTCPeerConnection {
         if let existing = peers[peerId] { return existing }
@@ -244,6 +466,15 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         if let audioTrack {
             pc.add(audioTrack, streamIds: ["hyax"])
         }
+        // Звонящий с видео: пустой видеоканал сразу (отвечающий получит его
+        // из предложения — см. setRemoteDescription).
+        if videoPeers.contains(peerId) && pc.transceivers.allSatisfy({ $0.mediaType != .video }) {
+            let initVideo = RTCRtpTransceiverInit()
+            initVideo.direction = .sendRecv
+            initVideo.streamIds = ["hyax"]
+            let t = pc.addTransceiver(of: .video, init: initVideo)
+            if let track = videoTrack { t?.sender.track = track }
+        }
         peers[peerId] = pc
         delegates[peerId] = delegate
         return pc
@@ -252,6 +483,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     private func drop(_ peerId: String) {
         peers[peerId]?.close()
         peers.removeValue(forKey: peerId)
+        remoteVideoTracks.removeValue(forKey: peerId)
         delegates.removeValue(forKey: peerId)
         remoteTracks.removeValue(forKey: peerId)
         peerVolumes.removeValue(forKey: peerId)
@@ -301,6 +533,7 @@ private final class PeerDelegate: NSObject, RTCPeerConnectionDelegate {
 
     func peerConnection(_ pc: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams mediaStreams: [RTCMediaStream]) {
         if let track = rtpReceiver.track as? RTCAudioTrack { plugin?.storeRemote(peerId, track) }
+        if let track = rtpReceiver.track as? RTCVideoTrack { plugin?.storeRemoteVideo(peerId, track) }
     }
 
     // Остальные требования протокола нам не нужны: звук воспроизводится

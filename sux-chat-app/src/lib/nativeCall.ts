@@ -26,12 +26,25 @@ export interface NativePeerState {
   state: string;
 }
 
+/** Прямоугольник в CSS-пикселях относительно WebView. */
+export interface VideoRect { x: number; y: number; w: number; h: number }
+
+export interface NativeVideoState { on: boolean; front: boolean; canFlip: boolean }
+
 interface NativeCallPlugin {
   /** Захватить микрофон и запомнить ICE-серверы. */
   start(o: { iceServers: RTCIceServer[] }): Promise<void>;
-  createPeer(o: { peerId: string }): Promise<void>;
+  /** video — личный звонок: в соединении сразу пустой видеоканал. */
+  createPeer(o: { peerId: string; video?: boolean }): Promise<void>;
   createOffer(o: { peerId: string }): Promise<void>;
-  setRemoteDescription(o: { peerId: string; type: string; sdp: string }): Promise<void>;
+  setRemoteDescription(o: { peerId: string; type: string; sdp: string; video?: boolean }): Promise<void>;
+  /** Камера: reject("denied") — нет разрешения, reject("no_camera") — нет камеры. */
+  setVideo(o: { on: boolean }): Promise<NativeVideoState>;
+  flipCamera(): Promise<{ front: boolean }>;
+  /** Где рисовать видео под прозрачной страницей; оба null — видео нет. */
+  setVideoLayout(o: { remote: VideoRect | null; local: VideoRect | null }): Promise<void>;
+  /** Настройки приложения в системе (дать доступ к камере после отказа). */
+  openSettings(): Promise<void>;
   addCandidate(o: {
     peerId: string;
     candidate: string;
@@ -55,10 +68,14 @@ export const hasNativeCalls = () => Capacitor.isNativePlatform();
 
 export const nativeCall = {
   start: (iceServers: RTCIceServer[]) => plugin.start({ iceServers }),
-  createPeer: (peerId: string) => plugin.createPeer({ peerId }),
+  createPeer: (peerId: string, video = false) => plugin.createPeer({ peerId, video }),
   createOffer: (peerId: string) => plugin.createOffer({ peerId }),
-  setRemote: (peerId: string, type: "offer" | "answer", sdp: string) =>
-    plugin.setRemoteDescription({ peerId, type, sdp }),
+  setRemote: (peerId: string, type: "offer" | "answer", sdp: string, video = false) =>
+    plugin.setRemoteDescription({ peerId, type, sdp, video }),
+  setVideo: (on: boolean) => plugin.setVideo({ on }),
+  flipCamera: () => plugin.flipCamera(),
+  setVideoLayout: (remote: VideoRect | null, local: VideoRect | null) => plugin.setVideoLayout({ remote, local }),
+  openSettings: () => plugin.openSettings(),
   addCandidate: (peerId: string, c: RTCIceCandidateInit) =>
     plugin.addCandidate({
       peerId,

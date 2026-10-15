@@ -1,8 +1,19 @@
 package com.huyax.app;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.media.AudioManager;
+import android.net.Uri;
+import android.provider.Settings;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.WebView;
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -18,6 +29,17 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
+import org.webrtc.Camera1Enumerator;
+import org.webrtc.Camera2Enumerator;
+import org.webrtc.CameraEnumerator;
+import org.webrtc.CameraVideoCapturer;
+import org.webrtc.MediaStreamTrack;
+import org.webrtc.RendererCommon;
+import org.webrtc.RtpTransceiver;
+import org.webrtc.SurfaceTextureHelper;
+import org.webrtc.SurfaceViewRenderer;
+import org.webrtc.VideoSource;
+import org.webrtc.VideoTrack;
 import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DefaultVideoEncoderFactory;
 import org.webrtc.EglBase;
@@ -41,10 +63,30 @@ import org.webrtc.SessionDescription;
  * Соединения хранятся по участнику, поэтому групповой звонок работает тем же
  * кодом.
  */
-@CapacitorPlugin(name = "NativeCall")
+@CapacitorPlugin(name = "NativeCall", permissions = {
+    @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera")
+})
 public class NativeCallPlugin extends Plugin {
 
     private PeerConnectionFactory factory;
+    private EglBase egl;
+    // ── Видео (личные звонки) ─────────────────────────────────────────────
+    // Видеоканал в соединении есть сразу (пустой) — камера подставляется в
+    // него без пересогласования, как в веб-версии. Картинку рисуют
+    // SurfaceViewRenderer под прозрачным WebView: кнопки звонка остаются
+    // вёрсткой поверх, их места страница сообщает через setVideoLayout.
+    private final java.util.Set<String> videoPeers = new java.util.HashSet<>();
+    private final Map<String, VideoTrack> remoteVideoTracks = new HashMap<>();
+    private VideoSource videoSource;
+    private VideoTrack videoTrack;
+    private CameraVideoCapturer capturer;
+    private SurfaceTextureHelper textureHelper;
+    private boolean front = true;
+    private boolean cameraPaused = false;
+    private SurfaceViewRenderer remoteView;
+    private SurfaceViewRenderer localView;
+    private Drawable webViewBackground;
+    private boolean webTransparent = false;
     private AudioTrack audioTrack;
     private AudioSource audioSource;
     private final Map<String, PeerConnection> peers = new HashMap<>();
@@ -85,6 +127,7 @@ public class NativeCallPlugin extends Plugin {
             call.reject("peerId обязателен");
             return;
         }
+        if (Boolean.TRUE.equals(call.getBoolean("video", false))) videoPeers.add(peerId);
         peer(peerId);
         call.resolve();
     }
@@ -113,7 +156,7 @@ public class NativeCallPlugin extends Plugin {
             public void onCreateFailure(String error) {
                 call.reject(error);
             }
-        }, offerConstraints());
+        }, offerConstraints(peerId));
     }
 
     @PluginMethod
@@ -125,6 +168,7 @@ public class NativeCallPlugin extends Plugin {
             call.reject("нужны peerId, type и sdp");
             return;
         }
+        if (Boolean.TRUE.equals(call.getBoolean("video", false))) videoPeers.add(peerId);
         final PeerConnection pc = peer(peerId);
         SessionDescription.Type sdpType =
             "offer".equals(type) ? SessionDescription.Type.OFFER : SessionDescription.Type.ANSWER;
@@ -135,6 +179,18 @@ public class NativeCallPlugin extends Plugin {
                 if (!"offer".equals(type)) {
                     call.resolve();
                     return;
+                }
+                // Видеоканал из предложения: «и отправляю, и принимаю», чтобы
+                // включать камеру без пересогласования. Предложение без
+                // видео (старые клиенты) — канала нет, звонок голосовой.
+                if (videoPeers.contains(peerId)) {
+                    for (RtpTransceiver t : pc.getTransceivers()) {
+                        if (t.getMediaType() == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
+                            t.setDirection(RtpTransceiver.RtpTransceiverDirection.SEND_RECV);
+                            t.getSender().setStreams(Collections.singletonList("hyax"));
+                            if (videoTrack != null) t.getSender().setTrack(videoTrack, false);
+                        }
+                    }
                 }
                 // На входящий offer отвечаем сразу: лишний круг через JS
                 // только задержал бы первый звук.
@@ -154,7 +210,7 @@ public class NativeCallPlugin extends Plugin {
                     public void onCreateFailure(String error) {
                         call.reject(error);
                     }
-                }, offerConstraints());
+                }, offerConstraints(peerId));
             }
 
             @Override
@@ -188,6 +244,10 @@ public class NativeCallPlugin extends Plugin {
     @PluginMethod
     public void end(PluginCall call) {
         for (String id : new ArrayList<>(peers.keySet())) drop(id);
+        stopCamera();
+        videoPeers.clear();
+        synchronized (remoteVideoTracks) { remoteVideoTracks.clear(); }
+        getActivity().runOnUiThread(() -> applyLayout(null, null));
         if (audioTrack != null) {
             audioTrack.dispose();
             audioTrack = null;
@@ -227,6 +287,235 @@ public class NativeCallPlugin extends Plugin {
         call.resolve();
     }
 
+    // ===== видео =====
+
+    /** Камера вкл/выкл. Разрешения нет — спросим; отказ — reject("denied"),
+     *  повторное нажатие спросит снова (если не «больше не спрашивать»). */
+    @PluginMethod
+    public void setVideo(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        if (!on) {
+            setSenders(null);
+            stopCamera();
+            call.resolve(videoState(false));
+            return;
+        }
+        if (getPermissionState("camera") != PermissionState.GRANTED) {
+            requestPermissionForAlias("camera", call, "cameraPermsCallback");
+            return;
+        }
+        turnOnCamera(call);
+    }
+
+    @PermissionCallback
+    private void cameraPermsCallback(PluginCall call) {
+        if (getPermissionState("camera") == PermissionState.GRANTED) turnOnCamera(call);
+        else call.reject("denied");
+    }
+
+    private void turnOnCamera(PluginCall call) {
+        if (!startCamera()) { call.reject("no_camera"); return; }
+        setSenders(videoTrack);
+        call.resolve(videoState(true));
+    }
+
+    @PluginMethod
+    public void flipCamera(final PluginCall call) {
+        if (capturer == null) {
+            JSObject r = new JSObject();
+            r.put("front", front);
+            call.resolve(r);
+            return;
+        }
+        capturer.switchCamera(new CameraVideoCapturer.CameraSwitchHandler() {
+            @Override public void onCameraSwitchDone(boolean isFront) {
+                front = isFront;
+                getActivity().runOnUiThread(() -> { if (localView != null) localView.setMirror(front); });
+                JSObject r = new JSObject();
+                r.put("front", front);
+                call.resolve(r);
+            }
+            @Override public void onCameraSwitchError(String error) { call.reject(error); }
+        });
+    }
+
+    /** Настройки приложения в системе: после «больше не спрашивать» доступ
+     *  к камере можно дать только там. */
+    @PluginMethod
+    public void openSettings(PluginCall call) {
+        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", getContext().getPackageName(), null));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(i);
+        call.resolve();
+    }
+
+    /** Где рисовать видео: прямоугольники в CSS-пикселях относительно WebView.
+     *  remote — собеседник, local — своё превью; оба null — видео нет. */
+    @PluginMethod
+    public void setVideoLayout(PluginCall call) {
+        final JSObject remote = call.getObject("remote");
+        final JSObject local = call.getObject("local");
+        getActivity().runOnUiThread(() -> {
+            applyLayout(remote, local);
+            call.resolve();
+        });
+    }
+
+    private JSObject videoState(boolean on) {
+        JSObject r = new JSObject();
+        r.put("on", on);
+        r.put("front", front);
+        r.put("canFlip", cameraNames(enumerator()).size() > 1);
+        return r;
+    }
+
+    private CameraEnumerator enumerator() {
+        return Camera2Enumerator.isSupported(getContext()) ? new Camera2Enumerator(getContext()) : new Camera1Enumerator(false);
+    }
+
+    private List<String> cameraNames(CameraEnumerator en) {
+        List<String> out = new ArrayList<>();
+        for (String n : en.getDeviceNames()) out.add(n);
+        return out;
+    }
+
+    private synchronized boolean startCamera() {
+        if (capturer != null) return true;
+        ensureFactory();
+        CameraEnumerator en = enumerator();
+        String pick = null;
+        for (String n : en.getDeviceNames()) if (en.isFrontFacing(n) == front) { pick = n; break; }
+        if (pick == null && en.getDeviceNames().length > 0) pick = en.getDeviceNames()[0];
+        if (pick == null) return false;
+        front = en.isFrontFacing(pick);
+        capturer = en.createCapturer(pick, null);
+        if (capturer == null) return false;
+        textureHelper = SurfaceTextureHelper.create("hyax-camera", egl.getEglBaseContext());
+        videoSource = factory.createVideoSource(false);
+        capturer.initialize(textureHelper, getContext(), videoSource.getCapturerObserver());
+        capturer.startCapture(1280, 720, 30);
+        videoTrack = factory.createVideoTrack("hyax-video", videoSource);
+        final VideoTrack t = videoTrack;
+        getActivity().runOnUiThread(() -> {
+            if (localView != null) { t.addSink(localView); localView.setMirror(front); }
+        });
+        return true;
+    }
+
+    private synchronized void stopCamera() {
+        final VideoTrack t = videoTrack;
+        final SurfaceViewRenderer lv = localView;
+        if (t != null && lv != null) getActivity().runOnUiThread(() -> t.removeSink(lv));
+        if (capturer != null) {
+            try { capturer.stopCapture(); } catch (InterruptedException ignored) {}
+            capturer.dispose();
+            capturer = null;
+        }
+        if (textureHelper != null) { textureHelper.dispose(); textureHelper = null; }
+        if (videoSource != null) { videoSource.dispose(); videoSource = null; }
+        videoTrack = null;
+        cameraPaused = false;
+    }
+
+    private synchronized void setSenders(VideoTrack track) {
+        for (Map.Entry<String, PeerConnection> e : peers.entrySet()) {
+            if (!videoPeers.contains(e.getKey())) continue;
+            for (RtpTransceiver t : e.getValue().getTransceivers()) {
+                if (t.getMediaType() == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) t.getSender().setTrack(track, false);
+            }
+        }
+    }
+
+    // Свернули приложение — камеру отпускаем (в фоне Android её не даёт),
+    // вернулись — включаем снова. Голос при этом не прерывается.
+    @Override
+    protected void handleOnPause() {
+        super.handleOnPause();
+        if (capturer != null) {
+            try { capturer.stopCapture(); cameraPaused = true; } catch (InterruptedException ignored) {}
+        }
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        if (capturer != null && cameraPaused) { capturer.startCapture(1280, 720, 30); cameraPaused = false; }
+    }
+
+    private SurfaceViewRenderer makeRenderer(boolean overlay) {
+        SurfaceViewRenderer v = new SurfaceViewRenderer(getContext());
+        v.init(egl.getEglBaseContext(), null);
+        v.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
+        // Без аппаратного масштабирования: с ним поверхность подгоняется под
+        // разрешение кадра, и когда собеседник поднимал качество (540p → 720p),
+        // картинка оставалась в старом размере — справа чёрная полоса.
+        v.setEnableHardwareScaler(false);
+        // Своё превью — поверх окна собеседника, но всё равно под WebView.
+        v.setZOrderMediaOverlay(overlay);
+        return v;
+    }
+
+    /** Нативные окна под WebView (на UI-потоке). Видео есть — WebView прозрачный. */
+    private void applyLayout(JSObject remote, JSObject local) {
+        WebView web = getBridge().getWebView();
+        if (web == null || !(web.getParent() instanceof ViewGroup)) return;
+        ViewGroup host = (ViewGroup) web.getParent();
+        float d = getContext().getResources().getDisplayMetrics().density;
+        boolean hasRemote = remote != null && remote.optDouble("w", 0) > 0;
+        boolean hasLocal = local != null && local.optDouble("w", 0) > 0;
+        ensureFactory();
+        if (hasRemote) {
+            if (remoteView == null) {
+                remoteView = makeRenderer(false);
+                host.addView(remoteView, 0, new ViewGroup.LayoutParams(1, 1));
+                synchronized (remoteVideoTracks) { for (VideoTrack t : remoteVideoTracks.values()) t.addSink(remoteView); }
+            }
+            place(remoteView, remote, d, web);
+            remoteView.setVisibility(View.VISIBLE);
+        } else if (remoteView != null) {
+            remoteView.setVisibility(View.GONE);
+        }
+        if (hasLocal) {
+            if (localView == null) {
+                localView = makeRenderer(true);
+                host.addView(localView, remoteView != null ? 1 : 0, new ViewGroup.LayoutParams(1, 1));
+                localView.setMirror(front);
+                if (videoTrack != null) videoTrack.addSink(localView);
+            }
+            place(localView, local, d, web);
+            localView.setVisibility(View.VISIBLE);
+        } else if (localView != null) {
+            localView.setVisibility(View.GONE);
+        }
+        boolean any = hasRemote || hasLocal;
+        if (any && !webTransparent) {
+            webViewBackground = web.getBackground();
+            web.setBackgroundColor(Color.TRANSPARENT);
+            webTransparent = true;
+        } else if (!any && webTransparent) {
+            web.setBackground(webViewBackground);
+            webTransparent = false;
+            if (remoteView != null) {
+                synchronized (remoteVideoTracks) { for (VideoTrack t : remoteVideoTracks.values()) t.removeSink(remoteView); }
+                host.removeView(remoteView); remoteView.release(); remoteView = null;
+            }
+            if (localView != null) {
+                if (videoTrack != null) videoTrack.removeSink(localView);
+                host.removeView(localView); localView.release(); localView = null;
+            }
+        }
+    }
+
+    private static void place(View v, JSObject r, float d, View web) {
+        ViewGroup.LayoutParams lp = v.getLayoutParams();
+        lp.width = Math.round((float) r.optDouble("w", 0) * d);
+        lp.height = Math.round((float) r.optDouble("h", 0) * d);
+        v.setLayoutParams(lp);
+        v.setX(web.getX() + (float) r.optDouble("x", 0) * d);
+        v.setY(web.getY() + (float) r.optDouble("y", 0) * d);
+    }
+
     // ===== внутреннее =====
 
     private void ensureFactory() {
@@ -234,17 +523,17 @@ public class NativeCallPlugin extends Plugin {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(getContext().getApplicationContext())
                 .createInitializationOptions());
-        EglBase egl = EglBase.create();
+        egl = EglBase.create();
         factory = PeerConnectionFactory.builder()
             .setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(), true, true))
             .setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()))
             .createPeerConnectionFactory();
     }
 
-    private MediaConstraints offerConstraints() {
+    private MediaConstraints offerConstraints(String peerId) {
         MediaConstraints constraints = new MediaConstraints();
         constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
-        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"));
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", videoPeers.contains(peerId) ? "true" : "false"));
         return constraints;
     }
 
@@ -288,6 +577,13 @@ public class NativeCallPlugin extends Plugin {
         if (pc != null && audioTrack != null) {
             pc.addTrack(audioTrack, Collections.singletonList("hyax"));
         }
+        // Звонящий с видео: пустой видеоканал сразу (отвечающий получит его
+        // из предложения — см. setRemoteDescription).
+        if (pc != null && videoPeers.contains(peerId)) {
+            RtpTransceiver t = pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+                new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV, Collections.singletonList("hyax")));
+            if (videoTrack != null) t.getSender().setTrack(videoTrack, false);
+        }
         peers.put(peerId, pc);
         return pc;
     }
@@ -295,6 +591,7 @@ public class NativeCallPlugin extends Plugin {
     private synchronized void drop(String peerId) {
         PeerConnection pc = peers.remove(peerId);
         if (pc != null) pc.close();
+        synchronized (remoteVideoTracks) { remoteVideoTracks.remove(peerId); }
     }
 
     private void emitSdp(String peerId, String type, String sdp) {
@@ -352,6 +649,11 @@ public class NativeCallPlugin extends Plugin {
                     Double v = peerVolumes.get(peerId);
                     if (v != null) t.setVolume(v);
                 }
+            }
+            if (receiver.track() instanceof VideoTrack) {
+                final VideoTrack vt = (VideoTrack) receiver.track();
+                synchronized (remoteVideoTracks) { remoteVideoTracks.put(peerId, vt); }
+                getActivity().runOnUiThread(() -> { if (remoteView != null) vt.addSink(remoteView); });
             }
         }
     }

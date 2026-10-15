@@ -10,7 +10,7 @@ import type { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallMedia, type CallState, type IncomingCall } from "@/services/call-service";
 import { GroupCallService, type GroupCallInvite, type GroupCallState, type PeerStream } from "@/services/group-call-service";
 import { NativeCallService, NativeGroupCallService } from "@/services/native-call-service";
-import { hasNativeCalls } from "@/lib/nativeCall";
+import { hasNativeCalls, nativeCall, type VideoRect } from "@/lib/nativeCall";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
@@ -50,6 +50,10 @@ function iceServersFast(): Promise<RTCIceServer[]> {
  * хост стоит над экранами (App.tsx, рядом с MiniPlayer), сокет общий
  * (lib/userSocket), а звонок начинают через lib/calls.startCall.
  */
+/** Где нативному движку рисовать видео (рамки с экрана звонка). */
+const nativeVideoLayout = (remote: VideoRect | null, local: VideoRect | null) =>
+  void nativeCall.setVideoLayout(remote, local).catch(() => {});
+
 const CallHost = () => {
   const navigate = useNavigate();
   const [callState, setCallState] = useState<CallState>("idle");
@@ -242,7 +246,7 @@ const CallHost = () => {
         onMedia: setMedia,
       } as ConstructorParameters<typeof OneToOneCallService>[0]);
       callRef.current = svc;
-      if (svc instanceof OneToOneCallService) setMedia(svc.getMedia());
+      setMedia(svc.getMedia());
 
       const GroupImpl = hasNativeCalls() ? NativeGroupCallService : GroupCallService;
       groupCallRef.current = new GroupImpl({
@@ -411,23 +415,32 @@ const CallHost = () => {
   const hangup = () => callRef.current?.endCall("ended", true);
 
   const webSvc = () => (callRef.current instanceof OneToOneCallService ? callRef.current : null);
+  /** Видео — и в браузере, и в приложении (там камеру ведёт нативный движок). */
+  const videoSvc = () => webSvc() || (callRef.current instanceof NativeCallService ? callRef.current : null);
   /** Камера: нет разрешения — подсказка, где его дать; следующее нажатие
-   *  запрашивает снова (браузер спросит, если не запрещено навсегда). */
+   *  запрашивает снова (браузер или система спросят, если не запрещено навсегда). */
   const toggleVideo = async () => {
-    const svc = webSvc();
+    const svc = videoSvc();
     if (!svc || videoBusy) return;
     setVideoBusy(true);
     try {
-      await svc.setVideo(!svc.getMedia().localVideo);
+      await svc.setVideo(!svc.getMedia().localOn);
     } catch (e) {
       const name = (e as { name?: string })?.name || "";
-      toast.error(name === "NotAllowedError" || name === "SecurityError"
-        ? tr("Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз")
-        : name === "NotFoundError" ? tr("Камера не найдена") : tr("Не удалось включить камеру"));
+      if (name === "NotAllowedError" && hasNativeCalls()) {
+        // Отказ в приложении система второй раз не спрашивает — ведём в настройки.
+        toast.error(tr("Нет доступа к камере. Разрешите его в настройках телефона"), {
+          action: { label: tr("Настройки"), onClick: () => void nativeCall.openSettings().catch(() => {}) },
+        });
+      } else {
+        toast.error(name === "NotAllowedError" || name === "SecurityError"
+          ? tr("Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз")
+          : name === "NotFoundError" ? tr("Камера не найдена") : tr("Не удалось включить камеру"));
+      }
     } finally { setVideoBusy(false); }
   };
   const flipCamera = async () => {
-    try { await webSvc()?.flipCamera(); } catch { toast.error(tr("Не удалось переключить камеру")); }
+    try { await videoSvc()?.flipCamera(); } catch { toast.error(tr("Не удалось переключить камеру")); }
   };
   const toggleNoise = async () => {
     const svc = webSvc();
@@ -543,9 +556,12 @@ const CallHost = () => {
           state={callState}
           peer={callPeer}
           participants={[{ id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, stream: remoteStream, connected: callState === "active" }]}
-          video={webSvc() && media && callState !== "incoming" ? {
+          video={videoSvc() && media && callState !== "incoming" ? {
             local: media.localVideo,
             remote: media.remoteVideo ? remoteStream : null,
+            localOn: media.localOn,
+            remoteOn: media.remoteVideo && (media.native || !!remoteStream),
+            nativeLayout: media.native ? nativeVideoLayout : undefined,
             available: media.peerCanVideo,
             busy: videoBusy,
             canFlip: media.canFlip,
@@ -553,7 +569,7 @@ const CallHost = () => {
             onToggle: () => void toggleVideo(),
             onFlip: () => void flipCamera(),
           } : undefined}
-          noise={webSvc() && media ? { on: media.noiseSuppression, onToggle: () => void toggleNoise() } : undefined}
+          noise={webSvc() && media?.canNoise ? { on: media.noiseSuppression, onToggle: () => void toggleNoise() } : undefined}
           onAccept={acceptCall}
           onReject={rejectCall}
           onHangup={hangup}

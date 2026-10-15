@@ -1654,6 +1654,7 @@ const en: Record<string, string> = {
   "Перейти": "Leave",
   "Звонок": "Call",
   "Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз": "No camera access. Allow it in your browser or system settings and tap again",
+  "Нет доступа к камере. Разрешите его в настройках телефона": "No camera access. Allow it in your phone settings",
   "Камера не найдена": "No camera found",
   "Не удалось включить камеру": "Couldn't turn on the camera",
   "Не удалось переключить камеру": "Couldn't switch the camera",
