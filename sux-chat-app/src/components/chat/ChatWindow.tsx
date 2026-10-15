@@ -20,6 +20,7 @@ import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
+import { playDeleteAnimation, resetDeleteAnimation, DELETE_ANIM_MS } from "@/lib/deleteAnim";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { useMint, MintIcon } from "@/themes/mint";
@@ -454,16 +455,54 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [editing, setEditing] = useState<Message | null>(null);
   // Удаление с отменой (5с): прячем локально, коммитим по таймеру.
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  // «Сообщение съели»: удалённое сообщение ещё EAT_MS рисуется с анимацией
-  // (ротик идёт слева направо и откусывает пузырь), потом пропадает.
-  const EAT_MS = 800;
+  // Удаление: сначала анимация на пузыре (lib/deleteAnim — съели, сломали,
+  // шредер, замазали, утащил муравей, сожгли, растворили — случайно), потом
+  // строка плавно схлопывается (msg-collapsing), и соседние сообщения
+  // подъезжают на её место без скачка.
+  const COLLAPSE_MS = 340;
+  const EAT_MS = DELETE_ANIM_MS + COLLAPSE_MS;
   const [eatingIds, setEatingIds] = useState<Set<string>>(new Set());
+  const [collapsingIds, setCollapsingIds] = useState<Set<string>>(new Set());
+  // Удаление отменили посреди анимации — её таймеры эти id не трогают.
+  const undoneRef = useRef<Set<string>>(new Set());
+  const rowOf = (id: string) => document.getElementById(`msg-${id}`);
   const eatThenHide = (ids: string[]) => {
     if (!ids.length) return;
+    ids.forEach((i) => undoneRef.current.delete(i));
     setEatingIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.add(i)); return n; });
+    requestAnimationFrame(() => ids.forEach((id) => playDeleteAnimation(rowOf(id))));
     setTimeout(() => {
-      setHiddenIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.add(i)); return n; });
+      const whole: string[] = [];
+      ids.forEach((id) => {
+        const row = rowOf(id);
+        if (!row || undoneRef.current.has(id)) return;
+        // Тело сообщения — прямой потомок строки с пузырём. Перед ним в строке
+        // могут стоять разделители (дата, «Непрочитанные»): тогда схлопываем
+        // только тело, а разделитель остаётся на месте — после удаления он
+        // встанет у следующего сообщения ровно там же.
+        let body = row.querySelector<HTMLElement>("[data-bubble]");
+        while (body && body.parentElement && body.parentElement !== row) body = body.parentElement;
+        if (body && body.parentElement === row && body !== row.firstElementChild) {
+          body.style.maxHeight = `${body.offsetHeight}px`;
+          body.style.overflow = "hidden";
+          body.getBoundingClientRect();
+          body.style.transition = `max-height ${COLLAPSE_MS}ms cubic-bezier(.4, 0, .2, 1), opacity 200ms ease-out`;
+          body.style.maxHeight = "0px";
+          body.style.opacity = "0";
+          return;
+        }
+        // Высоту фиксируем числом — из неё и схлопываем до нуля.
+        row.style.maxHeight = `${row.offsetHeight}px`;
+        row.getBoundingClientRect();
+        whole.push(id);
+      });
+      if (whole.length) setCollapsingIds((prev) => { const n = new Set(prev); whole.forEach((i) => n.add(i)); return n; });
+    }, DELETE_ANIM_MS);
+    setTimeout(() => {
+      const gone = ids.filter((i) => !undoneRef.current.has(i));
+      setHiddenIds((prev) => { const n = new Set(prev); gone.forEach((i) => n.add(i)); return n; });
       setEatingIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
+      setCollapsingIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
     }, EAT_MS);
   };
   const [undoBar, setUndoBar] = useState<{ id: string; scope: "me" | "all"; message: Message } | null>(null);
@@ -1987,7 +2026,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   const undoDelete = () => {
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
-    if (undoBar) setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+    if (undoBar) {
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+      // Отменили, пока пузырь ещё «съедают», — вернуть его как был.
+      if (eatingIds.has(undoBar.id)) {
+        undoneRef.current.add(undoBar.id);
+        resetDeleteAnimation(rowOf(undoBar.id));
+        setEatingIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+        setCollapsingIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+      }
+    }
     setUndoBar(null);
   };
   const startEdit = (message: Message) => {
@@ -3465,7 +3513,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
-                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in", eatingIds.has(message.id) && "msg-eaten")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (

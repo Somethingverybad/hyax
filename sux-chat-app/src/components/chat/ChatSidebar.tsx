@@ -271,18 +271,18 @@ const ChatSidebar = ({
     },
   });
   const swipeStyle = (kind: SectionKey) => ({ transform: swipedChatId === swipeKey(kind) ? "translateX(-80px)" : "translateX(0)" });
-  const hideSwipeButton = (kind: SectionKey) => (
+  // Кнопка под строкой — только пока строка отъехала свайпом (телефон):
+  // иначе на подложке «Мяты» она просвечивала из-под строки и на компьютере.
+  const hideSwipeButton = (kind: SectionKey) => swipedChatId === swipeKey(kind) ? (
     <button
       type="button"
       onClick={() => { setSwipedChatId(null); void hideSection(kind); }}
-      className="absolute inset-y-0 right-0 w-20 bg-surface-3 text-foreground flex flex-col items-center justify-center gap-0.5"
-      tabIndex={swipedChatId === swipeKey(kind) ? 0 : -1}
+      className="absolute inset-y-0 right-0 w-20 bg-surface-3 text-foreground text-small font-semibold flex items-center justify-center md:hidden"
       aria-label={kind === "wall" ? t("Скрыть Стену") : t("Скрыть «Долгий ящик»")}
     >
-      <EyeOff className="w-5 h-5" />
-      <span className="text-[10px] font-semibold">{t("Скрыть")}</span>
+      {t("Скрыть")}
     </button>
-  );
+  ) : null;
   /** Клик после долгого нажатия не открывает раздел — открылось меню. */
   const sectionClick = (kind: SectionKey, open: () => void) => () => {
     if (sectionHoldRef.current.fired) { sectionHoldRef.current.fired = false; return; }
