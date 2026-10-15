@@ -88,4 +88,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
     }
 
+    // Тихий пуш: чат прочитали (здесь или на другом устройстве) — убираем его
+    // уведомления с экрана (ChatNotifs). Остальное отдаём как было.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        if (userInfo["type"] as? String) == "chat_read", let chat = userInfo["chat_id"] as? String, !chat.isEmpty {
+            ChatNotifs.remove([chat]) { completionHandler(.newData) }
+            return
+        }
+        completionHandler(.noData)
+    }
+
 }

@@ -15,16 +15,25 @@ import threading
 import time
 
 TTL = 90  # секунд без подтверждения — считаем, что чат уже не смотрят
+# Клиент может сам сказать, как часто подтверждает (поле ttl в «viewing»):
+# новые версии — каждые 10 с с ttl 15, и пуши начинают приходить через
+# ~15 с после того, как приложение свернули, даже если «больше не смотрю»
+# потерялось по дороге. Старые подтверждают раз в 45 с — им прежние 90.
+TTL_MIN, TTL_MAX = 10, 90
 
 _lock = threading.Lock()
 _viewing: dict[str, tuple[str, float]] = {}
 
 
-def set_viewing(profile_id, chat_id) -> None:
+def set_viewing(profile_id, chat_id, ttl=None) -> None:
     key = str(profile_id)
+    try:
+        life = min(TTL_MAX, max(TTL_MIN, int(ttl))) if ttl else TTL
+    except (TypeError, ValueError):
+        life = TTL
     with _lock:
         if chat_id:
-            _viewing[key] = (str(chat_id), time.monotonic() + TTL)
+            _viewing[key] = (str(chat_id), time.monotonic() + life)
         else:
             _viewing.pop(key, None)
 
@@ -222,3 +231,27 @@ def rov_push_allowed(sender_id, target_id) -> bool:
             return False
         _rov_push[key] = now
         return True
+
+
+# ── По каким чатам ушёл пуш о сообщении ──────────────────────────────────────
+# Прочитал чат (на любом устройстве) — его уведомления на телефонах надо
+# убрать тихим пушем «chat_read». Слать его на каждое прочтение незачем:
+# пока переписываешься в открытом чате, пушей и не было. Поэтому помним,
+# кому по какому чату пуш уходил, и «прочитано» шлём только им.
+
+_pushed: dict[tuple[str, str], float] = {}
+PUSHED_TTL = 7 * 24 * 3600  # дольше уведомления на телефоне обычно не живут
+
+
+def note_pushed(profile_ids, chat_id) -> None:
+    now = time.monotonic()
+    with _lock:
+        for pid in profile_ids:
+            _pushed[(str(pid), str(chat_id))] = now + PUSHED_TTL
+
+
+def take_pushed(profile_id, chat_id) -> bool:
+    """Был ли пуш по этому чату с прошлого прочтения (и забыть о нём)."""
+    with _lock:
+        until = _pushed.pop((str(profile_id), str(chat_id)), None)
+    return bool(until and until > time.monotonic())

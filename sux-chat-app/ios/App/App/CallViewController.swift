@@ -20,6 +20,7 @@ class CallViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(VoipPlugin())
         bridge?.registerPluginInstance(NativeCallPlugin())
         bridge?.registerPluginInstance(PushSecretPlugin())
+        bridge?.registerPluginInstance(ChatNotificationsPlugin())
         bridge?.registerPluginInstance(KeyboardSyncPlugin())
         bridge?.registerPluginInstance(ShareInboxPlugin())
         bridge?.registerPluginInstance(NativeLangPlugin())

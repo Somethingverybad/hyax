@@ -288,6 +288,16 @@ const CallHost = () => {
         fromUserAvatar: msg.data.from_user_avatar,
         callType: msg.data.call_type,
       });
+    } else if (msg?.type === "call_signal" && msg.signal_type === "call_handled_elsewhere") {
+      // Звонок приняли или отклонили на другом моём устройстве — здесь молча
+      // перестаём звонить (ничего не отправляя: иначе отбой ушёл бы и туда).
+      const id = msg.data?.call_id;
+      if (svc && id && svc.getCurrentCallId() === id && svc.getState() === "incoming") {
+        svc.endCall("ended", false);
+        setIncomingCall(null);
+      }
+      const group = groupCallRef.current;
+      if (group && id && group.getCallId() === id && group.getState() === "incoming") group.dismissIncoming();
     } else if (msg?.type === "call_signal") {
       const group = groupCallRef.current;
       // В личный звонок добавили людей: сервер прислал состав (call_peers).

@@ -3,6 +3,7 @@ import { t } from "@/lib/i18n";
 import { nativeCall, type NativeIce, type NativeSdp, type NativePeerState } from "@/lib/nativeCall";
 import type { CallState, IncomingCall } from "@/services/call-service";
 import type { GroupCallInvite, GroupCallState } from "@/services/group-call-service";
+import { myDeviceId } from "./deviceId";
 
 /**
  * Звонки на нативном движке: сигналинг и состояние — здесь, звук — в
@@ -225,13 +226,13 @@ export class NativeCallService extends NativeBase {
     this.targetUserId = fromUserId;
     this.isCaller = false;
     this.setState("connecting");
-    this.send("call_accept", { to_user_id: fromUserId });
+    this.send("call_accept", { to_user_id: fromUserId, device_id: myDeviceId() });
   }
 
   rejectIncomingCall(callId: string, fromUserId: string): void {
     if (!callId || !fromUserId) return;
     this.callId = callId;
-    this.send("call_reject", { to_user_id: fromUserId });
+    this.send("call_reject", { to_user_id: fromUserId, device_id: myDeviceId() });
     this.finish("rejected");
   }
 
@@ -267,6 +268,9 @@ export class NativeCallService extends NativeBase {
         this.finish((data.status as string) || "ended");
         break;
       default:
+        // Пока здесь не ответили, медиасигналы звонящего не наши (он шлёт
+        // их на все мои устройства) — отвечает только принявшее звонок.
+        if (this.state === "incoming") return;
         await this.handleMedia(signalType, from, data);
         break;
     }
@@ -392,13 +396,19 @@ export class NativeGroupCallService extends NativeBase {
       return;
     }
     this.setState("active");
-    this.send("call_accept", {});
+    this.send("call_accept", { device_id: myDeviceId() });
   }
 
   reject(): void {
     if (!this.callId) return;
-    this.send("call_reject", {});
+    this.send("call_reject", { device_id: myDeviceId() });
     this.finish();
+  }
+
+  /** Приглашение приняли или отклонили на другом моём устройстве — молча
+   *  перестать звонить, ничего не отправляя. */
+  dismissIncoming(): void {
+    if (this.state === "incoming") this.finish();
   }
 
   leave(): void {
@@ -410,6 +420,8 @@ export class NativeGroupCallService extends NativeBase {
     if (!data) return;
     if (this.callId && data.call_id && data.call_id !== this.callId) return;
     const from = data.from_user_id as string | undefined;
+    // Звоним, но здесь ещё не ответили — медиасигналы для того устройства, где приняли.
+    if (this.state === "incoming" && signalType.startsWith("webrtc_")) return;
 
     if (signalType === "call_peers") {
       const ids: string[] = (data.peers || []).filter((id: string) => id !== this.userId);

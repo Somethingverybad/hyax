@@ -623,8 +623,13 @@ class UserConsumer(AsyncWebsocketConsumer):
             if message_type == 'active':
                 profile = await self.get_user_profile(self.user)
                 if profile:
-                    from .presence import conn_active
-                    if conn_active(self.channel_name, profile.id, bool(text_data_json.get('active'))):
+                    from .presence import conn_active, clear as clear_viewing
+                    active = bool(text_data_json.get('active'))
+                    # Свернули — чат больше не «открыт», даже если отдельное
+                    # «viewing: null» не дошло: пуши нужны сразу.
+                    if not active:
+                        clear_viewing(profile.id)
+                    if conn_active(self.channel_name, profile.id, active):
                         await self.broadcast_presence(profile)
                 return
             
@@ -635,7 +640,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 if profile:
                     from .presence import set_viewing
                     chat = text_data_json.get('chat')
-                    set_viewing(profile.id, chat)
+                    set_viewing(profile.id, chat, text_data_json.get('ttl'))
                     logger.info("presence: %s смотрит %s", str(profile.id)[:8], str(chat)[:8] if chat else "—")
                 return
 
@@ -933,6 +938,11 @@ class UserConsumer(AsyncWebsocketConsumer):
                 if call_session.initiator_id:
                     await self.set_profile_call_status(call_session.initiator_id, "idle")
 
+        # Ответили или отклонили — другие устройства этого человека замолкают.
+        if signal_type in ("call_accept", "call_reject") and call_id:
+            await self.notify_handled_elsewhere(call_id, profile_id, (data.get("device_id") or "").strip()[:64] or None,
+                                                "accepted" if signal_type == "call_accept" else "rejected")
+
         # Отбой/отклонение: тихим пушем убираем экран вызова у второй стороны —
         # её WebSocket в фоне может молчать, а CallKit иначе звонит до таймаута.
         if signal_type in ("call_reject", "call_end") and call_id:
@@ -1006,6 +1016,30 @@ class UserConsumer(AsyncWebsocketConsumer):
     # Получение уведомления из группы
     # ==================== Групповые звонки ====================
 
+    async def notify_handled_elsewhere(self, call_id, profile_id, device_id, status):
+        """Ответили или отклонили на одном устройстве — остальные устройства
+        этого же человека перестают звонить: открытым подключениям — сигнал
+        по сокету (кроме этого соединения), телефонам — тихий пуш отбоя,
+        кроме ответившего устройства. Без device_id (старый клиент) пуш не
+        шлём: он снял бы и сам разговор на ответившем телефоне."""
+        await self.channel_layer.group_send(f"user_{profile_id}", {
+            "type": "call_signal_notification",
+            "signal_type": "call_handled_elsewhere",
+            "origin": self.channel_name,
+            "data": {"call_id": str(call_id), "status": status, "from_user_id": str(profile_id)},
+        })
+        if not device_id:
+            return
+        try:
+            from .fcm import notify_data
+            from .apns_voip import notify_voip
+            me = Profile.objects.filter(id=profile_id)
+            cancel = {"type": "call_ended", "call_id": str(call_id)}
+            await database_sync_to_async(notify_voip)(me, cancel, exclude_device=device_id)
+            await database_sync_to_async(notify_data)(me, cancel, exclude_device=device_id)
+        except Exception as e:
+            print(f"❌ [handled_elsewhere] отбой на другие устройства не разослан: {e}")
+
     async def handle_group_call(self, signal_type, data, profile_id, chat_id, call_id, target_user_id):
         """Mesh-звонок: сервер держит состав участников и рассылает его,
         медиа идёт между устройствами напрямую."""
@@ -1051,9 +1085,12 @@ class UserConsumer(AsyncWebsocketConsumer):
         if signal_type == "call_accept":
             await self.group_join(call_id, profile_id)
             await self.broadcast_peers(call_id, chat_id)
+            await self.notify_handled_elsewhere(call_id, profile_id, (data.get("device_id") or "").strip()[:64] or None, "accepted")
             return
 
         if signal_type in ("call_reject", "call_end"):
+            if signal_type == "call_reject":
+                await self.notify_handled_elsewhere(call_id, profile_id, (data.get("device_id") or "").strip()[:64] or None, "rejected")
             remaining = await self.group_leave(call_id, profile_id)
             # Ушедшему больше ничего не шлём, остальным — обновлённый состав.
             await self.broadcast_peers(call_id, chat_id, exclude=profile_id)
@@ -1336,6 +1373,9 @@ class UserConsumer(AsyncWebsocketConsumer):
     
     # Обработка call_signal для персонального канала
     async def call_signal_notification(self, event):
+        # «Принят на другом устройстве» самому ответившему соединению не нужен.
+        if event.get("origin") and event.get("origin") == self.channel_name:
+            return
         def convert_uuid_to_str(obj):
             if isinstance(obj, uuid.UUID):
                 return str(obj)

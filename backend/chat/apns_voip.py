@@ -118,14 +118,16 @@ def _deliver(tokens, payload):
         logger.info("APNs VoIP: удалено мёртвых токенов: %d", len(dead))
 
 
-def notify_voip(profiles, payload: dict) -> int:
+def notify_voip(profiles, payload: dict, exclude_device=None) -> int:
     """VoIP-пуш всем iOS-устройствам профилей. Возвращает число токенов —
-    по нему вызывающий решает, нужен ли обычный пуш как запасной вариант."""
+    по нему вызывающий решает, нужен ли обычный пуш как запасной вариант.
+    exclude_device — кроме этого устройства (оно само ответило на звонок)."""
     from .models import PushToken
 
-    tokens = list(
-        PushToken.objects.filter(user__in=profiles, platform="ios_voip").values_list("token", flat=True)
-    )
+    qs = PushToken.objects.filter(user__in=profiles, platform="ios_voip")
+    if exclude_device:
+        qs = qs.exclude(device_id=exclude_device)
+    tokens = list(qs.values_list("token", flat=True))
     logger.info("APNs VoIP %s: устройств %d", payload.get("type", "?"), len(tokens))
     if tokens:
         threading.Thread(target=_deliver, args=(tokens, payload), daemon=True).start()

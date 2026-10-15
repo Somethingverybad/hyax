@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket } from "@/lib/userSocket";
 import { startCall as startCallGlobal } from "@/lib/calls";
+import { dismissChatNotifications, sweepReadNotifications } from "@/lib/chatNotifications";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { applog } from "@/lib/applog";
@@ -146,11 +147,15 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // сервере живёт ограниченное время и протухает, если связь оборвалась.
   const viewingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
-    const tell = (chat: string | null) => userSocket()?.send({ type: "viewing", chat });
+    // ttl 15 и подтверждение каждые 10 с: свернули приложение — пуши пойдут
+    // через ~15 с, даже если «больше не смотрю» потерялось (chat/presence.py).
+    const tell = (chat: string | null) => userSocket()?.send({ type: "viewing", chat, ttl: 15 });
     tell(selectedChatId);
     if (viewingTimerRef.current) clearInterval(viewingTimerRef.current);
     if (selectedChatId) {
-      viewingTimerRef.current = setInterval(() => tell(selectedChatIdRef.current), 45000);
+      viewingTimerRef.current = setInterval(() => {
+        if (document.visibilityState === "visible") tell(selectedChatIdRef.current);
+      }, 10000);
     }
     return () => {
       if (viewingTimerRef.current) { clearInterval(viewingTimerRef.current); viewingTimerRef.current = null; }
@@ -161,7 +166,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useEffect(() => {
     const onVisible = () => {
       const visible = document.visibilityState === "visible";
-      userSocket()?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null });
+      userSocket()?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null, ttl: 15 });
       // «В сети» по сворачиванию сообщает сам сокет (lib/userSocket) — на любом экране.
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -220,6 +225,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useEffect(() => {
     if (!selectedChatId) return;
     api.markChatAsRead(selectedChatId).catch(() => {});
+    // Его уведомления на экране телефона больше не нужны.
+    dismissChatNotifications([selectedChatId]);
     setChats((prev) =>
       prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0, unread_mention: false } : c))
     );
@@ -659,6 +666,14 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       if (JSON.stringify(userChats) !== JSON.stringify(chatsRef.current)) {
         setChats(userChats);
         writeCache("chats", userChats);
+      }
+      // Уведомления чатов, где всё прочитано (в том числе на другом
+      // устройстве), — с экрана телефона долой.
+      if (document.visibilityState === "visible") {
+        void sweepReadNotifications((id) => {
+          const c = userChats.find((x) => String(x.id) === id);
+          return !c || (c.unread_count || 0) > 0;
+        });
       }
     } catch (error) {
       console.error('Error refreshing chats:', error);

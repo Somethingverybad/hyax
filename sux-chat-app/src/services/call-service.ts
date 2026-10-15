@@ -1,5 +1,6 @@
 import { WebSocketService } from "@/services/websocket";
 import { t } from "@/lib/i18n";
+import { myDeviceId } from "./deviceId";
 
 type CallType = "audio" | "video";
 export type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
@@ -176,6 +177,7 @@ export class OneToOneCallService {
           chat_id: this.chatId,
           call_id: callId,
           to_user_id: fromUserId,
+          device_id: myDeviceId(),
         },
       });
     } catch {
@@ -196,6 +198,7 @@ export class OneToOneCallService {
         chat_id: this.chatId,
         call_id: callId,
         to_user_id: fromUserId,
+        device_id: myDeviceId(),
       },
     });
 
@@ -293,6 +296,9 @@ export class OneToOneCallService {
     if (!this.currentCallId || callId !== this.currentCallId) {
       return;
     }
+    // Пока здесь не ответили, медиасигналы звонящего не наши: он шлёт их на
+    // все мои устройства, а ответить должно только то, где приняли звонок.
+    if (this.state === "incoming" && signalType.startsWith("webrtc_")) return;
 
     switch (signalType) {
       case "call_accept":

@@ -49,6 +49,11 @@ public class CallMessagingService extends FirebaseMessagingService {
             }
             return;
         }
+        // Чат прочитали (здесь или на другом устройстве) — его уведомления убираем.
+        if ("chat_read".equals(type)) {
+            ChatNotifs.cancel(getApplicationContext(), data.get("chat_id"));
+            return;
+        }
         if ("call_ended".equals(type)) {
             CallNotifications.cancel(getApplicationContext());
             VoipPlugin.deliverEnded(data.get("call_id"));
@@ -104,6 +109,8 @@ public class CallMessagingService extends FirebaseMessagingService {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setContentIntent(pi);
-        nm.notify(reqId, b.build());
+        // С тегом чата: прочитают — уберём именно его (ChatNotifs).
+        if (chatId.isEmpty()) nm.notify(reqId, b.build());
+        else nm.notify(ChatNotifs.tag(chatId), ChatNotifs.ID, b.build());
     }
 }

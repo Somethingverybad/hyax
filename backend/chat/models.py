@@ -399,7 +399,10 @@ class PushToken(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('user', 'device_id')  # Одно устройство на пользователя
+        # Одно устройство — по токену каждого вида: у iPhone их два (обычные
+        # пуши и VoIP для звонков). С уникальностью (user, device_id)
+        # регистрация одного стирала другой — iPhone переставал звонить.
+        unique_together = ('user', 'device_id', 'platform')
 
 
 class CallSession(models.Model):

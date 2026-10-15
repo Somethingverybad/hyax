@@ -1,5 +1,6 @@
 import { WebSocketService } from "@/services/websocket";
 import { t as tr } from "@/lib/i18n";
+import { myDeviceId } from "./deviceId";
 
 export type GroupCallState = "idle" | "outgoing" | "incoming" | "active";
 
@@ -142,13 +143,19 @@ export class GroupCallService {
       return;
     }
     this.setState("active");
-    this.send("call_accept", {});
+    this.send("call_accept", { device_id: myDeviceId() });
   }
 
   reject(): void {
     if (!this.callId) return;
-    this.send("call_reject", {});
+    this.send("call_reject", { device_id: myDeviceId() });
     this.cleanup();
+  }
+
+  /** Приглашение приняли или отклонили на другом моём устройстве — молча
+   *  перестать звонить, ничего не отправляя. */
+  dismissIncoming(): void {
+    if (this.state === "incoming") this.cleanup();
   }
 
   leave(): void {
@@ -160,6 +167,8 @@ export class GroupCallService {
     if (!data) return;
     const from = data.from_user_id as string | undefined;
     if (data.call_id && this.callId && data.call_id !== this.callId) return;
+    // Звоним, но здесь ещё не ответили — медиасигналы для того устройства, где приняли.
+    if (this.state === "incoming" && signalType.startsWith("webrtc_")) return;
 
     switch (signalType) {
       case "call_peers": {

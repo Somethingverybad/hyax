@@ -175,13 +175,16 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
         logger.info("FCM: удалено мёртвых токенов: %d", len(dead))
 
 
-def _fcm_tokens(profiles, platforms=None):
-    """FCM-токены профилей. PushKit-токены (ios_voip) — не FCM, их исключаем."""
+def _fcm_tokens(profiles, platforms=None, exclude_device=None):
+    """FCM-токены профилей. PushKit-токены (ios_voip) — не FCM, их исключаем.
+    exclude_device — кроме этого устройства (оно само ответило на звонок)."""
     from .models import PushToken
 
     qs = PushToken.objects.filter(user__in=profiles).exclude(platform="ios_voip")
     if platforms:
         qs = qs.filter(platform__in=platforms)
+    if exclude_device:
+        qs = qs.exclude(device_id=exclude_device)
     return list(qs.values_list("token", flat=True))
 
 
@@ -259,10 +262,10 @@ def _deliver_data(tokens, data: dict, ttl: int | None = None):
         logger.exception("FCM data: отправка не удалась")
 
 
-def notify_data(profiles, data: dict, platforms=None, ttl: int | None = None):
+def notify_data(profiles, data: dict, platforms=None, ttl: int | None = None, exclude_device=None):
     """Тихий пуш данными — отбой звонка (убрать экран вызова) или сам
     входящий звонок для Android: там экран вызова рисует нативный сервис."""
-    tokens = _fcm_tokens(profiles, platforms)
+    tokens = _fcm_tokens(profiles, platforms, exclude_device)
     logger.info("FCM data %s: устройств %d", data.get("type", "?"), len(tokens))
     if not tokens:
         return

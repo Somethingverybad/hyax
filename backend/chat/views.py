@@ -837,6 +837,10 @@ def _notify_new_message(message, profile, request):
             # Остальным в группе — «Вася подмигивает Пете» на их языке.
             _who, _whom = profile.username, message.action_target.username
             preview = lambda lang: f"{_act.emoji} {_act.phrase(lang, _who, _whom)}"
+        # Запомнить, кому ушёл пуш по этому чату: прочитают — уберём его
+        # с экрана тихим пушем chat_read (см. mark_chat_as_read).
+        from .presence import note_pushed
+        note_pushed(list(recipients.values_list("id", flat=True)), message.chat.id)
         notify_profiles(
             recipients,
             title=push_title,
@@ -1537,6 +1541,15 @@ class MessageViewSet(viewsets.ModelViewSet):
             # Используем bulk_create для эффективности
             MessageReadStatus.objects.bulk_create(read_statuses, ignore_conflicts=True)
             broadcast_read(chat_id, profile)
+        # Прочитал — уведомления этого чата на моих телефонах больше не нужны:
+        # тихий пуш chat_read их убирает (если пуши по чату вообще были).
+        try:
+            from .presence import take_pushed
+            if take_pushed(profile.id, chat_id):
+                from .fcm import notify_data
+                notify_data(Profile.objects.filter(id=profile.id), {"type": "chat_read", "chat_id": str(chat_id)})
+        except Exception:
+            logger.exception("chat_read: тихий пуш не ушёл")
         
         return Response({
             "status": "success",
@@ -3114,8 +3127,11 @@ class PushRegisterView(APIView):
         # устройства» удаляет и его пуш-токен, иначе пуши шли бы на чужой телефон.
         did = (request.data.get("device_id") or "").strip()[:64] or None
         if did:
-            # unique (user, device_id): прежний токен этого устройства уходит.
-            PushToken.objects.filter(user=profile, device_id=did).exclude(token=token).delete()
+            # unique (user, device_id, platform): прежний токен этого вида с
+            # этого устройства уходит. Раньше без platform VoIP-токен iPhone
+            # стирал обычный и наоборот — оставался тот, что пришёл последним,
+            # и без VoIP-токена iPhone в фоне не звонил.
+            PushToken.objects.filter(user=profile, device_id=did, platform=platform).exclude(token=token).delete()
             defaults["device_id"] = did
         device, created = PushToken.objects.update_or_create(token=token, defaults=defaults)
         return Response({"ok": True, "created": created})
