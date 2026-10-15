@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
 import NotoEmoji from "@/components/NotoEmoji";
 import { emojiOnly } from "@/lib/notoEmoji";
+import { useEscape } from "@/lib/escape";
 import { playDeleteAnimation, resetDeleteAnimation, DELETE_ANIM_MS } from "@/lib/deleteAnim";
 
 import Identicon from "@/components/Identicon";
@@ -2069,6 +2070,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
    *  ответа и перезагружал всю ленту — стикер возникал рывком и не по месту. */
   /** Геопозиция: как стикер — сразу в ленте, ответ сервера подменяет. */
   const [geoOpen, setGeoOpen] = useState(false);
+
+  // Esc (lib/escape): сначала закрывается верхнее — карточка, шторка, меню,
+  // панель стикеров или записи, режим выбора; потом отменяются правка и
+  // ответ. Сам чат закрывает уже экран чатов (ESC_BACK).
+  const escTarget = viewProfileId ? "profile" : viewersFor ? "viewers" : reactFor ? "react" : reportFor ? "report"
+    : forwardFor ? "forward" : playlistFor ? "playlist" : addOpen ? "add" : geoOpen ? "geo" : groupOpen ? "group"
+    : menuMessage ? "menu" : stickersOpen ? "stickers" : recExpanded ? "rec" : selected ? "select"
+    : editing ? "edit" : replyTo ? "reply" : null;
+  useEscape(!!escTarget, () => {
+    switch (escTarget) {
+      case "profile": setViewProfileId(null); break;
+      case "viewers": setViewersFor(null); break;
+      case "react": setReactFor(null); break;
+      case "report": setReportFor(null); break;
+      case "forward": setForwardFor(null); break;
+      case "playlist": setPlaylistFor(null); break;
+      case "add": setAddOpen(false); break;
+      case "geo": setGeoOpen(false); break;
+      case "group": setGroupOpen(false); break;
+      case "menu": closeMenu(); break;
+      case "stickers": setStickersOpen(false); break;
+      case "rec": collapseRec(); break;
+      case "select": setSelected(null); break;
+      case "edit": cancelEdit(); break;
+      case "reply": setReplyTo(null); break;
+    }
+  });
   const sendLocation = async (fix: GeoFix) => {
     setGeoOpen(false);
     if (!chatId) return;

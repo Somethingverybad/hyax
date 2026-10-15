@@ -248,7 +248,7 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
  *  плеер в пузыре. Порталом на body: пузырь может быть внутри transform. */
 const VideoViewer = ({ src, poster, onClose }: { src: string; poster?: string | null; onClose: () => void }) => {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);

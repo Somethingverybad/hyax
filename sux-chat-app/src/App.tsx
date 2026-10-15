@@ -11,6 +11,8 @@ import Music from "@/pages/Music";
 import SharedPlaylist from "@/pages/SharedPlaylist";
 import { syncThemeFromProfile } from "@/lib/theme";
 import { readCache } from "@/lib/session-cache";
+import EscapeKey from "./components/EscapeKey";
+import SettingsFrame from "./components/SettingsFrame";
 import ProfileAppearance from "./pages/ProfileAppearance";
 import ProfileBugReport from "./pages/ProfileBugReport";
 import AdminMetrics from "./pages/AdminMetrics";
@@ -260,6 +262,8 @@ const App = () => {
           
           <BrowserRouter key={langKey}>
             <DeepLinks />
+            {/* Esc: снять фокус с поля, закрыть панель, выйти из чата, назад. */}
+            <EscapeKey />
             <ShareInboxSheet />
             <ConfirmHost />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
@@ -287,32 +291,35 @@ const App = () => {
               <Route path="/music" element={<Music />} />
               {/* Плейлист по ссылке «Поделиться». */}
               <Route path="/pl/:token" element={<SharedPlaylist />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              {/* Подэкраны профиля: правка текста и разделы настроек. */}
-              <Route path="/profile/edit" element={<ProfileEdit />} />
-              <Route path="/profile/notifications" element={<ProfileNotifications />} />
-              <Route path="/profile/privacy" element={<ProfilePrivacy />} />
-              <Route path="/profile/saved-access" element={<ProfileSavedAccess />} />
-              <Route path="/profile/appearance" element={<ProfileAppearance />} />
-              <Route path="/profile/bugreport" element={<ProfileBugReport />} />
-              <Route path="/profile/aura" element={<ProfileAura />} />
+              {/* Настройки и их подэкраны: на широком окне — колонкой по центру. */}
+              <Route element={<SettingsFrame />}>
+                <Route path="/profile" element={<ProfilePage />} />
+                {/* Подэкраны профиля: правка текста и разделы настроек. */}
+                <Route path="/profile/edit" element={<ProfileEdit />} />
+                <Route path="/profile/notifications" element={<ProfileNotifications />} />
+                <Route path="/profile/privacy" element={<ProfilePrivacy />} />
+                <Route path="/profile/saved-access" element={<ProfileSavedAccess />} />
+                <Route path="/profile/appearance" element={<ProfileAppearance />} />
+                <Route path="/profile/bugreport" element={<ProfileBugReport />} />
+                <Route path="/profile/aura" element={<ProfileAura />} />
+                {/* «Долгий ящик»: идеи, голоса, реализованное (chat/ideabox.py). */}
+                <Route path="/profile/ideas" element={<ProfileIdeas />} />
+                <Route path="/profile/vibe-levels" element={<ProfileVibeLevels />} />
+                <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
+                {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}
+                <Route path="/profile/soundpacks/new" element={<SoundPackNew />} />
+                {/* Стикерпаки: свои, сохранённые и импорт набора из Telegram. */}
+                <Route path="/profile/stickerpacks" element={<ProfileStickerPacks />} />
+                <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
+                <Route path="/profile/email" element={<ProfileEmail />} />
+                <Route path="/profile/secret-transfer" element={<ProfileSecretTransfer />} />
+                <Route path="/profile/devices" element={<ProfileDevices />} />
+                <Route path="/profile/language" element={<ProfileLanguage />} />
+                <Route path="/kt/:id" element={<ProfileSecretTransfer />} />
+                {/* Редактор темы: новая или своя по id. */}
+                <Route path="/profile/themes/:id" element={<ThemeEditor />} />
+              </Route>
               <Route path="/monitoring" element={<AdminMetrics />} />
-              {/* «Долгий ящик»: идеи, голоса, реализованное (chat/ideabox.py). */}
-              <Route path="/profile/ideas" element={<ProfileIdeas />} />
-              <Route path="/profile/vibe-levels" element={<ProfileVibeLevels />} />
-              <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
-              {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}
-              <Route path="/profile/soundpacks/new" element={<SoundPackNew />} />
-              {/* Стикерпаки: свои, сохранённые и импорт набора из Telegram. */}
-              <Route path="/profile/stickerpacks" element={<ProfileStickerPacks />} />
-              <Route path="/profile/delete" element={<ProfileDeleteAccount />} />
-              <Route path="/profile/email" element={<ProfileEmail />} />
-              <Route path="/profile/secret-transfer" element={<ProfileSecretTransfer />} />
-              <Route path="/profile/devices" element={<ProfileDevices />} />
-              <Route path="/profile/language" element={<ProfileLanguage />} />
-              <Route path="/kt/:id" element={<ProfileSecretTransfer />} />
-              {/* Редактор темы: новая или своя по id. */}
-              <Route path="/profile/themes/:id" element={<ThemeEditor />} />
               {/* Тема по ссылке «Поделиться темой». */}
               <Route path="/t/:id" element={<ThemePage />} />
               {/* Правила и политика — публичные, без входа: на них ссылаются

@@ -118,7 +118,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap }: {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") go(1);
       else if (e.key === "ArrowLeft") go(-1);
-      else if (e.key === "Escape") onClose();
+      else if (e.key === "Escape") { e.preventDefault(); onClose(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

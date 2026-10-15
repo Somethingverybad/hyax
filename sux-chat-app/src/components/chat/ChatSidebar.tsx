@@ -4,7 +4,8 @@ import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper } from "lucide-react";
+import { useEscape } from "@/lib/escape";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "lucide-react";
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
@@ -262,6 +263,9 @@ const ChatSidebar = ({
       const h = sectionHoldRef.current;
       if (h.timer) { clearTimeout(h.timer); h.timer = null; }
       if (h.fired) return;
+      // На широком экране (компьютер, планшет) скрывают только из меню по
+      // правой кнопке или долгому нажатию — свайпа и кнопки под строкой нет.
+      if (window.matchMedia("(min-width: 768px)").matches) return;
       const t1 = e.changedTouches[0];
       const dx = t1.clientX - h.x, dy = t1.clientY - h.y;
       if (Math.abs(dx) > Math.abs(dy) * 1.5) {
@@ -277,10 +281,11 @@ const ChatSidebar = ({
     <button
       type="button"
       onClick={() => { setSwipedChatId(null); void hideSection(kind); }}
-      className="absolute inset-y-0 right-0 w-20 bg-surface-3 text-foreground text-small font-semibold flex items-center justify-center md:hidden"
+      className="absolute inset-y-0 right-0 w-20 bg-surface-3 text-foreground flex flex-col items-center justify-center gap-0.5 md:hidden"
       aria-label={kind === "wall" ? t("Скрыть Стену") : t("Скрыть «Долгий ящик»")}
     >
-      {t("Скрыть")}
+      <EyeOff className="w-5 h-5" />
+      <span className="text-[10px] font-semibold">{t("Скрыть")}</span>
     </button>
   ) : null;
   /** Клик после долгого нажатия не открывает раздел — открылось меню. */
@@ -319,6 +324,12 @@ const ChatSidebar = ({
   // «Изм.» в шапке «Мяты»: у строк видны «закрепить» и «удалить» без свайпа.
   const [editMode, setEditMode] = useState(false);
   const [pinSwipedId, setPinSwipedId] = useState<string | null>(null);
+  // Esc (lib/escape): закрыть меню строки или вернуть отъехавшую свайпом строку.
+  useEscape(!!chatMenu || !!sectionMenu || !!swipedChatId || !!pinSwipedId, () => {
+    if (chatMenu) setChatMenu(null);
+    else if (sectionMenu) setSectionMenu(null);
+    else { setSwipedChatId(null); setPinSwipedId(null); }
+  });
   // Закрепление применяем сразу на экране, не дожидаясь ответа: иначе строка
   // прыгает вверх с задержкой в полсекунды. При ошибке откатываем.
   const [pinOverride, setPinOverride] = useState<Record<string, string | null>>({});

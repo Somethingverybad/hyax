@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ESC_BACK } from "@/lib/escape";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { applog } from "@/lib/applog";
@@ -425,6 +426,22 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     }).then((h) => { handle = h; });
     return () => { handle?.remove(); };
   }, []);
+
+  // Esc (components/EscapeKey): открытый чат закрывается — на широком окне
+  // остаётся «Выберите чат», на узком — список. Вкладки «Стена» и
+  // «Избранное» — отдельные экраны, там Esc — обычный шаг назад.
+  useEffect(() => {
+    if (wallMode || savedMode) return;
+    const onEsc = (e: Event) => {
+      if (!selectedChatIdRef.current) return;
+      e.preventDefault();
+      setSelectedChatId(null);
+      if (selectedKind === "wall") void refreshWall();
+    };
+    window.addEventListener(ESC_BACK, onEsc);
+    return () => window.removeEventListener(ESC_BACK, onEsc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallMode, savedMode, selectedKind]);
 
   // Сигналинг звонков: пользовательский WebSocket + глобальный сервис звонков.
   useEffect(() => {

@@ -247,7 +247,7 @@ const ProfilePage = () => {
         <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">
             <span />
-            <span className="mint-title">{t("Профиль")}</span>
+            <span className="mint-title">{t("Настройки")}</span>
             <button type="button" onClick={() => navigate("/profile/edit")} aria-label={t("Редактировать профиль")}
               className="mint-lime w-[56px] h-[33px] inline-flex items-center justify-center">
               <MintIcon name="pencil" size={[17, 18]} />
@@ -256,7 +256,7 @@ const ProfilePage = () => {
         </div>
       ) : (
       <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center gap-2">
-        <span className="text-h1 flex-1">{t("Профиль")}</span>
+        <span className="text-h1 flex-1">{t("Настройки")}</span>
         <button
           type="button"
           onClick={() => navigate("/profile/edit")}

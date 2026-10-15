@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
-import { MessageSquare, Bookmark, Music2, User, Newspaper } from "lucide-react";
+import { MessageSquare, Bookmark, Music2, Settings, Newspaper } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import { readCache } from "@/lib/session-cache";
@@ -37,7 +37,7 @@ const ITEMS = [
   { to: "/wall", label: "Стена", icon: Newspaper },
   { to: "/saved", label: "Избранное", icon: Bookmark },
   { to: "/music", label: "Музыка", icon: Music2 },
-  { to: "/profile", label: "Профиль", icon: User },
+  { to: "/profile", label: "Настройки", icon: Settings },
 ];
 
 /** «Мята»: остров по макету — свои иконки и порядок вкладок. */
@@ -46,7 +46,7 @@ const MINT_ITEMS: { to: string; label: string; icon: MintIconName; size: [number
   { to: "/saved", label: "Избранное", icon: "navSaved", size: [16, 21] },
   { to: "/chat", label: "Чаты", icon: "navChat", size: [28, 20] },
   { to: "/wall", label: "Стена", icon: "navWall", size: [21, 21] },
-  { to: "/profile", label: "Профиль", icon: "navProfile", size: [22, 23] },
+  { to: "/profile", label: "Настройки", icon: "navSettings", size: [23, 23] },
 ];
 
 /** Лёгкий отклик при переключении вкладок (на телефоне). */
