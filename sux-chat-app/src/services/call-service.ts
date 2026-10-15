@@ -1,5 +1,6 @@
 import { WebSocketService } from "@/services/websocket";
 import { t } from "@/lib/i18n";
+import { openCallCamera } from "@/lib/callCamera";
 import { myDeviceId } from "./deviceId";
 
 type CallType = "audio" | "video";
@@ -53,6 +54,18 @@ export type CallMedia = {
   native?: boolean;
   /** Шумодав переключается (пока только в браузере). */
   canNoise?: boolean;
+};
+
+/** Видео личного звонка, который стал групповым (GroupCallService.adopt). */
+export type AdoptedVideo = {
+  transceiver: RTCRtpTransceiver | null;
+  cam: MediaStream | null;
+  remoteVideo: boolean;
+  canVideo: boolean;
+  known: boolean;
+  front: boolean;
+  deviceIdx: number;
+  canFlip: boolean;
 };
 
 const NS_KEY = "hyax:call-noise-suppression";
@@ -189,22 +202,10 @@ export class OneToOneCallService {
   }
 
   private async openCamera(): Promise<MediaStream> {
-    // Сначала по стороне (телефон), камеры компьютера — по списку устройств.
-    const devices = (await navigator.mediaDevices.enumerateDevices?.().catch(() => [])) || [];
-    const cams = devices.filter((d) => d.kind === "videoinput");
-    const byDevice = cams.length > 1 && cams.every((c) => c.label) && !/android|iphone|ipad/i.test(navigator.userAgent);
-    const video: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
-    if (byDevice) video.deviceId = { exact: cams[this.videoDeviceIdx % cams.length].deviceId };
-    else video.facingMode = this.front ? "user" : "environment";
-    const stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
-    // Список с названиями камер есть только после разрешения — пересчитываем.
-    const after = (await navigator.mediaDevices.enumerateDevices?.().catch(() => [])) || [];
-    this.canFlip = after.filter((d) => d.kind === "videoinput").length > 1;
-    if (byDevice) {
-      const label = stream.getVideoTracks()[0]?.label || "";
-      this.front = !/back|rear|environment|задн/i.test(label);
-    }
-    return stream;
+    const r = await openCallCamera({ front: this.front, deviceIdx: this.videoDeviceIdx });
+    this.canFlip = r.canFlip;
+    this.front = r.front;
+    return r.stream;
   }
 
   private stopLocalVideo(): void {
@@ -750,14 +751,18 @@ export class OneToOneCallService {
 
   /** Отдать живое соединение групповому сервису (добор участников): ничего
    *  не закрываем и не сообщаем об окончании — звонок продолжается. */
-  detach(): { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null } | null {
+  detach(): { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null; video: AdoptedVideo } | null {
     if (!this.peerConnection || !this.currentCallId || !this.targetUserId) return null;
-    // Групповой звонок пока без видео: камеру выключаем.
-    this.videoTransceiver?.sender.replaceTrack(null).catch(() => {});
+    // Камера и видеоканал переходят в групповой звонок как есть.
+    const video: AdoptedVideo = {
+      transceiver: this.videoTransceiver, cam: this.localVideoTrack, remoteVideo: this.remoteVideo,
+      canVideo: this.peerCanVideo, known: this.peerKnown, front: this.front, deviceIdx: this.videoDeviceIdx, canFlip: this.canFlip,
+    };
+    this.localVideoTrack = null;
     this.resetMedia();
     const out = {
       callId: this.currentCallId, chatId: this.chatId, peerId: this.targetUserId,
-      pc: this.peerConnection, localStream: this.localStream, remoteStream: this.remoteStream,
+      pc: this.peerConnection, localStream: this.localStream, remoteStream: this.remoteStream, video,
     };
     this.peerConnection = null;
     this.localStream = null;

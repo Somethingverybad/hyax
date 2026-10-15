@@ -35,6 +35,7 @@ import org.webrtc.CameraEnumerator;
 import org.webrtc.CameraVideoCapturer;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.RendererCommon;
+import org.webrtc.RTCStats;
 import org.webrtc.RtpTransceiver;
 import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.SurfaceViewRenderer;
@@ -70,7 +71,7 @@ public class NativeCallPlugin extends Plugin {
 
     private PeerConnectionFactory factory;
     private EglBase egl;
-    // ── Видео (личные звонки) ─────────────────────────────────────────────
+    // ── Видео (личные и групповые звонки) ─────────────────────────────────
     // Видеоканал в соединении есть сразу (пустой) — камера подставляется в
     // него без пересогласования, как в веб-версии. Картинку рисуют
     // SurfaceViewRenderer под прозрачным WebView: кнопки звонка остаются
@@ -83,7 +84,10 @@ public class NativeCallPlugin extends Plugin {
     private SurfaceTextureHelper textureHelper;
     private boolean front = true;
     private boolean cameraPaused = false;
-    private SurfaceViewRenderer remoteView;
+    // Окно на каждого участника с видео и дорожка, к которой оно привязано
+    // (только на UI-потоке).
+    private final Map<String, SurfaceViewRenderer> remoteViews = new HashMap<>();
+    private final Map<String, VideoTrack> viewTracks = new HashMap<>();
     private SurfaceViewRenderer localView;
     private Drawable webViewBackground;
     private boolean webTransparent = false;
@@ -247,7 +251,7 @@ public class NativeCallPlugin extends Plugin {
         stopCamera();
         videoPeers.clear();
         synchronized (remoteVideoTracks) { remoteVideoTracks.clear(); }
-        getActivity().runOnUiThread(() -> applyLayout(null, null));
+        getActivity().runOnUiThread(() -> applyLayout(new ArrayList<>(), null));
         if (audioTrack != null) {
             audioTrack.dispose();
             audioTrack = null;
@@ -354,12 +358,64 @@ public class NativeCallPlugin extends Plugin {
      *  remote — собеседник, local — своё превью; оба null — видео нет. */
     @PluginMethod
     public void setVideoLayout(PluginCall call) {
-        final JSObject remote = call.getObject("remote");
+        final List<JSObject> remotes = new ArrayList<>();
+        JSArray arr = call.getArray("remotes");
+        if (arr != null) {
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                try { remotes.add(JSObject.fromJSONObject(o)); } catch (Exception ignored) {}
+            }
+        }
         final JSObject local = call.getObject("local");
         getActivity().runOnUiThread(() -> {
-            applyLayout(remote, local);
+            applyLayout(remotes, local);
             call.resolve();
         });
+    }
+
+    /** Кто говорит: уровень входящего звука по каждому соединению и свой
+     *  микрофон (0…1) — из статистики WebRTC. */
+    @PluginMethod
+    public void getAudioLevels(PluginCall call) {
+        final Map<String, PeerConnection> snapshot;
+        synchronized (this) { snapshot = new HashMap<>(peers); }
+        final JSObject levels = new JSObject();
+        final double[] local = { 0 };
+        if (snapshot.isEmpty()) {
+            JSObject out = new JSObject();
+            out.put("peers", levels);
+            out.put("local", 0);
+            call.resolve(out);
+            return;
+        }
+        final java.util.concurrent.atomic.AtomicInteger left = new java.util.concurrent.atomic.AtomicInteger(snapshot.size());
+        for (Map.Entry<String, PeerConnection> e : snapshot.entrySet()) {
+            final String id = e.getKey();
+            e.getValue().getStats(report -> {
+                double in = 0, out = 0;
+                for (RTCStats st : report.getStatsMap().values()) {
+                    Map<String, Object> m = st.getMembers();
+                    if (!"audio".equals(m.get("kind")) || !(m.get("audioLevel") instanceof Number)) continue;
+                    double level = ((Number) m.get("audioLevel")).doubleValue();
+                    Object rs = m.get("remoteSource");
+                    if ("inbound-rtp".equals(st.getType()) || ("track".equals(st.getType()) && Boolean.TRUE.equals(rs))) in = Math.max(in, level);
+                    else if ("media-source".equals(st.getType()) || ("track".equals(st.getType()) && Boolean.FALSE.equals(rs))) out = Math.max(out, level);
+                }
+                synchronized (levels) {
+                    try { levels.put(id, in); } catch (Exception ignored) {}
+                    local[0] = Math.max(local[0], out);
+                }
+                if (left.decrementAndGet() == 0) {
+                    JSObject res = new JSObject();
+                    synchronized (levels) {
+                        res.put("peers", levels);
+                        res.put("local", local[0]);
+                    }
+                    call.resolve(res);
+                }
+            });
+        }
     }
 
     private JSObject videoState(boolean on) {
@@ -456,30 +512,55 @@ public class NativeCallPlugin extends Plugin {
         return v;
     }
 
-    /** Нативные окна под WebView (на UI-потоке). Видео есть — WebView прозрачный. */
-    private void applyLayout(JSObject remote, JSObject local) {
+    /** Нативные окна под WebView (на UI-потоке): по окну на участника с
+     *  видео и своё превью. Видео есть — WebView прозрачный. Углы окон
+     *  скругляет страница (рисует фон вокруг), сами SurfaceView прямоугольные. */
+    private void applyLayout(List<JSObject> remotes, JSObject local) {
         WebView web = getBridge().getWebView();
         if (web == null || !(web.getParent() instanceof ViewGroup)) return;
         ViewGroup host = (ViewGroup) web.getParent();
         float d = getContext().getResources().getDisplayMetrics().density;
-        boolean hasRemote = remote != null && remote.optDouble("w", 0) > 0;
         boolean hasLocal = local != null && local.optDouble("w", 0) > 0;
         ensureFactory();
-        if (hasRemote) {
-            if (remoteView == null) {
-                remoteView = makeRenderer(false);
-                host.addView(remoteView, 0, new ViewGroup.LayoutParams(1, 1));
-                synchronized (remoteVideoTracks) { for (VideoTrack t : remoteVideoTracks.values()) t.addSink(remoteView); }
+        java.util.Set<String> wanted = new java.util.HashSet<>();
+        for (JSObject r : remotes) {
+            String id = r.getString("peerId");
+            if (id != null && r.optDouble("w", 0) > 0) wanted.add(id);
+        }
+        // Ушедшие и те, кто выключил камеру, — без окна.
+        for (String id : new ArrayList<>(remoteViews.keySet())) {
+            if (wanted.contains(id)) continue;
+            SurfaceViewRenderer v = remoteViews.remove(id);
+            VideoTrack t = viewTracks.remove(id);
+            if (t != null) t.removeSink(v);
+            host.removeView(v);
+            v.release();
+        }
+        for (JSObject r : remotes) {
+            String id = r.getString("peerId");
+            if (id == null || !wanted.contains(id)) continue;
+            SurfaceViewRenderer v = remoteViews.get(id);
+            if (v == null) {
+                v = makeRenderer(false);
+                host.addView(v, 0, new ViewGroup.LayoutParams(1, 1));
+                remoteViews.put(id, v);
             }
-            place(remoteView, remote, d, web);
-            remoteView.setVisibility(View.VISIBLE);
-        } else if (remoteView != null) {
-            remoteView.setVisibility(View.GONE);
+            // Дорожка могла смениться (переподключение) — привязываем актуальную.
+            VideoTrack t;
+            synchronized (remoteVideoTracks) { t = remoteVideoTracks.get(id); }
+            if (t != null && viewTracks.get(id) != t) {
+                VideoTrack old = viewTracks.get(id);
+                if (old != null) old.removeSink(v);
+                t.addSink(v);
+                viewTracks.put(id, t);
+            }
+            place(v, r, d, web);
+            v.setVisibility(View.VISIBLE);
         }
         if (hasLocal) {
             if (localView == null) {
                 localView = makeRenderer(true);
-                host.addView(localView, remoteView != null ? 1 : 0, new ViewGroup.LayoutParams(1, 1));
+                host.addView(localView, Math.max(0, host.indexOfChild(web)), new ViewGroup.LayoutParams(1, 1));
                 localView.setMirror(front);
                 if (videoTrack != null) videoTrack.addSink(localView);
             }
@@ -488,7 +569,7 @@ public class NativeCallPlugin extends Plugin {
         } else if (localView != null) {
             localView.setVisibility(View.GONE);
         }
-        boolean any = hasRemote || hasLocal;
+        boolean any = !wanted.isEmpty() || hasLocal;
         if (any && !webTransparent) {
             webViewBackground = web.getBackground();
             web.setBackgroundColor(Color.TRANSPARENT);
@@ -496,10 +577,6 @@ public class NativeCallPlugin extends Plugin {
         } else if (!any && webTransparent) {
             web.setBackground(webViewBackground);
             webTransparent = false;
-            if (remoteView != null) {
-                synchronized (remoteVideoTracks) { for (VideoTrack t : remoteVideoTracks.values()) t.removeSink(remoteView); }
-                host.removeView(remoteView); remoteView.release(); remoteView = null;
-            }
             if (localView != null) {
                 if (videoTrack != null) videoTrack.removeSink(localView);
                 host.removeView(localView); localView.release(); localView = null;
@@ -653,7 +730,14 @@ public class NativeCallPlugin extends Plugin {
             if (receiver.track() instanceof VideoTrack) {
                 final VideoTrack vt = (VideoTrack) receiver.track();
                 synchronized (remoteVideoTracks) { remoteVideoTracks.put(peerId, vt); }
-                getActivity().runOnUiThread(() -> { if (remoteView != null) vt.addSink(remoteView); });
+                getActivity().runOnUiThread(() -> {
+                    SurfaceViewRenderer v = remoteViews.get(peerId);
+                    if (v == null) return;
+                    VideoTrack old = viewTracks.get(peerId);
+                    if (old != null) old.removeSink(v);
+                    vt.addSink(v);
+                    viewTracks.put(peerId, vt);
+                });
             }
         }
     }

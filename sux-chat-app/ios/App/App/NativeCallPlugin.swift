@@ -33,6 +33,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "flipCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setVideoLayout", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getAudioLevels", returnType: CAPPluginReturnPromise),
     ]
 
     private static let factory: RTCPeerConnectionFactory = {
@@ -51,7 +52,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     private var iceServers: [RTCIceServer] = []
     private let queue = DispatchQueue(label: "hyax.nativecall")
 
-    // ── Видео (личные звонки) ────────────────────────────────────────────
+    // ── Видео (личные и групповые звонки) ────────────────────────────────
     // Видеоканал добавляется в соединение сразу (пустой) — камера потом
     // подставляется в него без пересогласования, как в веб-версии. Картинку
     // рисуют нативные окна под прозрачным WebView: кнопки звонка остаются
@@ -62,7 +63,10 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     private var capturer: RTCCameraVideoCapturer?
     private var front = true
     private var remoteVideoTracks: [String: RTCVideoTrack] = [:]
-    private var remoteView: RTCMTLVideoView?
+    // Окно на каждого участника с видео и дорожка, к которой оно привязано
+    // (только на главном потоке).
+    private var remoteViews: [String: RTCMTLVideoView] = [:]
+    private var viewTracks: [String: RTCVideoTrack] = [:]
     private var localView: RTCCameraPreviewView?
     private var webViewWasOpaque = true
     private var webViewBackground: UIColor?
@@ -231,7 +235,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             self.videoPeers.removeAll()
             self.remoteVideoTracks.removeAll()
             NativeCallAudio.shared.endCall()
-            DispatchQueue.main.async { self.applyLayout(remote: nil, local: nil) }
+            DispatchQueue.main.async { self.applyLayout(remotes: [], local: nil, localRadius: 0, tracks: [:]) }
             call.resolve()
         }
     }
@@ -275,14 +279,54 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     /// Где рисовать видео: прямоугольники в точках относительно WebView
-    /// (те же CSS-пиксели). remote — собеседник, local — своё превью;
-    /// оба null — видео нет, WebView снова непрозрачный.
+    /// (те же CSS-пиксели). remotes — участники по peerId, local — своё
+    /// превью; пусто — видео нет, WebView снова непрозрачный.
     @objc func setVideoLayout(_ call: CAPPluginCall) {
-        let remote = Self.rect(call.getObject("remote"))
-        let local = Self.rect(call.getObject("local"))
-        DispatchQueue.main.async {
-            self.applyLayout(remote: remote, local: local)
-            call.resolve()
+        let remotes: [PeerFrame] = (call.getArray("remotes", JSObject.self) ?? []).compactMap { o in
+            guard let id = o["peerId"] as? String, let r = Self.rect(o) else { return nil }
+            return PeerFrame(peerId: id, rect: r, radius: Self.radius(o))
+        }
+        let localObj = call.getObject("local")
+        let local = Self.rect(localObj)
+        let localRadius = Self.radius(localObj)
+        queue.async {
+            let tracks = self.remoteVideoTracks
+            DispatchQueue.main.async {
+                self.applyLayout(remotes: remotes, local: local, localRadius: localRadius, tracks: tracks)
+                call.resolve()
+            }
+        }
+    }
+
+    /// Кто говорит: уровень входящего звука по каждому соединению и свой
+    /// микрофон (0…1) — из статистики WebRTC.
+    @objc func getAudioLevels(_ call: CAPPluginCall) {
+        queue.async {
+            let group = DispatchGroup()
+            let lock = NSLock()
+            var levels: [String: Double] = [:]
+            var local = 0.0
+            for (id, pc) in self.peers {
+                group.enter()
+                pc.statistics { report in
+                    var incoming = 0.0, outgoing = 0.0
+                    for st in report.statistics.values {
+                        guard (st.values["kind"] as? String) == "audio",
+                              let level = (st.values["audioLevel"] as? NSNumber)?.doubleValue else { continue }
+                        let remoteSource = (st.values["remoteSource"] as? NSNumber)?.boolValue
+                        if st.type == "inbound-rtp" || (st.type == "track" && remoteSource == true) {
+                            incoming = max(incoming, level)
+                        } else if st.type == "media-source" || (st.type == "track" && remoteSource == false) {
+                            outgoing = max(outgoing, level)
+                        }
+                    }
+                    lock.lock(); levels[id] = incoming; local = max(local, outgoing); lock.unlock()
+                    group.leave()
+                }
+            }
+            group.notify(queue: self.queue) {
+                call.resolve(["peers": levels, "local": local])
+            }
         }
     }
 
@@ -299,6 +343,10 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         RTCCameraVideoCapturer.captureDevices().contains { $0.position == .front }
             && RTCCameraVideoCapturer.captureDevices().contains { $0.position == .back }
     }
+
+    private struct PeerFrame { let peerId: String; let rect: CGRect; let radius: CGFloat }
+
+    private static func radius(_ o: JSObject?) -> CGFloat { CGFloat((o?["r"] as? Double) ?? 0) }
 
     private static func rect(_ o: JSObject?) -> CGRect? {
         guard let o, let w = o["w"] as? Double, let h = o["h"] as? Double, w > 0, h > 0 else { return nil }
@@ -347,48 +395,71 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     fileprivate func storeRemoteVideo(_ peerId: String, _ track: RTCVideoTrack) {
         queue.async {
             self.remoteVideoTracks[peerId] = track
-            DispatchQueue.main.async { if let v = self.remoteView { track.add(v) } }
+            DispatchQueue.main.async {
+                guard let v = self.remoteViews[peerId] else { return }
+                self.viewTracks[peerId]?.remove(v)
+                track.add(v)
+                self.viewTracks[peerId] = track
+            }
         }
     }
 
-    /// Нативные окна под WebView. Видео есть — WebView прозрачный, иначе
-    /// снова непрозрачный (так быстрее рисуется всё остальное приложение).
-    private func applyLayout(remote: CGRect?, local: CGRect?) {
+    /// Нативные окна под WebView: по окну на участника с видео и своё
+    /// превью. Видео есть — WebView прозрачный, иначе снова непрозрачный
+    /// (так быстрее рисуется всё остальное приложение).
+    private func applyLayout(remotes: [PeerFrame], local: CGRect?, localRadius: CGFloat, tracks: [String: RTCVideoTrack]) {
         guard let web = bridge?.webView, let host = web.superview else { return }
         let origin = web.frame.origin
-        if let remote {
-            if remoteView == nil {
-                let v = RTCMTLVideoView(frame: .zero)
+        let wanted = Set(remotes.map { $0.peerId })
+        // Ушедшие и те, кто выключил камеру, — без окна.
+        for (id, v) in remoteViews where !wanted.contains(id) {
+            viewTracks[id]?.remove(v)
+            viewTracks.removeValue(forKey: id)
+            v.removeFromSuperview()
+            remoteViews.removeValue(forKey: id)
+        }
+        for f in remotes {
+            let v: RTCMTLVideoView
+            if let existing = remoteViews[f.peerId] {
+                v = existing
+            } else {
+                v = RTCMTLVideoView(frame: .zero)
                 v.videoContentMode = .scaleAspectFill
                 v.backgroundColor = .black
-                host.insertSubview(v, belowSubview: web)
-                remoteView = v
-                remoteVideoTracks.values.forEach { $0.add(v) }
+                v.clipsToBounds = true
+                remoteViews[f.peerId] = v
             }
-            remoteView?.frame = remote.offsetBy(dx: origin.x, dy: origin.y)
-            remoteView?.isHidden = false
-        } else {
-            remoteView?.isHidden = true
+            // Дорожка могла смениться (переподключение) — привязываем актуальную.
+            if let t = tracks[f.peerId], viewTracks[f.peerId] !== t {
+                viewTracks[f.peerId]?.remove(v)
+                t.add(v)
+                viewTracks[f.peerId] = t
+            }
+            v.layer.cornerRadius = f.radius
+            v.frame = f.rect.offsetBy(dx: origin.x, dy: origin.y)
+            // Под страницей; позицию самой страницы среди окон не трогаем.
+            host.insertSubview(v, belowSubview: web)
         }
         if let local {
             if localView == nil {
                 let v = RTCCameraPreviewView(frame: .zero)
                 v.backgroundColor = .black
                 v.clipsToBounds = true
-                v.layer.cornerRadius = 12
-                if let rv = remoteView { host.insertSubview(v, aboveSubview: rv) } else { host.insertSubview(v, belowSubview: web) }
+                (v.layer as? AVCaptureVideoPreviewLayer)?.videoGravity = .resizeAspectFill
                 localView = v
                 v.captureSession = capturer?.captureSession
             }
-            // Во весь экран (собеседник без видео) — без скругления.
-            localView?.layer.cornerRadius = remote == nil ? 0 : 12
-            localView?.frame = local.offsetBy(dx: origin.x, dy: origin.y)
-            localView?.isHidden = false
-            if let lv = localView { host.bringSubviewToFront(lv); host.bringSubviewToFront(web) }
+            if let lv = localView {
+                lv.layer.cornerRadius = localRadius
+                lv.frame = local.offsetBy(dx: origin.x, dy: origin.y)
+                lv.isHidden = false
+                // Своё превью — над окнами участников (в личном звонке оно в углу поверх).
+                host.insertSubview(lv, belowSubview: web)
+            }
         } else {
             localView?.isHidden = true
         }
-        let anyVideo = remote != nil || local != nil
+        let anyVideo = !remotes.isEmpty || local != nil
         if anyVideo && !layoutActive {
             layoutActive = true
             webViewWasOpaque = web.isOpaque
@@ -402,7 +473,6 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             web.isOpaque = webViewWasOpaque
             web.backgroundColor = webViewBackground
             web.scrollView.backgroundColor = webScrollBackground
-            remoteView?.removeFromSuperview(); remoteView = nil
             localView?.captureSession = nil
             localView?.removeFromSuperview(); localView = nil
         }

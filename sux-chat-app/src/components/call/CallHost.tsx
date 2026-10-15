@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/api/client";
@@ -8,11 +8,12 @@ import { onUserMessage, onUserSocketChange } from "@/lib/userSocket";
 import { setCallStarter, type StartCallOptions } from "@/lib/calls";
 import type { WebSocketService } from "@/services/websocket";
 import { OneToOneCallService, type CallMedia, type CallState, type IncomingCall } from "@/services/call-service";
-import { GroupCallService, type GroupCallInvite, type GroupCallState, type PeerStream } from "@/services/group-call-service";
+import { GroupCallService, type GroupCallInvite, type GroupCallState, type GroupMedia, type PeerStream } from "@/services/group-call-service";
 import { NativeCallService, NativeGroupCallService } from "@/services/native-call-service";
-import { hasNativeCalls, nativeCall, type VideoRect } from "@/lib/nativeCall";
+import { hasNativeCalls, nativeCall, type AudioLevels, type PeerRect, type VideoRect } from "@/lib/nativeCall";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
+import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
 
 /** Чат из кеша списка (session-cache «chats») — ровно то, что нужно звонку. */
@@ -51,8 +52,9 @@ function iceServersFast(): Promise<RTCIceServer[]> {
  * (lib/userSocket), а звонок начинают через lib/calls.startCall.
  */
 /** Где нативному движку рисовать видео (рамки с экрана звонка). */
-const nativeVideoLayout = (remote: VideoRect | null, local: VideoRect | null) =>
-  void nativeCall.setVideoLayout(remote, local).catch(() => {});
+const nativeVideoLayout = (remotes: PeerRect[], local: VideoRect | null) =>
+  void nativeCall.setVideoLayout(remotes, local).catch(() => {});
+const NO_LEVELS: AudioLevels = { peers: {}, local: 0 };
 
 const CallHost = () => {
   const navigate = useNavigate();
@@ -75,6 +77,7 @@ const CallHost = () => {
   const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
   const [groupStreams, setGroupStreams] = useState<PeerStream[]>([]);
   const [groupPeers, setGroupPeers] = useState<string[]>([]);
+  const [groupMedia, setGroupMedia] = useState<GroupMedia | null>(null);
   const groupCallIdRef = useRef<string | null>(null);
   // Громкость каждого участника у меня (1 — как есть); сбрасывается с концом звонка.
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
@@ -266,6 +269,8 @@ const CallHost = () => {
           setGroupState(st);
           const gid = groupCallRef.current?.getCallId();
           if (st !== "idle" && gid) groupCallIdRef.current = gid;
+          // Камеру можно включить, ещё пока звонок звонит.
+          if (st !== "idle" && groupCallRef.current) setGroupMedia(groupCallRef.current.getMedia());
           if (st === "active") voip.setSpeaker(true);
           if (st === "idle") {
             // Звонок, который начинался личным, CallKit знает по тому же id.
@@ -274,6 +279,7 @@ const CallHost = () => {
             setGroupInvite(null);
             setGroupStreams([]);
             setGroupPeers([]);
+            setGroupMedia(null);
             setPeerVolumes({});
             setMuted(false);
             setAddToCallOpen(false);
@@ -282,6 +288,7 @@ const CallHost = () => {
         onIncoming: (invite) => { setGroupInvite(invite); setCallChat({ id: invite.chatId, name: invite.chatName }); },
         onStreams: setGroupStreams,
         onPeers: setGroupPeers,
+        onMedia: setGroupMedia,
         onError: (m) => toast.error(m),
       });
 
@@ -427,9 +434,10 @@ const CallHost = () => {
   /** Видео — и в браузере, и в приложении (там камеру ведёт нативный движок). */
   const videoSvc = () => webSvc() || (callRef.current instanceof NativeCallService ? callRef.current : null);
   /** Камера: нет разрешения — подсказка, где его дать; следующее нажатие
-   *  запрашивает снова (браузер или система спросят, если не запрещено навсегда). */
-  const toggleVideo = async () => {
-    const svc = videoSvc();
+   *  запрашивает снова (браузер или система спросят, если не запрещено навсегда).
+   *  group — камера группового звонка. */
+  const toggleVideo = async (group = false) => {
+    const svc = group ? groupCallRef.current : videoSvc();
     if (!svc || videoBusy) return;
     setVideoBusy(true);
     try {
@@ -448,9 +456,14 @@ const CallHost = () => {
       }
     } finally { setVideoBusy(false); }
   };
-  const flipCamera = async () => {
-    try { await videoSvc()?.flipCamera(); } catch { toast.error(tr("Не удалось переключить камеру")); }
+  const flipCamera = async (group = false) => {
+    try { await (group ? groupCallRef.current : videoSvc())?.flipCamera(); } catch { toast.error(tr("Не удалось переключить камеру")); }
   };
+  /** Кто говорит в групповом звонке (подсветка и режим «Говорящий»). */
+  const getGroupLevels = useCallback(
+    () => groupCallRef.current?.getAudioLevels().catch(() => NO_LEVELS) ?? Promise.resolve(NO_LEVELS),
+    [],
+  );
   const toggleNoise = async () => {
     const svc = webSvc();
     if (!svc) return;
@@ -526,6 +539,22 @@ const CallHost = () => {
     const st = groupStreams.find((x) => x.peerId === id);
     return { id, name: info.name, avatarUrl: info.avatarUrl, stream: st?.stream || null, connected: !!st || hasNativeCalls() };
   });
+  // Плитки группового звонка: участники и я (последним).
+  const myInfo = readCache<{ id?: string; username?: string; avatar_url?: string | null }>("user");
+  const groupTiles: StageTile[] = [
+    ...groupParticipants.map((p) => {
+      const m = groupMedia?.peers[p.id];
+      return {
+        id: p.id, name: p.name, avatarUrl: p.avatarUrl,
+        stream: p.stream, video: !!m?.video, muted: !!m?.muted,
+        connecting: !(m?.connected || p.stream),
+      };
+    }),
+    {
+      id: myInfo?.id || "me", name: myInfo?.username || tr("Вы"), avatarUrl: myInfo?.avatar_url, self: true,
+      stream: groupMedia?.localVideo || null, video: !!groupMedia?.localOn, mirrored: groupMedia?.front ?? true, muted,
+    },
+  ];
 
   const common = {
     muted,
@@ -551,6 +580,24 @@ const CallHost = () => {
           }}
           isGroup
           participants={groupParticipants}
+          stage={{
+            tiles: groupTiles,
+            getLevels: getGroupLevels,
+            nativeLayout: groupMedia?.native ? nativeVideoLayout : undefined,
+          }}
+          video={groupMedia && groupState !== "incoming" ? {
+            local: groupMedia.localVideo,
+            remote: null,
+            localOn: groupMedia.localOn,
+            remoteOn: false,
+            available: true,
+            known: false,
+            busy: videoBusy,
+            canFlip: groupMedia.canFlip,
+            mirrored: groupMedia.front,
+            onToggle: () => void toggleVideo(true),
+            onFlip: () => void flipCamera(true),
+          } : undefined}
           onAccept={async () => {
             await groupCallRef.current?.accept();
             openChat(groupInvite?.chatId, groupInvite?.chatName);

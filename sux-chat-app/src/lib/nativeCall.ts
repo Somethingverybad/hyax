@@ -26,8 +26,14 @@ export interface NativePeerState {
   state: string;
 }
 
-/** Прямоугольник в CSS-пикселях относительно WebView. */
-export interface VideoRect { x: number; y: number; w: number; h: number }
+/** Прямоугольник в CSS-пикселях относительно WebView; r — скругление углов. */
+export interface VideoRect { x: number; y: number; w: number; h: number; r?: number }
+
+/** Где рисовать видео участника (по одному окну на каждого). */
+export interface PeerRect extends VideoRect { peerId: string }
+
+/** Громкость речи 0…1: участники по id и свой микрофон. */
+export interface AudioLevels { peers: Record<string, number>; local: number }
 
 export interface NativeVideoState { on: boolean; front: boolean; canFlip: boolean }
 
@@ -41,8 +47,10 @@ interface NativeCallPlugin {
   /** Камера: reject("denied") — нет разрешения, reject("no_camera") — нет камеры. */
   setVideo(o: { on: boolean }): Promise<NativeVideoState>;
   flipCamera(): Promise<{ front: boolean }>;
-  /** Где рисовать видео под прозрачной страницей; оба null — видео нет. */
-  setVideoLayout(o: { remote: VideoRect | null; local: VideoRect | null }): Promise<void>;
+  /** Где рисовать видео под прозрачной страницей; пусто и null — видео нет. */
+  setVideoLayout(o: { remotes: PeerRect[]; local: VideoRect | null }): Promise<void>;
+  /** Кто сейчас говорит — по статистике соединений. */
+  getAudioLevels(): Promise<AudioLevels>;
   /** Настройки приложения в системе (дать доступ к камере после отказа). */
   openSettings(): Promise<void>;
   addCandidate(o: {
@@ -74,7 +82,8 @@ export const nativeCall = {
     plugin.setRemoteDescription({ peerId, type, sdp, video }),
   setVideo: (on: boolean) => plugin.setVideo({ on }),
   flipCamera: () => plugin.flipCamera(),
-  setVideoLayout: (remote: VideoRect | null, local: VideoRect | null) => plugin.setVideoLayout({ remote, local }),
+  setVideoLayout: (remotes: PeerRect[], local: VideoRect | null) => plugin.setVideoLayout({ remotes, local }),
+  audioLevels: () => plugin.getAudioLevels(),
   openSettings: () => plugin.openSettings(),
   addCandidate: (peerId: string, c: RTCIceCandidateInit) =>
     plugin.addCandidate({

@@ -1,13 +1,20 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { playRingtone, resolveRingtoneUrl } from "@/lib/ringtone";
 import { readCache } from "@/lib/session-cache";
 import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
-import type { VideoRect } from "@/lib/nativeCall";
+import type { AudioLevels, PeerRect, VideoRect } from "@/lib/nativeCall";
 import { Capacitor } from "@capacitor/core";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2 } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
+import VideoView from "./VideoView";
+import GroupStage, { StageMask, type StageMode, type StageTile } from "./GroupStage";
+
+const STAGE_MODE_KEY = "hyax:call-stage-mode";
+const readStageMode = (): StageMode => {
+  try { return localStorage.getItem(STAGE_MODE_KEY) === "speaker" ? "speaker" : "grid"; } catch { return "grid"; }
+};
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
@@ -45,6 +52,12 @@ interface CallOverlayProps {
   video?: CallVideo;
   /** Шумоподавление микрофона — переключатель в настройках звонка. */
   noise?: { on: boolean; onToggle: () => void };
+  /** Групповой звонок: плитки участников вместе с собой. */
+  stage?: {
+    tiles: StageTile[];
+    getLevels?: () => Promise<AudioLevels>;
+    nativeLayout?: (remotes: PeerRect[], local: VideoRect | null) => void;
+  };
   /** Свёрнут: вместо экрана — виджет под шапкой, можно ходить по приложению. */
   minimized?: boolean;
   onMinimize?: () => void;
@@ -69,21 +82,10 @@ export interface CallVideo {
   onToggle: () => void;
   onFlip: () => void;
   /** Приложение: видео рисует нативный движок под прозрачной страницей,
-   *  потоков в JS нет — сюда отдаём, где рисовать (null — не рисовать). */
-  nativeLayout?: (remote: VideoRect | null, local: VideoRect | null) => void;
+   *  потоков в JS нет — сюда отдаём, где рисовать (пусто — не рисовать). */
+  nativeLayout?: (remotes: PeerRect[], local: VideoRect | null) => void;
 }
 
-/** Поток в <video>: звук играет RemoteAudio, поэтому здесь всегда без звука. */
-const VideoView = ({ stream, mirrored, className }: { stream: MediaStream; mirrored?: boolean; className?: string }) => {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (el.srcObject !== stream) el.srcObject = stream;
-    el.play?.().catch(() => {});
-  }, [stream]);
-  return <video ref={ref} autoPlay playsInline muted className={className} style={mirrored ? { transform: "scaleX(-1)" } : undefined} />;
-};
 
 const STATUS: Record<CallUiState, string> = {
   idle: "",
@@ -121,9 +123,20 @@ const CallOverlay = ({
   onExpand,
   video,
   noise,
+  stage,
 }: CallOverlayProps) => {
   const [seconds, setSeconds] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [stageMode, setStageModeState] = useState<StageMode>(readStageMode);
+  const setStageMode = (m: StageMode) => {
+    setStageModeState(m);
+    try { localStorage.setItem(STAGE_MODE_KEY, m); } catch { /* без памяти — не страшно */ }
+  };
+  // Где под страницей нативное видео группового звонка — там не рисуем фон.
+  const [holes, setHoles] = useState<VideoRect[]>([]);
+  const onHoles = useCallback((h: VideoRect[]) => {
+    setHoles((prev) => (JSON.stringify(prev) === JSON.stringify(h) ? prev : h));
+  }, []);
 
   // Рингтон на своём экране входящего. На iOS сюда не попадаем — там звонит
   // CallKit; на Android приложение в фоне звонит каналом уведомления.
@@ -163,7 +176,8 @@ const CallOverlay = ({
   // Нативное видео: рамки-заглушки на странице, по ним движок ставит картинку.
   const fullRef = useRef<HTMLDivElement>(null);
   const cornerRef = useRef<HTMLDivElement>(null);
-  const nativeLayout = video?.nativeLayout;
+  // Только личный звонок: в групповом раскладкой занимается GroupStage.
+  const nativeLayout = isGroup ? undefined : video?.nativeLayout;
   const remoteOn = !!video?.remoteOn;
   const localOn = !!video?.localOn;
   const nativeShown = !!nativeLayout && state !== "idle" && !(minimized && state !== "incoming") && (remoteOn || localOn);
@@ -173,7 +187,7 @@ const CallOverlay = ({
     if (!nativeLayout) return;
     document.documentElement.classList.toggle("native-video", nativeShown);
     if (!nativeShown) {
-      nativeLayout(null, null);
+      nativeLayout([], null);
       return;
     }
     const rect = (el: HTMLElement | null): VideoRect | null => {
@@ -184,7 +198,11 @@ const CallOverlay = ({
     // Собеседник без камеры — своё видео во весь экран, иначе окошком в углу.
     const push = () => {
       const full = rect(fullRef.current);
-      nativeLayout(remoteOn ? full : null, localOn ? (remoteOn ? rect(cornerRef.current) : full) : null);
+      const corner = rect(cornerRef.current);
+      nativeLayout(
+        remoteOn && full ? [{ ...full, peerId: peer.id }] : [],
+        localOn ? (remoteOn ? (corner && { ...corner, r: 12 }) : full) : null,
+      );
     };
     push();
     const ro = new ResizeObserver(push);
@@ -195,12 +213,13 @@ const CallOverlay = ({
       ro.disconnect();
       window.removeEventListener("resize", push);
     };
-  }, [nativeLayout, nativeShown, remoteOn, localOn]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nativeLayout, nativeShown, remoteOn, localOn, peer.id]);
   // Экран звонка закрылся — страницу вернуть, видео из-под неё убрать.
-  useEffect(() => () => {
+  useLayoutEffect(() => () => {
     if (!layoutRef.current) return;
     document.documentElement.classList.remove("native-video");
-    layoutRef.current(null, null);
+    layoutRef.current([], null);
   }, []);
 
   if (state === "idle") return null;
@@ -224,6 +243,151 @@ const CallOverlay = ({
           remoteVideo={video?.remote || null}
           muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />
       </>
+    );
+  }
+
+  // Кнопки разговора — общие для личного и группового экрана.
+  const renderControls = (roundBtn: (active: boolean) => string) => (
+    <>
+      <button
+        type="button"
+        onClick={onToggleMute}
+        className={roundBtn(muted)}
+        aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
+      >
+        {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+      </button>
+      {video && (
+        <button
+          type="button"
+          onClick={() => {
+            if (video.known && !video.available && !video.localOn) {
+              toast(t("У собеседника версия без видеозвонков — видео появится, когда он обновит приложение"));
+              return;
+            }
+            video.onToggle();
+          }}
+          disabled={video.busy}
+          className={cn(roundBtn(video.localOn), video.known && !video.available && !video.localOn && "opacity-50")}
+          aria-label={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
+          title={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
+        >
+          {video.localOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+        </button>
+      )}
+      {video?.localOn && video.canFlip && (
+        <button type="button" onClick={video.onFlip} className={roundBtn(false)} aria-label={t("Переключить камеру")} title={t("Переключить камеру")}>
+          <SwitchCamera className="w-6 h-6" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onToggleSpeaker}
+        className={roundBtn(speaker)}
+        aria-label={speaker ? t("Выключить громкую связь") : t("Включить громкую связь")}
+      >
+        {speaker ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+      </button>
+      {onAdd && state === "active" && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className={roundBtn(false)}
+          aria-label={t("Добавить участника")}
+          title={t("Добавить участника")}
+        >
+          <UserPlus className="w-6 h-6" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onHangup}
+        className="w-14 h-14 rounded-full bg-[#ff3b30] text-white flex items-center justify-center"
+        aria-label={t("Завершить")}
+      >
+        <PhoneOff className="w-6 h-6" />
+      </button>
+    </>
+  );
+
+  // Групповой звонок: плитки участников (сетка или «говорящий»).
+  if (isGroup && stage && state !== "incoming") {
+    const masked = holes.length > 0;
+    const gBtn = (active: boolean) => cn(
+      "w-14 h-14 rounded-full border-2 flex items-center justify-center",
+      active ? "bg-foreground text-background border-foreground" : "border-border bg-background",
+    );
+    const headBtn = "w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-muted-foreground active:bg-surface-3 hover:bg-surface-2";
+    return (
+      <div
+        className={cn("call-layer fixed inset-0 z-[60] flex flex-col", masked ? "bg-transparent" : "bg-background")}
+        style={{ paddingTop: "var(--sat)", paddingBottom: "calc(var(--sab) + 1.25rem)" }}
+      >
+        {audio}
+        {masked && <StageMask holes={holes} />}
+        <div className="relative z-10 shrink-0 flex items-center gap-1 px-2 h-14">
+          {onMinimize && (
+            <button type="button" onClick={onMinimize} className={headBtn} aria-label={t("Свернуть звонок")} title={t("Свернуть звонок")}>
+              <ChevronDown className="w-7 h-7" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1 px-1">
+            <div className="text-body font-semibold truncate">{peer.name}</div>
+            <div className="text-caption text-subtle tabular-nums truncate">{statusText}</div>
+          </div>
+          {stage.tiles.length > 1 && (
+            <div className="shrink-0 flex items-center rounded-full bg-surface-2 p-0.5" role="group" aria-label={t("Вид")}>
+              {([["grid", LayoutGrid, t("Сетка")], ["speaker", AudioLines, t("Говорящий")]] as const).map(([m, Icon, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setStageMode(m)}
+                  className={cn("w-9 h-9 rounded-full flex items-center justify-center", stageMode === m ? "bg-background text-foreground shadow-sm" : "text-subtle")}
+                  aria-label={label}
+                  aria-pressed={stageMode === m}
+                  title={label}
+                >
+                  <Icon className="w-[18px] h-[18px]" />
+                </button>
+              ))}
+            </div>
+          )}
+          {noise && (
+            <button type="button" onClick={() => setSettingsOpen((v) => !v)} className={headBtn} aria-label={t("Настройки звонка")} title={t("Настройки звонка")}>
+              <Settings2 className="w-6 h-6" />
+            </button>
+          )}
+        </div>
+        {noise && settingsOpen && (
+          <>
+            <div className="absolute inset-0 z-20" onClick={() => setSettingsOpen(false)} aria-hidden />
+            <div className="absolute z-30 right-3 w-72 rounded-lg bg-surface-1 text-foreground border border-border shadow-xl p-3"
+              style={{ top: "calc(var(--sat) + 3.5rem)" }}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <span className="flex-1 min-w-0">
+                  <span className="block text-body font-medium">{t("Шумоподавление")}</span>
+                  <span className="block text-caption text-subtle">{t("Убирает фоновый шум микрофона. Выключите, если голос звучит глухо или нужна музыка")}</span>
+                </span>
+                <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={noise.on} onChange={noise.onToggle} aria-label={t("Шумоподавление")} />
+              </label>
+            </div>
+          </>
+        )}
+        <GroupStage
+          className="relative z-10 flex-1 min-h-0 mx-2 mt-1"
+          tiles={stage.tiles}
+          mode={stageMode}
+          onModeChange={setStageMode}
+          getLevels={stage.getLevels}
+          nativeLayout={stage.nativeLayout}
+          onHoles={onHoles}
+          volumes={volumes}
+          onVolume={onVolume}
+        />
+        <div className="relative z-10 shrink-0 flex items-center flex-wrap justify-center gap-3 pt-4 px-2">
+          {renderControls(gBtn)}
+        </div>
+      </div>
     );
   }
 
@@ -383,66 +547,7 @@ const CallOverlay = ({
             </button>
           </>
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={onToggleMute}
-              className={roundBtn(muted)}
-              aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
-            >
-              {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-            </button>
-            {video && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (video.known && !video.available && !video.localOn) {
-                    toast(t("У собеседника версия без видеозвонков — видео появится, когда он обновит приложение"));
-                    return;
-                  }
-                  video.onToggle();
-                }}
-                disabled={video.busy}
-                className={cn(roundBtn(video.localOn), video.known && !video.available && !video.localOn && "opacity-50")}
-                aria-label={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
-                title={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
-              >
-                {video.localOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
-              </button>
-            )}
-            {video?.localOn && video.canFlip && (
-              <button type="button" onClick={video.onFlip} className={roundBtn(false)} aria-label={t("Переключить камеру")} title={t("Переключить камеру")}>
-                <SwitchCamera className="w-6 h-6" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onToggleSpeaker}
-              className={roundBtn(speaker)}
-              aria-label={speaker ? t("Выключить громкую связь") : t("Включить громкую связь")}
-            >
-              {speaker ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
-            </button>
-            {onAdd && state === "active" && (
-              <button
-                type="button"
-                onClick={onAdd}
-                className={roundBtn(false)}
-                aria-label={t("Добавить участника")}
-                title={t("Добавить участника")}
-              >
-                <UserPlus className="w-6 h-6" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onHangup}
-              className="w-14 h-14 rounded-full bg-[#ff3b30] text-white flex items-center justify-center"
-              aria-label={t("Завершить")}
-            >
-              <PhoneOff className="w-6 h-6" />
-            </button>
-          </>
+          renderControls(roundBtn)
         )}
       </div>
     </div>

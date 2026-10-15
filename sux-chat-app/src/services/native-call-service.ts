@@ -1,8 +1,8 @@
 import { WebSocketService } from "@/services/websocket";
 import { t } from "@/lib/i18n";
-import { nativeCall, type NativeIce, type NativeSdp, type NativePeerState } from "@/lib/nativeCall";
+import { nativeCall, type AudioLevels, type NativeIce, type NativeSdp, type NativePeerState } from "@/lib/nativeCall";
 import { sdpCanVideo, type CallMedia, type CallState, type IncomingCall } from "@/services/call-service";
-import type { GroupCallInvite, GroupCallState } from "@/services/group-call-service";
+import { emptyPeerMedia, type GroupCallInvite, type GroupCallState, type GroupMedia, type GroupPeerMedia } from "@/services/group-call-service";
 import { myDeviceId } from "./deviceId";
 
 /**
@@ -17,6 +17,16 @@ import { myDeviceId } from "./deviceId";
 
 type SignalData = Record<string, any>;
 
+/** Видео личного звонка, который стал групповым. */
+export type NativeAdoptedVideo = {
+  on: boolean;
+  front: boolean;
+  canFlip: boolean;
+  remoteVideo: boolean;
+  canVideo: boolean;
+  known: boolean;
+};
+
 /** Общая часть: подписки на события плагина и отправка сигналов. */
 abstract class NativeBase {
   protected ws: WebSocketService;
@@ -26,7 +36,7 @@ abstract class NativeBase {
   protected chatId: string | null = null;
   protected peers = new Set<string>();
   protected muted = false;
-  /** Личный звонок: соединения с видеоканалом (групповой — пока без видео). */
+  /** Соединения с видеоканалом: камера включается без пересогласования. */
   protected videoCalls = false;
   private listeners: Array<Promise<{ remove: () => Promise<void> } | undefined>> = [];
 
@@ -64,7 +74,7 @@ abstract class NativeBase {
 
   protected abstract onPeerState(peerId: string, state: string): void;
   /** SDP собеседника — по нему видно, умеет ли он видео. */
-  protected onRemoteSdp(_sdp: string): void {}
+  protected onRemoteSdp(_peerId: string, _sdp: string): void {}
 
   protected send(type: string, extra: SignalData): void {
     this.ws.send({ type, data: { chat_id: this.chatId, call_id: this.callId, ...extra } });
@@ -92,12 +102,12 @@ abstract class NativeBase {
     switch (signalType) {
       case "webrtc_offer":
         this.peers.add(from);
-        this.onRemoteSdp(data.offer?.sdp || "");
+        this.onRemoteSdp(from, data.offer?.sdp || "");
         await nativeCall.setRemote(from, "offer", data.offer?.sdp || "", this.videoCalls);
         break;
       case "webrtc_answer":
         if (this.peers.has(from)) {
-          this.onRemoteSdp(data.answer?.sdp || "");
+          this.onRemoteSdp(from, data.answer?.sdp || "");
           await nativeCall.setRemote(from, "answer", data.answer?.sdp || "", this.videoCalls);
         }
         break;
@@ -207,7 +217,7 @@ export class NativeCallService extends NativeBase {
     this.onMedia?.(this.getMedia());
   }
 
-  protected onRemoteSdp(sdp: string): void {
+  protected onRemoteSdp(_peerId: string, sdp: string): void {
     this.peerCanVideo = sdpCanVideo(sdp);
     this.peerKnown = true;
     if (!this.peerCanVideo && this.videoOn) {
@@ -377,13 +387,15 @@ export class NativeCallService extends NativeBase {
 
   /** Отдать звонок групповому сервису (добор участников): соединение в
    *  нативном движке остаётся, здесь только забываем о нём. */
-  detach(): { callId: string; chatId: string; peerId: string } | null {
+  detach(): { callId: string; chatId: string; peerId: string; video: NativeAdoptedVideo } | null {
     if (!this.callId || !this.targetUserId) return null;
-    // Групповой звонок пока без видео: камеру выключаем.
-    if (this.videoOn) void nativeCall.setVideo(false).catch(() => {});
-    void nativeCall.setVideoLayout(null, null).catch(() => {});
+    // Камера и видео собеседника переходят в групповой звонок как есть.
+    const video: NativeAdoptedVideo = {
+      on: this.videoOn, front: this.front, canFlip: this.canFlip,
+      remoteVideo: this.remoteVideo, canVideo: this.peerCanVideo, known: this.peerKnown,
+    };
     this.resetMedia();
-    const out = { callId: this.callId, chatId: this.chatId || "", peerId: this.targetUserId };
+    const out = { callId: this.callId, chatId: this.chatId || "", peerId: this.targetUserId, video };
     this.peers.clear();
     this.callId = null;
     this.targetUserId = null;
@@ -413,15 +425,21 @@ export class NativeCallService extends NativeBase {
   }
 }
 
-/** Групповой звонок — mesh на нативном движке. */
+/** Групповой звонок — mesh на нативном движке. Видео — как в личном:
+ *  видеоканал в каждом соединении, камера одна на всех (её ведёт плагин). */
 export class NativeGroupCallService extends NativeBase {
   private state: GroupCallState = "idle";
   private cb: {
     onStateChange?: (s: GroupCallState) => void;
     onIncoming?: (invite: GroupCallInvite) => void;
     onPeers?: (ids: string[]) => void;
+    onMedia?: (media: GroupMedia) => void;
     onError?: (m: string) => void;
   };
+  private videoOn = false;
+  private front = true;
+  private canFlip = false;
+  private peerMedia = new Map<string, GroupPeerMedia>();
 
   constructor(options: {
     wsService: WebSocketService;
@@ -431,10 +449,86 @@ export class NativeGroupCallService extends NativeBase {
     onIncoming?: (invite: GroupCallInvite) => void;
     onStreams?: (streams: { peerId: string; stream: MediaStream }[]) => void;
     onPeers?: (ids: string[]) => void;
+    onMedia?: (media: GroupMedia) => void;
     onError?: (m: string) => void;
   }) {
     super(options.wsService, options.userId, options.iceServers);
+    this.videoCalls = true;
     this.cb = options;
+  }
+
+  // ===== Видео =====
+
+  getMedia(): GroupMedia {
+    return {
+      localVideo: null,
+      localOn: this.videoOn,
+      front: this.front,
+      canFlip: this.canFlip,
+      native: true,
+      peers: Object.fromEntries(this.peerMedia),
+    };
+  }
+
+  /** Камера: ошибки — как у браузера (NotAllowedError / NotFoundError). */
+  async setVideo(on: boolean): Promise<void> {
+    try {
+      const r = await nativeCall.setVideo(on);
+      this.videoOn = r.on;
+      this.front = r.front;
+      this.canFlip = r.canFlip;
+    } catch (e) {
+      const msg = String((e as { message?: string })?.message || e);
+      const err = new Error(msg);
+      err.name = /denied/.test(msg) ? "NotAllowedError" : /no_camera/.test(msg) ? "NotFoundError" : "Error";
+      throw err;
+    }
+    this.broadcastMedia();
+    this.emitMedia();
+  }
+
+  async flipCamera(): Promise<void> {
+    const r = await nativeCall.flipCamera();
+    this.front = r.front;
+    this.emitMedia();
+  }
+
+  toggleMute(): boolean {
+    const m = super.toggleMute();
+    this.broadcastMedia();
+    return m;
+  }
+
+  async getAudioLevels(): Promise<AudioLevels> {
+    const lv = await nativeCall.audioLevels();
+    return { peers: lv.peers || {}, local: this.muted ? 0 : lv.local || 0 };
+  }
+
+  protected onRemoteSdp(peerId: string, sdp: string): void {
+    this.patchPeer(peerId, { canVideo: sdpCanVideo(sdp), known: true });
+  }
+
+  protected async dropPeer(peerId: string): Promise<void> {
+    if (this.peerMedia.delete(peerId)) this.emitMedia();
+    await super.dropPeer(peerId);
+  }
+
+  private sendMediaTo(peerId: string): void {
+    if (!this.callId) return;
+    this.send("webrtc_media", { to_user_id: peerId, video: this.videoOn, audio: !this.muted });
+  }
+
+  private broadcastMedia(): void {
+    for (const id of this.peers) this.sendMediaTo(id);
+  }
+
+  private patchPeer(peerId: string, patch: Partial<GroupPeerMedia>): void {
+    this.peerMedia.set(peerId, { ...(this.peerMedia.get(peerId) ?? emptyPeerMedia()), ...patch });
+    this.emitMedia();
+  }
+
+  private emitMedia(): void {
+    this.cb.onMedia?.(this.getMedia());
   }
 
   getState(): GroupCallState {
@@ -454,13 +548,22 @@ export class NativeGroupCallService extends NativeBase {
     this.send("call_add", { user_ids: userIds });
   }
 
-  /** Личный звонок стал групповым: соединение уже живёт в нативном движке. */
-  adopt(input: { callId: string; chatId: string; peerId: string }): void {
+  /** Личный звонок стал групповым: соединение и камера уже живут в
+   *  нативном движке, здесь только принимаем их состояние. */
+  adopt(input: { callId: string; chatId: string; peerId: string; video?: NativeAdoptedVideo }): void {
     this.callId = input.callId;
     this.chatId = input.chatId;
     this.peers.add(input.peerId);
+    const v = input.video;
+    if (v) {
+      this.videoOn = v.on;
+      this.front = v.front;
+      this.canFlip = v.canFlip;
+    }
+    this.peerMedia.set(input.peerId, { ...emptyPeerMedia(), video: !!v?.remoteVideo, canVideo: !!v?.canVideo, known: v ? v.known : true, connected: true });
     this.setState("active");
     this.cb.onPeers?.([input.peerId]);
+    this.emitMedia();
   }
 
   async start(chatId: string): Promise<void> {
@@ -542,11 +645,24 @@ export class NativeGroupCallService extends NativeBase {
       await this.dropPeer(from);
       return;
     }
+    if (signalType === "webrtc_media") {
+      // Участник включил или выключил камеру / микрофон.
+      const patch: Partial<GroupPeerMedia> = { video: !!data.video };
+      if (typeof data.audio === "boolean") patch.muted = !data.audio;
+      this.patchPeer(from, patch);
+      return;
+    }
+    if (signalType === "webrtc_offer" && !this.peerMedia.has(from)) this.peerMedia.set(from, emptyPeerMedia());
     await this.handleMedia(signalType, from, data);
   }
 
   protected onPeerState(peerId: string, state: string): void {
-    if (state === "connected" && this.state !== "active") this.setState("active");
+    if (state === "connected") {
+      if (this.state !== "active") this.setState("active");
+      this.patchPeer(peerId, { connected: true });
+      // Камеру и микрофон могли переключить до соединения — повторяем.
+      this.sendMediaTo(peerId);
+    }
     if (state === "failed" || state === "closed") void this.dropPeer(peerId);
   }
 
@@ -559,6 +675,11 @@ export class NativeGroupCallService extends NativeBase {
     void this.cleanupMedia();
     this.callId = null;
     this.chatId = null;
+    this.videoOn = false;
+    this.front = true;
+    this.canFlip = false;
+    this.peerMedia.clear();
+    this.emitMedia();
     this.setState("idle");
   }
 
