@@ -60,6 +60,8 @@ export interface CallVideo {
   remoteOn: boolean;
   /** У собеседника версия с видео — камеру можно включать. */
   available: boolean;
+  /** Ответ собеседника уже пришёл; до этого available ничего не значит. */
+  known: boolean;
   busy?: boolean;
   canFlip: boolean;
   /** Фронтальная камера — своё превью зеркалим. */
@@ -394,14 +396,14 @@ const CallOverlay = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (!video.available && !video.localOn) {
+                  if (video.known && !video.available && !video.localOn) {
                     toast(t("У собеседника версия без видеозвонков — видео появится, когда он обновит приложение"));
                     return;
                   }
                   video.onToggle();
                 }}
                 disabled={video.busy}
-                className={cn(roundBtn(video.localOn), !video.available && !video.localOn && "opacity-50")}
+                className={cn(roundBtn(video.localOn), video.known && !video.available && !video.localOn && "opacity-50")}
                 aria-label={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
                 title={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
               >

@@ -156,6 +156,7 @@ export class NativeCallService extends NativeBase {
   private front = true;
   private canFlip = false;
   private peerCanVideo = false;
+  private peerKnown = false;
   private remoteVideo = false;
 
   constructor(options: {
@@ -193,6 +194,7 @@ export class NativeCallService extends NativeBase {
       localOn: this.videoOn,
       remoteVideo: this.remoteVideo,
       peerCanVideo: this.peerCanVideo,
+      peerKnown: this.peerKnown,
       canFlip: this.canFlip,
       front: this.front,
       noiseSuppression: true,
@@ -207,6 +209,12 @@ export class NativeCallService extends NativeBase {
 
   protected onRemoteSdp(sdp: string): void {
     this.peerCanVideo = sdpCanVideo(sdp);
+    this.peerKnown = true;
+    if (!this.peerCanVideo && this.videoOn) {
+      // Камеру включили, пока звонил, а у собеседника версия без видео.
+      this.videoOn = false;
+      void nativeCall.setVideo(false).catch(() => {});
+    }
     this.emitMedia();
   }
 
@@ -239,6 +247,7 @@ export class NativeCallService extends NativeBase {
     this.front = true;
     this.canFlip = false;
     this.peerCanVideo = false;
+    this.peerKnown = false;
     this.remoteVideo = false;
     this.emitMedia();
   }

@@ -39,6 +39,9 @@ export type CallMedia = {
   remoteVideo: boolean;
   /** У собеседника новая версия: можно включить видео (по его SDP). */
   peerCanVideo: boolean;
+  /** SDP собеседника уже пришёл — до этого (пока звонок звонит) про видео
+   *  ничего не известно, и камеру можно включить заранее. */
+  peerKnown: boolean;
   /** Камер больше одной — есть что переключать. */
   canFlip: boolean;
   /** Фронтальная камера — превью зеркалим. */
@@ -101,6 +104,7 @@ export class OneToOneCallService {
   private canFlip = false;
   private remoteVideo = false;
   private peerCanVideo = false;
+  private peerKnown = false;
   private noiseSuppression = readNs();
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
@@ -131,6 +135,7 @@ export class OneToOneCallService {
       localVideo: this.localVideoTrack,
       remoteVideo: this.remoteVideo,
       peerCanVideo: this.peerCanVideo,
+      peerKnown: this.peerKnown,
       canFlip: this.canFlip,
       front: this.front,
       noiseSuppression: this.noiseSuppression,
@@ -147,15 +152,16 @@ export class OneToOneCallService {
    *  name NotAllowedError: экран звонка подскажет, где его дать; при
    *  следующем нажатии разрешение запрашивается снова. */
   async setVideo(on: boolean): Promise<void> {
+    // Канала может ещё не быть (звонок звонит) — тогда камера подставится,
+    // когда он появится (ensurePeerConnection / handleOffer).
     const sender = this.videoTransceiver?.sender;
-    if (!sender) return;
     if (on) {
       if (this.localVideoTrack) return;
       const stream = await this.openCamera();
       this.localVideoTrack = stream;
-      await sender.replaceTrack(stream.getVideoTracks()[0] || null);
+      if (sender) await sender.replaceTrack(stream.getVideoTracks()[0] || null);
     } else {
-      await sender.replaceTrack(null).catch(() => {});
+      if (sender) await sender.replaceTrack(null).catch(() => {});
       this.stopLocalVideo();
     }
     this.sendMedia();
@@ -606,7 +612,9 @@ export class OneToOneCallService {
     // Видеоканал звонящего — сразу, пустой: камера потом подставляется в него.
     // Отвечающий берёт канал из предложения (handleOffer).
     if (this.isCaller && this.localStream) {
-      this.videoTransceiver = this.peerConnection.addTransceiver("video", { direction: "sendrecv", streams: [this.localStream] });
+      // Камеру могли включить, пока звонок звонил, — сразу с ней.
+      const cam = this.localVideoTrack?.getVideoTracks()[0];
+      this.videoTransceiver = this.peerConnection.addTransceiver(cam ?? "video", { direction: "sendrecv", streams: [this.localStream] });
     }
   }
 
@@ -662,11 +670,17 @@ export class OneToOneCallService {
       // потом включить камеру без пересогласования. Старые клиенты и
       // приложения шлют предложение без видео — тогда видео не будет.
       this.peerCanVideo = sdpCanVideo(offer.sdp);
+      this.peerKnown = true;
       const vt = this.peerConnection.getTransceivers().find((x) => x.receiver.track?.kind === "video");
       if (vt && this.peerCanVideo) {
         vt.direction = "sendrecv";
         if (this.localStream) vt.sender.setStreams?.(this.localStream);
         this.videoTransceiver = vt;
+        const cam = this.localVideoTrack?.getVideoTracks()[0];
+        if (cam) await vt.sender.replaceTrack(cam);
+      } else if (this.localVideoTrack) {
+        // Камеру включили заранее, а у собеседника версия без видео.
+        this.stopLocalVideo();
       }
       this.emitMedia();
       
@@ -704,6 +718,12 @@ export class OneToOneCallService {
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
       console.log('✅ [CallService.handleAnswer] Remote description установлен');
       this.peerCanVideo = sdpCanVideo(answer.sdp);
+      this.peerKnown = true;
+      if (!this.peerCanVideo && this.localVideoTrack) {
+        // Камеру включили, пока звонил, а у собеседника версия без видео.
+        await this.videoTransceiver?.sender.replaceTrack(null).catch(() => {});
+        this.stopLocalVideo();
+      }
       this.emitMedia();
     } catch (error) {
       console.error('❌ [CallService.handleAnswer] Ошибка:', error);
@@ -784,6 +804,7 @@ export class OneToOneCallService {
     this.videoTransceiver = null;
     this.remoteVideo = false;
     this.peerCanVideo = false;
+    this.peerKnown = false;
     this.front = true;
     this.videoDeviceIdx = 0;
     this.canFlip = false;

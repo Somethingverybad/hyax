@@ -86,6 +86,15 @@ const CallHost = () => {
   // Видео и шумодав личного звонка (пока — веб и компьютер: в приложениях
   // звонок ведёт нативный движок без видео).
   const [media, setMedia] = useState<CallMedia | null>(null);
+  // Камеру включили, пока звонок звонил, а ответил собеседник без видео —
+  // сервис её выключил; говорим почему.
+  const camWasOn = useRef(false);
+  useEffect(() => {
+    if (camWasOn.current && media && !media.localOn && media.peerKnown && !media.peerCanVideo) {
+      toast(tr("У собеседника версия без видеозвонков — видео появится, когда он обновит приложение"));
+    }
+    camWasOn.current = !!media?.localOn;
+  }, [media]);
   const [videoBusy, setVideoBusy] = useState(false);
 
   /** Открыть чат звонка на экране чатов (после ответа — как раньше). */
@@ -563,6 +572,7 @@ const CallHost = () => {
             remoteOn: media.remoteVideo && (media.native || !!remoteStream),
             nativeLayout: media.native ? nativeVideoLayout : undefined,
             available: media.peerCanVideo,
+            known: media.peerKnown,
             busy: videoBusy,
             canFlip: media.canFlip,
             mirrored: media.front,
