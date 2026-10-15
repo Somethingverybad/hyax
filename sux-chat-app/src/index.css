@@ -1462,16 +1462,31 @@ textarea,
 }
 
 /* Вайбометр: шкала уровня светится его цветом (components/Vibometer.tsx). */
+/* Свечение — тенью на отдельном слое, дышит прозрачностью слоя. Тень с
+   color-mix(var(...)) Chromium (десктоп) не интерполирует и переключал её
+   скачком из двух состояний; прозрачность плавная везде и дешевле. */
 .vibe-glow-bar {
   --vibe-c: hsl(var(--primary));
+  position: relative;
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--vibe-c) 60%, transparent);
+}
+.vibe-glow-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--vibe-c) 90%, transparent), 0 0 24px 4px color-mix(in srgb, var(--vibe-c) 45%, transparent);
+  opacity: 0;
   animation: vibe-glow 2.4s ease-in-out infinite;
+  will-change: opacity;
 }
 @keyframes vibe-glow {
-  0%, 100% { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--vibe-c) 60%, transparent), 0 0 14px 2px color-mix(in srgb, var(--vibe-c) 25%, transparent); }
-  50% { box-shadow: 0 0 10px 2px color-mix(in srgb, var(--vibe-c) 90%, transparent), 0 0 24px 4px color-mix(in srgb, var(--vibe-c) 45%, transparent); }
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vibe-glow-bar { animation: none; box-shadow: 0 0 8px 1px color-mix(in srgb, var(--vibe-c) 70%, transparent); }
+  .vibe-glow-bar::after { animation: none; opacity: 0.5; }
 }
 
 /* Удаление сообщения: эффект (укусы, трещина, шредер, огонь…) рисует lib/deleteAnim.ts прямо на

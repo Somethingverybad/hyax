@@ -27,8 +27,14 @@ export function useVibeLevels(): VibeLevelsConfig {
   return cfg;
 }
 
+/** Вайб ниже нуля (жалобы, выключенный звук входящих): шкала целиком красная. */
+export const NEGATIVE_VIBE_COLOR = "#ef4444";
+
 export function vibeState(v: number, cfg: VibeLevelsConfig): { level: VibeLevel | null; next: VibeLevel | null; fill: number; glow: boolean } {
   const levels = [...cfg.levels].sort((a, b) => a.min_vibe - b.min_vibe);
+  if (v < 0) {
+    return { level: { min_vibe: v, name: "В минусе", color: NEGATIVE_VIBE_COLOR, glow: false } as VibeLevel, next: levels[0] || null, fill: 1, glow: false };
+  }
   let level: VibeLevel | null = null;
   for (const l of levels) if (l.min_vibe <= v) level = l;
   const next = levels.find((l) => l.min_vibe > v) || null;

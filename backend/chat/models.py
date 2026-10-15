@@ -4,6 +4,12 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 # Профиль пользователя
+# Вайб того, кто выключил звук входящих сообщений (Profile.notify_silent).
+VIBE_SILENT = -99999
+# Каждая жалоба на человека снимает столько вайба (ReportView).
+VIBE_REPORT_PENALTY = 100
+
+
 class Profile(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -90,6 +96,9 @@ class Profile(models.Model):
     # Уведомления без звука: обычные сообщения приходят беззвучно, звук,
     # который мне отправили специально (аудио-стикер), играет (chat/fcm.py).
     notify_silent = models.BooleanField(default=False)
+    # Выключил звук входящих — вайб уходит в VIBE_SILENT, настоящий хранится
+    # здесь; включил обратно — вайб возвращается (с тем, что набежало за это время).
+    vibe_saved = models.IntegerField(null=True, blank=True)
 
     @property
     def email_verified(self):

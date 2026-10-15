@@ -4661,6 +4661,10 @@ class ReportView(APIView):
             snapshot=snapshot[:4000],
         )
         deliver(report)
+        # Жалоба снимает вайб тому, на кого жалуются (у ботов вайбометра нет).
+        if target_profile and not target_profile.is_bot:
+            from .models import VIBE_REPORT_PENALTY
+            Profile.objects.filter(id=target_profile.id).update(vibe=models.F('vibe') - VIBE_REPORT_PENALTY)
         return Response({"ok": True, "id": str(report.id)}, status=201)
 
 

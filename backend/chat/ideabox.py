@@ -369,7 +369,7 @@ def _notify_vibe(target, voter, anonymous, saved=False, push=True):
         from .fcm import notify_profiles
         # На языке того, чей вайб подняли (notify_profiles знает его язык).
         body = (L("Кто-то поднял ваш вайб — уже {n}", n=target.vibe) if anonymous
-                else L("{name} поднял(а) ваш вайб за сохранёнку — уже {n}", name=voter.username, n=target.vibe) if saved
+                else L("{name} лайкнул(а) вашу сохранёнку — вайб уже {n}", name=voter.username, n=target.vibe) if saved
                 else L("{name} поднял(а) ваш вайб — уже {n}", name=voter.username, n=target.vibe))
         notify_profiles(Profile.objects.filter(id=target.id), title=L("Вайбометр"), body=body,
                         extra={"kind": "vibe", "profile_id": str(target.id)})

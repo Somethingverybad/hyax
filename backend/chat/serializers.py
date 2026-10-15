@@ -119,6 +119,17 @@ class OwnProfileSerializer(ProfileSerializer):
         # Аура — тоже часть «подписи» у сообщений: сменил на одном устройстве —
         # у собеседников и на других своих устройствах подтянется через authors.
         was_identity = (instance.username, instance.avatar_url, instance.aura_color, instance.aura_text)
+        # Звук входящих выключили — вайб в VIBE_SILENT (настоящий — в
+        # vibe_saved), включили — возвращаем его вместе с тем, что набежало.
+        if 'notify_silent' in validated_data and bool(validated_data['notify_silent']) != bool(instance.notify_silent):
+            from .models import VIBE_SILENT
+            if validated_data['notify_silent']:
+                instance.vibe_saved = instance.vibe
+                instance.vibe = VIBE_SILENT
+            else:
+                base = instance.vibe_saved if instance.vibe_saved is not None else 0
+                instance.vibe = base + (instance.vibe - VIBE_SILENT)
+                instance.vibe_saved = None
         instance = super().update(instance, validated_data)
         if (instance.username, instance.avatar_url, instance.aura_color, instance.aura_text) != was_identity:
             # Ник или аватар сменились — клиенты обновят подписи у старых сообщений.
