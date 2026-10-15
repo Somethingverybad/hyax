@@ -35,10 +35,27 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Релизная подпись: ключ лежит вне репозитория (~/hyax-release.keystore),
+    // параметры — в android/keystore.properties (в .gitignore). Нет файла —
+    // релиз подписывается отладочным ключом, чтобы сборка не падала.
+    def ksProps = new Properties()
+    def ksFile = rootProject.file("keystore.properties")
+    if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+    signingConfigs {
+        release {
+            if (ksProps["storeFile"]) {
+                storeFile file(ksProps["storeFile"])
+                storePassword ksProps["storePassword"]
+                keyAlias ksProps["keyAlias"]
+                keyPassword ksProps["keyPassword"]
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig ksProps["storeFile"] ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
