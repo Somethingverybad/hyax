@@ -3570,6 +3570,11 @@ class MessageTranslateView(APIView):
         tr = dict(msg.translations or {})
         if to in tr and same_text(tr[to], msg.content):
             tr.pop(to)  # старый «перевод», равный оригиналу, — переводим заново
+        # Текст уже на этом языке (по письменности) — переводчик не зовём:
+        # автоперевод Стены спрашивает про каждый видимый пост.
+        from .translate import detect_lang
+        if to not in tr and detect_lang(msg.content) == to:
+            return Response({"error": "Сообщение уже на вашем языке"}, status=422)
         if to not in tr:
             try:
                 src = norm_lang(msg.sender.language) if msg.sender_id else ""

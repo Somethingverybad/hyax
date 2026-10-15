@@ -88,6 +88,14 @@ def feed_queryset(me, chat, admin=False):
     return qs
 
 
+def _translate_available():
+    from .translate import provider
+    try:
+        return bool(provider())
+    except Exception:
+        return False
+
+
 def _state(me, chat):
     from .models import WallBan as _WB  # noqa — для единообразия импорта
     admin = is_admin_profile(me)
@@ -103,6 +111,10 @@ def _state(me, chat):
         "enabled": me.wall_enabled, "new_count": new_count,
         "ban": ban_payload(ban) if ban else None,
         "is_admin": admin,
+        # Автоперевод постов на мой язык: галка Стены, по умолчанию — как
+        # «переводить сообщения собеседника» в профиле.
+        "translate": bool(me.translate_wall) if me.translate_wall is not None else bool(me.translate_in_default),
+        "translate_available": _translate_available(),
         "muted_authors": [
             {"id": str(m.author_id), "username": m.author.username, "avatar_url": m.author.avatar_url}
             for m in WallMute.objects.filter(user=me).select_related("author")
@@ -127,6 +139,9 @@ class WallView(APIView):
         if "enabled" in request.data:
             me.wall_enabled = bool(request.data.get("enabled"))
             me.save(update_fields=["wall_enabled"])
+        if "translate" in request.data:
+            me.translate_wall = bool(request.data.get("translate"))
+            me.save(update_fields=["translate_wall"])
         return Response(_state(me, wall_chat()))
 
 

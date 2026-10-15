@@ -2,7 +2,7 @@ import { t as tr, tn, getLang } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, type RefObject } from "react";
 import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
@@ -12,7 +12,7 @@ import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -29,6 +29,7 @@ import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
 import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
+import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 
@@ -57,6 +58,8 @@ interface Post {
   forwarded_title?: string;
   /** Стена: отметка «Контент 4+» и «скрыт админом». */
   wall_safe?: boolean; wall_hidden?: boolean;
+  /** Переводы текста по языкам (chat/translate.py): {"en": "...", "ko": "..."}. */
+  translations?: Record<string, string> | null;
   reactions?: ReactionSummary[]; reactions_total?: number;
   comments_count?: number; views_count?: number;
   sound?: { name: string } | null;
@@ -68,6 +71,21 @@ interface Post {
   _key?: string;
 }
 
+
+/** Поле ввода растёт под текст (до max px) и сжимается обратно после
+ *  отправки; лента, прижатая к низу, остаётся прижатой. */
+function useAutoGrow(ref: RefObject<HTMLTextAreaElement>, value: string, max: number, feed?: RefObject<HTMLElement>) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const f = feed?.current;
+    const atBottom = !!f && f.scrollHeight - f.scrollTop - f.clientHeight < 24;
+    el.style.height = "auto";
+    // border-box: к высоте содержимого добавляем рамку, иначе появится прокрутка.
+    el.style.height = `${Math.min(el.scrollHeight + el.offsetHeight - el.clientHeight, max)}px`;
+    if (atBottom && f) f.scrollTop = f.scrollHeight;
+  }, [ref, value, max, feed]);
+}
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" });
@@ -216,6 +234,35 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   };
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  // Перевод постов Стены на мой язык: сам (галка в шторке «Стена») или по
+  // пункту меню. Перевод хранится в посте на сервере — следующим читателям
+  // того же языка он ничего не стоит.
+  const myLang = getLang();
+  const [forcedTr, setForcedTr] = useState<Set<string>>(() => new Set());
+  const [origShown, setOrigShown] = useState<Set<string>>(() => new Set());
+  const autoTr = wall && !!wallState?.translate && wallState?.translate_available !== false;
+  const trAsked = useRef(new Set<string>());
+  const translatePost = useCallback(async (p: Post, manual: boolean) => {
+    trAsked.current.add(p.id);
+    try {
+      const upd = await api.translateMessage(p.id, myLang);
+      setPosts((prev) => prev.map((x) => (x.id === p.id ? { ...x, translations: upd.translations } : x)));
+      if (manual) {
+        setForcedTr((s) => new Set(s).add(p.id));
+        setOrigShown((s) => { const n = new Set(s); n.delete(p.id); return n; });
+      }
+    } catch (e) {
+      if (manual) toast.error((e as Error)?.message || tr("Не удалось перевести"));
+    }
+  }, [myLang]);
+  const toggleOrig = (id: string) => setOrigShown((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  /** Что показывать: перевод есть и включён (авто или вручную) и не просили оригинал. */
+  const trState = (p: Post) => {
+    const text = p.translations?.[myLang];
+    const has = !!text && text !== p.content;
+    const on = has && (autoTr || forcedTr.has(p.id));
+    return { text, has, on, shown: on && !origShown.has(p.id) };
+  };
   // Удаление поста — как сообщений в чате: пост сразу исчезает, пять секунд
   // висит «Отменить», и только потом уходит запрос. Пока висит — пост лишь
   // спрятан (hiddenIds), чтобы отмена вернула его на место без перезагрузки.
@@ -258,6 +305,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [reactPickFor, setReactPickFor] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  // Поле поста в канале растёт под текст — до ~6 строк, дальше прокрутка.
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(composerRef, text, 160, feedRef);
   // «Поделиться постом»: шторка с чатами (пересылка — весь альбом одним
   // пузырём, как в переписке) и большая кнопка наружу — ссылкой на пост.
   const [shareFor, setShareFor] = useState<Post | null>(null);
@@ -806,6 +856,24 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const albumTail = new Set<string>();
   albumsById.forEach((list) => list.slice(1).forEach((p) => albumTail.add(p.id)));
   const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id) && wallVisible(p));
+  // Автоперевод: чужие посты на другом языке (по письменности), по одному,
+  // новые первыми. Уже спрошенные в этом сеансе не повторяем.
+  useEffect(() => {
+    if (!autoTr) return;
+    const todo = feedPosts.filter((p) => !p._pending && !p._failed && (p.content || "").trim() && p.sender?.id !== userId
+      && !p.translations?.[myLang] && !trAsked.current.has(p.id)
+      && (() => { const l = scriptLang(p.content || ""); return !!l && l !== myLang; })());
+    if (!todo.length) return;
+    let alive = true;
+    void (async () => {
+      for (const p of todo.reverse()) {
+        if (!alive) break;
+        await translatePost(p, false);
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTr, posts, myLang, userId, translatePost]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -900,7 +968,21 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 ) : channel?.sign_posts && post.sender && (
                   <p className="text-body font-semibold mb-1">{post.sender.username}</p>
                 )}
-                {post.content && <p className="text-body whitespace-pre-wrap break-words"><FormattedText text={post.content} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} /></p>}
+                {post.content && (() => {
+                  // Перевод — вместо оригинала, без оформления (диапазоны
+                  // относятся к исходному тексту); пометка «перевод» — оригинал.
+                  const ts = trState(post);
+                  return (
+                    <p className="text-body whitespace-pre-wrap break-words">
+                      {ts.shown ? <Linkify text={ts.text!} /> : <FormattedText text={post.content} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} />}
+                      {ts.on && (
+                        <button type="button" onClick={() => toggleOrig(post.id)} className="ml-1.5 align-baseline text-[11px] opacity-60 underline underline-offset-2">
+                          {ts.shown ? tr("перевод") : tr("Показать перевод")}
+                        </button>
+                      )}
+                    </p>
+                  );
+                })()}
                 {(() => {
                   // Пак или тема по ссылке в посте — плиткой с «Добавить себе»,
                   // профиль — карточкой с «Написать». Текст поста не трогаем.
@@ -1178,13 +1260,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               <Music2 className="w-5 h-5" />
             </button>
             <textarea
+              ref={composerRef}
               value={text}
               onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
               placeholder={attachments.length ? tr("Подпись…") : tr("Написать в канал…")}
               rows={1}
               disabled={recording}
-              className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-32"
+              className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-40"
             />
             {text.trim() || attachments.length || sound ? (
               <button
@@ -1314,6 +1397,20 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       {menuFor && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => setMenuFor(null)}>
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
+            {wall && (menuFor.content || "").trim() && (() => {
+              const p = menuFor;
+              const ts = trState(p);
+              return (
+                <button type="button" onClick={() => {
+                  setMenuFor(null);
+                  if (!ts.has) void translatePost(p, true);
+                  else if (!ts.on) { setForcedTr((s) => new Set(s).add(p.id)); setOrigShown((s) => { const n = new Set(s); n.delete(p.id); return n; }); }
+                  else toggleOrig(p.id);
+                }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                  <Languages className="w-5 h-5 text-muted-foreground" /> {ts.shown ? tr("Показать оригинал") : ts.has ? tr("Показать перевод") : tr("Перевести")}
+                </button>
+              );
+            })()}
             {menuFor.sender?.id !== userId && (
               <button type="button" onClick={() => void hideAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
                 <EyeOff className="w-5 h-5 text-muted-foreground" /> {tr("Скрыть автора {name}", { name: menuFor.sender?.username ?? "" })}
@@ -1371,6 +1468,8 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
   const [comments, setComments] = useState<any[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(inputRef, text, 112);
   const load = useCallback(async () => {
     try {
       const list = await api.getPostComments(post.id);
@@ -1440,7 +1539,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
         </div>
         {canComment ? (
           <div className="flex items-end gap-2 px-3 py-2 border-t border-border shrink-0">
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
+            <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
             <button type="button" onClick={add} disabled={!text.trim()} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
               <Send className="w-5 h-5" />
             </button>
@@ -1464,6 +1563,10 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
   const unmute = async (id: string) => {
     try { onChanged(await api.muteWallAuthor(id, false)); } catch { toast.error(tr("Не получилось")); }
   };
+  const setTranslate = async (on: boolean) => {
+    onChanged({ ...state, translate: on });
+    try { onChanged(await api.setWallTranslate(on)); } catch { onChanged({ ...state, translate: !on }); toast.error(tr("Не получилось")); }
+  };
   const unban = async (id: string) => {
     try { await api.unbanWallUser(id); setBans((b) => (b || []).filter((x) => x.profile.id !== id)); } catch { toast.error(tr("Не получилось")); }
   };
@@ -1477,6 +1580,16 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
           <p className="text-muted-foreground">{tr("Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят только те, кто включил «Показывать 18+».")}</p>
+          <label className={cn("flex items-start gap-3", state.translate_available === false ? "opacity-60" : "cursor-pointer")}>
+            <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary shrink-0" checked={!!state.translate} disabled={state.translate_available === false}
+              onChange={(e) => void setTranslate(e.target.checked)} />
+            <span>
+              <b className="font-semibold">{tr("Переводить посты на мой язык")}</b>
+              <span className="block text-muted-foreground">{state.translate_available === false
+                ? tr("Перевод пока не настроен")
+                : tr("Посты на другом языке показываются в переводе. Нажмите «перевод» под постом, чтобы увидеть оригинал. Любой пост можно перевести и через меню «⋯».")}</span>
+            </span>
+          </label>
           <div>
             <p className="font-semibold mb-1">{tr("Скрытые авторы")}</p>
             {state.muted_authors.length === 0 ? <p className="text-muted-foreground">{tr("Никого — всё видно")}</p> : state.muted_authors.map((a) => (

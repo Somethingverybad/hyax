@@ -85,6 +85,8 @@ class Profile(models.Model):
     # переопределить (ChatParticipant.translate_in/out, None = «как в профиле»).
     translate_in_default = models.BooleanField(default=False)
     translate_out_default = models.BooleanField(default=False)
+    # Стена: переводить чужие посты на мой язык (None — как translate_in_default).
+    translate_wall = models.BooleanField(null=True, blank=True, default=None)
 
     @property
     def email_verified(self):

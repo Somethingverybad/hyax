@@ -366,6 +366,8 @@ export interface WallState {
   id: string; name: string; kind: "wall"; enabled: boolean; new_count: number;
   ban: WallBan | null; is_admin: boolean;
   muted_authors: { id: string; username: string; avatar_url?: string | null }[];
+  /** Автоперевод чужих постов на мой язык и есть ли переводчик на сервере. */
+  translate?: boolean; translate_available?: boolean;
 }
 
 export interface Chat {
@@ -1250,6 +1252,11 @@ export const api = {
   },
   setWallEnabled: async (enabled: boolean): Promise<WallState> => {
     const res = await fetchWithAuth(`${API_URL}/wall/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ enabled }) });
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
+    return res.json();
+  },
+  setWallTranslate: async (translate: boolean): Promise<WallState> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ translate }) });
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
