@@ -1041,8 +1041,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         ids = request.data.get('ids') or []
         if not isinstance(ids, list):
             return Response({'error': 'ids — список'}, status=400)
-        ids = [str(i) for i in ids][:200]
-        msgs = list(self.get_queryset().filter(id__in=ids).exclude(effect='').exclude(sender=me).values_list('id', flat=True))
+        valid = []
+        for i in ids[:200]:
+            try:
+                valid.append(str(uuid.UUID(str(i))))
+            except ValueError:
+                continue  # чужой мусор в списке не валит весь запрос
+        msgs = list(self.get_queryset().filter(id__in=valid).exclude(effect='').exclude(sender=me).values_list('id', flat=True))
         MessageEffectSeen.objects.bulk_create(
             [MessageEffectSeen(message_id=m, user=me) for m in msgs], ignore_conflicts=True)
         return Response({'ok': True, 'count': len(msgs)})
