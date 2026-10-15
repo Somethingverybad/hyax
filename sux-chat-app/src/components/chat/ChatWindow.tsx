@@ -51,6 +51,7 @@ import ShareToChat from "@/components/ShareToChat";
 import PhotoEditor from "@/components/PhotoEditor";
 import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
+import { WallpaperVideo } from "./ChatWallpaper";
 import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
@@ -5066,64 +5067,6 @@ function markBurstsSeen(ids: string[]) {
   void api.markEffectsSeen(fresh).catch(() => {});
 }
 
-/** Видео-обои. Основной путь — <video>: аппаратно, плавно. Пока оно реально
- *  не играет, его не видно (opacity 0 прячет и системную кнопку «play»), снизу
- *  лежит постер. Если iOS отказала в автозапуске (энергосбережение), вместо
- *  видео крутится анимированный WebP того же ролика, а по первому касанию
- *  экрана пробуем снова запустить видео — и возвращаемся к нему. */
-const WallpaperVideo = ({ src, poster, anim }: { src: string; poster?: string | null; anim?: string | null }) => {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [denied, setDenied] = useState(false);
-  const [broken, setBroken] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setBroken(false); setPlaying(false); setDenied(false);
-    el.muted = true;
-    el.defaultMuted = true;
-    el.setAttribute("muted", "");
-    el.setAttribute("playsinline", "");
-    let gestureBound = false;
-    const unbind = () => { window.removeEventListener("touchend", onGesture); window.removeEventListener("pointerdown", onGesture); gestureBound = false; };
-    const onGesture = () => { unbind(); el.play().catch(() => {}); };
-    const tryPlay = () => {
-      el.play().catch(() => {
-        setDenied(true);
-        if (gestureBound) return;
-        gestureBound = true;
-        window.addEventListener("touchend", onGesture, { passive: true });
-        window.addEventListener("pointerdown", onGesture, { passive: true });
-      });
-    };
-    if (el.readyState >= 2) tryPlay(); else el.addEventListener("loadeddata", tryPlay, { once: true });
-    return () => { el.removeEventListener("loadeddata", tryPlay); unbind(); };
-  }, [src]);
-  const showAnim = denied && !playing && !!anim;
-  return (
-    <>
-      {poster && <img src={poster} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-      {showAnim && <img src={anim!} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-      {!broken && (
-        <video
-          ref={ref}
-          src={src}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          disablePictureInPicture
-          onPlaying={() => { setPlaying(true); setDenied(false); }}
-          onPause={() => setPlaying(false)}
-          onError={() => setBroken(true)}
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
-          style={{ opacity: playing ? 1 : 0 }}
-        />
-      )}
-    </>
-  );
-};
 
 // Скорость воспроизведения голосовых — одна на все сообщения, как в Telegram:
 // выбрал 1.5× — следующее голосовое тоже пойдёт на 1.5×.

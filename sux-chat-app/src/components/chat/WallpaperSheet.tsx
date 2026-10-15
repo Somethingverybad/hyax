@@ -12,7 +12,8 @@ import { t } from "@/lib/i18n";
  * лёгкий mp4 с постером. «Анимация обоев» — настройка устройства: выключил —
  * вместо видео показывается постер, и так во всех чатах.
  */
-const WallpaperSheet = ({ chat, onClose, onChanged }: { chat: Chat; onClose: () => void; onChanged: () => void }) => {
+/** canShared — можно ставить общие обои (в канале — только админ). */
+const WallpaperSheet = ({ chat, onClose, onChanged, canShared = true }: { chat: Chat; onClose: () => void; onChanged: () => void; canShared?: boolean }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const scopeRef = useRef<"chat" | "me">("chat");
   const [busy, setBusy] = useState(false);
@@ -54,13 +55,13 @@ const WallpaperSheet = ({ chat, onClose, onChanged }: { chat: Chat; onClose: () 
         </div>
         <p className="text-caption text-subtle">{t("Фото, gif или видео с устройства. Растягиваются на весь экран чата.")}</p>
 
-        <button type="button" disabled={busy} onClick={() => pick("chat")} className={row}>
+        {canShared && <button type="button" disabled={busy} onClick={() => pick("chat")} className={row}>
           <Users className="w-5 h-5 text-primary shrink-0" />
           <span className="min-w-0 flex-1">
             <span className="block text-body">{isChannel ? t("Поставить для канала") : t("Поставить для всех")}</span>
             <span className="block text-caption text-subtle">{isChannel ? t("Увидят все подписчики") : t("Увидит и собеседник")}</span>
           </span>
-        </button>
+        </button>}
         <button type="button" disabled={busy} onClick={() => pick("me")} className={row}>
           <User className="w-5 h-5 text-primary shrink-0" />
           <span className="min-w-0 flex-1">
@@ -80,7 +81,7 @@ const WallpaperSheet = ({ chat, onClose, onChanged }: { chat: Chat; onClose: () 
             <span className="min-w-0 flex-1"><span className="block text-body">{t("Убрать свои настройки")}</span><span className="block text-caption text-subtle">{t("Показывать как у чата")}</span></span>
           </button>
         )}
-        {chat.wallpaper && (
+        {chat.wallpaper && canShared && (
           <button type="button" disabled={busy} onClick={() => clear("chat")} className={row}>
             <Trash2 className="w-5 h-5 text-destructive shrink-0" />
             <span className="min-w-0 flex-1"><span className="block text-body">{t("Убрать обои для всех")}</span></span>

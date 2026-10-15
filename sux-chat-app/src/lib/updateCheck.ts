@@ -10,6 +10,18 @@ import { t } from "./i18n";
 const MANIFEST_URL = "https://cdn.huyax.e-tree.su/apk/version.json";
 const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
 
+/**
+ * Сборка для Google Play (VITE_DISTRIBUTION=play): на Android обновляет только
+ * Play — правила магазина запрещают приложению ставить себя в обход него, так
+ * что плашки с APK нет, а «Проверить обновления» открывает страницу в Play.
+ */
+export const PLAY_BUILD = import.meta.env.VITE_DISTRIBUTION === "play";
+export const PLAY_URL = "https://play.google.com/store/apps/details?id=com.hyax.messenger";
+
+export function updatesViaPlay() {
+  return PLAY_BUILD && Capacitor.getPlatform() === "android";
+}
+
 export interface UpdateManifest {
   version: string;
   /** Номер сборки (число коммитов). Версия может не меняться неделями, а
@@ -48,6 +60,7 @@ function desktopOs(): "mac" | "win" | "linux" {
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  if (updatesViaPlay()) return null;
   try {
     // Манифест через CDN, при сетевой ошибке — напрямую с сервера.
     const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(5000) })

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type RefObject } from "react";
-import { api, mediaUrl, type NotificationSoundInfo, type WallState } from "@/api/client";
+import { api, mediaUrl, type Chat, type NotificationSoundInfo, type WallState } from "@/api/client";
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
 import { useMediaUrl } from "@/hooks/use-media-url";
@@ -34,6 +34,8 @@ import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
+import WallpaperSheet from "./WallpaperSheet";
+import { WallpaperLayer } from "./ChatWallpaper";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -236,6 +238,20 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   };
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  // Обои канала: полные данные чата (общие и мои), перечитываем по событию
+  // hyax:wallpaper — сокет шлёт его, когда обои сменили.
+  const [wpInfo, setWpInfo] = useState<Chat | null>(null);
+  const [wallpaperOpen, setWallpaperOpen] = useState(false);
+  const loadWallpaper = useCallback(() => {
+    if (wall || !channelId) return;
+    api.getChat(channelId).then((c) => { if (c?.id) setWpInfo(c); }).catch(() => {});
+  }, [wall, channelId]);
+  useEffect(() => {
+    loadWallpaper();
+    const on = (e: Event) => { if ((e as CustomEvent).detail?.chat_id === channelId) loadWallpaper(); };
+    window.addEventListener("hyax:wallpaper", on);
+    return () => window.removeEventListener("hyax:wallpaper", on);
+  }, [loadWallpaper, channelId]);
   // Перевод постов Стены на мой язык: сам (галка в шторке «Стена») или по
   // пункту меню. Перевод хранится в посте на сервере — следующим читателям
   // того же языка он ничего не стоит.
@@ -878,7 +894,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   }, [autoTr, posts, myLang, userId, translatePost]);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative isolate" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      {/* Обои канала — слоем под лентой, как в переписке. */}
+      {!wall && <WallpaperLayer info={wpInfo} />}
       {dragOver && (
         <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
           <div className="text-center">
@@ -1351,7 +1369,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           onLeave={leave}
           onDelete={removeChannel}
           onChanged={(c) => setChannel(c)}
+          onWallpaper={() => { setInfoOpen(false); setWallpaperOpen(true); }}
         />
+      )}
+      {wallpaperOpen && wpInfo && !wall && (
+        <WallpaperSheet chat={wpInfo} canShared={channel?.my_role === "owner" || channel?.my_role === "admin"}
+          onClose={() => setWallpaperOpen(false)} onChanged={loadWallpaper} />
       )}
       {editFor && (
         <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => applyEdit(editFor, f)} />
@@ -1646,8 +1669,10 @@ const RepostSheet = ({ post, onClose, onConfirm }: { post: Post; onClose: () => 
 };
 
 /** Инфо/управление каналом. */
-const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }: {
+const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged, onWallpaper }: {
   channel: Channel; userId: string; onClose: () => void; onLeave: () => void; onDelete: () => void; onChanged: (c: Channel) => void;
+  /** Обои канала: общие ставит админ, личные — любой подписчик. */
+  onWallpaper?: () => void;
 }) => {
   // «Поделиться каналом» — шторка с чатами (ссылка уходит сообщением и
   // разворачивается карточкой канала) и кнопка наружу.
@@ -1827,6 +1852,19 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged }:
               <span className={cn("relative w-11 h-6 rounded-full shrink-0 transition-colors", channel.muted ? "bg-surface-4" : "bg-primary")}>
                 <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left]", channel.muted ? "left-0.5" : "left-[22px]")} />
               </span>
+            </button>
+          )}
+
+          {onWallpaper && channel.my_role && (
+            <button type="button" onClick={onWallpaper} className="w-full flex items-center gap-3 py-2.5 text-left">
+              <ImageIcon className="w-5 h-5 text-primary shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-body">{tr("Обои")}</span>
+                <span className="block text-caption text-subtle truncate">
+                  {isAdmin ? tr("Фото, gif или видео — для всех подписчиков или только у вас") : tr("Фото, gif или видео — только у вас")}
+                </span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-subtle shrink-0" />
             </button>
           )}
 
