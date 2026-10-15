@@ -4,7 +4,8 @@ import { readCache } from "@/lib/session-cache";
 import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
 import { Capacitor } from "@capacitor/core";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2 } from "lucide-react";
+import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -39,11 +40,40 @@ interface CallOverlayProps {
   onToggleMute: () => void;
   speaker: boolean;
   onToggleSpeaker: () => void;
+  /** Видео (веб и компьютер): своя камера, видео собеседника, кнопки. */
+  video?: CallVideo;
+  /** Шумоподавление микрофона — переключатель в настройках звонка. */
+  noise?: { on: boolean; onToggle: () => void };
   /** Свёрнут: вместо экрана — виджет под шапкой, можно ходить по приложению. */
   minimized?: boolean;
   onMinimize?: () => void;
   onExpand?: () => void;
 }
+
+export interface CallVideo {
+  local: MediaStream | null;
+  remote: MediaStream | null;
+  /** У собеседника версия с видео — камеру можно включать. */
+  available: boolean;
+  busy?: boolean;
+  canFlip: boolean;
+  /** Фронтальная камера — своё превью зеркалим. */
+  mirrored: boolean;
+  onToggle: () => void;
+  onFlip: () => void;
+}
+
+/** Поток в <video>: звук играет RemoteAudio, поэтому здесь всегда без звука. */
+const VideoView = ({ stream, mirrored, className }: { stream: MediaStream; mirrored?: boolean; className?: string }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.srcObject !== stream) el.srcObject = stream;
+    el.play?.().catch(() => {});
+  }, [stream]);
+  return <video ref={ref} autoPlay playsInline muted className={className} style={mirrored ? { transform: "scaleX(-1)" } : undefined} />;
+};
 
 const STATUS: Record<CallUiState, string> = {
   idle: "",
@@ -79,8 +109,11 @@ const CallOverlay = ({
   minimized,
   onMinimize,
   onExpand,
+  video,
+  noise,
 }: CallOverlayProps) => {
   const [seconds, setSeconds] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Рингтон на своём экране входящего. На iOS сюда не попадаем — там звонит
   // CallKit; на Android приложение в фоне звонит каналом уведомления.
@@ -135,25 +168,52 @@ const CallOverlay = ({
       <>
         {audio}
         <CallWidget peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
+          remoteVideo={video?.remote || null}
           muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />
       </>
     );
   }
 
+  // Видео собеседника — во весь экран, поверх него имя, таймер и кнопки.
+  const onVideo = !!video?.remote;
+  const chromeBtn = onVideo
+    ? "text-white bg-black/30 active:bg-black/50 hover:bg-black/40"
+    : "text-muted-foreground active:bg-surface-3 hover:bg-surface-2";
+  const roundBtn = (active: boolean) => cn(
+    "w-14 h-14 rounded-full border-2 flex items-center justify-center",
+    onVideo
+      ? active ? "bg-white text-black border-white" : "border-white/50 text-white bg-black/20"
+      : active ? "bg-foreground text-background border-foreground" : "border-border",
+  );
+
   return (
     <div
-      className="fixed inset-0 z-[60] bg-background flex flex-col items-center justify-between"
+      className={cn("fixed inset-0 z-[60] flex flex-col items-center justify-between", onVideo ? "bg-black text-white" : "bg-background")}
       style={{
         paddingTop: "calc(var(--sat) + 2rem)",
         paddingBottom: "calc(var(--sab) + 2.5rem)",
       }}
     >
       {audio}
+      {onVideo && (
+        <>
+          <VideoView stream={video!.remote!} className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" aria-hidden />
+          <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" aria-hidden />
+        </>
+      )}
+      {/* Своя камера — окошком в углу. */}
+      {video?.local && (
+        <div className="absolute right-3 z-10 w-28 h-40 md:w-40 md:h-56 rounded-xl overflow-hidden shadow-xl border border-white/20 bg-black"
+          style={{ top: "calc(var(--sat) + 3.75rem)" }}>
+          <VideoView stream={video.local} mirrored={video.mirrored} className="w-full h-full object-cover" />
+        </div>
+      )}
       {onMinimize && state !== "incoming" && (
         <button
           type="button"
           onClick={onMinimize}
-          className="absolute left-3 w-11 h-11 rounded-full flex items-center justify-center text-muted-foreground active:bg-surface-3 hover:bg-surface-2"
+          className={cn("absolute z-10 left-3 w-11 h-11 rounded-full flex items-center justify-center", chromeBtn)}
           style={{ top: "calc(var(--sat) + 0.5rem)" }}
           aria-label={t("Свернуть звонок")}
           title={t("Свернуть звонок")}
@@ -161,19 +221,48 @@ const CallOverlay = ({
           <ChevronDown className="w-7 h-7" />
         </button>
       )}
+      {noise && state !== "incoming" && (
+        <>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((v) => !v)}
+            className={cn("absolute z-20 right-3 w-11 h-11 rounded-full flex items-center justify-center", chromeBtn)}
+            style={{ top: "calc(var(--sat) + 0.5rem)" }}
+            aria-label={t("Настройки звонка")}
+            title={t("Настройки звонка")}
+          >
+            <Settings2 className="w-6 h-6" />
+          </button>
+          {settingsOpen && (
+            <>
+              <div className="absolute inset-0 z-20" onClick={() => setSettingsOpen(false)} aria-hidden />
+              <div className="absolute z-30 right-3 w-72 rounded-lg bg-surface-1 text-foreground border border-border shadow-xl p-3"
+                style={{ top: "calc(var(--sat) + 3.25rem)" }}>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-body font-medium">{t("Шумоподавление")}</span>
+                    <span className="block text-caption text-subtle">{t("Убирает фоновый шум микрофона. Выключите, если голос звучит глухо или нужна музыка")}</span>
+                  </span>
+                  <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={noise.on} onChange={noise.onToggle} aria-label={t("Шумоподавление")} />
+                </label>
+              </div>
+            </>
+          )}
+        </>
+      )}
 
-      <div className="flex flex-col items-center gap-3 w-full min-h-0 px-5">
-        {isGroup ? (
+      <div className={cn("relative z-10 flex flex-col items-center gap-3 w-full min-h-0 px-5", onVideo && "self-start items-start")}>
+        {onVideo ? null : isGroup ? (
           <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center">
             <Users className="w-12 h-12 text-primary" />
           </div>
         ) : (
           <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-24 h-24" />
         )}
-        <div className="text-2xl font-bold text-center px-4 truncate max-w-full">{peer.name}</div>
-        <div className="text-muted-foreground text-sm">{statusText}</div>
+        <div className={cn("text-2xl font-bold truncate max-w-full", onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4")}>{peer.name}</div>
+        <div className={cn("text-sm", onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground")}>{statusText}</div>
 
-        {showList && participants.length > 0 && (
+        {showList && participants.length > 0 && !onVideo && (
           <div className="w-full max-w-md mt-2 space-y-2 overflow-y-auto max-h-[42vh]">
             {participants.map((p) => {
               const v = volumes[p.id] ?? 1;
@@ -211,7 +300,7 @@ const CallOverlay = ({
         )}
       </div>
 
-      <div className="flex items-center gap-5">
+      <div className={cn("relative z-10 flex items-center flex-wrap justify-center", video ? "gap-4" : "gap-5")}>
         {state === "incoming" ? (
           <>
             <button
@@ -236,21 +325,38 @@ const CallOverlay = ({
             <button
               type="button"
               onClick={onToggleMute}
-              className={cn(
-                "w-14 h-14 rounded-full border-2 flex items-center justify-center",
-                muted ? "bg-foreground text-background border-foreground" : "border-border"
-              )}
+              className={roundBtn(muted)}
               aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
             >
               {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
             </button>
+            {video && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!video.available && !video.local) {
+                    toast(t("У собеседника версия без видеозвонков — видео появится, когда он обновит приложение"));
+                    return;
+                  }
+                  video.onToggle();
+                }}
+                disabled={video.busy}
+                className={cn(roundBtn(!!video.local), !video.available && !video.local && "opacity-50")}
+                aria-label={video.local ? t("Выключить камеру") : t("Включить камеру")}
+                title={video.local ? t("Выключить камеру") : t("Включить камеру")}
+              >
+                {video.local ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+              </button>
+            )}
+            {video?.local && video.canFlip && (
+              <button type="button" onClick={video.onFlip} className={roundBtn(false)} aria-label={t("Переключить камеру")} title={t("Переключить камеру")}>
+                <SwitchCamera className="w-6 h-6" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onToggleSpeaker}
-              className={cn(
-                "w-14 h-14 rounded-full border-2 flex items-center justify-center",
-                speaker ? "bg-foreground text-background border-foreground" : "border-border"
-              )}
+              className={roundBtn(speaker)}
               aria-label={speaker ? t("Выключить громкую связь") : t("Включить громкую связь")}
             >
               {speaker ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
@@ -259,7 +365,7 @@ const CallOverlay = ({
               <button
                 type="button"
                 onClick={onAdd}
-                className="w-14 h-14 rounded-full border-2 border-border flex items-center justify-center"
+                className={roundBtn(false)}
                 aria-label={t("Добавить участника")}
                 title={t("Добавить участника")}
               >
@@ -288,9 +394,10 @@ const CallOverlay = ({
  * сообщает переменной --call-h: по ней, как и по --player-h, сдвигаются
  * закреп в переписке и список чатов.
  */
-const CallWidget = ({ peer, isGroup, status, muted, onToggleMute, onHangup, onExpand }: {
+const CallWidget = ({ peer, isGroup, status, muted, onToggleMute, onHangup, onExpand, remoteVideo }: {
   peer: { id: string; name: string; avatarUrl?: string | null };
   isGroup?: boolean;
+  remoteVideo?: MediaStream | null;
   status: string;
   muted: boolean;
   onToggleMute: () => void;
@@ -312,7 +419,9 @@ const CallWidget = ({ peer, isGroup, status, muted, onToggleMute, onHangup, onEx
       <div className="rounded-lg border border-success/40 bg-surface-2 shadow-lg flex items-center gap-2 px-2 py-2">
         <button type="button" onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-2.5 text-left" aria-label={t("Вернуться к звонку")}>
           <span className="relative shrink-0">
-            {isGroup ? (
+            {remoteVideo ? (
+              <VideoView stream={remoteVideo} className="w-9 h-12 rounded-md object-cover bg-black" />
+            ) : isGroup ? (
               <span className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center"><Users className="w-5 h-5 text-primary" /></span>
             ) : (
               <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-9 h-9" />

@@ -27,7 +27,38 @@ type SignalData = {
   answer?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
   status?: string;
+  /** webrtc_media: собеседник включил или выключил камеру. */
+  video?: boolean;
 };
+
+/** Видео и шумодав в звонке — для экрана звонка (CallHost). */
+export type CallMedia = {
+  /** Моя камера (поток для превью) или null. */
+  localVideo: MediaStream | null;
+  /** Собеседник показывает видео. */
+  remoteVideo: boolean;
+  /** У собеседника новая версия: можно включить видео (по его SDP). */
+  peerCanVideo: boolean;
+  /** Камер больше одной — есть что переключать. */
+  canFlip: boolean;
+  /** Фронтальная камера — превью зеркалим. */
+  front: boolean;
+  noiseSuppression: boolean;
+};
+
+const NS_KEY = "hyax:call-noise-suppression";
+const readNs = () => { try { return localStorage.getItem(NS_KEY) !== "0"; } catch { return true; } };
+
+/** Есть ли видеоканал «отправка и приём» в SDP собеседника — значит, у него
+ *  новая версия с видео. Приложения на телефонах пока отвечают без видео. */
+function sdpCanVideo(sdp?: string): boolean {
+  if (!sdp) return false;
+  const parts = sdp.split(/\r?\nm=/);
+  const video = parts.find((p, i) => (i === 0 ? p.startsWith("m=video") : p.startsWith("video")));
+  if (!video) return false;
+  if (/^(m=)?video 0 /.test(video)) return false;
+  return /a=sendrecv/.test(video) || !/a=(sendonly|recvonly|inactive)/.test(video);
+}
 
 type CallServiceOptions = {
   wsService: WebSocketService;
@@ -39,6 +70,7 @@ type CallServiceOptions = {
   onRemoteStream?: (stream: MediaStream) => void;
   onCallEnded?: (reason: CallEndReason) => void;
   onError?: (message: string) => void;
+  onMedia?: (media: CallMedia) => void;
 };
 
 export class OneToOneCallService {
@@ -51,8 +83,19 @@ export class OneToOneCallService {
   private onRemoteStream?: (stream: MediaStream) => void;
   private onCallEnded?: (reason: CallEndReason) => void;
   private onError?: (message: string) => void;
+  private onMedia?: (media: CallMedia) => void;
 
   private peerConnection: RTCPeerConnection | null = null;
+  // Видео: канал есть с начала звонка, камера включается заменой дорожки —
+  // без пересогласования. Собеседник узнаёт о камере сигналом webrtc_media.
+  private videoTransceiver: RTCRtpTransceiver | null = null;
+  private localVideoTrack: MediaStream | null = null;
+  private front = true;
+  private videoDeviceIdx = 0;
+  private canFlip = false;
+  private remoteVideo = false;
+  private peerCanVideo = false;
+  private noiseSuppression = readNs();
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
   private currentCallId: string | null = null;
@@ -72,6 +115,121 @@ export class OneToOneCallService {
     this.onRemoteStream = options.onRemoteStream;
     this.onCallEnded = options.onCallEnded;
     this.onError = options.onError;
+    this.onMedia = options.onMedia;
+  }
+
+  // ===== Видео и шумодав =====
+
+  getMedia(): CallMedia {
+    return {
+      localVideo: this.localVideoTrack,
+      remoteVideo: this.remoteVideo,
+      peerCanVideo: this.peerCanVideo,
+      canFlip: this.canFlip,
+      front: this.front,
+      noiseSuppression: this.noiseSuppression,
+    };
+  }
+
+  private emitMedia(): void {
+    this.onMedia?.(this.getMedia());
+  }
+
+  /** Включить или выключить камеру. Нет разрешения — бросает ошибку с
+   *  name NotAllowedError: экран звонка подскажет, где его дать; при
+   *  следующем нажатии разрешение запрашивается снова. */
+  async setVideo(on: boolean): Promise<void> {
+    const sender = this.videoTransceiver?.sender;
+    if (!sender) return;
+    if (on) {
+      if (this.localVideoTrack) return;
+      const stream = await this.openCamera();
+      this.localVideoTrack = stream;
+      await sender.replaceTrack(stream.getVideoTracks()[0] || null);
+    } else {
+      await sender.replaceTrack(null).catch(() => {});
+      this.stopLocalVideo();
+    }
+    this.sendMedia();
+    this.emitMedia();
+  }
+
+  /** Другая камера: на телефоне — передняя/задняя, на компьютере — следующая. */
+  async flipCamera(): Promise<void> {
+    const sender = this.videoTransceiver?.sender;
+    if (!sender || !this.localVideoTrack) return;
+    const old = this.localVideoTrack;
+    this.front = !this.front;
+    this.videoDeviceIdx += 1;
+    try {
+      const stream = await this.openCamera();
+      await sender.replaceTrack(stream.getVideoTracks()[0] || null);
+      this.localVideoTrack = stream;
+      old.getTracks().forEach((t) => t.stop());
+    } catch (e) {
+      this.front = !this.front;
+      this.videoDeviceIdx -= 1;
+      throw e;
+    }
+    this.emitMedia();
+  }
+
+  private async openCamera(): Promise<MediaStream> {
+    // Сначала по стороне (телефон), камеры компьютера — по списку устройств.
+    const devices = (await navigator.mediaDevices.enumerateDevices?.().catch(() => [])) || [];
+    const cams = devices.filter((d) => d.kind === "videoinput");
+    const byDevice = cams.length > 1 && cams.every((c) => c.label) && !/android|iphone|ipad/i.test(navigator.userAgent);
+    const video: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+    if (byDevice) video.deviceId = { exact: cams[this.videoDeviceIdx % cams.length].deviceId };
+    else video.facingMode = this.front ? "user" : "environment";
+    const stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    // Список с названиями камер есть только после разрешения — пересчитываем.
+    const after = (await navigator.mediaDevices.enumerateDevices?.().catch(() => [])) || [];
+    this.canFlip = after.filter((d) => d.kind === "videoinput").length > 1;
+    if (byDevice) {
+      const label = stream.getVideoTracks()[0]?.label || "";
+      this.front = !/back|rear|environment|задн/i.test(label);
+    }
+    return stream;
+  }
+
+  private stopLocalVideo(): void {
+    this.localVideoTrack?.getTracks().forEach((t) => t.stop());
+    this.localVideoTrack = null;
+  }
+
+  private sendMedia(): void {
+    if (!this.currentCallId) return;
+    this.wsService.send({
+      type: "webrtc_media",
+      data: { chat_id: this.chatId, call_id: this.currentCallId, to_user_id: this.targetUserId, video: !!this.localVideoTrack },
+    });
+  }
+
+  /** Шумоподавление микрофона: настройка запоминается; в идущем звонке
+   *  микрофон переоткрывается с новым параметром и дорожка подменяется на
+   *  лету, без пересогласования (выключенный микрофон остаётся выключенным). */
+  async setNoiseSuppression(on: boolean): Promise<void> {
+    this.noiseSuppression = on;
+    try { localStorage.setItem(NS_KEY, on ? "1" : "0"); } catch { /* приватный режим */ }
+    const old = this.localStream?.getAudioTracks()[0];
+    const sender = this.peerConnection?.getSenders().find((x) => x.track?.kind === "audio");
+    if (old && this.localStream) {
+      const fresh = await navigator.mediaDevices.getUserMedia({ audio: this.audioConstraints(), video: false });
+      const track = fresh.getAudioTracks()[0];
+      if (track) {
+        track.enabled = old.enabled;
+        if (sender) await sender.replaceTrack(track);
+        this.localStream.removeTrack(old);
+        this.localStream.addTrack(track);
+        old.stop();
+      }
+    }
+    this.emitMedia();
+  }
+
+  private audioConstraints(): MediaTrackConstraints {
+    return { echoCancellation: true, noiseSuppression: this.noiseSuppression, autoGainControl: true };
   }
   
   // Обновление chatId при переключении чата (для глобального Call Service)
@@ -329,6 +487,10 @@ export class OneToOneCallService {
         console.log('📞 [CallService.handleSignal] Обработка webrtc_ice_candidate');
         await this.handleIceCandidate(data.candidate);
         break;
+      case "webrtc_media":
+        this.remoteVideo = !!data.video;
+        this.emitMedia();
+        break;
       default:
         console.log(`⚠️ [CallService.handleSignal] Неизвестный тип сигнала: ${signalType}`);
         break;
@@ -358,11 +520,7 @@ export class OneToOneCallService {
     }
 
     this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+      audio: this.audioConstraints(),
       video: false,
     });
   }
@@ -384,8 +542,12 @@ export class OneToOneCallService {
     // разговор был беззвучным.
     this.peerConnection.ontrack = (event) => {
       console.log('🎵 [CallService] Получен удалённый трек:', event.track.kind);
-      const tracks = event.streams?.[0]?.getTracks() ?? [event.track];
-      this.remoteStream = new MediaStream(tracks);
+      // Звук и видео приходят отдельными дорожками — собираем их в один
+      // поток (раньше видео заменило бы звук).
+      const incoming = event.streams?.[0]?.getTracks() ?? [event.track];
+      const kinds = new Set(incoming.map((t) => t.kind));
+      const keep = (this.remoteStream?.getTracks() || []).filter((t) => !kinds.has(t.kind));
+      this.remoteStream = new MediaStream([...keep, ...incoming]);
       this.onRemoteStream?.(this.remoteStream);
       this.setState("active");
     };
@@ -429,6 +591,11 @@ export class OneToOneCallService {
       });
     } else {
       console.error('❌ [CallService] Нет локального потока для добавления треков!');
+    }
+    // Видеоканал звонящего — сразу, пустой: камера потом подставляется в него.
+    // Отвечающий берёт канал из предложения (handleOffer).
+    if (this.isCaller && this.localStream) {
+      this.videoTransceiver = this.peerConnection.addTransceiver("video", { direction: "sendrecv", streams: [this.localStream] });
     }
   }
 
@@ -480,6 +647,17 @@ export class OneToOneCallService {
       console.log('📞 [CallService.handleOffer] Устанавливаем remote description');
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
       console.log('✅ [CallService.handleOffer] Remote description установлен');
+      // Видеоканал из предложения: отвечаем «и отправляю, и принимаю», чтобы
+      // потом включить камеру без пересогласования. Старые клиенты и
+      // приложения шлют предложение без видео — тогда видео не будет.
+      this.peerCanVideo = sdpCanVideo(offer.sdp);
+      const vt = this.peerConnection.getTransceivers().find((x) => x.receiver.track?.kind === "video");
+      if (vt && this.peerCanVideo) {
+        vt.direction = "sendrecv";
+        if (this.localStream) vt.sender.setStreams?.(this.localStream);
+        this.videoTransceiver = vt;
+      }
+      this.emitMedia();
       
       console.log('📞 [CallService.handleOffer] Создаём answer');
       const answer = await this.peerConnection.createAnswer();
@@ -514,6 +692,8 @@ export class OneToOneCallService {
       console.log('📞 [CallService.handleAnswer] Устанавливаем remote description');
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
       console.log('✅ [CallService.handleAnswer] Remote description установлен');
+      this.peerCanVideo = sdpCanVideo(answer.sdp);
+      this.emitMedia();
     } catch (error) {
       console.error('❌ [CallService.handleAnswer] Ошибка:', error);
       this.onError?.(t("Не удалось установить ответ звонка"));
@@ -541,6 +721,9 @@ export class OneToOneCallService {
    *  не закрываем и не сообщаем об окончании — звонок продолжается. */
   detach(): { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null } | null {
     if (!this.peerConnection || !this.currentCallId || !this.targetUserId) return null;
+    // Групповой звонок пока без видео: камеру выключаем.
+    this.videoTransceiver?.sender.replaceTrack(null).catch(() => {});
+    this.resetMedia();
     const out = {
       callId: this.currentCallId, chatId: this.chatId, peerId: this.targetUserId,
       pc: this.peerConnection, localStream: this.localStream, remoteStream: this.remoteStream,
@@ -558,6 +741,7 @@ export class OneToOneCallService {
   private finishCall(reason: CallEndReason): void {
     this.cleanupPeerConnection();
     this.cleanupLocalStream();
+    this.resetMedia();
     this.currentCallId = null;
     this.targetUserId = null;
     this.isCaller = false;
@@ -582,6 +766,17 @@ export class OneToOneCallService {
     }
     this.localStream.getTracks().forEach((track) => track.stop());
     this.localStream = null;
+  }
+
+  private resetMedia(): void {
+    this.stopLocalVideo();
+    this.videoTransceiver = null;
+    this.remoteVideo = false;
+    this.peerCanVideo = false;
+    this.front = true;
+    this.videoDeviceIdx = 0;
+    this.canFlip = false;
+    this.emitMedia();
   }
 
   private resetState(): void {

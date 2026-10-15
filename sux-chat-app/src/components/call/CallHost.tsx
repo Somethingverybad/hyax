@@ -7,7 +7,7 @@ import { t as tr } from "@/lib/i18n";
 import { onUserMessage, onUserSocketChange } from "@/lib/userSocket";
 import { setCallStarter, type StartCallOptions } from "@/lib/calls";
 import type { WebSocketService } from "@/services/websocket";
-import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
+import { OneToOneCallService, type CallMedia, type CallState, type IncomingCall } from "@/services/call-service";
 import { GroupCallService, type GroupCallInvite, type GroupCallState, type PeerStream } from "@/services/group-call-service";
 import { NativeCallService, NativeGroupCallService } from "@/services/native-call-service";
 import { hasNativeCalls } from "@/lib/nativeCall";
@@ -63,6 +63,10 @@ const CallHost = () => {
   const [addToCallOpen, setAddToCallOpen] = useState(false);
   const wsRef = useRef<WebSocketService | null>(null);
   const userIdRef = useRef<string | null>(null);
+  // Видео и шумодав личного звонка (пока — веб и компьютер: в приложениях
+  // звонок ведёт нативный движок без видео).
+  const [media, setMedia] = useState<CallMedia | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
 
   /** Открыть чат звонка на экране чатов (после ответа — как раньше). */
   const openChat = (chatId?: string | null, title?: string | null) => {
@@ -135,8 +139,10 @@ const CallHost = () => {
           setCallPeer(null);
         },
         onError: (message) => toast.error(message),
-      });
+        onMedia: setMedia,
+      } as ConstructorParameters<typeof OneToOneCallService>[0]);
       callRef.current = svc;
+      if (svc instanceof OneToOneCallService) setMedia(svc.getMedia());
 
       const GroupImpl = hasNativeCalls() ? NativeGroupCallService : GroupCallService;
       groupCallRef.current = new GroupImpl({
@@ -373,6 +379,32 @@ const CallHost = () => {
     setIncomingCall(null);
   };
   const hangup = () => callRef.current?.endCall("ended", true);
+
+  const webSvc = () => (callRef.current instanceof OneToOneCallService ? callRef.current : null);
+  /** Камера: нет разрешения — подсказка, где его дать; следующее нажатие
+   *  запрашивает снова (браузер спросит, если не запрещено навсегда). */
+  const toggleVideo = async () => {
+    const svc = webSvc();
+    if (!svc || videoBusy) return;
+    setVideoBusy(true);
+    try {
+      await svc.setVideo(!svc.getMedia().localVideo);
+    } catch (e) {
+      const name = (e as { name?: string })?.name || "";
+      toast.error(name === "NotAllowedError" || name === "SecurityError"
+        ? tr("Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз")
+        : name === "NotFoundError" ? tr("Камера не найдена") : tr("Не удалось включить камеру"));
+    } finally { setVideoBusy(false); }
+  };
+  const flipCamera = async () => {
+    try { await webSvc()?.flipCamera(); } catch { toast.error(tr("Не удалось переключить камеру")); }
+  };
+  const toggleNoise = async () => {
+    const svc = webSvc();
+    if (!svc) return;
+    try { await svc.setNoiseSuppression(!svc.getMedia().noiseSuppression); }
+    catch { toast.error(tr("Не удалось переключить шумоподавление")); }
+  };
   const toggleMute = () => setMuted(!!callRef.current?.toggleMute());
   const toggleSpeaker = () => {
     const next = !speaker;
@@ -481,6 +513,17 @@ const CallHost = () => {
           state={callState}
           peer={callPeer}
           participants={[{ id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, stream: remoteStream, connected: callState === "active" }]}
+          video={webSvc() && media && callState !== "incoming" ? {
+            local: media.localVideo,
+            remote: media.remoteVideo ? remoteStream : null,
+            available: media.peerCanVideo,
+            busy: videoBusy,
+            canFlip: media.canFlip,
+            mirrored: media.front,
+            onToggle: () => void toggleVideo(),
+            onFlip: () => void flipCamera(),
+          } : undefined}
+          noise={webSvc() && media ? { on: media.noiseSuppression, onToggle: () => void toggleNoise() } : undefined}
           onAccept={acceptCall}
           onReject={rejectCall}
           onHangup={hangup}

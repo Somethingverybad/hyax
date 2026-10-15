@@ -1653,5 +1653,16 @@ const en: Record<string, string> = {
   "Звонок прервётся. Всё равно перейти?": "The call will end. Leave anyway?",
   "Перейти": "Leave",
   "Звонок": "Call",
+  "Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз": "No camera access. Allow it in your browser or system settings and tap again",
+  "Камера не найдена": "No camera found",
+  "Не удалось включить камеру": "Couldn't turn on the camera",
+  "Не удалось переключить камеру": "Couldn't switch the camera",
+  "Не удалось переключить шумоподавление": "Couldn't change noise suppression",
+  "Настройки звонка": "Call settings",
+  "Шумоподавление": "Noise suppression",
+  "Убирает фоновый шум микрофона. Выключите, если голос звучит глухо или нужна музыка": "Removes background noise from your mic. Turn it off if your voice sounds muffled or you're playing music",
+  "У собеседника версия без видеозвонков — видео появится, когда он обновит приложение": "The other person's app doesn't support video calls yet — video will work once they update",
+  "Выключить камеру": "Turn off camera",
+  "Включить камеру": "Turn on camera",
 };
 export default en;
