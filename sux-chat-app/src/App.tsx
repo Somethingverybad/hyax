@@ -11,6 +11,7 @@ import Music from "@/pages/Music";
 import SharedPlaylist from "@/pages/SharedPlaylist";
 import { syncThemeFromProfile } from "@/lib/theme";
 import { readCache } from "@/lib/session-cache";
+import CallHost from "./components/call/CallHost";
 import EscapeKey from "./components/EscapeKey";
 import SettingsFrame from "./components/SettingsFrame";
 import ProfileAppearance from "./pages/ProfileAppearance";
@@ -268,6 +269,9 @@ const App = () => {
             <ConfirmHost />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
             <MiniPlayer />
+            {/* Звонки — тоже выше экранов: разговор идёт, куда бы ни перешли;
+                свёрнутый — виджетом, как плеер (components/call/CallHost). */}
+            <CallHost />
             <ThemeFromProfile />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.

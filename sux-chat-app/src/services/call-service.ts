@@ -56,6 +56,8 @@ export class OneToOneCallService {
   private remoteStream: MediaStream | null = null;
   private currentCallId: string | null = null;
   private targetUserId: string | null = null;
+  /** Собеседник текущего звонка (входящего или исходящего). */
+  getPeerId(): string | null { return this.targetUserId; }
   private isCaller = false;
   private state: CallState = "idle";
 

@@ -23,11 +23,13 @@ const MiniPlayer = () => {
   // Высота полосы — наружу: по ней сдвигается закреплённое сообщение.
   useEffect(() => {
     const root = document.documentElement;
-    if (!t) { root.style.setProperty("--player-h", "0px"); return; }
+    // На «Музыке» полоски нет — и места она не занимает (иначе виджет
+    // свёрнутого звонка висел бы ниже пустоты).
+    if (!t || onMusicTab) { root.style.setProperty("--player-h", "0px"); return; }
     const h = box.current?.offsetHeight || 56;
     root.style.setProperty("--player-h", `${h}px`);
     return () => { root.style.setProperty("--player-h", "0px"); };
-  }, [t?.id, !!t]);
+  }, [t?.id, !!t, onMusicTab]);
 
   if (!t || onMusicTab) return null;
 

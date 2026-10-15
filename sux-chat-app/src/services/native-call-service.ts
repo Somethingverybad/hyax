@@ -132,6 +132,8 @@ abstract class NativeBase {
 export class NativeCallService extends NativeBase {
   private state: CallState = "idle";
   private targetUserId: string | null = null;
+  /** Собеседник текущего звонка (входящего или исходящего). */
+  getPeerId(): string | null { return this.targetUserId; }
   private isCaller = false;
 
   onStateChange?: (state: CallState) => void;

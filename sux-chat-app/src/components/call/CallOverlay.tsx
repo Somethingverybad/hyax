@@ -39,7 +39,7 @@ interface CallOverlayProps {
   onToggleMute: () => void;
   speaker: boolean;
   onToggleSpeaker: () => void;
-  /** Свёрнут: вместо экрана — полоса сверху, можно переписываться в чатах. */
+  /** Свёрнут: вместо экрана — виджет под шапкой, можно ходить по приложению. */
   minimized?: boolean;
   onMinimize?: () => void;
   onExpand?: () => void;
@@ -134,7 +134,8 @@ const CallOverlay = ({
     return (
       <>
         {audio}
-        <CallBar title={peer.name} status={statusText} muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />
+        <CallWidget peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
+          muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />
       </>
     );
   }
@@ -216,7 +217,7 @@ const CallOverlay = ({
             <button
               type="button"
               onClick={onReject}
-              className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
+              className="w-16 h-16 rounded-full bg-[#ff3b30] text-white flex items-center justify-center"
               aria-label={t("Отклонить")}
             >
               <PhoneOff className="w-7 h-7" />
@@ -268,7 +269,7 @@ const CallOverlay = ({
             <button
               type="button"
               onClick={onHangup}
-              className="w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
+              className="w-14 h-14 rounded-full bg-[#ff3b30] text-white flex items-center justify-center"
               aria-label={t("Завершить")}
             >
               <PhoneOff className="w-6 h-6" />
@@ -281,42 +282,57 @@ const CallOverlay = ({
 };
 
 /**
- * Свёрнутый звонок: полоса во всю ширину сверху — кто, сколько идёт,
- * микрофон и отбой; тап по ней разворачивает экран звонка. Пока полоса на
- * экране, шапки экранов (.pad-safe-top) отступают на её высоту через
- * --call-bar-h, чтобы ничего не пряталось под ней.
+ * Свёрнутый звонок — виджет, как у мини-плеера: карточка под шапкой (под
+ * плеером, если играет музыка), на любом экране. Кто, сколько идёт,
+ * микрофон и отбой; тап по карточке — снова экран звонка. Высоту виджет
+ * сообщает переменной --call-h: по ней, как и по --player-h, сдвигаются
+ * закреп в переписке и список чатов.
  */
-const CallBar = ({ title, status, muted, onToggleMute, onHangup, onExpand }: {
-  title: string;
+const CallWidget = ({ peer, isGroup, status, muted, onToggleMute, onHangup, onExpand }: {
+  peer: { id: string; name: string; avatarUrl?: string | null };
+  isGroup?: boolean;
   status: string;
   muted: boolean;
   onToggleMute: () => void;
   onHangup: () => void;
   onExpand?: () => void;
 }) => {
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty("--call-bar-h", "44px");
-    return () => { root.style.removeProperty("--call-bar-h"); };
+    root.style.setProperty("--call-h", `${box.current?.offsetHeight || 60}px`);
+    return () => { root.style.setProperty("--call-h", "0px"); };
   }, []);
   return (
-    <div className="fixed inset-x-0 top-0 z-[58] bg-success text-success-foreground shadow-md" style={{ paddingTop: "var(--sat)" }}>
-      <div className="h-11 px-3 flex items-center gap-1">
-        <button type="button" onClick={onExpand} className="flex-1 min-w-0 h-full flex items-center gap-2 text-left" aria-label={t("Вернуться к звонку")}>
-          <span className="call-bar-dot w-2 h-2 rounded-full bg-current shrink-0" aria-hidden />
-          <span className="truncate text-small font-semibold">{title}</span>
-          <span className="shrink-0 text-small tabular-nums opacity-90">{status}</span>
-          <span className="hidden sm:inline shrink-0 text-caption opacity-80 ml-1">{t("Нажмите, чтобы вернуться")}</span>
+    <div
+      ref={box}
+      className="player-bar fixed left-0 right-0 z-30 px-2 pt-1 md:left-auto md:right-3 md:w-[380px]"
+      style={{ top: "calc(var(--player-top, calc(var(--sat) + 56px)) + var(--player-h, 0px))" }}
+    >
+      <div className="rounded-lg border border-success/40 bg-surface-2 shadow-lg flex items-center gap-2 px-2 py-2">
+        <button type="button" onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-2.5 text-left" aria-label={t("Вернуться к звонку")}>
+          <span className="relative shrink-0">
+            {isGroup ? (
+              <span className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center"><Users className="w-5 h-5 text-primary" /></span>
+            ) : (
+              <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-9 h-9" />
+            )}
+            <span className="call-bar-dot absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface-2" aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-small font-semibold truncate">{peer.name}</span>
+            <span className="block text-caption text-success tabular-nums truncate">{status}</span>
+          </span>
         </button>
-        <button type="button" onClick={onToggleMute} className={cn("w-9 h-9 shrink-0 rounded-full flex items-center justify-center active:opacity-80", muted ? "bg-white text-success" : "bg-black/15")}
+        <button type="button" onClick={onToggleMute}
+          className={cn("w-9 h-9 shrink-0 rounded-full flex items-center justify-center active:opacity-80", muted ? "bg-foreground text-background" : "bg-surface-4 text-foreground")}
           aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}>
-          {muted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          {muted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
         </button>
-        {/* Отбой — красный в любой теме: на зелёной полосе цвет темы (в «Мяте»
-            лайм) с ней сливался. */}
-        <button type="button" onClick={onHangup} className="ml-1 w-9 h-9 shrink-0 rounded-full bg-[#ff3b30] text-white flex items-center justify-center active:opacity-80"
+        {/* Отбой — красный в любой теме: цвет темы (в «Мяте» лайм) не читается как «положить трубку». */}
+        <button type="button" onClick={onHangup} className="w-9 h-9 shrink-0 rounded-full bg-[#ff3b30] text-white flex items-center justify-center active:opacity-80"
           aria-label={t("Завершить")}>
-          <PhoneOff className="w-5 h-5" />
+          <PhoneOff className="w-4 h-4" />
         </button>
       </div>
     </div>

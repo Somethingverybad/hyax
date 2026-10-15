@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ESC_BACK } from "@/lib/escape";
-import { leaveCallOk, setCallActive } from "@/lib/callActive";
+import { startUserSocket, onUserMessage, userSocket } from "@/lib/userSocket";
+import { startCall as startCallGlobal } from "@/lib/calls";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { applog } from "@/lib/applog";
@@ -22,17 +23,7 @@ import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
 import { rovOn, rovOff, onRovState } from "@/lib/rov";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
-import { WebSocketService } from "@/services/websocket";
-import { OneToOneCallService, type CallState, type IncomingCall } from "@/services/call-service";
-import { GroupCallService, type GroupCallInvite, type GroupCallState } from "@/services/group-call-service";
-import { NativeCallService, NativeGroupCallService } from "@/services/native-call-service";
-import { hasNativeCalls } from "@/lib/nativeCall";
-import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
-import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
-import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
-import type { PeerStream } from "@/services/group-call-service";
 import { toast } from "sonner";
-import { WS_URL, getFreshAccessToken } from "@/api/client";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
@@ -124,35 +115,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return () => { alive = false; };
   }, [savedMode]);
 
-  // ===== Звонки =====
-  // Один WebSocket и один сервис звонков на всё приложение: входящий должен
-  // прийти, какой бы чат ни был открыт. На iOS входящий показывает CallKit
-  // (VoIP-пуш), наш экран — только после ответа; на Android/в вебе всё наше.
-  const [callState, setCallState] = useState<CallState>("idle");
-  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [callPeer, setCallPeer] = useState<{ id: string; name: string; avatarUrl?: string | null } | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [muted, setMuted] = useState(false);
-  // Громкая связь по умолчанию: телефон обычно лежит на столе, а не у уха.
-  const [speaker, setSpeaker] = useState(true);
-  // Свёрнутый звонок: экран звонка сжат в полосу сверху, можно переписываться.
-  const [callMin, setCallMin] = useState(false);
-  const wsRef = useRef<WebSocketService | null>(null);
-  const callRef = useRef<OneToOneCallService | NativeCallService | null>(null);
-  const lastCallIdRef = useRef<string | null>(null);
-  // Групповой звонок ведёт отдельный сервис: там mesh из нескольких
-  // соединений, а не единственный собеседник.
-  const groupCallRef = useRef<GroupCallService | NativeGroupCallService | null>(null);
-  const [groupState, setGroupState] = useState<GroupCallState>("idle");
-  const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
-  const [groupStreams, setGroupStreams] = useState<PeerStream[]>([]);
-  const [groupPeers, setGroupPeers] = useState<string[]>([]);
-  const groupCallIdRef = useRef<string | null>(null);
-  // Громкость каждого участника у меня (1 — как есть); сбрасывается с концом звонка.
-  const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
-  // Имена и аватары участников звонка, которых нет в моих чатах.
-  const [peopleInfo, setPeopleInfo] = useState<Record<string, { name: string; avatarUrl?: string | null }>>({});
-  const [addToCallOpen, setAddToCallOpen] = useState(false);
+  // Звонки ведёт components/call/CallHost над всеми экранами (lib/calls),
+  // события сокета — общий lib/userSocket: экран чатов на них только подписан.
   // Чаты нужны обработчикам звонка, а те живут вне рендера.
   const chatsRef = useRef<ChatType[]>([]);
   // Активный чат для обработчика сокета: он живёт в эффекте с deps
@@ -182,7 +146,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // сервере живёт ограниченное время и протухает, если связь оборвалась.
   const viewingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
-    const tell = (chat: string | null) => wsRef.current?.send({ type: "viewing", chat });
+    const tell = (chat: string | null) => userSocket()?.send({ type: "viewing", chat });
     tell(selectedChatId);
     if (viewingTimerRef.current) clearInterval(viewingTimerRef.current);
     if (selectedChatId) {
@@ -197,9 +161,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useEffect(() => {
     const onVisible = () => {
       const visible = document.visibilityState === "visible";
-      wsRef.current?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null });
-      // «В сети» у собеседников — только пока приложение на экране.
-      wsRef.current?.send({ type: "active", active: visible });
+      userSocket()?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null });
+      // «В сети» по сворачиванию сообщает сам сокет (lib/userSocket) — на любом экране.
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -210,12 +173,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     const chatId = selectedChatIdRef.current;
     if (!chatId) return;
     if (rovTimerRef.current) { clearInterval(rovTimerRef.current); rovTimerRef.current = null; }
-    wsRef.current?.send({ type: "rov", chat: chatId, on });
+    userSocket()?.send({ type: "rov", chat: chatId, on });
     if (on) {
       // Повторяем «держу», пока палец на площадке: приёмник глушит вибрацию
       // по тишине, если сигналы перестали приходить.
       rovTimerRef.current = setInterval(() => {
-        wsRef.current?.send({ type: "rov", chat: chatId, on: true });
+        userSocket()?.send({ type: "rov", chat: chatId, on: true });
       }, 400);
     }
   };
@@ -336,7 +299,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       // По тапу на пуш открываем чат из data.chat_id.
       await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
         const data = (e?.notification?.data as any) || {};
-        if (data.kind === "vibe") { goAwayRef.current("/profile"); return; }
+        if (data.kind === "vibe") { navigate("/profile"); return; }
         const chatId = data.chat_id;
         if (chatId) {
           setSelectedChatId(String(chatId));
@@ -350,11 +313,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       await FirebaseMessaging.addListener('notificationReceived', (e) => {
         const d = ((e as any)?.notification?.data as Record<string, string>) || {};
         if (d.type === 'call_ended' && d.call_id) {
-          voip.endCall(String(d.call_id));
-          const svc = callRef.current;
-          if (svc && svc.getCurrentCallId() === String(d.call_id)) svc.endCall("ended", false);
-          const group = groupCallRef.current;
-          if (group && group.getCallId() === String(d.call_id) && group.getState() === "incoming") group.reject();
+          // Звонки ведёт CallHost — передаём ему.
+          window.dispatchEvent(new CustomEvent("hyax:call-ended-push", { detail: { callId: String(d.call_id) } }));
         }
       });
 
@@ -430,19 +390,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return () => { handle?.remove(); };
   }, []);
 
-  // Идёт звонок — уход с экрана чатов его оборвёт (lib/callActive спросит).
-  // Звонок кончился — следующий начнётся развёрнутым.
-  useEffect(() => {
-    const on = callState !== "idle" || groupState !== "idle";
-    setCallActive(on);
-    if (!on) setCallMin(false);
-  }, [callState, groupState]);
-  useEffect(() => () => setCallActive(false), []);
-  /** Уйти с экрана чатов: во время звонка — только после подтверждения. */
-  const goAway = (to: string) => { void leaveCallOk().then((ok) => { if (ok) navigate(to); }); };
-  const goAwayRef = useRef(goAway);
-  goAwayRef.current = goAway;
-
   // Esc (components/EscapeKey): открытый чат закрывается — на широком окне
   // остаётся «Выберите чат», на узком — список. Вкладки «Стена» и
   // «Избранное» — отдельные экраны, там Esc — обычный шаг назад.
@@ -459,368 +406,134 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallMode, savedMode, selectedKind]);
 
-  // Сигналинг звонков: пользовательский WebSocket + глобальный сервис звонков.
+  // События пользовательского сокета (lib/userSocket). Сам сокет живёт на всё
+  // приложение: уход с экрана его больше не закрывает — звонок, который идёт
+  // по нему (components/call/CallHost), не обрывается.
   useEffect(() => {
     if (!user?.id) return;
-    let disposed = false;
-
-    const ws = new WebSocketService(`${WS_URL}/user/${user.id}/`, {
-      maxReconnectAttempts: 20,
-      // Сервер считает новое соединение «на экране»; если переподключились
-      // в фоне — сразу поправляем, чтобы у собеседников не горело «в сети».
-      onOpen: () => ws.send({ type: "active", active: document.visibilityState === "visible" }),
-      onMessage: (msg: any) => {
-        const svc = callRef.current;
-        if (msg?.type === "notification" && msg.data?.type === "incoming_call") {
-          if (msg.data.group === "1" || msg.data.group === true) {
-            groupCallRef.current?.notifyIncoming({
-              callId: msg.data.call_id,
-              chatId: msg.data.chat_id,
-              fromUserId: msg.data.from_user_id,
-              fromUsername: msg.data.from_username,
-              chatName: msg.data.chat_name || tr("Группа"),
-            });
-            return;
-          }
-          if (hasCallKit()) {
-            // iOS: экран вызова рисует система. Пуш мог не дойти — просим
-            // показать вызов и по сигналу из сокета, дубли отсекаются по id.
-            voip.reportIncomingCall({
-              callId: msg.data.call_id,
-              chatId: msg.data.chat_id,
-              fromUserId: msg.data.from_user_id,
-              fromUsername: msg.data.from_username,
-              fromUserAvatar: msg.data.from_user_avatar,
-              callType: msg.data.call_type || "audio",
-            });
-            return;
-          }
-          svc?.notifyIncomingCall({
-            callId: msg.data.call_id,
-            chatId: msg.data.chat_id,
-            fromUserId: msg.data.from_user_id,
-            fromUsername: msg.data.from_username,
-            fromUserAvatar: msg.data.from_user_avatar,
-            callType: msg.data.call_type,
-          });
-        } else if (msg?.type === "call_signal") {
-          const group = groupCallRef.current;
-          // В личный звонок добавили людей: сервер прислал состав (call_peers).
-          // Отдаём живое соединение групповому сервису — разговор не прерывается.
-          if (msg.signal_type === "call_peers" && group && group.getState() === "idle" && svc
-              && svc.getCurrentCallId() && svc.getCurrentCallId() === msg.data?.call_id) {
-            const d = svc.detach();
-            if (d) {
-              group.adopt(d as any);
-              lastCallIdRef.current = null;
-              setCallPeer(null);
-              setRemoteStream(null);
-              setIncomingCall(null);
-            }
-          }
-          const forGroup =
-            msg.signal_type === "call_peers" ||
-            (group?.getCallId() && group.getCallId() === msg.data?.call_id);
-          if (forGroup) group?.handleSignal(msg.signal_type, msg.data);
-          else svc?.handleSignal(msg.signal_type, msg.data);
-        } else if (msg?.data?.type === "reaction") {
-          // Реакции приходят событием: обычная синхронизация их не приносит —
-          // само сообщение при этом не меняется.
-          setReactionEvent({ ...msg.data, at: Date.now() });
-        } else if (msg?.data?.type === "session_revoked") {
-          // Сеанс завершили из «Устройств» на другом устройстве — выходим и чистим кэш.
-          void import("@/lib/secret").then(({ deviceId }) => {
-            const me = deviceId();
-            const d = msg.data as { device_id?: string; all_except?: string };
-            if (d.device_id === me || ("all_except" in d && d.all_except !== me)) {
-              void import("@/lib/forceLogout").then((m) => m.forceLogout("revoked"));
-            }
-          });
-        } else if (msg?.data?.type === "chat_request") {
-          // Запрос на переписку пришёл или принят — список и открытый чат перечитываются.
-          refreshChats();
-          window.dispatchEvent(new CustomEvent("hyax:chatreq", { detail: msg.data }));
-        } else if (msg?.data?.type === "chat_removed") {
-          // Чат удалён (собеседником или отклонённый запрос) — убрать из списка и закрыть.
-          const removedId = String(msg.data.chat_id || "");
-          setChats((prev) => prev.filter((c) => String(c.id) !== removedId));
-          if (selectedChatIdRef.current === removedId) {
-            setSelectedChatId(null);
-            if (String(msg.data.by || "") !== String(user?.id || "")) {
-              toast(msg.data.reason === "declined" ? tr("Собеседник отклонил запрос на переписку")
-                : msg.data.reason === "removed" ? tr("Владелец удалил вас из группы")
-                : tr("Собеседник удалил этот чат"));
-            }
-          }
-          refreshChats();
-        } else if (msg?.data?.type === "group_updated") {
-          // Состав или владелец группы изменились — список и открытые настройки перечитываются.
-          refreshChats();
-          window.dispatchEvent(new CustomEvent("hyax:group", { detail: msg.data }));
-        } else if (msg?.data?.type === "secret_chat") {
-          // Секретный чат создан, принят или отклонён — список и открытая переписка перечитываются.
-          refreshChats();
-          window.dispatchEvent(new CustomEvent("hyax:secret", { detail: msg.data }));
-        } else if (msg?.data?.type === "wallpaper") {
-          // Собеседник сменил обои чата — открытая переписка перечитает чат.
-          window.dispatchEvent(new CustomEvent("hyax:wallpaper", { detail: msg.data }));
-        } else if (msg?.data?.type === "inline_results") {
-          // Ответ inline-бота на «@бот запрос» — ChatWindow слушает и рисует список.
-          window.dispatchEvent(new CustomEvent("hyax:inline", { detail: msg.data }));
-        } else if (msg?.data?.type === "read") {
-          // Собеседник прочитал: вторая галочка у последнего сообщения в списке
-          // и у своих сообщений в открытой переписке (ChatWindow слушает событие).
-          const chatId = String(msg.data.chat_id);
-          setChats((prev) => prev.map((c: any) =>
-            c.id === chatId && c.last_message && !c.last_message.read && String(msg.data.reader_id) !== c.last_message.sender_id
-              ? { ...c, last_message: { ...c.last_message, read: true } }
-              : c));
-          window.dispatchEvent(new CustomEvent("hyax:read", { detail: msg.data }));
-        } else if (msg?.data?.type === "presence") {
-          // Собеседник зашёл или вышел: правим его в участниках чатов — оттуда
-          // статус читают и список, и шапка переписки.
-          const pid = String(msg.data.profile_id);
-          const online = !!msg.data.online;
-          setChats((prev) => prev.map((c) =>
-            c.participants?.some((p) => p.id === pid && p.is_online !== online)
-              ? { ...c, participants: c.participants.map((p) => (p.id === pid ? { ...p, is_online: online } : p)) }
-              : c));
-        } else if (msg?.data?.type === "wall_ban") {
-          // Админ запретил (или снова разрешил) писать на Стену — экран
-          // Стены переключается сразу, без перезахода.
-          const ban = msg.data.ban || null;
-          setWall((w) => { const n = w ? { ...w, ban } : w; if (n) writeCache("wall", n); return n; });
-          window.dispatchEvent(new CustomEvent("hyax:wall-ban", { detail: ban }));
-          toast(ban ? tr("Вам запретили писать на Стену") : tr("Вам снова можно писать на Стену"), { id: "wall-ban" });
-        } else if (msg?.data?.type === "vibe") {
-          // Подняли вайб: тост с именем (или без — анонимно) и свежее число в кеше профиля.
-          const who = msg.data.from?.username;
-          toast.success(who ? tr("{name} поднял(а) ваш вайб", { name: who }) : tr("Кто-то поднял ваш вайб"), { description: tr("Вайбометр: {n}", { n: msg.data.vibe }), id: "vibe" });
-          playSfx("sent");
-          setUser((u) => { if (!u) return u; const n = { ...u, vibe: msg.data.vibe }; writeCache("user", n); return n; });
-        } else if (msg?.data?.type === "rov") {
-          // Сигнал живёт, только пока приложение открыто: в истории его нет.
-          if (msg.data.on) rovOn(msg.data.from_username);
-          else rovOff();
-        } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
-          refreshChats();
-          // Системный баннер для веб/десктопа. На мобильных — нативный пуш.
-          const m = msg?.data?.message ?? msg?.message;
-          const chatId = msg?.data?.chat_id ?? m?.chat;
-          const senderId = m?.sender?.id;
-          // «Глюк-стикер» от собеседника: открытый чат разыграет эффект.
-          if (m?.effect === "burst" && m?.sticker?.file_url && senderId && senderId !== user?.id) {
-            window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url, id: m.id } }));
-          }
-          const active = document.visibilityState === "visible" &&
-            chatId && String(chatId) === selectedChatIdRef.current;
-          // Открытая переписка обновляется сразу, даже если вкладка в фоне:
-          // вернувшись, пользователь увидит сообщение уже на месте.
-          if (chatId && String(chatId) === selectedChatIdRef.current) {
-            setMessagePing((n) => n + 1);
-          }
-          if (m && senderId && senderId !== user.id && !active) {
-            const preview =
-              (m.content || "").trim() ||
-              (m.sticker ? tr("Стикер") :
-               m.video_url ? tr("Видео-сообщение") :
-               m.voice_url ? tr("Голосовое сообщение") :
-               m.file_url ? tr("Файл") : tr("Новое сообщение"));
-            // Из группы — заголовок с названием группы, в тексте автор: сразу
-            // видно, откуда сообщение. Личное — просто имя собеседника.
-            const chatRow = chatsRef.current.find((c) => String(c.id) === String(chatId)) as (ChatType & { is_group?: boolean; kind?: string; name?: string; notify_sound?: { url?: string } | null }) | undefined;
-            const fromGroup = !!chatRow?.is_group && chatRow?.kind !== "channel";
-            showDesktopNotification({
-              title: fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
-              body: (fromGroup && m.sender?.username ? `${m.sender.username}: ${preview}` : preview).slice(0, 150),
-              tag: chatId ? String(chatId) : undefined,
-              avatar: m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
-              onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
-            });
-            // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
-            // этом же сообщении звенит пуш, дублировать его в приложении не надо.
-            // Порядок: аудио-стикер сообщения → «мой звук» отправителя → receive.
-            if (!Capacitor.isNativePlatform()) {
-              try {
-                const custom = m.sound?.url || (chatsRef.current.find((c) => String(c.id) === String(chatId)) as { notify_sound?: { url?: string } | null } | undefined)?.notify_sound?.url || m.sender?.notify_sound?.url;
-                void playSfx(custom ? mediaUrl(custom) : "/sounds/receive.mp3", { volume: 0.6 });
-              } catch { /* без звука не критично */ }
-            }
+    startUserSocket(user.id);
+    const off = onUserMessage((msg: any) => {
+      if (msg?.data?.type === "reaction") {
+        // Реакции приходят событием: обычная синхронизация их не приносит —
+        // само сообщение при этом не меняется.
+        setReactionEvent({ ...msg.data, at: Date.now() });
+      } else if (msg?.data?.type === "chat_request") {
+        // Запрос на переписку пришёл или принят — список и открытый чат перечитываются.
+        refreshChats();
+        window.dispatchEvent(new CustomEvent("hyax:chatreq", { detail: msg.data }));
+      } else if (msg?.data?.type === "chat_removed") {
+        // Чат удалён (собеседником или отклонённый запрос) — убрать из списка и закрыть.
+        const removedId = String(msg.data.chat_id || "");
+        setChats((prev) => prev.filter((c) => String(c.id) !== removedId));
+        if (selectedChatIdRef.current === removedId) {
+          setSelectedChatId(null);
+          if (String(msg.data.by || "") !== String(user?.id || "")) {
+            toast(msg.data.reason === "declined" ? tr("Собеседник отклонил запрос на переписку")
+              : msg.data.reason === "removed" ? tr("Владелец удалил вас из группы")
+              : tr("Собеседник удалил этот чат"));
           }
         }
-      },
-    });
-    void ws.connect(getFreshAccessToken);
-    wsRef.current = ws;
-
-    // iOS рвёт сокет в фоне — при возврате переподключаемся сразу.
-    const appStatePromise = App.addListener("appStateChange", ({ isActive }) => {
-      if (isActive && !ws.isConnected()) void ws.connect();
-    });
-
-    const waitForWs = async () => {
-      for (let i = 0; i < 50 && !ws.isConnected(); i++) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
-    };
-
-    const listeners: Array<Promise<{ remove: () => Promise<void> } | null>> = [];
-
-    (async () => {
-      const iceServers = await api.getIceServers();
-      if (disposed) return;
-      // В приложении разговор ведёт нативный движок: в WebView звук не
-      // уживался с CallKit и умирал при блокировке экрана. В браузере
-      // остаётся прежний путь.
-      const CallImpl = hasNativeCalls() ? NativeCallService : OneToOneCallService;
-      const svc = new CallImpl({
-        wsService: ws,
-        chatId: "",
-        userId: user.id,
-        iceServers,
-        onStateChange: (state) => {
-          setCallState(state);
-          const id = svc.getCurrentCallId();
-          if (id) lastCallIdRef.current = id;
-          if (state === "active" && id) {
-            voip.reportConnected(id);
-            voip.setSpeaker(true);
-            setSpeaker(true);
-          }
-        },
-        onIncomingCall: (c) => {
-          setIncomingCall(c);
-          setCallPeer({ id: c.fromUserId, name: c.fromUsername, avatarUrl: c.fromUserAvatar });
-        },
-        onRemoteStream: (stream) => setRemoteStream(stream),
-        onCallEnded: () => {
-          if (lastCallIdRef.current) voip.endCall(lastCallIdRef.current);
-          lastCallIdRef.current = null;
-          setIncomingCall(null);
-          setRemoteStream(null);
-          setMuted(false);
-          setCallPeer(null);
-        },
-        onError: (message) => toast.error(message),
-      });
-      callRef.current = svc;
-
-      const GroupImpl = hasNativeCalls() ? NativeGroupCallService : GroupCallService;
-      groupCallRef.current = new GroupImpl({
-        wsService: ws,
-        userId: user.id,
-        iceServers,
-        onStateChange: (st) => {
-          setGroupState(st);
-          const gid = groupCallRef.current?.getCallId();
-          if (st !== "idle" && gid) groupCallIdRef.current = gid;
-          if (st === "active") voip.setSpeaker(true);
-          if (st === "idle") {
-            // Звонок, который начинался личным, CallKit знает по тому же id.
-            if (groupCallIdRef.current) voip.endCall(groupCallIdRef.current);
-            groupCallIdRef.current = null;
-            setGroupInvite(null);
-            setGroupStreams([]);
-            setGroupPeers([]);
-            setPeerVolumes({});
-            setMuted(false);
-            setAddToCallOpen(false);
-          }
-        },
-        onIncoming: (invite) => setGroupInvite(invite),
-        onStreams: setGroupStreams,
-        onPeers: setGroupPeers,
-        onError: (m) => toast.error(m),
-      });
-
-      // Ответ с системного экрана CallKit (в том числе с заблокированного
-      // экрана, когда приложение только что запустилось этим звонком).
-      const handleAnswered = async (c: VoipCallPayload) => {
-        await waitForWs();
-        const chat = chatsRef.current.find((x) => x.id === c.chatId);
-        if (c.group || chat?.is_group) {
-          const group = groupCallRef.current;
-          group?.notifyIncoming({
-            callId: c.callId,
-            chatId: c.chatId,
-            fromUserId: c.fromUserId,
-            fromUsername: c.fromUsername,
-            chatName: c.chatName || chat?.name || tr("Группа"),
-          });
-          await group?.accept();
-          if (c.chatId) setSelectedChatId(c.chatId);
-          return;
+        refreshChats();
+      } else if (msg?.data?.type === "group_updated") {
+        // Состав или владелец группы изменились — список и открытые настройки перечитываются.
+        refreshChats();
+        window.dispatchEvent(new CustomEvent("hyax:group", { detail: msg.data }));
+      } else if (msg?.data?.type === "secret_chat") {
+        // Секретный чат создан, принят или отклонён — список и открытая переписка перечитываются.
+        refreshChats();
+        window.dispatchEvent(new CustomEvent("hyax:secret", { detail: msg.data }));
+      } else if (msg?.data?.type === "wallpaper") {
+        // Собеседник сменил обои чата — открытая переписка перечитает чат.
+        window.dispatchEvent(new CustomEvent("hyax:wallpaper", { detail: msg.data }));
+      } else if (msg?.data?.type === "inline_results") {
+        // Ответ inline-бота на «@бот запрос» — ChatWindow слушает и рисует список.
+        window.dispatchEvent(new CustomEvent("hyax:inline", { detail: msg.data }));
+      } else if (msg?.data?.type === "read") {
+        // Собеседник прочитал: вторая галочка у последнего сообщения в списке
+        // и у своих сообщений в открытой переписке (ChatWindow слушает событие).
+        const chatId = String(msg.data.chat_id);
+        setChats((prev) => prev.map((c: any) =>
+          c.id === chatId && c.last_message && !c.last_message.read && String(msg.data.reader_id) !== c.last_message.sender_id
+            ? { ...c, last_message: { ...c.last_message, read: true } }
+            : c));
+        window.dispatchEvent(new CustomEvent("hyax:read", { detail: msg.data }));
+      } else if (msg?.data?.type === "presence") {
+        // Собеседник зашёл или вышел: правим его в участниках чатов — оттуда
+        // статус читают и список, и шапка переписки.
+        const pid = String(msg.data.profile_id);
+        const online = !!msg.data.online;
+        setChats((prev) => prev.map((c) =>
+          c.participants?.some((p) => p.id === pid && p.is_online !== online)
+            ? { ...c, participants: c.participants.map((p) => (p.id === pid ? { ...p, is_online: online } : p)) }
+            : c));
+      } else if (msg?.data?.type === "wall_ban") {
+        // Админ запретил (или снова разрешил) писать на Стену — экран
+        // Стены переключается сразу, без перезахода.
+        const ban = msg.data.ban || null;
+        setWall((w) => { const n = w ? { ...w, ban } : w; if (n) writeCache("wall", n); return n; });
+        window.dispatchEvent(new CustomEvent("hyax:wall-ban", { detail: ban }));
+        toast(ban ? tr("Вам запретили писать на Стену") : tr("Вам снова можно писать на Стену"), { id: "wall-ban" });
+      } else if (msg?.data?.type === "vibe") {
+        // Подняли вайб: тост с именем (или без — анонимно) и свежее число в кеше профиля.
+        const who = msg.data.from?.username;
+        toast.success(who ? tr("{name} поднял(а) ваш вайб", { name: who }) : tr("Кто-то поднял ваш вайб"), { description: tr("Вайбометр: {n}", { n: msg.data.vibe }), id: "vibe" });
+        playSfx("sent");
+        setUser((u) => { if (!u) return u; const n = { ...u, vibe: msg.data.vibe }; writeCache("user", n); return n; });
+      } else if (msg?.data?.type === "rov") {
+        // Сигнал живёт, только пока приложение открыто: в истории его нет.
+        if (msg.data.on) rovOn(msg.data.from_username);
+        else rovOff();
+      } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
+        refreshChats();
+        // Системный баннер для веб/десктопа. На мобильных — нативный пуш.
+        const m = msg?.data?.message ?? msg?.message;
+        const chatId = msg?.data?.chat_id ?? m?.chat;
+        const senderId = m?.sender?.id;
+        // «Глюк-стикер» от собеседника: открытый чат разыграет эффект.
+        if (m?.effect === "burst" && m?.sticker?.file_url && senderId && senderId !== user?.id) {
+          window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url, id: m.id } }));
         }
-        svc.notifyIncomingCall({
-          callId: c.callId,
-          chatId: c.chatId,
-          fromUserId: c.fromUserId,
-          fromUsername: c.fromUsername,
-          fromUserAvatar: c.fromUserAvatar,
-          callType: c.callType,
-        });
-        await svc.acceptIncomingCall(c.callId, c.fromUserId);
-        setIncomingCall(null);
-        if (c.chatId) setSelectedChatId(c.chatId);
-        if (c.fromUsername) setSelectedChatTitle(c.fromUsername);
-      };
-
-      const toIncoming = (c: VoipCallPayload) => ({
-        callId: c.callId,
-        chatId: c.chatId,
-        fromUserId: c.fromUserId,
-        fromUsername: c.fromUsername,
-        fromUserAvatar: c.fromUserAvatar,
-        callType: c.callType,
-      });
-
-      listeners.push(
-        voip.on("voipToken", ({ token: t }: any) => {
-          api.registerPushToken(t, "ios_voip").catch(() => {});
-        }),
-        voip.on("callAnswered", (c: any) => handleAnswered(c)),
-        // Android: звонок пришёл пушем (приложение на экране или открыто
-        // из уведомления поверх блокировки) — показываем свой экран входящего.
-        voip.on("callIncoming", (c: any) => {
-          if (svc.getState() === "idle") svc.notifyIncomingCall(toIncoming(c));
-        }),
-        voip.on("callEnded", ({ callId }: any) => {
-          const group = groupCallRef.current;
-          if (group && group.getCallId() === callId) {
-            if (group.getState() === "incoming") group.reject(); else group.leave();
-            return;
+        const active = document.visibilityState === "visible" &&
+          chatId && String(chatId) === selectedChatIdRef.current;
+        // Открытая переписка обновляется сразу, даже если вкладка в фоне:
+        // вернувшись, пользователь увидит сообщение уже на месте.
+        if (chatId && String(chatId) === selectedChatIdRef.current) {
+          setMessagePing((n) => n + 1);
+        }
+        if (m && senderId && senderId !== user.id && !active) {
+          const preview =
+            (m.content || "").trim() ||
+            (m.sticker ? tr("Стикер") :
+             m.video_url ? tr("Видео-сообщение") :
+             m.voice_url ? tr("Голосовое сообщение") :
+             m.file_url ? tr("Файл") : tr("Новое сообщение"));
+          // Из группы — заголовок с названием группы, в тексте автор: сразу
+          // видно, откуда сообщение. Личное — просто имя собеседника.
+          const chatRow = chatsRef.current.find((c) => String(c.id) === String(chatId)) as (ChatType & { is_group?: boolean; kind?: string; name?: string; notify_sound?: { url?: string } | null }) | undefined;
+          const fromGroup = !!chatRow?.is_group && chatRow?.kind !== "channel";
+          showDesktopNotification({
+            title: fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
+            body: (fromGroup && m.sender?.username ? `${m.sender.username}: ${preview}` : preview).slice(0, 150),
+            tag: chatId ? String(chatId) : undefined,
+            avatar: m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
+            onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
+          });
+          // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
+          // этом же сообщении звенит пуш, дублировать его в приложении не надо.
+          // Порядок: аудио-стикер сообщения → «мой звук» отправителя → receive.
+          if (!Capacitor.isNativePlatform()) {
+            try {
+              const custom = m.sound?.url || (chatsRef.current.find((c) => String(c.id) === String(chatId)) as { notify_sound?: { url?: string } | null } | undefined)?.notify_sound?.url || m.sender?.notify_sound?.url;
+              void playSfx(custom ? mediaUrl(custom) : "/sounds/receive.mp3", { volume: 0.6 });
+            } catch { /* без звука не критично */ }
           }
-          if (svc.getCurrentCallId() !== callId) return;
-          const peerId = callPeer?.id;
-          if (svc.getState() === "incoming" && peerId) svc.rejectIncomingCall(callId, peerId);
-          else svc.endCall("ended", true);
-        }),
-        voip.on("callMuted", ({ muted: m }: any) => {
-          const group = groupCallRef.current;
-          if (group && group.getState() !== "idle") {
-            if (group.isMuted() !== m) group.toggleMute();
-          } else if (svc.isMuted() !== m) svc.toggleMute();
-          setMuted(m);
-        })
-      );
-      await voip.register();
-      const pending = await voip.getPendingAnswer();
-      if (pending && !disposed) {
-        if (pending.answered) handleAnswered(pending.call);
-        else svc.notifyIncomingCall(toIncoming(pending.call));
+        }
       }
-    })();
-
+    });
     return () => {
-      disposed = true;
-      listeners.forEach((l) => l?.then((h) => h?.remove()));
-      appStatePromise.then((h) => h.remove());
-      callRef.current?.dispose();
-      callRef.current = null;
-      groupCallRef.current?.dispose();
-      groupCallRef.current = null;
-      ws.disconnect();
-      wsRef.current = null;
+      off();
+      // Экран чатов закрыт — никакой чат не «открыт», пуши снова нужны.
+      userSocket()?.send({ type: "viewing", chat: null });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -839,7 +552,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const listChats = chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox");
   // Стена — своя вкладка (/wall) и строка над списком на десктопе; в самом списке её нет.
   const openWall = () => {
-    if (isMobile) { goAway("/wall"); return; }
+    if (isMobile) { navigate("/wall"); return; }
     if (!wall) { toast.error(tr("Стена ещё не загрузилась")); return; }
     setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle(tr("Стена"));
   };
@@ -872,168 +585,17 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       : peer?.username || selectedChatTitle
     : selectedChatTitle;
 
+  // Позвонить из открытого чата: звонок ведёт CallHost (lib/calls), он и
+  // переживает уход с экрана чатов.
   const startCall = async () => {
     if (!selectedChatId) return;
-    if (selectedChat?.is_group) {
-      await groupCallRef.current?.start(selectedChatId);
-      return;
-    }
-    const svc = callRef.current;
-    if (!svc || !peer) return;
-    if (svc.getState() !== "idle") return;
-    svc.updateChatId(selectedChatId);
-    setCallPeer({ id: peer.id, name: peer.username, avatarUrl: peer.avatar_url });
-    await svc.startOutgoingCall(peer.id);
-    const id = svc.getCurrentCallId();
-    if (id) voip.reportOutgoingCall(id, peer.username);
-    else setCallPeer(null);
+    await startCallGlobal({
+      chatId: selectedChatId,
+      isGroup: !!selectedChat?.is_group,
+      chatName: selectedChat?.name,
+      peer: peer ? { id: peer.id, name: peer.username, avatarUrl: peer.avatar_url } : undefined,
+    });
   };
-
-  const acceptCall = async () => {
-    const svc = callRef.current;
-    if (!svc || !incomingCall) return;
-    await svc.acceptIncomingCall(incomingCall.callId, incomingCall.fromUserId);
-    setSelectedChatId(incomingCall.chatId);
-    setSelectedChatTitle(incomingCall.fromUsername);
-    setIncomingCall(null);
-  };
-
-  const rejectCall = () => {
-    const svc = callRef.current;
-    if (!svc || !incomingCall) return;
-    svc.rejectIncomingCall(incomingCall.callId, incomingCall.fromUserId);
-    setIncomingCall(null);
-  };
-
-  const hangup = () => callRef.current?.endCall("ended", true);
-
-  const toggleMute = () => {
-    const m = callRef.current?.toggleMute();
-    setMuted(!!m);
-  };
-
-  const toggleSpeaker = () => {
-    const next = !speaker;
-    setSpeaker(next);
-    voip.setSpeaker(next);
-  };
-
-  /** Кто это: из участников чатов, иначе из кеша, иначе подтянем с сервера. */
-  const personInfo = (id: string): { name: string; avatarUrl?: string | null } => {
-    for (const c of chatsRef.current) {
-      const p = c.participants?.find((x) => x.id === id);
-      if (p) return { name: p.username, avatarUrl: p.avatar_url };
-    }
-    return peopleInfo[id] || { name: "…" };
-  };
-  useEffect(() => {
-    const missing = groupPeers.filter((id) => personInfo(id).name === "…" && !peopleInfo[id]);
-    if (!missing.length) return;
-    let alive = true;
-    Promise.all(missing.map((id) => api.getProfileById(id).then((p) => [id, { name: p.username, avatarUrl: p.avatar_url }] as const).catch(() => null)))
-      .then((rows) => { if (alive) setPeopleInfo((prev) => { const n = { ...prev }; rows.forEach((r) => { if (r) n[r[0]] = r[1]; }); return n; }); });
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupPeers]);
-
-  /** Громкость участника у меня: в вебе — элементом, в приложении — движком. */
-  const setPeerVolume = (id: string, v: number) => {
-    setPeerVolumes((prev) => ({ ...prev, [id]: v }));
-    const group = groupCallRef.current;
-    if (group && "setPeerVolume" in group && group.getState() !== "idle") (group as NativeGroupCallService).setPeerVolume(id, v);
-    else if (hasNativeCalls() && callPeer && callState === "active") (callRef.current as NativeCallService | null)?.setPeerVolume?.(id, v);
-  };
-
-  /** Позвать ещё людей: сервер разошлёт им вызов и вернёт состав, после
-   *  чего личный звонок станет групповым сам (см. обработку call_peers). */
-  const addToCall = (ids: string[]) => {
-    setAddToCallOpen(false);
-    const group = groupCallRef.current;
-    const svc = callRef.current;
-    if (group && group.getState() !== "idle") { group.addParticipants(ids); return; }
-    const callId = svc?.getCurrentCallId();
-    if (callId && wsRef.current) {
-      wsRef.current.send({ type: "call_add", data: { chat_id: selectedChatId, call_id: callId, user_ids: ids } });
-    }
-  };
-
-  // Кого можно позвать: участники открытого чата и люди из личных переписок,
-  // кроме себя и тех, кто уже в звонке.
-  const inCall = new Set<string>([user?.id || "", ...groupPeers, callPeer?.id || ""]);
-  const callCandidates: CallCandidate[] = (() => {
-    const map = new Map<string, CallCandidate>();
-    const add = (p?: { id: string; username: string; avatar_url?: string | null; is_bot?: boolean } | null) => {
-      if (!p || inCall.has(p.id) || (p as any).is_bot) return;
-      if (!map.has(p.id)) map.set(p.id, { id: p.id, name: p.username, avatarUrl: p.avatar_url });
-    };
-    selectedChat?.participants?.forEach((p) => add(p as any));
-    chats.filter((c) => !(c as any).is_group && !["saved", "ideabox", "channel", "secret", "system"].includes((c as any).kind || "direct"))
-      .forEach((c) => c.participants?.forEach((p) => add(p as any)));
-    return [...map.values()];
-  })();
-
-  const groupParticipants: CallParticipant[] = groupPeers.map((id) => {
-    const info = personInfo(id);
-    const st = groupStreams.find((x) => x.peerId === id);
-    return { id, name: info.name, avatarUrl: info.avatarUrl, stream: st?.stream || null, connected: !!st || hasNativeCalls() };
-  });
-
-  const groupCallUi = groupState !== "idle" ? (
-    <CallOverlay
-      state={groupState === "outgoing" ? "outgoing" : groupState === "incoming" ? "incoming" : "active"}
-      peer={{
-        id: groupInvite?.chatId || selectedChatId || "group",
-        name: groupInvite?.chatName || (groupPeers.length <= 1 && groupPeers[0] ? personInfo(groupPeers[0]).name : selectedChat?.name || tr("Групповой звонок")),
-      }}
-      isGroup
-      participants={groupParticipants}
-      volumes={peerVolumes}
-      onVolume={setPeerVolume}
-      onAdd={() => setAddToCallOpen(true)}
-      muted={muted}
-      onAccept={async () => {
-        await groupCallRef.current?.accept();
-        if (groupInvite?.chatId) setSelectedChatId(groupInvite.chatId);
-      }}
-      onReject={() => groupCallRef.current?.reject()}
-      onHangup={() => groupCallRef.current?.leave()}
-      onToggleMute={() => {
-        const m = groupCallRef.current?.toggleMute();
-        setMuted(!!m);
-      }}
-      speaker={speaker}
-      onToggleSpeaker={toggleSpeaker}
-      minimized={callMin}
-      onMinimize={() => setCallMin(true)}
-      onExpand={() => setCallMin(false)}
-    />
-  ) : null;
-
-  const callUi = (
-    <>
-      {groupCallUi ?? (callPeer ? (
-    <CallOverlay
-      state={callState}
-      peer={callPeer}
-      muted={muted}
-      participants={[{ id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, stream: remoteStream, connected: callState === "active" }]}
-      volumes={peerVolumes}
-      onVolume={setPeerVolume}
-      onAdd={() => setAddToCallOpen(true)}
-      onAccept={acceptCall}
-      onReject={rejectCall}
-      onHangup={hangup}
-      onToggleMute={toggleMute}
-      speaker={speaker}
-      onToggleSpeaker={toggleSpeaker}
-      minimized={callMin}
-      onMinimize={() => setCallMin(true)}
-      onExpand={() => setCallMin(false)}
-    />
-  ) : null)}
-      {addToCallOpen && <AddToCall candidates={callCandidates} onClose={() => setAddToCallOpen(false)} onConfirm={addToCall} />}
-    </>
-  );
 
   // 🔔 Функция обновления списка чатов
   // getChats счётчик непрочитанного не отдаёт — берём его из отдельного
@@ -1159,7 +721,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return (
       <div className="h-screen flex flex-col bg-background">
         {termsGate}
-        {callUi}
         {wallMode ? (
           <>
             <div className="flex-1 min-h-0 flex">
@@ -1264,7 +825,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onLogout={handleLogout}
             isCollapsed={false}
             onToggleCollapse={toggleSidebar}
-            onOpenProfile={() => goAway("/profile")}
+            onOpenProfile={() => navigate("/profile")}
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
@@ -1284,7 +845,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       <UpdateBanner />
       {termsGate}
       <div className="flex-1 flex min-h-0">
-      {callUi}
       <ChatSidebar
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
@@ -1304,7 +864,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         onLogout={handleLogout}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={toggleSidebar}
-        onOpenProfile={() => goAway("/profile")}
+        onOpenProfile={() => navigate("/profile")}
         onChatDeleted={handleChatDeleted}
         onChatCreated={handleChatCreated}
       />

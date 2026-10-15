@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ESC_BACK, runEscapeStack } from "@/lib/escape";
-import { isCallActive } from "@/lib/callActive";
 
 /** Экраны, дальше которых Esc не уводит: список чатов («Выберите чат» на
  *  широком окне) и всё, что до входа. */
@@ -30,8 +29,7 @@ export default function EscapeKey() {
         if (runEscapeStack()) return;
         const back = new CustomEvent(ESC_BACK, { cancelable: true });
         window.dispatchEvent(back);
-        // Во время звонка с экрана чатов не уводим: это оборвало бы разговор.
-        if (back.defaultPrevented || FLOOR.has(pathRef.current) || isCallActive()) return;
+        if (back.defaultPrevented || FLOOR.has(pathRef.current)) return;
         // Шаг назад — если до этого экрана был другой экран приложения;
         // открыли сразу по ссылке — к списку чатов (без входа — никуда).
         const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;

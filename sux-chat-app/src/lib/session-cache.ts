@@ -37,4 +37,6 @@ export function writeCache(key: keyof typeof KEYS, value: unknown) {
 
 export function clearSessionCache() {
   Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
+  // Выход из аккаунта: общий сокет (lib/userSocket) и звонок закрываются.
+  try { window.dispatchEvent(new Event("hyax:session-cleared")); } catch { /* не браузер */ }
 }

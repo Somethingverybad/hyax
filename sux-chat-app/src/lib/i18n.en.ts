@@ -1652,5 +1652,6 @@ const en: Record<string, string> = {
   "Нажмите, чтобы вернуться": "Tap to return",
   "Звонок прервётся. Всё равно перейти?": "The call will end. Leave anyway?",
   "Перейти": "Leave",
+  "Звонок": "Call",
 };
 export default en;
