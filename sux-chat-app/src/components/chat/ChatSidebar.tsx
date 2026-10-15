@@ -4,7 +4,7 @@ import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper } from "lucide-react";
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
@@ -1380,7 +1380,7 @@ const ChatSidebar = ({
               onClick={() => void hideSection(sectionMenu.kind)}
               className="w-full px-4 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
             >
-              <EyeOff className="w-4 h-4" />{sectionMenu.kind === "wall" ? t("Скрыть Стену") : t("Скрыть «Долгий ящик»")}</button>
+              {sectionMenu.kind === "wall" ? t("Скрыть Стену") : t("Скрыть «Долгий ящик»")}</button>
           </div>
         </div>
       )}

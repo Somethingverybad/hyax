@@ -1502,7 +1502,7 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
           )}
           <button type="button" onClick={onHide}
             className="w-full h-11 rounded-md border border-border text-sm font-medium flex items-center justify-center gap-2 active:bg-surface-2">
-            <EyeOff className="w-4 h-4" /> {tr("Скрыть Стену")}
+            {tr("Скрыть Стену")}
           </button>
           <p className="text-xs text-muted-foreground -mt-2">{tr("Вкладка и строка Стены пропадут. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы».")}</p>
         </div>
