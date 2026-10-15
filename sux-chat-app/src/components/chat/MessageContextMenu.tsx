@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MAIN_REACTIONS } from "@/lib/reactions";
+import NotoEmoji from "@/components/NotoEmoji";
 import { t } from "@/lib/i18n";
 
 export type MenuItem = { label: string; icon?: React.ReactNode; danger?: boolean; onClick: () => void };
@@ -140,7 +141,7 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {QUICK.map((r) => (
+            {QUICK.map((r, i) => (
               <button
                 key={r.emoji}
                 type="button"
@@ -148,7 +149,7 @@ const MessageContextMenu = ({ anchor, isOwn, items, mine, onReact, onMoreReactio
                 onClick={() => onReact(r.emoji)}
                 className={cn("w-11 h-11 rounded-full text-[26px] leading-none flex items-center justify-center active:scale-125 transition-transform", mine.includes(r.emoji) && "bg-primary/20")}
               >
-                {r.emoji}
+                <NotoEmoji emoji={r.emoji} size={30} autoPlay delay={80 + i * 50} />
               </button>
             ))}
             <button

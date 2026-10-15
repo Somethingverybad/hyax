@@ -20,7 +20,10 @@ import { useSwipeBack } from "@/hooks/use-swipe-back";
 import StickerPicker from "@/components/chat/StickerPicker";
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
+import NotoEmoji from "@/components/NotoEmoji";
+import { emojiOnly } from "@/lib/notoEmoji";
 import { playDeleteAnimation, resetDeleteAnimation, DELETE_ANIM_MS } from "@/lib/deleteAnim";
+
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { useMint, MintIcon } from "@/themes/mint";
@@ -66,6 +69,9 @@ import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudi
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import StickerView from "@/components/chat/StickerView";
+
+/** Сторона крупного эмодзи-сообщения: одно — 96 px, два — 72, три — 60. */
+const BIG_EMOJI_PX = [96, 72, 60];
 
 /** Телефон/планшет: экранная клавиатура, Enter вставляет перенос строки. */
 const isTouchDevice = () =>
@@ -3499,7 +3505,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // Стикер сам себе картинка: пузырь вокруг него — лишняя рамка.
             // У аудио-стикера пузырь остаётся: там есть строка воспроизведения.
             const stickerOnly = !!message.sticker?.file_url && !message.content && !message.sound && !message.reply_to;
-            const bareBubble = imageOnly || videoOnly || stickerOnly;
+            // Сообщение из 1–3 эмодзи — крупно и без пузыря, как стикер:
+            // анимация Noto играет, когда оно впервые на экране, и по тапу.
+            const bigEmoji = message.content && !message.entities?.length && !message.reply_to && !message.forwarded_from
+              && !message.forwarded_title && !message.file_url && !message.sticker?.file_url && !message.sound && !message.video_url
+              && !isAlbum && message.geo_lat == null ? emojiOnly(message.content) : null;
+            const bareBubble = imageOnly || videoOnly || stickerOnly || !!bigEmoji;
             const previousMessage = index > 0 ? shownRows[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
             const username = message.sender?.username || tr("Неизвестный");
@@ -3864,8 +3875,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                         </div>
                       )}
+                      {bigEmoji && (
+                        <div className="flex items-end gap-0.5 py-0.5" role="img" aria-label={message.content || ""}>
+                          {bigEmoji.map((e, i) => <NotoEmoji key={i} emoji={e} size={BIG_EMOJI_PX[bigEmoji.length - 1]} autoPlay delay={i * 150} tapToPlay />)}
+                        </div>
+                      )}
                       {/* Текст сообщения */}
-                      {message.content && !albumText.length && message.geo_lat == null && (
+                      {message.content && !bigEmoji && !albumText.length && message.geo_lat == null && (
                         <p className="text-body break-words whitespace-pre-wrap">
                           {/* Карточка вырезала ссылку из текста — диапазоны оформления к нему
                               уже не подходят, такой текст рисуем без них. */}

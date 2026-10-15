@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "react-router-dom";
 import { PUBLIC_ORIGIN } from "./share";
+import { emojify } from "@/components/NotoEmoji";
 
 /**
  * Ссылки в тексте сообщений: находим http(s)/www и делаем кликабельными.
@@ -77,7 +78,7 @@ export const openExternal = (url: string) => {
   window.open(href, "_blank", "noopener,noreferrer");
 };
 
-/** Текст с кликабельными ссылками; переводы строк сохраняет CSS (whitespace-pre-wrap). */
+/** Текст с кликабельными ссылками и эмодзи Noto; переводы строк сохраняет CSS (whitespace-pre-wrap). */
 export function Linkify({ text, className }: { text: string; className?: string }) {
   const navigate = useNavigate();
   const parts: React.ReactNode[] = [];
@@ -86,7 +87,7 @@ export function Linkify({ text, className }: { text: string; className?: string 
   URL_RE.lastIndex = 0;
   while ((m = URL_RE.exec(text)) !== null) {
     const [url, tail] = trimTail(m[0]);
-    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m.index > last) parts.push(emojify(text.slice(last, m.index), `p${last}`));
     parts.push(
       <a
         key={`${m.index}-${url}`}
@@ -107,7 +108,7 @@ export function Linkify({ text, className }: { text: string; className?: string 
     if (tail) parts.push(tail);
     last = m.index + m[0].length;
   }
-  if (!parts.length) return <>{text}</>;
-  if (last < text.length) parts.push(text.slice(last));
+  if (!parts.length) return <>{emojify(text)}</>;
+  if (last < text.length) parts.push(emojify(text.slice(last), `p${last}`));
   return <>{parts}</>;
 }

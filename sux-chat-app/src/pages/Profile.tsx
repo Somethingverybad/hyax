@@ -508,6 +508,8 @@ const ProfilePage = () => {
           <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
             {t("WYX {version} · сборка {build}", { version: APP_VERSION, build: APP_BUILD })}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
+            {/* Лицензия анимированных эмодзи (CC BY 4.0) требует указать авторов. */}
+            <div className="mt-1 opacity-80">{t("Анимированные эмодзи: Noto Emoji, Google, CC BY 4.0")}</div>
           </div>
         </div>
       </div>
