@@ -594,7 +594,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           const senderId = m?.sender?.id;
           // «Глюк-стикер» от собеседника: открытый чат разыграет эффект.
           if (m?.effect === "burst" && m?.sticker?.file_url && senderId && senderId !== user?.id) {
-            window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url } }));
+            window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url, id: m.id } }));
           }
           const active = document.visibilityState === "visible" &&
             chatId && String(chatId) === selectedChatIdRef.current;

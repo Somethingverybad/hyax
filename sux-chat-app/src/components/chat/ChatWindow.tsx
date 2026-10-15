@@ -188,6 +188,8 @@ interface Message {
   via_bot?: { id: string; username: string } | null;
   /** Эффект получения: burst — стикер высыпается по экрану. */
   effect?: string;
+  /** Эффект уже разыгран у меня — на любом моём устройстве (с сервера). */
+  effect_seen?: boolean;
   /** Прочитано ли мной (с сервера). */
   is_read?: boolean;
   /** Оформление текста (жирный, спойлер, зальго…) — см. lib/format.tsx. */
@@ -323,7 +325,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent).detail;
-      if (d?.chat_id === chatId && d?.url) setBurst({ url: d.url, key: Date.now() });
+      if (d?.chat_id !== chatId || !d?.url) return;
+      // Сообщение могло прийти в ленту раньше события — тогда уже сыграло.
+      if (d.id && playedBursts.has(String(d.id))) return;
+      setBurst({ url: d.url, key: Date.now() });
+      if (d.id) markBurstsSeen([String(d.id)]);
     };
     window.addEventListener("hyax:burst", on);
     return () => window.removeEventListener("hyax:burst", on);
@@ -881,18 +887,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, skey]);
-  // Пришли в чат, где лежат «глюк-стикеры» от собеседника, ещё не разыгранные
-  // на этом устройстве: играет только самый последний,
-  // остальные помечаются сыгранными — чтобы при открытии не сыпалось всё
-  // накопившееся разом. Память по id в localStorage; к «прочитано» не
-  // привязываемся — прочитать могли с другого устройства.
+  // Пришли в чат, где лежат «глюк-стикеры» от собеседника, ещё не
+  // разыгранные: играет только самый последний, остальные помечаются
+  // сыгранными — чтобы при открытии не сыпалось всё накопившееся разом.
+  // Что разыграно, помнит сервер (effect_seen) — для всех моих устройств и
+  // после переустановки; localStorage — только чтобы не сыграть дважды, пока
+  // отметка идёт до сервера.
   useEffect(() => {
     if (!chatId) return;
     const pending = messages.filter((m) =>
-      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending && !playedBursts.has(m.id));
+      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending && !m.effect_seen && !playedBursts.has(m.id));
     if (!pending.length) return;
-    pending.forEach((m) => playedBursts.add(m.id));
-    try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
+    markBurstsSeen(pending.map((m) => m.id));
     const last = pending.reduce((a, b) => ((Date.parse(a.created_at) || 0) >= (Date.parse(b.created_at) || 0) ? a : b));
     setBurst({ url: last.sticker!.file_url, key: Date.now() });
   }, [messages, chatId, userId]);
@@ -4993,8 +4999,18 @@ function prefillSecret<T extends Message>(m: T): T {
   const f = secretBlobs.get(m.id);
   return f ? { ...base, ...f, _ready: true, _sm: null } : m;
 }
-// Уже разыгранные «глюк-стикеры» — чтобы при каждом входе не сыпалось заново.
+// Уже разыгранные «глюк-стикеры» на этом устройстве — до ответа сервера
+// (главная память — effect_seen на сервере, см. markBurstsSeen).
 const playedBursts = new Set<string>((() => { try { return JSON.parse(localStorage.getItem("hyax:bursts") || "[]"); } catch { return []; } })());
+/** Глюки разыграны: запомнить здесь и на сервере — тогда они не повторятся
+ *  ни на других моих устройствах, ни после переустановки. */
+function markBurstsSeen(ids: string[]) {
+  const fresh = ids.filter((id) => !playedBursts.has(id));
+  if (!fresh.length) return;
+  fresh.forEach((id) => playedBursts.add(id));
+  try { localStorage.setItem("hyax:bursts", JSON.stringify([...playedBursts].slice(-200))); } catch { /* приватный режим */ }
+  void api.markEffectsSeen(fresh).catch(() => {});
+}
 
 /** Видео-обои. Основной путь — <video>: аппаратно, плавно. Пока оно реально
  *  не играет, его не видно (opacity 0 прячет и системную кнопку «play»), снизу

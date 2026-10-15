@@ -1778,6 +1778,16 @@ export const api = {
     return res.json();
   },
 
+  /** Эффекты получения (глюк-стикеры) разыграны — сервер запомнит для всех моих устройств. */
+  markEffectsSeen: async (ids: string[]): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/messages/effects_seen/`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) throw new LError("Failed to mark effects");
+  },
+
   sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: "burst"): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",

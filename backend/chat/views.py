@@ -1008,7 +1008,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         # публичные каналы. Раньше фильтра не было — список без chat отдавал
         # сообщения всех чатов, а по id читалось любое.
         queryset = queryset.annotate(
-            _member=models.Exists(ChatParticipant.objects.filter(chat_id=models.OuterRef('chat_id'), user=me))
+            _member=models.Exists(ChatParticipant.objects.filter(chat_id=models.OuterRef('chat_id'), user=me)),
+            # Глюк-стикер уже разыгран у меня — см. MessageSerializer.get_effect_seen.
+            _effect_seen=models.Exists(MessageEffectSeen.objects.filter(message_id=models.OuterRef('pk'), user=me)),
         ).filter(models.Q(_member=True) | models.Q(chat__kind='wall') | models.Q(chat__kind='channel', chat__is_public=True))
         chat_id = self.request.query_params.get('chat')
         if chat_id:
@@ -1028,6 +1030,22 @@ class MessageViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
         return queryset.order_by('created_at')
+
+    @action(detail=False, methods=['post'], url_path='effects_seen')
+    def effects_seen(self, request):
+        """Эффекты получения разыграны: {"ids": [...]} — запоминаем у себя на
+        сервере, чтобы ни это, ни другие мои устройства (и переустановленное
+        приложение) не играли их снова. Только видимые мне чужие сообщения с
+        эффектом; повторная отметка ничего не меняет."""
+        me = request.user.profile
+        ids = request.data.get('ids') or []
+        if not isinstance(ids, list):
+            return Response({'error': 'ids — список'}, status=400)
+        ids = [str(i) for i in ids][:200]
+        msgs = list(self.get_queryset().filter(id__in=ids).exclude(effect='').exclude(sender=me).values_list('id', flat=True))
+        MessageEffectSeen.objects.bulk_create(
+            [MessageEffectSeen(message_id=m, user=me) for m in msgs], ignore_conflicts=True)
+        return Response({'ok': True, 'count': len(msgs)})
 
     @action(detail=True, methods=['post'])
     def remove(self, request, pk=None):

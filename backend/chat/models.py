@@ -370,6 +370,19 @@ class MessageReadStatus(models.Model):
         unique_together = ['message', 'user']  # Один статус на сообщение для каждого пользователя
 
 
+class MessageEffectSeen(models.Model):
+    """Эффект получения (глюк-стикер, Message.effect) уже разыгран у этого
+    пользователя — на любом его устройстве. Раньше память была только в
+    localStorage, и после переустановки старые глюки высыпались заново."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="effect_seen")
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ['message', 'user']
+
+
 # Добавьте в models.py
 class PushToken(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

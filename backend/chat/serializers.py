@@ -517,6 +517,7 @@ class MessageSerializer(serializers.ModelSerializer):
         return reactions_payload(obj, me.id if me else None)
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
+    effect_seen = serializers.SerializerMethodField()
     sticker = StickerSerializer(read_only=True)
     action = serializers.SerializerMethodField()
     action_target = serializers.SerializerMethodField()
@@ -528,7 +529,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'wall_safe', 'wall_hidden', 'action', 'action_target']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'effect_seen', 'wall_safe', 'wall_hidden', 'action', 'action_target']
         read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden', 'action', 'action_target']
 
     def get_action(self, obj):
@@ -605,6 +606,20 @@ class MessageSerializer(serializers.ModelSerializer):
         if me is None:
             return False
         return any(rs.user_id == me.id for rs in obj.read_statuses.all())
+
+    def get_effect_seen(self, obj):
+        """Эффект получения уже разыгран у меня (MessageEffectSeen) — тогда
+        клиент его не повторяет ни на этом устройстве, ни на других."""
+        if not obj.effect:
+            return False
+        seen = getattr(obj, '_effect_seen', None)
+        if seen is not None:
+            return bool(seen)
+        request = self.context.get('request')
+        me = getattr(getattr(request, 'user', None), 'profile', None)
+        if me is None:
+            return False
+        return MessageEffectSeen.objects.filter(message_id=obj.id, user_id=me.id).exists()
 
     def get_read_by(self, obj):
         """Кто прочитал — коротко: id, ник и время. Полный профиль на каждую
