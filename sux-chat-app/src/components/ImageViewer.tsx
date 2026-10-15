@@ -190,7 +190,11 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
     // Тап. Двойной — зум; одиночный ждёт 280 мс, чтобы не сработать вместе с ним.
     const now = performance.now();
     const lt = lastTap.current;
-    const onImage = e.target === imgRef.current;
+    // По координатам, а не по e.target: указатель захвачен сценой
+    // (setPointerCapture), и отпускание всегда приходит на неё — проверка
+    // «тап по картинке» была ложной, двойной тап ничего не делал.
+    const ir = imgRef.current?.getBoundingClientRect();
+    const onImage = !!ir && e.clientX >= ir.left && e.clientX <= ir.right && e.clientY >= ir.top && e.clientY <= ir.bottom;
     if (lt && now - lt.at < 300 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 30) {
       lastTap.current = null;
       if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
