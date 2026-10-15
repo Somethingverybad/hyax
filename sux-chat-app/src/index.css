@@ -256,7 +256,8 @@ html, body, #root {
 
 /* Шапка заходит под статус-бар, панель ввода — под home-индикатор. */
 .pad-safe-top {
-  padding-top: calc(0.625rem + var(--sat)) !important;
+  /* --call-bar-h — полоса свёрнутого звонка сверху (CallOverlay → CallBar). */
+  padding-top: calc(0.625rem + var(--sat) + var(--call-bar-h, 0px)) !important;
 }
 
 .pad-safe-bottom {
@@ -1519,3 +1520,8 @@ textarea,
   70% { transform: scale(1) translateY(0); opacity: 1; }
   100% { transform: scale(.9) translateY(-40px); opacity: 0; }
 }
+
+/* Полоса свёрнутого звонка: точка «в эфире» мигает. */
+.call-bar-dot { animation: call-bar-dot 1.4s ease-in-out infinite; }
+@keyframes call-bar-dot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .call-bar-dot { animation: none; } }

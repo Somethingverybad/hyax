@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ESC_BACK } from "@/lib/escape";
+import { leaveCallOk, setCallActive } from "@/lib/callActive";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
 import { applog } from "@/lib/applog";
@@ -134,6 +135,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const [muted, setMuted] = useState(false);
   // Громкая связь по умолчанию: телефон обычно лежит на столе, а не у уха.
   const [speaker, setSpeaker] = useState(true);
+  // Свёрнутый звонок: экран звонка сжат в полосу сверху, можно переписываться.
+  const [callMin, setCallMin] = useState(false);
   const wsRef = useRef<WebSocketService | null>(null);
   const callRef = useRef<OneToOneCallService | NativeCallService | null>(null);
   const lastCallIdRef = useRef<string | null>(null);
@@ -333,7 +336,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       // По тапу на пуш открываем чат из data.chat_id.
       await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
         const data = (e?.notification?.data as any) || {};
-        if (data.kind === "vibe") { navigate("/profile"); return; }
+        if (data.kind === "vibe") { goAwayRef.current("/profile"); return; }
         const chatId = data.chat_id;
         if (chatId) {
           setSelectedChatId(String(chatId));
@@ -426,6 +429,19 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     }).then((h) => { handle = h; });
     return () => { handle?.remove(); };
   }, []);
+
+  // Идёт звонок — уход с экрана чатов его оборвёт (lib/callActive спросит).
+  // Звонок кончился — следующий начнётся развёрнутым.
+  useEffect(() => {
+    const on = callState !== "idle" || groupState !== "idle";
+    setCallActive(on);
+    if (!on) setCallMin(false);
+  }, [callState, groupState]);
+  useEffect(() => () => setCallActive(false), []);
+  /** Уйти с экрана чатов: во время звонка — только после подтверждения. */
+  const goAway = (to: string) => { void leaveCallOk().then((ok) => { if (ok) navigate(to); }); };
+  const goAwayRef = useRef(goAway);
+  goAwayRef.current = goAway;
 
   // Esc (components/EscapeKey): открытый чат закрывается — на широком окне
   // остаётся «Выберите чат», на узком — список. Вкладки «Стена» и
@@ -823,7 +839,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const listChats = chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox");
   // Стена — своя вкладка (/wall) и строка над списком на десктопе; в самом списке её нет.
   const openWall = () => {
-    if (isMobile) { navigate("/wall"); return; }
+    if (isMobile) { goAway("/wall"); return; }
     if (!wall) { toast.error(tr("Стена ещё не загрузилась")); return; }
     setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle(tr("Стена"));
   };
@@ -987,6 +1003,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       }}
       speaker={speaker}
       onToggleSpeaker={toggleSpeaker}
+      minimized={callMin}
+      onMinimize={() => setCallMin(true)}
+      onExpand={() => setCallMin(false)}
     />
   ) : null;
 
@@ -1007,6 +1026,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       onToggleMute={toggleMute}
       speaker={speaker}
       onToggleSpeaker={toggleSpeaker}
+      minimized={callMin}
+      onMinimize={() => setCallMin(true)}
+      onExpand={() => setCallMin(false)}
     />
   ) : null)}
       {addToCallOpen && <AddToCall candidates={callCandidates} onClose={() => setAddToCallOpen(false)} onConfirm={addToCall} />}
@@ -1242,7 +1264,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onLogout={handleLogout}
             isCollapsed={false}
             onToggleCollapse={toggleSidebar}
-            onOpenProfile={() => navigate("/profile")}
+            onOpenProfile={() => goAway("/profile")}
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
@@ -1282,7 +1304,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         onLogout={handleLogout}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={toggleSidebar}
-        onOpenProfile={() => navigate("/profile")}
+        onOpenProfile={() => goAway("/profile")}
         onChatDeleted={handleChatDeleted}
         onChatCreated={handleChatCreated}
       />

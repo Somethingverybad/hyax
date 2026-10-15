@@ -1647,5 +1647,10 @@ const en: Record<string, string> = {
   "Поднять вайб": "Raise vibe",
   "Отправить фото": "Send photo",
   "Вы уже подняли вайб за эту сохранёнку": "You've already raised the vibe for this photo",
+  "Свернуть звонок": "Minimize call",
+  "Вернуться к звонку": "Return to call",
+  "Нажмите, чтобы вернуться": "Tap to return",
+  "Звонок прервётся. Всё равно перейти?": "The call will end. Leave anyway?",
+  "Перейти": "Leave",
 };
 export default en;

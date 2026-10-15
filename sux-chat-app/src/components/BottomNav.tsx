@@ -1,6 +1,6 @@
 import { t } from "@/lib/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { MessageSquare, Bookmark, Music2, Settings, Newspaper } from "lucide-react";
@@ -9,6 +9,7 @@ import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import { readCache } from "@/lib/session-cache";
 import type { WallState } from "@/api/client";
 import { useSections } from "@/lib/sections";
+import { isCallActive, leaveCallOk } from "@/lib/callActive";
 
 /** Новые посты на Стене — бейдж на вкладке. Состояние кладёт Chat.tsx в кеш
  *  сессии и сообщает событием hyax:wall; при открытии Стены счётчик обнуляется. */
@@ -54,12 +55,28 @@ const tap = () => {
   if (Capacitor.isNativePlatform()) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
 };
 
+/** Переход на вкладку. Во время звонка уход с экрана чатов его оборвёт
+ *  (lib/callActive) — сначала спрашиваем. */
+const useTabClick = () => {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  return (to: string) => (e: React.MouseEvent) => {
+    if (isCallActive() && to !== pathname) {
+      e.preventDefault();
+      void leaveCallOk().then((ok) => { if (ok) { tap(); navigate(to); } });
+      return;
+    }
+    tap();
+  };
+};
+
 /** Панель живёт внутри каждого экрана и при переключении создаётся заново —
  *  помним, где стояла подсветка, чтобы она переплыла оттуда на новую вкладку. */
 let lastMintIndex = -1;
 
 const MintIsland = () => {
   const { pathname } = useLocation();
+  const onTab = useTabClick();
   const wallNew = useWallNew();
   // Стену можно скрыть (lib/sections) — тогда вкладок четыре.
   const sections = useSections();
@@ -89,7 +106,7 @@ const MintIsland = () => {
       <nav className="mint-nav" style={{ ["--n" as string]: items.length }}>
         {pos >= 0 && pos < items.length && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {items.map(({ to, label, icon, size }) => (
-          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} onClick={tap}
+          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} onClick={onTab(to)}
             className={({ isActive }) => cn("mint-nav-item", isActive && "mint-nav-on")}>
             <MintIcon name={icon} size={size} />
             {to === "/wall" && <WallBadge n={wallNew} />}
@@ -104,6 +121,7 @@ const BottomNav = () => {
   const mint = useMint();
   const wallNew = useWallNew();
   const sections = useSections();
+  const onTab = useTabClick();
   if (mint) return <MintIsland />;
   return (
     <nav className="ui-bottom-nav shrink-0 flex border-t border-border bg-background pad-safe-bottom">
@@ -113,7 +131,7 @@ const BottomNav = () => {
           to={to}
           aria-label={t(label)}
           title={t(label)}
-          onClick={tap}
+          onClick={onTab(to)}
           className={({ isActive }) =>
             cn(
               "ui-nav-item relative flex-1 flex flex-col items-center justify-center gap-0.5 h-14 transition-colors active:bg-surface-2",

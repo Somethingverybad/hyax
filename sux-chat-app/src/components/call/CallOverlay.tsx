@@ -4,7 +4,7 @@ import { readCache } from "@/lib/session-cache";
 import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
 import { Capacitor } from "@capacitor/core";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
@@ -39,6 +39,10 @@ interface CallOverlayProps {
   onToggleMute: () => void;
   speaker: boolean;
   onToggleSpeaker: () => void;
+  /** Свёрнут: вместо экрана — полоса сверху, можно переписываться в чатах. */
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onExpand?: () => void;
 }
 
 const STATUS: Record<CallUiState, string> = {
@@ -72,6 +76,9 @@ const CallOverlay = ({
   onToggleMute,
   speaker,
   onToggleSpeaker,
+  minimized,
+  onMinimize,
+  onExpand,
 }: CallOverlayProps) => {
   const [seconds, setSeconds] = useState(0);
 
@@ -113,6 +120,24 @@ const CallOverlay = ({
   if (state === "idle") return null;
 
   const showList = state === "active" || state === "connecting" || (state === "outgoing" && participants.length > 1);
+  const statusText = state === "active"
+    ? isGroup
+      ? `${fmt(seconds)} · ${t("участников: {n}", { n: participants.length + 1 })}`
+      : fmt(seconds)
+    : t(STATUS[state]);
+  // Звук собеседников — и в свёрнутом виде: экран звонка не размонтируется,
+  // поэтому и таймер не сбрасывается.
+  const audio = participants.map((p) => p.stream ? <RemoteAudio key={p.id} stream={p.stream} volume={volumes[p.id] ?? 1} /> : null);
+
+  // Входящий не сворачивается — на него надо ответить.
+  if (minimized && state !== "incoming") {
+    return (
+      <>
+        {audio}
+        <CallBar title={peer.name} status={statusText} muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />
+      </>
+    );
+  }
 
   return (
     <div
@@ -122,7 +147,19 @@ const CallOverlay = ({
         paddingBottom: "calc(var(--sab) + 2.5rem)",
       }}
     >
-      {participants.map((p) => p.stream ? <RemoteAudio key={p.id} stream={p.stream} volume={volumes[p.id] ?? 1} /> : null)}
+      {audio}
+      {onMinimize && state !== "incoming" && (
+        <button
+          type="button"
+          onClick={onMinimize}
+          className="absolute left-3 w-11 h-11 rounded-full flex items-center justify-center text-muted-foreground active:bg-surface-3 hover:bg-surface-2"
+          style={{ top: "calc(var(--sat) + 0.5rem)" }}
+          aria-label={t("Свернуть звонок")}
+          title={t("Свернуть звонок")}
+        >
+          <ChevronDown className="w-7 h-7" />
+        </button>
+      )}
 
       <div className="flex flex-col items-center gap-3 w-full min-h-0 px-5">
         {isGroup ? (
@@ -133,13 +170,7 @@ const CallOverlay = ({
           <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-24 h-24" />
         )}
         <div className="text-2xl font-bold text-center px-4 truncate max-w-full">{peer.name}</div>
-        <div className="text-muted-foreground text-sm">
-          {state === "active"
-            ? isGroup
-              ? `${fmt(seconds)} · ${t("участников: {n}", { n: participants.length + 1 })}`
-              : fmt(seconds)
-            : t(STATUS[state])}
-        </div>
+        <div className="text-muted-foreground text-sm">{statusText}</div>
 
         {showList && participants.length > 0 && (
           <div className="w-full max-w-md mt-2 space-y-2 overflow-y-auto max-h-[42vh]">
@@ -244,6 +275,49 @@ const CallOverlay = ({
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Свёрнутый звонок: полоса во всю ширину сверху — кто, сколько идёт,
+ * микрофон и отбой; тап по ней разворачивает экран звонка. Пока полоса на
+ * экране, шапки экранов (.pad-safe-top) отступают на её высоту через
+ * --call-bar-h, чтобы ничего не пряталось под ней.
+ */
+const CallBar = ({ title, status, muted, onToggleMute, onHangup, onExpand }: {
+  title: string;
+  status: string;
+  muted: boolean;
+  onToggleMute: () => void;
+  onHangup: () => void;
+  onExpand?: () => void;
+}) => {
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--call-bar-h", "44px");
+    return () => { root.style.removeProperty("--call-bar-h"); };
+  }, []);
+  return (
+    <div className="fixed inset-x-0 top-0 z-[58] bg-success text-success-foreground shadow-md" style={{ paddingTop: "var(--sat)" }}>
+      <div className="h-11 px-3 flex items-center gap-1">
+        <button type="button" onClick={onExpand} className="flex-1 min-w-0 h-full flex items-center gap-2 text-left" aria-label={t("Вернуться к звонку")}>
+          <span className="call-bar-dot w-2 h-2 rounded-full bg-current shrink-0" aria-hidden />
+          <span className="truncate text-small font-semibold">{title}</span>
+          <span className="shrink-0 text-small tabular-nums opacity-90">{status}</span>
+          <span className="hidden sm:inline shrink-0 text-caption opacity-80 ml-1">{t("Нажмите, чтобы вернуться")}</span>
+        </button>
+        <button type="button" onClick={onToggleMute} className={cn("w-9 h-9 shrink-0 rounded-full flex items-center justify-center active:opacity-80", muted ? "bg-white text-success" : "bg-black/15")}
+          aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}>
+          {muted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+        </button>
+        {/* Отбой — красный в любой теме: на зелёной полосе цвет темы (в «Мяте»
+            лайм) с ней сливался. */}
+        <button type="button" onClick={onHangup} className="ml-1 w-9 h-9 shrink-0 rounded-full bg-[#ff3b30] text-white flex items-center justify-center active:opacity-80"
+          aria-label={t("Завершить")}>
+          <PhoneOff className="w-5 h-5" />
+        </button>
       </div>
     </div>
   );
