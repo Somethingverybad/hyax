@@ -660,6 +660,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                 "webrtc_offer",
                 "webrtc_answer",
                 "webrtc_ice_candidate",
+                # Камеру включили/выключили (видеозвонок): только переслать собеседнику.
+                "webrtc_media",
             }:
                 print(f"📞 [UserConsumer] Получен {message_type}")
                 await self.handle_call_signal(message_type, text_data_json)
@@ -997,7 +999,7 @@ class UserConsumer(AsyncWebsocketConsumer):
             except Exception as e:
                 print(f"Ошибка отправки call_signal: {e}")
         
-        if target_user_id and signal_type in ["webrtc_offer", "webrtc_answer", "webrtc_ice_candidate"]:
+        if target_user_id and signal_type in ["webrtc_offer", "webrtc_answer", "webrtc_ice_candidate", "webrtc_media"]:
             print(f"📞 Отправка {signal_type} пользователю {target_user_id}")
             await self.channel_layer.group_send(
                 f"user_{target_user_id}",
@@ -1043,7 +1045,7 @@ class UserConsumer(AsyncWebsocketConsumer):
     async def handle_group_call(self, signal_type, data, profile_id, chat_id, call_id, target_user_id):
         """Mesh-звонок: сервер держит состав участников и рассылает его,
         медиа идёт между устройствами напрямую."""
-        if signal_type in ("webrtc_offer", "webrtc_answer", "webrtc_ice_candidate"):
+        if signal_type in ("webrtc_offer", "webrtc_answer", "webrtc_ice_candidate", "webrtc_media"):
             if not target_user_id:
                 return
             await self.channel_layer.group_send(
