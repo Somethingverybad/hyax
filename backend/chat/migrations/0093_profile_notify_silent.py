@@ -13,9 +13,4 @@ class Migration(migrations.Migration):
             name="notify_silent",
             field=models.BooleanField(default=False),
         ),
-        migrations.AddField(
-            model_name="profile",
-            name="vibe_saved",
-            field=models.IntegerField(blank=True, null=True),
-        ),
     ]

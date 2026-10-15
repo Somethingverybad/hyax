@@ -1656,6 +1656,8 @@ const en: Record<string, string> = {
   "Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз": "No camera access. Allow it in your browser or system settings and tap again",
   "Нет доступа к камере. Разрешите его в настройках телефона": "No camera access. Allow it in your phone settings",
   "Сетка": "Grid",
+  "Вы вообще не вайбитесь — штраф −99999 к вайбометру": "You're not vibing at all — a −99999 vibe penalty",
+  "Вот теперь вы вайбитесь! Вайб вернули целиком": "Now that's a vibe! Your vibe is fully restored",
   "В минусе": "In the red",
   "Звук входящих сообщений": "Incoming message sound",
   "Выключен — сообщения приходят без звука. Звук, который вам отправили специально, всё равно проиграется": "Off — messages arrive silently. A sound someone sent you on purpose still plays",

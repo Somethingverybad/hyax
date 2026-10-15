@@ -124,7 +124,12 @@ const ProfileNotifications = () => {
                 <Toggle
                   label={t("Звук входящих сообщений")}
                   checked={!profile.notify_silent}
-                  onChange={(v) => patch({ notify_silent: !v }, { ...profile, notify_silent: !v }, profile)}
+                  onChange={async (v) => {
+                    if (!(await patch({ notify_silent: !v }, { ...profile, notify_silent: !v }, profile))) return;
+                    // Выключил звук — сервер списал вайб (VIBE_SILENT), включил — вернул.
+                    if (!v) toast(t("Вы вообще не вайбитесь — штраф −99999 к вайбометру"));
+                    else toast.success(t("Вот теперь вы вайбитесь! Вайб вернули целиком"));
+                  }}
                 />
               }
             />
