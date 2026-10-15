@@ -5,7 +5,7 @@
  *   • break    — «сломали»: трещина посередине, половинки падают в стороны;
  *   • shred    — шредер: пузырь уходит в щель и выходит снизу полосками;
  *   • redact   — замазывание: буквы по одной закрашиваются ████;
- *   • ant      — муравей 🐜 прибегает с ближнего края и утаскивает пузырь;
+ *   • pop      — надули: пузырь раздувается, округляется и лопается;
  *   • burn     — сжигание: огненная кромка ползёт снизу вверх, искры и дым;
  *   • dissolve — растворение: пузырь рассыпается в пыль и тает.
  * Работают прямо с DOM строки сообщения (#msg-<id>): маски, клоны, частицы —
@@ -16,9 +16,24 @@
  */
 export const DELETE_ANIM_MS = 900;
 
-type Variant = "eat" | "break" | "shred" | "redact" | "ant" | "burn" | "dissolve";
-const VARIANTS: Variant[] = ["eat", "break", "shred", "redact", "ant", "burn", "dissolve"];
+export type DeleteVariant = "eat" | "break" | "shred" | "redact" | "pop" | "burn" | "dissolve";
+type Variant = DeleteVariant;
+const VARIANTS: Variant[] = ["eat", "break", "shred", "redact", "pop", "burn", "dissolve"];
 let lastVariant: Variant | null = null;
+
+/** Названия для временного выбора в «Внешнем виде» (ключи перевода). */
+export const DELETE_VARIANT_LABELS: Record<DeleteVariant, string> = {
+  eat: "Съели", break: "Сломали", shred: "Шредер", redact: "Замазывание", pop: "Надули и лопнули", burn: "Сжигание", dissolve: "Растворение",
+};
+
+// Временно: вариант можно закрепить в настройках, чтобы посмотреть каждый.
+const CHOICE_KEY = "hyax:deleteAnim";
+export function getDeleteAnimChoice(): DeleteVariant | "random" {
+  try { const v = localStorage.getItem(CHOICE_KEY) as DeleteVariant | null; return v && VARIANTS.includes(v) ? v : "random"; } catch { return "random"; }
+}
+export function setDeleteAnimChoice(v: DeleteVariant | "random") {
+  try { if (v === "random") localStorage.removeItem(CHOICE_KEY); else localStorage.setItem(CHOICE_KEY, v); } catch { /* приватный режим */ }
+}
 
 const reduced = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
@@ -266,7 +281,7 @@ function shred(row: HTMLElement, bubble: HTMLElement) {
 
 function redact(row: HTMLElement, bubble: HTMLElement): boolean {
   // Только для сообщений с текстом: у картинки замазывать нечего.
-  const hasText = Array.from(bubble.querySelectorAll(".text-body")).some((p) => (p.textContent || "").trim());
+  const hasText = Array.from(bubble.querySelectorAll(".text-body")).some((p) => (p.textContent || "").trim() || p.querySelector(".noto-inline"));
   if (!hasText) return false;
   const { c } = cloneOver(row, bubble, { overflow: "hidden" });
   // Блок █ шире обычной буквы — если менять сами символы, текст
@@ -275,8 +290,28 @@ function redact(row: HTMLElement, bubble: HTMLElement): boolean {
   const cr = c.getBoundingClientRect();
   const blocks: HTMLElement[] = [];
   const range = document.createRange();
-  const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+  const block = (r: DOMRect, color: string) => {
+    const bl = document.createElement("span");
+    css(bl, {
+      position: "absolute", left: `${r.left - cr.left}px`, top: `${r.top - cr.top + r.height * 0.1}px`,
+      width: `${r.width + 0.5}px`, height: `${r.height * 0.8}px`, background: color, opacity: "0", pointerEvents: "none",
+    });
+    c.appendChild(bl);
+    blocks.push(bl);
+  };
+  // Эмодзи Noto — картинка, а не буква: закрываем её целиком одним блоком.
+  const EMO = ".noto-inline, .noto-emoji";
+  const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => n.nodeType === Node.ELEMENT_NODE
+      ? ((n as Element).matches(EMO) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)
+      : (n.parentElement?.closest(EMO) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
   while (walker.nextNode() && blocks.length < 500) {
+    if (walker.currentNode.nodeType === Node.ELEMENT_NODE) {
+      const el = walker.currentNode as HTMLElement;
+      block(el.getBoundingClientRect(), getComputedStyle(el).color);
+      continue;
+    }
     const t = walker.currentNode as Text;
     const color = t.parentElement ? getComputedStyle(t.parentElement).color : "currentColor";
     let i = 0;
@@ -285,15 +320,7 @@ function redact(row: HTMLElement, bubble: HTMLElement): boolean {
         range.setStart(t, i);
         range.setEnd(t, i + ch.length);
         const r = range.getClientRects()[0];
-        if (r && r.width > 0) {
-          const bl = document.createElement("span");
-          css(bl, {
-            position: "absolute", left: `${r.left - cr.left}px`, top: `${r.top - cr.top + r.height * 0.1}px`,
-            width: `${r.width + 0.5}px`, height: `${r.height * 0.8}px`, background: color, opacity: "0", pointerEvents: "none",
-          });
-          c.appendChild(bl);
-          blocks.push(bl);
-        }
+        if (r && r.width > 0) block(r, color);
       }
       i += ch.length;
     }
@@ -311,46 +338,64 @@ function redact(row: HTMLElement, bubble: HTMLElement): boolean {
   return true;
 }
 
-// ── Муравей 🐜 ────────────────────────────────────────────────────────────
+// ── Надули и лопнули ──────────────────────────────────────────────────────
 
-function ant(row: HTMLElement, bubble: HTMLElement) {
-  const o = cloneOver(row, bubble);
+function pop(row: HTMLElement, bubble: HTMLElement) {
+  const o = cloneOver(row, bubble, { transformOrigin: "50% 50%" });
   bubble.style.visibility = "hidden";
-  // Приходит с ближнего края, хватает пузырь и пятится назад, утаскивая его.
-  // Эмодзи муравья смотрит влево: слева идёт к пузырю отражённым.
-  const fromLeft = o.x + o.w / 2 < o.rowW / 2;
-  const size = 22;
-  const a = fx(row, document.createElement("span"));
-  a.textContent = "🐜";
-  const start = fromLeft ? -size - 8 : o.rowW + 8;
-  const grab = fromLeft ? o.x - size + 6 : o.x + o.w - 6;
-  const away = fromLeft ? -(o.x + o.w + size + 30) : o.rowW - o.x + size + 30;
-  const flip = fromLeft ? "scaleX(-1)" : "scaleX(1)";
-  css(a, { position: "absolute", left: "0", top: `${o.y + o.h - size - 2}px`, fontSize: `${size}px`, lineHeight: "1", pointerEvents: "none", zIndex: "7" });
-  o.c.style.transformOrigin = fromLeft ? "0% 100%" : "100% 100%";
-  const walk = 0.34, hold = 0.46;
-  a.animate(
-    [
-      { transform: `translateX(${start}px) ${flip}`, easing: "ease-out" },
-      { transform: `translateX(${grab}px) ${flip}`, offset: walk },
-      { transform: `translateX(${grab}px) ${flip}`, offset: hold, easing: "cubic-bezier(.5, 0, .9, .6)" },
-      { transform: `translateX(${grab + away}px) ${flip}` },
-    ],
-    { duration: DELETE_ANIM_MS, fill: "forwards" },
-  ).onfinish = () => a.remove();
-  // Лапками перебирает: покачивание на ходу.
-  a.animate([{ rotate: "-6deg" }, { rotate: "6deg" }], { duration: 90, iterations: Math.ceil(DELETE_ANIM_MS / 90), direction: "alternate" });
+  const color = bubbleColor(bubble);
+  const r0 = getComputedStyle(bubble).borderRadius || "17px";
+  const round = `${Math.round(o.h / 2)}px`;
+  // Пузырь раздувается рывками, покачиваясь и округляясь, как шарик…
+  const at = 0.62;
   o.c.animate(
     [
-      { transform: "none" },
-      { transform: "none", offset: walk },
-      // Схватил: пузырь дёрнулся и накренился…
-      { transform: `rotate(${fromLeft ? -3 : 3}deg) translateY(-2px)`, offset: hold, easing: "cubic-bezier(.5, 0, .9, .6)" },
-      // …и поехал за муравьём.
-      { transform: `translateX(${away}px) rotate(${fromLeft ? -6 : 6}deg) scale(.7)` },
+      { transform: "scale(1, 1)", borderRadius: r0, filter: "brightness(1)", opacity: 1 },
+      { transform: "scale(1.07, 1.03)", offset: 0.16 },
+      { transform: "scale(1.04, 1.07)", offset: 0.27 },
+      { transform: "scale(1.15, 1.1)", offset: 0.42 },
+      { transform: "scale(1.11, 1.17)", offset: 0.52 },
+      { transform: "scale(1.26, 1.24)", borderRadius: round, filter: "brightness(1.15)", opacity: 1, offset: at },
+      // …и лопается: исчезает в один кадр.
+      { transform: "scale(1.32, 1.3)", borderRadius: round, filter: "brightness(1.15)", opacity: 0, offset: at + 0.015 },
+      { transform: "scale(1.32, 1.3)", borderRadius: round, filter: "brightness(1.15)", opacity: 0 },
     ],
-    { duration: DELETE_ANIM_MS, fill: "forwards" },
+    { duration: DELETE_ANIM_MS, easing: "ease-in-out", fill: "forwards" },
   ).onfinish = () => o.c.remove();
+  later(row, () => {
+    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    const rx = (o.w * 1.26) / 2, ry = (o.h * 1.24) / 2;
+    // Хлопок: кольцо расходится от центра.
+    const ring = fx(row, document.createElement("span"));
+    const d = Math.max(o.w, o.h) * 0.9;
+    css(ring, {
+      position: "absolute", left: `${cx - d / 2}px`, top: `${cy - d / 2}px`, width: `${d}px`, height: `${d}px`,
+      borderRadius: "50%", border: `2px solid ${color}`, pointerEvents: "none", zIndex: "6",
+    });
+    ring.animate([{ transform: "scale(.55)", opacity: 0.9 }, { transform: "scale(1.45)", opacity: 0 }],
+      { duration: 280, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" }).onfinish = () => ring.remove();
+    // Ошмётки разлетаются от краёв во все стороны.
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const sx = cx + Math.cos(a) * rx * 0.9, sy = cy + Math.sin(a) * ry * 0.9;
+      const p = fx(row, document.createElement("span"));
+      const pw = 5 + Math.random() * 7, ph = 3 + Math.random() * 3;
+      css(p, {
+        position: "absolute", left: `${sx - pw / 2}px`, top: `${sy - ph / 2}px`, width: `${pw}px`, height: `${ph}px`,
+        borderRadius: `${ph / 2}px`, background: color, pointerEvents: "none", zIndex: "6",
+      });
+      const dist = 22 + Math.random() * 30;
+      const rot = (a * 180) / Math.PI + (Math.random() - 0.5) * 90;
+      p.animate(
+        [
+          { transform: `rotate(${rot}deg) scale(1)`, opacity: 1 },
+          { transform: `translate(${Math.cos(a) * dist}px, ${Math.sin(a) * dist + 8}px) rotate(${rot + (Math.random() - 0.5) * 200}deg) scale(.6)`, opacity: 0 },
+        ],
+        { duration: 260 + Math.random() * 80, easing: "cubic-bezier(.15, .7, .4, 1)", fill: "forwards" },
+      ).onfinish = () => p.remove();
+    }
+  }, DELETE_ANIM_MS * at);
 }
 
 // ── Сжигание ──────────────────────────────────────────────────────────────
@@ -453,6 +498,8 @@ function dissolve(row: HTMLElement, bubble: HTMLElement) {
 function pickVariant(): Variant {
   const forced = (window as unknown as { __hyaxDeleteAnim?: string }).__hyaxDeleteAnim as Variant | undefined;
   if (forced && VARIANTS.includes(forced)) return forced;
+  const chosen = getDeleteAnimChoice();
+  if (chosen !== "random") return chosen;
   const pool = VARIANTS.filter((v) => v !== lastVariant);
   const v = pool[Math.floor(Math.random() * pool.length)];
   lastVariant = v;
@@ -479,7 +526,7 @@ export function playDeleteAnimation(row: HTMLElement | null) {
     case "break": breakApart(row, bubble); break;
     case "shred": shred(row, bubble); break;
     case "redact": if (!redact(row, bubble)) dissolve(row, bubble); break;
-    case "ant": ant(row, bubble); break;
+    case "pop": pop(row, bubble); break;
     case "burn": burn(row, bubble); break;
     default: dissolve(row, bubble);
   }

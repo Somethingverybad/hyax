@@ -1630,5 +1630,17 @@ const en: Record<string, string> = {
   "Добавлять могут все, у кого есть набор": "Anyone with the pack can add",
   "Менять и удалять стикеры можете только вы": "Only you can edit and delete stickers",
   "Добавлять стикеры может только автор набора": "Only the pack author can add stickers",
+  "Анимация удаления": "Delete animation",
+  "Вариант": "Style",
+  "Случайно": "Random",
+  "Съели": "Eaten",
+  "Сломали": "Broken",
+  "Шредер": "Shredder",
+  "Замазывание": "Redacted",
+  "Надули и лопнули": "Inflated and popped",
+  "Сжигание": "Burned",
+  "Растворение": "Dissolved",
+  "Временная настройка: чтобы посмотреть каждую анимацию по очереди": "Temporary setting to preview each animation one by one",
+  "Анимированные эмодзи: Noto Emoji, Google, CC BY 4.0": "Animated emoji: Noto Emoji by Google, CC BY 4.0",
 };
 export default en;

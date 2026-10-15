@@ -13,6 +13,7 @@ import { normalizeTheme } from "@/themes/engine";
 import { themeLink } from "@/lib/share";
 import type { ThemeDef } from "@/themes/types";
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
+import { DELETE_VARIANT_LABELS, getDeleteAnimChoice, setDeleteAnimChoice, type DeleteVariant } from "@/lib/deleteAnim";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
 export const Swatch = ({ theme }: { theme: ThemeDef }) => {
@@ -154,6 +155,7 @@ const ProfileAppearance = () => {
         </p>
 
         <SectionsCard />
+        <DeleteAnimCard />
       </div>
     </div>
   );
@@ -181,6 +183,37 @@ const SectionsCard = () => {
       <SettingsCard>
         {row("wall", "Стена", "Общая лента: вкладка внизу и строка в списке чатов")}
         {row("ideabox", "Долгий ящик", "Идеи и предложения разработчику — строка в списке чатов")}
+      </SettingsCard>
+    </>
+  );
+};
+
+/** Временно: закрепить одну анимацию удаления, чтобы посмотреть каждую.
+ *  Хранится только на этом устройстве (lib/deleteAnim). */
+const DeleteAnimCard = () => {
+  const [v, setV] = useState(getDeleteAnimChoice);
+  const pick = (next: DeleteVariant | "random") => { setDeleteAnimChoice(next); setV(next); };
+  return (
+    <>
+      <p className="px-1 pt-2 text-small text-subtle">{tr("Анимация удаления")}</p>
+      <SettingsCard>
+        <SettingsRow
+          label={tr("Вариант")}
+          hint={tr("Временная настройка: чтобы посмотреть каждую анимацию по очереди")}
+          trailing={
+            <select
+              value={v}
+              onChange={(e) => pick(e.target.value as DeleteVariant | "random")}
+              aria-label={tr("Анимация удаления")}
+              className="h-9 max-w-[52%] rounded-md border border-border bg-surface-3 px-2 text-small text-foreground"
+            >
+              <option value="random">{tr("Случайно")}</option>
+              {(Object.keys(DELETE_VARIANT_LABELS) as DeleteVariant[]).map((k) => (
+                <option key={k} value={k}>{tr(DELETE_VARIANT_LABELS[k])}</option>
+              ))}
+            </select>
+          }
+        />
       </SettingsCard>
     </>
   );
