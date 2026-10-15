@@ -231,8 +231,11 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         NativeCallAudio.shared.beginCall()
         var js = jsPayload(info.payload)
         js["callId"] = callId
+        // retainUntilConsumed: страница могла уже загрузиться, но ещё не
+        // подписаться (приложение запустил VoIP-пуш, сеть в фоне стоит) —
+        // тогда событие дождётся подписчика, а не пропадёт (баг-репорт 17c48d63).
         if let plugin {
-            plugin.notifyListeners("callAnswered", data: js)
+            plugin.notifyListeners("callAnswered", data: js, retainUntilConsumed: true)
         } else {
             pendingAnswer = js
         }

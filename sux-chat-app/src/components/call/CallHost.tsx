@@ -25,6 +25,22 @@ type CachedChat = {
 };
 const cachedChats = () => readCache<CachedChat[]>("chats") || [];
 
+/** Серверы связи: свежие с сервера, а если сеть молчит (приложение запустил
+ *  VoIP-пуш, в фоне запросы стоят) — последние сохранённые через 3 с, чтобы
+ *  ответ из CallKit не ждал их бесконечно. */
+const ICE_KEY = "hyax:ice-servers";
+function iceServersFast(): Promise<RTCIceServer[]> {
+  const fresh = api.getIceServers().then((list) => {
+    try { localStorage.setItem(ICE_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+    return list;
+  });
+  let cached: RTCIceServer[] | null = null;
+  try { cached = JSON.parse(localStorage.getItem(ICE_KEY) || "null"); } catch { cached = null; }
+  // Без сохранённых и без сети — пустой список: соединение пойдёт напрямую.
+  if (!cached?.length) return fresh.catch(() => []);
+  return Promise.race([fresh.catch(() => cached!), new Promise<RTCIceServer[]>((r) => setTimeout(() => r(cached!), 3000))]);
+}
+
 /**
  * Звонки на всё приложение: сервисы личного и группового звонка, CallKit,
  * экран звонка и его свёрнутый вид — виджет, как у мини-плеера.
@@ -102,9 +118,93 @@ const CallHost = () => {
     const waitForWs = async () => {
       for (let i = 0; i < 50 && !ws.isConnected(); i++) await new Promise((r) => setTimeout(r, 100));
     };
+    // Сервисы готовы — обработчики CallKit ждут этого. Подписываемся на
+    // события сразу, а не после запроса серверов связи: приложение мог
+    // запустить VoIP-пуш, сеть в фоне стоит, и ответ из CallKit приходил,
+    // когда подписки ещё не было (баг-репорт 17c48d63).
+    let markReady!: () => void;
+    const ready = new Promise<void>((r) => { markReady = r; });
+    const svcReady = async () => { await ready; return disposed ? null : callRef.current; };
+
+    // Ответ с системного экрана CallKit (в том числе с заблокированного
+    // экрана, когда приложение только что запустилось этим звонком).
+    const handleAnswered = async (c: VoipCallPayload) => {
+      const svc = await svcReady();
+      if (!svc) return;
+      await waitForWs();
+      const chat = cachedChats().find((x) => x.id === c.chatId);
+      if (c.group || chat?.is_group) {
+        const group = groupCallRef.current;
+        group?.notifyIncoming({
+          callId: c.callId,
+          chatId: c.chatId,
+          fromUserId: c.fromUserId,
+          fromUsername: c.fromUsername,
+          chatName: c.chatName || chat?.name || tr("Группа"),
+        });
+        await group?.accept();
+        openChatRef.current(c.chatId, c.chatName || chat?.name);
+        return;
+      }
+      svc.notifyIncomingCall({
+        callId: c.callId,
+        chatId: c.chatId,
+        fromUserId: c.fromUserId,
+        fromUsername: c.fromUsername,
+        fromUserAvatar: c.fromUserAvatar,
+        callType: c.callType,
+      });
+      await svc.acceptIncomingCall(c.callId, c.fromUserId);
+      setIncomingCall(null);
+      openChatRef.current(c.chatId, c.fromUsername);
+    };
+
+    const toIncoming = (c: VoipCallPayload) => ({
+      callId: c.callId,
+      chatId: c.chatId,
+      fromUserId: c.fromUserId,
+      fromUsername: c.fromUsername,
+      fromUserAvatar: c.fromUserAvatar,
+      callType: c.callType,
+    });
+
+    listeners.push(
+      voip.on("voipToken", ({ token: t }: any) => {
+        api.registerPushToken(t, "ios_voip").catch(() => {});
+      }),
+      voip.on("callAnswered", (c: any) => { void handleAnswered(c); }),
+      // Android: звонок пришёл пушем (приложение на экране или открыто
+      // из уведомления поверх блокировки) — показываем свой экран входящего.
+      voip.on("callIncoming", async (c: any) => {
+        const svc = await svcReady();
+        if (svc && svc.getState() === "idle") svc.notifyIncomingCall(toIncoming(c));
+      }),
+      voip.on("callEnded", async ({ callId }: any) => {
+        const svc = await svcReady();
+        const group = groupCallRef.current;
+        if (group && group.getCallId() === callId) {
+          if (group.getState() === "incoming") group.reject(); else group.leave();
+          return;
+        }
+        if (!svc || svc.getCurrentCallId() !== callId) return;
+        // Собеседник — из сервиса: в старом коде брался из устаревшего
+        // замыкания и был всегда null, отклонение с CallKit не доходило.
+        const peerId = svc.getPeerId();
+        if (svc.getState() === "incoming" && peerId) svc.rejectIncomingCall(callId, peerId);
+        else svc.endCall("ended", true);
+      }),
+      voip.on("callMuted", async ({ muted: m }: any) => {
+        const svc = await svcReady();
+        const group = groupCallRef.current;
+        if (group && group.getState() !== "idle") {
+          if (group.isMuted() !== m) group.toggleMute();
+        } else if (svc && svc.isMuted() !== m) svc.toggleMute();
+        setMuted(m);
+      }),
+    );
 
     (async () => {
-      const iceServers = await api.getIceServers();
+      const iceServers = await iceServersFast();
       if (disposed || wsRef.current !== ws) return;
       // В приложении разговор ведёт нативный движок: в WebView звук не
       // уживался с CallKit и умирал при блокировке экрана.
@@ -172,81 +272,11 @@ const CallHost = () => {
         onError: (m) => toast.error(m),
       });
 
-      // Ответ с системного экрана CallKit (в том числе с заблокированного
-      // экрана, когда приложение только что запустилось этим звонком).
-      const handleAnswered = async (c: VoipCallPayload) => {
-        await waitForWs();
-        const chat = cachedChats().find((x) => x.id === c.chatId);
-        if (c.group || chat?.is_group) {
-          const group = groupCallRef.current;
-          group?.notifyIncoming({
-            callId: c.callId,
-            chatId: c.chatId,
-            fromUserId: c.fromUserId,
-            fromUsername: c.fromUsername,
-            chatName: c.chatName || chat?.name || tr("Группа"),
-          });
-          await group?.accept();
-          openChatRef.current(c.chatId, c.chatName || chat?.name);
-          return;
-        }
-        svc.notifyIncomingCall({
-          callId: c.callId,
-          chatId: c.chatId,
-          fromUserId: c.fromUserId,
-          fromUsername: c.fromUsername,
-          fromUserAvatar: c.fromUserAvatar,
-          callType: c.callType,
-        });
-        await svc.acceptIncomingCall(c.callId, c.fromUserId);
-        setIncomingCall(null);
-        openChatRef.current(c.chatId, c.fromUsername);
-      };
-
-      const toIncoming = (c: VoipCallPayload) => ({
-        callId: c.callId,
-        chatId: c.chatId,
-        fromUserId: c.fromUserId,
-        fromUsername: c.fromUsername,
-        fromUserAvatar: c.fromUserAvatar,
-        callType: c.callType,
-      });
-
-      listeners.push(
-        voip.on("voipToken", ({ token: t }: any) => {
-          api.registerPushToken(t, "ios_voip").catch(() => {});
-        }),
-        voip.on("callAnswered", (c: any) => handleAnswered(c)),
-        // Android: звонок пришёл пушем (приложение на экране или открыто
-        // из уведомления поверх блокировки) — показываем свой экран входящего.
-        voip.on("callIncoming", (c: any) => {
-          if (svc.getState() === "idle") svc.notifyIncomingCall(toIncoming(c));
-        }),
-        voip.on("callEnded", ({ callId }: any) => {
-          const group = groupCallRef.current;
-          if (group && group.getCallId() === callId) {
-            if (group.getState() === "incoming") group.reject(); else group.leave();
-            return;
-          }
-          if (svc.getCurrentCallId() !== callId) return;
-          // Собеседник — из сервиса: в старом коде брался из устаревшего
-          // замыкания и был всегда null, отклонение с CallKit не доходило.
-          const peerId = svc.getPeerId();
-          if (svc.getState() === "incoming" && peerId) svc.rejectIncomingCall(callId, peerId);
-          else svc.endCall("ended", true);
-        }),
-        voip.on("callMuted", ({ muted: m }: any) => {
-          const group = groupCallRef.current;
-          if (group && group.getState() !== "idle") {
-            if (group.isMuted() !== m) group.toggleMute();
-          } else if (svc.isMuted() !== m) svc.toggleMute();
-          setMuted(m);
-        }),
-      );
+      markReady();
       await voip.register();
       const pending = await voip.getPendingAnswer();
       if (pending && !disposed) {
-        if (pending.answered) handleAnswered(pending.call);
+        if (pending.answered) void handleAnswered(pending.call);
         else svc.notifyIncomingCall(toIncoming(pending.call));
       }
     })();
