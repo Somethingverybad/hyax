@@ -3532,12 +3532,95 @@ def _post_payload(msg, request):
     return data
 
 
+def _fill_action_translations(action):
+    """Пустые переводы действия — переводчиком (chat/translate.py). Фраза —
+    шаблон с {who} и {whom}: метки должны дожить до перевода, иначе поле
+    остаётся пустым и показывается русская фраза. Переводчик недоступен —
+    тоже пусто, админ заполнит руками."""
+    from .translate import translate_text
+    def tr(text, lang):
+        try:
+            return (translate_text(text, lang, "ru") or "").strip()
+        except Exception:
+            logger.warning("действие %s: перевод на %s не удался", action.name, lang)
+            return ""
+    for lang in ("en", "ko"):
+        if not getattr(action, f"name_{lang}"):
+            setattr(action, f"name_{lang}", tr(action.name, lang)[:40])
+        if not getattr(action, f"phrase_{lang}"):
+            out = tr(f"{{who}} {action.verb} {{whom}}", lang)
+            if "{who}" in out and "{whom}" in out:
+                setattr(action, f"phrase_{lang}", out[:120])
+
+
+def _action_slug(action):
+    from django.utils.text import slugify
+    base = slugify(action.name_en or "")[:32] or "action"
+    slug, n = base, 2
+    while ChatAction.objects.filter(slug=slug).exclude(id=action.id).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
 class ActionsView(APIView):
-    """Каталог действий («подмигнуть», «обнять»…) для панели стикеров."""
+    """Каталог действий («подмигнуть», «обнять»…) для панели стикеров.
+    Действия 18+ — только тем, кто подтвердил возраст (allow_adult).
+    Админ: GET ?all=1 — весь каталог со скрытыми; POST — новое действие
+    (пустые переводы заполнит переводчик)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        return Response({"actions": ChatActionSerializer(ChatAction.objects.filter(is_active=True), many=True).data})
+        me = _prof(request)
+        if request.query_params.get("all") and me and is_admin_profile(me):
+            return Response({"actions": ChatActionAdminSerializer(ChatAction.objects.all(), many=True).data})
+        qs = ChatAction.objects.filter(is_active=True)
+        if not (me and me.allow_adult):
+            qs = qs.filter(adult=False)
+        return Response({"actions": ChatActionSerializer(qs, many=True).data})
+
+    def post(self, request):
+        me = _prof(request)
+        if not me or not is_admin_profile(me):
+            return Response({"error": "Только для админа"}, status=403)
+        ser = ChatActionAdminSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response({"error": "Проверьте поля действия", "fields": ser.errors}, status=400)
+        if not (ser.validated_data.get("name") or "").strip() or not (ser.validated_data.get("verb") or "").strip():
+            return Response({"error": "Нужны кнопка и глагол"}, status=400)
+        action = ChatAction(**ser.validated_data)
+        _fill_action_translations(action)
+        action.slug = _action_slug(action)
+        action.save()
+        return Response(ChatActionAdminSerializer(action).data, status=201)
+
+
+class ActionDetailView(APIView):
+    """PATCH actions/<id>/ (админ) — правка; пустые переводы снова заполнит
+    переводчик. Удалять не даём — старые сообщения с действием потеряли бы
+    текст; скрыть — is_active: false."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        me = _prof(request)
+        if not me or not is_admin_profile(me):
+            return Response({"error": "Только для админа"}, status=403)
+        action = ChatAction.objects.filter(id=pk).first()
+        if not action:
+            return Response({"error": "Действие не найдено"}, status=404)
+        ser = ChatActionAdminSerializer(action, data=request.data, partial=True)
+        if not ser.is_valid():
+            return Response({"error": "Проверьте поля действия", "fields": ser.errors}, status=400)
+        for k, v in ser.validated_data.items():
+            setattr(action, k, v)
+        # Сменили кнопку или глагол — старые переводы не подходят, если их не прислали.
+        for lang in ("en", "ko"):
+            if "name" in request.data and f"name_{lang}" not in request.data:
+                setattr(action, f"name_{lang}", "")
+            if "verb" in request.data and f"phrase_{lang}" not in request.data:
+                setattr(action, f"phrase_{lang}", "")
+        _fill_action_translations(action)
+        action.save()
+        return Response(ChatActionAdminSerializer(action).data)
 
 
 class ChannelsView(APIView):

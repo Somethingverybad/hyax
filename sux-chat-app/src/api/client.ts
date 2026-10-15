@@ -352,7 +352,9 @@ export type MediaKind = "photo" | "video" | "music" | "voice" | "file";
 export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "none" | string; poster?: string | null; anim?: string | null }
 
 /** Действие в чате: кнопка name, в сообщении — «<emoji> <ник> <verb> <адресат>». */
-export interface ChatActionInfo { id: number; slug: string; name: string; verb: string; emoji: string; premium?: boolean; name_en?: string; name_ko?: string; phrase_en?: string; phrase_ko?: string }
+export interface ChatActionInfo { id: number; slug: string; name: string; verb: string; emoji: string; premium?: boolean; adult?: boolean; name_en?: string; name_ko?: string; phrase_en?: string; phrase_ko?: string; order?: number; is_active?: boolean }
+/** Поля действия, которые правит админ (пустые переводы заполнит сервер). */
+export type ChatActionDraft = Partial<Omit<ChatActionInfo, "id" | "slug">>;
 
 /** Название действия на языке интерфейса (каталог хранит en/ko рядом с русским). */
 export function actionName(a: { name: string; name_en?: string; name_ko?: string }, lang: string): string {
@@ -1237,6 +1239,21 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/actions/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return (await res.json()).actions || [];
+  },
+  /** Админ: весь каталог со скрытыми. */
+  getAllActions: async (): Promise<ChatActionInfo[]> => {
+    const res = await fetchWithAuth(`${API_URL}/actions/?all=1`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
+    return (await res.json()).actions || [];
+  },
+  /** Админ: новое действие или правка (пустые переводы — переводчиком на сервере). */
+  saveAction: async (id: number | null, data: ChatActionDraft): Promise<ChatActionInfo> => {
+    const res = await fetchWithAuth(id ? `${API_URL}/actions/${id}/` : `${API_URL}/actions/`, {
+      method: id ? "PATCH" : "POST", headers: authHeaders(), body: JSON.stringify(data),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось сохранить");
+    return body;
   },
   /** Отправить действие: в личке адресат — собеседник, в группе — target. */
   sendAction: async (chatId: string, actionId: number, targetId?: string): Promise<any> => {

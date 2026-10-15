@@ -120,6 +120,7 @@ urlpatterns = [
     path('posts/comments/<uuid:pk>/', PostCommentDetailView.as_view(), name='post-comment-detail'),
     path('sounds/', NotificationSoundListView.as_view(), name='notification-sounds'),
     path('actions/', ActionsView.as_view(), name='chat-actions'),
+    path('actions/<int:pk>/', ActionDetailView.as_view(), name='chat-action-detail'),
     path('sounds/mine/', MySoundPacksView.as_view(), name='sound-packs-mine'),
     path('sounds/pack/', SoundPackStudioView.as_view(), name='sound-pack-studio'),
     path('sounds/pack/<uuid:pk>/', SoundPackDetailView.as_view(), name='sound-pack-detail'),

@@ -1099,6 +1099,8 @@ class ChatAction(models.Model):
     order = models.PositiveSmallIntegerField(default=100)
     is_active = models.BooleanField(default=True)
     premium = models.BooleanField(default=False)
+    # 18+: видно только тем, кто подтвердил возраст (Profile.allow_adult).
+    adult = models.BooleanField(default=False)
     # Переводы: кнопка и фраза-шаблон с {who} и {whom} (порядок слов в языках
     # разный, поэтому не глагол, а вся фраза). Пусто — показываем по-русски.
     name_en = models.CharField(max_length=40, blank=True, default="")

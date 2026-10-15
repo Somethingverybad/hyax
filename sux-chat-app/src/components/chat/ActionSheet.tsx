@@ -2,12 +2,18 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { api, actionName, type ChatActionInfo } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
+import { readCache } from "@/lib/session-cache";
 
 let cache: ChatActionInfo[] | null = null;
-/** Каталог действий — один раз за сессию (меняется только в админке). */
-export async function loadActions(): Promise<ChatActionInfo[]> {
-  if (cache) return cache;
+let cacheAdult: boolean | null = null;
+/** Каталог действий — один раз за сессию (меняется только в админке). Действия
+ *  18+ сервер отдаёт только с галкой «Показывать 18+» — включил или выключил её,
+ *  каталог перечитываем. */
+export async function loadActions(force = false): Promise<ChatActionInfo[]> {
+  const adult = !!readCache<{ allow_adult?: boolean }>("user")?.allow_adult;
+  if (cache && !force && cacheAdult === adult) return cache;
   cache = await api.getActions();
+  cacheAdult = adult;
   return cache;
 }
 

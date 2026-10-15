@@ -767,4 +767,13 @@ class MusicTrackSerializer(serializers.ModelSerializer):
 class ChatActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatAction
-        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko']
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'adult', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko']
+
+
+class ChatActionAdminSerializer(serializers.ModelSerializer):
+    """Правка каталога действий админом (ActionsView ?all=1, POST, PATCH)."""
+    class Meta:
+        model = ChatAction
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'order', 'is_active', 'premium', 'adult',
+                  'name_en', 'name_ko', 'phrase_en', 'phrase_ko']
+        read_only_fields = ['id', 'slug']

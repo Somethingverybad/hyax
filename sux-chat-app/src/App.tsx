@@ -19,6 +19,7 @@ import ProfileBugReport from "./pages/ProfileBugReport";
 import AdminMetrics from "./pages/AdminMetrics";
 import ProfileIdeas from "./pages/ProfileIdeas";
 import ProfileVibeLevels from "./pages/ProfileVibeLevels";
+import ProfileActions from "./pages/ProfileActions";
 import ProfileAura from "./pages/ProfileAura";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
@@ -309,6 +310,7 @@ const App = () => {
                 {/* «Долгий ящик»: идеи, голоса, реализованное (chat/ideabox.py). */}
                 <Route path="/profile/ideas" element={<ProfileIdeas />} />
                 <Route path="/profile/vibe-levels" element={<ProfileVibeLevels />} />
+                <Route path="/profile/actions" element={<ProfileActions />} />
                 <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
                 {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}
                 <Route path="/profile/soundpacks/new" element={<SoundPackNew />} />

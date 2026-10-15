@@ -9,7 +9,7 @@ import LoopVideo from "@/components/LoopVideo";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
-import { Globe } from "lucide-react";
+import { Globe, Wand2 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -506,6 +506,12 @@ const ProfilePage = () => {
                 label={t("Уровни вайбометра")}
                 hint={t("Пороги, цвета, свечение, длина шкалы")}
                 onClick={() => navigate("/profile/vibe-levels")}
+              />
+              <SettingsRow
+                icon={Wand2}
+                label={t("Действия")}
+                hint={t("«Подмигнуть», «обнять»… — добавить, поправить, 18+")}
+                onClick={() => navigate("/profile/actions")}
               />
             </SettingsCard>
           )}
