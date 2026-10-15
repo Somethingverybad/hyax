@@ -989,6 +989,10 @@ def _can_post_to(chat, profile):
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     queryset = Message.objects.all()
+    # Стандартные PUT/PATCH/DELETE закрыты: правка — действие edit (только
+    # автор), удаление — remove (мягкое, с рассылкой). Раньше через них любой
+    # вошедший мог переписать или стереть из базы чужое сообщение.
+    http_method_names = ['get', 'post', 'head', 'options']
     
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -997,9 +1001,20 @@ class MessageViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Message.objects.select_related('sender__notify_sound').prefetch_related('read_statuses__user')
+        me = getattr(self.request.user, 'profile', None)
+        if me is None:
+            return Message.objects.none()
+        # Только сообщения чатов, которые мне видны: где я участник, Стена и
+        # публичные каналы. Раньше фильтра не было — список без chat отдавал
+        # сообщения всех чатов, а по id читалось любое.
+        queryset = queryset.annotate(
+            _member=models.Exists(ChatParticipant.objects.filter(chat_id=models.OuterRef('chat_id'), user=me))
+        ).filter(models.Q(_member=True) | models.Q(chat__kind='wall') | models.Q(chat__kind='channel', chat__is_public=True))
         chat_id = self.request.query_params.get('chat')
         if chat_id:
             queryset = queryset.filter(chat_id=chat_id)
+        elif getattr(self, 'action', None) == 'list':
+            return Message.objects.none()  # ленту отдаём только по конкретному чату
         # Скрываем удалённые: у всех — для каждого; «у себя» — для того, кто удалил.
         queryset = queryset.exclude(deleted_for_all=True)
         try:
@@ -1580,6 +1595,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         _chat_id = request.data.get('chat')
         if _chat_id:
             _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name', 'pending_for').first()
+            if not _ch:
+                return Response({"error": "Чат не найден"}, status=404)
+            # Писать можно только туда, где ты участник (Стена — всем, кроме
+            # забаненных): раньше в личку и группу проверки не было.
+            if _ch.kind not in ('channel', 'wall', 'secret') and not _ch.pending_for_id \
+                    and not ChatParticipant.objects.filter(chat=_ch, user=profile).exists():
+                return Response({"error": "Вы не участник этого чата"}, status=403)
             # Запрос на переписку не принят — писать нельзя никому.
             if _ch and _ch.pending_for_id:
                 return Response({"error": "Сначала примите запрос на переписку" if _ch.pending_for_id == profile.id
