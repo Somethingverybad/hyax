@@ -3,6 +3,7 @@ import { confirmDialog } from "@/lib/confirm";
 import StickerView from "@/components/chat/StickerView";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { createPortal } from "react-dom";
 import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
@@ -181,27 +182,61 @@ const StickerPicker = ({
   const activePack = packs.find((p) => p.pack.id === activePackId)?.pack;
   // Меню набора: поделиться ссылкой, удалить свой или убрать чужой из моих.
   const [packMenu, setPackMenu] = useState(false);
-  const sharePack = async () => {
-    setPackMenu(false);
-    if (!activePack) return;
-    const r = await shareStickerPack(activePack.name, activePack.id);
+  type PackLike = NonNullable<typeof activePack>;
+  const authorOf = (pk?: PackLike | null) => (pk?.author && typeof pk.author === "object" ? pk.author.id : (pk?.author as string | undefined));
+  const isAuthorOf = (pk?: PackLike | null) => { const a = authorOf(pk); return !!meId && !!a && meId === a; };
+  const sharePack = async (pk: PackLike | undefined = activePack) => {
+    setPackMenu(false); setCtxPack(null);
+    if (!pk) return;
+    const r = await shareStickerPack(pk.name, pk.id);
     if (r === "copied") toast.success(t("Ссылка скопирована"));
     else if (r === "error") toast.error(t("Не удалось поделиться"));
   };
-  const removePack = async (mine: boolean) => {
-    setPackMenu(false);
-    if (!activePack) return;
-    if (!(await confirmDialog(mine ? t("Удалить набор «{name}» у всех, кто его сохранил? Это необратимо.", { name: activePack.name }) : t("Убрать «{name}» из моих наборов?", { name: activePack.name })))) return;
+  const removePack = async (mine: boolean, pk: PackLike | undefined = activePack) => {
+    setPackMenu(false); setCtxPack(null);
+    if (!pk) return;
+    if (!(await confirmDialog(mine ? t("Удалить набор «{name}» у всех, кто его сохранил? Это необратимо.", { name: pk.name }) : t("Убрать «{name}» из моих наборов?", { name: pk.name })))) return;
     try {
-      if (mine) await api.deleteStickerPack(activePack.id); else await api.unsaveStickerPack(activePack.id);
-      pickerCache.stickers.delete(activePack.id);
+      if (mine) await api.deleteStickerPack(pk.id); else await api.unsaveStickerPack(pk.id);
+      pickerCache.stickers.delete(pk.id);
       invalidateStickerIndex();
       await loadPacks();
       toast.success(mine ? t("Набор удалён") : t("Убрано из моих"));
     } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
-  const authorId = activePack?.author && typeof activePack.author === "object" ? activePack.author.id : (activePack?.author as string | undefined);
-  const isAuthor = !!meId && !!authorId && meId === authorId;
+  const isAuthor = isAuthorOf(activePack);
+
+  // Контекстное меню миниатюры набора: долгое нажатие (телефон) или правый
+  // клик — «Поделиться стикерпаком» и убрать/удалить. Короткий тап, как и
+  // раньше, переключает набор; сдвиг пальца (прокрутка ряда) меню не открывает.
+  const [ctxPack, setCtxPack] = useState<{ pack: PackLike; x: number; y: number } | null>(null);
+  const packHoldRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; x: number; y: number; fired: boolean }>({ timer: null, x: 0, y: 0, fired: false });
+  const openCtx = (pack: PackLike, x: number, y: number) => {
+    setCtxPack({ pack, x, y });
+    if (Capacitor.isNativePlatform()) import("@capacitor/haptics").then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Light })).catch(() => {});
+  };
+  const packHold = (pack: PackLike) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse") return; // мышью — правый клик
+      const h = packHoldRef.current;
+      h.x = e.clientX; h.y = e.clientY; h.fired = false;
+      if (h.timer) clearTimeout(h.timer);
+      h.timer = setTimeout(() => { h.timer = null; h.fired = true; openCtx(pack, h.x, h.y); }, 500);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const h = packHoldRef.current;
+      if (h.timer && (Math.abs(e.clientX - h.x) > 8 || Math.abs(e.clientY - h.y) > 8)) { clearTimeout(h.timer); h.timer = null; }
+    },
+    onPointerUp: () => { const h = packHoldRef.current; if (h.timer) { clearTimeout(h.timer); h.timer = null; } },
+    onPointerCancel: () => { const h = packHoldRef.current; if (h.timer) { clearTimeout(h.timer); h.timer = null; } },
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      // Android шлёт contextmenu и на долгом касании — меню уже открыто таймером.
+      if (packHoldRef.current.fired) return;
+      packHoldRef.current.fired = true;
+      openCtx(pack, e.clientX, e.clientY);
+    },
+  });
   const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState<Sticker | null>(null);
   const [editKeyword, setEditKeyword] = useState("");
@@ -559,7 +594,13 @@ const StickerPicker = ({
           <button
             key={p.pack.id}
             type="button"
-            onClick={() => setActivePackId(p.pack.id)}
+            onClick={() => {
+              // Клик после долгого нажатия — это открытие меню, а не выбор набора.
+              if (packHoldRef.current.fired) { packHoldRef.current.fired = false; return; }
+              setActivePackId(p.pack.id);
+            }}
+            {...packHold(p.pack)}
+            style={{ WebkitTouchCallout: "none", touchAction: "pan-x" }}
             title={p.pack.name}
             className={mint
               ? cn("shrink-0 w-[25px] h-[25px] rounded-[6px] overflow-hidden flex items-center justify-center text-[11px] font-semibold mint-ink transition-transform", activePackId === p.pack.id ? "ring-2 ring-[var(--mint-ink)] ring-offset-1 scale-110" : "opacity-80")
@@ -580,16 +621,41 @@ const StickerPicker = ({
       </div>
 
       {packMenu && activePack && createPortal(
-        <div className="fixed inset-0 z-[90] bg-black/60 flex flex-col justify-end" onClick={() => setPackMenu(false)}>
+        <div data-sticker-portal className="fixed inset-0 z-[90] bg-black/60 flex flex-col justify-end" onClick={() => setPackMenu(false)}>
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
             <p className="px-4 pt-3 pb-2 text-small text-subtle truncate">{activePack.name}</p>
-            <button type="button" onClick={() => void sharePack()} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+            <button type="button" onClick={() => void sharePack(activePack)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
               <Share2 className="w-5 h-5 text-primary" /> {t("Поделиться набором")}
             </button>
-            <button type="button" onClick={() => void removePack(isAuthor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
+            <button type="button" onClick={() => void removePack(isAuthor, activePack)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
               <Trash2 className="w-5 h-5" /> {isAuthor ? t("Удалить набор у всех") : t("Убрать из моих")}
             </button>
             <button type="button" onClick={() => setPackMenu(false)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">{t("Отмена")}</button>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {ctxPack && createPortal(
+        <div data-sticker-portal className="fixed inset-0 z-[90]" onClick={() => setCtxPack(null)} onContextMenu={(e) => { e.preventDefault(); setCtxPack(null); }}>
+          <div
+            role="menu"
+            className="fixed min-w-[220px] max-w-[280px] rounded-lg bg-card border border-border shadow-xl py-1"
+            style={{
+              left: Math.max(8, Math.min(ctxPack.x - 24, window.innerWidth - 288)),
+              top: Math.max(8, ctxPack.y - 150),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="px-4 pt-2 pb-1 text-caption text-subtle truncate">{ctxPack.pack.name}</p>
+            <button type="button" role="menuitem" onClick={() => void sharePack(ctxPack.pack)}
+              className="w-full px-4 py-2.5 text-left text-body flex items-center gap-3 active:bg-secondary hover:bg-secondary">
+              <Share2 className="w-5 h-5 text-primary" /> {t("Поделиться стикерпаком")}
+            </button>
+            <button type="button" role="menuitem" onClick={() => void removePack(isAuthorOf(ctxPack.pack), ctxPack.pack)}
+              className="w-full px-4 py-2.5 text-left text-body flex items-center gap-3 active:bg-secondary hover:bg-secondary text-destructive">
+              <Trash2 className="w-5 h-5" /> {isAuthorOf(ctxPack.pack) ? t("Удалить набор у всех") : t("Убрать из моих")}
+            </button>
           </div>
         </div>,
         document.body,

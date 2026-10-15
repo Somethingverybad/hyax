@@ -1160,6 +1160,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     if (!stickersOpen) return;
     const onDown = (e: PointerEvent) => {
+      // Меню набора («⋯», долгое нажатие на миниатюре) рисуется поверх экрана,
+      // вне строки ввода, — тап по нему панель не закрывает.
+      if ((e.target as Element | null)?.closest?.("[data-sticker-portal]")) return;
       if (composeRef.current && !composeRef.current.contains(e.target as Node)) {
         setStickersOpen(false);
       }
