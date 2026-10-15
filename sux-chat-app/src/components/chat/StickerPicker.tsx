@@ -9,7 +9,7 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users } from "lucide-react";
 import { shareStickerPack } from "@/lib/share";
 import ImageCropper from "@/components/ImageCropper";
 import { readCache } from "@/lib/session-cache";
@@ -34,6 +34,8 @@ interface UserStickerPack {
     id: string;
     name: string;
     stickers_count: number;
+    /** Совместный набор: добавлять могут все, кто его сохранил. */
+    open_add?: boolean;
     author?: { id: string } | string | null;
   };
 }
@@ -205,6 +207,33 @@ const StickerPicker = ({
     } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
   const isAuthor = isAuthorOf(activePack);
+  // Плитка «+»: автору всегда, остальным — если автор открыл набор для всех.
+  const canAdd = isAuthor || !!activePack?.open_add;
+  const toggleOpenAdd = async (pk: PackLike | undefined, open: boolean) => {
+    if (!pk) return;
+    // Сразу на экране, затем на сервер; ошибка — откат.
+    const apply = (v: boolean) => setPacks((list) => list.map((x) => (x.pack.id === pk.id ? { ...x, pack: { ...x.pack, open_add: v } } : x)));
+    apply(open);
+    setCtxPack((c) => (c && c.pack.id === pk.id ? { ...c, pack: { ...c.pack, open_add: open } } : c));
+    try {
+      await api.setStickerPackOpenAdd(pk.id, open);
+      toast.success(open ? t("Теперь добавлять стикеры могут все, у кого есть набор") : t("Добавлять стикеры можете только вы"));
+    } catch (e: any) {
+      apply(!open);
+      toast.error(e?.message || t("Не удалось сохранить"));
+    }
+  };
+  const openAddRow = (pk: PackLike) => (
+    <label className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary cursor-pointer">
+      <Users className="w-5 h-5 text-primary shrink-0" />
+      <span className="flex-1 min-w-0">
+        <span className="block">{t("Добавлять могут все, у кого есть набор")}</span>
+        <span className="block text-caption text-subtle">{t("Менять и удалять стикеры можете только вы")}</span>
+      </span>
+      <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={!!pk.open_add}
+        onChange={(e) => void toggleOpenAdd(pk, e.target.checked)} aria-label={t("Добавлять могут все, у кого есть набор")} />
+    </label>
+  );
 
   // Контекстное меню миниатюры набора: долгое нажатие (телефон) или правый
   // клик — «Поделиться стикерпаком» и убрать/удалить. Короткий тап, как и
@@ -627,6 +656,7 @@ const StickerPicker = ({
             <button type="button" onClick={() => void sharePack(activePack)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
               <Share2 className="w-5 h-5 text-primary" /> {t("Поделиться набором")}
             </button>
+            {isAuthor && openAddRow(activePack)}
             <button type="button" onClick={() => void removePack(isAuthor, activePack)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
               <Trash2 className="w-5 h-5" /> {isAuthor ? t("Удалить набор у всех") : t("Убрать из моих")}
             </button>
@@ -652,6 +682,7 @@ const StickerPicker = ({
               className="w-full px-4 py-2.5 text-left text-body flex items-center gap-3 active:bg-secondary hover:bg-secondary">
               <Share2 className="w-5 h-5 text-primary" /> {t("Поделиться стикерпаком")}
             </button>
+            {isAuthorOf(ctxPack.pack) && openAddRow(ctxPack.pack)}
             <button type="button" role="menuitem" onClick={() => void removePack(isAuthorOf(ctxPack.pack), ctxPack.pack)}
               className="w-full px-4 py-2.5 text-left text-body flex items-center gap-3 active:bg-secondary hover:bg-secondary text-destructive">
               <Trash2 className="w-5 h-5" /> {isAuthorOf(ctxPack.pack) ? t("Удалить набор у всех") : t("Убрать из моих")}
@@ -676,6 +707,7 @@ const StickerPicker = ({
         {stickers.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-3">
             <p className="text-sm text-muted-foreground">{t("В наборе пусто")}</p>
+            {canAdd && (
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -684,9 +716,11 @@ const StickerPicker = ({
             >
               {busy ? t("Загрузка…") : t("Добавить стикеры")}
             </button>
+            )}
           </div>
         ) : (
           <div className={mint ? "grid grid-cols-5 gap-[10px] px-[9px] pt-[8px]" : "grid grid-cols-4 gap-2"}>
+            {canAdd && (
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -697,6 +731,7 @@ const StickerPicker = ({
             >
               {mint ? <MintIcon name="stkAdd" size={[22, 24]} /> : <Plus className="w-6 h-6" />}
             </button>
+            )}
             {stickers.map((s) => (
               <button
                 key={s.id}

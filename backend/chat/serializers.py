@@ -334,7 +334,7 @@ class StickerPackSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = StickerPack
-        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'created_at', 'updated_at', 'stickers_count', 'is_saved', 'preview']
+        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'open_add', 'created_at', 'updated_at', 'stickers_count', 'is_saved', 'preview']
         read_only_fields = ['author', 'created_at', 'updated_at']
 
     def get_preview(self, obj):

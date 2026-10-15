@@ -292,6 +292,8 @@ export interface StickerPackInfo {
   stickers_count: number;
   /** Уже добавлен текущим пользователем. */
   is_saved: boolean;
+  /** Совместный набор: добавлять стикеры могут все, кто его сохранил. */
+  open_add?: boolean;
 }
 
 export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack" | "theme";
@@ -1832,6 +1834,13 @@ export const api = {
     if (!res.ok) throw new LError("Не удалось удалить стикер");
   },
 
+  /** Автор: разрешить или запретить добавлять стикеры всем, кто сохранил набор. */
+  setStickerPackOpenAdd: async (packId: string, open: boolean): Promise<StickerPackInfo> => {
+    const res = await fetchWithAuth(`${API_URL}/sticker-packs/${packId}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ open_add: open }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || body?.detail || "Не удалось сохранить");
+    return body;
+  },
   createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0, keyword = ""): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/stickers/`, {
       method: "POST",

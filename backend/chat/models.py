@@ -533,6 +533,9 @@ class StickerPack(models.Model):
     is_public = models.BooleanField(default=True)  # Публичный или приватный стикерпак
     # Пак 18+ — см. SoundPack.is_adult.
     is_adult = models.BooleanField(default=False, db_index=True)
+    # Совместный набор: стикеры добавляет не только автор, а все, кто его
+    # сохранил. Менять и удалять стикеры — по-прежнему только автор.
+    open_add = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
     

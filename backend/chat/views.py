@@ -2412,7 +2412,8 @@ class StickerViewSet(viewsets.ModelViewSet):
         return queryset.order_by('order', 'created_at')
     
     def perform_create(self, serializer):
-        """При создании стикера проверяем, что пользователь - автор пака"""
+        """Добавлять стикеры может автор набора, а в совместном (open_add) —
+        и все, кто его сохранил."""
         pack_id = self.request.data.get('pack')
         if not pack_id:
             raise ValidationError("Pack ID is required")
@@ -2421,8 +2422,12 @@ class StickerViewSet(viewsets.ModelViewSet):
             profile = self.request.user.profile
             pack = StickerPack.objects.get(id=pack_id)
             
-            if pack.author != profile:
-                raise PermissionError("You can only add stickers to your own packs")
+            # Раньше здесь был PermissionError — клиент получал 500 вместо отказа.
+            if pack.author_id != profile.id and not (
+                pack.open_add and UserStickerPack.objects.filter(user=profile, pack=pack).exists()
+            ):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Добавлять стикеры может только автор набора")
             
             serializer.save(keyword=_clean_keyword(self.request.data.get('keyword')))
         except StickerPack.DoesNotExist:

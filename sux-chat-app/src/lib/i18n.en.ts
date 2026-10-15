@@ -1624,5 +1624,11 @@ const en: Record<string, string> = {
   "Р.Ё.В.: тап — один толчок, держите — вибрация нарастает": "Ryov: tap for one buzz, hold for a building vibration",
   // Полный проход по интерфейсу (2026-10-14)
   "Поделиться стикерпаком": "Share sticker pack",
+  // Полный проход по интерфейсу (2026-10-14)
+  "Теперь добавлять стикеры могут все, у кого есть набор": "Now everyone who has the pack can add stickers",
+  "Добавлять стикеры можете только вы": "Only you can add stickers now",
+  "Добавлять могут все, у кого есть набор": "Anyone with the pack can add",
+  "Менять и удалять стикеры можете только вы": "Only you can edit and delete stickers",
+  "Добавлять стикеры может только автор набора": "Only the pack author can add stickers",
 };
 export default en;
