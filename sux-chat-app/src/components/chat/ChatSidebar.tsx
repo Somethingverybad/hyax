@@ -1,5 +1,5 @@
 import { confirmDialog } from "@/lib/confirm";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
@@ -485,6 +485,33 @@ const ChatSidebar = ({
     }
   };
 
+  // Кого звать в группу: собеседники из личных переписок, недавние первыми.
+  // Список виден сразу, ввод его фильтрует; точный ник находит и остальных.
+  const groupContacts = useMemo(() => {
+    if (!groupMode) return [];
+    const seen = new Set<string>();
+    const out: Profile[] = [];
+    const direct = chats
+      .filter((c) => !c.is_group && !["saved", "ideabox", "channel", "secret", "system", "wall"].includes((c as any).kind || "direct"))
+      .sort((a, b) => (b.last_message_at || b.created_at || "").localeCompare(a.last_message_at || a.created_at || ""));
+    for (const c of direct) {
+      const people = chatParticipants[c.id]?.length ? chatParticipants[c.id] : c.participants || [];
+      for (const p of people) {
+        if (p.id === userId || seen.has(p.id) || (p as any).is_bot) continue;
+        seen.add(p.id);
+        out.push(p);
+      }
+    }
+    return out;
+  }, [groupMode, chats, chatParticipants, userId]);
+  const groupQuery = searchQuery.trim().replace(/^@/, "").toLowerCase();
+  const groupCandidates: Profile[] = groupMode
+    ? [
+        ...groupContacts.filter((p) => !groupQuery || (p.username || "").toLowerCase().includes(groupQuery)),
+        ...searchResults.filter((r) => r.id !== userId && !groupContacts.some((p) => p.id === r.id)),
+      ]
+    : searchResults;
+
   const toggleGroupMember = (user: Profile) => {
     setGroupMembers((prev) =>
       prev.some((m) => m.id === user.id)
@@ -818,7 +845,7 @@ const ChatSidebar = ({
                 {mode !== "channel" && (
                 <>
                 <Input
-                  placeholder={mode === "group" ? t("Точный ник участника") : t("Найти канал…")}
+                  placeholder={mode === "group" ? t("Имя из переписок или точный ник") : t("Найти канал…")}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -828,18 +855,22 @@ const ChatSidebar = ({
                 />
                 <ScrollArea className="h-64">
                   <div className="space-y-2">
-                    {searchResults.map((user) => (
+                    {groupCandidates.map((user) => (
                         <div
                           key={user.id}
                           className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary cursor-pointer transition-colors"
                           onClick={() => (groupMode ? toggleGroupMember(user) : createChat(user.id))}
                         >
                           <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarFallback className="bg-gradient-primary text-primary-foreground">
-                                {user.username?.[0]?.toUpperCase() || "?"}
-                              </AvatarFallback>
-                            </Avatar>
+                            {groupMode ? (
+                              <Identicon id={user.id} avatarUrl={user.avatar_url} className="w-10 h-10" />
+                            ) : (
+                              <Avatar>
+                                <AvatarFallback className="bg-gradient-primary text-primary-foreground">
+                                  {user.username?.[0]?.toUpperCase() || "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
                             <span className="font-medium">{user.username}</span>
                             {(user as any).is_bot && (
                               <span className="text-caption text-subtle uppercase tracking-wide">{t("бот")}</span>
@@ -872,7 +903,7 @@ const ChatSidebar = ({
                         </div>
                       </div>
                     ))}
-                    {searchResults.length === 0 && (mode !== "user" || channelResults.length === 0) && (
+                    {groupCandidates.length === 0 && (mode !== "user" || channelResults.length === 0) && (
                       <div className="text-center text-muted-foreground py-8">
                         {searchQuery ? t("Ничего не найдено") : mode === "group" ? t("Введите ник участника целиком") : t("Введите название канала")}
                       </div>

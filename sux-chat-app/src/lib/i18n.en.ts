@@ -1656,6 +1656,7 @@ const en: Record<string, string> = {
   "Нет доступа к камере. Разрешите его в настройках браузера или системы и нажмите ещё раз": "No camera access. Allow it in your browser or system settings and tap again",
   "Нет доступа к камере. Разрешите его в настройках телефона": "No camera access. Allow it in your phone settings",
   "Сетка": "Grid",
+  "Имя из переписок или точный ник": "Name from your chats or exact username",
   "Говорящий": "Speaker",
   "Вид": "View",
   "Подключение…": "Connecting…",
