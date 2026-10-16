@@ -3858,6 +3858,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <StickerView url={message.sticker.file_url} alt={message.sticker.emoji || tr("Стикер")} className="w-32 h-32 object-contain" />
                       )}
 
+                      {/* Показать нечего: стикер или звук удалили вместе с набором до
+                          того, как сервер стал хранить файл отправленного стикера,
+                          — пишем это, а не рисуем пустой пузырь. */}
+                      {!message.content && !message.file_url && !message.sticker?.file_url && !message.voice_url
+                        && !message.video_url && message.geo_lat == null && !message.action && !message.cipher
+                        && !message.sound && !message.pending && (
+                        <span className="text-sm italic opacity-70">{tr("Вложение удалено")}</span>
+                      )}
+
                       {/* Видео-сообщение: треугольник вершиной вверх (или вниз) */}
                       {message.video_url && (
                         <VideoNote

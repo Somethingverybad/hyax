@@ -267,7 +267,7 @@ class ChatSerializer(serializers.ModelSerializer):
         if getattr(obj, 'last_geo_a', None) is not None:
             text = GEO_PREVIEW
         if not text:
-            if getattr(obj, 'last_sticker_a', None):
+            if getattr(obj, 'last_sticker_a', None) or getattr(obj, 'last_sticker_file_a', None):
                 text = 'Стикер'
             elif getattr(obj, 'last_video_a', None):
                 text = 'Видео-сообщение'
@@ -529,7 +529,7 @@ class MessageSerializer(serializers.ModelSerializer):
     is_read = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
     effect_seen = serializers.SerializerMethodField()
-    sticker = StickerSerializer(read_only=True)
+    sticker = serializers.SerializerMethodField()
     action = serializers.SerializerMethodField()
     action_target = serializers.SerializerMethodField()
     sound = NotificationSoundSerializer(read_only=True)
@@ -552,6 +552,17 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_action_target(self, obj):
         t = obj.action_target
         return {"id": str(t.id), "username": t.username} if t else None
+
+    def get_sticker(self, obj):
+        """Стикер сообщения. Если автор удалил его (или весь набор), отдаём
+        сохранённый при отправке файл в том же виде — клиенты, и старые тоже,
+        рисуют стикер по file_url и не замечают разницы."""
+        if obj.sticker_id and obj.sticker:
+            return StickerSerializer(obj.sticker).data
+        if getattr(obj, 'sticker_file', ''):
+            return {"id": None, "pack": None, "pack_name": "", "file_url": obj.sticker_file, "file_name": "",
+                    "emoji": None, "keyword": "", "order": 0, "created_at": None, "deleted": True}
+        return None
 
     def get_forwarded_from(self, obj):
         """От кого переслано: профиль, если он есть, — клиент может открыть его."""

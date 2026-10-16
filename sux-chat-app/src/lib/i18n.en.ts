@@ -1797,5 +1797,6 @@ const en: Record<string, string> = {
   "Треки": "Tracks",
   "Ваш": "Yours",
   "Переслано из «{name}»": "Forwarded from “{name}”",
+  "Вложение удалено": "Attachment deleted",
 };
 export default en;

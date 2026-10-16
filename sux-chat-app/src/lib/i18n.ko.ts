@@ -1792,5 +1792,6 @@ const ko: Record<string, string> = {
   "Ваш": "내 것",
   "saved:Все": "모든 사용자",
   "Переслано из «{name}»": "'{name}'에서 전달됨",
+  "Вложение удалено": "첨부 파일이 삭제되었습니다",
 };
 export default ko;

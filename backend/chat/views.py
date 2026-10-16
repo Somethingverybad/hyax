@@ -191,6 +191,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_geo_a=Subquery(last.values('geo_lat')[:1]),
                     last_sender_id_a=Subquery(last.values('sender_id')[:1]),
                     last_sticker_a=Subquery(last.values('sticker_id')[:1]),
+                    last_sticker_file_a=Subquery(last.values('sticker_file')[:1]),
                     last_voice_a=Subquery(last.values('voice_url')[:1]),
                     last_video_a=Subquery(last.values('video_url')[:1]),
                     last_file_a=Subquery(last.values('file_url')[:1]),
@@ -721,6 +722,7 @@ def _forward_copy(src, target, profile, album_id=None):
         file_height=getattr(src, 'file_height', None),
         poster_url=getattr(src, 'poster_url', None),
         sticker=src.sticker,
+        sticker_file=getattr(src, 'sticker_file', "") or (src.sticker.file_url if src.sticker_id else ""),
         voice_url=src.voice_url,
         voice_duration=src.voice_duration,
         video_url=src.video_url,
@@ -1810,6 +1812,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             try:
                 sticker = Sticker.objects.get(id=sticker_id)
                 save_kwargs['sticker'] = sticker
+                save_kwargs['sticker_file'] = sticker.file_url or ""
             except Sticker.DoesNotExist:
                 return Response({"error": "Sticker not found"}, status=400)
             # Эффект получения — только у стикеров и только из известного набора.
@@ -2456,8 +2459,13 @@ class StickerPackViewSet(viewsets.ModelViewSet):
         pack = self.get_object()
         if pack.author_id != getattr(getattr(request.user, 'profile', None), 'id', None):
             return Response({"error": "Удалять может только автор пака"}, status=403)
-        # файлы стикеров с диска
+        # Файлы стикеров с диска — кроме тех, что уже отправлены: в переписке
+        # они остаются (Message.sticker_file), иначе у получателей пустой пузырь.
+        sent = set(Message.objects.filter(sticker__pack=pack).exclude(sticker_file="")
+                   .values_list('sticker_file', flat=True))
         for s in pack.stickers.all():
+            if s.file_url in sent:
+                continue
             try:
                 if s.file_url.startswith('/media/'):
                     os.remove(os.path.join(settings.MEDIA_ROOT, s.file_url[len('/media/'):]))

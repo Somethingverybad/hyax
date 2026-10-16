@@ -261,6 +261,11 @@ class Message(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     file_size = models.BigIntegerField(blank=True, null=True)  # Добавляем это поле
     sticker = models.ForeignKey('Sticker', on_delete=models.SET_NULL, blank=True, null=True, related_name="messages")  # Ссылка на стикер
+    # Файл стикера на момент отправки. Автор может удалить стикер или весь
+    # набор — ссылка выше обнулится, а у получателей останется пустой пузырь.
+    # По этому адресу отправленный стикер показывается и дальше (файл не
+    # удаляется, пока он есть в переписке, см. StickerPackViewSet.destroy).
+    sticker_file = models.TextField(blank=True, default="")
     # Размеры картинки/видео, снятые ffprobe при загрузке: клиент резервирует
     # место под медиа до загрузки, и лента не «схлопывается».
     # Кадр-превью видео (jpg рядом с файлом): лента показывает его сразу, а не
