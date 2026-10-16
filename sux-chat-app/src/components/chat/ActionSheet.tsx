@@ -4,6 +4,7 @@ import { api, actionName, type ChatActionInfo } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
 import { readCache } from "@/lib/session-cache";
 import { cn } from "@/lib/utils";
+import { useKeyboardHeight } from "@/lib/useKeyboardHeight";
 
 let cache: ChatActionInfo[] | null = null;
 let cacheAdult: boolean | null = null;
@@ -52,11 +53,14 @@ export const ActionGrid = ({ onPick, compact }: { onPick: (a: ChatActionInfo) =>
 };
 
 /** Шторка «Действие для <ник>» из меню сообщения. */
-const ActionSheet = ({ title, onClose, onPick }: { title: string; onClose: () => void; onPick: (a: ChatActionInfo) => void }) => (
+const ActionSheet = ({ title, onClose, onPick }: { title: string; onClose: () => void; onPick: (a: ChatActionInfo) => void }) => {
+  // Высота клавиатуры — из общего события: на iPhone --kb-* на корне нет.
+  const kb = useKeyboardHeight();
+  return (
   <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={onClose}>
     {/* Высота — в пределах видимой части над клавиатурой (поиск её открывает). */}
     <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[420px] flex flex-col pad-safe-bottom"
-      style={{ maxHeight: "min(70%, calc(100% - var(--kb-lift, var(--kb-height, 0px)) - var(--sat, 0px) - 12px))" }}
+      style={{ maxHeight: `min(70%, calc(100% - ${kb}px - var(--sat, 0px) - 12px))` }}
       onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <span className="font-semibold flex-1 truncate">{title}</span>
@@ -65,6 +69,7 @@ const ActionSheet = ({ title, onClose, onPick }: { title: string; onClose: () =>
       <div className="flex-1 overflow-y-auto"><ActionGrid onPick={onPick} /></div>
     </div>
   </div>
-);
+  );
+};
 
 export default ActionSheet;

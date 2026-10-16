@@ -7,6 +7,7 @@ import { loadActions } from "@/components/chat/ActionSheet";
 import { cn } from "@/lib/utils";
 import { ruSelf, ruYou, trailingPrep } from "@/lib/actionText";
 import { t } from "@/lib/i18n";
+import { useKeyboardHeight } from "@/lib/useKeyboardHeight";
 
 /**
  * Профиль → Действия (только админ): каталог «подмигнуть», «обнять»… —
@@ -37,6 +38,10 @@ export default function ProfileActions() {
   const [edit, setEdit] = useState<{ id: number | null; data: ChatActionDraft } | null>(null);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
+  // Высота клавиатуры — из общего события (и iOS, и Android): на iPhone
+  // переменные --kb-* на корне не ставятся (подъём там — стилем на самих
+  // панелях), и ограничение по ним было нулевым — верх окна уезжал за экран.
+  const kb = useKeyboardHeight();
   // «Вам» или «Вас» адресату: «подмигивает кому» — Вам, «обнимает кого» — Вас.
   const [acc, setAcc] = useState(false);
 
@@ -118,9 +123,11 @@ export default function ProfileActions() {
       {edit && d && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={() => setEdit(null)}>
           {/* Высота — только видимая часть над клавиатурой: окно поднимается на её
-              высоту (pad-safe-bottom), и с max-h 90% экрана верх уезжал за край. */}
+              высоту (pad-safe-bottom), и с max-h 90% экрана верх уезжал за край.
+              Подъём на iPhone — высота клавиатуры минус отступ под индикатор;
+              вычитаем её целиком: окно на эти пункты ниже, зато верх на экране. */}
           <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[480px] flex flex-col pad-safe-bottom"
-            style={{ maxHeight: "calc(100% - var(--kb-lift, var(--kb-height, 0px)) - var(--sat, 0px) - 12px)" }}
+            style={{ maxHeight: `calc(100% - ${kb}px - var(--sat, 0px) - 12px)` }}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
               <span className="font-semibold flex-1">{edit.id ? t("Действие") : t("Новое действие")}</span>
