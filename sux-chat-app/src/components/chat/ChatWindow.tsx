@@ -1220,9 +1220,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     if (!stickersOpen) return;
     const onDown = (e: PointerEvent) => {
-      // Меню набора («⋯», долгое нажатие на миниатюре) рисуется поверх экрана,
-      // вне строки ввода, — тап по нему панель не закрывает.
-      if ((e.target as Element | null)?.closest?.("[data-sticker-portal]")) return;
+      // Окна панели (меню набора, макрос нового стикера, правка) и общие окна
+      // поверх экрана (кадрирование, подтверждение) рисуются вне строки
+      // ввода — тап по ним панель не закрывает, иначе они пропадали вместе с ней.
+      if ((e.target as Element | null)?.closest?.("[data-sticker-portal], [data-keep-panel]")) return;
       if (composeRef.current && !composeRef.current.contains(e.target as Node)) {
         setStickersOpen(false);
       }

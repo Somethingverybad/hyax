@@ -781,9 +781,13 @@ const StickerPicker = ({
       {/* Окна — порталом на body: пикер живёт в панели ввода с transform, и
           fixed внутри неё считался бы от панели, а не от экрана. */}
       {/* Макрос для нового стикера — можно пропустить, тогда он не подсказывается. */}
+      {/* data-sticker-portal: окно вне строки ввода, и без пометки первый же
+          тап по нему закрывал панель стикеров (ChatWindow) — вместе с окном и
+          выбранным файлом. pad-safe-bottom — над клавиатурой: поле макроса
+          само открывает её, и на iPhone окно оставалось под ней. */}
       {asking && createPortal(
-        <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }}>
-          <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div data-sticker-portal className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => { const f = asking; setAsking(null); void uploadOne(f, ""); }}>
+          <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pad-safe-bottom space-y-3" onClick={(e) => e.stopPropagation()}>
             <p className="text-h2">{t("Макрос стикера")}</p>
             <p className="text-small text-subtle">{t("Слово, эмодзи или символ: наберёшь его в поле — стикер всплывёт подсказкой. Можно оставить пустым.")}</p>
             {isAnimatedFile(asking) && <p className="text-caption text-subtle">{t("Анимированный стикер: длиннее 5 секунд — обрежется, звук уберётся.")}</p>}
@@ -811,8 +815,8 @@ const StickerPicker = ({
 
       {/* Правка: макрос и удаление — только автору набора. */}
       {editing && createPortal(
-        <div className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setEditing(null)}>
-          <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pb-[calc(var(--sab)+20px)] space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div data-sticker-portal className="fixed inset-0 z-[90] bg-black/60 flex items-end md:items-center md:justify-center" onClick={() => setEditing(null)}>
+          <div className="w-full md:w-[420px] bg-surface-2 rounded-t-[16px] md:rounded-lg p-5 pad-safe-bottom space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <StickerView url={editing.file_url} className="w-16 h-16 object-contain" />
               <input

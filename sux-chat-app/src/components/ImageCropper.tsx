@@ -141,8 +141,10 @@ const ImageCropper = ({ file, aspect, outWidth, onCancel, onDone }: {
   // Порталом на body: кадратор открывают и из панели ввода чата, а у неё
   // transform под клавиатуру — fixed внутри неё считается от панели, и
   // кадратор уезжал за нижний край экрана.
+  // data-keep-panel: тап по кадратору не закрывает панели строки ввода
+  // (стикеры в ChatWindow) — иначе кадрирование пропадало с первым касанием.
   return createPortal(
-    <div className="fixed inset-0 z-[80] bg-black/90 flex flex-col">
+    <div data-keep-panel className="fixed inset-0 z-[80] bg-black/90 flex flex-col">
       {/* pad-safe-top: иначе кнопки уезжают под строку состояния и островок. */}
       <div className="flex items-center justify-between px-4 min-h-14 pad-safe-top shrink-0">
         <button type="button" onClick={onCancel} className="ui-icon-btn p-2 text-white" aria-label={t("Отмена")}>

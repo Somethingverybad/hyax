@@ -33,7 +33,8 @@ export const ConfirmHost = () => {
   if (!req) return null;
   const done = (v: boolean) => { req.resolve(v); setReq(null); };
   return (
-    <div className="fixed inset-0 z-[95] bg-black/60 flex items-end md:items-center justify-center" onClick={() => done(false)}>
+    // data-keep-panel: подтверждение из панели стикеров не закрывает её (ChatWindow).
+    <div data-keep-panel className="fixed inset-0 z-[95] bg-black/60 flex items-end md:items-center justify-center" onClick={() => done(false)}>
       <div
         role="alertdialog" aria-modal="true"
         className="w-full md:max-w-sm bg-card border-t-2 md:border-2 border-border md:rounded-lg p-5 pad-safe-bottom space-y-4"
