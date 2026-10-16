@@ -2,7 +2,7 @@ import { t as tr, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe, Radio, Headphones, Upload,
+import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe, Radio, Headphones, Upload, Link2, Link2Off,
          Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
@@ -11,7 +11,7 @@ import PublicPlaylistView from "@/components/music/PublicPlaylistView";
 import StationView, { stationName } from "@/components/music/StationView";
 import { joinStation, setRadioNotice, useRadio } from "@/lib/radio";
 import { readCache, writeCache } from "@/lib/session-cache";
-import { sharePlaylistLink } from "@/lib/share";
+import { playlistLink, sharePlaylistLink } from "@/lib/share";
 import Identicon from "@/components/Identicon";
 import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, toggle,
          toggleShuffle, cycleRepeat, setVolume, type Track } from "@/lib/player";
@@ -251,6 +251,24 @@ const Music = () => {
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
+  /** Поделиться плейлистом: в чат или канал — карточкой, наружу — ссылкой. */
+  const [shareSheet, setShareSheet] = useState(false);
+  const [sharePick, setSharePick] = useState(false);
+
+  const sendPlaylistTo = async (chatId: string) => {
+    if (!open || busy) return;
+    setBusy(true);
+    try {
+      const token = open.share_token || (await api.sharePlaylist(open.id));
+      setOpen((o) => (o ? { ...o, share_token: token } : o));
+      await api.sendMessage(chatId, playlistLink(token));
+      toast.success(tr("Отправлено"));
+      setSharePick(false);
+      load();
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
+    finally { setBusy(false); }
+  };
+
   /** Свои треки — с устройства прямо в плейлист. */
   const uploadFiles = async (files: FileList | null) => {
     if (!open || !files?.length) return;
@@ -315,12 +333,17 @@ const Music = () => {
   /** Отправить трек в чат: список чатов берём тот же, что в списке переписок. */
   const pickChat = async (t: PlaylistTrack) => {
     setSendFor(t);
+    await ensureChats();
+  };
+
+  const ensureChats = async () => {
     if (chats) return;
     try {
       const rows = await api.getChats();
       const me = readCache<{ id: string }>("user")?.id;
+      // Секретные — только с шифрованием на устройстве, Стена — не чат.
       setChats(rows
-        .filter((c: any) => c.kind !== "channel")
+        .filter((c: any) => !["channel", "secret", "wall"].includes(c.kind))
         .map((c: any) => ({
           id: c.id,
           title: c.name || (c.participants || []).find((p: any) => p.id !== me)?.username || tr("Чат"),
@@ -398,10 +421,10 @@ const Music = () => {
           </button>
           <button
             type="button"
-            onClick={() => void (open.share_token ? unshare(open) : share(open))}
+            onClick={() => setShareSheet(true)}
             aria-pressed={!!open.share_token}
             className={cn("ui-icon-btn p-2", open.share_token ? ICON_ON : "text-muted-foreground")}
-            aria-label={open.share_token ? tr("Закрыть доступ по ссылке") : tr("Поделиться плейлистом")}
+            aria-label={tr("Поделиться плейлистом")}
           >
             <Share2 className="w-4 h-4" />
           </button>
@@ -502,12 +525,72 @@ const Music = () => {
           )}
           {open.share_token && (
             <p className="px-1 text-caption text-subtle">
-              {tr("Плейлист открыт по ссылке. Нажмите значок «поделиться» ещё раз, чтобы отозвать её.")}
+              {tr("Плейлист открыт по ссылке: его слушают и сохраняют все, у кого она есть, — в том числе карточкой в сообщениях и постах. Закрыть ссылку — в «Поделиться».")}
             </p>
           )}
         </div>
         <PlayerPanel onLive={openLive} />
         <BottomNav />
+        {shareSheet && (
+          <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setShareSheet(false)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="ui-card relative w-full rounded-t-[16px] bg-surface-2 p-4 pb-[calc(var(--sab)+20px)] space-y-2"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
+              <p className="text-h2">{tr("Поделиться плейлистом")}</p>
+              <p className="text-caption text-subtle">{tr("В чате или посте плейлист появится карточкой: его можно послушать, развернуть и сохранить себе.")}</p>
+              <button type="button" onClick={() => { setShareSheet(false); setSharePick(true); void ensureChats(); }}
+                className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70">
+                <Send className="w-5 h-5 text-primary shrink-0" /><span className="flex-1 text-body">{tr("Отправить в чат")}</span>
+              </button>
+              <button type="button" onClick={() => { setShareSheet(false); void share(open); }}
+                className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70">
+                <Link2 className="w-5 h-5 text-primary shrink-0" /><span className="flex-1 text-body">{tr("Поделиться ссылкой")}</span>
+              </button>
+              {open.share_token && (
+                <button type="button" onClick={() => { setShareSheet(false); void unshare(open); }}
+                  className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 text-destructive">
+                  <Link2Off className="w-5 h-5 shrink-0" />
+                  <span className="flex-1">
+                    <span className="block text-body">{tr("Закрыть ссылку")}</span>
+                    <span className="block text-caption opacity-80">{tr("Карточки в сообщениях перестанут открываться")}</span>
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {sharePick && (
+          <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setSharePick(false)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="ui-card relative w-full rounded-t-[16px] bg-surface-2 p-4 pb-[calc(var(--sab)+20px)] space-y-2 max-h-[70vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
+              <p className="text-h2">{tr("Отправить в чат")}</p>
+              <p className="text-caption text-subtle truncate">{playlistName(open)}</p>
+              {/* Свои каналы — тоже: плейлист уйдёт постом. */}
+              {airChannels.map((c) => (
+                <button key={c.id} type="button" disabled={busy} onClick={() => void sendPlaylistTo(c.id)}
+                  className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50">
+                  <Identicon id={c.id} avatarUrl={c.avatar_url} className="w-8 h-8 rounded-md shrink-0" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-body truncate">{c.name}</span>
+                    <span className="block text-caption text-subtle">{tr("Канал")}</span>
+                  </span>
+                </button>
+              ))}
+              {chats === null ? (
+                <p className="text-small text-subtle">{tr("Загрузка…")}</p>
+              ) : chats.map((c) => (
+                <button key={c.id} type="button" disabled={busy} onClick={() => void sendPlaylistTo(c.id)}
+                  className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50">
+                  <Identicon id={c.id} avatarUrl={c.avatar} className="w-8 h-8 rounded-md shrink-0" />
+                  <span className="flex-1 text-body truncate">{c.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {airPick && (
           <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setAirPick(null)}>
             <div className="absolute inset-0 bg-black/40" />

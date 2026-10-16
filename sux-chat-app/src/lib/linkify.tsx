@@ -38,7 +38,7 @@ export function internalPath(raw: string): string | null {
   try {
     const u = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
     if (u.host !== new URL(PUBLIC_ORIGIN).host) return null;
-    return /^\/(u|c|sp|stp|t)\/[^/]+\/?$/.test(u.pathname) ? u.pathname + u.search : null;
+    return /^\/(u|c|sp|stp|t|pl)\/[^/]+\/?$/.test(u.pathname) ? u.pathname + u.search : null;
   } catch {
     return null;
   }
@@ -50,6 +50,12 @@ export function packLinkKind(raw: string): { kind: "sound" | "sticker" | "theme"
   const m = path && /^\/(sp|stp|t)\/([^/]+)/.exec(path);
   if (!m) return null;
   return { kind: m[1] === "sp" ? "sound" : m[1] === "stp" ? "sticker" : "theme", id: m[2] };
+}
+
+/** Ключ плейлиста из ссылки /pl/<ключ> — для карточки плейлиста в сообщении и посте. */
+export function playlistLinkToken(raw: string): string | null {
+  const m = /^\/pl\/([^/?#]+)/.exec(internalPath(raw) || "");
+  return m ? m[1] : null;
 }
 
 /** Ник из ссылки на профиль /u/<ник> — для карточки профиля в сообщении. */

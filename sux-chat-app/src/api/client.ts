@@ -1287,10 +1287,10 @@ export const api = {
     return d;
   },
 
-  /** Трек из открытого плейлиста собеседника — в «Мою музыку». */
-  addTrackFromPublic: async (trackId: string): Promise<{ track: PlaylistTrack; already: boolean }> => {
+  /** Трек из открытого плейлиста собеседника, эфира или плейлиста по ссылке (shareToken) — в «Мою музыку». */
+  addTrackFromPublic: async (trackId: string, shareToken?: string): Promise<{ track: PlaylistTrack; already: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/tracks/`, {
-      method: "POST", headers: authHeaders(), body: JSON.stringify({ track_id: trackId }),
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ track_id: trackId, token: shareToken || undefined }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не удалось добавить");

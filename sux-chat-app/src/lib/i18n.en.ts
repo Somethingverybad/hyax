@@ -1787,5 +1787,14 @@ const en: Record<string, string> = {
   "Не удалось прочитать файл — это точно аудио?": "Couldn't read the file — is it really audio?",
   "Трека нет в эфире (или длительность ещё не узнали)": "This track isn't on air (or its length isn't known yet)",
   "Боты эфир не слушают — только ведут": "Bots can't listen to broadcasts, only run them",
+  "Поделиться ссылкой": "Share link",
+  "Закрыть ссылку": "Revoke link",
+  "Карточки в сообщениях перестанут открываться": "Cards in messages will stop opening",
+  "В чате или посте плейлист появится карточкой: его можно послушать, развернуть и сохранить себе.": "In a chat or post the playlist shows up as a card: people can listen, expand it and save it.",
+  "Плейлист открыт по ссылке: его слушают и сохраняют все, у кого она есть, — в том числе карточкой в сообщениях и постах. Закрыть ссылку — в «Поделиться».": "This playlist is open by link: anyone who has it can listen and save it, including from cards in messages and posts. Revoke the link under “Share”.",
+  "Плейлист недоступен": "Playlist unavailable",
+  "Владелец закрыл ссылку.": "The owner revoked the link.",
+  "Треки": "Tracks",
+  "Ваш": "Yours",
 };
 export default en;

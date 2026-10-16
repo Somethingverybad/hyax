@@ -5058,7 +5058,8 @@ class PublicPlaylistView(APIView):
 
 class PlaylistTracksView(APIView):
     """POST {message_id} — добавить музыку из сообщения, {track_id} — из
-    открытого плейлиста собеседника. Без <pk> — в «Мою музыку».
+    открытого плейлиста собеседника, эфира или плейлиста по ссылке ({token}).
+    Без <pk> — в «Мою музыку».
     DELETE /playlists/<pk>/tracks/<track>/ — убрать трек."""
     permission_classes = [permissions.IsAuthenticated]
 
@@ -5080,9 +5081,12 @@ class PlaylistTracksView(APIView):
         # который мне виден: берём его файл и подписи, как при копировании.
         if request.data.get("track_id"):
             src = PlaylistTrack.objects.filter(id=request.data.get("track_id")).select_related("playlist").first()
+            token = (request.data.get("token") or "").strip()
             if not src or not (
                 (src.playlist.is_public and _public_playlist(me, src.playlist_id))
                 or track_on_air_for(me, track_id=src.id)
+                # Плейлист по ссылке (карточка в сообщении): ключ ссылки — и есть доступ.
+                or (token and src.playlist.share_token and src.playlist.share_token == token)
             ):
                 return Response({"error": "Трек не найден"}, status=404)
             exists = pl.tracks.filter(file_url=src.file_url).exists()
