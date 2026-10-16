@@ -2648,6 +2648,7 @@ def _animated_media(src, ext, kind, dest_rel_base):
                         "-movflags", "+faststart", out], check=True, timeout=180)
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", out, "-frames:v", "1", "-q:v", "3", out + ".jpg"],
                        check=True, timeout=60)
+        anim_webp(out)
         return "/media/" + dest_rel_base + ".mp4.jpg"
     except Exception:
         logger.exception("анимация %s → %s не получилась", src, kind)
@@ -2657,6 +2658,23 @@ def _animated_media(src, ext, kind, dest_rel_base):
             except OSError:
                 pass
         return None
+
+
+def anim_webp(mp4_path):
+    """Рядом с видео — лёгкий анимированный WebP «<база>.mp4.webp»: его клиент
+    показывает, когда iOS не даёт запустить видео сама (энергосбережение) —
+    картинки анимируются всегда, как у видео-обоев. Не вышло — не беда:
+    останется кадр."""
+    import subprocess
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", mp4_path, "-an",
+                        "-vf", "scale='min(256,iw)':-2:flags=lanczos,fps=15",
+                        "-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "60", "-loop", "0", mp4_path + ".webp"],
+                       check=True, timeout=120)
+        return True
+    except Exception:
+        logger.exception("анимированный WebP для %s не получился", mp4_path)
+        return False
 
 
 def _save_upload_tmp(file, ext):
@@ -2674,7 +2692,7 @@ def _remove_media(url):
     if not url or not url.startswith("/media/"):
         return
     path = os.path.join(settings.MEDIA_ROOT, url.replace("/media/", "", 1))
-    paths = [path] + ([path[:-4]] if path.endswith(".mp4.jpg") else [])
+    paths = [path] + ([path[:-4], path[:-4] + ".webp"] if path.endswith(".mp4.jpg") else [])
     for p in paths:
         try:
             if os.path.exists(p):
