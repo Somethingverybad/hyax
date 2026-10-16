@@ -60,6 +60,16 @@ export function t(s: string, vars?: Record<string, string | number>): string {
 }
 
 /**
+ * Перевод с уточнением места: одно русское слово в разных местах переводится
+ * по-разному («Все» во вкладке чатов — «전체», в доступе к сохранёнкам —
+ * «모든 사용자»). Ключ словаря — «место:строка»; его нет — обычный перевод.
+ */
+export function tc(ctx: string, s: string, vars?: Record<string, string | number>): string {
+  const k = `${ctx}:${s}`;
+  return DICT[current] && DICT[current][k] ? t(DICT[current][k], vars) : t(s, vars);
+}
+
+/**
  * Склонение по числу. Формы русские (одна/две/пять), в них можно писать {n}:
  * tn(n, "{n} подписчик", "{n} подписчика", "{n} подписчиков"). Ключ словаря —
  * три формы через «|»; в en значение «one|other», в ko — одна форма.

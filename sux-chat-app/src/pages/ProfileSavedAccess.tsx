@@ -7,7 +7,7 @@ import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { toast } from "sonner";
 import { Check, Search, X } from "lucide-react";
-import { t as tr } from "@/lib/i18n";
+import { t as tr, tc } from "@/lib/i18n";
 
 type Person = { id: string; username: string; avatar_url?: string | null };
 
@@ -117,7 +117,7 @@ const ProfileSavedAccess = () => {
           {MODES.map((m) => (
             <SettingsRow
               key={m.value}
-              label={tr(m.label)}
+              label={tc("saved", m.label)}
               hint={tr(m.hint)}
               onClick={() => void setMode(m.value)}
               trailing={mode === m.value ? <Check className="w-5 h-5 text-primary shrink-0" /> : undefined}

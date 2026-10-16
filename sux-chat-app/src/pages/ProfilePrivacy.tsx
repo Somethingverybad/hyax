@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t, tc } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Aura } from "@/components/Aura";
 import { useNavigate } from "react-router-dom";
@@ -126,7 +126,7 @@ const ProfilePrivacy = () => {
           <SettingsRow
             icon={Images}
             label={t("Кто видит сохранёнки")}
-            value={t(SAVED_ACCESS[profile?.saved_visibility || "all"])}
+            value={tc("saved", SAVED_ACCESS[profile?.saved_visibility || "all"])}
             onClick={() => navigate("/profile/saved-access")}
           />
         </SettingsCard>
