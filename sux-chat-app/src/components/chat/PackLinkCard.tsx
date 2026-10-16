@@ -36,7 +36,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
           const p = await api.getStickerPack(target.id);
           const first = (await api.getStickers(target.id).catch(() => []))[0];
           const mine = !!p.author && p.author.id === (() => { try { return JSON.parse(localStorage.getItem("cache_user") || "null")?.id; } catch { return null; } })();
-          return { title: p.name, subtitle: `${tr("Стикерпак")} · ${tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}`, cover: first?.file_url, added: p.is_saved || mine, mine };
+          return { title: p.name, subtitle: p.kind === "emoji" ? `${tr("Набор эмодзи")} · ${tn(p.stickers_count, "{n} эмодзи", "{n} эмодзи", "{n} эмодзи")}` : `${tr("Стикерпак")} · ${tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}`, cover: first?.file_url, added: p.is_saved || mine, mine };
         }
         const t = normalizeTheme(await api.getTheme(target.id));
         return { title: t.name, subtitle: t.author ? tr("Тема · автор {author}", { author: t.author }) : tr("Тема оформления"), added: !!t.installed || !!t.mine, mine: !!t.mine };

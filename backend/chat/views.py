@@ -1177,8 +1177,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         msg.content = content
         # Оформление присылают вместе с текстом; без поля — снимаем старое,
         # его диапазоны к новому тексту уже не подходят.
-        from .formatting import clean_entities
-        msg.entities = clean_entities(request.data.get('entities'), content)
+        from .formatting import clean_entities, resolve_custom_emoji
+        msg.entities = resolve_custom_emoji(clean_entities(request.data.get('entities'), content))
         msg.is_edited = True
         msg.translations = {}
         msg.save(update_fields=['content', 'entities', 'translations', 'is_edited', 'updated_at'])
@@ -2464,7 +2464,9 @@ class StickerPackViewSet(viewsets.ModelViewSet):
         sent = set(Message.objects.filter(sticker__pack=pack).exclude(sticker_file="")
                    .values_list('sticker_file', flat=True))
         for s in pack.stickers.all():
-            if s.file_url in sent:
+            # Свои эмодзи хранятся адресом прямо в тексте сообщений (custom_emoji) —
+            # их файлы маленькие и остаются, иначе в переписке пропали бы картинки.
+            if s.file_url in sent or pack.kind == "emoji":
                 continue
             try:
                 if s.file_url.startswith('/media/'):
@@ -2701,6 +2703,26 @@ def _remove_media(url):
             pass
 
 
+def _emoji_image(src):
+    """Картинка своего эмодзи → /media/emoji/<uuid>.png (до 100 px) или None."""
+    import subprocess
+    rel = f"emoji/{uuid.uuid4()}.png"
+    out = os.path.join(settings.MEDIA_ROOT, rel)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src,
+                        "-vf", "scale=w='min(100,iw)':h='min(100,ih)':force_original_aspect_ratio=decrease:flags=lanczos",
+                        "-frames:v", "1", out], check=True, timeout=60)
+        return "/media/" + rel
+    except Exception:
+        logger.exception("эмодзи %s не получился", src)
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+        return None
+
+
 class StickerUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
@@ -2727,6 +2749,23 @@ class StickerUploadView(APIView):
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
+
+        # Свой эмодзи — из обычной картинки: 100 px PNG с прозрачностью (рисуется
+        # в строке текста, десятками — поэтому маленький).
+        if request.data.get('kind') == 'emoji':
+            if animated:
+                return Response({"error": "Эмодзи — из картинки: PNG, JPG или WebP"}, status=400)
+            tmp = _save_upload_tmp(file, file_extension)
+            try:
+                url = _emoji_image(tmp)
+            finally:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            if not url:
+                return Response({"error": "Не удалось обработать картинку"}, status=400)
+            return Response({"file_url": url, "file_name": file.name})
 
         # GIF и видео до 5 с — анимированный стикер (mp4 или прозрачный WebP).
         if animated:

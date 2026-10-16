@@ -1564,3 +1564,13 @@ html.native-video .call-layer {
   display: none !important;
   -webkit-appearance: none;
 }
+
+/* Свой эмодзи из набора в тексте сообщения (lib/format.tsx, custom_emoji). */
+.fmt-cemoji {
+  display: inline-block;
+  width: 1.35em;
+  height: 1.35em;
+  vertical-align: -0.3em;
+  object-fit: contain;
+  margin: 0 0.04em;
+}

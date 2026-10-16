@@ -52,9 +52,11 @@ interface StickerPickerProps {
   onSelectSound?: (sound: NotificationSoundInfo | null) => void;
   /** Действия («подмигнуть», «обнять»): третья вкладка; нет — вкладка скрыта. */
   onSelectAction?: (action: ChatActionInfo) => void;
-  /** Эмодзи Noto: первая вкладка, вставка в поле ввода (десктоп — там нет
-   *  клавиатуры с эмодзи); нет — вкладки нет. */
-  onInsertEmoji?: (emoji: string) => void;
+  /** Вкладка «Эмодзи»: вставка в поле ввода — свои наборы (картинки) и, если
+   *  standardEmoji, эмодзи Noto; нет — вкладки нет. */
+  onInsertEmoji?: (emoji: string, custom?: { id: string; url?: string }) => void;
+  /** Эмодзи Noto во вкладке — на десктопе: на телефоне они есть в клавиатуре. */
+  standardEmoji?: boolean;
 }
 
 type PickerTab = "emoji" | "stickers" | "sounds" | "actions";
@@ -83,6 +85,7 @@ const StickerPicker = ({
   onSelectSound,
   onSelectAction,
   onInsertEmoji,
+  standardEmoji = true,
 }: StickerPickerProps) => {
   // Последняя открытая вкладка; есть эмодзи — по умолчанию они (как в мессенджерах).
   const [tab, setTabState] = useState<PickerTab>(() => {
@@ -90,7 +93,8 @@ const StickerPicker = ({
     try { saved = localStorage.getItem(TAB_KEY); } catch { /* приватный режим */ }
     if (saved === "emoji" && !onInsertEmoji) saved = null;
     if (saved === "actions" && !onSelectAction) saved = null;
-    return (saved as PickerTab) || (onInsertEmoji ? "emoji" : "stickers");
+    // На телефоне во вкладке только свои эмодзи — первыми показываем стикеры.
+    return (saved as PickerTab) || (onInsertEmoji && standardEmoji ? "emoji" : "stickers");
   });
   const setTab = (v: PickerTab) => { setTabState(v); try { localStorage.setItem(TAB_KEY, v); } catch { /* приватный режим */ } };
   // Долгое удержание стикера (burst): таймер и флаг, чтобы click после него не сработал.
@@ -140,7 +144,8 @@ const StickerPicker = ({
 
   const loadPacks = async (selectId?: string) => {
     try {
-      const list = (await api.getMyStickerPacks()) || [];
+      // Наборы своих эмодзи живут во вкладке «Эмодзи», не среди стикеров.
+      const list = ((await api.getMyStickerPacks()) || []).filter((p: UserStickerPack) => (p.pack as { kind?: string })?.kind !== "emoji");
       pickerCache.packs = list;
       setPacks(list);
       setActivePackId((prev) => selectId ?? (prev && list.some((p: UserStickerPack) => p.pack.id === prev) ? prev : list[0]?.pack?.id ?? null));
@@ -567,7 +572,7 @@ const StickerPicker = ({
     return (
       <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-72")}>
         {tabs}
-        <EmojiPanel onPick={onInsertEmoji} className="flex-1" />
+        <EmojiPanel onPick={onInsertEmoji} standard={standardEmoji} className="flex-1" />
       </div>
     );
   }

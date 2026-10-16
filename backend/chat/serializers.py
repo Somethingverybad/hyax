@@ -343,9 +343,17 @@ class StickerPackSerializer(serializers.ModelSerializer):
     # Первые стикеры пака — обложка-мозаика папки в студии.
     preview = serializers.SerializerMethodField()
     
+    def validate_kind(self, value):
+        """sticker | emoji; тип набора задаётся при создании и потом не меняется."""
+        if value not in ("sticker", "emoji"):
+            raise serializers.ValidationError("Тип набора — sticker или emoji")
+        if self.instance is not None and value != self.instance.kind:
+            raise serializers.ValidationError("Тип набора не меняется")
+        return value
+
     class Meta:
         model = StickerPack
-        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'open_add', 'created_at', 'updated_at', 'stickers_count', 'is_saved', 'preview']
+        fields = ['id', 'name', 'description', 'author', 'is_public', 'is_adult', 'adult_locked', 'open_add', 'kind', 'created_at', 'updated_at', 'stickers_count', 'is_saved', 'preview']
         read_only_fields = ['author', 'created_at', 'updated_at']
 
     def get_preview(self, obj):
@@ -489,7 +497,8 @@ class MessageSerializer(serializers.ModelSerializer):
             text = attrs.get('content')
             if text is None and self.instance is not None:
                 text = self.instance.content
-            attrs['entities'] = clean_entities(attrs.get('entities'), text or '')
+            from .formatting import resolve_custom_emoji
+            attrs['entities'] = resolve_custom_emoji(clean_entities(attrs.get('entities'), text or ''))
         return super().validate(attrs)
 
     def validate_buttons(self, value):

@@ -3,14 +3,14 @@ import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { shareStickerPack } from "@/lib/share";
+import { shareEmojiPack, shareStickerPack } from "@/lib/share";
 import { readCache } from "@/lib/session-cache";
 import { ChevronRight, Link2, Sticker as StickerIcon, Share2, Trash2 } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, mediaUrl } from "@/api/client";
 
-type Pack = { id: string; name: string; stickers_count: number; author?: { id?: string; username?: string } | null; cover?: string | null };
+type Pack = { id: string; name: string; stickers_count: number; author?: { id?: string; username?: string } | null; cover?: string | null; kind?: string };
 
 /**
  * Стикерпаки: свои и сохранённые, плюс импорт набора из Telegram по ссылке.
@@ -66,8 +66,8 @@ const ProfileStickerPacks = () => {
 
   const meId = readCache<{ id: string }>("user")?.id;
   const isMine = (p: { author?: { id?: string } | null }) => !!meId && p.author?.id === meId;
-  const sharePack = async (p: { id: string; name: string }) => {
-    const r = await shareStickerPack(p.name, p.id);
+  const sharePack = async (p: { id: string; name: string; kind?: string }) => {
+    const r = await (p.kind === "emoji" ? shareEmojiPack : shareStickerPack)(p.name, p.id);
     if (r === "copied") toast.success(t("Ссылка скопирована"));
     else if (r === "error") toast.error(t("Не удалось поделиться"));
   };
@@ -141,7 +141,7 @@ const ProfileStickerPacks = () => {
                   : <StickerIcon className="w-5 h-5 text-primary shrink-0" />
               }
               label={p.name}
-              hint={`${tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}${p.author?.username ? ` · ${p.author.username}` : ""}`}
+              hint={`${(p.kind === "emoji" ? tn(p.stickers_count, "{n} эмодзи", "{n} эмодзи", "{n} эмодзи") : tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров"))}${p.author?.username ? ` · ${p.author.username}` : ""}`}
               onClick={() => navigate(`/stp/${p.id}`)}
               trailing={
                 <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

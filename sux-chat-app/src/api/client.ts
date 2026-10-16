@@ -295,6 +295,8 @@ export interface StickerPackInfo {
   /** 18+ и настройка выключена: стикеры не приходят, добавить нельзя. */
   adult_locked?: boolean;
   stickers_count: number;
+  /** «emoji» — набор своих эмодзи (вставляются в текст), иначе стикеры. */
+  kind?: "sticker" | "emoji";
   /** Уже добавлен текущим пользователем. */
   is_saved: boolean;
   /** Совместный набор: добавлять стикеры могут все, кто его сохранил. */
@@ -2054,22 +2056,25 @@ export const api = {
 
   // Создание наборов прямо в приложении: сначала файл уходит на сервер и
   // возвращает ссылку, затем стикер привязывается к набору.
-  uploadSticker: async (file: File): Promise<{ file_url: string; file_name: string }> => {
+  /** kind=emoji — картинка своего эмодзи: сервер ужмёт до 100 px. */
+  uploadSticker: async (file: File, kind?: "emoji"): Promise<{ file_url: string; file_name: string }> => {
     const formData = new FormData();
     formData.append("file", file);
+    if (kind) formData.append("kind", kind);
     const res = await fetchWithAuthMultipart(`${uploadBase()}/stickers/upload/`, {
       method: "POST",
       body: formData,
     });
-    if (!res.ok) throw new LError("Не удалось загрузить файл стикера");
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось загрузить файл стикера");
     return res.json();
   },
 
-  createStickerPack: async (name: string, description?: string, isPublic = true): Promise<any> => {
+  /** kind: sticker — стикеры, emoji — набор своих эмодзи (вставляются в текст). */
+  createStickerPack: async (name: string, description?: string, isPublic = true, kind: "sticker" | "emoji" = "sticker"): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ name, description, is_public: isPublic }),
+      body: JSON.stringify({ name, description, is_public: isPublic, kind }),
     });
     if (!res.ok) throw new LError("Не удалось создать набор");
     return res.json();
@@ -2098,11 +2103,12 @@ export const api = {
     if (!res.ok) throw new LError(body?.error || body?.detail || "Не удалось сохранить");
     return body;
   },
-  createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0, keyword = ""): Promise<any> => {
+  /** emoji — обычный эмодзи, который стоит за своим (его видят старые клиенты). */
+  createSticker: async (packId: string, fileUrl: string, fileName: string, order = 0, keyword = "", emoji?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/stickers/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order, keyword: keyword || undefined }),
+      body: JSON.stringify({ pack: packId, file_url: fileUrl, file_name: fileName, order, keyword: keyword || undefined, emoji: emoji || undefined }),
     });
     if (!res.ok) throw new LError("Не удалось добавить стикер");
     return res.json();

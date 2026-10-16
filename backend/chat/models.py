@@ -575,6 +575,9 @@ class StickerPack(models.Model):
     # Совместный набор: стикеры добавляет не только автор, а все, кто его
     # сохранил. Менять и удалять стикеры — по-прежнему только автор.
     open_add = models.BooleanField(default=False)
+    # sticker — стикеры (отдельным сообщением), emoji — свои эмодзи из картинок:
+    # вставляются в текст и рисуются в строке (Message.entities, custom_emoji).
+    kind = models.CharField(max_length=8, default="sticker", db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
     

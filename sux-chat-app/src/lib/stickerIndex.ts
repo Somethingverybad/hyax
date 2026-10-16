@@ -20,7 +20,8 @@ export async function loadStickerIndex(): Promise<IndexedSticker[]> {
   if (loading) return loading;
   loading = (async () => {
     try {
-      const packs: any[] = await api.getMyStickerPacks();
+      // Свои эмодзи (наборы kind=emoji) в подсказки стикеров не идут.
+      const packs: any[] = ((await api.getMyStickerPacks()) || []).filter((p: any) => (p.pack || p)?.kind !== "emoji");
       const lists = await Promise.all(packs.map((p) => api.getStickers(p.pack?.id || p.id).catch(() => [])));
       cache = lists.flat().filter((s: any) => s.keyword || s.emoji).map((s: any) => ({
         id: s.id, file_url: s.file_url, emoji: s.emoji || undefined, keyword: norm(s.keyword || ""), pack: s.pack,

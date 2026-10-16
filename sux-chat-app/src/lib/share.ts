@@ -58,6 +58,10 @@ export const shareSoundPack = (name: string, id: string) =>
 export const shareStickerPack = (name: string, id: string) =>
   shareUrl("WYX", t("Стикеры «{name}» в WYX", { name }), stickerPackLink(id));
 
+/** Набор своих эмодзи — та же страница набора, другая подпись. */
+export const shareEmojiPack = (name: string, id: string) =>
+  shareUrl("WYX", t("Эмодзи «{name}» в WYX", { name }), stickerPackLink(id));
+
 /** Поделиться плейлистом: системное окно «Поделиться», иначе — буфер. */
 export const sharePlaylistLink = (name: string, token: string) =>
   shareUrl("WYX", t("Плейлист «{name}» в WYX", { name }), playlistLink(token));

@@ -42,7 +42,7 @@ import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken } from "@/lib/linkify";
-import { FormattedText, type Mention, parseMarkup, toMarkup, maskPreview, toggleMarker, type EntityType, type TextEntity } from "@/lib/format";
+import { FormattedText, type Mention, customEmojiAt, parseMarkup, parseMarkupWithEmoji, toMarkupWithEmoji, maskPreview, toggleMarker, type EntityType, type TextEntity, type CustomEmojiRange } from "@/lib/format";
 import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload, videoThumb } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
@@ -1008,16 +1008,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setMentionIdx(0);
     setMentionHints((prev) => (prev.length === found.length && prev.every((p, i) => p.id === found[i].id) ? prev : found));
   };
-  /** Эмодзи из панели (десктоп) — в место курсора; фокус остаётся в поле. */
-  const insertEmoji = (emoji: string) => {
+  /** Эмодзи из панели — в место курсора; фокус остаётся в поле. Свой эмодзи
+   *  (custom) вставляется своим «обычным» эмодзи, а где он стоит — помним
+   *  (customRef): при отправке это станет картинкой (entities, custom_emoji). */
+  const insertEmoji = (emoji: string, custom?: { id: string; url?: string }) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const v = ta.value;
     const s0 = ta.selectionStart ?? v.length;
     const e0 = ta.selectionEnd ?? v.length;
-    setDraft(v.slice(0, s0) + emoji + v.slice(e0));
+    const delta = emoji.length - (e0 - s0);
+    customRef.current = customRef.current
+      .filter((r) => r.offset + r.length <= s0 || r.offset >= e0)
+      .map((r) => (r.offset >= e0 ? { ...r, offset: r.offset + delta } : r));
+    if (custom) customRef.current.push({ offset: s0, length: emoji.length, emoji_id: custom.id, url: custom.url });
+    setDraft(v.slice(0, s0) + emoji + v.slice(e0), { keepCustom: true });
     const pos = s0 + emoji.length;
     requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
+  };
+
+  /** Свои эмодзи для текста после trim(): сдвиг на обрезанные пробелы в начале. */
+  const customForTrimmed = (): CustomEmojiRange[] => {
+    const raw = draftRef.current;
+    const lead = raw.length - raw.trimStart().length;
+    const len = raw.trim().length;
+    return customRef.current
+      .map((r) => ({ ...r, offset: r.offset - lead }))
+      .filter((r) => r.offset >= 0 && r.offset + r.length <= len);
   };
 
   const chooseMention = (p: Profile) => {
@@ -1250,6 +1267,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Высоту пересчитываем на каждое изменение текста: сначала сбрасываем,
   // иначе поле умеет только расти и не сжимается после отправки.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Свои эмодзи в поле ввода: где стоят (в тексте поля). Правка текста сдвигает
+  // их (trackCustomEdit), задетые правкой — забываются, остаётся обычный эмодзи.
+  const customRef = useRef<CustomEmojiRange[]>([]);
+  const trackCustomEdit = (prev: string, next: string, caret?: number | null) => {
+    const list = customRef.current;
+    if (!list.length || prev === next) return;
+    const max = Math.min(prev.length, next.length);
+    let pre = 0;
+    while (pre < max && prev.charCodeAt(pre) === next.charCodeAt(pre)) pre++;
+    let suf = 0;
+    while (suf < max - pre && prev.charCodeAt(prev.length - 1 - suf) === next.charCodeAt(next.length - 1 - suf)) suf++;
+    // Изменённый кусок кончается у курсора: так вставка того же эмодзи рядом
+    // не путает, какой из одинаковых символов новый.
+    if (caret != null) {
+      suf = Math.min(suf, Math.max(0, next.length - caret));
+      pre = Math.min(pre, prev.length - suf, next.length - suf);
+    }
+    const oldEnd = prev.length - suf;
+    const delta = next.length - prev.length;
+    customRef.current = list
+      .filter((r) => r.offset + r.length <= pre || r.offset >= oldEnd)
+      .map((r) => (r.offset >= oldEnd ? { ...r, offset: r.offset + delta } : r));
+  };
   /** Высота панели ввода с однострочным полем — от неё считаем «лишнее». */
   const composeBaseRef = useRef(0);
   const fitTextarea = () => {
@@ -1304,7 +1344,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
   /** Поставить текст в поле программно: редактирование, отмена, возврат после ошибки. */
-  const setDraft = (text: string) => {
+  const setDraft = (text: string, opts?: { keepCustom?: boolean }) => {
+    if (!opts?.keepCustom) trackCustomEdit(draftRef.current, text);
     draftRef.current = text;
     const el = textareaRef.current;
     if (el && el.value !== text) el.value = text;
@@ -1345,6 +1386,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Ответ и правка относятся к сообщениям прежнего чата.
     if (editingRef.current) { editingRef.current = null; setEditing(null); }
     setReplyTo(null);
+    customRef.current = [];
     setDraft(savedDraft(chatId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
@@ -2126,10 +2168,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     flushDraft();
     editingRef.current = message;
     setEditing(message);
-    setDraft(toMarkup(message.content || "", message.entities));
+    // Свои эмодзи возвращаются на свои места в разметке поля.
+    const { markup, custom } = toMarkupWithEmoji(message.content || "", message.entities);
+    customRef.current = [];
+    setDraft(markup);
+    customRef.current = custom;
   };
   // После правки в поле возвращается черновик этого чата, если он был.
-  const cancelEdit = () => { editingRef.current = null; setEditing(null); setDraft(savedDraft(chatId)); };
+  const cancelEdit = () => { editingRef.current = null; setEditing(null); customRef.current = []; setDraft(savedDraft(chatId)); };
 
   // Короткое превью цитаты для черновика и оптимистичного пузыря.
   const replyPreviewText = (m: Message): string => {
@@ -2343,7 +2389,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Режим редактирования: не создаём новое, а меняем текст существующего.
     if (editing) {
       const raw = draftRef.current.trim();
-      const { text: newText, entities: newEntities } = parseMarkup(raw);
+      const { text: newText, entities: newEntities } = parseMarkupWithEmoji(raw, customForTrimmed());
       const target = editing;
       if (!newText.trim()) { cancelEdit(); return; }
       editingRef.current = null;
@@ -2369,7 +2415,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       return;
     }
     const rawText = draftRef.current.trim();
-    const { text, entities } = parseMarkup(rawText);
+    const { text, entities } = parseMarkupWithEmoji(rawText, customForTrimmed());
     const list = attachments;
     const sound = selectedSound;
     const reply = replyTo;
@@ -3624,9 +3670,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const stickerOnly = !!message.sticker?.file_url && !message.content && !message.sound && !message.reply_to;
             // Сообщение из 1–3 эмодзи — крупно и без пузыря, как стикер:
             // анимация Noto играет, когда оно впервые на экране, и по тапу.
-            const bigEmoji = message.content && !message.entities?.length && !message.reply_to && !message.forwarded_from
+            const bigEmoji = message.content && !message.entities?.some((e) => e.type !== "custom_emoji") && !message.reply_to && !message.forwarded_from
               && !message.forwarded_title && !message.file_url && !message.sticker?.file_url && !message.sound && !message.video_url
               && !isAlbum && message.geo_lat == null ? emojiOnly(message.content) : null;
+            // Свои эмодзи среди крупных — картинкой (адрес из entities).
+            const bigCustom = bigEmoji && message.entities?.length ? customEmojiAt(message.content!, bigEmoji, message.entities) : null;
             const bareBubble = imageOnly || videoOnly || stickerOnly || !!bigEmoji;
             const previousMessage = index > 0 ? shownRows[index - 1] : null;
             const showDate = shouldShowDate(message, previousMessage);
@@ -4009,7 +4057,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       )}
                       {bigEmoji && (
                         <div className="flex items-end gap-0.5 py-0.5" role="img" aria-label={message.content || ""}>
-                          {bigEmoji.map((e, i) => <NotoEmoji key={i} emoji={e} size={BIG_EMOJI_PX[bigEmoji.length - 1]} autoPlay delay={i * 150} tapToPlay />)}
+                          {bigEmoji.map((e, i) => bigCustom?.[i]
+                            ? <img key={i} src={mediaUrl(bigCustom[i]!)} alt={e} draggable={false} className="object-contain" style={{ width: BIG_EMOJI_PX[bigEmoji.length - 1], height: BIG_EMOJI_PX[bigEmoji.length - 1] }} />
+                            : <NotoEmoji key={i} emoji={e} size={BIG_EMOJI_PX[bigEmoji.length - 1]} autoPlay delay={i * 150} tapToPlay />)}
                         </div>
                       )}
                       {/* Текст сообщения */}
@@ -4555,7 +4605,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={!isMobile ? insertEmoji : undefined}
+                onInsertEmoji={insertEmoji}
+                standardEmoji={!isMobile}
               />
             </div>
           )}
@@ -4640,6 +4691,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 enterKeyHint={isTouchDevice() ? "enter" : "send"}
                 onPaste={onPasteFile}
                 onChange={(e) => {
+                  trackCustomEdit(draftRef.current, e.target.value, e.target.selectionEnd);
                   draftRef.current = e.target.value;
                   // setState с тем же значением React пропускает — перерисовка
                   // только на границе «пусто ↔ есть текст».
@@ -4782,7 +4834,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={!isMobile ? insertEmoji : undefined}
+                onInsertEmoji={insertEmoji}
+                standardEmoji={!isMobile}
               />
             </div>
           )}

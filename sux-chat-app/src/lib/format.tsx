@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Copy } from "lucide-react";
 import { Linkify } from "./linkify";
+import { mediaUrl } from "@/api/client";
 import { t as tr } from "@/lib/i18n";
 
 /**
@@ -16,11 +17,34 @@ import { t as tr } from "@/lib/i18n";
  * ```блок кода```, ||спойлер||, %%зальго%%, ^^перемешанный^^. При отправке
  * разметка снимается и превращается в entities; при редактировании — обратно.
  */
+/** Картинка своего эмодзи — только наш файл /media/emoji/<uuid>.png. В секретном
+ *  чате entities приходят от собеседника как есть, и чужой адрес выдал бы ему,
+ *  когда и откуда сообщение открыли. */
+export const isEmojiUrl = (u?: string) => !!u && /^\/media\/emoji\/[0-9a-f-]{36}\.png$/.test(u);
+
+/** Сообщение из 1–3 эмодзи (обычных и своих): у каждого — адрес картинки
+ *  своего эмодзи или null. Оформление, кроме своих эмодзи, — уже не «только эмодзи». */
+export function customEmojiAt(text: string, list: string[], entities?: TextEntity[] | null): (string | null)[] {
+  const ents = (entities || []).filter((e) => e.type === "custom_emoji" && isEmojiUrl(e.url));
+  let pos = 0;
+  return list.map((e) => {
+    const at = text.indexOf(e, pos);
+    pos = at < 0 ? pos : at + e.length;
+    return ents.find((x) => x.offset === at && x.length === e.length)?.url ?? null;
+  });
+}
+
 export type EntityType =
   | "bold" | "italic" | "underline" | "strike" | "code" | "pre"
-  | "spoiler" | "zalgo" | "scramble";
+  | "spoiler" | "zalgo" | "scramble"
+  /** Свой эмодзи из набора: в тексте — обычный эмодзи (его видят старые
+   *  клиенты), рисуем картинку url. Разметкой в поле не набирается. */
+  | "custom_emoji";
 
-export interface TextEntity { type: EntityType; offset: number; length: number }
+export interface TextEntity { type: EntityType; offset: number; length: number; emoji_id?: string; url?: string }
+
+/** Свой эмодзи в поле ввода: где стоит (offset/length — в тексте поля) и какой. */
+export interface CustomEmojiRange { offset: number; length: number; emoji_id: string; url?: string }
 
 /** Маркеры разметки. Порядок важен: длинные раньше коротких (``` раньше `). */
 export const MARKERS: { mark: string; type: EntityType }[] = [
@@ -34,7 +58,7 @@ export const MARKERS: { mark: string; type: EntityType }[] = [
   { mark: "^^", type: "scramble" },
   { mark: "`", type: "code" },
 ];
-const MARK_OF: Record<EntityType, string> = Object.fromEntries(MARKERS.map((m) => [m.type, m.mark])) as Record<EntityType, string>;
+const MARK_OF = Object.fromEntries(MARKERS.map((m) => [m.type, m.mark])) as Partial<Record<EntityType, string>>;
 
 // Ссылки разбираем как есть: «__» и «**» внутри адреса — часть ссылки.
 const URL_AT = /^(?:https?:\/\/|www\.)[^\s<>"']+/i;
@@ -76,10 +100,58 @@ export function parseMarkup(src: string): { text: string; entities: TextEntity[]
   return { text: out, entities: entities.filter((e) => e.length > 0) };
 }
 
-/** Текст и диапазоны → разметка (для редактирования своего сообщения). */
-export function toMarkup(text: string, entities?: TextEntity[] | null): string {
+/** Текст поля с разметкой и своими эмодзи → чистый текст и все диапазоны.
+ *  Свои эмодзи на время разбора заменяем символами из частной области
+ *  Unicode (по одному на эмодзи), чтобы узнать, куда они встали после снятия
+ *  разметки, и возвращаем обратно — со сдвигом остальных диапазонов. */
+export function parseMarkupWithEmoji(src: string, custom: CustomEmojiRange[]): { text: string; entities: TextEntity[] } {
+  const ranges = custom
+    .filter((r) => r.length > 0 && r.offset >= 0 && r.offset + r.length <= src.length)
+    .sort((a, b) => a.offset - b.offset)
+    .filter((r, i, arr) => i === 0 || r.offset >= arr[i - 1].offset + arr[i - 1].length)
+    .slice(0, 0x1000);
+  if (!ranges.length) return parseMarkup(src);
+  const PUA = 0xe000;
+  let marked = "";
+  let pos = 0;
+  ranges.forEach((r, i) => { marked += src.slice(pos, r.offset) + String.fromCharCode(PUA + i); pos = r.offset + r.length; });
+  marked += src.slice(pos);
+  const parsed = parseMarkup(marked);
+  let out = "";
+  const map: number[] = [];
+  const custEnts: TextEntity[] = [];
+  for (let i = 0; i < parsed.text.length; i++) {
+    map[i] = out.length;
+    const k = parsed.text.charCodeAt(i) - PUA;
+    if (k >= 0 && k < ranges.length) {
+      const r = ranges[k];
+      const fallback = src.slice(r.offset, r.offset + r.length);
+      // url — чтобы своё же сообщение сразу рисовалось картинкой; сервер его перепроверяет.
+      custEnts.push({ type: "custom_emoji", offset: out.length, length: fallback.length, emoji_id: r.emoji_id, url: r.url });
+      out += fallback;
+    } else out += parsed.text[i];
+  }
+  map[parsed.text.length] = out.length;
+  const ents = parsed.entities.map((e) => ({ ...e, offset: map[e.offset], length: map[e.offset + e.length] - map[e.offset] }));
+  return { text: out, entities: [...ents, ...custEnts] };
+}
+
+/** Текст и диапазоны → разметка и, для своих эмодзи, их места в разметке
+ *  (для редактирования своего сообщения). */
+export function toMarkupWithEmoji(text: string, entities?: TextEntity[] | null): { markup: string; custom: CustomEmojiRange[] } {
+  const map: number[] = [];
+  const markup = toMarkup(text, entities, map);
+  const custom = (entities || [])
+    .filter((e) => e.type === "custom_emoji" && e.emoji_id && e.offset >= 0 && e.offset + e.length <= text.length)
+    .map((e) => ({ offset: map[e.offset], length: e.length, emoji_id: e.emoji_id!, url: e.url }));
+  return { markup, custom };
+}
+
+/** Текст и диапазоны → разметка (для редактирования своего сообщения).
+ *  map, если передан, заполняется: map[индекс в тексте] = индекс в разметке. */
+export function toMarkup(text: string, entities?: TextEntity[] | null, map?: number[]): string {
   const list = (entities || []).filter((e) => MARK_OF[e.type] && e.length > 0 && e.offset >= 0 && e.offset + e.length <= text.length);
-  if (!list.length) return text;
+  if (!list.length) { if (map) for (let p = 0; p <= text.length; p++) map[p] = p; return text; }
   type Ix = TextEntity & { ix: number };
   const opens = new Map<number, Ix[]>();
   const closes = new Map<number, Ix[]>();
@@ -97,6 +169,7 @@ export function toMarkup(text: string, entities?: TextEntity[] | null): string {
     for (const e of c) out += MARK_OF[e.type];
     const o = (opens.get(p) || []).sort((a, b) => b.length - a.length || a.ix - b.ix);
     for (const e of o) out += MARK_OF[e.type];
+    if (map) map[p] = out.length;
     if (p < text.length) out += text[p];
   }
   return out;
@@ -238,7 +311,7 @@ const copyCode = (text: string) => {
  */
 /** Упоминание участника группы (с сервера, chat/mentions.py). */
 export interface Mention { id: string; offset: number; length: number }
-type RenderEntity = { type: EntityType | "mention"; offset: number; length: number; id?: string };
+type RenderEntity = { type: EntityType | "mention"; offset: number; length: number; id?: string; url?: string };
 type Ctx = { myId?: string; onMention?: (id: string) => void };
 
 export function FormattedText({ text, entities, seed, mentions, myId, onMention }: {
@@ -248,7 +321,7 @@ export function FormattedText({ text, entities, seed, mentions, myId, onMention 
   const list = useMemo<RenderEntity[]>(() => {
     const ok = (e: { offset: number; length: number }) => e.length > 0 && e.offset >= 0 && e.offset < text.length;
     return [
-      ...(entities || []).filter((e) => e && MARK_OF[e.type] && ok(e)),
+      ...(entities || []).filter((e) => e && (MARK_OF[e.type] || (e.type === "custom_emoji" && isEmojiUrl(e.url))) && ok(e)),
       ...(mentions || []).filter((m) => m && m.id && ok(m)).map((m) => ({ type: "mention" as const, offset: m.offset, length: m.length, id: m.id })),
     ];
   }, [entities, mentions, text]);
@@ -271,7 +344,7 @@ function renderRange(text: string, entities: RenderEntity[], from: number, to: n
     const top = inside[k];
     if (top.s < pos) { k++; continue; }
     if (top.s > pos) nodes.push(<Linkify key={`t${pos}`} text={text.slice(pos, top.s)} />);
-    const rest = inside.slice(k + 1).filter((e) => e.s >= top.s && e.s < top.t).map((e) => ({ type: e.type, offset: e.s, length: Math.min(e.t, top.t) - e.s, id: e.id }));
+    const rest = inside.slice(k + 1).filter((e) => e.s >= top.s && e.s < top.t).map((e) => ({ type: e.type, offset: e.s, length: Math.min(e.t, top.t) - e.s, id: e.id, url: e.url }));
     nodes.push(wrap(top, text, rest, top.s, top.t, seed, `${top.type}${top.s}`, ctx));
     pos = top.t;
     k++;
@@ -311,6 +384,9 @@ function wrap(ent: RenderEntity, text: string, inner: RenderEntity[], s: number,
         </span>
       );
     case "spoiler": return <Spoiler key={key}>{kids()}</Spoiler>;
+    // Свой эмодзи — картинкой в строке; подпись (alt) — обычный эмодзи на его месте.
+    case "custom_emoji":
+      return <img key={key} className="fmt-cemoji" src={mediaUrl(ent.url)} alt={slice} title={slice} draggable={false} loading="lazy" />;
     case "zalgo": return <span key={key} className="fmt-zalgo">{zalgoText(slice, seed + s)}</span>;
     case "scramble":
       return <Scramble key={key} text={slice} seed={seed + s}>{(shown) => shown}</Scramble>;

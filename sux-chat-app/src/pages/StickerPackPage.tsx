@@ -35,7 +35,7 @@ const StickerPackPage = () => {
     setBusy(true);
     try {
       if (pack.is_saved) { await api.unsaveStickerPack(pack.id); toast.success(t("Пак убран")); }
-      else { await api.saveStickerPack(pack.id); toast.success(t("Пак добавлен — он появится в панели стикеров")); }
+      else { await api.saveStickerPack(pack.id); toast.success(pack.kind === "emoji" ? t("Набор добавлен — он появится в панели эмодзи") : t("Пак добавлен — он появится в панели стикеров")); }
       setPack({ ...pack, is_saved: !pack.is_saved });
     } catch (e: any) {
       toast.error(e?.message || t("Не получилось"));
@@ -54,7 +54,7 @@ const StickerPackPage = () => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
-        title={t("Стикерпак")}
+        title={pack?.kind === "emoji" ? t("Набор эмодзи") : t("Стикерпак")}
         onBack={() => (window.history.length > 1 ? navigate(-1) : navigate("/chat", { replace: true }))}
         right={
           <button type="button" onClick={share} className="w-10 h-10 flex items-center justify-center text-subtle active:opacity-60" aria-label={t("Поделиться")}>
@@ -76,7 +76,7 @@ const StickerPackPage = () => {
               <div className="min-w-0">
                 <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>
                 <p className="mt-1 text-small text-subtle truncate">
-                  {pack.author?.username ? t("Автор: {name}", { name: pack.author.username }) : t("Без автора")} · {tn(pack.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}
+                  {pack.author?.username ? t("Автор: {name}", { name: pack.author.username }) : t("Без автора")} · {(pack.kind === "emoji" ? tn(pack.stickers_count, "{n} эмодзи", "{n} эмодзи", "{n} эмодзи") : tn(pack.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров"))}
                 </p>
               </div>
             </div>

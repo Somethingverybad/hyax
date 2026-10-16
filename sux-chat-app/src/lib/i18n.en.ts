@@ -1829,5 +1829,17 @@ const en: Record<string, string> = {
   "Предметы": "Objects",
   "Символы": "Symbols",
   "Флаги": "Flags",
+  "Удалить этот эмодзи из набора «{name}»? В отправленных сообщениях он останется.": "Remove this emoji from “{name}”? It stays in messages already sent.",
+  "Добавить эмодзи": "Add emoji",
+  "Добавьте картинки — PNG, JPG или WebP. Удалить свой эмодзи — долгое нажатие или правый клик.": "Add images: PNG, JPG or WebP. To delete one of your emoji, long-press or right-click it.",
+  "Название набора эмодзи": "Emoji set name",
+  "Набор своих эмодзи": "Custom emoji set",
+  "Свои эмодзи — из ваших картинок: создайте набор и добавьте их. Обычные эмодзи — на клавиатуре телефона.": "Custom emoji are made from your images: create a set and add them. Regular emoji are on your phone keyboard.",
+  "Набор добавлен — он появится в панели эмодзи": "Set added — it will appear in the emoji panel",
+  "Набор эмодзи": "Emoji set",
+  "{n} эмодзи|{n} эмодзи|{n} эмодзи": "{n} emoji|{n} emoji",
+  "Эмодзи «{name}» в WYX": "“{name}” emoji in WYX",
+  "Эмодзи — из картинки: PNG, JPG или WebP": "Emoji are made from an image: PNG, JPG or WebP",
+  "Не удалось обработать картинку": "Couldn't process the image",
 };
 export default en;

@@ -15,6 +15,10 @@ ENTITY_TYPES = {
     "spoiler",   # скрыт до тапа
     "zalgo",     # «глитч»: диакритика над и под буквами, рисует клиент
     "scramble",  # буквы перемешаны, по тапу собираются в исходный текст
+    # Свой эмодзи из набора (StickerPack kind=emoji): в тексте — обычный эмодзи
+    # (его видят старые клиенты, пуши и превью), клиент рисует картинку.
+    # Нужен emoji_id; адрес картинки сервер подставляет сам (resolve_custom_emoji).
+    "custom_emoji",
 }
 # Что прячем в превью (список чатов, пуш, цитата): иначе спойлер и
 # перемешанный текст читались бы, не открывая переписку.
@@ -43,7 +47,42 @@ def clean_entities(raw, text):
             continue
         if t not in ENTITY_TYPES or off < 0 or ln <= 0 or off >= total:
             continue
-        out.append({"type": t, "offset": off, "length": min(ln, total - off)})
+        item = {"type": t, "offset": off, "length": min(ln, total - off)}
+        if t == "custom_emoji":
+            emoji_id = str(e.get("emoji_id") or "")[:64]
+            if not emoji_id:
+                continue
+            item["emoji_id"] = emoji_id
+        out.append(item)
+    return out
+
+
+def resolve_custom_emoji(entities):
+    """Свои эмодзи: по emoji_id — картинка из набора эмодзи. Адрес кладём в
+    сам диапазон: сообщение рисуется без лишних запросов и не теряет эмодзи,
+    если автор потом удалит набор (файлы эмодзи при этом не удаляются)."""
+    ids = [e["emoji_id"] for e in entities if e.get("type") == "custom_emoji"]
+    if not ids:
+        return entities
+    import uuid as _uuid
+    from .models import Sticker
+    valid = []
+    for i in ids:
+        try:
+            valid.append(str(_uuid.UUID(i)))
+        except ValueError:
+            pass
+    # Только наши файлы эмодзи: стикер в набор можно добавить с любым адресом,
+    # а картинка в тексте не должна ходить на чужой сервер.
+    urls = {str(k): v for k, v in Sticker.objects.filter(id__in=valid, pack__kind="emoji", file_url__startswith="/media/emoji/").values_list("id", "file_url")}
+    out = []
+    for e in entities:
+        if e.get("type") == "custom_emoji":
+            url = urls.get(e["emoji_id"])
+            if not url:
+                continue
+            e = {**e, "url": url}
+        out.append(e)
     return out
 
 
