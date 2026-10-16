@@ -1107,13 +1107,33 @@ class ChatAction(models.Model):
     name_ko = models.CharField(max_length=40, blank=True, default="")
     phrase_en = models.CharField(max_length=120, blank=True, default="")
     phrase_ko = models.CharField(max_length=120, blank=True, default="")
+    # Фраза зависит от того, кто читает: отправителю — «Вы подмигиваете
+    # {whom}», адресату — «Вам подмигивает {who}», остальным — «{who}
+    # подмигивает {whom}» (verb / phrase_<lang>). Пусто — собирается само
+    # (chat/action_text.py), en/ko — переводчиком.
+    phrase_ru_self = models.CharField(max_length=120, blank=True, default="")
+    phrase_ru_you = models.CharField(max_length=120, blank=True, default="")
+    phrase_en_self = models.CharField(max_length=120, blank=True, default="")
+    phrase_en_you = models.CharField(max_length=120, blank=True, default="")
+    phrase_ko_self = models.CharField(max_length=120, blank=True, default="")
+    phrase_ko_you = models.CharField(max_length=120, blank=True, default="")
 
     class Meta:
         ordering = ["order", "name"]
 
-    def phrase(self, lang, who, whom):
-        """Текст действия на языке lang: «Вася подмигивает Пете» / «Vasya winks at Petya»."""
-        tpl = {"en": self.phrase_en, "ko": self.phrase_ko}.get(lang or "", "")
+    def phrase(self, lang, who, whom, view="third"):
+        """Текст действия на языке lang для того, кто читает: view="self" —
+        отправителю («Вы подмигиваете Пете»), "you" — адресату («Вам
+        подмигивает Вася»), "third" — остальным («Вася подмигивает Пете»)."""
+        from .action_text import ru_self, ru_you
+        lang = lang if lang in ("en", "ko") else "ru"
+        suffix = {"self": "_self", "you": "_you"}.get(view, "")
+        tpl = getattr(self, f"phrase_{lang}{suffix}", "") if (lang != "ru" or suffix) else ""
+        if not tpl and lang == "ru":
+            tpl = ru_self(self.verb) if view == "self" else ru_you(self.verb) if view == "you" else ""
+        if not tpl:
+            # Нет перевода для этого лица — фраза «со стороны» на том же языке или по-русски.
+            tpl = getattr(self, f"phrase_{lang}", "") if lang != "ru" else ""
         if tpl:
             return tpl.replace("{who}", who).replace("{whom}", whom)
         return f"{who} {self.verb} {whom}"

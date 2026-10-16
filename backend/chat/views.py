@@ -829,7 +829,7 @@ def _notify_new_message(message, profile, request):
                 _lang = (getattr(_t, "language", "") or "")[:2]
                 _you = {"en": "you", "ko": "당신"}.get(_lang, "вам")
                 notify_profiles(Profile.objects.filter(id=_t.id), title=push_title,
-                                body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you)}"[:150],
+                                body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
                                 extra={"chat_id": str(message.chat.id)},
                                 sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
                                        else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None))
@@ -3544,13 +3544,26 @@ def _fill_action_translations(action):
         except Exception:
             logger.warning("действие %s: перевод на %s не удался", action.name, lang)
             return ""
+    from .action_text import ru_self, ru_you
+    # Русские формы для отправителя и адресата — по правилам; из них же переводы.
+    if not action.phrase_ru_self:
+        action.phrase_ru_self = ru_self(action.verb)[:120]
+    if not action.phrase_ru_you:
+        action.phrase_ru_you = ru_you(action.verb)[:120]
+    sources = {
+        "": (f"{{who}} {action.verb} {{whom}}", ("{who}", "{whom}")),
+        "_self": (action.phrase_ru_self, ("{whom}",)),
+        "_you": (action.phrase_ru_you, ("{who}",)),
+    }
     for lang in ("en", "ko"):
         if not getattr(action, f"name_{lang}"):
             setattr(action, f"name_{lang}", tr(action.name, lang)[:40])
-        if not getattr(action, f"phrase_{lang}"):
-            out = tr(f"{{who}} {action.verb} {{whom}}", lang)
-            if "{who}" in out and "{whom}" in out:
-                setattr(action, f"phrase_{lang}", out[:120])
+        for suffix, (src, marks) in sources.items():
+            if getattr(action, f"phrase_{lang}{suffix}"):
+                continue
+            out = tr(src, lang)
+            if all(m in out for m in marks):
+                setattr(action, f"phrase_{lang}{suffix}", out[:120])
 
 
 def _action_slug(action):
@@ -3588,6 +3601,10 @@ class ActionsView(APIView):
         if not (ser.validated_data.get("name") or "").strip() or not (ser.validated_data.get("verb") or "").strip():
             return Response({"error": "Нужны кнопка и глагол"}, status=400)
         action = ChatAction(**ser.validated_data)
+        # Новое — в конец списка.
+        if "order" not in request.data:
+            from django.db.models import Max
+            action.order = (ChatAction.objects.aggregate(m=Max("order"))["m"] or 0) + 10
         _fill_action_translations(action)
         action.slug = _action_slug(action)
         action.save()
@@ -3616,8 +3633,10 @@ class ActionDetailView(APIView):
         for lang in ("en", "ko"):
             if "name" in request.data and f"name_{lang}" not in request.data:
                 setattr(action, f"name_{lang}", "")
-            if "verb" in request.data and f"phrase_{lang}" not in request.data:
-                setattr(action, f"phrase_{lang}", "")
+            if "verb" in request.data:
+                for suffix in ("", "_self", "_you"):
+                    if f"phrase_{lang}{suffix}" not in request.data:
+                        setattr(action, f"phrase_{lang}{suffix}", "")
         _fill_action_translations(action)
         action.save()
         return Response(ChatActionAdminSerializer(action).data)

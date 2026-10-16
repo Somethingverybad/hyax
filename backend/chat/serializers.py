@@ -767,7 +767,8 @@ class MusicTrackSerializer(serializers.ModelSerializer):
 class ChatActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatAction
-        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'adult', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko']
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'adult', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
+                  'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you']
 
 
 class ChatActionAdminSerializer(serializers.ModelSerializer):
@@ -775,5 +776,6 @@ class ChatActionAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatAction
         fields = ['id', 'slug', 'name', 'verb', 'emoji', 'order', 'is_active', 'premium', 'adult',
-                  'name_en', 'name_ko', 'phrase_en', 'phrase_ko']
+                  'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
+                  'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you']
         read_only_fields = ['id', 'slug']

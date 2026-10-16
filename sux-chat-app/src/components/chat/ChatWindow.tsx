@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
+import { actionTemplate, type ActionView } from "@/lib/actionText";
 import type { ChatTranslate } from "@/api/client";
 import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
@@ -3549,11 +3550,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               );
             }
             if (message.action) {
-              // По-русски «Вы подмигиваете» не склеить из «Вы» + «подмигивает»,
-              // в en/ko глагол тоже зависит от лица — своё действие подписываем ником.
-              const who = isOwn ? (myLang === "ru" ? tr("Вы") : (message.sender?.username || "")) : message.sender?.username || tr("Кто-то");
-              const whom = message.action_target?.id === userId ? ({ en: "you", ko: "당신" } as Record<string, string>)[myLang] || tr("вам") : message.action_target?.username || "";
-              const phrase = actionPhrase(message.action, myLang, who, whom);
+              // Фраза — от лица читающего: мне — «Вы подмигиваете X», адресату —
+              // «Вам подмигивает Y», остальным — «Y подмигивает X» (lib/actionText).
+              const view: ActionView = isOwn ? "self" : message.action_target?.id === userId ? "you" : "third";
+              const who = message.sender?.username || tr("Кто-то");
+              const whom = message.action_target?.username || "";
+              const tpl = actionTemplate(message.action, myLang, view);
+              const phraseNodes = tpl.split(/(\{who\}|\{whom\})/).filter(Boolean).map((part, i) =>
+                part === "{who}" ? <b key={i}>{who}</b> : part === "{whom}" ? <b key={i}>{whom}</b> : <span key={i}>{part}</span>);
               return (
                 <div key={message._key ?? message.id} id={`msg-${message.id}`} className="flex justify-center my-1.5" data-message-id={message.id}>
                   <button type="button"
@@ -3561,7 +3565,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     onContextMenu={(e) => { e.preventDefault(); hideKeyboard(); setMenuMessage(message); setMenuPos({ x: e.clientX, y: e.clientY }); }}
                     className={cn("max-w-[85%] px-3.5 py-1.5 rounded-full bg-surface-3 text-small text-foreground/90 text-center", message.pending && "opacity-60")}>
                     <span className="mr-1">{message.action.emoji}</span>
-                    {myLang === "ru" ? <><b>{who}</b> {message.action.verb} <b>{whom}</b></> : <span>{phrase}</span>}
+                    {phraseNodes}
                   </button>
                 </div>
               );
