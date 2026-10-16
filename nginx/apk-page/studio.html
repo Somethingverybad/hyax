@@ -316,6 +316,17 @@
       <div class="rowbtns"><button class="btn primary" id="bvSaveBio" type="button">Сохранить описание</button></div>
       <div class="result" id="bvBioResult"></div>
     </div>
+    <h2>Мини-приложение</h2>
+    <div class="card">
+      <div class="field"><label class="lbl">Адрес страницы</label>
+        <input id="bvAppUrl" type="text" placeholder="https://example.com/app" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="field"><label class="lbl">Подпись кнопки</label>
+        <input id="bvAppTitle" type="text" maxlength="32" placeholder="Открыть приложение"></div>
+      <div class="rowbtns"><button class="btn primary" id="bvSaveApp" type="button">Сохранить</button></div>
+      <div class="result" id="bvAppResult"></div>
+      <div class="hint mt">Страница откроется внутри WYX кнопкой в чате с ботом и в его карточке и узнает, кто её открыл (подписанные данные запуска).
+        Только https. Пустой адрес — убрать кнопку. Как написать мини-приложение — <a href="bots.html#webapp">документация</a>.</div>
+    </div>
     <h2>Токен</h2>
     <div class="card">
       <div class="tokbox"><code id="bvToken">••••••••••••••••</code></div>
@@ -1181,6 +1192,8 @@
     el("bvMeta").textContent="Бот"+(b.created_at?" · создан "+new Date(b.created_at).toLocaleDateString("ru-RU"):"");
     var cov=el("bvCover"); cov.innerHTML = avaSrc(b) ? '<img alt="" src="'+esc(avaSrc(b))+'">' : "🤖";
     if(document.activeElement!==el("bvBio")) el("bvBio").value=b.bio||"";
+    if(document.activeElement!==el("bvAppUrl")) el("bvAppUrl").value=b.webapp_url||"";
+    if(document.activeElement!==el("bvAppTitle")) el("bvAppTitle").value=b.webapp_title||"";
     el("bvToken").textContent=tokenShown?b.token:"••••••••••••••••";
     el("bvShow").textContent=tokenShown?"Скрыть":"Показать";
     var act=el("bvActions"); act.innerHTML="";
@@ -1215,6 +1228,18 @@
     authJson("/api/bots/"+b.id+"/","PATCH",{bio:el("bvBio").value.trim()}).then(function(x){
       btn.disabled=false;
       if(x.ok && x.data.bot){ b.bio=x.data.bot.bio; res.className="result ok"; res.textContent="Сохранено."; }
+      else { res.className="result err"; res.textContent=(x.data&&x.data.error)||"Не удалось сохранить"; }
+    }).catch(function(){ btn.disabled=false; });
+  });
+  el("bvSaveApp").addEventListener("click", function(){
+    var b=curBot; if(!b) return;
+    var url=el("bvAppUrl").value.trim(), title=el("bvAppTitle").value.trim(), res=el("bvAppResult"), btn=this;
+    res.className="result";
+    if(url && !/^https:\/\/[^\s/]+/i.test(url)){ res.className="result err"; res.textContent="Адрес — с https://"; return; }
+    btn.disabled=true;
+    authJson("/api/bots/"+b.id+"/","PATCH",{webapp_url:url,webapp_title:title}).then(function(x){
+      btn.disabled=false;
+      if(x.ok && x.data.bot){ b.webapp_url=x.data.bot.webapp_url; b.webapp_title=x.data.bot.webapp_title; res.className="result ok"; res.textContent=url?"Сохранено — кнопка появится в чате с ботом.":"Мини-приложение убрано."; }
       else { res.className="result err"; res.textContent=(x.data&&x.data.error)||"Не удалось сохранить"; }
     }).catch(function(){ btn.disabled=false; });
   });

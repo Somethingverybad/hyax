@@ -11,7 +11,7 @@ import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import { actionTemplate, type ActionView } from "@/lib/actionText";
 import type { ChatTranslate } from "@/api/client";
-import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images } from "lucide-react";
+import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -47,6 +47,7 @@ import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encry
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import PlaylistLinkCard from "./PlaylistLinkCard";
+import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import ShareToChat from "@/components/ShareToChat";
@@ -112,7 +113,8 @@ interface Message {
   /** Сводка реакций: эмодзи, сколько и моя ли. */
   reactions?: ReactionSummary[];
   /** Кнопки под сообщением — их ставит бот; нажатие уходит ему. */
-  buttons?: { text: string; data: string }[][];
+  /** Кнопки бота: data — событие боту, web_app — открыть мини-приложение. */
+  buttons?: { text: string; data?: string; web_app?: { url: string } }[][];
   content: string | null;
   file_url: string | null;
   file_name: string | null;
@@ -229,7 +231,7 @@ interface ChatWindowProps {
   chatId: string | null;
   userId: string;
   /** Собеседник (для звонка) и запуск звонка — приходят из Chat.tsx. */
-  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; aura_color?: string | null; aura_text?: string | null; is_bot?: boolean; readonly_bot?: boolean; last_seen?: string | null } | null;
+  peer?: { id: string; username: string; avatar_url?: string | null; is_online?: boolean; aura_color?: string | null; aura_text?: string | null; is_bot?: boolean; readonly_bot?: boolean; last_seen?: string | null; webapp_url?: string; webapp_title?: string } | null;
   onCall?: () => void;
   /** Метаданные группы (если это групповой чат) — для настроек и прав админа. */
   group?: ChatInfo | null;
@@ -4114,14 +4116,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       <div className="mt-1.5 space-y-1.5">
                         {message.buttons.map((row, ri) => (
                           <div key={ri} className="flex gap-1.5">
-                            {row.map((b) => (
+                            {row.map((b, bi) => (
                               <button
-                                key={b.data}
+                                key={b.data || b.web_app?.url || bi}
                                 type="button"
-                                disabled={pressing === `${message.id}:${b.data}`}
-                                onClick={(e) => { e.stopPropagation(); void pressButton(message, b.data); }}
-                                className="flex-1 min-h-10 px-3 rounded-md bg-surface-4 border border-border text-small font-medium active:opacity-70 disabled:opacity-50"
+                                disabled={!!b.data && pressing === `${message.id}:${b.data}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // web_app — страница бота внутри WYX, боту событие не шлём.
+                                  if (b.web_app?.url) {
+                                    if (message.sender) void openMiniApp({ botId: message.sender.id, botName: message.sender.username, url: b.web_app.url, chatId: chatId || undefined });
+                                    return;
+                                  }
+                                  if (b.data) void pressButton(message, b.data);
+                                }}
+                                className="flex-1 min-h-10 px-3 rounded-md bg-surface-4 border border-border text-small font-medium active:opacity-70 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
                               >
+                                {b.web_app && <LayoutGrid className="w-3.5 h-3.5 shrink-0" />}
                                 {b.text}
                               </button>
                             ))}
@@ -4501,6 +4512,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 </button>
               )}
             </div>
+          )}
+
+          {/* Мини-приложение бота — кнопкой над полем ввода, как меню бота. */}
+          {peer?.is_bot && peer.webapp_url && !saved && (
+            <button
+              type="button"
+              onClick={() => void openMiniApp({ botId: peer.id, botName: peer.username, chatId: chatId || undefined })}
+              className="mb-2 w-full h-10 rounded-md border border-border bg-surface-2 text-small font-medium flex items-center justify-center gap-2 active:opacity-80"
+            >
+              <LayoutGrid className="w-4 h-4 text-primary" /> {peer.webapp_title || tr("Открыть приложение")}
+            </button>
           )}
 
           {/* Р.Ё.В: пока держим кнопку — видно, что идёт вибрация у собеседника. */}

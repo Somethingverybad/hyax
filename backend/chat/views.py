@@ -3403,6 +3403,8 @@ def _bot_payload(bot, with_token=False):
         "username": bot.username,
         "bio": bot.bio or "",
         "avatar_url": bot.avatar_url,
+        "webapp_url": bot.webapp_url or "",
+        "webapp_title": bot.webapp_title or "",
         "is_bot": True,
         "owner": str(bot.bot_owner_id) if bot.bot_owner_id else None,
         "created_at": bot.created_at,
@@ -3491,12 +3493,13 @@ class BotDetailView(APIView):
     бота. Только владелец (студия: управление ботами)."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def _owned(self, request, pk):
+    def _owned(self, request, pk, allow_self=False):
         me = getattr(request.user, "profile", None)
         bot = Profile.objects.filter(pk=pk, is_bot=True).select_related("user").first()
         if not bot:
             return None, Response({"error": "Бот не найден"}, status=404)
-        if not me or bot.bot_owner_id != me.id:
+        # allow_self: описание и мини-приложение бот может поменять и сам, своим токеном.
+        if not me or (bot.bot_owner_id != me.id and not (allow_self and me.id == bot.id)):
             return None, Response({"error": "Это не ваш бот"}, status=403)
         return bot, None
 
@@ -3510,14 +3513,30 @@ class BotDetailView(APIView):
         return Response({"id": str(bot.id), "token": bot.bot_token})
 
     def patch(self, request, pk):
-        bot, err = self._owned(request, pk)
+        """{bio?, webapp_url?, webapp_title?} — описание и мини-приложение
+        (адрес https; пустой — убрать). Токен в ответе — только владельцу."""
+        from .webapp import valid_app_url
+        bot, err = self._owned(request, pk, allow_self=True)
         if err:
             return err
-        if "bio" not in request.data:
+        fields = []
+        if "bio" in request.data:
+            bot.bio = (request.data.get("bio") or "").strip()[:500]
+            fields.append("bio")
+        if "webapp_url" in request.data:
+            url = (request.data.get("webapp_url") or "").strip()
+            if url and not valid_app_url(url):
+                return Response({"error": "Адрес мини-приложения — https://…"}, status=400)
+            bot.webapp_url = url
+            fields.append("webapp_url")
+        if "webapp_title" in request.data:
+            bot.webapp_title = (request.data.get("webapp_title") or "").strip()[:32]
+            fields.append("webapp_title")
+        if not fields:
             return Response({"error": "Нечего менять"}, status=400)
-        bot.bio = (request.data.get("bio") or "").strip()[:500]
-        bot.save(update_fields=["bio"])
-        return Response({"bot": _bot_payload(bot, with_token=True)})
+        bot.save(update_fields=fields)
+        mine = bot.bot_owner_id == getattr(getattr(request.user, "profile", None), "id", None)
+        return Response({"bot": _bot_payload(bot, with_token=mine)})
 
     def delete(self, request, pk):
         bot, err = self._owned(request, pk)

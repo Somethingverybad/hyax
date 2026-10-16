@@ -1798,5 +1798,18 @@ const en: Record<string, string> = {
   "Ваш": "Yours",
   "Переслано из «{name}»": "Forwarded from “{name}”",
   "Вложение удалено": "Attachment deleted",
+  "Мини-приложение @{bot} откроется внутри WYX и узнает ваш ник и аватар. Открыть?": "The mini app of @{bot} will open inside WYX and will see your username and avatar. Open it?",
+  "Открыть приложение": "Open app",
+  "Приложение": "App",
+  "мини-приложение": "mini app",
+  "Открыть в браузере": "Open in browser",
+  "Ещё": "More",
+  "Не удалось открыть приложение": "Couldn't open the app",
+  "Не удалось отправить данные боту": "Couldn't send data to the bot",
+  "У бота нет мини-приложения": "This bot has no mini app",
+  "Нельзя открыть приложение этого бота": "You can't open this bot's app",
+  "Данные запуска устарели — откройте приложение заново": "Launch data expired — open the app again",
+  "Бот сейчас недоступен": "The bot is unavailable right now",
+  "Адрес мини-приложения — https://…": "Mini app address must be https://…",
 };
 export default en;

@@ -141,6 +141,10 @@ class Profile(models.Model):
     readonly_bot = models.BooleanField(default=False)
     bot_owner = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, related_name='bots')
     bot_token = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    # Мини-приложение бота: веб-страница, которая открывается внутри WYX
+    # кнопкой в чате с ботом и в его карточке (chat/webapp.py). Пусто — нет.
+    webapp_url = models.TextField(blank=True, default="")
+    webapp_title = models.CharField(max_length=32, blank=True, default="")
 
     def __str__(self):
         return f"🤖 {self.username}" if self.is_bot else self.username

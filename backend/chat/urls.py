@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
 from .radio import StationsView, StationView, StationControlView, StationListenView
+from .webapp import WebAppInitView, WebAppDataView
 from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
@@ -106,6 +107,8 @@ urlpatterns = [
     path('bots/<uuid:pk>/', BotDetailView.as_view(), name='bot-detail'),
     path('bots/<uuid:pk>/start/', BotStartView.as_view(), name='bot-start'),
     path('bots/<uuid:pk>/avatar/', BotAvatarView.as_view(), name='bot-avatar'),
+    path('webapp/init/', WebAppInitView.as_view(), name='webapp-init'),
+    path('webapp/data/', WebAppDataView.as_view(), name='webapp-data'),
     # Inline-боты (chat/inline.py): запрос → результаты → выбор → заполнение.
     path('bots/inline/query/', InlineQueryView.as_view(), name='inline-query'),
     path('bots/inline/<str:query_id>/answer/', InlineAnswerView.as_view(), name='inline-answer'),

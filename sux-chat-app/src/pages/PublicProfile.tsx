@@ -2,7 +2,8 @@ import { t, getLang } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
-import { MessageSquare, Share2, ArrowLeft, Copy, ChevronRight } from "lucide-react";
+import { MessageSquare, Share2, ArrowLeft, Copy, ChevronRight, LayoutGrid } from "lucide-react";
+import { openMiniApp } from "@/lib/miniapp";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import AvatarZoom from "@/components/AvatarZoom";
@@ -135,6 +136,12 @@ const PublicProfile = () => {
                 <button type="button" onClick={write} disabled={busy} className="flex-1 h-10 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50">
                   <MessageSquare className="w-4 h-4" /> {busy ? t("Открываю…") : card.is_bot ? t("Начать") : t("Написать")}
                 </button>
+              )}
+              {/* Мини-приложение бота — прямо со страницы бота. */}
+              {card.is_bot && (card as { webapp_url?: string }).webapp_url && (
+                <button type="button" onClick={() => void openMiniApp({ botId: card.id, botName: card.username })}
+                  className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90">
+                  <LayoutGrid className="w-4 h-4" />{(card as { webapp_title?: string }).webapp_title || t("Приложение")}</button>
               )}
               <button type="button" onClick={share} className="flex-1 h-10 rounded-md bg-surface-4 text-foreground font-medium flex items-center justify-center gap-2 active:opacity-90">
                 <Share2 className="w-4 h-4" />{t("Поделиться")}</button>

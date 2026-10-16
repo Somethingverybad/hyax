@@ -1,7 +1,8 @@
 import { t, getLang } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare } from "lucide-react";
+import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare, LayoutGrid } from "lucide-react";
+import { openMiniApp } from "@/lib/miniapp";
 import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
@@ -187,6 +188,16 @@ const UserProfileModal = ({
                 >
                   <MessageSquare className="w-4 h-4" />
                   {writing ? t("Открываю…") : isBot ? t("Начать") : t("Написать")}
+                </button>
+              )}
+              {/* Мини-приложение бота — прямо из карточки. */}
+              {isBot && (profile as { webapp_url?: string } | null)?.webapp_url && (
+                <button
+                  type="button"
+                  onClick={() => { const pr = profile!; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }}
+                  className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90"
+                >
+                  <LayoutGrid className="w-4 h-4" />{(profile as { webapp_title?: string }).webapp_title || t("Приложение")}
                 </button>
               )}
               {onCall && (

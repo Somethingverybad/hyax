@@ -1,4 +1,5 @@
 import { ConfirmHost } from "@/lib/confirm";
+import MiniAppHost from "@/components/miniapp/MiniAppHost";
 import { t as tr, tn } from "@/lib/i18n";
 import { toast as sonnerToast } from "sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -273,6 +274,8 @@ const App = () => {
             {/* Звонки — тоже выше экранов: разговор идёт, куда бы ни перешли;
                 свёрнутый — виджетом, как плеер (components/call/CallHost). */}
             <CallHost />
+            {/* Мини-приложения ботов — окно поверх всего (lib/miniapp.ts). */}
+            <MiniAppHost />
             <ThemeFromProfile />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.

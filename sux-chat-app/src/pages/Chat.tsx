@@ -24,6 +24,7 @@ import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
 import { rovOn, rovOff, onRovState } from "@/lib/rov";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
+import { isMiniAppOpen } from "@/lib/miniapp";
 import { toast } from "sonner";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
@@ -388,6 +389,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     if (!Capacitor.isNativePlatform()) return;
     let handle: { remove: () => void } | undefined;
     App.addListener('backButton', () => {
+      // Открыто мини-приложение — «назад» его (MiniAppHost), чат не трогаем.
+      if (isMiniAppOpen()) return;
       if (selectedChatIdRef.current) {
         setSelectedChatId(null);
       } else {

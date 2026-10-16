@@ -221,6 +221,9 @@ export interface Profile {
   ideabox_enabled?: boolean;
   /** Бот: таким сохранёнки не открывают и в личку не пишут вручную. */
   is_bot?: boolean;
+  /** Мини-приложение бота (chat/webapp.py): адрес и подпись кнопки. */
+  webapp_url?: string;
+  webapp_title?: string;
   /** Бот только для чтения (Обновлямбус): писать ему нельзя. */
   readonly_bot?: boolean;
   /** «В сети» — живой статус; у тех, кто выбрал «Скрыт», всегда false. */
@@ -1274,6 +1277,28 @@ export const api = {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не получилось");
     return data;
+  },
+
+  /** Мини-приложение: адрес и подписанные данные запуска для страницы бота. */
+  webappInit: async (botId: string, opts: { url?: string; chatId?: string; startParam?: string } = {}): Promise<{
+    url: string; init_data: string; query_id: string; title: string;
+    bot: { id: string; username: string; avatar_url?: string | null };
+  }> => {
+    const res = await fetchWithAuth(`${API_URL}/webapp/init/`, {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ bot_id: botId, url: opts.url || undefined, chat_id: opts.chatId || undefined, start_param: opts.startParam || undefined }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(d?.error || "Не удалось открыть приложение");
+    return d;
+  },
+
+  /** Мини-приложение отправило боту данные (WYX.WebApp.sendData). */
+  webappSendData: async (botId: string, initData: string, data: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/webapp/data/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ bot_id: botId, init_data: initData, data }),
+    });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось отправить данные боту");
   },
 
   /** Загрузить свой трек прямо в плейлист (без playlistId — в «Мою музыку»). */

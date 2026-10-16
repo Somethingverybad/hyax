@@ -51,11 +51,11 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'notify_silent', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe', 'language']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'status', 'call_status', 'bio', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'push_preview', 'notify_silent', 'rov_enabled', 'notify_sound', 'notify_sound_id', 'is_online', 'saved_visible', 'last_seen', 'aura_color', 'aura_text', 'vibe', 'language', 'webapp_url', 'webapp_title']
         # username редактируем: это отображаемое имя (никнейм), логин остаётся
         # в User.username и не меняется. Уникальность проверяет DRF по unique
         # на поле модели.
-        read_only_fields = ['id', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'vibe']
+        read_only_fields = ['id', 'created_at', 'is_bot', 'readonly_bot', 'bot_owner', 'vibe', 'webapp_url', 'webapp_title']
 
     def validate_aura_color(self, value):
         import re
@@ -173,7 +173,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'avatar_url', 'cover_url', 'bio', 'is_bot', 'created_at', 'saved_visible', 'aura_color', 'aura_text']
+        fields = ['id', 'username', 'avatar_url', 'cover_url', 'bio', 'is_bot', 'created_at', 'saved_visible', 'aura_color', 'aura_text', 'webapp_url', 'webapp_title']
         read_only_fields = fields
 
 
@@ -515,6 +515,17 @@ class MessageSerializer(serializers.ModelSerializer):
                 if not isinstance(btn, dict):
                     raise serializers.ValidationError("Кнопка — это объект")
                 text = str(btn.get("text") or "").strip()[:64]
+                # Кнопка мини-приложения: {text, web_app: {url}} — открывает
+                # страницу внутри WYX (chat/webapp.py), боту ничего не шлёт.
+                web_app = btn.get("web_app")
+                if web_app is not None:
+                    from .webapp import valid_app_url
+                    url = (web_app.get("url") if isinstance(web_app, dict) else web_app) or ""
+                    url = str(url).strip()
+                    if not text or not valid_app_url(url):
+                        raise serializers.ValidationError("У кнопки мини-приложения нужны text и web_app.url (https)")
+                    out.append({"text": text, "web_app": {"url": url[:1024]}})
+                    continue
                 data = str(btn.get("data") or "").strip()[:128]
                 if not text or not data:
                     raise serializers.ValidationError("У кнопки нужны text и data")

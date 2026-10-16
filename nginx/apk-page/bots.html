@@ -58,7 +58,7 @@
   <nav>
     <a href="#start">Начало</a><a href="#auth">Авторизация</a><a href="#events">События</a>
     <a href="#send">Отправка</a><a href="#buttons">Кнопки</a><a href="#inline">Inline</a>
-    <a href="#radio">Эфир</a><a href="#example">Пример</a><a href="#limits">Ограничения</a>
+    <a href="#webapp">Мини-приложения</a><a href="#radio">Эфир</a><a href="#example">Пример</a><a href="#limits">Ограничения</a>
   </nav>
 
   <h2 id="start">Как устроено</h2>
@@ -108,6 +108,8 @@ Authorization: Bot Xy…
         <td><code>chat_id</code>, <code>message_id</code>, <code>data</code> (строка кнопки), <code>from_id</code>, <code>from_username</code></td></tr>
       <tr><td><code>inline_query</code></td><td>Человек набрал <code>@mybot запрос</code> в любом чате</td>
         <td><code>query_id</code>, <code>query</code>, <code>chat_id</code>, <code>from_id</code>, <code>from_username</code></td></tr>
+      <tr><td><code>web_app_data</code></td><td>Мини-приложение отправило вам данные (<code>WYX.WebApp.sendData</code>)</td>
+        <td><code>data</code> (строка до 4096), <code>query_id</code>, <code>chat_id</code>, <code>from_id</code>, <code>from_username</code></td></tr>
       <tr><td><code>inline_chosen</code></td><td>Человек выбрал один из ваших inline-результатов</td>
         <td><code>query_id</code>, <code>result_id</code>, <code>chat_id</code>, <code>message_id</code> — заглушка, которую нужно заполнить</td></tr>
     </table>
@@ -180,6 +182,69 @@ Authorization: Bot Xy…
     </ol>
     <div class="tip">Разбор запроса — ваше дело. У <code>@ytbot</code> первое слово — формат (<code>mp3</code>, <code>1080</code>, <code>720</code>, <code>480</code>, <code>360</code>),
       остальное — название или ссылка; без формата — mp3. Придумывайте свой синтаксис, но описывайте его в «О себе» бота.</div>
+  </div>
+
+  <h2 id="webapp">Мини-приложения</h2>
+  <div class="card">
+    <p>Мини-приложение — ваша веб-страница, которая открывается внутри WYX на весь экран: магазин, запись, игра, форма.
+      Страница сразу знает, кто её открыл (подписанные «данные запуска»), может показать кнопку внизу окна и отправить данные боту.</p>
+
+    <h3>1. Адрес</h3>
+    <p>В <a href="studio.html#/bots">студии</a> → бот → «Мини-приложение» или запросом (владелец бота или сам бот своим токеном):</p>
+<pre><code><span class="k">PATCH</span> /api/bots/&lt;bot_id&gt;/
+{"webapp_url": "https://example.com/app", "webapp_title": "Магазин"}   <span class="c">пустой адрес — убрать</span></code></pre>
+    <p>В чате с ботом появится кнопка «Магазин» над полем ввода, в карточке бота — кнопка приложения.
+      Другие страницы открывают кнопки под сообщениями бота:</p>
+<pre><code>{"chat": "&lt;chat_id&gt;", "content": "Ваш заказ готов",
+ "buttons": [[{"text": "🧾 Открыть заказ", "web_app": {"url": "https://example.com/app/order/42"}}]]}</code></pre>
+
+    <h3>2. Страница</h3>
+<pre><code>&lt;script src="https://huyax.e-tree.su/wyx-webapp.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const app = WYX.WebApp;
+  app.ready();                                   <span class="c">// убрать заставку загрузки</span>
+  document.body.style.background = app.themeParams.bg_color;
+  hello.textContent = "Привет, " + (app.initDataUnsafe.user?.username || "гость");
+  app.MainButton.setText("Оформить").show().onClick(() =&gt; {
+    app.sendData(JSON.stringify({ order: 42 }));  <span class="c">// бот получит web_app_data, окно закроется</span>
+  });
+&lt;/script&gt;</code></pre>
+    <p class="muted">Цвета темы WYX есть и переменными CSS: <code>--wyx-bg-color</code>, <code>--wyx-text-color</code>, <code>--wyx-hint-color</code>,
+      <code>--wyx-button-color</code>, <code>--wyx-button-text-color</code>, <code>--wyx-secondary-bg-color</code>.</p>
+
+    <h3>3. Кто открыл — проверка на вашем сервере</h3>
+    <p><code>WYX.WebApp.initData</code> — строка вида <code>query_id=…&amp;user=…&amp;auth_date=…&amp;chat_id=…&amp;hash=…</code>.
+      Пришлите её на свой сервер и проверьте подпись токеном бота — тогда <code>user.id</code> можно верить.
+      <code>initDataUnsafe</code> — те же поля без проверки, только для показа.</p>
+<pre><code><span class="k">import</span> hashlib, hmac, json, time
+<span class="k">from</span> urllib.parse <span class="k">import</span> parse_qsl
+
+<span class="k">def</span> check(init_data, bot_token, max_age=86400):
+    d = dict(parse_qsl(init_data)); got = d.pop(<span class="s">"hash"</span>, <span class="s">""</span>)
+    text = <span class="s">"\n"</span>.join(f<span class="s">"{k}={d[k]}"</span> <span class="k">for</span> k <span class="k">in</span> sorted(d))
+    secret = hmac.new(<span class="s">b"WebAppData"</span>, bot_token.encode(), hashlib.sha256).digest()
+    ok = hmac.compare_digest(hmac.new(secret, text.encode(), hashlib.sha256).hexdigest(), got)
+    <span class="k">return</span> json.loads(d[<span class="s">"user"</span>]) <span class="k">if</span> ok <span class="k">and</span> time.time() - int(d[<span class="s">"auth_date"</span>]) &lt; max_age <span class="k">else</span> None</code></pre>
+    <p class="muted">Схема подписи — распространённая для мини-приложений: готовые библиотеки проверки подходят, если дать им токен бота WYX.
+      В <code>user</code>: <code>id</code>, <code>username</code>, <code>language_code</code>, <code>photo_url</code>.</p>
+
+    <h3>4. WYX.WebApp</h3>
+    <table>
+      <tr><td><code>initData</code>, <code>initDataUnsafe</code></td><td>Данные запуска (строка и разобранные поля)</td></tr>
+      <tr><td><code>themeParams</code>, <code>colorScheme</code>, <code>platform</code></td><td>Цвета темы, <code>light</code>/<code>dark</code>, <code>ios</code>/<code>android</code>/<code>web</code>/<code>desktop</code></td></tr>
+      <tr><td><code>ready()</code>, <code>close()</code>, <code>expand()</code></td><td>Готово к показу, закрыть окно (окно и так во весь экран)</td></tr>
+      <tr><td><code>sendData(строка)</code></td><td>До 4096 символов боту событием <code>web_app_data</code>; окно закрывается</td></tr>
+      <tr><td><code>MainButton</code></td><td><code>setText</code>, <code>setParams({text, color, text_color, is_visible, is_active})</code>, <code>show</code>/<code>hide</code>, <code>enable</code>/<code>disable</code>, <code>showProgress</code>/<code>hideProgress</code>, <code>onClick</code>/<code>offClick</code></td></tr>
+      <tr><td><code>BackButton</code></td><td><code>show</code>/<code>hide</code>, <code>onClick</code> — стрелка «назад» в шапке окна</td></tr>
+      <tr><td><code>HapticFeedback</code></td><td><code>impactOccurred("light"|"medium"|"heavy")</code>, <code>notificationOccurred("success"|"warning"|"error")</code>, <code>selectionChanged()</code></td></tr>
+      <tr><td><code>showAlert(текст, cb)</code>, <code>showConfirm(текст, cb(ok))</code></td><td>Окна сообщения и подтверждения</td></tr>
+      <tr><td><code>openLink(url)</code></td><td>Открыть ссылку в браузере</td></tr>
+      <tr><td><code>onEvent</code>/<code>offEvent</code></td><td><code>themeChanged</code>, <code>mainButtonClicked</code>, <code>backButtonClicked</code></td></tr>
+    </table>
+    <div class="tip">Окно — встроенный фрейм: на iPhone сторонние куки в нём режутся. Входите по <code>initData</code>, а не по куки;
+      <code>localStorage</code> работает. Камеры, файлов и контактов у страницы нет — только то, что выше.</div>
+    <div class="warn">Только https. Перед первым запуском человек видит, что приложение узнает его ник и аватар, и соглашается.
+      Мини-приложение подчиняется тем же правилам, что и бот: без запрещённого контента, обмана и сбора данных сверх нужного.</div>
   </div>
 
   <h2 id="radio">Эфир: бот-диджей</h2>
