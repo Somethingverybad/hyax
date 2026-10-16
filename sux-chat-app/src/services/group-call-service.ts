@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { micConstraints, micKey, onMicSettings, swapMicTrack } from "@/lib/micSettings";
 import { t as tr } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
 import type { AudioLevels } from "@/lib/nativeCall";
@@ -79,6 +80,9 @@ export class GroupCallService {
   private peers = new Map<string, RTCPeerConnection>();
   private streams = new Map<string, MediaStream>();
   private localStream: MediaStream | null = null;
+  /** Параметры, с которыми открыт микрофон (micKey), и очередь его подмен. */
+  private micOpenedWith = "";
+  private micChain: Promise<void> = Promise.resolve();
   private callId: string | null = null;
   private chatId: string | null = null;
   private state: GroupCallState = "idle";
@@ -95,6 +99,19 @@ export class GroupCallService {
     this.userId = options.userId;
     this.iceServers = options.iceServers;
     this.cb = options;
+    // Настройки → Микрофон поменяли посреди разговора — применяем сразу.
+    onMicSettings(() => { void this.applyMicSettings().catch(() => {}); });
+  }
+
+  /** Переоткрыть микрофон с новыми настройками и подменить дорожку во всех соединениях. */
+  private applyMicSettings(): Promise<void> {
+    const key = micKey();
+    if (!this.localStream || this.micOpenedWith === key) return this.micChain;
+    this.micOpenedWith = key;
+    this.micChain = this.micChain.catch(() => {}).then(() => {
+      if (this.localStream) return swapMicTrack(this.localStream, this.peers.values());
+    });
+    return this.micChain;
   }
 
   getState() {
@@ -122,6 +139,8 @@ export class GroupCallService {
     this.callId = input.callId;
     this.chatId = input.chatId;
     this.localStream = input.localStream;
+    // Микрофон открыт личным звонком с теми же настройками.
+    this.micOpenedWith = micKey();
     const pc = input.pc;
     const id = input.peerId;
     this.peers.set(id, pc);
@@ -391,8 +410,9 @@ export class GroupCallService {
 
   private async ensureMic(): Promise<void> {
     if (this.localStream) return;
+    this.micOpenedWith = micKey();
     this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: micConstraints(),
       video: false,
     });
   }

@@ -106,7 +106,13 @@ public class NativeCallPlugin extends Plugin {
         iceServers = parseIceServers(call.getArray("iceServers"));
 
         if (audioTrack == null) {
+            // Настройки → Микрофон (из JS): шумодав, эхоподавление и автогромкость
+            // движка WebRTC. Аппаратная обработка телефона, если есть, — поверх них.
+            JSObject mic = call.getObject("mic");
             MediaConstraints constraints = new MediaConstraints();
+            constraints.mandatory.add(new MediaConstraints.KeyValuePair("googNoiseSuppression", micFlag(mic, "noiseSuppression")));
+            constraints.mandatory.add(new MediaConstraints.KeyValuePair("googEchoCancellation", micFlag(mic, "echoCancellation")));
+            constraints.mandatory.add(new MediaConstraints.KeyValuePair("googAutoGainControl", micFlag(mic, "autoGainControl")));
             audioSource = factory.createAudioSource(constraints);
             audioTrack = factory.createAudioTrack("hyax-audio", audioSource);
             audioTrack.setEnabled(true);
@@ -594,6 +600,11 @@ public class NativeCallPlugin extends Plugin {
     }
 
     // ===== внутреннее =====
+
+    /** Флаг настройки микрофона для ограничений WebRTC: выключен только явным false. */
+    private static String micFlag(JSObject mic, String key) {
+        return mic != null && mic.has(key) && !mic.optBoolean(key, true) ? "false" : "true";
+    }
 
     private void ensureFactory() {
         if (factory != null) return;

@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { getMicSettings } from "@/lib/micSettings";
 
 /**
  * Мост к нативному медиа-слою звонков (NativeCallPlugin на iOS и Android).
@@ -38,8 +39,8 @@ export interface AudioLevels { peers: Record<string, number>; local: number }
 export interface NativeVideoState { on: boolean; front: boolean; canFlip: boolean }
 
 interface NativeCallPlugin {
-  /** Захватить микрофон и запомнить ICE-серверы. */
-  start(o: { iceServers: RTCIceServer[] }): Promise<void>;
+  /** Захватить микрофон (с настройками из «Настройки → Микрофон») и запомнить ICE-серверы. */
+  start(o: { iceServers: RTCIceServer[]; mic?: { noiseSuppression: boolean; echoCancellation: boolean; autoGainControl: boolean } }): Promise<void>;
   /** video — личный звонок: в соединении сразу пустой видеоканал. */
   createPeer(o: { peerId: string; video?: boolean }): Promise<void>;
   createOffer(o: { peerId: string }): Promise<void>;
@@ -75,7 +76,10 @@ const plugin = registerPlugin<NativeCallPlugin>("NativeCall");
 export const hasNativeCalls = () => Capacitor.isNativePlatform();
 
 export const nativeCall = {
-  start: (iceServers: RTCIceServer[]) => plugin.start({ iceServers }),
+  start: (iceServers: RTCIceServer[]) => {
+    const { noiseSuppression, echoCancellation, autoGainControl } = getMicSettings();
+    return plugin.start({ iceServers, mic: { noiseSuppression, echoCancellation, autoGainControl } });
+  },
   createPeer: (peerId: string, video = false) => plugin.createPeer({ peerId, video }),
   createOffer: (peerId: string) => plugin.createOffer({ peerId }),
   setRemote: (peerId: string, type: "offer" | "answer", sdp: string, video = false) =>

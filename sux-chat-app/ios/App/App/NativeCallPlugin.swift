@@ -97,6 +97,16 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             return RTCIceServer(urlStrings: urls)
         }
 
+        // Настройки → Микрофон (из JS): шумодав, эхоподавление и автогромкость
+        // движка WebRTC. Системная обработка iOS (режим voiceChat) — поверх них.
+        let mic = call.getObject("mic") ?? [:]
+        let flag = { (key: String) -> String in (mic[key] as? Bool) == false ? "false" : "true" }
+        let micConstraints = [
+            "googNoiseSuppression": flag("noiseSuppression"),
+            "googEchoCancellation": flag("echoCancellation"),
+            "googAutoGainControl": flag("autoGainControl"),
+        ]
+
         // Микрофон запрашиваем до соединения: без разрешения звонок
         // бессмысленен, а спрашивать посреди разговора поздно.
         AVAudioSession.sharedInstance().requestRecordPermission { granted in
@@ -107,7 +117,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             self.queue.async {
                 NativeCallAudio.shared.beginCall()
                 if self.audioTrack == nil {
-                    let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
+                    let constraints = RTCMediaConstraints(mandatoryConstraints: micConstraints, optionalConstraints: nil)
                     let source = NativeCallPlugin.factory.audioSource(with: constraints)
                     self.audioTrack = NativeCallPlugin.factory.audioTrack(with: source, trackId: "hyax-audio")
                 }

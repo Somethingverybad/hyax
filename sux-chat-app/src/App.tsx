@@ -30,6 +30,7 @@ import ProfileSecretTransfer from "./pages/ProfileSecretTransfer";
 import ProfileDevices from "./pages/ProfileDevices";
 import Onboarding from "./pages/Onboarding";
 import ProfileLanguage from "./pages/ProfileLanguage";
+import ProfileMicrophone from "./pages/ProfileMicrophone";
 import Legal from "./pages/Legal";
 import ThemeEditor from "./pages/ThemeEditor";
 import SoundPackNew from "./pages/SoundPackNew";
@@ -331,6 +332,7 @@ const App = () => {
                 <Route path="/profile/secret-transfer" element={<ProfileSecretTransfer />} />
                 <Route path="/profile/devices" element={<ProfileDevices />} />
                 <Route path="/profile/language" element={<ProfileLanguage />} />
+                <Route path="/profile/microphone" element={<ProfileMicrophone />} />
                 <Route path="/kt/:id" element={<ProfileSecretTransfer />} />
                 {/* Редактор темы: новая или своя по id. */}
                 <Route path="/profile/themes/:id" element={<ThemeEditor />} />

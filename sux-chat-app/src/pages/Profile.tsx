@@ -18,6 +18,7 @@ import { useTheme } from "@/lib/theme";
 import { checkForUpdate, startUpdate, describeUpdateError, updatesViaPlay, PLAY_URL } from "@/lib/updateCheck";
 import { clearAppCache } from "@/lib/cacheReset";
 import { SettingsCard, SettingsRow } from "@/components/settings";
+import { getMicSettings } from "@/lib/micSettings";
 import { Aura, DEFAULT_AURA } from "@/components/Aura";
 import { FadeImg } from "@/components/LoadingSkeleton";
 import ImageCropper from "@/components/ImageCropper";
@@ -27,7 +28,7 @@ const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "изб�
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
-  Sticker, Activity, Flame, Lightbulb, Sparkles,
+  Sticker, Activity, Flame, Lightbulb, Sparkles, Mic,
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
 import { useMint, MintIcon } from "@/themes/mint";
@@ -435,6 +436,12 @@ const ProfilePage = () => {
               label={t("Уведомления")}
               value={profile?.notify_sound ? profile.notify_sound.name : t("Обычный звук")}
               onClick={() => navigate("/profile/notifications")}
+            />
+            <SettingsRow
+              icon={Mic}
+              label={t("Микрофон")}
+              hint={getMicSettings().noiseSuppression ? t("Шумоподавление включено") : t("Шумоподавление выключено")}
+              onClick={() => navigate("/profile/microphone")}
             />
             <SettingsRow
               icon={Sticker}

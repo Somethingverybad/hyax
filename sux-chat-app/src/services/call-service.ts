@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { getMicSettings, micConstraints, micKey, onMicSettings, setMicSettings, swapMicTrack } from "@/lib/micSettings";
 import { t } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
 import { myDeviceId } from "./deviceId";
@@ -68,8 +69,6 @@ export type AdoptedVideo = {
   canFlip: boolean;
 };
 
-const NS_KEY = "hyax:call-noise-suppression";
-const readNs = () => { try { return localStorage.getItem(NS_KEY) !== "0"; } catch { return true; } };
 
 /** Есть ли видеоканал «отправка и приём» в SDP собеседника — значит, у него
  *  новая версия с видео. Приложения на телефонах пока отвечают без видео. */
@@ -118,7 +117,10 @@ export class OneToOneCallService {
   private remoteVideo = false;
   private peerCanVideo = false;
   private peerKnown = false;
-  private noiseSuppression = readNs();
+  /** Параметры, с которыми открыт микрофон (micKey): поменялись — переоткрываем. */
+  private micOpenedWith = "";
+  /** Подмены микрофона — по очереди: две разом остановили бы не ту дорожку. */
+  private micChain: Promise<void> = Promise.resolve();
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
   private currentCallId: string | null = null;
@@ -139,6 +141,8 @@ export class OneToOneCallService {
     this.onCallEnded = options.onCallEnded;
     this.onError = options.onError;
     this.onMedia = options.onMedia;
+    // Настройки → Микрофон поменяли посреди разговора — применяем сразу.
+    onMicSettings(() => { void this.applyMicSettings().catch(() => {}); this.emitMedia(); });
   }
 
   // ===== Видео и шумодав =====
@@ -151,7 +155,7 @@ export class OneToOneCallService {
       peerKnown: this.peerKnown,
       canFlip: this.canFlip,
       front: this.front,
-      noiseSuppression: this.noiseSuppression,
+      noiseSuppression: getMicSettings().noiseSuppression,
       localOn: !!this.localVideoTrack,
       canNoise: true,
     };
@@ -221,31 +225,25 @@ export class OneToOneCallService {
     });
   }
 
-  /** Шумоподавление микрофона: настройка запоминается; в идущем звонке
-   *  микрофон переоткрывается с новым параметром и дорожка подменяется на
-   *  лету, без пересогласования (выключенный микрофон остаётся выключенным). */
+  /** Шумоподавление из экрана звонка: это та же настройка, что в
+   *  «Настройки → Микрофон»; идущий звонок переоткрывает микрофон. */
   async setNoiseSuppression(on: boolean): Promise<void> {
-    this.noiseSuppression = on;
-    try { localStorage.setItem(NS_KEY, on ? "1" : "0"); } catch { /* приватный режим */ }
-    const old = this.localStream?.getAudioTracks()[0];
-    const sender = this.peerConnection?.getSenders().find((x) => x.track?.kind === "audio");
-    if (old && this.localStream) {
-      const fresh = await navigator.mediaDevices.getUserMedia({ audio: this.audioConstraints(), video: false });
-      const track = fresh.getAudioTracks()[0];
-      if (track) {
-        track.enabled = old.enabled;
-        if (sender) await sender.replaceTrack(track);
-        this.localStream.removeTrack(old);
-        this.localStream.addTrack(track);
-        old.stop();
-      }
-    }
+    setMicSettings({ noiseSuppression: on });
+    await this.applyMicSettings();
     this.emitMedia();
   }
 
-  private audioConstraints(): MediaTrackConstraints {
-    return { echoCancellation: true, noiseSuppression: this.noiseSuppression, autoGainControl: true };
+  /** Переоткрыть микрофон, если настройки разошлись с теми, с которыми он открыт. */
+  private applyMicSettings(): Promise<void> {
+    const key = micKey();
+    if (!this.localStream || this.micOpenedWith === key) return this.micChain;
+    this.micOpenedWith = key;
+    this.micChain = this.micChain.catch(() => {}).then(() => {
+      if (this.localStream) return swapMicTrack(this.localStream, this.peerConnection ? [this.peerConnection] : []);
+    });
+    return this.micChain;
   }
+
   
   // Обновление chatId при переключении чата (для глобального Call Service)
   updateChatId(newChatId: string): void {
@@ -534,8 +532,9 @@ export class OneToOneCallService {
       return;
     }
 
+    this.micOpenedWith = micKey();
     this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: this.audioConstraints(),
+      audio: micConstraints(),
       video: false,
     });
   }
