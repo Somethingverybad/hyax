@@ -78,7 +78,10 @@ Authorization: Bearer &lt;ваш JWT&gt;
       <li><b>Подключитесь к сокету</b> и слушайте события (<a href="#events">ниже</a>).</li>
       <li><b>Отвечайте</b> обычными сообщениями: текст, файл, кнопки под сообщением.</li>
     </ol>
-    <p class="muted">Свои боты: <code>GET /api/bots/</code> (с токенами). Перевыпустить токен:
+    <p class="muted">Проще всего — в <a href="studio.html#/bots">студии</a>: там создаются боты, меняются описание и аватар, показывается и перевыпускается токен.
+      Ник бота — от 3 до 32 символов: латиница, цифры и <code>_</code>; потом не меняется.</p>
+    <p class="muted">То же запросами: свои боты — <code>GET /api/bots/</code> (с токенами). Описание: <code>PATCH /api/bots/&lt;id&gt;/ {"bio": "…"}</code>.
+      Аватар: <code>POST /api/bots/&lt;id&gt;/avatar/</code> (multipart, поле file; GIF и короткое видео тоже). Перевыпустить токен:
       <code>POST /api/bots/&lt;id&gt;/</code>. Удалить: <code>DELETE /api/bots/&lt;id&gt;/</code>.</p>
   </div>
 

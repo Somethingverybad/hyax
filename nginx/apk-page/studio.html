@@ -142,13 +142,18 @@
   .rowbtns{display:flex;gap:8px;margin-top:16px}
   .rowbtns .btn{flex:1}
   .queue{color:var(--muted);font-size:12.5px}
+  .tokbox{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;overflow-x:auto}
+  .tokbox code{font-size:13px;word-break:break-all;white-space:pre-wrap}
+  textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--card2);border:1px solid var(--line);
+    color:var(--fg);border-radius:12px;padding:11px 14px;font:inherit;font-size:15px;outline:none}
+  textarea:focus{border-color:var(--red)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="logo">Who<b>Ya</b>X · Creative Space</div>
-    <div class="sub">Мастерская контента: паки звуков уведомлений и стикеры.</div>
+    <div class="sub">Мастерская контента: паки звуков уведомлений, стикеры и боты.</div>
   </header>
 
   <!-- ВХОД -->
@@ -170,8 +175,8 @@
         <div class="d">Паки и редактор с обрезкой</div><span class="badge">доступно</span></div>
       <div class="tile active"><div class="ico">🎨</div><div class="t">Стикеры</div>
         <div class="d">Свои паки и добавление по ссылке</div><span class="badge">доступно</span></div>
-      <a class="tile active" href="bots.html"><div class="ico">🤖</div><div class="t">Боты</div>
-        <div class="d">API и inline-режим — документация</div><span class="badge">доступно</span></a>
+      <a class="tile active" href="#/bots"><div class="ico">🤖</div><div class="t">Боты</div>
+        <div class="d">Создание, токены, аватар — и документация API</div><span class="badge">доступно</span></a>
       <div class="tile soon"><div class="ico">😍</div><div class="t">Реакции</div>
         <div class="d">Свои реакции на сообщения</div><span class="badge">скоро</span></div>
     </div>
@@ -254,6 +259,74 @@
       <div class="prog" id="tgProg"><i></i></div>
       <div class="result" id="tgResult"></div>
       <div class="hint mt">Анимированные (.tgs) и видео (.webm) стикеры сохраняются как есть — в приложении они играют так же.</div>
+    </div>
+  </div>
+
+  <!-- МОИ БОТЫ -->
+  <div id="botsView" hidden>
+    <button class="back" type="button" data-back>← Инструменты</button>
+    <h2>Мои боты <span class="cnt" id="botCount">0</span></h2>
+    <div class="folders" id="botFolders"></div>
+    <div class="hint mt">Бот — аккаунт, которым управляет ваша программа: отвечает в личке и группах, ведёт эфир, показывает кнопки и inline-результаты.
+      Как писать бота — в <a href="bots.html">документации</a>.</div>
+  </div>
+
+  <!-- НОВЫЙ БОТ -->
+  <div id="newBotView" hidden>
+    <button class="back" type="button" data-bots>← Мои боты</button>
+    <h2>Новый бот</h2>
+    <div class="card" id="nbForm">
+      <div class="field"><label class="lbl">Ник бота</label>
+        <input id="nbName" type="text" maxlength="32" placeholder="mybot" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="hint" style="margin:-6px 0 12px">3–32 символа: латиница, цифры и _. По нику бота находят: ссылка <b id="nbLink">/u/…</b>. Ник потом не меняется.</div>
+      <div class="field"><label class="lbl">Описание</label>
+        <textarea id="nbBio" rows="3" maxlength="500" placeholder="Что умеет бот и как им пользоваться"></textarea></div>
+      <label class="btn sm file">+ Аватар<input id="nbAva" type="file" accept="image/*,.gif,video/mp4,video/quicktime,video/webm"></label>
+      <span class="muted" id="nbAvaName"></span>
+      <button class="btn primary wide mt" id="nbCreate" type="button">Создать бота</button>
+      <div class="result" id="nbResult"></div>
+    </div>
+    <div class="card" id="nbDone" hidden>
+      <div class="title">Бот <b id="nbDoneName"></b> создан</div>
+      <p class="muted">Токен — пароль бота: с ним ваша программа входит в WYX. Никому его не показывайте; если утёк — перевыпустите в карточке бота.</p>
+      <div class="tokbox"><code id="nbToken"></code></div>
+      <div class="rowbtns">
+        <button class="btn" id="nbCopy" type="button">Скопировать токен</button>
+        <button class="btn primary" id="nbOpen" type="button">К боту</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- БОТ -->
+  <div id="botView" hidden>
+    <button class="back" type="button" data-bots>← Мои боты</button>
+    <div class="card">
+      <div class="phead">
+        <div class="bigcov" id="bvCover">🤖</div>
+        <div class="info">
+          <div class="title" id="bvTitle">—</div>
+          <div class="muted" id="bvMeta"></div>
+          <div class="actions" id="bvActions"></div>
+        </div>
+      </div>
+    </div>
+    <h2>Описание</h2>
+    <div class="card">
+      <textarea id="bvBio" rows="3" maxlength="500" placeholder="Что умеет бот и как им пользоваться"></textarea>
+      <div class="rowbtns"><button class="btn primary" id="bvSaveBio" type="button">Сохранить описание</button></div>
+      <div class="result" id="bvBioResult"></div>
+    </div>
+    <h2>Токен</h2>
+    <div class="card">
+      <div class="tokbox"><code id="bvToken">••••••••••••••••</code></div>
+      <div class="rowbtns">
+        <button class="btn" id="bvShow" type="button">Показать</button>
+        <button class="btn" id="bvCopy" type="button">Скопировать</button>
+        <button class="btn danger" id="bvRegen" type="button">Перевыпустить</button>
+      </div>
+      <div class="hint mt">Запросы бота — с заголовком <code>Authorization: Bot &lt;токен&gt;</code>, сокет — <code>?token=</code>.
+        Перевыпуск сразу отключает старый токен: обновите его в своей программе.
+        Подробно — <a href="bots.html#auth">авторизация</a>, <a href="bots.html#events">события</a>, <a href="bots.html#radio">эфир для диджеев</a>.</div>
     </div>
   </div>
 
@@ -398,10 +471,11 @@
   function isMine(pack){ var a=pack.author; return !!meId && (a===meId || (a&&a.id===meId)); }
 
   // ── маршруты: #/sp/<id>, #/stp/<id>, #/new, #/import ──
-  var VIEWS=["loginBlock","homeView","soundView","newView","stickerView","importView"];
+  var VIEWS=["loginBlock","homeView","soundView","newView","stickerView","importView","botsView","newBotView","botView"];
   function show(id){ VIEWS.forEach(function(v){ el(v).hidden = v!==id; }); window.scrollTo(0,0); }
   function go(h){ if(location.hash===h) route(); else location.hash=h; }
   Array.prototype.forEach.call(document.querySelectorAll("[data-back]"), function(b){ b.addEventListener("click", function(){ stopAudio(); go("#/"); }); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-bots]"), function(b){ b.addEventListener("click", function(){ go("#/bots"); }); });
   window.addEventListener("hashchange", route);
 
   function route(){
@@ -413,6 +487,9 @@
       if(parts[0]==="stp" && parts[1]) return openStickerPack(parts[1]);
       if(parts[0]==="new") return openNew();
       if(parts[0]==="import") { show("importView"); return; }
+      if(parts[0]==="bots") return openBots();
+      if(parts[0]==="newbot") return openNewBot();
+      if(parts[0]==="bot" && parts[1]) return openBot(parts[1]);
       openHome();
     });
   }
@@ -1013,6 +1090,143 @@
     var out=renderSelection(), blob=toWav(out);
     var file=new File([blob], name.replace(/[\\/:*?"<>|]+/g,"_")+".wav", {type:"audio/wav"});
     closeEditor({file:file,name:name,duration:ed.e-ed.s,range:[ed.s,ed.e]});
+  });
+
+  // ── боты: список, создание, карточка ──
+  var bots=null, curBot=null, tokenShown=false;
+  var BOT_NICK=/^[A-Za-z0-9_]{3,32}$/;
+  function loadBots(){
+    return authJson("/api/bots/","GET").then(function(x){ if(!x.ok) throw new Error((x.data&&x.data.error)||x.status); bots=x.data.bots||[]; return bots; });
+  }
+  function findBot(id){ return (bots||[]).filter(function(b){ return b.id===id; })[0]; }
+  // Аватар: у анимированного в профиле лежит постер (…mp4.jpg) — для картинки его и хватает.
+  function avaSrc(b){ return b && b.avatar_url ? b.avatar_url : ""; }
+  function copyText(text, btn, label){
+    var done=function(){ var t=btn.textContent; btn.textContent="Скопировано"; setTimeout(function(){ btn.textContent=t; },1500); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, function(){ prompt(label, text); }); }
+    else prompt(label, text);
+  }
+
+  function openBots(){
+    show("botsView");
+    var box=el("botFolders");
+    if(bots===null) box.innerHTML='<div class="muted empty">Загрузка…</div>'; else renderBots();
+    loadBots().then(renderBots).catch(function(){ box.innerHTML='<div class="muted empty">Не удалось загрузить ботов.</div>'; });
+  }
+  function renderBots(){
+    var box=el("botFolders"); box.innerHTML="";
+    box.appendChild(folder({isNew:true,name:"Новый бот",count:"ник, описание, аватар",icon:"＋",onClick:function(){ go("#/newbot"); }}));
+    (bots||[]).forEach(function(b){
+      box.appendChild(folder({name:"@"+b.username,count:b.bio?b.bio.slice(0,60):"без описания",cover:avaSrc(b),icon:"🤖",
+        onClick:function(){ go("#/bot/"+b.id); }}));
+    });
+    el("botCount").textContent=(bots||[]).length;
+  }
+
+  // Новый бот: ник → создать → (аватар) → показать токен один раз.
+  function openNewBot(){
+    show("newBotView");
+    el("nbForm").hidden=false; el("nbDone").hidden=true;
+    el("nbName").value=""; el("nbBio").value=""; el("nbAva").value=""; el("nbAvaName").textContent="";
+    el("nbResult").className="result"; el("nbResult").textContent=""; el("nbLink").textContent=location.origin+"/u/…";
+  }
+  el("nbName").addEventListener("input", function(){
+    var v=this.value.trim().replace(/^@/,"");
+    el("nbLink").textContent=location.origin+"/u/"+(v||"…");
+    // Прошлая ошибка («ник не подходит») не должна висеть, пока ник правят.
+    el("nbResult").className="result"; el("nbResult").textContent="";
+  });
+  el("nbAva").addEventListener("change", function(){ el("nbAvaName").textContent=this.files.length?" "+this.files[0].name:""; });
+  el("nbCreate").addEventListener("click", function(){
+    var nick=el("nbName").value.trim().replace(/^@/,""), bio=el("nbBio").value.trim(), res=el("nbResult");
+    res.className="result";
+    if(!BOT_NICK.test(nick)){ res.className="result err"; res.textContent="Ник — от 3 до 32 символов: латиница, цифры и _."; return; }
+    var btn=this; btn.disabled=true; btn.textContent="Создаю…";
+    authJson("/api/bots/","POST",{username:nick,bio:bio}).then(function(x){
+      if(!x.ok){ throw new Error((x.data&&x.data.error)||"Не удалось создать бота"); }
+      var b=x.data.bot; bots=(bots||[]).concat([b]);
+      var f=el("nbAva").files[0];
+      if(!f) return b;
+      var fd=new FormData(); fd.append("file", f); btn.textContent="Загружаю аватар…";
+      return authUpload("/api/bots/"+b.id+"/avatar/", fd, null).then(function(u){
+        if(u.ok && u.data && u.data.bot){ b.avatar_url=u.data.bot.avatar_url; }
+        else res.textContent="Бот создан, но аватар не загрузился: "+((u.data&&u.data.error)||"ошибка")+". Поставьте его в карточке бота.";
+        return b;
+      });
+    }).then(function(b){
+      btn.disabled=false; btn.textContent="Создать бота";
+      el("nbForm").hidden=true; el("nbDone").hidden=false;
+      el("nbDoneName").textContent="@"+b.username; el("nbToken").textContent=b.token;
+      el("nbCopy").onclick=function(){ copyText(b.token, el("nbCopy"), "Токен бота:"); };
+      el("nbOpen").onclick=function(){ go("#/bot/"+b.id); };
+    }).catch(function(e){
+      btn.disabled=false; btn.textContent="Создать бота";
+      if(e&&e.auth) return;
+      res.className="result err"; res.textContent=(e&&e.message)||"Ошибка";
+    });
+  });
+
+  // Карточка бота: аватар, ссылка, описание, токен, удаление.
+  function openBot(id){
+    show("botView");
+    tokenShown=false;
+    var b=findBot(id);
+    if(b) renderBot(b); else { el("bvTitle").textContent="Загрузка…"; el("bvActions").innerHTML=""; }
+    loadBots().then(function(){ var f=findBot(id); if(!f){ el("bvTitle").textContent="Бот не найден"; el("bvMeta").textContent="Его удалили или он не ваш."; el("bvActions").innerHTML=""; return; } renderBot(f); })
+      .catch(function(){});
+  }
+  function renderBot(b){
+    curBot=b;
+    el("bvTitle").textContent="@"+b.username;
+    el("bvMeta").textContent="Бот"+(b.created_at?" · создан "+new Date(b.created_at).toLocaleDateString("ru-RU"):"");
+    var cov=el("bvCover"); cov.innerHTML = avaSrc(b) ? '<img alt="" src="'+esc(avaSrc(b))+'">' : "🤖";
+    if(document.activeElement!==el("bvBio")) el("bvBio").value=b.bio||"";
+    el("bvToken").textContent=tokenShown?b.token:"••••••••••••••••";
+    el("bvShow").textContent=tokenShown?"Скрыть":"Показать";
+    var act=el("bvActions"); act.innerHTML="";
+    var link=document.createElement("button"); link.className="btn sm"; link.textContent="Скопировать ссылку";
+    link.addEventListener("click", function(){ copyLink("/u/"+encodeURIComponent(b.username), link); });
+    var al=document.createElement("label"); al.className="btn sm file"; al.textContent=b.avatar_url?"Сменить аватар":"+ Аватар";
+    var ai=document.createElement("input"); ai.type="file"; ai.accept="image/*,.gif,video/mp4,video/quicktime,video/webm"; al.appendChild(ai);
+    ai.addEventListener("change", function(){
+      if(!ai.files.length) return;
+      var fd=new FormData(); fd.append("file", ai.files[0]); al.firstChild.textContent="Загрузка…";
+      authUpload("/api/bots/"+b.id+"/avatar/", fd, null).then(function(x){
+        if(x.ok && x.data && x.data.bot){ b.avatar_url=x.data.bot.avatar_url; }
+        else alert((x.data&&x.data.error)||"Не удалось загрузить аватар");
+        renderBot(b);
+      }).catch(function(){ renderBot(b); });
+    });
+    var del=document.createElement("button"); del.className="btn sm danger"; del.textContent="Удалить бота";
+    del.addEventListener("click", function(){
+      var typed=prompt("Бот @"+b.username+" удалится вместе с перепиской и эфиром, а токен перестанет работать. Чтобы подтвердить, введите ник бота:");
+      if(typed==null) return;
+      if(typed.trim().replace(/^@/,"")!==b.username){ alert("Ник не совпал — бот не удалён."); return; }
+      authJson("/api/bots/"+b.id+"/","DELETE").then(function(x){
+        if(x.ok){ bots=(bots||[]).filter(function(q){ return q.id!==b.id; }); go("#/bots"); }
+        else alert((x.data&&x.data.error)||"Ошибка");
+      });
+    });
+    act.appendChild(link); act.appendChild(al); act.appendChild(del);
+  }
+  el("bvSaveBio").addEventListener("click", function(){
+    var b=curBot; if(!b) return;
+    var btn=this, res=el("bvBioResult"); btn.disabled=true; res.className="result";
+    authJson("/api/bots/"+b.id+"/","PATCH",{bio:el("bvBio").value.trim()}).then(function(x){
+      btn.disabled=false;
+      if(x.ok && x.data.bot){ b.bio=x.data.bot.bio; res.className="result ok"; res.textContent="Сохранено."; }
+      else { res.className="result err"; res.textContent=(x.data&&x.data.error)||"Не удалось сохранить"; }
+    }).catch(function(){ btn.disabled=false; });
+  });
+  el("bvShow").addEventListener("click", function(){ tokenShown=!tokenShown; if(curBot) renderBot(curBot); });
+  el("bvCopy").addEventListener("click", function(){ if(curBot) copyText(curBot.token, el("bvCopy"), "Токен бота:"); });
+  el("bvRegen").addEventListener("click", function(){
+    var b=curBot; if(!b) return;
+    if(!confirm("Выпустить новый токен для @"+b.username+"? Старый перестанет работать сразу — программа бота отключится, пока вы не вставите новый.")) return;
+    authJson("/api/bots/"+b.id+"/","POST").then(function(x){
+      if(x.ok && x.data.token){ b.token=x.data.token; tokenShown=true; renderBot(b); }
+      else alert((x.data&&x.data.error)||"Не удалось перевыпустить");
+    });
   });
 
   route();

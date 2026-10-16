@@ -2821,13 +2821,16 @@ def _shrink_image(abs_path, max_side):
     return abs_path
 
 
-def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
+def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped, profile=None):
     """Кладёт картинку в MEDIA_ROOT/<subdir> и прописывает путь в профиль.
 
     stamped=True добавляет к имени случайный суффикс: обложка меняется целиком,
     и при постоянном имени браузер продолжал бы показывать прежнюю из кеша.
     У аватара имя стабильное — так сложилось исторически, ссылки на него
     разбросаны по кешам клиентов.
+
+    profile — чей профиль: по умолчанию свой; владелец бота передаёт бота
+    (аватар бота из студии, BotAvatarView).
     """
     file = request.FILES.get('file')
     if not file:
@@ -2843,10 +2846,11 @@ def _save_profile_image(request, *, field, subdir, prefix, max_mb, stamped):
     if file_extension not in allowed_extensions and not animated:
         return Response({"error": "Only image files are allowed"}, status=400)
 
-    try:
-        profile = request.user.profile
-    except Profile.DoesNotExist:
-        return Response({"error": "Profile not found"}, status=400)
+    if profile is None:
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            return Response({"error": "Profile not found"}, status=400)
 
     if animated:
         tmp = _save_upload_tmp(file, file_extension)
@@ -3401,10 +3405,12 @@ class BotsView(APIView):
         if getattr(me, "is_bot", False):
             return Response({"error": "Бот не может создавать ботов"}, status=403)
 
-        username = (request.data.get("username") or "").strip()
-        if len(username) < 2:
-            return Response({"error": "Имя бота короче 2 символов"}, status=400)
-        if User.objects.filter(username=username).exists() or Profile.objects.filter(username=username).exists():
+        username = (request.data.get("username") or "").strip().lstrip("@")
+        # Ник бота идёт в ссылку /u/<ник> и в «@ник запрос» — только латиница,
+        # цифры и _, занятость — без учёта регистра (MyBot и mybot — один ник).
+        if not _valid_username(username):
+            return Response({"error": "Ник бота — от 3 до 32 символов: латиница, цифры и _"}, status=400)
+        if User.objects.filter(username__iexact=username).exists() or Profile.objects.filter(username__iexact=username).exists():
             return Response({"error": "Имя уже занято"}, status=400)
 
         token = secrets.token_urlsafe(32)
@@ -3455,7 +3461,8 @@ class BotStartView(APIView):
 
 
 class BotDetailView(APIView):
-    """POST — перевыпустить токен. DELETE — удалить бота. Только владелец."""
+    """POST — перевыпустить токен. PATCH {bio} — описание. DELETE — удалить
+    бота. Только владелец (студия: управление ботами)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def _owned(self, request, pk):
@@ -3476,6 +3483,16 @@ class BotDetailView(APIView):
         bot.save(update_fields=["bot_token"])
         return Response({"id": str(bot.id), "token": bot.bot_token})
 
+    def patch(self, request, pk):
+        bot, err = self._owned(request, pk)
+        if err:
+            return err
+        if "bio" not in request.data:
+            return Response({"error": "Нечего менять"}, status=400)
+        bot.bio = (request.data.get("bio") or "").strip()[:500]
+        bot.save(update_fields=["bio"])
+        return Response({"bot": _bot_payload(bot, with_token=True)})
+
     def delete(self, request, pk):
         bot, err = self._owned(request, pk)
         if err:
@@ -3485,6 +3502,26 @@ class BotDetailView(APIView):
         if user:
             user.delete()  # каскадом уберёт связанные записи бота
         return Response({"ok": True})
+
+
+class BotAvatarView(APIView):
+    """POST multipart {file} — аватар бота, загружает владелец (студия).
+    Как у людей: картинка, GIF или короткое видео (станет mp4)."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        bot, err = BotDetailView()._owned(request, pk)
+        if err:
+            return err
+        ext = os.path.splitext(getattr(request.FILES.get('file'), 'name', ''))[1].lower()
+        result = _save_profile_image(
+            request, field='avatar_url', subdir='avatars', prefix='avatar',
+            max_mb=ANIM_MAX_MB if ext in ANIM_EXTS else 5, stamped=True, profile=bot,
+        )
+        if isinstance(result, Response):
+            return result
+        return Response({"avatar_url": result, "bot": _bot_payload(bot, with_token=True)})
 
 
 # ── Каналы (kind=channel поверх Chat) ─────────────────────────────────────────
