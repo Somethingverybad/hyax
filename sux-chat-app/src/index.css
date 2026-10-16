@@ -1554,3 +1554,13 @@ html.native-video #root {
 html.native-video .call-layer {
   visibility: visible;
 }
+
+/* Зацикленные аватары и стикеры (LoopVideo): системной кнопки «play», которую
+   iOS рисует поверх видео на паузе, быть не должно — пока видео не играет,
+   под ним виден кадр. */
+.loop-video::-webkit-media-controls-start-playback-button,
+.loop-video::-webkit-media-controls-overlay-play-button,
+.loop-video::-webkit-media-controls {
+  display: none !important;
+  -webkit-appearance: none;
+}
