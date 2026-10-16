@@ -9,7 +9,8 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users, Smile } from "lucide-react";
+import EmojiPanel from "@/components/chat/EmojiPanel";
 import { shareStickerPack } from "@/lib/share";
 import ImageCropper from "@/components/ImageCropper";
 import { readCache } from "@/lib/session-cache";
@@ -51,7 +52,13 @@ interface StickerPickerProps {
   onSelectSound?: (sound: NotificationSoundInfo | null) => void;
   /** Действия («подмигнуть», «обнять»): третья вкладка; нет — вкладка скрыта. */
   onSelectAction?: (action: ChatActionInfo) => void;
+  /** Эмодзи Noto: первая вкладка, вставка в поле ввода (десктоп — там нет
+   *  клавиатуры с эмодзи); нет — вкладки нет. */
+  onInsertEmoji?: (emoji: string) => void;
 }
+
+type PickerTab = "emoji" | "stickers" | "sounds" | "actions";
+const TAB_KEY = "hyax:picker-tab";
 
 /**
  * Панель стикеров в стиле мессенджеров: наборы полосой сверху, сетка снизу.
@@ -75,8 +82,17 @@ const StickerPicker = ({
   selectedSoundId = null,
   onSelectSound,
   onSelectAction,
+  onInsertEmoji,
 }: StickerPickerProps) => {
-  const [tab, setTab] = useState<"stickers" | "sounds" | "actions">("stickers");
+  // Последняя открытая вкладка; есть эмодзи — по умолчанию они (как в мессенджерах).
+  const [tab, setTabState] = useState<PickerTab>(() => {
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(TAB_KEY); } catch { /* приватный режим */ }
+    if (saved === "emoji" && !onInsertEmoji) saved = null;
+    if (saved === "actions" && !onSelectAction) saved = null;
+    return (saved as PickerTab) || (onInsertEmoji ? "emoji" : "stickers");
+  });
+  const setTab = (v: PickerTab) => { setTabState(v); try { localStorage.setItem(TAB_KEY, v); } catch { /* приватный режим */ } };
   // Долгое удержание стикера (burst): таймер и флаг, чтобы click после него не сработал.
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdFiredRef = useRef(false);
@@ -341,14 +357,19 @@ const StickerPicker = ({
 
   const mint = useMint();
   // «Мята»: переключатель «Стикеры | Звуки» — белая таблетка внизу панели.
-  const segs = onSelectAction
-    ? [{ id: "stickers" as const, label: "Стикеры", w: 36 }, { id: "sounds" as const, label: "Звуки", w: 28 }, { id: "actions" as const, label: "Действия", w: 36 }]
-    : [{ id: "stickers" as const, label: "Стикеры", w: 56 }, { id: "sounds" as const, label: "Звуки", w: 44 }];
+  const segs: { id: PickerTab; label: string; w: number }[] = [
+    ...(onInsertEmoji ? [{ id: "emoji" as const, label: "Эмодзи", w: 0 }] : []),
+    { id: "stickers" as const, label: "Стикеры", w: 0 },
+    { id: "sounds" as const, label: "Звуки", w: 0 },
+    ...(onSelectAction ? [{ id: "actions" as const, label: "Действия", w: 0 }] : []),
+  ];
+  // Ширины сегментов — по длине подписи, в сумме 100%.
+  { const total = segs.reduce((a, x) => a + x.label.length + 2, 0); segs.forEach((x) => { x.w = ((x.label.length + 2) / total) * 100; }); }
   const segLeft = segs.slice(0, Math.max(0, segs.findIndex((x) => x.id === tab))).reduce((a, x) => a + x.w, 0);
   const segW = segs.find((x) => x.id === tab)?.w ?? segs[0].w;
   const mintTabs = (
     <div className="absolute left-0 right-0 bottom-[12px] flex justify-center z-10 pointer-events-none">
-      <div className={cn("mint-pill pointer-events-auto relative h-[28px] flex text-[12px] font-medium mint-ink overflow-hidden", onSelectAction ? "w-[222px]" : "w-[152px]")}>
+      <div className="mint-pill pointer-events-auto relative h-[28px] flex text-[12px] font-medium mint-ink overflow-hidden" style={{ width: `${segs.length * 74}px` }}>
         <span aria-hidden className="absolute top-0 bottom-0 rounded-full transition-all duration-300"
           style={{ background: "rgb(52 92 84 / 0.15)", left: `${segLeft}%`, width: `${segW}%` }} />
         {segs.map((x) => (
@@ -359,6 +380,19 @@ const StickerPicker = ({
   );
   const tabs = mint ? mintTabs : (
     <div className="flex gap-2 px-3 pt-2 shrink-0">
+      {onInsertEmoji && (
+        <button
+          type="button"
+          onClick={() => setTab("emoji")}
+          className={cn(
+            "flex-1 py-1.5 text-xs font-semibold flex items-center justify-center gap-1.5",
+            tab === "emoji" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
+          )}
+        >
+          <Smile className="w-3.5 h-3.5" />
+          {t("Эмодзи")}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setTab("stickers")}
@@ -529,6 +563,14 @@ const StickerPicker = ({
     </div>
   );
 
+  if (tab === "emoji" && onInsertEmoji) {
+    return (
+      <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-72")}>
+        {tabs}
+        <EmojiPanel onPick={onInsertEmoji} className="flex-1" />
+      </div>
+    );
+  }
   if (tab === "sounds") return soundsTab;
   if (tab === "actions" && onSelectAction) return actionsTab;
 

@@ -1008,6 +1008,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setMentionIdx(0);
     setMentionHints((prev) => (prev.length === found.length && prev.every((p, i) => p.id === found[i].id) ? prev : found));
   };
+  /** Эмодзи из панели (десктоп) — в место курсора; фокус остаётся в поле. */
+  const insertEmoji = (emoji: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const v = ta.value;
+    const s0 = ta.selectionStart ?? v.length;
+    const e0 = ta.selectionEnd ?? v.length;
+    setDraft(v.slice(0, s0) + emoji + v.slice(e0));
+    const pos = s0 + emoji.length;
+    requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
+  };
+
   const chooseMention = (p: Profile) => {
     const at = mentionAtRef.current;
     const ta = textareaRef.current;
@@ -4543,6 +4555,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
+                onInsertEmoji={!isMobile ? insertEmoji : undefined}
               />
             </div>
           )}
@@ -4769,6 +4782,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => setSelectedSound(sound)}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
+                onInsertEmoji={!isMobile ? insertEmoji : undefined}
               />
             </div>
           )}

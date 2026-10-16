@@ -1819,5 +1819,15 @@ const en: Record<string, string> = {
   "Мини-приложения делают боты: это их страницы, открытые внутри WYX. Перед первым запуском приложение спросит разрешение узнать ваш ник и аватар.": "Mini apps are made by bots: their pages, opened inside WYX. Before the first launch an app asks permission to see your username and avatar.",
   "Не удалось загрузить мини-приложения": "Couldn't load mini apps",
   "«{name}» в WYX": "“{name}” in WYX",
+  "Найти эмодзи": "Find emoji",
+  "Недавние": "Recent",
+  "Смайлики": "Smileys",
+  "Животные и природа": "Animals & nature",
+  "Еда и напитки": "Food & drink",
+  "Путешествия": "Travel",
+  "Занятия": "Activities",
+  "Предметы": "Objects",
+  "Символы": "Symbols",
+  "Флаги": "Flags",
 };
 export default en;
