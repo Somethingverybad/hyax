@@ -3003,6 +3003,11 @@ class MediaSignView(APIView):
         if not in_my_playlist:
             in_my_playlist = PlaylistTrack.objects.filter(file_url=marker).exclude(
                 playlist__share_token="").exists()
+        # Открытый плейлист — только собеседникам его владельца (_music_contacts).
+        if not in_my_playlist:
+            public_owners = set(PlaylistTrack.objects.filter(
+                file_url=marker, playlist__is_public=True).values_list('playlist__owner_id', flat=True))
+            in_my_playlist = bool(public_owners and public_owners & _music_contacts(profile))
         # Обои чата: ключ wallpapers/… подписываем участнику чата, у которого
         # они стоят (общие или личные), — это не сообщение, в Message их нет.
         is_wallpaper = key.startswith('wallpapers/') and (
@@ -4827,14 +4832,23 @@ class PlaylistView(APIView):
         })
 
     def patch(self, request, pk):
+        """{name?, is_public?} — переименовать и/или открыть собеседникам."""
         pl = self._mine(request, pk)
         if not pl:
             return Response({"error": "Плейлист не найден"}, status=404)
-        name = (request.data.get("name") or "").strip()[:60]
-        if not name:
-            return Response({"error": "Название пустое"}, status=400)
-        pl.name = name
-        pl.save(update_fields=["name"])
+        fields = []
+        if "name" in request.data:
+            name = (request.data.get("name") or "").strip()[:60]
+            if not name:
+                return Response({"error": "Название пустое"}, status=400)
+            pl.name = name
+            fields.append("name")
+        if "is_public" in request.data:
+            pl.is_public = request.data.get("is_public") in (True, "true", "1", 1)
+            fields.append("is_public")
+        if not fields:
+            return Response({"error": "Нечего менять"}, status=400)
+        pl.save(update_fields=fields + ["updated_at"])
         return Response(PlaylistSerializer(pl).data)
 
     def delete(self, request, pk):
@@ -4900,20 +4914,115 @@ class SharedPlaylistView(APIView):
         pl = self._by_token(token)
         if not me or not pl:
             return Response({"error": "Плейлист не найден"}, status=404)
-        if pl.owner_id == me.id:
-            return Response({"error": "Это ваш плейлист"}, status=400)
-        copy = Playlist.objects.create(owner=me, name=pl.name[:60])
-        rows = [
-            PlaylistTrack(playlist=copy, source=t.source, file_url=t.file_url,
-                          title=t.title, artist=t.artist, duration=t.duration, position=t.position)
-            for t in pl.tracks.all()
-        ]
-        PlaylistTrack.objects.bulk_create(rows)
-        return Response({"playlist": PlaylistSerializer(copy).data}, status=201)
+        return _copy_playlist(pl, me)
+
+
+def _copy_playlist(pl, me):
+    """Сохранить чужой плейлист себе копией: треки те же (файлы не копируем),
+    плейлист свой — владелец оригинала дальше меняет только свой. «Моя музыка»
+    чужого человека приходит под его ником: иначе у меня их стало бы две, а
+    ник читается одинаково на любом языке приложения."""
+    if pl.owner_id == me.id:
+        return Response({"error": "Это ваш плейлист"}, status=400)
+    _default_playlist(me)
+    if Playlist.objects.filter(owner=me).count() >= 50:
+        return Response({"error": "Слишком много плейлистов"}, status=409)
+    name = pl.owner.username if pl.is_default else pl.name
+    copy = Playlist.objects.create(owner=me, name=name[:60])
+    rows = [
+        PlaylistTrack(playlist=copy, source=t.source, file_url=t.file_url,
+                      title=t.title, artist=t.artist, duration=t.duration, position=t.position)
+        for t in pl.tracks.all()
+    ]
+    PlaylistTrack.objects.bulk_create(rows)
+    return Response({"playlist": PlaylistSerializer(copy).data}, status=201)
+
+
+def _music_contacts(me):
+    """Чьи открытые плейлисты мне видны: собеседники по личке (обычной и
+    секретной), если переписка принята и нет блокировки ни в одну сторону.
+    Группы и каналы не в счёт: там «собеседники» — сотни незнакомых людей.
+    Ботам — ничего: иначе бот собирал бы плейлисты всех, кто ему написал."""
+    from .moderation import blocked_ids
+    if me.is_bot:
+        return set()
+    chats = Chat.objects.filter(participants=me, kind__in=("direct", "secret"), pending_for__isnull=True)
+    ids = set(
+        ChatParticipant.objects.filter(chat__in=chats, user__is_bot=False)
+        .exclude(user=me).values_list("user_id", flat=True)
+    )
+    if ids:
+        ids -= blocked_ids(me)
+        ids -= set(Block.objects.filter(blocked=me, blocker_id__in=ids).values_list("blocker_id", flat=True))
+    return ids
+
+
+def _public_playlist(me, pk):
+    """Открытый плейлист собеседника — или None, если он мне не виден."""
+    pl = Playlist.objects.filter(id=pk, is_public=True).select_related("owner").first()
+    if not pl or pl.owner_id == me.id or pl.owner_id not in _music_contacts(me):
+        return None
+    return pl
+
+
+def _owner_brief(p):
+    return {"id": str(p.id), "username": p.username, "avatar_url": p.avatar_url}
+
+
+class PublicPlaylistsView(APIView):
+    """GET — открытые плейлисты моих собеседников, сначала те, куда недавно
+    добавляли музыку. Пустые не показываем: слушать там нечего."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count, Max
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        owners = _music_contacts(me)
+        if not owners:
+            return Response({"playlists": []})
+        rows = (
+            Playlist.objects.filter(is_public=True, owner_id__in=owners)
+            .select_related("owner")
+            .annotate(n=Count("tracks"), last=Max("tracks__added_at"))
+            .filter(n__gt=0)
+            .order_by("-last")[:200]
+        )
+        return Response({"playlists": [
+            {"id": str(pl.id), "name": pl.name, "is_default": pl.is_default,
+             "tracks_count": pl.n, "updated_at": pl.last, "owner": _owner_brief(pl.owner)}
+            for pl in rows
+        ]})
+
+
+class PublicPlaylistView(APIView):
+    """Открытый плейлист собеседника: GET — послушать, POST — сохранить себе."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        me = _prof(request)
+        pl = _public_playlist(me, pk) if me else None
+        if not pl:
+            return Response({"error": "Плейлист не найден или закрыт"}, status=404)
+        return Response({
+            "playlist": PlaylistSerializer(pl).data,
+            "owner": pl.owner.username,
+            "owner_info": _owner_brief(pl.owner),
+            "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
+        })
+
+    def post(self, request, pk):
+        me = _prof(request)
+        pl = _public_playlist(me, pk) if me else None
+        if not pl:
+            return Response({"error": "Плейлист не найден или закрыт"}, status=404)
+        return _copy_playlist(pl, me)
 
 
 class PlaylistTracksView(APIView):
-    """POST {message_id, playlist?} — добавить музыку из сообщения.
+    """POST {message_id} — добавить музыку из сообщения, {track_id} — из
+    открытого плейлиста собеседника. Без <pk> — в «Мою музыку».
     DELETE /playlists/<pk>/tracks/<track>/ — убрать трек."""
     permission_classes = [permissions.IsAuthenticated]
 
@@ -4924,6 +5033,23 @@ class PlaylistTracksView(APIView):
         pl = (Playlist.objects.filter(id=pk, owner=me).first() if pk else _default_playlist(me))
         if not pl:
             return Response({"error": "Плейлист не найден"}, status=404)
+        # {track_id} — трек из открытого плейлиста собеседника: берём его
+        # файл и подписи, как при копировании плейлиста целиком.
+        if request.data.get("track_id"):
+            src = PlaylistTrack.objects.filter(id=request.data.get("track_id"), playlist__is_public=True).first()
+            if not src or not _public_playlist(me, src.playlist_id):
+                return Response({"error": "Трек не найден"}, status=404)
+            last = pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0
+            track, created = PlaylistTrack.objects.get_or_create(
+                playlist=pl, file_url=src.file_url,
+                defaults={"source": src.source, "title": src.title, "artist": src.artist,
+                          "duration": src.duration, "position": last + 1},
+            )
+            return Response(
+                {"track": PlaylistTrackSerializer(track).data, "playlist": PlaylistSerializer(pl).data,
+                 "already": not created},
+                status=201 if created else 200,
+            )
         msg = Message.objects.filter(id=request.data.get("message_id")).select_related("chat").first()
         if not msg or not msg.file_url:
             return Response({"error": "Сообщение с музыкой не найдено"}, status=404)

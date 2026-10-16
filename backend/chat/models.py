@@ -759,6 +759,10 @@ class Playlist(models.Model):
     # «Поделиться», и пропадает, если он закрыл доступ. Не id: по id нельзя
     # было бы отозвать ссылку, не удаляя плейлист.
     share_token = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    # Общедоступный: виден во вкладке «Музыка» у собеседников владельца (по
+    # личке), их можно слушать и сохранить себе. Ссылка (share_token) — другое:
+    # по ней открывает любой, кому её дали.
+    is_public = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

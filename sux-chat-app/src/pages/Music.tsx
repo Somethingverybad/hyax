@@ -2,11 +2,12 @@ import { t as tr, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send,
+import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe,
          Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
-import { api, type Playlist, type PlaylistTrack } from "@/api/client";
+import { api, type Playlist, type PlaylistTrack, type PublicPlaylist } from "@/api/client";
+import PublicPlaylistView from "@/components/music/PublicPlaylistView";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { sharePlaylistLink } from "@/lib/share";
 import Identicon from "@/components/Identicon";
@@ -26,6 +27,11 @@ const trackToQueue = (t: PlaylistTrack): Track => ({
 });
 
 const pluralTracks = (n: number) => tn(n, "{n} трек", "{n} трека", "{n} треков");
+
+/** Включённая кнопка-значок в шапке плейлиста. С «!»: у форм «мягкая» и
+ *  «контурная» .ui-icon-btn задаёт свой цвет и перебивал text-primary — было
+ *  не понять, открыт плейлист или нет. */
+const ICON_ON = "!bg-primary !text-primary-foreground !border-primary";
 
 /** «Моя музыка» заводит сервер — её имя переводим; свои названия — как есть. */
 const playlistName = (pl: Playlist) => (pl.is_default ? tr(pl.name) : pl.name);
@@ -119,6 +125,9 @@ const Music = () => {
   // Из кеша — сразу, сеть только обновляет: иначе вкладка каждый раз
   // открывалась с «Загрузка…», хотя список не меняется от захода к заходу.
   const [lists, setLists] = useState<Playlist[] | null>(() => readCache<Playlist[]>("playlists"));
+  // Открытые плейлисты собеседников — отдельным списком под своими.
+  const [shared, setShared] = useState<PublicPlaylist[] | null>(() => readCache<PublicPlaylist[]>("publicPlaylists"));
+  const [openShared, setOpenShared] = useState<PublicPlaylist | null>(null);
   const [open, setOpen] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<PlaylistTrack[] | null>(null);
   const cachedTracks = (id: string) =>
@@ -144,7 +153,11 @@ const Music = () => {
     api.listPlaylists()
       .then((rows) => { setLists(rows); writeCache("playlists", rows); })
       .catch(() => setLists((l) => l ?? []));
-  useEffect(() => { load(); }, []);
+  const loadShared = () =>
+    api.listPublicPlaylists()
+      .then((rows) => { setShared(rows); writeCache("publicPlaylists", rows); })
+      .catch(() => setShared((l) => l ?? []));
+  useEffect(() => { load(); loadShared(); }, []);
 
   const openList = async (pl: Playlist) => {
     setOpen(pl);
@@ -199,6 +212,21 @@ const Music = () => {
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
+  /** Открыть плейлист собеседникам (видят его во вкладке «Музыка») или закрыть. */
+  const togglePublic = async (pl: Playlist) => {
+    const want = !pl.is_public;
+    setOpen({ ...pl, is_public: want });
+    try {
+      const next = await api.setPlaylistPublic(pl.id, want);
+      setOpen((o) => (o && o.id === pl.id ? { ...o, is_public: next.is_public } : o));
+      toast.success(want ? tr("Плейлист видят ваши собеседники") : tr("Плейлист снова только ваш"));
+      load();
+    } catch (e: any) {
+      setOpen((o) => (o && o.id === pl.id ? { ...o, is_public: pl.is_public } : o));
+      toast.error(e?.message || tr("Не получилось"));
+    }
+  };
+
   const unshare = async (pl: Playlist) => {
     try {
       await api.unsharePlaylist(pl.id);
@@ -248,6 +276,21 @@ const Music = () => {
     catch { toast.error(tr("Не удалось убрать трек")); setTracks(before); }
   };
 
+  // ── Открытый плейлист собеседника
+  if (openShared) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        <PublicPlaylistView
+          item={openShared}
+          onBack={() => { setOpenShared(null); loadShared(); }}
+          onSaved={(pl) => { setOpenShared(null); load(); void openList(pl); }}
+        />
+        <PlayerPanel />
+        <BottomNav />
+      </div>
+    );
+  }
+
   // ── Плейлист целиком
   if (open) {
     return (
@@ -259,8 +302,18 @@ const Music = () => {
           <span className="text-h2 flex-1 truncate">{playlistName(open)}</span>
           <button
             type="button"
+            onClick={() => void togglePublic(open)}
+            aria-pressed={!!open.is_public}
+            className={cn("ui-icon-btn p-2", open.is_public ? ICON_ON : "text-muted-foreground")}
+            aria-label={open.is_public ? tr("Сделать плейлист личным") : tr("Открыть плейлист собеседникам")}
+          >
+            <Globe className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
             onClick={() => void (open.share_token ? unshare(open) : share(open))}
-            className={cn("ui-icon-btn p-2", open.share_token ? "text-primary" : "text-muted-foreground")}
+            aria-pressed={!!open.share_token}
+            className={cn("ui-icon-btn p-2", open.share_token ? ICON_ON : "text-muted-foreground")}
             aria-label={open.share_token ? tr("Закрыть доступ по ссылке") : tr("Поделиться плейлистом")}
           >
             <Share2 className="w-4 h-4" />
@@ -324,12 +377,19 @@ const Music = () => {
               })}
             </SettingsCard>
           )}
+          {/* Подписи — в прокрутке: под ней отступ на нижнюю панель, а снаружи
+              плавающая панель «Мяты» их закрывала. */}
+          {open.is_public && (
+            <p className="px-1 text-caption text-subtle">
+              {tr("Плейлист видят ваши собеседники по личной переписке: могут слушать и сохранить себе. Нажмите значок глобуса, чтобы закрыть.")}
+            </p>
+          )}
+          {open.share_token && (
+            <p className="px-1 text-caption text-subtle">
+              {tr("Плейлист открыт по ссылке. Нажмите значок «поделиться» ещё раз, чтобы отозвать её.")}
+            </p>
+          )}
         </div>
-        {open.share_token && (
-          <p className="px-4 pb-2 text-caption text-subtle">
-            {tr("Плейлист открыт по ссылке. Нажмите значок «поделиться» ещё раз, чтобы отозвать её.")}
-          </p>
-        )}
         <PlayerPanel />
         <BottomNav />
         {sendFor && (
@@ -404,6 +464,7 @@ const Music = () => {
                 key={pl.id}
                 icon={pl.is_default ? Music2 : ListMusic}
                 label={playlistName(pl)}
+                hint={pl.is_public ? tr("Видят собеседники") : undefined}
                 value={pluralTracks(pl.tracks_count || 0)}
                 onClick={() => void openList(pl)}
               />
@@ -414,6 +475,28 @@ const Music = () => {
         <p className="px-1 text-caption text-subtle">
           {tr("Музыка берётся из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
         </p>
+
+        <p className="px-1 pt-3 text-small font-semibold text-subtle">{tr("Плейлисты собеседников")}</p>
+        {shared === null ? (
+          <p className="px-1 text-small text-subtle">{tr("Загрузка…")}</p>
+        ) : shared.length === 0 ? (
+          <p className="px-1 text-caption text-subtle">
+            {tr("Пока никто из собеседников не открыл свои плейлисты. Свой можно открыть значком глобуса в плейлисте.")}
+          </p>
+        ) : (
+          <SettingsCard>
+            {shared.map((pl) => (
+              <SettingsRow
+                key={pl.id}
+                leading={<Identicon id={pl.owner.id} avatarUrl={pl.owner.avatar_url} className="w-9 h-9 rounded-md shrink-0" />}
+                label={pl.is_default ? tr(pl.name) : pl.name}
+                hint={pl.owner.username}
+                value={pluralTracks(pl.tracks_count || 0)}
+                onClick={() => setOpenShared(pl)}
+              />
+            ))}
+          </SettingsCard>
+        )}
       </div>
       <PlayerPanel />
       <BottomNav />

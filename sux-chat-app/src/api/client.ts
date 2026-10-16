@@ -322,8 +322,21 @@ export interface Playlist {
   is_default: boolean;
   /** Ключ ссылки; пусто — плейлист личный. */
   share_token?: string;
+  /** Общедоступный: виден собеседникам во вкладке «Музыка». */
+  is_public?: boolean;
   created_at?: string;
   tracks_count?: number;
+}
+
+/** Открытый плейлист собеседника в списке вкладки «Музыка». */
+export interface PublicPlaylist {
+  id: string;
+  name: string;
+  is_default: boolean;
+  tracks_count: number;
+  /** Когда туда последний раз добавляли музыку. */
+  updated_at?: string | null;
+  owner: { id: string; username: string; avatar_url?: string | null };
 }
 
 export interface PlaylistTrack {
@@ -1203,6 +1216,47 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/playlists/shared/${token}/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new LError("Плейлист не найден или ссылка отозвана");
     return res.json();
+  },
+
+  /** Открытые плейлисты собеседников (по личке). */
+  listPublicPlaylists: async (): Promise<PublicPlaylist[]> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/public/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось загрузить плейлисты");
+    return (await res.json()).playlists || [];
+  },
+
+  getPublicPlaylist: async (id: string): Promise<{ playlist: Playlist; owner: string; owner_info?: PublicPlaylist["owner"]; tracks: PlaylistTrack[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/public/${id}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Плейлист не найден или закрыт");
+    return res.json();
+  },
+
+  /** Сохранить открытый плейлист собеседника себе копией. */
+  savePublicPlaylist: async (id: string): Promise<Playlist> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/public/${id}/`, { method: "POST", headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось сохранить");
+    return data.playlist;
+  },
+
+  /** Открыть свой плейлист собеседникам или снова сделать личным. */
+  setPlaylistPublic: async (id: string, isPublic: boolean): Promise<Playlist> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/`, {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ is_public: isPublic }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не получилось");
+    return data;
+  },
+
+  /** Трек из открытого плейлиста собеседника — в «Мою музыку». */
+  addTrackFromPublic: async (trackId: string): Promise<{ track: PlaylistTrack; already: boolean }> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/tracks/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ track_id: trackId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось добавить");
+    return data;
   },
 
   /** Забрать чужой плейлист себе: создаётся свой, чужой не меняется. */
