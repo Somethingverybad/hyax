@@ -801,6 +801,55 @@ class PlaylistTrack(models.Model):
         return self.title
 
 
+class Station(models.Model):
+    """Радиостанция: плейлист в эфире, который собеседники слушают вместе.
+
+    Звук не транслируется: каждый слушатель играет тот же файл с той же
+    секунды. Сервер хранит только расписание — «трек anchor_track начался в
+    anchor_at», дальше треки идут по порядку плейлиста по кругу. Поэтому эфир
+    идёт и без владельца в сети, а новый слушатель подключается с нужного места.
+
+    Якорь при каждом чтении переезжает на текущий трек (chat/radio.py): правка
+    плейлиста меняет только то, что дальше, — играющий трек не перескакивает.
+
+    Станция существует — значит, эфир идёт; остановить эфир = удалить станцию.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="stations")
+    # Эфир от имени канала: его видят подписчики, ведут админы канала.
+    channel = models.ForeignKey(Chat, on_delete=models.CASCADE, null=True, blank=True, related_name="stations")
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="stations")
+    anchor_track = models.ForeignKey(PlaylistTrack, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Место якоря в плейлисте — если сам трек удалили, эфир идёт со следующего.
+    anchor_position = models.IntegerField(default=0)
+    anchor_at = models.DateTimeField(default=timezone.now)
+    # На паузе: эфир застыл в этот момент, слушатели стоят.
+    paused_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # Один личный эфир на человека и один эфир на канал.
+            models.UniqueConstraint(fields=["owner"], condition=models.Q(channel__isnull=True), name="uniq_station_per_owner"),
+            models.UniqueConstraint(fields=["channel"], condition=models.Q(channel__isnull=False), name="uniq_station_per_channel"),
+        ]
+
+    def __str__(self):
+        return f"📻 {self.owner.username}: {self.playlist.name}"
+
+
+class StationListener(models.Model):
+    """Кто слушает эфир: клиент отмечается раз в 15 секунд, слушателем
+    считается тот, кто отмечался недавно (chat/radio.py, LISTENER_TTL)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name="listeners")
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        unique_together = ("station", "profile")
+
+
 class SavedViewer(models.Model):
     """Кому владелец открыл свои сохранёнки при настройке «избранные люди».
     Список-разрешение, зеркало Block: тот же смысл, обратный знак."""
@@ -854,6 +903,7 @@ class Report(models.Model):
         ("sound_pack", "Пак звуков"),
         ("sticker_pack", "Пак стикеров"),
         ("theme", "Тема оформления"),
+        ("track", "Трек в плейлисте или эфире"),
     ]
     REASONS = [
         ("sexual", "Сексуальный контент"),
@@ -861,6 +911,8 @@ class Report(models.Model):
         ("abuse", "Оскорбления, травля"),
         ("spam", "Спам или мошенничество"),
         ("illegal", "Противозаконное"),
+        # Правообладатель или кто угодно сообщает о чужой музыке, фото, видео.
+        ("copyright", "Нарушение авторских прав"),
         ("other", "Другое"),
     ]
     STATUSES = [

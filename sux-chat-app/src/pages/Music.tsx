@@ -1,13 +1,15 @@
 import { t as tr, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe,
+import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe, Radio, Headphones, Upload,
          Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
-import { api, type Playlist, type PlaylistTrack, type PublicPlaylist } from "@/api/client";
+import { api, type Playlist, type PlaylistTrack, type PublicPlaylist, type StationInfo } from "@/api/client";
 import PublicPlaylistView from "@/components/music/PublicPlaylistView";
+import StationView, { stationName } from "@/components/music/StationView";
+import { joinStation, setRadioNotice, useRadio } from "@/lib/radio";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { sharePlaylistLink } from "@/lib/share";
 import Identicon from "@/components/Identicon";
@@ -26,6 +28,9 @@ const trackToQueue = (t: PlaylistTrack): Track => ({
   id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined,
 });
 
+/** Трек пришёл из переписки (файл вложения), а не загружен в плейлист сам. */
+const fromChat = (t: PlaylistTrack) => /^(s3:\/\/|\/media\/)messages\//.test(t.file_url);
+
 const pluralTracks = (n: number) => tn(n, "{n} трек", "{n} трека", "{n} треков");
 
 /** Включённая кнопка-значок в шапке плейлиста. С «!»: у форм «мягкая» и
@@ -42,7 +47,7 @@ const playlistName = (pl: Playlist) => (pl.is_default ? tr(pl.name) : pl.name);
  * экрана — вкладка целиком отведена под музыку. Полоску (MiniPlayer) на этом
  * экране прячем, чтобы плеер не двоился.
  */
-const PlayerPanel = () => {
+const PlayerPanel = ({ onLive }: { onLive?: () => void }) => {
   const s = usePlayer();
   const t = currentTrack();
   if (!t) return null;
@@ -53,11 +58,12 @@ const PlayerPanel = () => {
     <div className="shrink-0 px-4 pb-2" style={{ marginBottom: "var(--mint-nav-space, 0px)" }}>
       <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1">
+          {/* В эфире по нажатию — экран эфира. */}
+          <span className={cn("min-w-0 flex-1", s.live && onLive && "cursor-pointer")} onClick={s.live ? onLive : undefined}>
             <span className="block text-body truncate">{t.title}</span>
-            <span className="block text-caption text-subtle tabular-nums">
+            <span className="block text-caption text-subtle tabular-nums truncate">
               {fmtTime(s.time)}{s.duration ? ` / ${fmtTime(s.duration)}` : ""}
-              {s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
+              {s.live ? ` · 📻 ${s.live.name}` : s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
             </span>
           </span>
           <button type="button" onClick={stop} className="p-2 text-subtle" aria-label={tr("Закрыть плеер")}>
@@ -66,7 +72,7 @@ const PlayerPanel = () => {
         </div>
 
         <div
-          className="h-1.5 rounded-full bg-black/20 overflow-hidden cursor-pointer"
+          className={cn("h-1.5 rounded-full bg-black/20 overflow-hidden", !s.live && "cursor-pointer")}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             if (s.duration) seek(((e.clientX - r.left) / r.width) * s.duration);
@@ -75,39 +81,48 @@ const PlayerPanel = () => {
           <div className="h-full rounded-full bg-primary" style={{ width: `${frac * 100}%` }} />
         </div>
 
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={toggleShuffle}
-            aria-pressed={s.shuffle}
-            aria-label={tr("Перемешать")}
-            className={cn("w-10 h-10 rounded-full flex items-center justify-center",
-              s.shuffle ? "text-primary bg-primary/15" : "text-subtle")}
-          >
-            <Shuffle className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void prev()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label={tr("Предыдущий")}>
-              <SkipBack className="w-5 h-5" />
-            </button>
+        {/* Эфир: трек и место задаёт расписание — только пауза у себя. */}
+        {s.live ? (
+          <div className="flex items-center justify-center">
             <button type="button" onClick={() => void toggle()} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center" aria-label={s.playing ? tr("Пауза") : tr("Играть")}>
               {s.playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
             </button>
-            <button type="button" onClick={() => void next()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label={tr("Следующий")}>
-              <SkipForward className="w-5 h-5" />
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={toggleShuffle}
+              aria-pressed={s.shuffle}
+              aria-label={tr("Перемешать")}
+              className={cn("w-10 h-10 rounded-full flex items-center justify-center",
+                s.shuffle ? "text-primary bg-primary/15" : "text-subtle")}
+            >
+              <Shuffle className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => void prev()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label={tr("Предыдущий")}>
+                <SkipBack className="w-5 h-5" />
+              </button>
+              <button type="button" onClick={() => void toggle()} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center" aria-label={s.playing ? tr("Пауза") : tr("Играть")}>
+                {s.playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+              </button>
+              <button type="button" onClick={() => void next()} className="w-10 h-10 rounded-full flex items-center justify-center text-foreground" aria-label={tr("Следующий")}>
+                <SkipForward className="w-5 h-5" />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={cycleRepeat}
+              aria-pressed={s.repeat !== "off"}
+              aria-label={s.repeat === "one" ? tr("Повторять один") : s.repeat === "all" ? tr("Повторять всё") : tr("Без повтора")}
+              className={cn("w-10 h-10 rounded-full flex items-center justify-center",
+                s.repeat !== "off" ? "text-primary bg-primary/15" : "text-subtle")}
+            >
+              <RepeatIcon className="w-5 h-5" />
             </button>
           </div>
-          <button
-            type="button"
-            onClick={cycleRepeat}
-            aria-pressed={s.repeat !== "off"}
-            aria-label={s.repeat === "one" ? tr("Повторять один") : s.repeat === "all" ? tr("Повторять всё") : tr("Без повтора")}
-            className={cn("w-10 h-10 rounded-full flex items-center justify-center",
-              s.repeat !== "off" ? "text-primary bg-primary/15" : "text-subtle")}
-          >
-            <RepeatIcon className="w-5 h-5" />
-          </button>
-        </div>
+        )}
         {/* Громкость — на десктопе (на телефоне есть кнопки). */}
         <div className="hidden md:flex items-center gap-2 mt-3 justify-center" title={tr("Громкость")}>
           <button type="button" onClick={() => setVolume(s.volume > 0 ? 0 : 1)} className="w-8 h-8 flex items-center justify-center text-subtle" aria-label={s.volume > 0 ? tr("Выключить звук") : tr("Включить звук")}>
@@ -128,6 +143,16 @@ const Music = () => {
   // Открытые плейлисты собеседников — отдельным списком под своими.
   const [shared, setShared] = useState<PublicPlaylist[] | null>(() => readCache<PublicPlaylist[]>("publicPlaylists"));
   const [openShared, setOpenShared] = useState<PublicPlaylist | null>(null);
+  // Эфиры: свои и собеседников/каналов; каналы, от которых я могу вести эфир.
+  const [stations, setStations] = useState<StationInfo[] | null>(() => readCache<StationInfo[]>("stations"));
+  const [airChannels, setAirChannels] = useState<{ id: string; name: string; avatar_url?: string | null }[]>([]);
+  const [openStation, setOpenStation] = useState<StationInfo | null>(null);
+  // Выбор «от себя / от канала» при запуске эфира.
+  const [airPick, setAirPick] = useState<Playlist | null>(null);
+  const radio = useRadio();
+  // Загрузка своих треков в открытый плейлист: файлы по одному, счётчик — в кнопке.
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const [open, setOpen] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<PlaylistTrack[] | null>(null);
   const cachedTracks = (id: string) =>
@@ -157,7 +182,21 @@ const Music = () => {
     api.listPublicPlaylists()
       .then((rows) => { setShared(rows); writeCache("publicPlaylists", rows); })
       .catch(() => setShared((l) => l ?? []));
-  useEffect(() => { load(); loadShared(); }, []);
+  const loadStations = () =>
+    api.listStations()
+      .then((r) => { setStations(r.stations); setAirChannels(r.channels); writeCache("stations", r.stations); })
+      .catch(() => setStations((l) => l ?? []));
+  useEffect(() => { load(); loadShared(); loadStations(); }, []);
+  // «Эфир закончился» — тостом, пока открыта вкладка.
+  useEffect(() => {
+    setRadioNotice((msg) => { toast(msg); loadStations(); });
+    return () => setRadioNotice(null);
+  }, []);
+  // Слушаю эфир, а его карточки в списке нет — открыть экран по плееру.
+  const openLive = () => {
+    const d = radio.data?.station;
+    if (d) setOpenStation(d);
+  };
 
   const openList = async (pl: Playlist) => {
     setOpen(pl);
@@ -210,6 +249,43 @@ const Music = () => {
       if (how === "error") toast.error(tr("Не удалось поделиться"));
       load();
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
+  };
+
+  /** Свои треки — с устройства прямо в плейлист. */
+  const uploadFiles = async (files: FileList | null) => {
+    if (!open || !files?.length) return;
+    const list = Array.from(files);
+    const pl = open;
+    let ok = 0;
+    setUploading({ done: 0, total: list.length });
+    for (const [i, f] of list.entries()) {
+      try { await api.uploadTrack(f, pl.id); ok++; }
+      catch (e: any) { toast.error(`${f.name}: ${e?.message || tr("Не получилось")}`); }
+      setUploading({ done: i + 1, total: list.length });
+    }
+    setUploading(null);
+    if (fileInput.current) fileInput.current.value = "";
+    if (ok) toast.success(tn(ok, "Загружен {n} трек", "Загружено {n} трека", "Загружено {n} треков"));
+    void openList(pl);
+    load();
+  };
+
+  /** Запустить эфир плейлиста: от себя или от канала, где я админ. */
+  const startAir = async (pl: Playlist, channelId?: string) => {
+    setAirPick(null);
+    const current = (stations || []).find((st) => st.mine && (channelId ? st.channel?.id === channelId : !st.channel));
+    if (current && current.playlist_id !== pl.id &&
+        !(await confirmDialog(tr("Сейчас в эфире «{now}». Поставить вместо него «{name}»?", { now: stationName(current), name: playlistName(pl) }), { ok: tr("Поставить"), danger: false }))) return;
+    setBusy(true);
+    try {
+      const st = await api.startStation(pl.id, channelId);
+      toast.success(tr("Эфир запущен"));
+      loadStations();
+      setOpen(null);
+      setOpenStation(st.station);
+      void joinStation(st.station.id, st);
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
+    finally { setBusy(false); }
   };
 
   /** Открыть плейлист собеседникам (видят его во вкладке «Музыка») или закрыть. */
@@ -276,6 +352,17 @@ const Music = () => {
     catch { toast.error(tr("Не удалось убрать трек")); setTracks(before); }
   };
 
+  // ── Эфир
+  if (openStation) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        <StationView item={openStation} onBack={() => { setOpenStation(null); loadStations(); }} />
+        <PlayerPanel />
+        <BottomNav />
+      </div>
+    );
+  }
+
   // ── Открытый плейлист собеседника
   if (openShared) {
     return (
@@ -285,7 +372,7 @@ const Music = () => {
           onBack={() => { setOpenShared(null); loadShared(); }}
           onSaved={(pl) => { setOpenShared(null); load(); void openList(pl); }}
         />
-        <PlayerPanel />
+        <PlayerPanel onLive={openLive} />
         <BottomNav />
       </div>
     );
@@ -333,9 +420,26 @@ const Music = () => {
             <p className="text-small text-subtle">{tr("Загрузка…")}</p>
           ) : tracks.length === 0 ? (
             <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 text-small text-subtle">
-              {tr("Пусто. Музыка добавляется из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
+              {tr("Пусто. Загрузите свои треки кнопкой ниже или добавьте музыку из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
             </div>
           ) : (
+            <>
+            {(() => {
+              // Этот плейлист уже в эфире (от меня или от канала) — кнопка ведёт в эфир.
+              const air = (stations || []).find((st) => st.mine && st.playlist_id === open.id);
+              return air ? (
+                <button type="button" onClick={() => { setOpen(null); setOpenStation(air); }}
+                  className="w-full h-11 rounded-md bg-destructive text-destructive-foreground font-medium flex items-center justify-center gap-2 active:opacity-90">
+                  <Radio className="w-4 h-4" /> {tr("В эфире")} · {tn(air.listeners, "{n} слушает", "{n} слушают", "{n} слушают")}
+                </button>
+              ) : (
+                <button type="button" disabled={busy}
+                  onClick={() => (airChannels.length ? setAirPick(open) : void startAir(open))}
+                  className="w-full h-11 rounded-md border border-border font-medium flex items-center justify-center gap-2 active:opacity-80 disabled:opacity-50">
+                  <Radio className="w-4 h-4" /> {tr("Запустить эфир")}
+                </button>
+              );
+            })()}
             <SettingsCard>
               {tracks.map((t, i) => {
                 const isNow = playing?.id === t.id;
@@ -349,7 +453,7 @@ const Music = () => {
                       </span>
                     }
                     label={t.title}
-                    hint={t.artist || (t.source ? undefined : tr("Сообщение удалено, музыка осталась"))}
+                    hint={t.artist || (!t.source && fromChat(t) ? tr("Сообщение удалено, музыка осталась") : undefined)}
                     value={isNow && player.duration ? fmtTime(player.time) : undefined}
                     onClick={() => void playQueue(tracks.map(trackToQueue), i)}
                     trailing={
@@ -376,6 +480,18 @@ const Music = () => {
                 );
               })}
             </SettingsCard>
+            </>
+          )}
+          {tracks !== null && (
+            <>
+              <input ref={fileInput} type="file" accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus" multiple hidden
+                onChange={(e) => void uploadFiles(e.target.files)} />
+              <button type="button" disabled={!!uploading} onClick={() => fileInput.current?.click()}
+                className="w-full h-11 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:opacity-80 disabled:opacity-60">
+                <Upload className="w-4 h-4" />
+                {uploading ? tr("Загружаю {i} из {n}…", { i: Math.min(uploading.done + 1, uploading.total), n: uploading.total }) : tr("Загрузить свои треки")}
+              </button>
+            </>
           )}
           {/* Подписи — в прокрутке: под ней отступ на нижнюю панель, а снаружи
               плавающая панель «Мяты» их закрывала. */}
@@ -390,8 +506,33 @@ const Music = () => {
             </p>
           )}
         </div>
-        <PlayerPanel />
+        <PlayerPanel onLive={openLive} />
         <BottomNav />
+        {airPick && (
+          <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setAirPick(null)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="ui-card relative w-full rounded-t-[16px] bg-surface-2 p-4 pb-[calc(var(--sab)+20px)] space-y-2 max-h-[70vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
+              <p className="text-h2">{tr("От чьего имени эфир?")}</p>
+              <p className="text-caption text-subtle">{tr("Свой эфир видят собеседники по личке, эфир канала — его подписчики.")}</p>
+              <button type="button" disabled={busy} onClick={() => void startAir(airPick)}
+                className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50">
+                <Radio className="w-5 h-5 text-primary shrink-0" />
+                <span className="flex-1 text-body">{tr("От себя")}</span>
+              </button>
+              {airChannels.map((c) => (
+                <button key={c.id} type="button" disabled={busy} onClick={() => void startAir(airPick, c.id)}
+                  className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50">
+                  <Identicon id={c.id} avatarUrl={c.avatar_url} className="w-8 h-8 rounded-md shrink-0" />
+                  <span className="flex-1 text-body truncate">{c.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {sendFor && (
           <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setSendFor(null)}>
             <div className="absolute inset-0 bg-black/40" />
@@ -455,6 +596,38 @@ const Music = () => {
           </div>
         )}
 
+        {/* Эфиры — сверху: это то, что идёт прямо сейчас. Свой — тоже здесь. */}
+        {!!stations?.length && (
+          <>
+            <p className="px-1 text-small font-semibold text-subtle">{tr("В эфире")}</p>
+            <SettingsCard>
+              {stations.map((st) => {
+                const src = st.channel ? { id: st.channel.id, avatar: st.channel.avatar_url, name: st.channel.name }
+                                       : { id: st.owner.id, avatar: st.owner.avatar_url, name: st.mine ? tr("Ваш эфир") : st.owner.username };
+                const listening = radio.stationId === st.id;
+                return (
+                  <SettingsRow
+                    key={st.id}
+                    leading={
+                      <span className="relative shrink-0">
+                        <Identicon id={src.id} avatarUrl={src.avatar} className="w-9 h-9 rounded-md" />
+                        <span className={cn("absolute -right-1 -bottom-1 w-4 h-4 rounded-full ring-2 ring-background flex items-center justify-center",
+                          st.paused ? "bg-surface-4" : "bg-destructive")}>
+                          <Radio className="w-2.5 h-2.5 text-white" />
+                        </span>
+                      </span>
+                    }
+                    label={stationName(st)}
+                    hint={`${src.name}${st.now_title ? ` · ${st.paused ? tr("пауза") : "▶"} ${st.now_title}` : ""}`}
+                    value={<span className={cn("inline-flex items-center gap-1", listening && "text-primary")}><Headphones className="w-3.5 h-3.5" />{st.listeners}</span>}
+                    onClick={() => setOpenStation(st)}
+                  />
+                );
+              })}
+            </SettingsCard>
+          </>
+        )}
+
         {lists === null ? (
           <p className="text-small text-subtle">{tr("Загрузка…")}</p>
         ) : (
@@ -498,7 +671,7 @@ const Music = () => {
           </SettingsCard>
         )}
       </div>
-      <PlayerPanel />
+      <PlayerPanel onLive={openLive} />
       <BottomNav />
     </div>
   );

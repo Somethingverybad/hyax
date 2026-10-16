@@ -21,6 +21,13 @@ export interface Track {
   artist?: string;
 }
 
+/** Эфир, который сейчас слушаем (@/lib/radio): трек и место в нём задаёт
+ *  расписание станции, поэтому перемотка и переключение в этом режиме закрыты. */
+export interface LiveInfo {
+  stationId: string;
+  name: string;
+}
+
 /** Что делать, когда трек кончился: ничего, по кругу, повторять один. */
 export type RepeatMode = "off" | "all" | "one";
 
@@ -35,6 +42,8 @@ interface State {
   repeat: RepeatMode;
   /** Громкость 0…1 — нужна на десктопе (на телефоне есть кнопки); помним между запусками. */
   volume: number;
+  /** Слушаем эфир — null, когда играет своя очередь. */
+  live: LiveInfo | null;
 }
 
 const VOLUME_KEY = "hyax:volume";
@@ -44,12 +53,24 @@ const readVolume = () => {
 };
 
 let state: State = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-                     shuffle: false, repeat: "off", volume: readVolume() };
+                     shuffle: false, repeat: "off", volume: readVolume(), live: null };
 // Что уже играли в перемешанном порядке: чтобы не повторять одно и то же,
 // пока не кончится очередь.
 let heard = new Set<number>();
 let audio: HTMLAudioElement | null = null;
 const subs = new Set<() => void>();
+
+/** Связь с эфиром (@/lib/radio): трек кончился, слушатель снова нажал
+ *  «играть» после своей паузы, эфир бросили (включили своё или закрыли). */
+let liveHooks: { ended?: () => void; resumed?: () => void; left?: () => void } = {};
+export const setLiveHooks = (h: typeof liveHooks) => { liveHooks = h; };
+
+/** Эфир кончился для плеера: своё включили или плеер закрыли. */
+const dropLive = () => {
+  if (!state.live) return;
+  state.live = null;
+  liveHooks.left?.();
+};
 
 const emit = () => {
   state = { ...state };
@@ -80,10 +101,12 @@ const updateSession = () => {
     const MM = (window as any).MediaMetadata;
     if (MM) nav.mediaSession.metadata = new MM({ title: t.title, artist: t.artist || "WYX" });
     nav.mediaSession.playbackState = state.playing ? "playing" : "paused";
+    if (MM && state.live) nav.mediaSession.metadata = new MM({ title: t.title, artist: `${t.artist ? `${t.artist} · ` : ""}📻 ${state.live.name}` });
     nav.mediaSession.setActionHandler("play", () => void toggle());
     nav.mediaSession.setActionHandler("pause", () => void toggle());
-    nav.mediaSession.setActionHandler("nexttrack", () => void next());
-    nav.mediaSession.setActionHandler("previoustrack", () => void prev());
+    // В эфире треки переключает расписание — кнопки наушников не трогают его.
+    nav.mediaSession.setActionHandler("nexttrack", state.live ? null : () => void next());
+    nav.mediaSession.setActionHandler("previoustrack", state.live ? null : () => void prev());
   } catch { /* не поддерживается — не беда */ }
 };
 
@@ -92,21 +115,35 @@ const attach = (el: HTMLAudioElement) => {
   el.onloadedmetadata = () => { state.duration = el.duration || 0; emit(); };
   el.onplay = () => { state.playing = true; emit(); updateSession(); };
   el.onpause = () => { state.playing = false; emit(); updateSession(); };
-  el.onended = () => { void next(true); };
+  el.onended = () => { if (state.live) liveHooks.ended?.(); else void next(true); };
   el.onerror = () => { state.playing = false; emit(); };
 };
 
-async function start(index: number) {
+// Номер запуска: подпись ссылки идёт по сети, и пока она идёт, могли
+// включить другой трек. В эфире индекс всегда 0 — сверяем по номеру.
+let startSeq = 0;
+
+async function start(index: number, at?: () => number) {
   const t = state.queue[index];
   if (!t) return;
+  const seq = ++startSeq;
   state.index = index;
   state.time = 0;
   state.duration = 0;
   emit();
   const src = await resolve(t);
-  if (state.index !== index) return; // успели переключить
+  if (state.index !== index || seq !== startSeq) return; // успели переключить
   if (!audio) { audio = new Audio(); attach(audio); audio.volume = state.volume; }
   audio.src = src;
+  // Эфир: встаём на место по расписанию, когда файл открылся, — позицию
+  // считаем в этот момент, с учётом того, сколько он грузился.
+  if (at) {
+    const el = audio;
+    el.addEventListener("loadedmetadata", () => {
+      const pos = at();
+      if (pos > 0.3 && isFinite(pos)) el.currentTime = Math.min(pos, (el.duration || pos + 1) - 0.2);
+    }, { once: true });
+  }
   try {
     await audio.play();
   } catch {
@@ -118,6 +155,7 @@ async function start(index: number) {
 
 /** Поставить очередь и начать с нужного трека. Повторный тап по играющему — пауза. */
 export async function playQueue(queue: Track[], index: number) {
+  dropLive();
   const same = currentTrack()?.id === queue[index]?.id;
   state.queue = queue;
   if (same && audio) { await toggle(); return; }
@@ -126,8 +164,33 @@ export async function playQueue(queue: Track[], index: number) {
 
 export async function toggle() {
   if (!audio || state.index < 0) return;
-  if (audio.paused) { try { await audio.play(); } catch { /* автоплей */ } }
+  if (audio.paused) {
+    try { await audio.play(); } catch { /* автоплей */ }
+    // Эфир за паузу ушёл вперёд — догоняем.
+    if (state.live) liveHooks.resumed?.();
+  }
   else audio.pause();
+}
+
+/** Эфир: включить трек с места, которое к моменту загрузки посчитает at(). */
+export async function playLive(track: Track, at: () => number, live: LiveInfo) {
+  state.live = live;
+  state.queue = [track];
+  heard = new Set();
+  await start(0, at);
+}
+
+/** Эфир: подтянуться к расписанию, если разошлись. */
+export function liveSeek(sec: number) {
+  if (audio && isFinite(sec)) audio.currentTime = Math.max(0, Math.min(sec, (state.duration || sec + 1) - 0.2));
+}
+
+/** Эфир на паузе у ведущего — стоим, не теряя трек. */
+export function livePause() { audio?.pause(); }
+
+/** Ведущий снял эфир с паузы — играем дальше. */
+export async function livePlay() {
+  if (audio && audio.paused) { try { await audio.play(); } catch { /* автоплей */ } }
 }
 
 /** Следующий по порядку или случайный — смотря как включено перемешивание. */
@@ -151,6 +214,7 @@ function nextIndex(): number | null {
 }
 
 export async function next(auto = false) {
+  if (state.live) return;
   // Повтор одного действует только когда трек кончился сам: кнопку «дальше»
   // человек нажимает, чтобы сменить трек, а не услышать тот же.
   if (auto && state.repeat === "one") { await start(state.index); return; }
@@ -160,17 +224,20 @@ export async function next(auto = false) {
 }
 
 export function toggleShuffle() {
+  if (state.live) return;
   state.shuffle = !state.shuffle;
   heard = new Set([state.index]);
   emit();
 }
 
 export function cycleRepeat() {
+  if (state.live) return;
   state.repeat = state.repeat === "off" ? "all" : state.repeat === "all" ? "one" : "off";
   emit();
 }
 
 export async function prev() {
+  if (state.live) return;
   // Как в плеерах: первые секунды — в начало трека, дальше — предыдущий.
   if (audio && audio.currentTime > 3) { audio.currentTime = 0; return; }
   if (state.index > 0) await start(state.index - 1);
@@ -184,15 +251,17 @@ export function setVolume(v: number) {
 }
 
 export function seek(sec: number) {
+  if (state.live) return;
   if (audio && isFinite(sec)) audio.currentTime = Math.max(0, Math.min(sec, state.duration || sec));
 }
 
 export function stop() {
+  dropLive();
   audio?.pause();
   if (audio) audio.src = "";
   // Перемешивание и повтор — настройки человека, они переживают остановку.
   state = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume };
+            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume, live: null };
   heard = new Set();
   emit();
 }

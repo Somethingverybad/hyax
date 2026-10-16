@@ -12,6 +12,9 @@ const KEYS = {
   // Музыка: список плейлистов и треки по каждому — по той же причине.
   playlists: "cache_playlists",
   playlistTracks: "cache_playlist_tracks",
+  // Открытые плейлисты собеседников и эфиры — разделы той же вкладки.
+  publicPlaylists: "cache_public_playlists",
+  stations: "cache_stations",
   wall: "cache_wall",
 } as const;
 

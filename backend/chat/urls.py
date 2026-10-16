@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
+from .radio import StationsView, StationView, StationControlView, StationListenView
 from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
@@ -82,6 +83,13 @@ urlpatterns = [
     path('playlists/shared/<str:token>/', SharedPlaylistView.as_view(), name='playlist-shared'),
     path('playlists/public/', PublicPlaylistsView.as_view(), name='playlists-public'),
     path('playlists/public/<uuid:pk>/', PublicPlaylistView.as_view(), name='playlist-public'),
+    path('music/takedown/', MusicTakedownView.as_view(), name='music-takedown'),
+    path('radio/', StationsView.as_view(), name='radio'),
+    path('radio/<uuid:pk>/', StationView.as_view(), name='radio-station'),
+    path('radio/<uuid:pk>/control/', StationControlView.as_view(), name='radio-control'),
+    path('radio/<uuid:pk>/listen/', StationListenView.as_view(), name='radio-listen'),
+    path('playlists/tracks/upload/', PlaylistTrackUploadView.as_view(), name='playlist-upload-default'),
+    path('playlists/<uuid:pk>/tracks/upload/', PlaylistTrackUploadView.as_view(), name='playlist-upload'),
     path('playlists/<uuid:pk>/tracks/', PlaylistTracksView.as_view(), name='playlist-tracks'),
     path('playlists/<uuid:pk>/tracks/<uuid:track>/', PlaylistTracksView.as_view(), name='playlist-track'),
     path('bugreports/', BugReportView.as_view(), name='bugreports'),

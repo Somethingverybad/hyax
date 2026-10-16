@@ -58,7 +58,7 @@
   <nav>
     <a href="#start">Начало</a><a href="#auth">Авторизация</a><a href="#events">События</a>
     <a href="#send">Отправка</a><a href="#buttons">Кнопки</a><a href="#inline">Inline</a>
-    <a href="#example">Пример</a><a href="#limits">Ограничения</a>
+    <a href="#radio">Эфир</a><a href="#example">Пример</a><a href="#limits">Ограничения</a>
   </nav>
 
   <h2 id="start">Как устроено</h2>
@@ -179,6 +179,64 @@ Authorization: Bot Xy…
       остальное — название или ссылка; без формата — mp3. Придумывайте свой синтаксис, но описывайте его в «О себе» бота.</div>
   </div>
 
+  <h2 id="radio">Эфир: бот-диджей</h2>
+  <div class="card">
+    <p>Бот может вести радиоэфир: собирает плейлист, запускает его в эфир, ставит треки следующими и переключает их.
+      Слушатели играют один и тот же файл с одной и той же секунды — звук бот не транслирует, сервер хранит только
+      расписание. Поэтому эфир идёт и тогда, когда бот спит: треки сменяются по кругу сами.</p>
+    <p class="muted">Эфир бота видят те, кто начал с ним диалог (кнопка «Начать»), — во вкладке «Музыка», раздел «В эфире».
+      Эфир от имени канала (бот — админ канала) видят подписчики канала.</p>
+
+    <h3>1. Плейлист</h3>
+<pre><code><span class="k">POST</span> /api/playlists/
+{"name": "Ночной сет"}
+<span class="c">→ 201</span> {"id": "&lt;playlist_id&gt;", "name": "Ночной сет", …}
+
+<span class="k">GET</span> /api/playlists/                    <span class="c">свои плейлисты</span>
+<span class="k">GET</span> /api/playlists/&lt;playlist_id&gt;/      <span class="c">треки: id, title, artist, duration, position</span></code></pre>
+
+    <h3>2. Треки</h3>
+    <p>Загрузите файл прямо в плейлист — одним запросом. Название и исполнитель — из полей формы, иначе из тегов файла,
+      иначе из имени. Длительность сервер узнаёт сам: по ней строится расписание эфира.</p>
+<pre><code><span class="k">POST</span> /api/playlists/&lt;playlist_id&gt;/tracks/upload/     <span class="c">multipart/form-data</span>
+file=@track.mp3  title=Northern Lights  artist=Aurora  next=1
+<span class="c">→ 201</span> {"track": {"id": "&lt;track_id&gt;", "title": "…", "duration": 214.3, "position": 4}, …}</code></pre>
+    <p>Трек, который вам прислали в чат, добавляется по сообщению — файл не перекачивается:</p>
+<pre><code><span class="k">POST</span> /api/playlists/&lt;playlist_id&gt;/tracks/
+{"message_id": "&lt;message_id&gt;", "next": true}
+
+<span class="k">DELETE</span> /api/playlists/&lt;playlist_id&gt;/tracks/&lt;track_id&gt;/</code></pre>
+    <p class="muted"><code>next</code> — поставить сразу за тем, что сейчас играет в эфире этого плейлиста; без него — в конец.
+      Форматы: mp3, m4a, aac, flac, wav, ogg, opus, webm.</p>
+
+    <h3>3. Эфир</h3>
+<pre><code><span class="k">POST</span> /api/radio/
+{"playlist_id": "&lt;playlist_id&gt;"}                         <span class="c">от себя</span>
+{"playlist_id": "&lt;playlist_id&gt;", "channel_id": "&lt;id&gt;"}   <span class="c">от канала, где бот — админ</span>
+<span class="c">→ 201</span> состояние эфира (ниже)
+
+<span class="k">GET</span>  /api/radio/                     <span class="c">свои эфиры и каналы, от которых можно вести</span>
+<span class="k">GET</span>  /api/radio/&lt;station_id&gt;/        <span class="c">состояние: что играет, что дальше, кто слушает</span>
+<span class="k">POST</span> /api/radio/&lt;station_id&gt;/control/
+{"action": "skip"}                               <span class="c">следующий трек</span>
+{"action": "play", "track_id": "&lt;track_id&gt;"}   <span class="c">включить этот трек сейчас</span>
+{"action": "pause"}  /  {"action": "resume"}
+<span class="k">DELETE</span> /api/radio/&lt;station_id&gt;/       <span class="c">остановить эфир</span></code></pre>
+    <p>Повторный <code>POST /api/radio/</code> с другим плейлистом ставит его в тот же эфир, с первого трека: у бота один
+      личный эфир и по одному на каждый канал.</p>
+    <p>Состояние эфира — время в миллисекундах по часам сервера:</p>
+<pre><code>{"station": {"id": "…", "name": "Ночной сет", "paused": false, "listeners": 12,
+             "listeners_preview": [{"id": "…", "username": "…"}], "can_control": true, …},
+ "server_now": 1792131967525,
+ "now":  {"track": {"id": "…", "title": "…", "duration": 214.3}, "started_at": 1792131900000},
+ "next": [{"track": {…}, "started_at": 1792132114300}, …]}</code></pre>
+    <div class="tip">Событий эфира в сокете нет — состояние спрашивайте, когда нужно: например, к моменту
+      <code>next[0].started_at</code>, чтобы объявить в чате следующий трек. Слушателями считаются те, кто отмечался
+      за последние 45 секунд.</div>
+    <div class="warn">В эфир — только музыка, на которую у вас есть права. На любой трек в эфире слушатель может пожаловаться
+      («Нарушение авторских прав»); по жалобе правообладателя трек снимается везде, а бота могут отключить.</div>
+  </div>
+
   <h2 id="example">Пример: минимальный бот на Python</h2>
   <div class="card">
     <p>Эхо в личке, одна кнопка и inline-поиск по своему списку. Нужен только <code>aiohttp</code>.</p>
@@ -223,6 +281,7 @@ asyncio.run(main())</code></pre>
       <tr><td>Заполнение заглушки</td><td>30 минут после выбора; только своя заглушка</td></tr>
       <tr><td>Куда писать</td><td>Только в чаты, где бот участник; первым в личку не пишет</td></tr>
       <tr><td>Файлы</td><td>Лимита на размер нет, но большие файлы грузите одним запросом рядом с сервером или кусками</td></tr>
+      <tr><td>Эфир</td><td>Один личный эфир и по одному на канал; до 50 плейлистов на аккаунт</td></tr>
     </table>
     <div class="warn">Спам, рассылки без согласия и подмена чужих сообщений — повод отключить бота. Пишите в «О себе», что бот делает и как им пользоваться.</div>
   </div>

@@ -43,7 +43,7 @@ const MiniPlayer = () => {
     >
       <div className="rounded-lg border border-border bg-surface-2 shadow-lg overflow-hidden">
         <div
-          className="h-1 bg-black/20 cursor-pointer"
+          className={s.live ? "h-1 bg-black/20" : "h-1 bg-black/20 cursor-pointer"}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             if (s.duration) seek(((e.clientX - r.left) / r.width) * s.duration);
@@ -52,20 +52,25 @@ const MiniPlayer = () => {
           <div className="h-full bg-primary" style={{ width: `${frac * 100}%` }} />
         </div>
         <div className="flex items-center gap-2 px-2 py-2">
-          <button type="button" onClick={() => void prev()} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label={tr("Предыдущий")}>
-            <SkipBack className="w-4 h-4" />
-          </button>
+          {/* В эфире треки переключает расписание станции (@/lib/radio). */}
+          {!s.live && (
+            <button type="button" onClick={() => void prev()} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label={tr("Предыдущий")}>
+              <SkipBack className="w-4 h-4" />
+            </button>
+          )}
           <button type="button" onClick={() => void toggle()} className="w-9 h-9 shrink-0 rounded-md bg-primary text-primary-foreground flex items-center justify-center" aria-label={s.playing ? tr("Пауза") : tr("Играть")}>
             {s.playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </button>
-          <button type="button" onClick={() => void next()} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label={tr("Следующий")}>
-            <SkipForward className="w-4 h-4" />
-          </button>
+          {!s.live && (
+            <button type="button" onClick={() => void next()} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label={tr("Следующий")}>
+              <SkipForward className="w-4 h-4" />
+            </button>
+          )}
           <div className="min-w-0 flex-1">
             <div className="text-small truncate">{t.title}</div>
-            <div className="text-caption text-subtle tabular-nums">
+            <div className="text-caption text-subtle tabular-nums truncate">
               {fmtTime(s.time)}{s.duration ? ` / ${fmtTime(s.duration)}` : ""}
-              {s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
+              {s.live ? ` · 📻 ${s.live.name}` : s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
             </div>
           </div>
           {/* Громкость — только на десктопе: на телефоне есть кнопки, а место дорого. */}

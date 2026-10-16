@@ -12,6 +12,7 @@ const REASONS: { id: ReportReason; label: string }[] = [
   { id: "abuse", label: "Оскорбления, травля" },
   { id: "spam", label: "Спам или мошенничество" },
   { id: "illegal", label: "Противозаконное" },
+  { id: "copyright", label: "Нарушение авторских прав" },
   { id: "other", label: "Другое" },
 ];
 

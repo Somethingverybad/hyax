@@ -1,7 +1,8 @@
 import { t as tr, tn } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, ChevronLeft, Download, Pause, Play, Plus } from "lucide-react";
+import { Check, ChevronLeft, Download, Flag, Pause, Play, Plus } from "lucide-react";
+import ReportSheet from "@/components/ReportSheet";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
 import { api, type Playlist, type PlaylistTrack, type PublicPlaylist } from "@/api/client";
@@ -27,6 +28,7 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
   const [saving, setSaving] = useState(false);
   // Треки, уже забранные в «Мою музыку» за этот заход: галочка вместо плюса.
   const [taken, setTaken] = useState<Set<string>>(new Set());
+  const [reportFor, setReportFor] = useState<PlaylistTrack | null>(null);
   const player = usePlayer();
   const playing = currentTrack();
   const name = item.is_default ? tr(item.name) : item.name;
@@ -115,14 +117,24 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
                       value={isNow && player.duration ? fmtTime(player.time) : undefined}
                       onClick={() => void playQueue(tracks.map(toQueue), i)}
                       trailing={
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); void take(t); }}
-                          className={cn("p-2", got ? "text-primary" : "text-subtle active:text-primary")}
-                          aria-label={got ? tr("Добавлено в «Мою музыку»") : tr("В «Мою музыку»")}
-                        >
-                          {got ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                        </button>
+                        <span className="flex items-center shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void take(t); }}
+                            className={cn("p-2", got ? "text-primary" : "text-subtle active:text-primary")}
+                            aria-label={got ? tr("Добавлено в «Мою музыку»") : tr("В «Мою музыку»")}
+                          >
+                            {got ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setReportFor(t); }}
+                            className="p-2 text-subtle active:text-destructive"
+                            aria-label={tr("Пожаловаться на трек")}
+                          >
+                            <Flag className="w-4 h-4" />
+                          </button>
+                        </span>
                       }
                     />
                   );
@@ -132,6 +144,9 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
           </>
         )}
       </div>
+      {reportFor && (
+        <ReportSheet target={{ type: "track", id: reportFor.id }} title={reportFor.title} onClose={() => setReportFor(null)} />
+      )}
     </>
   );
 };

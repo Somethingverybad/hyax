@@ -3008,6 +3008,10 @@ class MediaSignView(APIView):
             public_owners = set(PlaylistTrack.objects.filter(
                 file_url=marker, playlist__is_public=True).values_list('playlist__owner_id', flat=True))
             in_my_playlist = bool(public_owners and public_owners & _music_contacts(profile))
+        # Трек из эфира, который мне виден (chat/radio.py).
+        if not in_my_playlist:
+            from .radio import track_on_air_for
+            in_my_playlist = track_on_air_for(profile, file_url=marker)
         # Обои чата: ключ wallpapers/… подписываем участнику чата, у которого
         # они стоят (общие или личные), — это не сообщение, в Message их нет.
         is_wallpaper = key.startswith('wallpapers/') and (
@@ -3021,7 +3025,7 @@ class MediaSignView(APIView):
             # случайный), и участники второго чата получали 403.
             msgs = list(Message.objects.filter(
                 Q(file_url=marker) | Q(video_url=marker) | Q(voice_url=marker)
-            ).select_related('chat'))
+            ).exclude(deleted_for_all=True).select_related('chat'))
             if not msgs:
                 return Response({"error": "not found"}, status=404)
             if not any(_can_see_chat(m.chat, profile) for m in msgs):
@@ -4721,6 +4725,14 @@ def _report_snapshot(target_type, target_id):
     if target_type == "theme":
         theme = Theme.objects.filter(id=target_id).first()
         return (f"тема «{theme.name}»" if theme else ""), (theme.author if theme else None)
+    if target_type == "track":
+        # Трек из чужого плейлиста или эфира. Файл — в снимке: по нему админ
+        # снимает трек везде (MusicTakedownView), даже если плейлист удалят.
+        t = PlaylistTrack.objects.filter(id=target_id).select_related("playlist__owner").first()
+        if not t:
+            return "", None
+        name = f"{t.artist} — {t.title}" if t.artist else t.title
+        return (f"трек «{name}» в плейлисте «{t.playlist.name}» · id {t.id} · файл {t.file_url}"), t.playlist.owner
     return "", None
 
 
@@ -4776,6 +4788,30 @@ class ReportView(APIView):
 
 
 AUDIO_RE = re.compile(r"\.(mp3|m4a|aac|flac|wav|ogg|opus|weba|webm)$")
+
+
+class MusicTakedownView(APIView):
+    """POST {track_id} — админ снимает файл по жалобе правообладателя: из всех
+    плейлистов и эфиров, а сообщения с этим файлом удаляются у всех. Подписанная
+    ссылка на файл после этого никому не выдаётся (MediaSignView)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .radio import before_track_removed
+        me = _prof(request)
+        if not me or not is_admin_profile(me):
+            return Response({"error": "Только для админов"}, status=403)
+        t = PlaylistTrack.objects.filter(id=request.data.get("track_id")).first()
+        if not t:
+            return Response({"error": "Трек не найден"}, status=404)
+        url = t.file_url
+        rows = list(PlaylistTrack.objects.filter(file_url=url))
+        for row in rows:
+            before_track_removed(row)
+            row.delete()
+        msgs = Message.objects.filter(file_url=url).exclude(deleted_for_all=True).update(deleted_for_all=True)
+        logger.info("takedown %s: плейлистов %s, сообщений %s (админ %s)", url, len(rows), msgs, me.username)
+        return Response({"ok": True, "tracks": len(rows), "messages": msgs})
 
 
 def _default_playlist(profile):
@@ -5033,18 +5069,32 @@ class PlaylistTracksView(APIView):
         pl = (Playlist.objects.filter(id=pk, owner=me).first() if pk else _default_playlist(me))
         if not pl:
             return Response({"error": "Плейлист не найден"}, status=404)
-        # {track_id} — трек из открытого плейлиста собеседника: берём его
-        # файл и подписи, как при копировании плейлиста целиком.
+        # Плейлист может быть в эфире: играющий трек закрепляем до правки,
+        # чтобы у слушателей ничего не перескочило (chat/radio.py).
+        from .radio import before_playlist_change, fill_track_duration, track_on_air_for, next_position
+        before_playlist_change(pl.id)
+        on_air = pl.stations.exists()
+        # {next: true} — поставить сразу за тем, что сейчас в эфире (диджей).
+        play_next = request.data.get("next") in (True, "true", "1", 1)
+        # {track_id} — трек из открытого плейлиста собеседника или из эфира,
+        # который мне виден: берём его файл и подписи, как при копировании.
         if request.data.get("track_id"):
-            src = PlaylistTrack.objects.filter(id=request.data.get("track_id"), playlist__is_public=True).first()
-            if not src or not _public_playlist(me, src.playlist_id):
+            src = PlaylistTrack.objects.filter(id=request.data.get("track_id")).select_related("playlist").first()
+            if not src or not (
+                (src.playlist.is_public and _public_playlist(me, src.playlist_id))
+                or track_on_air_for(me, track_id=src.id)
+            ):
                 return Response({"error": "Трек не найден"}, status=404)
-            last = pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0
+            exists = pl.tracks.filter(file_url=src.file_url).exists()
+            pos = next_position(pl) if play_next and not exists else (
+                (pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0) + 1)
             track, created = PlaylistTrack.objects.get_or_create(
                 playlist=pl, file_url=src.file_url,
                 defaults={"source": src.source, "title": src.title, "artist": src.artist,
-                          "duration": src.duration, "position": last + 1},
+                          "duration": src.duration, "position": pos},
             )
+            if created and on_air and not track.duration:
+                fill_track_duration(track)
             return Response(
                 {"track": PlaylistTrackSerializer(track).data, "playlist": PlaylistSerializer(pl).data,
                  "already": not created},
@@ -5059,11 +5109,15 @@ class PlaylistTracksView(APIView):
         if not AUDIO_RE.search((name or msg.file_url).lower().split("?")[0]):
             return Response({"error": "Это не музыка"}, status=400)
         title = re.sub(r"\.[^.]+$", "", name) or "Без названия"
-        last = pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0
+        exists = pl.tracks.filter(file_url=msg.file_url).exists()
+        pos = next_position(pl) if play_next and not exists else (
+            (pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0) + 1)
         track, created = PlaylistTrack.objects.get_or_create(
             playlist=pl, file_url=msg.file_url,
-            defaults={"source": msg, "title": title[:200], "position": last + 1},
+            defaults={"source": msg, "title": title[:200], "position": pos},
         )
+        if created and on_air and not track.duration:
+            fill_track_duration(track)
         return Response(
             {"track": PlaylistTrackSerializer(track).data, "playlist": PlaylistSerializer(pl).data,
              "already": not created},
@@ -5075,8 +5129,78 @@ class PlaylistTracksView(APIView):
         row = PlaylistTrack.objects.filter(id=track, playlist_id=pk, playlist__owner=me).first()
         if not row:
             return Response({"error": "Трек не найден"}, status=404)
+        from .radio import before_track_removed
+        before_track_removed(row)
         row.delete()
         return Response(status=204)
+
+
+def _probe_audio(path):
+    """Длительность и теги (название, исполнитель) загруженного файла."""
+    import subprocess, json
+    try:
+        out = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_entries',
+             'format=duration:format_tags=title,artist', path],
+            capture_output=True, text=True, timeout=30).stdout
+        fmt = (json.loads(out or '{}').get('format') or {})
+        tags = {k.lower(): v for k, v in (fmt.get('tags') or {}).items()}
+        return float(fmt.get('duration') or 0) or None, (tags.get('title') or '').strip(), (tags.get('artist') or '').strip()
+    except Exception:
+        logger.exception('ffprobe audio failed')
+        return None, '', ''
+
+
+class PlaylistTrackUploadView(APIView):
+    """POST multipart {file, title?, artist?, next?} — загрузить свой трек
+    прямо в плейлист (без <pk> — в «Мою музыку»). Так свою музыку добавляют
+    люди, и так боты-диджеи наполняют эфир: сообщение в чат для этого не нужно.
+
+    Название и исполнитель — из формы, иначе из тегов файла, иначе из имени."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk=None):
+        from .radio import before_playlist_change, next_position
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Нет профиля"}, status=403)
+        pl = (Playlist.objects.filter(id=pk, owner=me).first() if pk else _default_playlist(me))
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        f = request.FILES.get("file")
+        if not f:
+            return Response({"error": "Нет файла"}, status=400)
+        ext = os.path.splitext(f.name or "")[1].lower()
+        if not AUDIO_RE.search(ext):
+            return Response({"error": "Это не музыка"}, status=400)
+        rel = os.path.join("music", f"{uuid.uuid4()}{ext}")
+        full = os.path.join(settings.MEDIA_ROOT, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb+") as dst:
+            for chunk in f.chunks():
+                dst.write(chunk)
+        duration, tag_title, tag_artist = _probe_audio(full)
+        if not duration:
+            os.remove(full)
+            return Response({"error": "Не удалось прочитать файл — это точно аудио?"}, status=400)
+        url = f"/media/{rel}"
+        if s3_enabled():
+            try:
+                url = s3_upload(full, rel)
+                os.remove(full)
+            except Exception:
+                logger.exception("music upload: S3 не принял файл — оставляю локально")
+        title = ((request.data.get("title") or "").strip() or tag_title
+                 or re.sub(r"\.[^.]+$", "", f.name or "") or "Без названия")[:200]
+        artist = ((request.data.get("artist") or "").strip() or tag_artist)[:200]
+        before_playlist_change(pl.id)
+        play_next = request.data.get("next") in (True, "true", "1", 1)
+        pos = next_position(pl) if play_next else (
+            (pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0) + 1)
+        track = PlaylistTrack.objects.create(playlist=pl, file_url=url, title=title, artist=artist,
+                                             duration=round(duration, 2), position=pos)
+        return Response({"track": PlaylistTrackSerializer(track).data, "playlist": PlaylistSerializer(pl).data}, status=201)
 
 
 class SavedViewersView(APIView):

@@ -298,8 +298,8 @@ export interface StickerPackInfo {
   open_add?: boolean;
 }
 
-export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack" | "theme";
-export type ReportReason = "sexual" | "violence" | "abuse" | "spam" | "illegal" | "other";
+export type ReportTarget = "user" | "message" | "chat" | "sound_pack" | "sticker_pack" | "theme" | "track";
+export type ReportReason = "sexual" | "violence" | "abuse" | "spam" | "illegal" | "copyright" | "other";
 
 export interface SavedImage {
   id: string;
@@ -326,6 +326,33 @@ export interface Playlist {
   is_public?: boolean;
   created_at?: string;
   tracks_count?: number;
+}
+
+/** Эфир (радиостанция): плейлист, который собеседники слушают вместе. */
+export interface StationInfo {
+  id: string;
+  name: string;
+  is_default: boolean;
+  playlist_id: string;
+  owner: { id: string; username: string; avatar_url?: string | null };
+  /** Эфир от имени канала — его видят подписчики. */
+  channel: { id: string; name: string; avatar_url?: string | null } | null;
+  mine: boolean;
+  can_control: boolean;
+  paused: boolean;
+  listeners: number;
+  listeners_preview: { id: string; username: string; avatar_url?: string | null }[];
+  now_title: string;
+  now_artist: string;
+  tracks_count: number;
+}
+
+/** Состояние эфира: что играет и с какого момента (мс по часам сервера). */
+export interface StationState {
+  station: StationInfo;
+  server_now: number;
+  now: { track: PlaylistTrack; started_at: number; position?: number } | null;
+  next: { track: PlaylistTrack; started_at: number }[];
 }
 
 /** Открытый плейлист собеседника в списке вкладки «Музыка». */
@@ -1249,6 +1276,17 @@ export const api = {
     return data;
   },
 
+  /** Загрузить свой трек прямо в плейлист (без playlistId — в «Мою музыку»). */
+  uploadTrack: async (file: File, playlistId?: string): Promise<{ track: PlaylistTrack; playlist: Playlist }> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const url = playlistId ? `${API_URL}/playlists/${playlistId}/tracks/upload/` : `${API_URL}/playlists/tracks/upload/`;
+    const res = await fetchWithAuthMultipart(url, { method: "POST", body: fd });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(d.error || "Не удалось загрузить трек");
+    return d;
+  },
+
   /** Трек из открытого плейлиста собеседника — в «Мою музыку». */
   addTrackFromPublic: async (trackId: string): Promise<{ track: PlaylistTrack; already: boolean }> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/tracks/`, {
@@ -1256,6 +1294,69 @@ export const api = {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не удалось добавить");
+    return data;
+  },
+
+  /** Эфиры, которые мне видны, и каналы, от которых я могу вести эфир. */
+  listStations: async (): Promise<{ stations: StationInfo[]; channels: { id: string; name: string; avatar_url?: string | null }[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/radio/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось загрузить эфиры");
+    return res.json();
+  },
+
+  /** Запустить эфир своего плейлиста (от себя или от канала). */
+  startStation: async (playlistId: string, channelId?: string): Promise<StationState> => {
+    const res = await fetchWithAuth(`${API_URL}/radio/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ playlist_id: playlistId, channel_id: channelId || undefined }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось запустить эфир");
+    return data;
+  },
+
+  getStation: async (id: string): Promise<StationState> => {
+    const res = await fetchWithAuth(`${API_URL}/radio/${id}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Эфир закончился");
+    return res.json();
+  },
+
+  /** «Я слушаю» — раз в 15 секунд; в ответ состояние эфира. */
+  listenStation: async (id: string): Promise<StationState> => {
+    const res = await fetchWithAuth(`${API_URL}/radio/${id}/listen/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) {
+      // 404 — эфира больше нет; остальное (сеть, 5xx) — повторим позже.
+      const e = new LError("Эфир закончился") as Error & { gone?: boolean };
+      e.gone = res.status === 404;
+      throw e;
+    }
+    return res.json();
+  },
+
+  leaveStation: async (id: string): Promise<void> => {
+    await fetchWithAuth(`${API_URL}/radio/${id}/listen/`, { method: "DELETE", headers: authHeaders() }).catch(() => undefined);
+  },
+
+  controlStation: async (id: string, action: "skip" | "pause" | "resume"): Promise<StationState> => {
+    const res = await fetchWithAuth(`${API_URL}/radio/${id}/control/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ action }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не получилось");
+    return data;
+  },
+
+  stopStation: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/radio/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok && res.status !== 204) throw new LError("Не удалось остановить эфир");
+  },
+
+  /** Админ: снять файл по жалобе правообладателя — из всех плейлистов, эфиров и сообщений. */
+  takedownTrack: async (trackId: string): Promise<{ tracks: number; messages: number }> => {
+    const res = await fetchWithAuth(`${API_URL}/music/takedown/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ track_id: trackId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не получилось");
     return data;
   },
 
