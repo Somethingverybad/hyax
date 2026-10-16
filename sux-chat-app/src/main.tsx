@@ -227,7 +227,10 @@ if (Cap.isNativePlatform()) {
   const IOS_OPEN = { ms: 375, ease: "cubic-bezier(0.38, 0.8, 0.125, 1)" };
   const IOS_CLOSE = { ms: 425, ease: "cubic-bezier(0.3, 1, 0.3, 1)" };
   const iosKeyboard = (d: { height: number; ts: number }) => {
-    const h = Math.max(0, Math.round(d.height));
+    let h = Math.max(0, Math.round(d.height));
+    // Клавиатура во весь экран не бывает: так выглядела пустая рамка от iOS
+    // после выбора фото (баг-репорт 6776f3ae) — считаем, что клавиатуры нет.
+    if (h >= window.innerHeight - 1) { applog.warn(`kbsync bogus h=${h} inner=${window.innerHeight}`); h = 0; }
     if (h === lastOffset) return;
     const a = h > Math.max(0, lastOffset) ? IOS_OPEN : IOS_CLOSE;
     const late = Math.min(Math.max(0, Date.now() - d.ts), a.ms - 16);

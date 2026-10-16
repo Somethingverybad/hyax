@@ -72,7 +72,12 @@ public class KeyboardSyncPlugin: CAPPlugin, CAPBridgedPlugin {
         let kb = window.convert(end, from: nil)
         let wv = web.convert(web.bounds, to: window)
         let overlap = max(0, wv.maxY - max(kb.minY, wv.minY))
-        let height = kb.minY >= window.bounds.maxY - 1 ? 0 : overlap
+        // Клавиатуры нет: ушла за нижний край — или рамка пустая либо
+        // накрывает WebView целиком. Пустую рамку iOS присылает после закрытия
+        // выбора фото и видео; перекрытие от неё выходило во весь экран, и
+        // панель ввода с лентой улетали вверх на 818 px (баг-репорт 6776f3ae).
+        let gone = end.isEmpty || kb.minY >= window.bounds.maxY - 1 || kb.minY <= wv.minY
+        let height = gone ? 0 : overlap
         // В JS — напрямую и синхронно, а не через notifyListeners: тот кладёт
         // вызов в DispatchQueue.main.async, а главная очередь в этот момент
         // занята показом клавиатуры, и событие доезжало на 50–130 мс позже
