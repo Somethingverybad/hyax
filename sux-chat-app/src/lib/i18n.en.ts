@@ -1796,5 +1796,6 @@ const en: Record<string, string> = {
   "Владелец закрыл ссылку.": "The owner revoked the link.",
   "Треки": "Tracks",
   "Ваш": "Yours",
+  "Переслано из «{name}»": "Forwarded from “{name}”",
 };
 export default en;

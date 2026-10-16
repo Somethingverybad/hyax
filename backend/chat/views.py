@@ -700,9 +700,12 @@ def _forward_copy(src, target, profile, album_id=None):
     title = src.forwarded_title
     fchat = src.forwarded_chat
     if not title:
-        if src.chat.kind == "channel" and not (src.chat.sign_posts and src.sender):
+        if src.chat.kind == "channel":
+            # Из канала — всегда «Переслано из «Канал»»: читатель видит, откуда
+            # пост, и по тапу открывает канал. Автора помним, только если канал
+            # подписывает посты, — тогда он идёт вторым («Канал · автор»).
             title = src.chat.name or "Канал"
-            origin = None
+            origin = src.sender if (src.chat.sign_posts and src.sender) else None
             fchat = src.chat
         else:
             title = origin.username if origin else "Неизвестный"
@@ -873,6 +876,11 @@ def _notify_new_message(message, profile, request):
                     'data': {
                         'type': 'new_message',
                         'chat_id': str(message.chat.id),
+                        # Чей это чат — для баннера на десктопе: у поста канала
+                        # заголовок — канал, а не автор (как и в пуше).
+                        'chat_kind': message.chat.kind,
+                        'chat_name': message.chat.name or "",
+                        'chat_avatar': message.chat.avatar_url or "",
                         'message': message_data,
                     },
                 }

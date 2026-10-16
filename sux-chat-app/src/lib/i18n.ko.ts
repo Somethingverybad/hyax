@@ -1791,5 +1791,6 @@ const ko: Record<string, string> = {
   "Треки": "곡 목록",
   "Ваш": "내 것",
   "saved:Все": "모든 사용자",
+  "Переслано из «{name}»": "'{name}'에서 전달됨",
 };
 export default ko;

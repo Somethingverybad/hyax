@@ -463,9 +463,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // «Просмотры и реакции» — поимённый список из меню сообщения.
   const [viewersFor, setViewersFor] = useState<string | null>(null);
   const navigate = useNavigate();
+  // Пост из канала открывает канал (даже если подписан автор), остальное — профиль.
   const openForwardOrigin = (m: Message) => {
-    if (m.forwarded_from) setViewProfileId(m.forwarded_from.id);
-    else if (m.forwarded_chat) navigate("/chat", { state: { chatId: m.forwarded_chat.id, kind: "channel", title: m.forwarded_chat.name } });
+    if (m.forwarded_chat) navigate("/chat", { state: { chatId: m.forwarded_chat.id, kind: "channel", title: m.forwarded_chat.name } });
+    else if (m.forwarded_from) setViewProfileId(m.forwarded_from.id);
   };
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -3788,7 +3789,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         >
                           <Forward className="w-3 h-3 shrink-0" />
                           <span className={cn("line-clamp-1 break-all", !mixedOrigins && (message.forwarded_from || message.forwarded_chat) && "underline decoration-current/40 underline-offset-2")}>
-                            {mixedOrigins ? tn(album!.length, "Переслано {n} сообщение", "Переслано {n} сообщения", "Переслано {n} сообщений") : tr("Переслано от {name}", { name: message.forwarded_from?.username || message.forwarded_title || "" })}
+                            {mixedOrigins ? tn(album!.length, "Переслано {n} сообщение", "Переслано {n} сообщения", "Переслано {n} сообщений")
+                              // Из канала — его название; автор вторым, если канал подписывает посты.
+                              : message.forwarded_chat
+                              ? `${tr("Переслано из «{name}»", { name: message.forwarded_chat.name || message.forwarded_title || tr("Канал") })}${message.forwarded_from ? ` · ${message.forwarded_from.username}` : ""}`
+                              : tr("Переслано от {name}", { name: message.forwarded_from?.username || message.forwarded_title || "" })}
                           </span>
                         </div>
                       )}

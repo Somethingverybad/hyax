@@ -518,15 +518,22 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           // видно, откуда сообщение. Личное — просто имя собеседника.
           const chatRow = chatsRef.current.find((c) => String(c.id) === String(chatId)) as (ChatType & { is_group?: boolean; kind?: string; name?: string; notify_sound?: { url?: string } | null }) | undefined;
           const fromGroup = !!chatRow?.is_group && chatRow?.kind !== "channel";
+          // Пост канала — от имени канала (как в пуше на телефоне): заголовок и
+          // аватар канала, а не автора. Тип и название приходят в самом событии —
+          // канала может ещё не быть в загруженном списке.
+          const d = (msg?.data ?? msg) || {};
+          const fromChannel = d.chat_kind === "channel" || chatRow?.kind === "channel";
+          const channelName = d.chat_name || chatRow?.name || tr("Канал");
+          const channelAvatar = d.chat_avatar || (chatRow as { avatar_url?: string | null } | undefined)?.avatar_url || "";
           // «Звук входящих» выключен: обычные сообщения — без звука, играет
           // только звук, приложенный к сообщению специально.
           const silent = !!readCache<{ notify_silent?: boolean }>("user")?.notify_silent;
           showDesktopNotification({
             silent,
-            title: fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
+            title: fromChannel ? channelName : fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
             body: (fromGroup && m.sender?.username ? `${m.sender.username}: ${preview}` : preview).slice(0, 150),
             tag: chatId ? String(chatId) : undefined,
-            avatar: m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
+            avatar: fromChannel ? (channelAvatar ? mediaUrl(channelAvatar) : undefined) : m.sender?.avatar_url ? mediaUrl(m.sender.avatar_url) : undefined,
             onClick: () => { if (chatId) setSelectedChatId(String(chatId)); },
           });
           // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
