@@ -322,7 +322,8 @@
         <input id="bvAppUrl" type="text" placeholder="https://example.com/app" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <div class="field"><label class="lbl">Подпись кнопки</label>
         <input id="bvAppTitle" type="text" maxlength="32" placeholder="Открыть приложение"></div>
-      <div class="rowbtns"><button class="btn primary" id="bvSaveApp" type="button">Сохранить</button></div>
+      <div class="rowbtns"><button class="btn primary" id="bvSaveApp" type="button">Сохранить</button>
+        <button class="btn" id="bvCopyApp" type="button">Скопировать ссылку</button></div>
       <div class="result" id="bvAppResult"></div>
       <div class="hint mt">Страница откроется внутри WYX кнопкой в чате с ботом и в его карточке и узнает, кто её открыл (подписанные данные запуска).
         Только https. Пустой адрес — убрать кнопку. Как написать мини-приложение — <a href="bots.html#webapp">документация</a>.</div>
@@ -1242,6 +1243,12 @@
       if(x.ok && x.data.bot){ b.webapp_url=x.data.bot.webapp_url; b.webapp_title=x.data.bot.webapp_title; res.className="result ok"; res.textContent=url?"Сохранено — кнопка появится в чате с ботом.":"Мини-приложение убрано."; }
       else { res.className="result err"; res.textContent=(x.data&&x.data.error)||"Не удалось сохранить"; }
     }).catch(function(){ btn.disabled=false; });
+  });
+  // Ссылка на приложение — нейтральный домен: в WYX открывает приложение сразу.
+  el("bvCopyApp").addEventListener("click", function(){
+    var b=curBot; if(!b) return;
+    if(!b.webapp_url){ el("bvAppResult").className="result err"; el("bvAppResult").textContent="Сначала сохраните адрес приложения."; return; }
+    copyText("https://wyx.su/u/"+encodeURIComponent(b.username)+"?app", el("bvCopyApp"), "Ссылка на мини-приложение:");
   });
   el("bvShow").addEventListener("click", function(){ tokenShown=!tokenShown; if(curBot) renderBot(curBot); });
   el("bvCopy").addEventListener("click", function(){ if(curBot) copyText(curBot.token, el("bvCopy"), "Токен бота:"); });

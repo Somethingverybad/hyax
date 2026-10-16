@@ -358,6 +358,16 @@ export interface StationState {
   next: { track: PlaylistTrack; started_at: number }[];
 }
 
+/** Мини-приложение в каталоге (GET webapps/). */
+export interface MiniAppItem {
+  bot: { id: string; username: string; avatar_url?: string | null };
+  title: string;
+  description: string;
+  users: number;
+  /** https://wyx.su/u/<бот>?app */
+  link: string;
+}
+
 /** Открытый плейлист собеседника в списке вкладки «Музыка». */
 export interface PublicPlaylist {
   id: string;
@@ -1291,6 +1301,13 @@ export const api = {
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(d?.error || "Не удалось открыть приложение");
     return d;
+  },
+
+  /** Каталог мини-приложений: все боты с приложением, популярные первыми. */
+  listMiniApps: async (q = ""): Promise<MiniAppItem[]> => {
+    const res = await fetchWithAuth(`${API_URL}/webapps/${q ? `?q=${encodeURIComponent(q)}` : ""}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось загрузить мини-приложения");
+    return (await res.json()).apps || [];
   },
 
   /** Мини-приложение отправило боту данные (WYX.WebApp.sendData). */

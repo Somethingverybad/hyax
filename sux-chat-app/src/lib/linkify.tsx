@@ -37,7 +37,8 @@ const trimTail = (raw: string): [string, string] => {
 export function internalPath(raw: string): string | null {
   try {
     const u = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
-    if (u.host !== new URL(PUBLIC_ORIGIN).host) return null;
+    // Свой домен и нейтральный wyx.su (ссылки на мини-приложения и профили).
+    if (u.host !== new URL(PUBLIC_ORIGIN).host && u.host !== "wyx.su" && u.host !== "www.wyx.su") return null;
     return /^\/(u|c|sp|stp|t|pl)\/[^/]+\/?$/.test(u.pathname) ? u.pathname + u.search : null;
   } catch {
     return null;

@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
 from .radio import StationsView, StationView, StationControlView, StationListenView
-from .webapp import WebAppInitView, WebAppDataView
+from .webapp import WebAppInitView, WebAppDataView, WebAppCatalogView, wyx_user_page
 from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
@@ -109,6 +109,10 @@ urlpatterns = [
     path('bots/<uuid:pk>/avatar/', BotAvatarView.as_view(), name='bot-avatar'),
     path('webapp/init/', WebAppInitView.as_view(), name='webapp-init'),
     path('webapp/data/', WebAppDataView.as_view(), name='webapp-data'),
+    path('webapps/', WebAppCatalogView.as_view(), name='webapp-catalog'),
+    # Страница https://wyx.su/u/<ник> (nginx wyx.conf проксирует /u/ сюда).
+    path('wyx/u/<str:username>', wyx_user_page, name='wyx-user-page'),
+    path('wyx/u/<str:username>/', wyx_user_page),
     # Inline-боты (chat/inline.py): запрос → результаты → выбор → заполнение.
     path('bots/inline/query/', InlineQueryView.as_view(), name='inline-query'),
     path('bots/inline/<str:query_id>/answer/', InlineAnswerView.as_view(), name='inline-answer'),

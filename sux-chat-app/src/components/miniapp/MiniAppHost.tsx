@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { useEscape } from "@/lib/escape";
-import { ArrowLeft, ExternalLink, Loader2, MoreHorizontal, RotateCw, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, MoreHorizontal, RotateCw, Share2, X } from "lucide-react";
+import { shareMiniApp } from "@/lib/share";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import Identicon from "@/components/Identicon";
@@ -206,6 +207,15 @@ const MiniAppHost = () => {
                 className="w-full h-11 px-3 flex items-center gap-2 text-left text-small active:bg-surface-3">
                 <RotateCw className="w-4 h-4" /> {tr("Обновить")}
               </button>
+              {launch && (
+                <button type="button" onClick={() => {
+                  setMenu(false);
+                  void shareMiniApp(title, launch.bot.username).then((r) => { if (r === "copied") toast.success(tr("Ссылка скопирована")); });
+                }}
+                  className="w-full h-11 px-3 flex items-center gap-2 text-left text-small active:bg-surface-3">
+                  <Share2 className="w-4 h-4" /> {tr("Поделиться")}
+                </button>
+              )}
               {launch && (
                 <button type="button" onClick={() => { setMenu(false); openExternal(launch.url); }}
                   className="w-full h-11 px-3 flex items-center gap-2 text-left text-small active:bg-surface-3">

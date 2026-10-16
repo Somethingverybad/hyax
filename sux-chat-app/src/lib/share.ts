@@ -16,6 +16,8 @@ export type ShareResult = "shared" | "copied" | "error";
 export const PUBLIC_ORIGIN = "https://huyax.e-tree.su";
 
 export const profileLink = (username: string) => `${PUBLIC_ORIGIN}/u/${encodeURIComponent(username)}`;
+/** Мини-приложение бота — на нейтральном домене: https://wyx.su/u/<бот>?app. */
+export const miniAppLink = (username: string) => `https://wyx.su/u/${encodeURIComponent(username)}?app`;
 /** Ссылка на пак звуков: по ней пак добавляют себе (см. pages/SoundPackPage). */
 /** Ссылка на тему оформления — /t/<id>, как у паков. */
 export const themeLink = (id: string) => `${PUBLIC_ORIGIN}/t/${id}`;
@@ -45,6 +47,10 @@ async function shareUrl(title: string, text: string, url: string): Promise<Share
 }
 
 /** Поделиться паком звуков: системное окно «Поделиться», иначе — буфер. */
+/** Поделиться мини-приложением бота — ссылкой на wyx.su. */
+export const shareMiniApp = (title: string, username: string) =>
+  shareUrl("WYX", t("«{name}» в WYX", { name: title }), miniAppLink(username));
+
 export const shareSoundPack = (name: string, id: string) =>
   shareUrl("WYX", t("Пак звуков «{name}» в WYX", { name }), soundPackLink(id));
 

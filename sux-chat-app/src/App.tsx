@@ -21,6 +21,7 @@ import AdminMetrics from "./pages/AdminMetrics";
 import ProfileIdeas from "./pages/ProfileIdeas";
 import ProfileVibeLevels from "./pages/ProfileVibeLevels";
 import ProfileActions from "./pages/ProfileActions";
+import MiniApps from "./pages/MiniApps";
 import ProfileAura from "./pages/ProfileAura";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
 import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
@@ -152,8 +153,13 @@ const DeepLinks = () => {
       try {
         const u = new URL(url);
         // whoyax://share — расширение «Поделиться» положило файлы (lib/shareInbox).
-        if (u.protocol === "whoyax:") { if (u.host === "share") window.dispatchEvent(new CustomEvent("hyax:share-inbox")); return; }
-        if (u.pathname.startsWith("/u/") || u.pathname.startsWith("/c/") || u.pathname.startsWith("/t/") || u.pathname.startsWith("/sp/") || u.pathname.startsWith("/stp/") || u.pathname.startsWith("/kt/")) navRef.current(u.pathname + u.search + u.hash);
+        if (u.protocol === "whoyax:") {
+          if (u.host === "share") { window.dispatchEvent(new CustomEvent("hyax:share-inbox")); return; }
+          // whoyax://u/<ник>[?app] — кнопка «Открыть в WYX» на странице wyx.su/u/<ник>.
+          if (["u", "c", "pl"].includes(u.host)) navRef.current(`/${u.host}${u.pathname}${u.search}`);
+          return;
+        }
+        if (["/u/", "/c/", "/t/", "/sp/", "/stp/", "/kt/", "/pl/"].some((pre) => u.pathname.startsWith(pre))) navRef.current(u.pathname + u.search + u.hash);
       } catch { /* не URL — игнорируем */ }
     };
     CapApp.getLaunchUrl().then((r) => toPath(r?.url)).catch(() => {});
@@ -314,6 +320,7 @@ const App = () => {
                 <Route path="/profile/ideas" element={<ProfileIdeas />} />
                 <Route path="/profile/vibe-levels" element={<ProfileVibeLevels />} />
                 <Route path="/profile/actions" element={<ProfileActions />} />
+                <Route path="/profile/apps" element={<MiniApps />} />
                 <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
                 {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}
                 <Route path="/profile/soundpacks/new" element={<SoundPackNew />} />

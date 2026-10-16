@@ -9,7 +9,7 @@ import LoopVideo from "@/components/LoopVideo";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
-import { Globe, Wand2 } from "lucide-react";
+import { Globe, Wand2, LayoutGrid } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -441,6 +441,12 @@ const ProfilePage = () => {
               label={t("Стикерпаки")}
               hint={t("Свои наборы и добавление по ссылке")}
               onClick={() => navigate("/profile/stickerpacks")}
+            />
+            <SettingsRow
+              icon={LayoutGrid}
+              label={t("Мини-приложения")}
+              hint={t("Приложения ботов внутри WYX")}
+              onClick={() => navigate("/profile/apps")}
             />
             <SettingsRow
               icon={Lock}

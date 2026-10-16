@@ -1,6 +1,6 @@
 import { t, getLang } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { MessageSquare, Share2, ArrowLeft, Copy, ChevronRight, LayoutGrid } from "lucide-react";
 import { openMiniApp } from "@/lib/miniapp";
@@ -22,11 +22,14 @@ import { shareProfile, PUBLIC_ORIGIN } from "@/lib/share";
  */
 const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
 
-type Card = { id: string; username: string; avatar_url?: string | null; cover_url?: string | null; bio?: string | null; is_bot?: boolean; created_at?: string | null };
+type Card = { id: string; username: string; avatar_url?: string | null; cover_url?: string | null; bio?: string | null; is_bot?: boolean; created_at?: string | null; webapp_url?: string; webapp_title?: string };
 
 const PublicProfile = () => {
   const { username = "" } = useParams();
   const navigate = useNavigate();
+  // ?app — ссылка на мини-приложение (https://wyx.su/u/<бот>?app): открыть его сразу.
+  const { search } = useLocation();
+  const wantApp = new URLSearchParams(search).has("app");
   const [card, setCard] = useState<Card | null>(null);
   const [me, setMe] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "missing" | "error">("loading");
@@ -36,7 +39,7 @@ const PublicProfile = () => {
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) {
-      navigate(`/auth?next=${encodeURIComponent(`/u/${username}`)}`, { replace: true });
+      navigate(`/auth?next=${encodeURIComponent(`/u/${username}${search}`)}`, { replace: true });
       return;
     }
     let alive = true;
@@ -47,6 +50,8 @@ const PublicProfile = () => {
         setCard(p as Card);
         setMe(my?.id || null);
         setState("ok");
+        const c = p as Card;
+        if (wantApp && c.is_bot && c.webapp_url) void openMiniApp({ botId: c.id, botName: c.username });
         api.listSavedImages(p.id, 5).then((d) => alive && setSaved(d)).catch(() => alive && setSaved({ count: 0, items: [] }));
       } catch (e: any) {
         if (!alive) return;

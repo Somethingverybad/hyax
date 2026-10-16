@@ -1811,5 +1811,13 @@ const en: Record<string, string> = {
   "Данные запуска устарели — откройте приложение заново": "Launch data expired — open the app again",
   "Бот сейчас недоступен": "The bot is unavailable right now",
   "Адрес мини-приложения — https://…": "Mini app address must be https://…",
+  "Мини-приложения": "Mini apps",
+  "Приложения ботов внутри WYX": "Bot apps inside WYX",
+  "Найти приложение": "Find an app",
+  "Пока ни у одного бота нет мини-приложения. Своё можно подключить в студии: бот → «Мини-приложение».": "No bot has a mini app yet. You can add yours in the studio: bot → “Mini app”.",
+  "{n} пользователь|{n} пользователя|{n} пользователей": "{n} user|{n} users",
+  "Мини-приложения делают боты: это их страницы, открытые внутри WYX. Перед первым запуском приложение спросит разрешение узнать ваш ник и аватар.": "Mini apps are made by bots: their pages, opened inside WYX. Before the first launch an app asks permission to see your username and avatar.",
+  "Не удалось загрузить мини-приложения": "Couldn't load mini apps",
+  "«{name}» в WYX": "“{name}” in WYX",
 };
 export default en;
