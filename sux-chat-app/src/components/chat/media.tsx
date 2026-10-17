@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { createPortal } from "react-dom";
 import { Paperclip, Download, Play, Pause, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
+import { useNearView } from "@/hooks/use-near-view";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
 import { t as tr } from "@/lib/i18n";
 
@@ -44,7 +45,8 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
   /** Запустить очередь этого чата с этого трека; без обработчика — просто строка. */
   onPlay?: () => void;
 }) => {
-  const src = useMediaUrl(raw);
+  const [nearRef, near] = useNearView();
+  const src = useMediaUrl(near ? raw : null);
   const s = usePlayer();
   const cur = currentTrack();
   const mine = !!cur && cur.raw === raw;
@@ -64,7 +66,7 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
   }, [title]);
 
   return (
-    <div className={cn(
+    <div ref={nearRef} className={cn(
       // Потолок ширины обязателен: обрезка текста сама по себе не мешает
       // карточке растянуться под всё название.
       "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-[min(72vw,22rem)]",
@@ -221,13 +223,15 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   localMap: Map<string, string>; onOpen: (url: string, name: string) => void; onError: () => void;
 }) => {
   const localBlob = raw.startsWith("blob:") ? raw : localMap.get(raw);
-  const signed = useMediaUrl(localBlob ? null : raw);
+  // Подпись и загрузка — когда картинка рядом с видимой частью ленты (use-near-view).
+  const [nearRef, near] = useNearView();
+  const signed = useMediaUrl(localBlob || !near ? null : raw);
   const src = localBlob || signed;
   // Своё из blob декодируется мгновенно — без скелетона; чужое ждёт onLoad.
   const [loaded, setLoaded] = useState(!!localBlob);
   const size = dims ? previewSize(dims) : { width: 160, height: 112 };
   return (
-    <div className="msg-media relative rounded-lg overflow-hidden max-w-full" style={size}>
+    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden max-w-full" style={size}>
       {!loaded && <MediaSkeleton className="absolute inset-0" />}
       {src && (
         <img
@@ -321,13 +325,14 @@ const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: strin
 };
 
 export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { w: number; h: number } | null; poster?: string | null }) => {
-  const src = useMediaUrl(raw);
-  const posterSrc = useMediaUrl(poster || null);
+  const [nearRef, near] = useNearView();
+  const src = useMediaUrl(near ? raw : null);
+  const posterSrc = useMediaUrl(near ? poster || null : null);
   // Бокс под видео по размерам с сервера (в пределах 280×256), чтобы лента не
   // прыгала, когда плеер узнает размер кадра. Без размеров — как раньше.
   const size = dims ? (() => { const s = Math.min(280 / dims.w, 256 / dims.h, 1); return { width: Math.round(dims.w * s), height: Math.round(dims.h * s) }; })() : { width: 176, height: 112 };
   return (
-    <div className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
+    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
       <VideoThumb src={src} poster={posterSrc} />
     </div>
   );
@@ -336,9 +341,10 @@ export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { 
 export const MessageFile = ({ raw, name, isOwn, onSave }: {
   raw: string; name: string | null; isOwn: boolean; onSave: (url: string, name: string) => void;
 }) => {
-  const src = useMediaUrl(raw);
+  const [nearRef, near] = useNearView();
+  const src = useMediaUrl(near ? raw : null);
   return (
-    <div className={cn(
+    <div ref={nearRef} className={cn(
       "flex items-center gap-2 p-2 rounded-lg border transition-colors max-w-full min-w-0",
       isOwn ? "bg-primary/20 border-primary/30 hover:bg-primary/30" : "bg-muted border-border hover:bg-muted/80",
     )}>
@@ -363,8 +369,10 @@ export const MessageFile = ({ raw, name, isOwn, onSave }: {
 };
 
 export const VideoNote = ({ url, seconds, mirror, flip, poster }: { url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null }) => {
-  const src = useMediaUrl(url);
-  const ref = useRef<HTMLVideoElement>(null);
+  const [nearRef, near] = useNearView<HTMLVideoElement>();
+  const src = useMediaUrl(near ? url : null);
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const setVideo = useCallback((el: HTMLVideoElement | null) => { ref.current = el; nearRef(el); }, [nearRef]);
   const [playing, setPlaying] = useState(false);
   // С постером кадр есть сразу — скелетон не нужен.
   const [ready, setReady] = useState(!!poster);
@@ -411,8 +419,8 @@ export const VideoNote = ({ url, seconds, mirror, flip, poster }: { url: string;
     <GlassTriangle size={176} flip={flip} onClick={toggle} innerClassName={ready ? "bg-black" : "bg-transparent"}>
       {!ready && <LoadingSkeleton className="absolute inset-0" />}
       <video
-        ref={ref}
-        src={src}
+        ref={setVideo}
+        src={src || undefined}
         poster={poster || undefined}
         playsInline
         muted={!playing}
@@ -461,13 +469,14 @@ export interface AlbumItem {
 
 const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void }) => {
   const localBlob = item.raw.startsWith("blob:") ? item.raw : localMap?.get(item.raw);
-  const signed = useMediaUrl(localBlob ? null : item.raw);
+  const [nearRef, near] = useNearView();
+  const signed = useMediaUrl(localBlob || !near ? null : item.raw);
   const src = localBlob || signed;
-  const posterSrc = useMediaUrl(item.poster || null);
+  const posterSrc = useMediaUrl(near ? item.poster || null : null);
   const [loaded, setLoaded] = useState(!!localBlob);
   const video = isVideoFile(item.name, item.raw);
   return (
-    <div className="relative aspect-square overflow-hidden bg-black/20">
+    <div ref={nearRef} className="relative aspect-square overflow-hidden bg-black/20">
       {!loaded && !video && <MediaSkeleton className="absolute inset-0" />}
       {src && (video ? (
         <VideoThumb src={src} poster={posterSrc} cover />

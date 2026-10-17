@@ -8,6 +8,7 @@ import { api, mediaUrl, type Chat, type NotificationSoundInfo, type WallState } 
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
 import { useMediaUrl } from "@/hooks/use-media-url";
+import { useNearView } from "@/hooks/use-near-view";
 import { cn } from "@/lib/utils";
 import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
@@ -101,13 +102,15 @@ const fmtTime = (iso: string) =>
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
  *  (download_only — всегда строкой, даже если это картинка). */
 const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: number } | null; onOpen?: (url: string) => void }) => {
-  const url = useMediaUrl(raw);
+  // Подпись и загрузка — когда пост рядом с видимой частью ленты (use-near-view).
+  const [nearRef, near] = useNearView();
+  const url = useMediaUrl(near ? raw : null);
   const [loaded, setLoaded] = useState(false);
   // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
   // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
   const style = dims ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 320 } : { height: 160 };
   return (
-    <div className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
+    <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
       {!loaded && <MediaSkeleton className="absolute inset-0" />}
       {url && (
         <img src={url} alt="" loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen?.(url)}
