@@ -24,7 +24,6 @@ import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
 import { rovOn, rovOff, onRovState } from "@/lib/rov";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
-import { isMiniAppOpen } from "@/lib/miniapp";
 import { toast } from "sonner";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
@@ -64,6 +63,10 @@ interface ProfileType {
 
 /** savedMode — вкладка «Избранное»: вместо списка сразу открыт личный чат
  *  без собеседника (сервер создаёт его при первом обращении). */
+/** Пушей через Google на этом телефоне нет (Huawei без сервисов Google) —
+ *  не пробуем заново при каждом открытии экрана чатов до перезапуска. */
+let pushUnavailable = false;
+
 const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wallMode?: boolean } = {}) => {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<ProfileType | null>(() => readCache<ProfileType>("user"));
@@ -292,6 +295,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // APNs-токен, который FCM отправить не может. Firebase SDK сам меняет его
   // на FCM-овский — бэкенд работает с iOS и будущим Android одинаково.
   const initPushNotifications = async (_userId: string) => {
+    if (pushUnavailable) return;
     try {
       let permission = await FirebaseMessaging.checkPermissions();
       if (permission.receive === 'prompt' || permission.receive === 'prompt-with-rationale') {
@@ -329,6 +333,11 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       const { token } = await FirebaseMessaging.getToken();
       await sendPushTokenToServer(token);
     } catch (error) {
+      if (/MISSING_INSTANCEID_SERVICE|SERVICE_NOT_AVAILABLE|Google Play services/i.test(String((error as Error)?.message || error))) {
+        pushUnavailable = true;
+        console.warn('Push: на телефоне нет сервисов Google — пуши через FCM недоступны');
+        return;
+      }
       console.error('Error initializing push notifications:', error);
     }
   };
@@ -382,23 +391,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     };
   }, []);
 
-  // Аппаратная кнопка «назад» (Android): из открытого чата — назад к списку;
-  // на списке — свернуть приложение. Без обработчика системная кнопка ничего
-  // не делала внутри чата.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let handle: { remove: () => void } | undefined;
-    App.addListener('backButton', () => {
-      // Открыто мини-приложение — «назад» его (MiniAppHost), чат не трогаем.
-      if (isMiniAppOpen()) return;
-      if (selectedChatIdRef.current) {
-        setSelectedChatId(null);
-      } else {
-        App.minimizeApp();
-      }
-    }).then((h) => { handle = h; });
-    return () => { handle?.remove(); };
-  }, []);
+  // Системная кнопка «Назад» (Android) — общая с Esc, components/EscapeKey:
+  // открытый чат закрывается по ESC_BACK ниже, со списка приложение сворачивается.
 
   // Esc (components/EscapeKey): открытый чат закрывается — на широком окне
   // остаётся «Выберите чат», на узком — список. Вкладки «Стена» и
