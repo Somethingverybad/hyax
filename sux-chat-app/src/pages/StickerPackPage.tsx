@@ -1,4 +1,5 @@
 import { t, tn } from "@/lib/i18n";
+import { writeClipboard } from "@/lib/clipboard";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -48,7 +49,7 @@ const StickerPackPage = () => {
   };
 
   const share = async () => {
-    try { await navigator.clipboard.writeText(stickerPackLink(id)); toast.success(t("Ссылка скопирована")); }
+    try { await writeClipboard(stickerPackLink(id)); toast.success(t("Ссылка скопирована")); }
     catch { toast.error(t("Не удалось скопировать")); }
   };
 

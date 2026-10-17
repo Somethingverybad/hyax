@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { writeClipboard } from "@/lib/clipboard";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/api/client";
@@ -510,7 +511,7 @@ const CallHost = () => {
   const copyObsLink = async (peerId?: string | null, renew = false) => {
     try {
       const link = obsLink(await api.obsKey(renew), peerId);
-      await navigator.clipboard.writeText(link);
+      await writeClipboard(link);
       toast.success(renew ? tr("Новая ссылка скопирована — прежние больше не работают") : tr("Ссылка для OBS скопирована"));
     } catch (e) {
       toast.error((e as Error)?.message || tr("Не удалось скопировать ссылку"));

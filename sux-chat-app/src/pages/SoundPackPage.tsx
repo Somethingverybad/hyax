@@ -1,4 +1,5 @@
 import { t, tn } from "@/lib/i18n";
+import { writeClipboard } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Music2, Play, Square, Share2, Check, Plus, Trash2 } from "lucide-react";
@@ -59,7 +60,7 @@ const SoundPackPage = () => {
   };
 
   const share = async () => {
-    try { await navigator.clipboard.writeText(soundPackLink(id)); toast.success(t("Ссылка скопирована")); }
+    try { await writeClipboard(soundPackLink(id)); toast.success(t("Ссылка скопирована")); }
     catch { toast.error(t("Не удалось скопировать")); }
   };
 

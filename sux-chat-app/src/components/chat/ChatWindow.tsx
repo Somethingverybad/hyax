@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode } from "react";
+import { writeClipboard } from "@/lib/clipboard";
 import { getDraftText, saveDraftText } from "@/lib/drafts";
 import CachedImg from "@/components/CachedImg";
 import { Capacitor } from "@capacitor/core";
@@ -2641,7 +2642,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const text = message.content?.trim();
     if (!text) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await writeClipboard(text);
       toast.success(tr("Скопировано"));
     } catch {
       toast.error(tr("Не удалось скопировать"));
@@ -3994,7 +3995,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                                 );
                               })()}
                               <div className="mt-1 flex items-center gap-3 text-xs opacity-75">
-                                <button type="button" onClick={async (e) => { e.stopPropagation(); const trT = message.transcript_translations?.[myLang]; const txt = trT && !showOrig.has(`t:${message.id}`) ? trT : (message.voice_transcript || ""); try { await navigator.clipboard.writeText(txt); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось скопировать")); } }} className="inline-flex items-center gap-1 active:opacity-60">
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); const trT = message.transcript_translations?.[myLang]; const txt = trT && !showOrig.has(`t:${message.id}`) ? trT : (message.voice_transcript || ""); try { await writeClipboard(txt); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось скопировать")); } }} className="inline-flex items-center gap-1 active:opacity-60">
                                   <Copy className="w-3.5 h-3.5" />{tr("Скопировать")}</button>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setHiddenTranscripts((prev) => new Set(prev).add(message.id)); }} className="inline-flex items-center gap-1 active:opacity-60">
                                   <ChevronUp className="w-3.5 h-3.5" />{tr("Свернуть")}</button>
@@ -5117,7 +5118,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             if (typeof nav.share === "function") {
               try { await nav.share({ text }); return; } catch (e: any) { if (e?.name === "AbortError") return; }
             }
-            try { await navigator.clipboard.writeText(text); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось поделиться")); }
+            try { await writeClipboard(text); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось поделиться")); }
           } : undefined}
         />
       )}

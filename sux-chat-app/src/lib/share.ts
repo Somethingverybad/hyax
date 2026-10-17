@@ -8,7 +8,9 @@
  * Через системное меню «Поделиться» (Web Share API — работает в WKWebView и
  * Android WebView), с откатом в буфер обмена.
  */
+import { Capacitor } from "@capacitor/core";
 import { t } from "./i18n";
+import { writeClipboard } from "./clipboard";
 
 export type ShareResult = "shared" | "copied" | "error";
 
@@ -36,13 +38,33 @@ export const channelLink = (ch: { id: string; username?: string | null }) =>
 /* Ссылка — внутри текста, одним элементом. Если отдать text и url порознь,
    пункт «Скопировать» системного меню на iPhone берёт только первый —
    в буфере оказывался текст без ссылки («Напиши мне в WYX»). */
-async function shareUrl(title: string, text: string, url: string): Promise<ShareResult> {
+/**
+ * Системное «Поделиться». Android — нативным плагином: в Android WebView нет
+ * Web Share, а WebView Huawei без сервисов Google не давал и буфер обмена —
+ * кнопка не делала ничего. iPhone — Web Share, как раньше. true — показали
+ * (или человек закрыл окно сам), null — не вышло, пора в буфер.
+ */
+async function systemShare(d: { title?: string; text?: string; url?: string }): Promise<true | null> {
+  if (Capacitor.getPlatform() === "android") {
+    try {
+      const { Share } = await import("@capacitor/share");
+      await Share.share({ title: d.title, text: d.text, url: d.url, dialogTitle: d.title });
+      return true;
+    } catch (e: any) {
+      if (/cancel/i.test(String(e?.message || e))) return true;
+    }
+  }
   const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
   if (typeof nav.share === "function") {
-    try { await nav.share({ title, text: `${text}: ${url}` }); return "shared"; }
-    catch (e: any) { if (e?.name === "AbortError") return "shared"; }
+    try { await nav.share(d); return true; }
+    catch (e: any) { if (e?.name === "AbortError") return true; }
   }
-  try { await navigator.clipboard.writeText(`${text}: ${url}`); return "copied"; }
+  return null;
+}
+
+async function shareUrl(title: string, text: string, url: string): Promise<ShareResult> {
+  if (await systemShare({ title, text: `${text}: ${url}` })) return "shared";
+  try { await writeClipboard(`${text}: ${url}`); return "copied"; }
   catch { return "error"; }
 }
 
@@ -84,19 +106,10 @@ export const sharePost = (ch: { id: string; name: string; username?: string | nu
  *  кладёт в буфер ровно её. */
 export async function shareProfile(username: string): Promise<ShareResult> {
   const url = profileLink(username);
-  const nav = navigator as Navigator & { share?: (d: any) => Promise<void> };
-  if (typeof nav.share === "function") {
-    try {
-      await nav.share({ url });
-      return "shared";
-    } catch (e: any) {
-      // Пользователь закрыл шит — это не ошибка.
-      if (e?.name === "AbortError") return "shared";
-      // иначе пробуем буфер обмена
-    }
-  }
+  // Только ссылка: так её берут и мессенджеры, и пункт «Скопировать».
+  if (await systemShare({ url })) return "shared";
   try {
-    await navigator.clipboard.writeText(url);
+    await writeClipboard(url);
     return "copied";
   } catch {
     return "error";

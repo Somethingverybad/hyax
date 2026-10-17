@@ -1,4 +1,5 @@
 import { t as tr } from "@/lib/i18n";
+import { writeClipboard } from "@/lib/clipboard";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -86,7 +87,7 @@ const ProfileAppearance = () => {
   }, []);
 
   const share = async (t: ThemeDef) => {
-    try { await navigator.clipboard.writeText(themeLink(t.id)); toast.success(tr("Ссылка скопирована")); }
+    try { await writeClipboard(themeLink(t.id)); toast.success(tr("Ссылка скопирована")); }
     catch { toast.error(tr("Не удалось скопировать")); }
     setMenuFor(null);
   };

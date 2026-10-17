@@ -1,4 +1,5 @@
 import { t, getLang } from "@/lib/i18n";
+import { writeClipboard } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare, LayoutGrid } from "lucide-react";
@@ -115,7 +116,7 @@ const UserProfileModal = ({
   }, [userId]);
 
   const copy = async (value: string) => {
-    try { await navigator.clipboard.writeText(value); toast.success(t("Скопировано")); }
+    try { await writeClipboard(value); toast.success(t("Скопировано")); }
     catch { toast.error(t("Не удалось скопировать")); }
   };
 

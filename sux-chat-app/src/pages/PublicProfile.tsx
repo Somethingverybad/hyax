@@ -1,4 +1,5 @@
 import { t, getLang } from "@/lib/i18n";
+import { writeClipboard } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
@@ -92,7 +93,7 @@ const PublicProfile = () => {
   };
 
   const copy = async (value: string) => {
-    try { await navigator.clipboard.writeText(value); toast.success(t("Скопировано")); }
+    try { await writeClipboard(value); toast.success(t("Скопировано")); }
     catch { toast.error(t("Не удалось скопировать")); }
   };
 

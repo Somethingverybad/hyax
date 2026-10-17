@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { writeClipboard } from "@/lib/clipboard";
 import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
 import { useEffect, useRef, useState } from "react";
@@ -168,7 +169,7 @@ const ProfilePage = () => {
 
   const copy = async (value: string, failMsg: string) => {
     try {
-      await navigator.clipboard.writeText(value);
+      await writeClipboard(value);
       toast.success(t("Скопировано"));
     } catch {
       toast.error(failMsg);

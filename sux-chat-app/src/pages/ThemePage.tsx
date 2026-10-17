@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { writeClipboard } from "@/lib/clipboard";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, Flag, Palette, Plus, Share2, Trash2 } from "lucide-react";
@@ -59,7 +60,7 @@ const ThemePage = () => {
   };
 
   const share = async () => {
-    try { await navigator.clipboard.writeText(themeLink(id)); toast.success(tr("Ссылка скопирована")); }
+    try { await writeClipboard(themeLink(id)); toast.success(tr("Ссылка скопирована")); }
     catch { toast.error(tr("Не удалось скопировать")); }
   };
 
