@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 # В views.py
+def _contact_ids(me):
+    """Кто со мной в общем чате — личка или группа (каналы не в счёт: там
+    подписчики друг друга не знают). Подзапрос, а не список: людей может быть много."""
+    if not me:
+        return Profile.objects.none().values("id")
+    shared = Chat.objects.filter(participants=me, kind__in=["direct", "group"])
+    return ChatParticipant.objects.filter(chat__in=shared).values("user_id")
+
+
 class ProfileViewSet(viewsets.ModelViewSet):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
@@ -96,6 +105,10 @@ class ProfileViewSet(viewsets.ModelViewSet):
             # оба — а по ссылке открывался случайный.
             exact = queryset.filter(username=q)
             queryset = exact if exact.exists() else queryset.filter(username__iexact=q)
+            # «Не показывать меня в поиске» — и по точному нику тоже, кроме тех,
+            # с кем уже есть общий чат.
+            me0 = getattr(self.request.user, 'profile', None)
+            queryset = queryset.filter(Q(hide_from_search=False) | Q(id__in=_contact_ids(me0)))
             # Ботов по нику не ищут: к боту приходят по ссылке и нажимают
             # «Начать». В поиске бот виден, только если личка с ним уже есть.
             me = getattr(self.request.user, 'profile', None)
@@ -3395,6 +3408,47 @@ class IceServersView(APIView):
     def get(self, request):
         from .ice import ice_servers
         return Response({"iceServers": ice_servers()})
+
+
+class PeopleSearchView(APIView):
+    """GET /api/people/search/?q=<ник> — люди по началу ника (от 2 символов, до
+    20, точное совпадение первым). Не находятся: боты (к ним — по ссылке и
+    «Начать»), я сам, удалённые, скрывшие себя из поиска (кроме тех, с кем уже
+    есть общий чат), те, кого я заблокировал. Заблокировавший меня находится:
+    блокировка невидима для заблокированного. Не чаще 30 запросов в минуту —
+    перебором по буквам базу не выкачать."""
+    permission_classes = [permissions.IsAuthenticated]
+    LIMIT, PER_MINUTE = 20, 30
+
+    def get(self, request):
+        from django.core.cache import cache
+        from django.db.models import Case, F, IntegerField, When
+        from django.db.models.functions import Length
+        from .moderation import blocked_ids
+        me = getattr(request.user, "profile", None)
+        if me is None or me.is_bot:
+            return Response({"error": "Profile not found"}, status=400)
+        q = (request.query_params.get("q") or "").strip().lstrip("@")
+        if len(q) < 2:
+            return Response([])
+        key = f"people-search:{me.id}"
+        cache.add(key, 0, 60)
+        try:
+            n = cache.incr(key)
+        except ValueError:
+            cache.set(key, 1, 60); n = 1
+        if n > self.PER_MINUTE:
+            return Response({"error": "Слишком часто — подождите минуту"}, status=429)
+        qs = (Profile.objects.filter(username__istartswith=q, is_bot=False, user__is_active=True)
+              .exclude(id=me.id).exclude(id__in=blocked_ids(me))
+              .filter(Q(hide_from_search=False) | Q(id__in=_contact_ids(me)))
+              .annotate(exact=Case(When(username__iexact=q, then=0), default=1, output_field=IntegerField()),
+                        ulen=Length("username"))
+              .order_by("exact", "ulen", F("last_seen").desc(nulls_last=True))[:self.LIMIT])
+        return Response([{
+            "id": str(p.id), "username": p.username, "avatar_url": p.avatar_url,
+            "bio": (p.bio or "")[:120], "aura_color": p.aura_color, "aura_text": p.aura_text,
+        } for p in qs])
 
 
 class PushRegisterView(APIView):

@@ -239,6 +239,8 @@ export interface Profile {
   show_last_seen?: boolean;
   /** «Подтверждать новые чаты»: новый собеседник сначала присылает запрос. */
   confirm_chats?: boolean;
+  /** «Не показывать меня в поиске»: по нику находят только собеседники. */
+  hide_from_search?: boolean;
   /** Кто видит сохранёнки: all | selected | none. Только в своём профиле. */
   saved_visibility?: "all" | "selected" | "none";
   /** Видны ли смотрящему сохранёнки этого человека. */
@@ -977,6 +979,14 @@ export const api = {
     } else {
       return api.getCurrentUser();
     }
+  },
+
+  /** Люди по началу ника (от 2 символов, до 20): без скрывших себя из поиска. */
+  searchPeople: async (query: string): Promise<Profile[]> => {
+    const res = await fetchWithAuth(`${API_URL}/people/search/?q=${encodeURIComponent(query)}`, { method: "GET", headers: authHeaders() });
+    if (res.status === 429) throw new LError("Слишком часто — подождите минуту");
+    if (!res.ok) throw new LError(`Search failed: ${res.status}`);
+    return res.json();
   },
 
   searchUsers: async (query: string): Promise<Profile[]> => {
@@ -2279,7 +2289,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

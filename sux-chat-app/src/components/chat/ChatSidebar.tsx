@@ -164,21 +164,25 @@ const ChatSidebar = ({
   const [searchQuery, setSearchQuery] = useState("");
   // Поиск по списку чатов (поле под шапкой): по названию и именам участников.
   const [listFilter, setListFilter] = useState("");
-  // Человек по нику — только при точном совпадении (сервер иначе ничего не
-  // отдаёт): перебором по букве каталог людей не вытянуть.
-  const [peopleHit, setPeopleHit] = useState<Profile | null>(null);
+  // Люди по началу ника (api.searchPeople: без скрывших себя из поиска).
+  // Те, с кем уже есть личка, — не здесь: их чат и так в списке.
+  const [peopleHits, setPeopleHits] = useState<Profile[]>([]);
+  const [peopleAll, setPeopleAll] = useState(false);
   useEffect(() => {
     const q = listFilter.trim().replace(/^@/, "");
-    if (q.length < 2) { setPeopleHit(null); return; }
+    setPeopleAll(false);
+    if (q.length < 2) { setPeopleHits([]); return; }
     let off = false;
     const t = setTimeout(() => {
-      api.searchUsers(q).then((r) => {
+      api.searchPeople(q).then((r) => {
         if (off) return;
-        const hit = (Array.isArray(r) ? r : []).find((p) => p.username.toLowerCase() === q.toLowerCase() && p.id !== userId);
-        setPeopleHit(hit || null);
-      }).catch(() => { if (!off) setPeopleHit(null); });
+        const peers = new Set(chats.filter((c) => !c.is_group && (c.kind || "direct") === "direct")
+          .flatMap((c) => (c.participants || []).map((p) => p.id)));
+        setPeopleHits((Array.isArray(r) ? r : []).filter((p) => p.id !== userId && !peers.has(p.id)));
+      }).catch(() => { if (!off) setPeopleHits([]); });
     }, 350);
     return () => { off = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listFilter, userId]);
   // Фильтр-чипы под поиском: все чаты, только с непрочитанным, только каналы.
   const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
@@ -459,18 +463,14 @@ const ChatSidebar = ({
     }
 
     try {
-      // Каталога людей нет: в личном режиме строка ищет только каналы. Людей
-      // находят по ссылке на профиль, ботов — тоже по ссылке и «Начать».
-      // Точный ник остаётся только для набора участников группы.
-      if (mode === "user") {
-        const chans = await api.discoverChannels(query).catch(() => []);
-        setSearchResults([]);
-        setChannelResults(Array.isArray(chans) ? chans : []);
-        return;
-      }
-      const results = await api.searchUsers(query);
-      setSearchResults(Array.isArray(results) ? results : []);
-      setChannelResults([]);
+      // Люди — по началу ника (без скрывших себя из поиска), в личном режиме
+      // ещё и каналы. Ботов не ищут: к ним — по ссылке и «Начать».
+      const [people, chans] = await Promise.all([
+        api.searchPeople(query.replace(/^@/, "")).catch(() => [] as Profile[]),
+        mode === "user" ? api.discoverChannels(query).catch(() => []) : Promise.resolve([]),
+      ]);
+      setSearchResults(Array.isArray(people) ? people : []);
+      setChannelResults(Array.isArray(chans) ? chans : []);
     } catch (error: any) {
       console.error("Error searching users:", error);
     }
@@ -853,7 +853,7 @@ const ChatSidebar = ({
                 {mode !== "channel" && (
                 <>
                 <Input
-                  placeholder={mode === "group" ? t("Имя из переписок или точный ник") : t("Найти канал…")}
+                  placeholder={mode === "group" ? t("Имя из переписок или ник") : t("Ник человека или название канала")}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -913,7 +913,7 @@ const ChatSidebar = ({
                     ))}
                     {groupCandidates.length === 0 && (mode !== "user" || channelResults.length === 0) && (
                       <div className="text-center text-muted-foreground py-8">
-                        {searchQuery ? t("Ничего не найдено") : mode === "group" ? t("Введите ник участника целиком") : t("Введите название канала")}
+                        {searchQuery ? t("Ничего не найдено") : mode === "group" ? t("Введите имя или ник участника") : t("Введите ник человека или название канала")}
                       </div>
                     )}
                   </div>
@@ -944,7 +944,7 @@ const ChatSidebar = ({
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
-              placeholder={mint ? t("Поиск чатов") : t("Поиск чатов и людей по нику")}
+              placeholder={mint ? t("Поиск чатов и людей") : t("Поиск чатов и людей по нику")}
               className={mint ? "flex-1 min-w-0 bg-transparent outline-none text-[14.3px] text-foreground placeholder:text-[var(--mint-muted)]" : "flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"}
             />
           </label>
@@ -1080,17 +1080,24 @@ const ChatSidebar = ({
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>
           )}
-          {peopleHit && !isCollapsed && (
+          {peopleHits.length > 0 && !isCollapsed && (
             <div className="px-4 pt-2 pb-1">
               <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Люди")}</p>
-              <button type="button" onClick={() => { setListFilter(""); void createChat(peopleHit.id); }}
-                className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
-                <Aura active={!!(peopleHit as { is_online?: boolean }).is_online} owner={peopleHit as never} size={46}><Identicon id={peopleHit.id} avatarUrl={peopleHit.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
-                <span className="min-w-0">
-                  <span className="block text-h2 md:text-[15px] truncate">{peopleHit.username}</span>
-                  <span className="block text-small text-subtle truncate">@{peopleHit.username} · {t("написать")}</span>
-                </span>
-              </button>
+              {(peopleAll ? peopleHits : peopleHits.slice(0, 5)).map((person) => (
+                <button key={person.id} type="button" onClick={() => { setListFilter(""); void createChat(person.id); }}
+                  className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
+                  <Aura active={false} owner={person as never} size={46}><Identicon id={person.id} avatarUrl={person.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
+                  <span className="min-w-0">
+                    <span className="block text-h2 md:text-[15px] truncate">{person.username}</span>
+                    <span className="block text-small text-subtle truncate">{(person as { bio?: string }).bio || `@${person.username}`} · {t("написать")}</span>
+                  </span>
+                </button>
+              ))}
+              {!peopleAll && peopleHits.length > 5 && (
+                <button type="button" onClick={() => setPeopleAll(true)} className="w-full py-2 text-small text-primary text-left">
+                  {t("Ещё люди: {n}", { n: peopleHits.length - 5 })}
+                </button>
+              )}
             </div>
           )}
           {chats.length > 0 ? (

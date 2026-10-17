@@ -1903,5 +1903,15 @@ const en: Record<string, string> = {
   "Не привязан к эмодзи": "Not linked to an emoji",
   "Привязать": "Link",
   "Добавьте картинки — PNG, JPG или WebP. Долгое нажатие или правый клик по своему эмодзи — привязать к обычному (наберёте его — свой всплывёт подсказкой) или удалить.": "Add images — PNG, JPG or WebP. Long-press or right-click your emoji to link it to a regular one (type that one and yours pops up as a suggestion) or delete it.",
+  "Не показывать меня в поиске": "Hide me from search",
+  "По нику вас найдут только те, с кем уже есть общий чат. По ссылке на профиль — как обычно": "Only people you already share a chat with can find you by username. Your profile link works as usual",
+  "Выключено — вас находят по нику в поиске людей": "Off — people can find you by username",
+  "Ещё люди: {n}": "More people: {n}",
+  "Имя из переписок или ник": "Name from your chats or username",
+  "Ник человека или название канала": "Username or channel name",
+  "Введите имя или ник участника": "Enter a member's name or username",
+  "Введите ник человека или название канала": "Enter a username or channel name",
+  "Слишком часто — подождите минуту": "Too often — wait a minute",
+  "Поиск чатов и людей": "Search chats and people",
 };
 export default en;

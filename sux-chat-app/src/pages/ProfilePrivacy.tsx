@@ -49,7 +49,7 @@ const ProfilePrivacy = () => {
   };
 
   /** Переключатель в профиле: рисуем сразу, при ошибке возвращаем как было. */
-  const setFlag = async (key: "show_last_seen" | "confirm_chats", value: boolean) => {
+  const setFlag = async (key: "show_last_seen" | "confirm_chats" | "hide_from_search", value: boolean) => {
     if (!profile) return;
     const prev = profile;
     const next = { ...profile, [key]: value };
@@ -169,6 +169,22 @@ const ProfilePrivacy = () => {
                 checked={!!profile?.confirm_chats}
                 disabled={!profile}
                 onChange={(e) => setFlag("confirm_chats", e.target.checked)}
+              />
+            }
+          />
+          <SettingsRow
+            label={t("Не показывать меня в поиске")}
+            hint={profile?.hide_from_search
+              ? t("По нику вас найдут только те, с кем уже есть общий чат. По ссылке на профиль — как обычно")
+              : t("Выключено — вас находят по нику в поиске людей")}
+            trailing={
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-primary shrink-0"
+                aria-label={t("Не показывать меня в поиске")}
+                checked={!!profile?.hide_from_search}
+                disabled={!profile}
+                onChange={(e) => setFlag("hide_from_search", e.target.checked)}
               />
             }
           />

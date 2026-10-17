@@ -45,6 +45,9 @@ class Profile(models.Model):
     # «в сети 5 минут назад», если он это не выключил и не скрыл сам статус.
     last_seen = models.DateTimeField(null=True, blank=True)
     show_last_seen = models.BooleanField(default=True)
+    # «Не показывать меня в поиске»: по нику находят только те, с кем уже есть
+    # общий чат (личка или группа); по ссылке /u/<ник> — как и раньше.
+    hide_from_search = models.BooleanField(default=False)
     # «Подтверждать новые чаты»: новый собеседник сначала присылает запрос
     # (Chat.pending_for), писать и звонить можно после принятия.
     confirm_chats = models.BooleanField(default=False)

@@ -105,6 +105,8 @@ urlpatterns = [
     path('saved-images/<uuid:pk>/', SavedImagesView.as_view(), name='saved-image'),
     path('saved-images/<uuid:pk>/vibe/', SavedImageVibeView.as_view(), name='saved-image-vibe'),
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
+    # Поиск людей по нику (с «Не показывать меня в поиске»).
+    path('people/search/', PeopleSearchView.as_view(), name='people-search'),
     # Ключ трансляции звонка в OBS (chat/obs.py).
     path('obs/key/', ObsKeyView.as_view(), name='obs-key'),
     path('bots/', BotsView.as_view(), name='bots'),
