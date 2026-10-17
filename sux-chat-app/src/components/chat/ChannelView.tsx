@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { t as tr, tn, getLang } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
@@ -1106,6 +1107,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             </button>
           )}
           {composeOpen && (
+            <SheetPortal>
             <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => !sending && setComposeOpen(false)}>
               <div className="bg-card border-t-2 border-border rounded-t-2xl pad-safe-bottom px-4 pt-3 pb-3 space-y-3 max-h-[88%] overflow-y-auto" onClick={(e) => e.stopPropagation()} onPaste={onPasteFile}>
                 <div className="flex items-center gap-2">
@@ -1197,6 +1199,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 )}
               </div>
             </div>
+            </SheetPortal>
           )}
         </>
       )}
@@ -1422,6 +1425,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       />
 
       {menuFor && (
+        <SheetPortal>
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => setMenuFor(null)}>
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
             {wall && (menuFor.content || "").trim() && (() => {
@@ -1467,6 +1471,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             <button type="button" onClick={() => setMenuFor(null)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">{tr("Отмена")}</button>
           </div>
         </div>
+        </SheetPortal>
       )}
       {repostFor && (
         <RepostSheet post={repostFor} onClose={() => setRepostFor(null)} onConfirm={(safeFlag) => void doRepost(repostFor, safeFlag)} />
@@ -1488,6 +1493,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 };
 
 /** Звук в списке выбора — с проигрыванием. */
+/** Шторка поверх экрана — порталом на body: экран с анимацией перехода
+ *  (transform) запирал её в своём слое, и плавающая панель вкладок «Мяты»
+ *  ложилась поверх низа шторки (поле ввода, кнопки). */
+const SheetPortal = ({ children }: { children: React.ReactNode }) => createPortal(children, document.body);
+
 /** Комментарии к посту. */
 const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCountChange }: {
   post: Post; canComment: boolean; bannedText?: string; onAuthor?: (id: string) => void; onClose: () => void; onCountChange: (n: number) => void;
@@ -1534,7 +1544,10 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
     } catch { toast.error(tr("Ошибка")); }
   };
 
-  return (
+  // Порталом на body: экран с анимацией перехода (transform) запирал шторку в
+  // своём слое, и плавающая панель вкладок «Мяты» ложилась поверх поля ввода
+  // комментария (баг-репорт 11cfe970).
+  return createPortal(
     <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
       <div className="bg-card border-t-2 border-border max-h-[75%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
@@ -1575,7 +1588,8 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
           <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || tr("Подпишитесь, чтобы комментировать")}</p>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -1598,6 +1612,7 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
     try { await api.unbanWallUser(id); setBans((b) => (b || []).filter((x) => x.profile.id !== id)); } catch { toast.error(tr("Не получилось")); }
   };
   return (
+    <SheetPortal>
     <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
       <div className="bg-card border-t-2 border-border max-h-[80%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
@@ -1648,6 +1663,7 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
         </div>
       </div>
     </div>
+    </SheetPortal>
   );
 };
 
@@ -1655,6 +1671,7 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
 const RepostSheet = ({ post, onClose, onConfirm }: { post: Post; onClose: () => void; onConfirm: (safe: boolean) => void }) => {
   const [safe, setSafe] = useState(false);
   return (
+    <SheetPortal>
     <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
       <div className="bg-card border-t-2 border-border pad-safe-bottom px-4 py-4 space-y-3" onClick={(e) => e.stopPropagation()}>
         <p className="font-semibold flex items-center gap-2"><Newspaper className="w-5 h-5 text-primary" /> {tr("Опубликовать на Стене")}</p>
@@ -1667,6 +1684,7 @@ const RepostSheet = ({ post, onClose, onConfirm }: { post: Post; onClose: () => 
         <button type="button" onClick={() => onConfirm(safe)} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">{tr("На Стену")}</button>
       </div>
     </div>
+    </SheetPortal>
   );
 };
 
@@ -1773,6 +1791,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged, o
   };
 
   return (
+    <SheetPortal>
     <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
       <div className="bg-card border-t-2 border-border max-h-[85%] overflow-y-auto pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
@@ -1956,6 +1975,7 @@ const ChannelInfo = ({ channel, userId, onClose, onLeave, onDelete, onChanged, o
         />
       )}
     </div>
+    </SheetPortal>
   );
 };
 
