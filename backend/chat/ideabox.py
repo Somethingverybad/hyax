@@ -16,6 +16,12 @@
 отнимает. Админ видит ещё «Реализовано» и «Убрать»; автору реализованной
 идеи бот пишет в его ящик.
 
+Админ отвечает реплаем на идею в «Идеях» — бот приносит ответ автору в его
+ящик, ответом на его же сообщение (relay_staff_reply). Ответ автора на это —
+продолжение разговора: в «Идеи» он приходит реплаем на ответ админа, в общий
+список идей не попадает, «спасибо» бот на него не пишет. Реплаи поддержки и
+сообщения без реплая на идею остаются внутренними.
+
 Основной вход — экран «Долгий ящик» в настройках (Профиль → Долгий ящик):
 разделы и списки, API ниже. Чат с ботом остаётся для старых версий: в нём
 можно предложить идею и голосовать в «Топ-10» кнопками. «Бездна» из чата
@@ -111,19 +117,37 @@ def user_chat(profile: Profile) -> Chat:
     return chat
 
 
+def _answer_of(message: Message) -> Message | None:
+    """Человек ответил реплаем на ответ админа — тот ответ (его оригинал в «Идеях»)."""
+    r = message.reply_to
+    if r and r.chat_id == message.chat_id and r.origin_message_id:
+        return r.origin_message
+    return None
+
+
 def deliver_idea(message: Message, author: Profile, thank: bool = True) -> Idea | None:
     """Пересылаем идею в «Идеи» и при необходимости благодарим автора.
     Сбой доставки не мешает самой отправке: сообщение у человека уже есть."""
     from .moderation import sync_staff_membership, system_chat, system_bot
     from .views import _forward_copy, _notify_new_message
+    answer = _answer_of(message)
     try:
         ideas = sync_staff_membership(system_chat(IDEAS_CHAT_NAME))
         bot = system_bot()
         fwd = _forward_copy(message, ideas, bot)
+        # Связь с оригиналом — по ней реплай админа дойдёт автору; ответ на
+        # ответ админа ложится в «Идеях» реплаем на него.
+        fwd.origin_message = message
+        fwd.reply_to = answer if answer and answer.chat_id == ideas.id else None
+        fwd.save(update_fields=["origin_message", "reply_to", "updated_at"])
         Chat.objects.filter(id=ideas.id).update(updated_at=timezone.now())
         _notify_new_message(fwd, bot, None)
     except Exception:
         logger.exception("Идея %s сохранена, но не доставлена в «Идеи»", message.id)
+    # Продолжение разговора с админом — не новая идея: в список не кладём
+    # и «спасибо» не пишем.
+    if answer:
+        return None
     idea = None
     try:
         text = (message.content or "").strip()
@@ -147,6 +171,62 @@ def deliver_idea(message: Message, author: Profile, thank: bool = True) -> Idea 
     except Exception:
         logger.exception("Не ответил на идею %s", message.id)
     return idea
+
+
+def _staff_note(chat, text):
+    """Служебная заметка в «Идеях» от системного бота (видят только админы)."""
+    from .moderation import system_bot
+    from .views import _notify_new_message
+    bot = system_bot()
+    m = Message.objects.create(chat=chat, sender=bot, content=text)
+    Chat.objects.filter(id=chat.id).update(updated_at=timezone.now())
+    _notify_new_message(m, bot, None)
+
+
+def relay_staff_reply(reply: Message) -> Message | None:
+    """Реплай админа на идею в «Идеях» — автору в его ящик, от бота, ответом
+    на его сообщение. Реплай на что-то другое или не от админа — внутреннее обсуждение."""
+    src = reply.reply_to
+    chat = reply.chat
+    if not src or src.chat_id != chat.id or chat.kind != "system" or chat.name != IDEAS_CHAT_NAME:
+        return None
+    if not src.forwarded_from_id:
+        return None
+    # Отвечать авторам может только админ; реплаи поддержки — внутренние.
+    if not _is_admin(reply.sender):
+        return None
+    orig = src.origin_message
+    if not orig or orig.chat.kind != KIND:
+        _staff_note(chat, "Ответ не дошёл: не нашёл исходное сообщение автора — его удалили, или оно пришло до того, как ответы появились.")
+        return None
+    from .views import _forward_copy, _notify_new_message
+    bot = ideabox_bot()
+    m = _forward_copy(reply, orig.chat, bot)
+    m.forwarded_from, m.forwarded_title, m.forwarded_chat = None, "", None
+    m.reply_to, m.origin_message = orig, reply
+    m.save(update_fields=["forwarded_from", "forwarded_title", "forwarded_chat", "reply_to", "origin_message", "updated_at"])
+    Chat.objects.filter(id=orig.chat_id).update(updated_at=timezone.now())
+    _notify_new_message(m, bot, None)
+    return m
+
+
+def relay_edit(msg: Message):
+    """Правка идеи или ответа админа — и в копии на другой стороне."""
+    for c in Message.objects.filter(origin_message=msg):
+        c.content, c.entities, c.is_edited, c.translations = msg.content, msg.entities, True, {}
+        c.save(update_fields=["content", "entities", "is_edited", "translations", "updated_at"])
+    if msg.chat.kind == KIND:
+        text = (msg.content or "").strip()
+        if len(text) >= MIN_IDEA_LEN:
+            Idea.objects.filter(message=msg).update(text=text[:4000])
+
+
+def relay_delete(msg: Message):
+    """Ответ админа удалили у всех — исчезает и у автора идеи. Свою идею
+    автор удаляет только у себя: в «Идеях» копия остаётся."""
+    for c in Message.objects.filter(origin_message=msg, chat__kind=KIND):
+        c.deleted_for_all = True
+        c.save(update_fields=["deleted_for_all", "updated_at"])
 
 
 class IdeaboxView(APIView):

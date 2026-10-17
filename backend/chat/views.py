@@ -1147,6 +1147,8 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response({"error": "Удалить у всех может только автор"}, status=403)
             msg.deleted_for_all = True
             msg.save(update_fields=['deleted_for_all', 'updated_at'])
+            from .ideabox import relay_delete
+            relay_delete(msg)
         else:
             msg.deleted_for.add(profile)
         return Response({"ok": True})
@@ -1182,6 +1184,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         msg.is_edited = True
         msg.translations = {}
         msg.save(update_fields=['content', 'entities', 'translations', 'is_edited', 'updated_at'])
+        # Идея и ответ на неё живут в двух чатах — правка доезжает до копии.
+        from .ideabox import relay_edit
+        relay_edit(msg)
         from .translate import schedule as _schedule_translation
         _schedule_translation(msg, profile, request)
         from .mentions import store_mentions
@@ -1881,6 +1886,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         if getattr(message.chat, 'kind', '') == 'ideabox' and not profile.is_bot:
             from .ideabox import deliver_idea
             deliver_idea(message, profile)
+        # Реплай админа на идею в «Идеях» — автору в его ящик.
+        elif message.reply_to_id and getattr(message.chat, 'kind', '') == 'system' and not profile.is_bot:
+            from .ideabox import relay_staff_reply
+            try:
+                relay_staff_reply(message)
+            except Exception:
+                logger.exception("ideabox: ответ %s не доставлен автору", message.id)
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=201, headers=headers)

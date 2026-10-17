@@ -4389,6 +4389,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <div className="text-sm text-muted-foreground truncate">
                   {replyPreviewText(replyTo)}
                 </div>
+                {/* «Идеи»: реплай админа на идею бот отнесёт автору в его «Долгий ящик»
+                    (backend/chat/ideabox.py); остальное в этом чате — внутреннее. */}
+                {chatInfo?.kind === "system" && chatInfo?.name === "Идеи" && !!replyTo.forwarded_from && !!readCache<{ is_admin?: boolean }>("user")?.is_admin && (
+                  <div className="text-xs text-primary mt-0.5">{tr("Ответ получит автор идеи — в своём «Долгом ящике»")}</div>
+                )}
               </div>
               <button
                 type="button"

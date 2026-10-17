@@ -1874,5 +1874,6 @@ const en: Record<string, string> = {
   "Ссылка: {name}": "Link: {name}",
   "В OBS: Источники → «+» → Браузер, вставьте ссылку и включите «Управлять звуком через OBS». Ссылка на одного участника — отдельный ползунок в микшере. Свой микрофон в OBS можно не добавлять: ваш голос тоже идёт из звонка.": "In OBS: Sources → “+” → Browser, paste the link and turn on “Control audio via OBS”. A link for one participant gives them their own fader in the mixer. You don't need to add your own mic to OBS: your voice comes from the call too.",
   "Новая ссылка (прежние перестанут работать)": "New link (old ones will stop working)",
+  "Ответ получит автор идеи — в своём «Долгом ящике»": "The idea's author will get this reply in their “Back Burner”",
 };
 export default en;
