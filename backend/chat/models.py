@@ -1090,6 +1090,9 @@ class VibeVote(models.Model):
     voter = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
     target = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="vibe_votes")
     created_at = models.DateTimeField(default=timezone.now)
+    # «Анонимно»: в уведомлении и в истории вайба (VibeHistoryView) без имени.
+    # Голоса до 0106 флаг не хранили — они анонимные: кто какой выбрал, неизвестно.
+    anonymous = models.BooleanField(default=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["voter", "target"], name="vibe_vote_once")]

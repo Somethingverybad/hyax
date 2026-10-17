@@ -288,6 +288,17 @@ export interface SoundPackInfo {
 }
 
 /** Стикерпак — карточка по ссылке /stp/<id>. author — сериализованный профиль. */
+/** Событие вайбометра (chat/ideabox.py, VibeHistoryView). who нет — анонимно. */
+export interface VibeEvent {
+  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report";
+  points: number;
+  at: string;
+  who?: { id: string; username: string; avatar_url?: string | null } | null;
+  image?: string;
+  idea?: string;
+}
+export interface VibeHistory { vibe: number; silent: boolean; items: VibeEvent[] }
+
 export interface StickerPackInfo {
   id: string;
   name: string;
@@ -1538,6 +1549,12 @@ export const api = {
   getVibe: async (profileId: string): Promise<VibeState> => {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
+    return res.json();
+  },
+  /** Кто и за что поднимал мой вайб (и что снимало) — от новых к старым. */
+  vibeHistory: async (): Promise<VibeHistory> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe/history/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось загрузить историю вайба");
     return res.json();
   },
   getVibeLevels: async (): Promise<VibeLevelsConfig> => {

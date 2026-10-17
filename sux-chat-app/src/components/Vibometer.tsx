@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sparkles, Check } from "lucide-react";
+import { Sparkles, Check, ChevronRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import { useVibeLevels, vibeState } from "@/lib/vibeLevels";
@@ -50,6 +51,7 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
       toast.error(e?.message || t("Не получилось"));
     } finally { setBusy(false); }
   };
+  const navigate = useNavigate();
   const v = vibe ?? 0;
   const st = vibeState(v, useVibeLevels());
   return (
@@ -66,7 +68,12 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
         <span className="text-[22px] leading-none font-semibold tabular-nums" style={st.level ? { color: st.level.color } : undefined}>{vibe === null ? "…" : v}</span>
       </div>
       <VibeBar vibe={vibe} />
-      {own ? null : voted ? (
+      {own ? (
+        <button type="button" onClick={() => navigate("/profile/vibe")}
+          className="mt-3 w-full h-10 rounded-md bg-surface-2 text-small text-foreground flex items-center justify-center gap-1 active:opacity-80">
+          {t("Кто поднимал вайб и за что")}<ChevronRight className="w-4 h-4 text-subtle" />
+        </button>
+      ) : voted ? (
         <p className="mt-3 h-10 rounded-md bg-surface-2 text-small text-subtle flex items-center justify-center gap-2">
           <Check className="w-4 h-4" />{t("Вы подняли вайб")}
         </p>

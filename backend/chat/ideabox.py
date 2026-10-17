@@ -485,16 +485,49 @@ class VibeView(APIView):
             return Response({"error": "Свой вайб не поднять"}, status=400)
         if target.is_bot:
             return Response({"error": "У ботов вайбометра нет"}, status=400)
+        anonymous = str(request.data.get("anonymous") or "").lower() in ("1", "true", "yes")
         try:
             with transaction.atomic():
-                VibeVote.objects.create(voter=me, target=target)
+                VibeVote.objects.create(voter=me, target=target, anonymous=anonymous)
                 Profile.objects.filter(id=target.id).update(vibe=F("vibe") + 1)
         except IntegrityError:
             return Response({**self._state(me, target), "error": "Вы уже поднимали вайб"}, status=409)
         target.refresh_from_db(fields=["vibe"])
-        anonymous = str(request.data.get("anonymous") or "").lower() in ("1", "true", "yes")
         _notify_vibe(target, me, anonymous)
         return Response(self._state(me, target))
+
+
+class VibeHistoryView(APIView):
+    """GET /api/vibe/history/ — кто и за что поднимал мой вайб и что его снимало.
+    Только свой вайбометр. Без имени: анонимные голоса в профиле и лайки идей
+    (список идей анонимный — голосующих автору не раскрываем), жалобы."""
+    permission_classes = [IsAuthenticated]
+    LIMIT = 200
+
+    def get(self, request):
+        from .models import VibeVote, SavedImageVibe, Report, VIBE_REPORT_PENALTY, VIBE_SILENT
+        me = _me(request)
+        if not me or me.is_bot:
+            return Response({"error": "Нет профиля"}, status=403)
+        n = self.LIMIT
+        who = lambda p: {"id": str(p.id), "username": p.username, "avatar_url": p.avatar_url} if p else None
+        rows = []
+        for v in VibeVote.objects.filter(target=me).select_related("voter").order_by("-created_at")[:n]:
+            rows.append((v.created_at, {"kind": "profile", "points": 1, "who": None if v.anonymous else who(v.voter)}))
+        for v in SavedImageVibe.objects.filter(image__owner=me).select_related("voter", "image").order_by("-created_at")[:n]:
+            rows.append((v.created_at, {"kind": "saved", "points": 1, "who": who(v.voter), "image": v.image.file_url}))
+        for v in IdeaVote.objects.filter(idea__author=me, value__gt=0).select_related("idea").order_by("-created_at")[:n]:
+            rows.append((v.created_at, {"kind": "idea_like", "points": LIKE_POINTS, "idea": _clip(v.idea.text, 120)}))
+        for v in IdeaVote.objects.filter(voter=me).select_related("idea").order_by("-created_at")[:n]:
+            rows.append((v.created_at, {"kind": "idea_vote", "points": VOTE_POINTS, "idea": _clip(v.idea.text, 120)}))
+        for r in Report.objects.filter(target_profile=me).order_by("-created_at")[:n]:
+            rows.append((r.created_at, {"kind": "report", "points": -VIBE_REPORT_PENALTY}))
+        rows.sort(key=lambda x: x[0], reverse=True)
+        # Звук входящих выключен — на вайбометре VIBE_SILENT, настоящий вайб считаем.
+        silent = me.vibe_saved is not None
+        vibe = (me.vibe_saved + (me.vibe - VIBE_SILENT)) if silent else me.vibe
+        return Response({"vibe": vibe, "silent": silent,
+                         "items": [{**item, "at": at.isoformat()} for at, item in rows[:n]]})
 
 
 def vibe_levels_payload():

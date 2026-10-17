@@ -1881,5 +1881,16 @@ const en: Record<string, string> = {
   "Ссылка на набор стикеров или эмодзи": "Link to a sticker or emoji set",
   "Вставьте ссылку на набор стикеров или эмодзи из Telegram — он появится в ваших наборах: стикеры — в панели стикеров, эмодзи — во вкладке «Эмодзи». Анимированные тоже играют.": "Paste a link to a Telegram sticker or emoji set — it will appear in your sets: stickers in the sticker panel, emoji in the Emoji tab. Animated ones play too.",
   "Не похоже на ссылку на набор (t.me/addstickers/… или t.me/addemoji/…)": "This doesn't look like a set link (t.me/addstickers/… or t.me/addemoji/…)",
+  "{name} лайкнул(а) вашу сохранёнку": "{name} liked your saved image",
+  "Лайк вашей сохранёнки": "Like on your saved image",
+  "Лайк вашей идеи": "Like on your idea",
+  "Вы проголосовали за идею": "You voted for an idea",
+  "Жалоба на вас": "Report against you",
+  "Кто поднимал вайб": "Who raised my vibe",
+  "Кто поднимал вайб и за что": "Who raised my vibe and why",
+  "Пока выключен звук входящих, другим вайбометр показывает минус. Здесь — настоящий.": "While incoming sounds are off, others see a minus on your vibe meter. The real value is here.",
+  "Не удалось загрузить историю вайба": "Couldn't load vibe history",
+  "Пока никто не поднимал ваш вайб. Его поднимают в профиле, лайком сохранёнки и голосами за идеи.": "No one has raised your vibe yet. It goes up from your profile, likes on saved images and votes on ideas.",
+  "Анонимные голоса и лайки идей — без имени: так их отдали. Голоса до этого обновления показываются анонимными — тогда выбор «анонимно» не сохранялся.": "Anonymous votes and idea likes come without names — that's how they were given. Votes from before this update show as anonymous: the “anonymous” choice wasn't saved back then.",
 };
 export default en;
