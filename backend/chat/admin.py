@@ -3,9 +3,11 @@ from django.utils import timezone
 
 from django.utils.html import format_html
 
+from django.db.models import Count, Q
+
 from .models import (
     ChatAction,
-    Block, BugReport, Chat, ChatParticipant, Friendship, Message, NotificationSound,
+    Block, BugReport, Channel, Chat, ChatParticipant, Friendship, Message, NotificationSound,
     Profile, Report, SoundPack, StickerPack, Theme,
 )
 
@@ -116,7 +118,73 @@ class BlockAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Friendship)
-admin.site.register(Chat)
+@admin.register(Chat)
+class ChatAdmin(admin.ModelAdmin):
+    """Все чаты подряд: лички, группы, каналы, «Избранное», Стена. Каналы
+    удобнее смотреть в своём разделе «Каналы»."""
+    list_display = ("__str__", "kind", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("name", "username")
+    ordering = ("-created_at",)
+    raw_id_fields = ("creator", "pending_for", "pinned_message", "default_sound", "notify_sound")
+
+
+class ChannelStaffInline(admin.TabularInline):
+    """Владелец и админы канала (подписчиков бывают тысячи — их здесь нет)."""
+    model = ChatParticipant
+    fk_name = "chat"
+    fields = ("user", "role", "joined_at")
+    readonly_fields = ("user", "joined_at")
+    extra = 0
+    can_delete = False
+    verbose_name = "Владелец или админ"
+    verbose_name_plural = "Владелец и админы"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(role__in=("owner", "admin")).select_related("user")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Channel)
+class ChannelAdmin(admin.ModelAdmin):
+    """Каналы: поиск по названию, @нику, описанию и владельцу; сколько
+    подписчиков и постов; ссылка, чтобы открыть канал. Создают каналы в
+    приложении, здесь — посмотреть, поправить, удалить (вместе с постами)."""
+    list_display = ("title", "handle", "subscribers_count", "posts", "is_public", "comments_enabled", "creator", "created_at", "link")
+    list_filter = ("is_public", "comments_enabled", "sign_posts")
+    search_fields = ("name", "username", "description", "creator__username")
+    ordering = ("-subscribers_count", "-created_at")
+    list_select_related = ("creator",)
+    fields = ("name", "username", "description", "avatar_url", "is_public", "sign_posts", "comments_enabled",
+              "creator", "subscribers_count", "id", "created_at", "updated_at")
+    readonly_fields = ("id", "subscribers_count", "created_at", "updated_at")
+    raw_id_fields = ("creator",)
+    inlines = (ChannelStaffInline,)
+
+    def get_queryset(self, request):
+        return (super().get_queryset(request).filter(kind="channel")
+                .annotate(_posts=Count("messages", filter=Q(messages__deleted_for_all=False))))
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.display(description="Название", ordering="name")
+    def title(self, obj):
+        return obj.name or "—"
+
+    @admin.display(description="Ник", ordering="username")
+    def handle(self, obj):
+        return f"@{obj.username}" if obj.username else "—"
+
+    @admin.display(description="Постов", ordering="_posts")
+    def posts(self, obj):
+        return obj._posts
+
+    @admin.display(description="Ссылка")
+    def link(self, obj):
+        return format_html('<a href="https://wyx.su/c/{}" target="_blank" rel="noopener">открыть</a>', obj.username or obj.id)
 admin.site.register(ChatParticipant)
 admin.site.register(Message)
 

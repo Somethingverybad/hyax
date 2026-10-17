@@ -238,6 +238,21 @@ class Chat(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        # Для админки и ссылок на чат в других разделах (сообщения, участники).
+        title = self.name or (f"@{self.username}" if self.username else "")
+        return f"{title or self.kind} · {str(self.id)[:8]}"
+
+
+class Channel(Chat):
+    """Каналы — отдельным разделом админки: те же строки Chat с kind=channel,
+    своей таблицы нет (proxy)."""
+    class Meta:
+        proxy = True
+        verbose_name = "Канал"
+        verbose_name_plural = "Каналы"
+
+
 # Участники чата
 class ChatParticipant(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
