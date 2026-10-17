@@ -214,6 +214,10 @@ Authorization: Bot Xy…
 &lt;/script&gt;</code></pre>
     <p class="muted">Цвета темы WYX есть и переменными CSS: <code>--wyx-bg-color</code>, <code>--wyx-text-color</code>, <code>--wyx-hint-color</code>,
       <code>--wyx-button-color</code>, <code>--wyx-button-text-color</code>, <code>--wyx-secondary-bg-color</code>.</p>
+    <p>Страница открывается во встроенном окне, поэтому её нельзя запрещать встраивать (<code>X-Frame-Options: DENY</code>).
+      Если ограничиваете, кто может встроить страницу, разрешите все версии WYX — иначе в пропущенной окно останется пустым:</p>
+<pre><code>Content-Security-Policy: frame-ancestors https://huyax.e-tree.su capacitor://localhost https://localhost app://hyax
+<span class="c">веб · iPhone · Android · компьютер (macOS, Windows, Linux)</span></code></pre>
 
     <h3>3. Кто открыл — проверка на вашем сервере</h3>
     <p><code>WYX.WebApp.initData</code> — строка вида <code>query_id=…&amp;user=…&amp;auth_date=…&amp;chat_id=…&amp;hash=…</code>.
