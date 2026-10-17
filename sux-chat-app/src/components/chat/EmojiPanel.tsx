@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Plus, Search, Share2, Smile, X } from "lucide-react";
+import { Clock, Plus, Search, Share2, Smile, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { api, mediaUrl } from "@/api/client";
+import { api } from "@/api/client";
+import CustomEmoji from "@/components/chat/CustomEmoji";
 import { confirmDialog } from "@/lib/confirm";
 import { notoSvgUrl } from "@/lib/notoEmoji";
 import { readCache } from "@/lib/session-cache";
@@ -10,8 +11,8 @@ import { getLang, t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type Group = { group: string; items: [string, string, string, string][] };
-type CustomEmoji = { id: string; file_url: string; emoji?: string | null };
-type CustomPack = { id: string; name: string; mine: boolean; items: CustomEmoji[] };
+type PanelEmoji = { id: string; file_url: string; emoji?: string | null; repaint?: boolean };
+type CustomPack = { id: string; name: string; mine: boolean; items: PanelEmoji[] };
 
 /** Код Noto («1f469_200d_1f4bb») → символы. Одиночному значку из BMP (❤, ☀)
  *  добавляем вариант эмодзи (FE0F) — иначе поле ввода покажет его текстом. */
@@ -51,7 +52,7 @@ async function loadCustomPacks(): Promise<CustomPack[]> {
   const lists = await Promise.all(rows.map((p: any) => api.getStickers(p.id).catch(() => [])));
   return rows.map((p: any, i: number) => {
     const author = p.author && typeof p.author === "object" ? p.author.id : p.author;
-    return { id: p.id, name: p.name, mine: !!me && author === me, items: (lists[i] || []).map((s: any) => ({ id: s.id, file_url: s.file_url, emoji: s.emoji })) };
+    return { id: p.id, name: p.name, mine: !!me && author === me, items: (lists[i] || []).map((s: any) => ({ id: s.id, file_url: s.file_url, emoji: s.emoji, repaint: !!s.repaint })) };
   });
 }
 
@@ -110,19 +111,19 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
     pushRecent(code);
     setRecent(readRecent());
   };
-  const pickCustom = (e: CustomEmoji) => {
+  const pickCustom = (e: PanelEmoji) => {
     if (held.current) { held.current = false; return; }
     onPick(e.emoji || DEFAULT_FALLBACK, { id: e.id, url: e.file_url });
   };
 
-  const removeCustom = async (pack: CustomPack, e: CustomEmoji) => {
+  const removeCustom = async (pack: CustomPack, e: PanelEmoji) => {
     if (!pack.mine) return;
     if (!(await confirmDialog(t("Удалить этот эмодзи из набора «{name}»? В отправленных сообщениях он останется.", { name: pack.name })))) return;
     try { await api.deleteSticker(e.id); void reloadPacks(); }
     catch (err: any) { toast.error(err?.message || t("Не получилось")); }
   };
   // Долгое нажатие (телефон) и правый клик — удалить свой эмодзи.
-  const holdProps = (pack: CustomPack, e: CustomEmoji) => pack.mine ? {
+  const holdProps = (pack: CustomPack, e: PanelEmoji) => pack.mine ? {
     onContextMenu: (ev: React.MouseEvent) => { ev.preventDefault(); void removeCustom(pack, e); },
     onPointerDown: () => { held.current = false; hold.current = setTimeout(() => { held.current = true; void removeCustom(pack, e); }, 550); },
     onPointerUp: () => { if (hold.current) clearTimeout(hold.current); },
@@ -160,6 +161,18 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
     setUploading(null);
     if (fileRef.current) fileRef.current.value = "";
     void reloadPacks();
+  };
+
+  // Свой набор — удалить у всех (отправленные эмодзи в сообщениях остаются), чужой — убрать из моих.
+  const removePack = async (p: CustomPack) => {
+    const ask = p.mine
+      ? t("Удалить набор «{name}» у всех, кто его сохранил? Отправленные эмодзи в сообщениях останутся.", { name: p.name })
+      : t("Убрать «{name}» из моих наборов?", { name: p.name });
+    if (!(await confirmDialog(ask))) return;
+    try {
+      if (p.mine) await api.deleteStickerPack(p.id); else await api.unsaveStickerPack(p.id);
+      void reloadPacks();
+    } catch (err: any) { toast.error(err?.message || t("Не получилось")); }
   };
 
   const sharePack = async (p: CustomPack) => {
@@ -204,7 +217,7 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
           {customPacks.map((p) => (
             <button key={p.id} type="button" onClick={() => jump(`p${p.id}`)} title={p.name}
               className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center hover:bg-surface-4">
-              {p.items[0] ? <img src={mediaUrl(p.items[0].file_url)} alt="" className="w-5 h-5 object-contain" draggable={false} /> : <Smile className="w-4 h-4 text-subtle" />}
+              {p.items[0] ? <CustomEmoji url={p.items[0].file_url} alt="" repaint={p.items[0].repaint} loop={false} className="inline-block w-5 h-5 object-contain" /> : <Smile className="w-4 h-4 text-subtle" />}
             </button>
           ))}
           {standard && !!recent.length && (
@@ -234,12 +247,16 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
                   <button type="button" onClick={() => void sharePack(p)} className="p-1 text-subtle hover:text-foreground" aria-label={t("Поделиться")}>
                     <Share2 className="w-3.5 h-3.5" />
                   </button>
+                  <button type="button" onClick={() => void removePack(p)} className="p-1 text-subtle hover:text-destructive"
+                    aria-label={p.mine ? t("Удалить набор") : t("Убрать из моих")} title={p.mine ? t("Удалить набор") : t("Убрать из моих")}>
+                    {p.mine ? <Trash2 className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
                 <div className="flex flex-wrap">
                   {p.items.map((e) => (
                     <button key={e.id} type="button" onClick={() => pickCustom(e)} title={e.emoji || ""} {...holdProps(p, e)}
                       className="w-10 h-10 rounded-md flex items-center justify-center hover:bg-surface-4 active:scale-95 transition-transform select-none [-webkit-touch-callout:none]">
-                      <img src={mediaUrl(e.file_url)} alt={e.emoji || ""} loading="lazy" draggable={false} className="w-7 h-7 object-contain pointer-events-none" />
+                      <CustomEmoji url={e.file_url} alt={e.emoji || ""} repaint={e.repaint} loop={false} className="inline-block w-7 h-7 object-contain pointer-events-none" />
                     </button>
                   ))}
                   {p.mine && (

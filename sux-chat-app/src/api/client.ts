@@ -2466,7 +2466,7 @@ export const api = {
   /** Импорт набора стикеров из Telegram по ссылке t.me/addstickers/… .
    *  Сервер качает стикеры в фоне, поэтому отвечает сразу — прогресс
    *  спрашиваем отдельно (telegramImportProgress). */
-  importTelegramStickers: async (url: string): Promise<{ pack_id: string; name: string; total: number; done: number }> => {
+  importTelegramStickers: async (url: string): Promise<{ pack_id: string; name: string; total: number; done: number; kind?: "sticker" | "emoji" }> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/import-telegram/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ url }),
     });

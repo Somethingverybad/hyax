@@ -1,8 +1,8 @@
+import CustomEmoji from "@/components/chat/CustomEmoji";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Copy } from "lucide-react";
 import { Linkify } from "./linkify";
-import { mediaUrl } from "@/api/client";
 import { t as tr } from "@/lib/i18n";
 
 /**
@@ -20,17 +20,17 @@ import { t as tr } from "@/lib/i18n";
 /** Картинка своего эмодзи — только наш файл /media/emoji/<uuid>.png. В секретном
  *  чате entities приходят от собеседника как есть, и чужой адрес выдал бы ему,
  *  когда и откуда сообщение открыли. */
-export const isEmojiUrl = (u?: string) => !!u && /^\/media\/emoji\/[0-9a-f-]{36}\.png$/.test(u);
+export const isEmojiUrl = (u?: string) => !!u && /^\/media\/emoji\/[0-9a-f-]{36}\.(png|webp|tgs)$/.test(u);
 
-/** Сообщение из 1–3 эмодзи (обычных и своих): у каждого — адрес картинки
- *  своего эмодзи или null. Оформление, кроме своих эмодзи, — уже не «только эмодзи». */
-export function customEmojiAt(text: string, list: string[], entities?: TextEntity[] | null): (string | null)[] {
+/** Сообщение из 1–3 эмодзи (обычных и своих): у каждого — свой эмодзи
+ *  (адрес, набор, перекраска) или null. Оформление, кроме своих эмодзи, — уже не «только эмодзи». */
+export function customEmojiAt(text: string, list: string[], entities?: TextEntity[] | null): (TextEntity | null)[] {
   const ents = (entities || []).filter((e) => e.type === "custom_emoji" && isEmojiUrl(e.url));
   let pos = 0;
   return list.map((e) => {
     const at = text.indexOf(e, pos);
     pos = at < 0 ? pos : at + e.length;
-    return ents.find((x) => x.offset === at && x.length === e.length)?.url ?? null;
+    return ents.find((x) => x.offset === at && x.length === e.length) ?? null;
   });
 }
 
@@ -41,7 +41,11 @@ export type EntityType =
    *  клиенты), рисуем картинку url. Разметкой в поле не набирается. */
   | "custom_emoji";
 
-export interface TextEntity { type: EntityType; offset: number; length: number; emoji_id?: string; url?: string }
+export interface TextEntity {
+  type: EntityType; offset: number; length: number;
+  /** custom_emoji: какой эмодзи; адрес, набор и перекраску подставляет сервер. */
+  emoji_id?: string; url?: string; pack?: string; repaint?: boolean;
+}
 
 /** Свой эмодзи в поле ввода: где стоит (offset/length — в тексте поля) и какой. */
 export interface CustomEmojiRange { offset: number; length: number; emoji_id: string; url?: string }
@@ -311,7 +315,7 @@ const copyCode = (text: string) => {
  */
 /** Упоминание участника группы (с сервера, chat/mentions.py). */
 export interface Mention { id: string; offset: number; length: number }
-type RenderEntity = { type: EntityType | "mention"; offset: number; length: number; id?: string; url?: string };
+type RenderEntity = { type: EntityType | "mention"; offset: number; length: number; id?: string; url?: string; pack?: string; repaint?: boolean };
 type Ctx = { myId?: string; onMention?: (id: string) => void };
 
 export function FormattedText({ text, entities, seed, mentions, myId, onMention }: {
@@ -386,7 +390,7 @@ function wrap(ent: RenderEntity, text: string, inner: RenderEntity[], s: number,
     case "spoiler": return <Spoiler key={key}>{kids()}</Spoiler>;
     // Свой эмодзи — картинкой в строке; подпись (alt) — обычный эмодзи на его месте.
     case "custom_emoji":
-      return <img key={key} className="fmt-cemoji" src={mediaUrl(ent.url)} alt={slice} title={slice} draggable={false} loading="lazy" />;
+      return <CustomEmoji key={key} className="fmt-cemoji" url={ent.url!} alt={slice} pack={ent.pack} repaint={ent.repaint} />;
     case "zalgo": return <span key={key} className="fmt-zalgo">{zalgoText(slice, seed + s)}</span>;
     case "scramble":
       return <Scramble key={key} text={slice} seed={seed + s}>{(shown) => shown}</Scramble>;

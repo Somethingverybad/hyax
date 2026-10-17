@@ -51,7 +51,9 @@ const ProfileStickerPacks = () => {
           load();
           toast.success(p.failed
             ? t("Набор «{name}» добавлен, не скачалось: {failed}", { name: started.name, failed: p.failed })
-            : t("Набор «{name}» добавлен", { name: started.name }));
+            : started.kind === "emoji"
+              ? t("Набор эмодзи «{name}» добавлен — он во вкладке «Эмодзи» панели стикеров", { name: started.name })
+              : t("Набор «{name}» добавлен", { name: started.name }));
           navigate(`/stp/${started.pack_id}`);
         } catch {
           setProgress(null); setBusy(false); load();
@@ -93,7 +95,7 @@ const ProfileStickerPacks = () => {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") importPack(); }}
-              placeholder={t("Ссылка на набор стикеров")}
+              placeholder={t("Ссылка на набор стикеров или эмодзи")}
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
@@ -121,7 +123,7 @@ const ProfileStickerPacks = () => {
               </div>
             )}
             <p className="text-caption text-subtle">
-              {t("Вставьте ссылку на набор стикеров — он появится в ваших наборах. Анимированные стикеры станут картинками.")}
+              {t("Вставьте ссылку на набор стикеров или эмодзи из Telegram — он появится в ваших наборах: стикеры — в панели стикеров, эмодзи — во вкладке «Эмодзи». Анимированные тоже играют.")}
             </p>
           </div>
         </SettingsCard>

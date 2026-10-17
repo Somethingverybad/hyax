@@ -604,6 +604,9 @@ class Sticker(models.Model):
     # всплывает плашка с подходящими стикерами (подбор на клиенте, по началу
     # слова, с опечатками и склонениями). Пусто — стикер не подсказывается.
     keyword = models.CharField(max_length=40, blank=True, default="")
+    # Эмодзи из Telegram с needs_repainting: одноцветный значок, который
+    # рисуется цветом текста (белый на тёмной теме, тёмный на светлой).
+    repaint = models.BooleanField(default=False)
     order = models.IntegerField(default=0)  # Порядок в паке
     created_at = models.DateTimeField(default=timezone.now)
     

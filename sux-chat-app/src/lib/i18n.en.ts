@@ -1875,5 +1875,11 @@ const en: Record<string, string> = {
   "В OBS: Источники → «+» → Браузер, вставьте ссылку и включите «Управлять звуком через OBS». Ссылка на одного участника — отдельный ползунок в микшере. Свой микрофон в OBS можно не добавлять: ваш голос тоже идёт из звонка.": "In OBS: Sources → “+” → Browser, paste the link and turn on “Control audio via OBS”. A link for one participant gives them their own fader in the mixer. You don't need to add your own mic to OBS: your voice comes from the call too.",
   "Новая ссылка (прежние перестанут работать)": "New link (old ones will stop working)",
   "Ответ получит автор идеи — в своём «Долгом ящике»": "The idea's author will get this reply in their “Back Burner”",
+  "Удалить набор «{name}» у всех, кто его сохранил? Отправленные эмодзи в сообщениях останутся.": "Delete “{name}” for everyone who saved it? Emoji already sent in messages will stay.",
+  "Эмодзи ещё грузятся": "Emoji are still loading",
+  "Набор эмодзи «{name}» добавлен — он во вкладке «Эмодзи» панели стикеров": "Emoji set “{name}” added — find it in the Emoji tab of the sticker panel",
+  "Ссылка на набор стикеров или эмодзи": "Link to a sticker or emoji set",
+  "Вставьте ссылку на набор стикеров или эмодзи из Telegram — он появится в ваших наборах: стикеры — в панели стикеров, эмодзи — во вкладке «Эмодзи». Анимированные тоже играют.": "Paste a link to a Telegram sticker or emoji set — it will appear in your sets: stickers in the sticker panel, emoji in the Emoji tab. Animated ones play too.",
+  "Не похоже на ссылку на набор (t.me/addstickers/… или t.me/addemoji/…)": "This doesn't look like a set link (t.me/addstickers/… or t.me/addemoji/…)",
 };
 export default en;

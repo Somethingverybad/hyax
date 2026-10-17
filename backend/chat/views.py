@@ -4633,7 +4633,7 @@ def _tg_pack_name(url):
     return m.group(1) if m else None
 
 
-def _webm_sticker_to_webp(src_path):
+def _webm_sticker_to_webp(src_path, size=160):
     """Видеостикер Telegram (.webm, VP9 с прозрачностью) → анимированный WebP.
 
     iPhone не показывает webm картинкой, а видео VP9 с прозрачностью не
@@ -4650,7 +4650,7 @@ def _webm_sticker_to_webp(src_path):
              # 160 px и 15 кадров в секунду: стикер в чате меньше этого, а вес
              # ~130 КБ вместо ~500 КБ при 256 px/24 к/с (набор из 120 стикеров —
              # 16 МБ вместо 61 МБ). Проверено на реальном наборе.
-             "-vf", "fps=15,scale='min(160,iw)':-2:flags=lanczos",
+             "-vf", f"fps=15,scale='min({size},iw)':-2:flags=lanczos",
              "-loop", "0", "-an", "-c:v", "libwebp_anim",
              # compression_level 4: в 20 раз быстрее 6 (0,6 с против 11 с на
              # стикер) при файле тяжелее всего на ~7%.
@@ -4669,7 +4669,34 @@ def _webm_sticker_to_webp(src_path):
     return None
 
 
-def _tg_import_worker(pack_id, token, stickers, profile_id):
+def _tg_emoji_file(data, ext):
+    """Эмодзи из Telegram → файл в media/emoji (оттуда сервер берёт картинки
+    своих эмодзи, chat/formatting.py): .tgs (Lottie) — как есть, приложение
+    его проигрывает; видео .webm — анимированный WebP 100 px; картинка — PNG
+    100 px. Возвращает адрес или None."""
+    import os as _os
+    from django.conf import settings as _settings
+    emoji_dir = _os.path.join(_settings.MEDIA_ROOT, 'emoji')
+    _os.makedirs(emoji_dir, exist_ok=True)
+    stem = str(uuid.uuid4())
+    src = _os.path.join(emoji_dir, stem + ext)
+    with open(src, 'wb') as out:
+        out.write(data)
+    if ext == '.tgs':
+        return f'/media/emoji/{stem}.tgs'
+    try:
+        if ext == '.webm':
+            webp = _webm_sticker_to_webp(src, size=100)
+            return f'/media/emoji/{stem}.webp' if webp else None
+        return _emoji_image(src)
+    finally:
+        try:
+            _os.remove(src)
+        except OSError:
+            pass
+
+
+def _tg_import_worker(pack_id, token, stickers, profile_id, kind='sticker'):
     import os as _os
     from django.conf import settings as _settings
     prog = IMPORT_PROGRESS[pack_id]
@@ -4685,6 +4712,16 @@ def _tg_import_worker(pack_id, token, stickers, profile_id):
                 prog['failed'] += 1; continue
             data = http.get(f'https://api.telegram.org/file/bot{token}/{path}', timeout=TG_TIMEOUT).content
             ext = _os.path.splitext(path)[1].lower() or ('.tgs' if st.get('is_animated') else '.webm' if st.get('is_video') else '.webp')
+            if kind == 'emoji':
+                url = _tg_emoji_file(data, ext)
+                if not url:
+                    prog['failed'] += 1; continue
+                Sticker.objects.create(pack_id=pack_id, file_url=url, file_name=url.rsplit('/', 1)[-1],
+                                       emoji=(st.get('emoji') or '')[:10], order=order,
+                                       repaint=bool(st.get('needs_repainting')))
+                order += 1
+                prog['done'] += 1
+                continue
             name = f'{uuid.uuid4()}{ext}'
             with open(_os.path.join(stickers_dir, name), 'wb') as out:
                 out.write(data)
@@ -4717,7 +4754,7 @@ class TelegramStickerImportView(APIView):
             return Response({"error": "На сервере не задан токен бота (TG_BOT)"}, status=503)
         name = _tg_pack_name(request.data.get('url') or request.data.get('name'))
         if not name:
-            return Response({"error": "Не похоже на ссылку на стикерпак (t.me/addstickers/…)"}, status=400)
+            return Response({"error": "Не похоже на ссылку на набор (t.me/addstickers/… или t.me/addemoji/…)"}, status=400)
         try:
             r = _tg_session().get(f'https://api.telegram.org/bot{token}/getStickerSet', params={'name': name}, timeout=TG_TIMEOUT).json()
         except Exception:
@@ -4726,13 +4763,15 @@ class TelegramStickerImportView(APIView):
             return Response({"error": r.get('description') or "Пак не найден"}, status=404)
         s = r['result']
         stickers = [x for x in s.get('stickers', []) if x.get('file_id')][:200]
+        # Набор эмодзи Telegram (t.me/addemoji/…) — набор своих эмодзи WYX.
+        kind = 'emoji' if s.get('sticker_type') == 'custom_emoji' else 'sticker'
         pack = StickerPack.objects.create(name=(s.get('title') or name)[:100], description=f'Импорт из Telegram: {name}',
-                                          author=profile, is_public=True)
+                                          author=profile, is_public=True, kind=kind)
         UserStickerPack.objects.get_or_create(user=profile, pack=pack)
         IMPORT_PROGRESS[str(pack.id)] = {'total': len(stickers), 'done': 0, 'failed': 0, 'finished': not stickers,
                                          'animated': sum(1 for x in stickers if x.get('is_animated')),
-                                         'video': sum(1 for x in stickers if x.get('is_video'))}
-        threading.Thread(target=_tg_import_worker, args=(str(pack.id), token, stickers, str(profile.id)), daemon=True).start()
+                                         'video': sum(1 for x in stickers if x.get('is_video')), 'kind': kind}
+        threading.Thread(target=_tg_import_worker, args=(str(pack.id), token, stickers, str(profile.id), kind), daemon=True).start()
         return Response({"pack_id": str(pack.id), "name": pack.name, **IMPORT_PROGRESS[str(pack.id)]}, status=202)
 
     def get(self, request, pk=None):

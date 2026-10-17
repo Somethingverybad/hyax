@@ -9,6 +9,8 @@ import { api, mediaUrl, type StickerPackInfo } from "@/api/client";
 import { stickerPackLink } from "@/lib/share";
 import AdultLock, { AdultBadge } from "@/components/AdultLock";
 import StickerView from "@/components/chat/StickerView";
+import CustomEmoji from "@/components/chat/CustomEmoji";
+import { cn } from "@/lib/utils";
 
 /**
  * Стикерпак по ссылке /stp/<id> — как /sp/<id> для звуков. Сетка стикеров
@@ -20,7 +22,8 @@ const StickerPackPage = () => {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const [pack, setPack] = useState<StickerPackInfo | null | undefined>(undefined);
-  const [stickers, setStickers] = useState<{ id: string; file_url: string; emoji?: string | null }[]>([]);
+  const emojiPack = pack?.kind === "emoji";
+  const [stickers, setStickers] = useState<{ id: string; file_url: string; emoji?: string | null; repaint?: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -71,7 +74,12 @@ const StickerPackPage = () => {
           <>
             <div className="flex items-center gap-4">
               <span className="w-16 h-16 rounded-lg bg-surface-3 flex items-center justify-center shrink-0 overflow-hidden">
-                {stickers[0] ? <img src={mediaUrl(stickers[0].file_url)} alt="" className="w-12 h-12 object-contain" /> : <StickerIcon className="w-7 h-7 text-primary" />}
+                {stickers[0]
+                  // Обложка — первым стикером любого формата (.tgs картинкой не показать).
+                  ? emojiPack
+                    ? <CustomEmoji url={stickers[0].file_url} alt="" repaint={stickers[0].repaint} className="inline-block w-12 h-12 object-contain" />
+                    : <StickerView url={mediaUrl(stickers[0].file_url)} alt="" className="w-12 h-12 object-contain" />
+                  : <StickerIcon className="w-7 h-7 text-primary" />}
               </span>
               <div className="min-w-0">
                 <p className="text-[22px] leading-tight font-semibold truncate">{pack.name}{pack.is_adult && <AdultBadge />}</p>
@@ -113,15 +121,18 @@ const StickerPackPage = () => {
               </div>
             )}
 
-            {!pack.adult_locked && <div className="ui-card rounded-lg bg-surface-2 border border-border p-3 grid grid-cols-4 gap-2">
+            {!pack.adult_locked && <div className={cn("ui-card rounded-lg bg-surface-2 border border-border p-3 grid gap-2", emojiPack ? "grid-cols-6 sm:grid-cols-8" : "grid-cols-4")}>
               {stickers.map((s) => (
-                <div key={s.id} className="aspect-square rounded-md bg-surface-3 flex items-center justify-center overflow-hidden">
+                <div key={s.id} className={cn("aspect-square rounded-md flex items-center justify-center overflow-hidden", emojiPack ? "p-1" : "bg-surface-3")}>
                   {/* Через StickerView, а не <img>: анимированные стикеры Telegram
-                      (.tgs — Lottie) картинкой не показываются вовсе. */}
-                  <StickerView url={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" />
+                      (.tgs — Lottie) картинкой не показываются вовсе. Эмодзи — с
+                      перекраской одноцветных значков в цвет текста. */}
+                  {emojiPack
+                    ? <CustomEmoji url={s.file_url} alt={s.emoji || ""} repaint={s.repaint} className="inline-block w-full h-full object-contain" />
+                    : <StickerView url={mediaUrl(s.file_url)} alt={s.emoji || ""} className="w-full h-full object-contain" />}
                 </div>
               ))}
-              {stickers.length === 0 && <p className="col-span-4 py-6 text-center text-small text-subtle">{t("Стикеры ещё грузятся")}</p>}
+              {stickers.length === 0 && <p className={cn("py-6 text-center text-small text-subtle", emojiPack ? "col-span-6 sm:col-span-8" : "col-span-4")}>{emojiPack ? t("Эмодзи ещё грузятся") : t("Стикеры ещё грузятся")}</p>}
             </div>}
           </>
         )}

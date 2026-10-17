@@ -116,6 +116,12 @@
     border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
   .stick img,.stick video,.stick .lot{width:100%;height:100%;object-fit:contain}
   .stick .ph{font-size:24px}
+  .sticks.emo{grid-template-columns:repeat(auto-fill,minmax(56px,1fr))}
+  .sticks.emo .stick{padding:6px}
+  /* Одноцветный эмодзи Telegram (needs_repainting): рисуется цветом текста. */
+  .stick.repaint .mask{width:100%;height:100%;background:#fff}
+  .stick.repaint .lot svg [fill]:not([fill="none"]){fill:#fff}
+  .stick.repaint .lot svg [stroke]:not([stroke="none"]){stroke:#fff}
   .stick .em{position:absolute;right:3px;bottom:2px;font-size:12px;text-shadow:0 1px 3px #000}
   .stick .anim{position:absolute;left:3px;top:3px;font-size:9px;letter-spacing:.4px;background:rgba(0,0,0,.55);
     color:var(--muted);border-radius:6px;padding:1px 4px}
@@ -173,8 +179,8 @@
     <div class="tiles">
       <div class="tile active"><div class="ico">🔊</div><div class="t">Звуки уведомлений</div>
         <div class="d">Паки и редактор с обрезкой</div><span class="badge">доступно</span></div>
-      <div class="tile active"><div class="ico">🎨</div><div class="t">Стикеры</div>
-        <div class="d">Свои паки и добавление по ссылке</div><span class="badge">доступно</span></div>
+      <div class="tile active"><div class="ico">🎨</div><div class="t">Стикеры и эмодзи</div>
+        <div class="d">Свои паки и наборы — и импорт из Telegram по ссылке</div><span class="badge">доступно</span></div>
       <a class="tile active" href="#/bots"><div class="ico">🤖</div><div class="t">Боты</div>
         <div class="d">Создание, токены, аватар — и документация API</div><span class="badge">доступно</span></a>
       <div class="tile soon"><div class="ico">😍</div><div class="t">Реакции</div>
@@ -193,6 +199,9 @@
 
     <h2>Стикерпаки <span class="cnt" id="stpCount">0</span></h2>
     <div class="folders" id="stickerFolders"></div>
+
+    <h2>Наборы эмодзи <span class="cnt" id="emjCount">0</span></h2>
+    <div class="folders" id="emojiFolders"></div>
   </div>
 
   <!-- ПАК ЗВУКОВ -->
@@ -244,21 +253,21 @@
         </div>
       </div>
     </div>
-    <h2>Стикеры</h2>
+    <h2 id="stpGridTitle">Стикеры</h2>
     <div class="sticks" id="stpGrid"></div>
   </div>
 
   <!-- ИМПОРТ СТИКЕРОВ -->
   <div id="importView" hidden>
     <button class="back" type="button" data-back>← Все паки</button>
-    <h2>Стикеры по ссылке</h2>
+    <h2>Стикеры и эмодзи по ссылке</h2>
     <div class="card">
       <div class="field"><label class="lbl">Ссылка на пак</label>
-        <input id="tgUrl" type="text" placeholder="Ссылка на набор стикеров" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+        <input id="tgUrl" type="text" placeholder="t.me/addstickers/… или t.me/addemoji/…" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <button class="btn primary wide" id="tgImport" type="button">Импортировать пак</button>
       <div class="prog" id="tgProg"><i></i></div>
       <div class="result" id="tgResult"></div>
-      <div class="hint mt">Анимированные (.tgs) и видео (.webm) стикеры сохраняются как есть — в приложении они играют так же.</div>
+      <div class="hint mt">Ссылка на стикеры Telegram (t.me/addstickers/…) станет стикерпаком, на эмодзи (t.me/addemoji/…) — набором эмодзи: они вставляются прямо в текст сообщения. Анимированные (.tgs) и видео (.webm) играют в приложении так же, одноцветные эмодзи красятся в цвет текста.</div>
     </div>
   </div>
 
@@ -554,13 +563,18 @@
       el("spCount").textContent=soundPacks.length;
     }
     if(stickerPacks!==null){
-      tf.innerHTML="";
+      var ef=el("emojiFolders"), nS=0, nE=0;
+      tf.innerHTML=""; ef.innerHTML="";
       tf.appendChild(folder({isNew:true,name:"Импорт",count:"пак по ссылке",icon:"＋",onClick:function(){ go("#/import"); }}));
+      ef.appendChild(folder({isNew:true,name:"Импорт",count:"набор по ссылке",icon:"＋",onClick:function(){ go("#/import"); }}));
       stickerPacks.forEach(function(p){
-        tf.appendChild(folder({name:p.name,count:plural(p.stickers_count||0,"стикер","стикера","стикеров"),mosaic:p.preview,icon:"🎨",
-          adult:p.is_adult,tag:isMine(p)?"":"сохранён",onClick:function(){ go("#/stp/"+p.id); }}));
+        var emo=p.kind==="emoji";
+        (emo?ef:tf).appendChild(folder({name:p.name,count:emo?(p.stickers_count||0)+" эмодзи":plural(p.stickers_count||0,"стикер","стикера","стикеров"),
+          mosaic:p.preview,icon:emo?"😀":"🎨",adult:p.is_adult,tag:isMine(p)?"":"сохранён",onClick:function(){ go("#/stp/"+p.id); }}));
+        if(emo) nE++; else nS++;
       });
-      el("stpCount").textContent=stickerPacks.length;
+      el("stpCount").textContent=nS;
+      el("emjCount").textContent=nE;
     }
     applyFilter();
   }
@@ -779,9 +793,18 @@
     return libs;
   }
   function stickerTile(s){
-    var box=document.createElement("div"); box.className="stick";
+    var box=document.createElement("div"); box.className="stick"+(s.repaint?" repaint":"");
     var url=s.file_url||"";
     var ext=(url.split("?")[0].split(".").pop()||"").toLowerCase();
+    if(s.repaint && ext!=="tgs"){
+      // Одноцветный значок: форма — из картинки, цвет — наш (маска).
+      var m=document.createElement("div"); m.className="mask";
+      var mk='url("'+url.replace(/"/g,"")+'") center / contain no-repeat';
+      m.style.webkitMask=mk; m.style.mask=mk;
+      box.appendChild(m);
+      if(s.emoji){ var e0=document.createElement("span"); e0.className="em"; e0.textContent=s.emoji; box.appendChild(e0); }
+      return box;
+    }
     if(ext==="tgs"){
       box.innerHTML='<div class="ph">🎞</div><span class="anim">TGS</span>';
       var host=document.createElement("div"); host.className="lot";
@@ -812,7 +835,10 @@
       .then(function(pack){
         if(!pack){ grid.innerHTML='<div class="muted">Пак не найден.</div>'; return; }
         el("stpTitle").textContent=pack.name;
-        el("stpMeta").textContent=plural(pack.stickers_count||0,"стикер","стикера","стикеров")+(isMine(pack)?"":" · сохранён из чужих");
+        var emo=pack.kind==="emoji";
+        el("stpMeta").textContent=(emo?"Набор эмодзи · "+(pack.stickers_count||0)+" эмодзи":plural(pack.stickers_count||0,"стикер","стикера","стикеров"))+(isMine(pack)?"":" · сохранён из чужих");
+        el("stpGridTitle").textContent=emo?"Эмодзи":"Стикеры";
+        grid.className="sticks"+(emo?" emo":"");
         var cov=el("stpCover"); cov.innerHTML="";
         if(pack.preview&&pack.preview.length){ var t=stickerTile({file_url:pack.preview[0]}); t.style.cssText="border:0;width:100%;height:100%;border-radius:0"; cov.appendChild(t); } else cov.textContent="🎨";
         var act=el("stpActions"); act.innerHTML="";
@@ -820,7 +846,7 @@
         link.addEventListener("click", function(){ copyLink("/stp/"+pack.id, link); });
         act.appendChild(link);
         if(isMine(pack)) act.appendChild(adultToggle("/api/sticker-packs/"+pack.id+"/", pack));
-        var del=document.createElement("button"); del.className="btn sm danger"; del.textContent=isMine(pack)?"Удалить пак":"Убрать из моих";
+        var del=document.createElement("button"); del.className="btn sm danger"; del.textContent=isMine(pack)?(pack.kind==="emoji"?"Удалить набор":"Удалить пак"):"Убрать из моих";
         del.addEventListener("click", function(){
           if(!confirm(isMine(pack)?'Удалить пак «'+pack.name+'»?':'Убрать пак «'+pack.name+'» из своих?')) return;
           var req = isMine(pack) ? authJson("/api/sticker-packs/"+pack.id+"/","DELETE") : authJson("/api/sticker-packs/"+pack.id+"/unsave/","POST");
@@ -846,7 +872,7 @@
   el("tgImport").addEventListener("click", function(){
     var btn=this, url=el("tgUrl").value.trim();
     tgResult.className="result";
-    if(!url){ tgRes("err","Вставьте ссылку на набор стикеров."); return; }
+    if(!url){ tgRes("err","Вставьте ссылку на набор стикеров или эмодзи."); return; }
     btn.disabled=true; btn.textContent="Импорт…";
     tgProg.style.display="block"; tgProgBar.style.width="5%";
     authJson(TG_IMPORT_URL,"POST",{url:url}).then(function(x){
@@ -854,11 +880,12 @@
       var packId=x.data.pack_id, total=x.data.total||0, extra=[];
       if(x.data.animated) extra.push(x.data.animated+" анимированных");
       if(x.data.video) extra.push(x.data.video+" видео");
-      tgRes("ok","<b>"+esc(x.data.name)+"</b> — качаю "+total+" стикеров"+(extra.length?" ("+extra.join(", ")+")":"")+"…");
-      pollImport(packId, total, btn);
+      var emo=x.data.kind==="emoji";
+      tgRes("ok","<b>"+esc(x.data.name)+"</b> — "+(emo?"набор эмодзи, качаю "+total+" эмодзи":"качаю "+total+" стикеров")+(extra.length?" ("+extra.join(", ")+")":"")+"…");
+      pollImport(packId, total, btn, emo);
     }).catch(function(e){ btn.disabled=false; btn.textContent="Импортировать пак"; tgProg.style.display="none"; if(!(e&&e.auth)) tgRes("err","Сеть недоступна."); });
   });
-  function pollImport(packId, total, btn){
+  function pollImport(packId, total, btn, emo){
     var tries=0;
     (function tick(){
       tries++;
@@ -867,7 +894,7 @@
         var p=x.data, done=(p.done||0)+(p.failed||0), tot=p.total||total||1;
         tgProgBar.style.width=Math.max(5,Math.round(done/tot*100))+"%";
         if(p.finished){
-          var msg="<b>Пак импортирован.</b> Стикеров: "+(p.done||0);
+          var msg=emo?"<b>Набор эмодзи импортирован.</b> Эмодзи: "+(p.done||0)+" — они во вкладке «Эмодзи» панели стикеров.":"<b>Пак импортирован.</b> Стикеров: "+(p.done||0);
           if(p.failed) msg+=' <span style="color:#ff9a95">· не скачалось: '+p.failed+"</span>";
           finish(msg,true); return;
         }

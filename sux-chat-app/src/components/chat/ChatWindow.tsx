@@ -46,6 +46,7 @@ import { FormattedText, type Mention, customEmojiAt, parseMarkup, parseMarkupWit
 import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload, videoThumb } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
+import CustomEmoji from "./CustomEmoji";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
@@ -4058,7 +4059,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {bigEmoji && (
                         <div className="flex items-end gap-0.5 py-0.5" role="img" aria-label={message.content || ""}>
                           {bigEmoji.map((e, i) => bigCustom?.[i]
-                            ? <img key={i} src={mediaUrl(bigCustom[i]!)} alt={e} draggable={false} className="object-contain" style={{ width: BIG_EMOJI_PX[bigEmoji.length - 1], height: BIG_EMOJI_PX[bigEmoji.length - 1] }} />
+                            ? <CustomEmoji key={i} url={bigCustom[i]!.url!} alt={e} pack={bigCustom[i]!.pack} repaint={bigCustom[i]!.repaint}
+                                className="inline-block object-contain" style={{ width: BIG_EMOJI_PX[bigEmoji.length - 1], height: BIG_EMOJI_PX[bigEmoji.length - 1] }} />
                             : <NotoEmoji key={i} emoji={e} size={BIG_EMOJI_PX[bigEmoji.length - 1]} autoPlay delay={i * 150} tapToPlay />)}
                         </div>
                       )}

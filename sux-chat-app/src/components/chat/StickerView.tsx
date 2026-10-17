@@ -15,9 +15,9 @@ import LoopVideo from "@/components/LoopVideo";
  * тянули на треть главного бандла, а нужны только тем, у кого есть
  * анимированные стикеры.
  */
-const loadLottie = () => import("lottie-web").then((m) => m.default);
+export const loadLottie = () => import("lottie-web").then((m) => m.default);
 const tgsCache = new Map<string, Promise<object>>();
-const loadTgs = (url: string) => {
+export const loadTgs = (url: string) => {
   let p = tgsCache.get(url);
   if (!p) {
     p = Promise.all([fetch(url).then((r) => r.arrayBuffer()), import("pako")])

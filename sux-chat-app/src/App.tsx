@@ -147,6 +147,12 @@ const DeepLinks = () => {
     window.addEventListener("hyax:force-logout", h);
     return () => window.removeEventListener("hyax:force-logout", h);
   }, []);
+  // Переход из мест без роутера под рукой (свой эмодзи в тексте → его набор).
+  useEffect(() => {
+    const h = (e: Event) => { const to = (e as CustomEvent<string>).detail; if (typeof to === "string" && to.startsWith("/")) navRef.current(to); };
+    window.addEventListener("hyax:navigate", h);
+    return () => window.removeEventListener("hyax:navigate", h);
+  }, []);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const toPath = (url?: string | null) => {

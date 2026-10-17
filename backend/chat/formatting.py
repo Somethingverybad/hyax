@@ -74,14 +74,20 @@ def resolve_custom_emoji(entities):
             pass
     # Только наши файлы эмодзи: стикер в набор можно добавить с любым адресом,
     # а картинка в тексте не должна ходить на чужой сервер.
-    urls = {str(k): v for k, v in Sticker.objects.filter(id__in=valid, pack__kind="emoji", file_url__startswith="/media/emoji/").values_list("id", "file_url")}
+    rows = {str(k): (url, pack, repaint) for k, url, pack, repaint in
+            Sticker.objects.filter(id__in=valid, pack__kind="emoji", file_url__startswith="/media/emoji/")
+            .values_list("id", "file_url", "pack_id", "repaint")}
     out = []
     for e in entities:
         if e.get("type") == "custom_emoji":
-            url = urls.get(e["emoji_id"])
-            if not url:
+            row = rows.get(e["emoji_id"])
+            if not row:
                 continue
-            e = {**e, "url": url}
+            # Набор — по тапу на эмодзи его можно открыть и добавить себе;
+            # repaint — одноцветный значок, рисуется цветом текста.
+            e = {**e, "url": row[0], "pack": str(row[1])}
+            if row[2]:
+                e["repaint"] = True
         out.append(e)
     return out
 

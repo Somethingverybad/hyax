@@ -1565,6 +1565,11 @@ html.native-video .call-layer {
   -webkit-appearance: none;
 }
 
+/* Одноцветный эмодзи Telegram (needs_repainting) в Lottie — заливка цветом
+   текста (components/chat/CustomEmoji.tsx; картинки красятся маской). */
+.cemoji-repaint svg [fill]:not([fill="none"]) { fill: currentColor; }
+.cemoji-repaint svg [stroke]:not([stroke="none"]) { stroke: currentColor; }
+
 /* Свой эмодзи из набора в тексте сообщения (lib/format.tsx, custom_emoji). */
 .fmt-cemoji {
   display: inline-block;
