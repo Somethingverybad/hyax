@@ -485,6 +485,8 @@ const en: Record<string, string> = {
   "🔒 Сообщение доступно на другом устройстве": "🔒 This message is available on another device",
   "изм.": "edited",
   "Новых сообщений: {n}. Вниз": "New messages: {n}. Scroll down",
+  "Скачать видео": "Download video",
+  "Пропущено постов: {n}. Вниз": "Missed posts: {n}. Scroll down",
   "Вниз": "Scroll down",
   "Отменить выбор": "Cancel selection",
   "Выбрано: {n}": "Selected: {n}",

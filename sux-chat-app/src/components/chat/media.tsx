@@ -106,9 +106,19 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
 };
 
 /** Вписывает натуральный размер в бокс превью (240×192), не увеличивая. */
-export const previewSize = (dims: { w: number; h: number }) => {
-  const scale = Math.min(240 / dims.w, 192 / dims.h, 1);
+export const previewSize = (dims: { w: number; h: number }, maxW = 240, maxH = 192) => {
+  const scale = Math.min(maxW / dims.w, maxH / dims.h, 1);
   return { width: Math.round(dims.w * scale), height: Math.round(dims.h * scale) };
+};
+
+/** Одиночное фото или видео в пузыре — на всю его ширину: подпись, ответ или
+ *  пересылка бывают шире картинки, и рядом с ней оставалось пустое место.
+ *  Не уже превью (на узком экране — не шире 62vw), высота — по пропорциям,
+ *  но не выше 420px (дальше кадр обрезается по краям, без пустых полос). */
+const fillBox = (dims: { w: number; h: number } | null | undefined, maxW: number, maxH: number, fallback: { width: number; height: number }): React.CSSProperties => {
+  if (!dims) return fallback;
+  const p = previewSize(dims, maxW, maxH);
+  return { width: "100%", minWidth: `min(${p.width}px, 62vw)`, aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 420 };
 };
 
 /** Размеры медиа с сервера (ffprobe при загрузке) → {w,h} или null. */
@@ -229,16 +239,16 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   const src = localBlob || signed;
   // Своё из blob декодируется мгновенно — без скелетона; чужое ждёт onLoad.
   const [loaded, setLoaded] = useState(!!localBlob);
-  const size = dims ? previewSize(dims) : { width: 160, height: 112 };
   return (
-    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden max-w-full" style={size}>
+    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden max-w-full" style={fillBox(dims, 240, 192, { width: 160, height: 112 })}>
       {!loaded && <MediaSkeleton className="absolute inset-0" />}
       {src && (
         <img
           src={src}
           alt={name || tr("Изображение")}
           loading="lazy"
-          className={cn("w-full h-full object-contain cursor-pointer block transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
+          // absolute: натуральный размер картинки не должен раздувать пузырь (ширина — от бокса).
+          className={cn("absolute inset-0 w-full h-full object-cover cursor-pointer block transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
           onLoad={() => setLoaded(true)}
           onClick={() => onOpen(src, name || "image")}
           onError={onError}
@@ -294,7 +304,7 @@ const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: strin
       {!ready && <MediaSkeleton className="absolute inset-0" />}
       {poster ? (
         <img src={poster} alt="" onLoad={() => setReady(true)}
-          className={cn("w-full h-full block transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")} />
+          className={cn("absolute inset-0 w-full h-full block transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")} />
       ) : src && (
         <video
           ref={ref}
@@ -305,7 +315,7 @@ const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: strin
           onLoadedMetadata={() => { const el = ref.current; if (el && el.currentTime === 0) { try { el.currentTime = 0.05; } catch { /* покажем при просмотре */ } } }}
           onLoadedData={() => setReady(true)}
           onSeeked={() => setReady(true)}
-          className={cn("w-full h-full block bg-black transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")}
+          className={cn("absolute inset-0 w-full h-full block bg-black transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")}
         />
       )}
       <button
@@ -328,12 +338,11 @@ export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { 
   const [nearRef, near] = useNearView();
   const src = useMediaUrl(near ? raw : null);
   const posterSrc = useMediaUrl(near ? poster || null : null);
-  // Бокс под видео по размерам с сервера (в пределах 280×256), чтобы лента не
-  // прыгала, когда плеер узнает размер кадра. Без размеров — как раньше.
-  const size = dims ? (() => { const s = Math.min(280 / dims.w, 256 / dims.h, 1); return { width: Math.round(dims.w * s), height: Math.round(dims.h * s) }; })() : { width: 176, height: 112 };
+  // Бокс под видео по размерам с сервера, чтобы лента не прыгала, когда плеер
+  // узнает размер кадра; по ширине — весь пузырь. Без размеров — как раньше.
   return (
-    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={size}>
-      <VideoThumb src={src} poster={posterSrc} />
+    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={fillBox(dims, 280, 256, { width: 176, height: 112 })}>
+      <VideoThumb src={src} poster={posterSrc} cover={!!dims} />
     </div>
   );
 };

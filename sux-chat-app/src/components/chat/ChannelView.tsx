@@ -7,14 +7,15 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, type RefObje
 import { api, mediaUrl, type Chat, type NotificationSoundInfo, type WallState } from "@/api/client";
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
-import { useMediaUrl } from "@/hooks/use-media-url";
+import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
+import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import { cn } from "@/lib/utils";
 import { type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -244,6 +245,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   };
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const postsRef = useRef<Post[]>(posts);
+  postsRef.current = posts;
   // Обои канала: полные данные чата (общие и мои), перечитываем по событию
   // hyax:wallpaper — сокет шлёт его, когда обои сменили.
   const [wpInfo, setWpInfo] = useState<Chat | null>(null);
@@ -616,6 +619,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
   const onFeedScroll = () => {
     const el = feedRef.current;
+    trackFeed();
     if (el && el.scrollTop < 160 && hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
   };
 
@@ -627,6 +631,70 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     scrollAdjustRef.current = null;
     el.scrollTop = a.top + (el.scrollHeight - a.height);
   }, [posts]);
+
+  // Место в ленте (lib/feedPosition): вернулись — там же, где были; ниже
+  // досмотренного — счётчик пропущенных на кнопке «вниз». На Стене эта
+  // кнопка стоит вместо «+», пока лента не внизу.
+  const posKey = wall ? "wall" : `channel:${channelId}`;
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const [missed, setMissed] = useState(0);
+  const seenRef = useRef<string | null>(null);
+  const saveTimer = useRef(0);
+  const countMissed = (list: Post[], seenId: string | null) => {
+    const i = seenId ? list.findIndex((p) => p.id === seenId) : -1;
+    if (i < 0) return 0;
+    return list.slice(i + 1).filter((p) => !p._pending && p.sender?.id !== userId).length;
+  };
+  const savePos = () => { const el = feedRef.current; if (el && postsRef.current.length) saveFeedPos(posKey, captureFeedPos(el, POST_ITEMS)); };
+  /** После прокрутки: внизу ли, до какого поста досмотрено, сколько пропущено. */
+  const trackFeed = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    if (bottom !== atBottomRef.current) { atBottomRef.current = bottom; setAtBottom(bottom); }
+    const list = postsRef.current;
+    const last = bottom ? list[list.length - 1]?.id ?? null : lastVisibleId(el, POST_ITEMS);
+    if (last && list.findIndex((p) => p.id === last) > list.findIndex((p) => p.id === seenRef.current)) seenRef.current = last;
+    setMissed(bottom ? 0 : countMissed(list, seenRef.current));
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(savePos, 250);
+  };
+  const jumpDown = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    const far = el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight * 3;
+    el.scrollTo({ top: el.scrollHeight, behavior: far ? "auto" : "smooth" });
+  };
+  /** Вход в ленту: на запомненное место, если ушли не снизу, иначе — вниз. */
+  const openFeed = () => {
+    const pos = readFeedPos(posKey);
+    if (!pos || pos.bottom) { scrollFeedOnOpen(); return; }
+    setTimeout(() => {
+      const el = feedRef.current;
+      if (!el) return;
+      if (!restoreFeedPos(el, POST_ITEMS, pos)) { scrollFeedOnOpen(); return; }
+      seenRef.current = pos.seen || pos.id || null;
+      atBottomRef.current = false;
+      setAtBottom(false);
+      setMissed(countMissed(postsRef.current, seenRef.current));
+    }, 60);
+  };
+  // Новые посты: внизу — остаёмся внизу (новое видно сразу), выше — растёт счётчик.
+  useLayoutEffect(() => {
+    const el = feedRef.current;
+    if (!el || scrollAdjustRef.current) return;
+    if (atBottomRef.current) {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight > 2) el.scrollTop = el.scrollHeight;
+      seenRef.current = posts[posts.length - 1]?.id ?? seenRef.current;
+    } else {
+      setMissed(countMissed(posts, seenRef.current));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts]);
+  // Ушли из ленты (другая вкладка, другой канал) — место запоминаем. Layout-
+  // эффект: его уборка идёт, пока лента ещё в документе (у обычного ref уже пуст).
+  useLayoutEffect(() => () => { window.clearTimeout(saveTimer.current); savePos(); }, [posKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Вход в канал: встаём чуть выше низа и плавно доезжаем — как в чате. */
   const scrollFeedOnOpen = () => {
@@ -682,7 +750,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         hasMoreRef.current = cached!.hasMore;
         setPosts((cached!.messages as Post[]).filter(wallVisible));
         setLoading(false);
-        scrollFeedOnOpen();
+        openFeed();
       }
       try {
         if (wall) {
@@ -705,7 +773,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       await sync(true);
       if (!alive) return;
       setLoading(false);
-      if (!fromCache) scrollFeedOnOpen();
+      if (!fromCache) openFeed();
     })();
     // Лёгкий поллинг: с since он почти ничего не стоит.
     // Опрос чаще: сервер двигает updated_at поста при реакции и комментарии,
@@ -1091,6 +1159,19 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         )}
       </div>
 
+      {/* Канал: кнопка «вниз» со счётчиком пропущенных, пока лента не внизу. */}
+      {!wall && !atBottom && (
+        <div className="relative h-0 z-20">
+          <button type="button" onClick={jumpDown} aria-label={missed > 0 ? tr("Пропущено постов: {n}. Вниз", { n: missed }) : tr("Вниз")}
+            className="ui-btn absolute right-3 md:right-6 bottom-3 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80">
+            <ArrowDown className="w-5 h-5" />
+            {missed > 0 && (
+              <span className="absolute -top-2 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-primary text-primary-foreground text-[11px] font-semibold flex items-center justify-center">{missed > 99 ? "99+" : missed}</span>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Стена: кнопка «+» над лентой, пост пишется в шторке. Канал: строка композера админа или подписка. */}
       {wall && (
         <>
@@ -1103,11 +1184,17 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             </div>
           )}
           <div className={cn("pad-safe-bottom shrink-0", !onBack && "wall-tab-bottom")} />
+          {/* Не внизу — сначала «вниз» со счётчиком пропущенных; досмотрели — «+». */}
           {wallState && !composeOpen && (
-            <button type="button" onClick={() => { setComposeOpen(true); setComposeOpts(false); }} aria-label={tr("Новый пост")}
+            <button type="button"
+              onClick={atBottom ? () => { setComposeOpen(true); setComposeOpts(false); } : jumpDown}
+              aria-label={atBottom ? tr("Новый пост") : missed > 0 ? tr("Пропущено постов: {n}. Вниз", { n: missed }) : tr("Вниз")}
               className={cn("absolute right-4 z-20 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform",
                 !onBack ? "bottom-[calc(16px+var(--mint-nav-space,0px)+env(safe-area-inset-bottom,0px))]" : "bottom-[calc(16px+env(safe-area-inset-bottom,0px))]")}>
-              <Plus className="w-7 h-7" />
+              {atBottom ? <Plus className="w-7 h-7" /> : <ArrowDown className="w-7 h-7" />}
+              {!atBottom && missed > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-foreground text-background text-[11px] font-semibold flex items-center justify-center">{missed > 99 ? "99+" : missed}</span>
+              )}
             </button>
           )}
           {composeOpen && (
@@ -1432,6 +1519,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <SheetPortal>
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => setMenuFor(null)}>
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
+            {(menuFor.video_url || (menuFor.file_url && isVideoFile(menuFor.file_name, menuFor.file_url))) && (
+              <button type="button" onClick={() => {
+                const p = menuFor;
+                setMenuFor(null);
+                const file = p.file_url && isVideoFile(p.file_name, p.file_url);
+                resolveMediaUrl((file ? p.file_url : p.video_url) as string)
+                  .then((u) => saveFileToDevice(u, file && p.file_name ? p.file_name : `video-${p.id.slice(0, 8)}.mp4`))
+                  .catch(() => toast.error(tr("Не удалось скачать файл")));
+              }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                <Download className="w-5 h-5 text-muted-foreground" /> {tr("Скачать видео")}
+              </button>
+            )}
             {wall && (menuFor.content || "").trim() && (() => {
               const p = menuFor;
               const ts = trState(p);

@@ -49,6 +49,7 @@ import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import CustomEmoji from "./CustomEmoji";
 import ComposeMirror from "./ComposeMirror";
+import { MESSAGE_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
@@ -66,7 +67,7 @@ import type { PlaylistTrack } from "@/api/client";
 import { playQueue, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
-import { useMediaUrl } from "@/hooks/use-media-url";
+import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { takePendingShare } from "@/lib/shareInbox";
@@ -1506,7 +1507,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setRenderLimit(RENDER_STEP);
     unreadOpenRef.current = unreadAtOpen || 0;
     setUnreadMarkId(null);
-    setAnchoring(unreadOpenRef.current > 0);
+    setAnchoring(unreadOpenRef.current > 0 || hasSavedPos(chatId));
     setNewBelow(0);
     setAwayFromBottom(false);
     setFreshIds(new Set());
@@ -1531,10 +1532,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         syncedAtRef.current = sess.syncedAt;
         setHasMore(sess.hasMore);
         setMessages(sessMsgs);
-        scrollToBottomOnOpen();
+        scrollToBottomOnOpen(true);
         await syncSince(chatId);
         primedRef.current = true;
-        void anchorUnread(chatId);
+        void openPosition(chatId);
         return;
       }
       const cachedRaw = await readMessages(chatId);
@@ -1545,7 +1546,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         syncedAtRef.current = cached.syncedAt;
         setHasMore(cached.hasMore);
         setMessages(cached.messages);
-        scrollToBottomOnOpen();
+        scrollToBottomOnOpen(true);
         await syncSince(chatId);
       } else {
         try {
@@ -1555,13 +1556,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           setHasMore(r.has_more);
           setMessages(r.messages.map(prefillSecret));
           void writeMessages(chatId, r.messages, r.now, r.has_more);
-          scrollToBottomOnOpen();
+          scrollToBottomOnOpen(true);
         } catch {
           console.log("Не удалось загрузить сообщения");
         }
       }
       primedRef.current = true;
-      if (alive) void anchorUnread(chatId);
+      if (alive) void openPosition(chatId);
     })();
 
     // Опрос раз в три секунды — страховка на случай оборванного сокета;
@@ -1877,6 +1878,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
     const away = dist > 400 && !jumping;
     if (away !== awayFromBottom) setAwayFromBottom(away);
+    // Досмотрели часть пропущенного — на кнопке «вниз» остаётся, сколько ниже.
+    if (newBelow > 0 && !pinnedRef.current) {
+      const left = incomingAfter(lastVisibleId(el, MESSAGE_ITEMS));
+      if (left < newBelow) setNewBelow(left);
+    }
+    const posId = chatIdRef.current;
+    window.clearTimeout(posSaveTimer.current);
+    posSaveTimer.current = window.setTimeout(() => { if (chatIdRef.current === posId) saveChatPos(posId); }, 250);
     // Старые страницы тянем заранее, за полтора экрана до верха: пока человек
     // долистает, они уже в ленте, и вставка не приходится на край под пальцем.
     if (el.scrollTop < Math.max(600, el.clientHeight * 1.5)) {
@@ -1991,10 +2000,70 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setAnchoring(false);
   };
 
-  const scrollToBottomOnOpen = () => {
+  // Место в ленте (lib/feedPosition): ушли из чата не снизу — вернёмся туда
+  // же, а на кнопке «вниз» — сколько ниже пропущено. Ушли снизу — как раньше:
+  // к первому непрочитанному или вниз.
+  const hasSavedPos = (id: string | null | undefined) => {
+    const p = id ? readFeedPos(`chat:${id}`) : null;
+    return !!p && !p.bottom && !!p.id;
+  };
+  const feedTopInset = () => {
+    const box = scrollRef.current;
+    if (!box) return 0;
+    const top = box.getBoundingClientRect().top;
+    // Верх видимой ленты — под шапкой и полосой закрепления (в «Мяте» лента под стеклом).
+    const edge = Math.max(top, ...[headerRef.current, box.parentElement?.querySelector(".pinned-bar")].map((e) => e?.getBoundingClientRect().bottom ?? 0));
+    return Math.max(0, edge - top);
+  };
+  const incomingAfter = (seenId: string | null | undefined) => {
+    const list = messagesListRef.current;
+    const i = seenId ? list.findIndex((m) => m.id === seenId) : -1;
+    if (i < 0) return 0;
+    return list.slice(i + 1).filter((m) => !m.pending && (m.sender?.id ?? m.sender_id) !== userId).length;
+  };
+  const saveChatPos = (id: string | null | undefined) => {
+    const box = scrollRef.current;
+    if (!id || !box || !messagesListRef.current.length) return;
+    saveFeedPos(`chat:${id}`, pinnedRef.current ? { bottom: true } : captureFeedPos(box, MESSAGE_ITEMS, feedTopInset()));
+  };
+  /** true — встали на запомненное место; false — его нет в ленте; null — запоминать было нечего. */
+  const restoreChatPos = async (id: string): Promise<boolean | null> => {
+    const pos = readFeedPos(`chat:${id}`);
+    if (!pos || pos.bottom || !pos.id) return null;
+    const list = messagesListRef.current;
+    const idx = list.findIndex((m) => m.id === pos.id);
+    if (idx < 0) return false;
+    setRenderLimit((l) => Math.max(l, list.length - idx + 20));
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
+    if (id !== chatIdRef.current) return true;
+    const box = scrollRef.current;
+    if (!box || !restoreFeedPos(box, MESSAGE_ITEMS, pos, feedTopInset())) return false;
+    pinnedRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    setAwayFromBottom(!pinnedRef.current);
+    setNewBelow(pinnedRef.current ? 0 : incomingAfter(pos.seen || pos.id));
+    logFeed(`restore ${pinnedRef.current ? "bottom" : "kept"}`);
+    return true;
+  };
+  const openPosition = async (id: string) => {
+    const r = await restoreChatPos(id);
+    if (r === true) { unreadOpenRef.current = 0; setAnchoring(false); return; }
+    // Запомненного места в ленте уже нет (история ушла дальше) — как раньше.
+    if (r === false && unreadOpenRef.current === 0) { pinnedRef.current = true; goBottom(false); }
+    void anchorUnread(id);
+  };
+  // Ушли из чата (другой чат, назад к списку) — место запоминаем. Layout-
+  // эффект: его уборка идёт, пока лента ещё в документе.
+  const posSaveTimer = useRef(0);
+  useLayoutEffect(() => {
+    const id = chatId;
+    return () => { window.clearTimeout(posSaveTimer.current); saveChatPos(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  const scrollToBottomOnOpen = (useSaved = false) => {
     logFeed("open");
-    // Есть непрочитанные — позицию выставит anchorUnread после загрузки.
-    if (unreadOpenRef.current > 0) { pinnedRef.current = false; return; }
+    // Есть непрочитанные или запомненное место — позицию выставит openPosition после загрузки.
+    if (unreadOpenRef.current > 0 || (useSaved && hasSavedPos(chatIdRef.current))) { pinnedRef.current = false; return; }
     // Вход в чат — сразу у последнего сообщения, без «въезда»: плавный пролёт
     // на входе спорил с догрузкой истории и синхронизацией, лента дёргалась.
     // Дальше низ удерживает ResizeObserver (см. выше), пока лента прижата.
@@ -3264,6 +3333,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           } },
         { label: pinned?.id === menuMessage.id ? tr("Открепить") : tr("Закрепить"), icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
         { label: tr("Переслать"), icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
+        // Видео — сохранить на устройство (как файл); в секретном чате файл зашифрован — там нет.
+        { label: tr("Скачать видео"), icon: <Download className="w-5 h-5" />,
+          show: !menuMessage.pending && !isSecret && (!!menuMessage.video_url || (!!menuMessage.file_url && isVideoFile(menuMessage.file_name, menuMessage.file_url))),
+          onClick: () => {
+            const m = menuMessage;
+            closeMenu();
+            const raw = (m.file_url && isVideoFile(m.file_name, m.file_url) ? m.file_url : m.video_url) as string;
+            const name = m.file_url && isVideoFile(m.file_name, m.file_url) && m.file_name ? m.file_name : `video-${m.id.slice(0, 8)}.mp4`;
+            resolveMediaUrl(raw).then((u) => handleSaveFile(u, name)).catch(() => toast.error(tr("Не удалось скачать файл")));
+          } },
         { label: tr("Редактировать"), icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
         { label: tr("В избранное"), icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
         { label: tr("В плейлист"), icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && !isSecret && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
