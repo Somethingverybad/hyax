@@ -8,29 +8,43 @@ import { api, mediaUrl } from "@/api/client";
  * Подписанные ссылки кэшируем по маркеру (живут ~час).
  */
 const cache = new Map<string, { url: string; exp: number }>();
+const inflight = new Map<string, Promise<string>>();
+
+/** Готовая ссылка без запроса к серверу или "" (подпись S3 ещё не получена).
+ *  Просмотр картинок берёт ту же ссылку, что и пузырь сообщения: картинка с
+ *  тем же адресом уже в памяти страницы и показывается сразу, без сети. */
+export function cachedMediaUrl(fileUrl?: string | null): string {
+  if (!fileUrl) return "";
+  if (!fileUrl.startsWith("s3://")) return mediaUrl(fileUrl);
+  const c = cache.get(fileUrl);
+  return c && c.exp > Date.now() ? c.url : "";
+}
+
+/** Ссылка для показа: из кэша или подписью — одной на маркер, даже если
+ *  просят сразу пузырь и просмотр. */
+export function resolveMediaUrl(fileUrl: string): Promise<string> {
+  const hit = cachedMediaUrl(fileUrl);
+  if (hit) return Promise.resolve(hit);
+  let p = inflight.get(fileUrl);
+  if (!p) {
+    p = api.signMedia(fileUrl)
+      .then((u) => { cache.set(fileUrl, { url: u, exp: Date.now() + 50 * 60 * 1000 }); return u; })
+      .finally(() => { inflight.delete(fileUrl); });
+    inflight.set(fileUrl, p);
+  }
+  return p;
+}
 
 export function useMediaUrl(fileUrl?: string | null): string {
   const isS3 = !!fileUrl && fileUrl.startsWith("s3://");
-  const [url, setUrl] = useState<string>(() => {
-    if (!fileUrl) return "";
-    if (!isS3) return mediaUrl(fileUrl);
-    const c = cache.get(fileUrl);
-    return c && c.exp > Date.now() ? c.url : "";
-  });
+  const [url, setUrl] = useState<string>(() => cachedMediaUrl(fileUrl));
 
   useEffect(() => {
     if (!fileUrl) { setUrl(""); return; }
-    if (!isS3) { setUrl(mediaUrl(fileUrl)); return; }
-    const c = cache.get(fileUrl);
-    if (c && c.exp > Date.now()) { setUrl(c.url); return; }
+    const hit = cachedMediaUrl(fileUrl);
+    if (hit) { setUrl(hit); return; }
     let alive = true;
-    api.signMedia(fileUrl)
-      .then((u) => {
-        if (!alive) return;
-        cache.set(fileUrl, { url: u, exp: Date.now() + 50 * 60 * 1000 });
-        setUrl(u);
-      })
-      .catch(() => {});
+    resolveMediaUrl(fileUrl).then((u) => { if (alive) setUrl(u); }).catch(() => {});
     return () => { alive = false; };
   }, [fileUrl, isS3]);
 

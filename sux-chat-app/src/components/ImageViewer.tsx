@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { cachedMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import { X, MoreVertical, ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { api, mediaUrl } from "@/api/client";
 import { t as tr } from "@/lib/i18n";
 
 export interface ViewerAction {
@@ -19,19 +19,12 @@ export interface ViewerItem {
   messageId: string;
 }
 
-/** Ссылка для показа: своя картинка — из локального blob, чужая в S3 — по
- *  временной подписи. Подписи кэшируем, чтобы листание не дёргало сервер. */
-const signed = new Map<string, string>();
-const resolveUrl = async (raw: string, localMap?: Map<string, string>) => {
-  const local = raw.startsWith("blob:") ? raw : localMap?.get(raw);
-  if (local) return local;
-  if (!raw.startsWith("s3://")) return mediaUrl(raw);
-  const hit = signed.get(raw);
-  if (hit) return hit;
-  const url = await api.signMedia(raw);
-  signed.set(raw, url);
-  return url;
-};
+/** Ссылка для показа: своя картинка — из локального blob, чужая — та же, что
+ *  у пузыря сообщения (общий кэш подписей, hooks/use-media-url): картинка с
+ *  этим адресом уже загружена на странице и открывается сразу. Раньше просмотр
+ *  подписывал ссылку заново — адрес был другой, и снимок скачивался второй раз. */
+const quickUrl = (raw: string, localMap?: Map<string, string>) =>
+  (raw.startsWith("blob:") ? raw : localMap?.get(raw)) || cachedMediaUrl(raw);
 
 /**
  * Полноэкранный просмотр картинок с перелистыванием: свайп влево-вправо на
@@ -114,8 +107,9 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
 
   useEffect(() => {
     let alive = true;
-    setUrl("");
-    if (item) resolveUrl(item.raw, localMap).then((u) => { if (alive) setUrl(u); }).catch(() => {});
+    const quick = item ? quickUrl(item.raw, localMap) : "";
+    setUrl(quick);
+    if (item && !quick) resolveMediaUrl(item.raw).then((u) => { if (alive) setUrl(u); }).catch(() => {});
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.raw]);
