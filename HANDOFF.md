@@ -100,8 +100,8 @@ Windows, `version.json` 1.1.11 / 277 / iOS 133, iOS 133 в TestFlight.
 
 1. **Linux остаётся 1.1.10** — его пользователи в петле обновления: манифест
    выше, файл старый. Собирать только на Linux-сервере в контейнере `node:22`.
-2. **Пароль `apple_review` изменён пользователем** — `secrets/apple_review.txt`
-   устарел, в заметках для ревью нужен новый.
+2. **Пароль `apple_review` сменён 2026-10-17** — в `secrets/apple_review.txt`
+   актуальный (вход проверен), его же — в Beta App Review Information.
 3. На проде остались одноразовые учётки `tmp_a_*` и `tmp_b_*` (проверка ручек) —
    удалить через админку.
 4. Сборка Mac может упасть с «The timestamp service is not available» — это
