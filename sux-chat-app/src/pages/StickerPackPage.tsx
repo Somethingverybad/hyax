@@ -12,6 +12,7 @@ import AdultLock, { AdultBadge } from "@/components/AdultLock";
 import StickerView from "@/components/chat/StickerView";
 import CustomEmoji from "@/components/chat/CustomEmoji";
 import { cn } from "@/lib/utils";
+import { invalidateCustomEmojiIndex, invalidateStickerIndex } from "@/lib/stickerIndex";
 
 /**
  * Стикерпак по ссылке /stp/<id> — как /sp/<id> для звуков. Сетка стикеров
@@ -41,6 +42,8 @@ const StickerPackPage = () => {
       if (pack.is_saved) { await api.unsaveStickerPack(pack.id); toast.success(t("Пак убран")); }
       else { await api.saveStickerPack(pack.id); toast.success(pack.kind === "emoji" ? t("Набор добавлен — он появится в панели эмодзи") : t("Пак добавлен — он появится в панели стикеров")); }
       setPack({ ...pack, is_saved: !pack.is_saved });
+      // Подсказки своих эмодзи и стикеров по макросу — с новым набором.
+      invalidateCustomEmojiIndex(); invalidateStickerIndex();
     } catch (e: any) {
       toast.error(e?.message || t("Не получилось"));
     } finally {

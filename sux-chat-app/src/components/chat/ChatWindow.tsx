@@ -71,7 +71,7 @@ import { saveFileToDevice } from "@/lib/saveFile";
 import { takePendingShare } from "@/lib/shareInbox";
 import ActionSheet from "@/components/chat/ActionSheet";
 import type { ChatActionInfo } from "@/api/client";
-import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, type IndexedSticker } from "@/lib/stickerIndex";
+import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, loadCustomEmojiIndex, matchCustomEmoji, trailingEmoji, type IndexedSticker, type IndexedEmoji } from "@/lib/stickerIndex";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
@@ -935,6 +935,36 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setStickerHints((prev) => (prev.length === found.length && prev.every((p, i) => p.id === found[i].id) ? prev : found));
     });
   };
+  // Свои эмодзи по обычному: перед курсором обычный эмодзи, к которому в моих
+  // наборах привязаны свои (lib/stickerIndex), — плашкой над полем. Тап делает
+  // набранный эмодзи своим; текст не меняется — обычный эмодзи и есть замена
+  // своего у старых версий и в пушах.
+  const [emojiHints, setEmojiHints] = useState<{ at: number; len: number; items: IndexedEmoji[] } | null>(null);
+  const [emojiPicked, setEmojiPicked] = useState<string | null>(null);
+  const emojiHintKey = useRef("");
+  const updateEmojiHints = (text: string, caret?: number | null) => {
+    const end = caret ?? text.length;
+    const m = trailingEmoji(text.slice(0, end));
+    const key = m ? `${end - m.length}:${m}` : "";
+    if (key === emojiHintKey.current) return;
+    emojiHintKey.current = key;
+    if (!m) { setEmojiHints(null); setEmojiPicked(null); return; }
+    const at = end - m.length;
+    // Уже свой (вставлен из панели) — подсветим его.
+    setEmojiPicked(customRef.current.find((r) => r.offset === at && r.length === m.length)?.emoji_id ?? null);
+    void loadCustomEmojiIndex().then((idx) => {
+      if (emojiHintKey.current !== key) return;
+      const items = matchCustomEmoji(idx, m);
+      setEmojiHints(items.length ? { at, len: m.length, items } : null);
+    });
+  };
+  const pickEmojiHint = (e: IndexedEmoji) => {
+    const h = emojiHints;
+    if (!h) return;
+    customRef.current = customRef.current.filter((r) => r.offset + r.length <= h.at || r.offset >= h.at + h.len);
+    customRef.current.push({ offset: h.at, length: h.len, emoji_id: e.id, url: e.file_url });
+    setEmojiPicked(e.id);
+  };
   // Inline-бот: «@бот запрос» в поле → через полсекунды тишины запрос боту
   // (api.inlineQuery), ответ приходит событием hyax:inline (Chat.tsx ловит его
   // в личном сокете). Выбор строки — сообщение-заглушка «через @бота», бот
@@ -1354,6 +1384,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setHasDraft(!!text.trim());
     fitTextarea();
     updateStickerHints(text);
+    updateEmojiHints(text);
     updateInline(text);
     scheduleDraftSave();
   };
@@ -4460,6 +4491,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               )}
             </div>
           )}
+          {emojiHints && !inline && !mentionHints.length && (
+            <div className="mb-2 flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={tr("Свои эмодзи")}>
+              {emojiHints.items.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  onMouseDown={(ev) => ev.preventDefault()}
+                  onClick={() => pickEmojiHint(e)}
+                  aria-label={e.emoji}
+                  aria-pressed={emojiPicked === e.id}
+                  className={cn("shrink-0 w-11 h-11 rounded-lg bg-surface-4 p-1.5 active:scale-90 transition-transform", emojiPicked === e.id && "ring-2 ring-primary")}
+                >
+                  <CustomEmoji url={e.file_url} alt={e.emoji} repaint={e.repaint} loop={false} className="inline-block w-full h-full object-contain" />
+                </button>
+              ))}
+            </div>
+          )}
           {stickerHints.length > 0 && !inline && !mentionHints.length && (
             <div className="mb-2 flex gap-1.5 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={tr("Стикеры по макросу")}>
               {stickerHints.map((s) => (
@@ -4706,6 +4754,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   setHasDraft(!!e.target.value.trim());
                   fitTextarea();
                   updateStickerHints(e.target.value);
+                  updateEmojiHints(e.target.value, e.target.selectionEnd);
                   updateInline(e.target.value);
                   updateMentions();
                   scheduleDraftSave();

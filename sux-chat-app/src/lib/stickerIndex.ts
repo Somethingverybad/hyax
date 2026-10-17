@@ -96,3 +96,44 @@ export function matchStickers(index: IndexedSticker[], typed: string, limit = 24
     .slice(0, limit)
     .map((x) => x.s);
 }
+
+// ── Свои эмодзи по обычному: набрал 🔥 с клавиатуры — над полем свои 🔥 ──
+
+/** Свой эмодзи из моих наборов, привязанный к обычному (Sticker.emoji). */
+export interface IndexedEmoji { id: string; file_url: string; emoji: string; repaint?: boolean; pack: string }
+
+let emojiCache: IndexedEmoji[] | null = null;
+let emojiLoading: Promise<IndexedEmoji[]> | null = null;
+
+export function invalidateCustomEmojiIndex() { emojiCache = null; emojiLoading = null; }
+
+/** Вариант отображения (FE0F/FE0E) не в счёт: ❤ и ❤️ — один эмодзи. */
+const bareEmoji = (s: string) => s.replace(/[︎️]/g, "");
+
+export async function loadCustomEmojiIndex(): Promise<IndexedEmoji[]> {
+  if (emojiCache) return emojiCache;
+  if (emojiLoading) return emojiLoading;
+  emojiLoading = (async () => {
+    try {
+      const packs: any[] = ((await api.getMyStickerPacks()) || []).map((p: any) => p.pack || p).filter((p: any) => p?.kind === "emoji");
+      const lists = await Promise.all(packs.map((p) => api.getStickers(p.id).catch(() => [])));
+      emojiCache = lists.flat().filter((s: any) => s.emoji).map((s: any) => ({
+        id: s.id, file_url: s.file_url, emoji: s.emoji, repaint: !!s.repaint, pack: s.pack,
+      }));
+    } catch { emojiCache = []; }
+    return emojiCache!;
+  })();
+  return emojiLoading;
+}
+
+/** Один эмодзи в конце строки (флаг, «1️⃣», ZWJ-последовательность, оттенок кожи) или null. */
+const TRAILING_EMOJI = /(?:\p{Regional_Indicator}{2}|[#*0-9]️?⃣|\p{Extended_Pictographic}[︎️]?\p{Emoji_Modifier}?(?:‍\p{Extended_Pictographic}[︎️]?\p{Emoji_Modifier}?)*)$/u;
+export function trailingEmoji(text: string): string | null {
+  const m = TRAILING_EMOJI.exec(text);
+  return m ? m[0] : null;
+}
+
+export function matchCustomEmoji(index: IndexedEmoji[], emoji: string, limit = 24): IndexedEmoji[] {
+  const b = bareEmoji(emoji);
+  return index.filter((e) => bareEmoji(e.emoji) === b).slice(0, limit);
+}

@@ -7,6 +7,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { notoSvgUrl } from "@/lib/notoEmoji";
 import { readCache } from "@/lib/session-cache";
 import { shareEmojiPack } from "@/lib/share";
+import { invalidateCustomEmojiIndex, trailingEmoji } from "@/lib/stickerIndex";
 import { getLang, t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +76,10 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [uploading, setUploading] = useState<{ pack: string; done: number; total: number } | null>(null);
+  // Меню своего эмодзи (долгое нажатие) и привязка к обычному.
+  const [menu, setMenu] = useState<{ pack: CustomPack; e: PanelEmoji } | null>(null);
+  const [binding, setBinding] = useState<PanelEmoji | null>(null);
+  const [bindValue, setBindValue] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const sections = useRef<Record<string, HTMLDivElement | null>>({});
   const fileRef = useRef<HTMLInputElement>(null);
@@ -89,7 +94,10 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
       setGroups(cache);
     }).catch(() => setGroups([]));
   }, [standard]);
-  const reloadPacks = () => loadCustomPacks().then((p) => { packsCache = p; setPacks(p); }).catch(() => setPacks((x) => x ?? []));
+  const reloadPacks = () => {
+    invalidateCustomEmojiIndex();
+    return loadCustomPacks().then((p) => { packsCache = p; setPacks(p); }).catch(() => setPacks((x) => x ?? []));
+  };
   useEffect(() => { void reloadPacks(); }, []);
 
   // Поиск — по словам на языке приложения и по-английски (их часто знают).
@@ -107,6 +115,8 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
   }, [q, groups, kwIx]);
 
   const pick = (code: string) => {
+    // Привязываем свой эмодзи — тап по обычному выбирает, к чему.
+    if (binding) { setBindValue(emojiFromCode(code)); return; }
     onPick(emojiFromCode(code));
     pushRecent(code);
     setRecent(readRecent());
@@ -122,14 +132,29 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
     try { await api.deleteSticker(e.id); void reloadPacks(); }
     catch (err: any) { toast.error(err?.message || t("Не получилось")); }
   };
-  // Долгое нажатие (телефон) и правый клик — удалить свой эмодзи.
+  // Долгое нажатие (телефон) и правый клик — меню своего эмодзи: привязать
+  // к обычному (по нему он всплывёт подсказкой над полем ввода) или удалить.
+  const openMenu = (pack: CustomPack, e: PanelEmoji) => { setBinding(null); setMenu({ pack, e }); };
   const holdProps = (pack: CustomPack, e: PanelEmoji) => pack.mine ? {
-    onContextMenu: (ev: React.MouseEvent) => { ev.preventDefault(); void removeCustom(pack, e); },
-    onPointerDown: () => { held.current = false; hold.current = setTimeout(() => { held.current = true; void removeCustom(pack, e); }, 550); },
+    onContextMenu: (ev: React.MouseEvent) => { ev.preventDefault(); openMenu(pack, e); },
+    onPointerDown: () => { held.current = false; hold.current = setTimeout(() => { held.current = true; openMenu(pack, e); }, 550); },
     onPointerUp: () => { if (hold.current) clearTimeout(hold.current); },
     onPointerLeave: () => { if (hold.current) clearTimeout(hold.current); },
     onPointerCancel: () => { if (hold.current) clearTimeout(hold.current); },
   } : {};
+
+  const startBinding = (e: PanelEmoji) => { setMenu(null); setBinding(e); setBindValue(e.emoji || ""); };
+  const saveBinding = async () => {
+    if (!binding) return;
+    const v = bindValue.trim();
+    if (v && trailingEmoji(v) !== v) { toast.error(t("Нужен один обычный эмодзи")); return; }
+    try {
+      await api.updateSticker(binding.id, { emoji: v || null });
+      toast.success(v ? t("Привязан к {emoji} — наберёте его, и свой всплывёт подсказкой", { emoji: v }) : t("Привязка снята"));
+      setBinding(null);
+      void reloadPacks();
+    } catch (err: any) { toast.error(err?.message || t("Не получилось")); }
+  };
 
   const createPack = async () => {
     const name = newName.trim();
@@ -154,7 +179,8 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
     for (const [i, f] of list.entries()) {
       try {
         const up = await api.uploadSticker(f, "emoji");
-        await api.createSticker(packId, up.file_url, up.file_name, order++, "", DEFAULT_FALLBACK);
+        // Без привязки: к какому обычному эмодзи — решает автор (меню эмодзи).
+        await api.createSticker(packId, up.file_url, up.file_name, order++, "");
       } catch (err: any) { toast.error(`${f.name}: ${err?.message || t("Не получилось")}`); }
       setUploading({ pack: packId, done: i + 1, total: list.length });
     }
@@ -202,6 +228,31 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
     <div className={cn("flex flex-col min-h-0", className)}>
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden"
         onChange={(e) => void addFiles(e.target.files)} />
+      {/* Меню своего эмодзи и привязка к обычному. */}
+      {(menu || binding) && (
+        <div className="mx-2 mt-2 shrink-0 rounded-md bg-surface-4 p-2 flex items-center gap-2">
+          {(() => { const e = binding || menu!.e; return <CustomEmoji url={e.file_url} alt={e.emoji || ""} repaint={e.repaint} loop={false} className="inline-block w-8 h-8 object-contain shrink-0" />; })()}
+          {binding ? (
+            <>
+              <input autoFocus value={bindValue} onChange={(e) => setBindValue(e.target.value)} maxLength={16}
+                onKeyDown={(e) => { if (e.key === "Enter") void saveBinding(); if (e.key === "Escape") setBinding(null); }}
+                placeholder={standard ? t("Эмодзи — с клавиатуры или из списка") : t("Обычный эмодзи с клавиатуры")}
+                className="flex-1 min-w-0 h-8 px-2 rounded-md bg-surface-2 outline-none text-body" aria-label={t("К какому эмодзи привязать")} />
+              <button type="button" onClick={() => void saveBinding()} className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-caption font-semibold shrink-0">{t("Готово")}</button>
+            </>
+          ) : (
+            <>
+              <span className="flex-1 min-w-0 text-caption text-subtle truncate">
+                {menu!.e.emoji ? t("Привязан к {emoji}", { emoji: menu!.e.emoji }) : t("Не привязан к эмодзи")}
+              </span>
+              <button type="button" onClick={() => startBinding(menu!.e)} className="h-8 px-2.5 rounded-md bg-surface-2 text-caption font-medium shrink-0">{t("Привязать")}</button>
+              <button type="button" onClick={() => { const m = menu!; setMenu(null); void removeCustom(m.pack, m.e); }}
+                className="h-8 w-8 rounded-md bg-surface-2 text-destructive flex items-center justify-center shrink-0" aria-label={t("Удалить")}><Trash2 className="w-4 h-4" /></button>
+            </>
+          )}
+          <button type="button" onClick={() => { setMenu(null); setBinding(null); }} className="h-8 w-8 rounded-md flex items-center justify-center text-subtle shrink-0" aria-label={t("Закрыть")}><X className="w-4 h-4" /></button>
+        </div>
+      )}
       {standard && (
         <div className="px-2 pt-2 shrink-0">
           <label className="flex items-center gap-2 h-9 px-3 rounded-md bg-surface-4">
@@ -255,8 +306,10 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
                 <div className="flex flex-wrap">
                   {p.items.map((e) => (
                     <button key={e.id} type="button" onClick={() => pickCustom(e)} title={e.emoji || ""} {...holdProps(p, e)}
-                      className="w-10 h-10 rounded-md flex items-center justify-center hover:bg-surface-4 active:scale-95 transition-transform select-none [-webkit-touch-callout:none]">
+                      className={cn("relative w-10 h-10 rounded-md flex items-center justify-center hover:bg-surface-4 active:scale-95 transition-transform select-none [-webkit-touch-callout:none]", (menu?.e.id === e.id || binding?.id === e.id) && "ring-2 ring-primary")}>
                       <CustomEmoji url={e.file_url} alt={e.emoji || ""} repaint={e.repaint} loop={false} className="inline-block w-7 h-7 object-contain pointer-events-none" />
+                      {/* К чему привязан — видно автору набора. */}
+                      {p.mine && e.emoji && <span className="absolute right-0 bottom-0 text-[10px] leading-none pointer-events-none" aria-hidden>{e.emoji}</span>}
                     </button>
                   ))}
                   {p.mine && (
@@ -268,7 +321,7 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
                   )}
                 </div>
                 {p.mine && !p.items.length && (
-                  <p className="px-1 pb-1 text-caption text-subtle">{t("Добавьте картинки — PNG, JPG или WebP. Удалить свой эмодзи — долгое нажатие или правый клик.")}</p>
+                  <p className="px-1 pb-1 text-caption text-subtle">{t("Добавьте картинки — PNG, JPG или WebP. Долгое нажатие или правый клик по своему эмодзи — привязать к обычному (наберёте его — свой всплывёт подсказкой) или удалить.")}</p>
                 )}
               </div>
             ))}

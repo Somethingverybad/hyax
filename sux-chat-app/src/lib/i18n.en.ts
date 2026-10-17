@@ -1892,5 +1892,16 @@ const en: Record<string, string> = {
   "Не удалось загрузить историю вайба": "Couldn't load vibe history",
   "Пока никто не поднимал ваш вайб. Его поднимают в профиле, лайком сохранёнки и голосами за идеи.": "No one has raised your vibe yet. It goes up from your profile, likes on saved images and votes on ideas.",
   "Анонимные голоса и лайки идей — без имени: так их отдали. Голоса до этого обновления показываются анонимными — тогда выбор «анонимно» не сохранялся.": "Anonymous votes and idea likes come without names — that's how they were given. Votes from before this update show as anonymous: the “anonymous” choice wasn't saved back then.",
+  "Свои эмодзи": "Custom emoji",
+  "Нужен один обычный эмодзи": "Enter a single regular emoji",
+  "Привязан к {emoji} — наберёте его, и свой всплывёт подсказкой": "Linked to {emoji} — type it and your emoji will pop up as a suggestion",
+  "Привязка снята": "Link removed",
+  "Эмодзи — с клавиатуры или из списка": "Emoji — from the keyboard or the list",
+  "Обычный эмодзи с клавиатуры": "A regular emoji from the keyboard",
+  "К какому эмодзи привязать": "Which emoji to link to",
+  "Привязан к {emoji}": "Linked to {emoji}",
+  "Не привязан к эмодзи": "Not linked to an emoji",
+  "Привязать": "Link",
+  "Добавьте картинки — PNG, JPG или WebP. Долгое нажатие или правый клик по своему эмодзи — привязать к обычному (наберёте его — свой всплывёт подсказкой) или удалить.": "Add images — PNG, JPG or WebP. Long-press or right-click your emoji to link it to a regular one (type that one and yours pops up as a suggestion) or delete it.",
 };
 export default en;
