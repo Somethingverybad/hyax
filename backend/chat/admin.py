@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from django.utils.html import format_html
+from django.urls import reverse
+from django.utils.html import format_html, format_html_join
 
 from django.db.models import Count, Q
 
@@ -152,14 +153,14 @@ class ChannelAdmin(admin.ModelAdmin):
     """Каналы: поиск по названию, @нику, описанию и владельцу; сколько
     подписчиков и постов; ссылка, чтобы открыть канал. Создают каналы в
     приложении, здесь — посмотреть, поправить, удалить (вместе с постами)."""
-    list_display = ("title", "handle", "subscribers_count", "posts", "is_public", "comments_enabled", "creator", "created_at", "link")
+    list_display = ("title", "handle", "members", "posts", "is_public", "comments_enabled", "creator", "created_at", "link")
     list_filter = ("is_public", "comments_enabled", "sign_posts")
     search_fields = ("name", "username", "description", "creator__username")
     ordering = ("-subscribers_count", "-created_at")
     list_select_related = ("creator",)
     fields = ("name", "username", "description", "avatar_url", "is_public", "sign_posts", "comments_enabled",
-              "creator", "subscribers_count", "id", "created_at", "updated_at")
-    readonly_fields = ("id", "subscribers_count", "created_at", "updated_at")
+              "creator", "subscribers_count", "members_list", "id", "created_at", "updated_at")
+    readonly_fields = ("id", "subscribers_count", "members_list", "created_at", "updated_at")
     raw_id_fields = ("creator",)
     inlines = (ChannelStaffInline,)
 
@@ -178,6 +179,36 @@ class ChannelAdmin(admin.ModelAdmin):
     def handle(self, obj):
         return f"@{obj.username}" if obj.username else "—"
 
+    @admin.display(description="Подписчиков", ordering="subscribers_count")
+    def members(self, obj):
+        return format_html('<a href="{}?chat__id__exact={}">{}</a>',
+                           reverse("admin:chat_chatparticipant_changelist"), obj.id, obj.subscribers_count)
+
+    #: Сколько последних участников показывать прямо в карточке; остальные —
+    #: по ссылке, в постраничном списке с поиском (каналы бывают на тысячи).
+    PARTICIPANTS_SHOWN = 50
+
+    # Не «participants»: так называется поле модели (M2M), и админка взяла бы его.
+    @admin.display(description="Участники")
+    def members_list(self, obj):
+        if not obj.pk:
+            return "—"
+        qs = ChatParticipant.objects.filter(chat=obj).select_related("user")
+        total = qs.count()
+        rows = qs.order_by("-joined_at")[:self.PARTICIPANTS_SHOWN]
+        roles = {"owner": "владелец", "admin": "админ", "subscriber": "подписчик", "member": "участник"}
+        table = format_html_join("", '<tr><td><a href="{}">{}</a></td><td>{}</td><td>{}</td><td>{}</td></tr>', (
+            (reverse("admin:chat_profile_change", args=[p.user_id]), p.user.username, roles.get(p.role, p.role),
+             timezone.localtime(p.joined_at).strftime("%d.%m.%Y %H:%M"), "без уведомлений" if p.muted else "")
+            for p in rows))
+        more = reverse("admin:chat_chatparticipant_changelist")
+        return format_html(
+            '<p><a href="{}?chat__id__exact={}">Все участники ({}) — поиск, роли →</a></p>'
+            '<table><thead><tr><th>Ник</th><th>Роль</th><th>Вступил</th><th></th></tr></thead><tbody>{}</tbody></table>'
+            '<p class="help">{}</p>',
+            more, obj.id, total, table,
+            f"Последние {len(rows)} из {total}, новые сверху." if total > len(rows) else "Новые сверху.")
+
     @admin.display(description="Постов", ordering="_posts")
     def posts(self, obj):
         return obj._posts
@@ -185,7 +216,19 @@ class ChannelAdmin(admin.ModelAdmin):
     @admin.display(description="Ссылка")
     def link(self, obj):
         return format_html('<a href="https://wyx.su/c/{}" target="_blank" rel="noopener">открыть</a>', obj.username or obj.id)
-admin.site.register(ChatParticipant)
+@admin.register(ChatParticipant)
+class ChatParticipantAdmin(admin.ModelAdmin):
+    """Участники чатов. Список участников одного канала — из его карточки
+    («Все участники») или фильтром ?chat__id__exact=<id>."""
+    list_display = ("user", "chat", "role", "muted", "joined_at")
+    list_filter = ("role", "chat__kind")
+    search_fields = ("user__username", "chat__name", "chat__username")
+    ordering = ("-joined_at",)
+    list_select_related = ("user", "chat")
+    raw_id_fields = ("user", "chat")
+    list_per_page = 100
+
+
 admin.site.register(Message)
 
 
