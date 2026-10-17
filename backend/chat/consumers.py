@@ -33,7 +33,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.chat_id = self.scope['url_route']['kwargs']['chat_id']
         self.chat_group_name = f'chat_{self.chat_id}'
-        self.user = self.scope.get('user', AnonymousUser())
+        self.user = _ws_user(self.scope)
 
         # Проверка аутентификации через JWT токен
         if isinstance(self.user, AnonymousUser):
@@ -509,6 +509,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         call_session.save(update_fields=["status", "ended_at", "ended_by", "started_at"])
 
 
+def _ws_user(scope):
+    """Кто подключается: с токеном в адресе — только по токену. Сессия Django
+    (cookie /admin/ на том же домене) иначе брала верх: в браузере, где входили
+    в админку, сокет считал человека тем админом, id не совпадал с адресом, и
+    соединение молча отклонялось — звонки и уведомления не доходили."""
+    if b'token=' in scope.get('query_string', b''):
+        return AnonymousUser()
+    return scope.get('user', AnonymousUser())
+
+
 # Сигнал трансляции в OBS — описание соединения или кандидат: килобайты.
 OBS_MAX_MESSAGE = 64 * 1024
 
@@ -519,7 +529,7 @@ class UserConsumer(AsyncWebsocketConsumer):
         try:
             self.user_id = self.scope['url_route']['kwargs']['user_id']
             self.user_group_name = f'user_{self.user_id}'
-            self.user = self.scope.get('user', AnonymousUser())
+            self.user = _ws_user(self.scope)
 
             # Проверка аутентификации через JWT токен
             if isinstance(self.user, AnonymousUser):
