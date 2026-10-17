@@ -160,3 +160,63 @@ def notify_mirror_post(message):
         )
     except Exception:
         logger.exception("tg-mirror: пуш не ушёл")
+
+
+# ── Отписка нашего аккаунта от каналов (очередь TgLeave) ─────────────────────
+
+# Ошибки Telegram, после которых выходить уже не из чего: мы не подписаны,
+# канала больше нет или он закрыт для нас.
+_GONE = ("UserNotParticipant", "ChannelPrivate", "ChannelInvalid", "UsernameNotOccupied", "UsernameInvalid")
+
+
+def _pending_leaves():
+    from .models import TgLeave
+    return list(TgLeave.objects.filter(done_at__isnull=True, attempts__lt=TgLeave.MAX_ATTEMPTS).order_by("created_at")[:20])
+
+
+def _close_leave(row, error="", final=True):
+    """Записать попытку. final=False — временная ошибка: повторим, пока не
+    кончатся попытки (TgLeave.MAX_ATTEMPTS)."""
+    row.attempts += 1
+    row.error = (error or "")[:300]
+    if final or row.attempts >= row.MAX_ATTEMPTS:
+        row.done_at = timezone.now()
+    row.save(update_fields=["attempts", "error", "done_at"])
+
+
+async def leave_pending(client, leave_request):
+    """Выйти из каналов по очереди TgLeave. client — Telethon (воркер
+    tg_mirror), leave_request — channels.LeaveChannelRequest. Канал, который
+    за это время снова подключили зеркалом, не трогаем. Возвращает tg_peer_id
+    каналов, из которых вышли: воркер перестаёт их слушать."""
+    from asgiref.sync import sync_to_async
+    from .models import Chat
+    left = []
+    for row in await sync_to_async(_pending_leaves)():
+        mirrored = await sync_to_async(lambda: Chat.objects.filter(tg_username__iexact=row.tg_username).exists())()
+        if mirrored:
+            await sync_to_async(_close_leave)(row, "Канал снова зеркалится — не выходим")
+            continue
+        try:
+            try:
+                entity = await client.get_entity(row.tg_username)
+            except Exception:
+                if not row.tg_peer_id:
+                    raise
+                from telethon.tl.types import PeerChannel  # ник сменили — найдём по id из сессии
+                entity = await client.get_entity(PeerChannel(row.tg_peer_id))
+            await client(leave_request(entity))
+        except Exception as e:
+            name = type(e).__name__
+            if any(g in name for g in _GONE):
+                await sync_to_async(_close_leave)(row, "")  # уже не подписаны — цель достигнута
+                left.append(row.tg_peer_id)
+                logger.info("tg leave @%s: уже не подписаны (%s)", row.tg_username, name)
+            else:
+                await sync_to_async(_close_leave)(row, f"{name}: {e}", final=False)
+                logger.warning("tg leave @%s: %s: %s", row.tg_username, name, e)
+            continue
+        await sync_to_async(_close_leave)(row, "")
+        left.append(row.tg_peer_id or getattr(entity, "id", None))
+        logger.info("tg leave @%s: вышли", row.tg_username)
+    return [p for p in left if p]

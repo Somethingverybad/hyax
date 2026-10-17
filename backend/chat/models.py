@@ -253,6 +253,29 @@ class Channel(Chat):
         verbose_name_plural = "Каналы"
 
 
+class TgLeave(models.Model):
+    """Выйти нашим Telegram-аккаунтом из канала. Запись появляется сама, когда
+    удаляют зеркало (chat/signals.py), или её добавляют в админке вручную —
+    для канала, зеркала которого уже нет. Выполняет воркер tg_mirror: сессия
+    Telegram только у него."""
+    MAX_ATTEMPTS = 5
+    tg_username = models.CharField(max_length=64)
+    tg_peer_id = models.BigIntegerField(null=True, blank=True)
+    title = models.CharField(max_length=100, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    done_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.IntegerField(default=0)
+    error = models.CharField(max_length=300, blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Отписка в Telegram"
+        verbose_name_plural = "Отписки в Telegram"
+
+    def __str__(self):
+        return f"@{self.tg_username}"
+
+
 # Участники чата
 class ChatParticipant(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

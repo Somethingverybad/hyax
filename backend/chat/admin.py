@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.utils import timezone
 
@@ -9,7 +10,7 @@ from django.db.models import Count, Q
 from .models import (
     ChatAction,
     Block, BugReport, Channel, Chat, ChatParticipant, Friendship, Message, NotificationSound,
-    Profile, Report, SoundPack, StickerPack, Theme,
+    Profile, Report, SoundPack, StickerPack, TgLeave, Theme,
 )
 
 
@@ -148,19 +149,35 @@ class ChannelStaffInline(admin.TabularInline):
         return False
 
 
+class MirrorFilter(admin.SimpleListFilter):
+    title = "Зеркало Telegram"
+    parameter_name = "mirror"
+
+    def lookups(self, request, model_admin):
+        return (("yes", "Да"), ("no", "Нет"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.exclude(tg_username=None)
+        if self.value() == "no":
+            return queryset.filter(tg_username=None)
+        return queryset
+
+
 @admin.register(Channel)
 class ChannelAdmin(admin.ModelAdmin):
     """Каналы: поиск по названию, @нику, описанию и владельцу; сколько
     подписчиков и постов; ссылка, чтобы открыть канал. Создают каналы в
     приложении, здесь — посмотреть, поправить, удалить (вместе с постами)."""
-    list_display = ("title", "handle", "members", "posts", "is_public", "comments_enabled", "creator", "created_at", "link")
-    list_filter = ("is_public", "comments_enabled", "sign_posts")
-    search_fields = ("name", "username", "description", "creator__username")
+    list_display = ("title", "handle", "members", "posts", "is_public", "comments_enabled", "creator", "mirror", "created_at", "link")
+    list_filter = (MirrorFilter, "is_public", "comments_enabled", "sign_posts")
+    search_fields = ("name", "username", "description", "creator__username", "tg_username")
+    actions = ("leave_and_delete",)
     ordering = ("-subscribers_count", "-created_at")
     list_select_related = ("creator",)
     fields = ("name", "username", "description", "avatar_url", "is_public", "sign_posts", "comments_enabled",
-              "creator", "subscribers_count", "members_list", "id", "created_at", "updated_at")
-    readonly_fields = ("id", "subscribers_count", "members_list", "created_at", "updated_at")
+              "creator", "subscribers_count", "members_list", "tg_username", "tg_state", "tg_error", "id", "created_at", "updated_at")
+    readonly_fields = ("id", "subscribers_count", "members_list", "tg_username", "tg_state", "tg_error", "created_at", "updated_at")
     raw_id_fields = ("creator",)
     inlines = (ChannelStaffInline,)
 
@@ -213,9 +230,85 @@ class ChannelAdmin(admin.ModelAdmin):
     def posts(self, obj):
         return obj._posts
 
+    @admin.display(description="Telegram", ordering="tg_username")
+    def mirror(self, obj):
+        if not obj.tg_username:
+            return ""
+        return f"@{obj.tg_username} · {obj.tg_state or '—'}"
+
+    # Удаление зеркала любым способом ставит отписку в очередь (chat/signals.py);
+    # здесь — только подсказать, где за ней следить.
+    def _leave_note(self, request, n):
+        if n:
+            self.message_user(request, f"Зеркал удалено: {n}. Аккаунт выйдет из каналов-источников в течение минуты — "
+                                       "смотрите «Отписки в Telegram».")
+
+    def delete_model(self, request, obj):
+        mirror = bool(obj.tg_username)
+        super().delete_model(request, obj)
+        self._leave_note(request, int(mirror))
+
+    def delete_queryset(self, request, queryset):
+        n = queryset.exclude(tg_username=None).count()
+        super().delete_queryset(request, queryset)
+        self._leave_note(request, n)
+
+    @admin.action(description="Отписаться в Telegram и удалить зеркала")
+    def leave_and_delete(self, request, queryset):
+        mirrors = queryset.exclude(tg_username=None)
+        skipped = queryset.count() - mirrors.count()
+        n = mirrors.count()
+        for ch in mirrors:
+            ch.delete()  # сигнал ставит отписку в очередь
+        self._leave_note(request, n)
+        if skipped:
+            self.message_user(request, f"Не зеркал — пропущено: {skipped}. Обычные каналы удаляйте действием «Удалить».", level="warning")
+
     @admin.display(description="Ссылка")
     def link(self, obj):
         return format_html('<a href="https://wyx.su/c/{}" target="_blank" rel="noopener">открыть</a>', obj.username or obj.id)
+class TgLeaveForm(forms.ModelForm):
+    class Meta:
+        model = TgLeave
+        fields = ("tg_username", "title")
+
+    def clean_tg_username(self):
+        from .telegram_mirror import parse_channel_ref
+        name = parse_channel_ref(self.cleaned_data.get("tg_username") or "")
+        if not name:
+            raise forms.ValidationError("Нужен ник канала, @ник или ссылка t.me/…")
+        return name
+
+
+@admin.register(TgLeave)
+class TgLeaveAdmin(admin.ModelAdmin):
+    form = TgLeaveForm
+    """Очередь отписок нашего Telegram-аккаунта. Записи появляются сами при
+    удалении зеркала; вручную — для канала, зеркала которого уже нет (ник,
+    @ник или ссылка t.me/…). Выполняет воркер tg_mirror раз в ~15 секунд."""
+    list_display = ("tg_username", "title", "created_at", "state", "attempts", "error")
+    list_filter = (("done_at", admin.EmptyFieldListFilter),)
+    search_fields = ("tg_username", "title")
+    fields = ("tg_username", "title", "tg_peer_id", "created_at", "done_at", "attempts", "error")
+    readonly_fields = ("tg_peer_id", "created_at", "done_at", "attempts", "error")
+    actions = ("retry",)
+
+    def get_readonly_fields(self, request, obj=None):
+        # Ник задаётся при добавлении; у существующей записи его не правят.
+        return self.readonly_fields + (("tg_username",) if obj else ())
+
+    @admin.display(description="Состояние")
+    def state(self, obj):
+        if not obj.done_at:
+            return "ждёт" if obj.attempts < obj.MAX_ATTEMPTS else "не вышло"
+        return "не выполнено" if obj.error else "вышли"
+
+    @admin.action(description="Повторить")
+    def retry(self, request, queryset):
+        n = queryset.update(done_at=None, attempts=0, error="")
+        self.message_user(request, f"Снова в очереди: {n}")
+
+
 @admin.register(ChatParticipant)
 class ChatParticipantAdmin(admin.ModelAdmin):
     """Участники чатов. Список участников одного канала — из его карточки

@@ -5,7 +5,8 @@
 аватар и последние посты, а дальше слушает обновления: новые посты — в
 канал WYX с медиа и альбомами, правки — в текст, удаления — «удалено у
 всех». Список каналов перечитывается раз в 15 секунд, поэтому подключение
-из приложения подхватывается без перезапуска.
+из приложения подхватывается без перезапуска. Там же — очередь отписок
+(TgLeave): удалили зеркало — аккаунт выходит из канала-источника.
 """
 import asyncio
 import logging
@@ -38,9 +39,9 @@ class Command(BaseCommand):
 
     async def run(self, session, api_id, api_hash):
         from telethon import TelegramClient, events, utils
-        from telethon.tl.functions.channels import JoinChannelRequest, GetFullChannelRequest
+        from telethon.tl.functions.channels import JoinChannelRequest, GetFullChannelRequest, LeaveChannelRequest
         from chat.models import Chat
-        from chat.telegram_mirror import text_from_tg, store_media, upsert_post, notify_mirror_post, video_poster, MAX_MEDIA_BYTES
+        from chat.telegram_mirror import text_from_tg, store_media, upsert_post, notify_mirror_post, video_poster, MAX_MEDIA_BYTES, leave_pending
 
         client = TelegramClient(session, api_id, api_hash, use_ipv6=os.environ.get("TG_IPV6", "1") == "1")
         await client.connect()
@@ -127,7 +128,9 @@ class Command(BaseCommand):
             догон истории при подключении: старые посты без пушей."""
             if getattr(msg, "action", None) is not None:
                 return  # служебное: «канал создан», «закреплено» и т.п.
-            chat = await sync_to_async(Chat.objects.get)(id=chat_id)
+            chat = await sync_to_async(lambda: Chat.objects.filter(id=chat_id).first())()
+            if chat is None:
+                return  # зеркало удалили — ждём отписку (leave_pending)
             exists = await sync_to_async(lambda: chat.messages.filter(tg_id=msg.id).exists())()
             if exists:
                 return
@@ -179,7 +182,8 @@ class Command(BaseCommand):
         async def refresh_loop():
             while True:
                 try:
-                    for ch in await load_channels():
+                    channels = await load_channels()
+                    for ch in channels:
                         if ch.tg_state == "pending" or not ch.tg_peer_id:
                             await activate(ch)
                         else:
@@ -193,6 +197,12 @@ class Command(BaseCommand):
                                         logger.info("догнали %s: %d постов", ch.tg_username, n)
                                 except Exception:
                                     logger.exception("догон %s", ch.tg_username)
+                    # Удалённые зеркала больше не слушаем, а из источника — выходим.
+                    live = {ch.tg_peer_id for ch in channels if ch.tg_peer_id}
+                    for pid in [p for p in peers if p not in live]:
+                        peers.pop(pid, None)
+                    for pid in await leave_pending(client, LeaveChannelRequest):
+                        peers.pop(pid, None)
                 except Exception:
                     logger.exception("refresh")
                 await asyncio.sleep(REFRESH_SEC)
