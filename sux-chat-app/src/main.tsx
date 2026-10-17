@@ -1,3 +1,5 @@
+// Первым — недостающее в старых WebView (Huawei, iOS 15): см. lib/polyfills.ts.
+import "./lib/polyfills";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";

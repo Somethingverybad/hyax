@@ -42,7 +42,10 @@ function switchToDirect(reason: string) {
 
 /** Быстрая проба CDN при старте: 3 секунды на ответ /health, иначе — напрямую. */
 if (!ENV_ORIGIN && typeof window !== "undefined") {
-  fetch(`${CDN_ORIGIN}/health`, { cache: "no-store", signal: AbortSignal.timeout(3000) })
+  // Без AbortSignal.timeout (старые WebView, lib/polyfills.ts) — проба без
+  // ограничения по времени, но не ошибка при загрузке модуля: она роняла всё приложение.
+  const signal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(3000) : undefined;
+  fetch(`${CDN_ORIGIN}/health`, { cache: "no-store", signal })
     .then((r) => { if (!r.ok) switchToDirect(`health ${r.status}`); })
     .catch((e) => switchToDirect(e?.name || "network"));
 }
