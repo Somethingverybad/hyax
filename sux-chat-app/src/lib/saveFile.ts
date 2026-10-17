@@ -54,19 +54,35 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
     } catch (e) {
       toast.dismiss(id);
       applog.warn(`file save native failed: ${String((e as { message?: string })?.message || e)}`);
-      // Запасной путь — прежний: пусть хотя бы откроется в браузере.
-      toast.error(t("Не удалось сохранить — открываю в браузере"));
-      window.open(url, "_blank");
+      // В браузер больше не уводим: файл из хранилища открывался там вместо сохранения.
+      toast.error(t("Не удалось скачать файл"));
     }
     return;
   }
 
+  // Веб: ссылка на хранилище — другой домен, и браузер игнорирует у неё
+  // download: открывал файл во вкладке. Качаем сами и отдаём как свой файл.
   applog.info(`file save web ${safePath(url)} ${fileName}`);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.target = "_blank";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const click = (href: string) => {
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  const id = `save-${Date.now()}`;
+  toast.loading(t("Скачиваю…"), { id });
+  try {
+    const r = await fetch(url, { mode: "cors", credentials: "omit" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const obj = URL.createObjectURL(await r.blob());
+    toast.dismiss(id);
+    click(obj);
+    window.setTimeout(() => URL.revokeObjectURL(obj), 60_000);
+  } catch (e) {
+    toast.dismiss(id);
+    applog.warn(`file save web failed: ${String((e as { message?: string })?.message || e)}`);
+    click(url); // хранилище не пустило — обычная загрузка браузера
+  }
 }

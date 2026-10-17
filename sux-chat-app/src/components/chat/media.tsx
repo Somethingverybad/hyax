@@ -69,8 +69,8 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
     <div ref={nearRef} className={cn(
       // Потолок ширины обязателен: обрезка текста сама по себе не мешает
       // карточке растянуться под всё название.
-      "flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-[min(72vw,22rem)]",
-      isOwn ? "bg-primary/20 border-primary/30" : "bg-muted border-border",
+      // Цвет карточки — от цвета текста пузыря (.att-card), а не из темы.
+      "att-card flex items-center gap-2.5 p-2 rounded-lg border min-w-[14rem] max-w-[min(72vw,22rem)]",
     )}>
       <button type="button" onClick={() => onPlay?.()} disabled={!onPlay} className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center bg-black/20 disabled:opacity-50" aria-label={mine && s.playing ? tr("Пауза") : tr("Играть")}>
         {mine && s.playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -338,33 +338,25 @@ export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { 
   );
 };
 
-export const MessageFile = ({ raw, name, isOwn, onSave }: {
-  raw: string; name: string | null; isOwn: boolean; onSave: (url: string, name: string) => void;
+/** Файл в переписке: вся карточка — «сохранить на устройство» (lib/saveFile).
+ *  Раньше название было ссылкой на хранилище — тап открывал файл в браузере. */
+export const MessageFile = ({ raw, name, onSave }: {
+  raw: string; name: string | null; isOwn?: boolean; onSave: (url: string, name: string) => void;
 }) => {
-  const [nearRef, near] = useNearView();
+  const [nearRef, near] = useNearView<HTMLButtonElement>();
   const src = useMediaUrl(near ? raw : null);
   return (
-    <div ref={nearRef} className={cn(
-      "flex items-center gap-2 p-2 rounded-lg border transition-colors max-w-full min-w-0",
-      isOwn ? "bg-primary/20 border-primary/30 hover:bg-primary/30" : "bg-muted border-border hover:bg-muted/80",
-    )}>
+    <button
+      ref={nearRef}
+      type="button"
+      onClick={() => { if (src) onSave(src, name || "file"); }}
+      title={tr("Сохранить файл")}
+      className="att-card flex items-center gap-2 p-2 rounded-lg border transition-opacity active:opacity-70 max-w-full min-w-0 text-left"
+    >
       <Paperclip className="w-4 h-4 flex-shrink-0" />
-      <a
-        href={src || "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex-1 min-w-0 text-sm break-all line-clamp-2 hover:underline"
-      >
-        {name || tr("Файл")}
-      </a>
-      <button
-        onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "file"); }}
-        className="p-1 rounded hover:bg-background/50 transition-colors"
-        title={tr("Сохранить файл")}
-      >
-        <Download className="w-4 h-4" />
-      </button>
-    </div>
+      <span className="flex-1 min-w-0 text-sm break-all line-clamp-2">{name || tr("Файл")}</span>
+      <Download className="w-4 h-4 shrink-0" />
+    </button>
   );
 };
 

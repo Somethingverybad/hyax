@@ -1321,7 +1321,7 @@ const en: Record<string, string> = {
   "неизвестная ошибка": "unknown error",
   "Не удалось сохранить файл": "Couldn't save the file",
   "Скачиваю…": "Downloading…",
-  "Не удалось сохранить — открываю в браузере": "Couldn't save — opening in the browser",
+  "Не удалось скачать файл": "Couldn't download the file",
   "Пак звуков «{name}» в WYX": "Sound pack “{name}” on WYX",
   "Стикеры «{name}» в WYX": "Stickers “{name}” on WYX",
   "Плейлист «{name}» в WYX": "Playlist “{name}” on WYX",
