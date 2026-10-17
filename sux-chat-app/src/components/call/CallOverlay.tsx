@@ -5,7 +5,7 @@ import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
 import type { AudioLevels, PeerRect, VideoRect } from "@/lib/nativeCall";
 import { Capacitor } from "@capacitor/core";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import VideoView from "./VideoView";
@@ -52,6 +52,10 @@ interface CallOverlayProps {
   video?: CallVideo;
   /** Шумоподавление микрофона — переключатель в настройках звонка. */
   noise?: { on: boolean; onToggle: () => void };
+  /** Трансляция в OBS (браузер и компьютер) — в настройках звонка. */
+  obs?: CallObs;
+  /** Звонок транслируется: «Вы транслируете…» / «Андрей транслирует…». */
+  broadcast?: string | null;
   /** Групповой звонок: плитки участников вместе с собой. */
   stage?: {
     tiles: StageTile[];
@@ -62,6 +66,18 @@ interface CallOverlayProps {
   minimized?: boolean;
   onMinimize?: () => void;
   onExpand?: () => void;
+}
+
+export interface CallObs {
+  on: boolean;
+  /** Сколько страниц OBS сейчас получают звук. */
+  pages: number;
+  onToggle: () => void;
+  /** Скопировать ссылку: весь звонок (без id) или один участник. */
+  onCopy: (peerId?: string | null) => void;
+  /** Новая ссылка — прежние перестают работать. */
+  onRenew: () => void;
+  people: { id: string; name: string }[];
 }
 
 export interface CallVideo {
@@ -123,6 +139,8 @@ const CallOverlay = ({
   onExpand,
   video,
   noise,
+  obs,
+  broadcast,
   stage,
 }: CallOverlayProps) => {
   const [seconds, setSeconds] = useState(0);
@@ -310,6 +328,70 @@ const CallOverlay = ({
     </>
   );
 
+  // Пометка «звонок транслируется» — видят все участники.
+  const broadcastPill = (onDark: boolean) => (
+    <span className={cn("inline-flex items-center gap-1.5 max-w-full rounded-full px-3 py-1 text-caption font-medium",
+      onDark ? "bg-black/45 text-white" : "bg-[#ff3b30]/10 text-[#d70015] dark:text-[#ff6961]")} role="status">
+      <span className="w-2 h-2 rounded-full bg-[#ff3b30] shrink-0 animate-pulse" aria-hidden />
+      <span className="truncate">{broadcast}</span>
+    </span>
+  );
+
+  // Настройки звонка: шумодав и трансляция в OBS.
+  const settingsPanel = (top: string) => (
+    <>
+      <div className="absolute inset-0 z-20" onClick={() => setSettingsOpen(false)} aria-hidden />
+      <div className="absolute z-30 right-3 w-80 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto rounded-lg bg-surface-1 text-foreground border border-border shadow-xl p-3 space-y-3"
+        style={{ top }}>
+        {noise && (
+          <label className="flex items-center gap-3 cursor-pointer">
+            <span className="flex-1 min-w-0">
+              <span className="block text-body font-medium">{t("Шумоподавление")}</span>
+              <span className="block text-caption text-subtle">{t("Убирает фоновый шум микрофона. Выключите, если голос звучит глухо или нужна музыка")}</span>
+            </span>
+            <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={noise.on} onChange={noise.onToggle} aria-label={t("Шумоподавление")} />
+          </label>
+        )}
+        {obs && (
+          <div className={cn("space-y-2", noise && "pt-3 border-t border-border")}>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <Radio className={cn("w-5 h-5 shrink-0", obs.on ? "text-[#ff3b30]" : "text-subtle")} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-body font-medium">{t("Трансляция в OBS")}</span>
+                <span className="block text-caption text-subtle">
+                  {!obs.on
+                    ? t("Звук звонка — в OBS или другую программу для стримов. Участники увидят, что звонок транслируется")
+                    : obs.pages
+                      ? t("Звук идёт в OBS: источников — {n}", { n: obs.pages })
+                      : t("Ждём OBS: добавьте ссылку как источник «Браузер»")}
+                </span>
+              </span>
+              <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={obs.on} onChange={obs.onToggle} aria-label={t("Трансляция в OBS")} />
+            </label>
+            <div className="rounded-md bg-surface-2 divide-y divide-border">
+              <button type="button" onClick={() => obs.onCopy(null)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-small active:bg-surface-3">
+                <Copy className="w-4 h-4 shrink-0 text-subtle" />
+                <span className="flex-1 min-w-0 truncate">{t("Ссылка: весь звонок")}</span>
+              </button>
+              {obs.people.map((p) => (
+                <button key={p.id} type="button" onClick={() => obs.onCopy(p.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-small active:bg-surface-3">
+                  <Copy className="w-4 h-4 shrink-0 text-subtle" />
+                  <span className="flex-1 min-w-0 truncate">{t("Ссылка: {name}", { name: p.name })}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-caption text-subtle">
+              {t("В OBS: Источники → «+» → Браузер, вставьте ссылку и включите «Управлять звуком через OBS». Ссылка на одного участника — отдельный ползунок в микшере. Свой микрофон в OBS можно не добавлять: ваш голос тоже идёт из звонка.")}
+            </p>
+            <button type="button" onClick={obs.onRenew} className="text-caption text-subtle underline underline-offset-2">
+              {t("Новая ссылка (прежние перестанут работать)")}
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   // Групповой звонок: плитки участников (сетка или «говорящий»).
   if (isGroup && stage && state !== "incoming") {
     const masked = holes.length > 0;
@@ -352,27 +434,14 @@ const CallOverlay = ({
               ))}
             </div>
           )}
-          {noise && (
+          {(noise || obs) && (
             <button type="button" onClick={() => setSettingsOpen((v) => !v)} className={headBtn} aria-label={t("Настройки звонка")} title={t("Настройки звонка")}>
               <Settings2 className="w-6 h-6" />
             </button>
           )}
         </div>
-        {noise && settingsOpen && (
-          <>
-            <div className="absolute inset-0 z-20" onClick={() => setSettingsOpen(false)} aria-hidden />
-            <div className="absolute z-30 right-3 w-72 rounded-lg bg-surface-1 text-foreground border border-border shadow-xl p-3"
-              style={{ top: "calc(var(--sat) + 3.5rem)" }}>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <span className="flex-1 min-w-0">
-                  <span className="block text-body font-medium">{t("Шумоподавление")}</span>
-                  <span className="block text-caption text-subtle">{t("Убирает фоновый шум микрофона. Выключите, если голос звучит глухо или нужна музыка")}</span>
-                </span>
-                <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={noise.on} onChange={noise.onToggle} aria-label={t("Шумоподавление")} />
-              </label>
-            </div>
-          </>
-        )}
+        {broadcast && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{broadcastPill(false)}</div>}
+        {settingsOpen && settingsPanel("calc(var(--sat) + 3.5rem)")}
         <GroupStage
           className="relative z-10 flex-1 min-h-0 mx-2 mt-1"
           tiles={stage.tiles}
@@ -447,7 +516,7 @@ const CallOverlay = ({
           <ChevronDown className="w-7 h-7" />
         </button>
       )}
-      {noise && state !== "incoming" && (
+      {(noise || obs) && state !== "incoming" && (
         <>
           <button
             type="button"
@@ -459,22 +528,13 @@ const CallOverlay = ({
           >
             <Settings2 className="w-6 h-6" />
           </button>
-          {settingsOpen && (
-            <>
-              <div className="absolute inset-0 z-20" onClick={() => setSettingsOpen(false)} aria-hidden />
-              <div className="absolute z-30 right-3 w-72 rounded-lg bg-surface-1 text-foreground border border-border shadow-xl p-3"
-                style={{ top: "calc(var(--sat) + 3.25rem)" }}>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-body font-medium">{t("Шумоподавление")}</span>
-                    <span className="block text-caption text-subtle">{t("Убирает фоновый шум микрофона. Выключите, если голос звучит глухо или нужна музыка")}</span>
-                  </span>
-                  <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={noise.on} onChange={noise.onToggle} aria-label={t("Шумоподавление")} />
-                </label>
-              </div>
-            </>
-          )}
+          {settingsOpen && settingsPanel("calc(var(--sat) + 3.25rem)")}
         </>
+      )}
+      {broadcast && state !== "incoming" && (
+        <div className="absolute z-10 inset-x-0 flex justify-center pointer-events-none" style={{ top: "calc(var(--sat) + 0.85rem)" }}>
+          {broadcastPill(onVideo)}
+        </div>
       )}
 
       <div className={cn("relative z-10 flex flex-col items-center gap-3 w-full min-h-0 px-5", onVideo && "self-start items-start")}>

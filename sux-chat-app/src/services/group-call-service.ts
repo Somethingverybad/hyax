@@ -31,6 +31,8 @@ export type GroupPeerMedia = {
   known: boolean;
   /** Соединение поднялось. */
   connected: boolean;
+  /** Участник транслирует звонок в OBS (сигнал webrtc_media, поле obs). */
+  obs?: boolean;
 };
 
 export type GroupMedia = {
@@ -83,6 +85,8 @@ export class GroupCallService {
   /** Параметры, с которыми открыт микрофон (micKey), и очередь его подмен. */
   private micOpenedWith = "";
   private micChain: Promise<void> = Promise.resolve();
+  /** Я транслирую звонок в OBS — участники узнают сигналом webrtc_media. */
+  private broadcasting = false;
   private callId: string | null = null;
   private chatId: string | null = null;
   private state: GroupCallState = "idle";
@@ -159,6 +163,16 @@ export class GroupCallService {
     this.cb.onPeers?.([id]);
     this.emitStreams();
     this.emitMedia();
+  }
+
+  /** Мой микрофон (для трансляции в OBS); нет звонка — null. */
+  getLocalStream(): MediaStream | null { return this.localStream; }
+
+  /** Трансляция в OBS включена — участники увидят пометку на экране звонка. */
+  setBroadcasting(on: boolean): void {
+    if (this.broadcasting === on) return;
+    this.broadcasting = on;
+    this.broadcastMedia();
   }
 
   isMuted(): boolean {
@@ -357,6 +371,7 @@ export class GroupCallService {
         if (!from) return;
         const patch: Partial<GroupPeerMedia> = { video: !!data.video };
         if (typeof data.audio === "boolean") patch.muted = !data.audio;
+        if (typeof data.obs === "boolean") patch.obs = data.obs;
         this.patchPeer(from, patch);
         break;
       }
@@ -392,7 +407,7 @@ export class GroupCallService {
   /** Своя камера и микрофон — одному участнику (новому — при соединении). */
   private sendMediaTo(peerId: string): void {
     if (!this.callId) return;
-    this.send("webrtc_media", { to_user_id: peerId, video: !!this.cam, audio: !this.isMuted() });
+    this.send("webrtc_media", { to_user_id: peerId, video: !!this.cam, audio: !this.isMuted(), obs: this.broadcasting });
   }
 
   private broadcastMedia(): void {
@@ -492,6 +507,7 @@ export class GroupCallService {
   }
 
   private cleanup(): void {
+    this.broadcasting = false;
     [...this.peers.keys()].forEach((id) => this.dropPeer(id));
     this.localStream?.getTracks().forEach((t) => t.stop());
     this.localStream = null;

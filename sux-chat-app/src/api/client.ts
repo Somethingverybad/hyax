@@ -1972,6 +1972,19 @@ export const api = {
     }
   },
 
+  /** Ключ трансляции звонка в OBS (lib/obsRelay.ts); renew — новый, старые ссылки перестают работать. */
+  obsKey: async (renew = false): Promise<string> => {
+    if (!renew) {
+      const res = await fetchWithAuth(`${API_URL}/obs/key/`, { method: "GET", headers: authHeaders() });
+      if (!res.ok) throw new LError("Не удалось получить ссылку для OBS");
+      const key = (await res.json()).key as string | null;
+      if (key) return key;
+    }
+    const res = await fetchWithAuth(`${API_URL}/obs/key/`, { method: "POST", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось получить ссылку для OBS");
+    return (await res.json()).key as string;
+  },
+
   // ===== ЗВУКИ УВЕДОМЛЕНИЙ (аудио-стикеры) =====
   // Временная подписанная ссылка на приватное вложение (S3). Маркер s3://key.
   signMedia: async (marker: string): Promise<string> => {

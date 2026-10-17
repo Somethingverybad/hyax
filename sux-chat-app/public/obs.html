@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>WYX → OBS</title>
+<!--
+  Звук звонка WYX для OBS и похожих программ (источник «Браузер»).
+  Ссылку копируют в WYX: экран звонка → настройки → «Трансляция в OBS».
+  Параметры после «#»:
+    key   — ключ трансляции (обязателен);
+    peer  — id участника: только его голос (свой ползунок в микшере OBS);
+    lang  — en / ko: язык подсказок (по умолчанию русский);
+    view  — avatars: аватарки участников, говорящий подсвечен; без него страница прозрачная;
+    ws    — адрес сокета (только для разработки).
+  Звук сюда отдаёт приложение стримера на компьютере (src/lib/obsRelay.ts),
+  сервер лишь сводит их по ключу (backend/chat/obs.py).
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; font: 600 15px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #status { position: fixed; left: 12px; top: 12px; max-width: calc(100vw - 24px); padding: 8px 12px; border-radius: 10px;
+    background: rgba(0, 0, 0, .65); display: flex; align-items: center; gap: 8px; }
+  #status[hidden] { display: none; }
+  #status i { width: 9px; height: 9px; border-radius: 50%; background: #ffcc00; flex: none; }
+  #status.ok i { background: #34c759; }
+  #status.err i { background: #ff3b30; }
+  #status button { margin-left: 6px; font: inherit; color: #000; background: #fff; border: 0; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+  #people { position: fixed; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .p { display: flex; align-items: center; gap: 10px; }
+  .a { width: 44px; height: 44px; border-radius: 50%; background: #5856d6 center/cover no-repeat; display: grid; place-items: center;
+    font-size: 18px; box-shadow: 0 0 0 3px transparent; transition: box-shadow .12s; flex: none; }
+  .p.on .a { box-shadow: 0 0 0 3px #34c759; }
+  .n { padding: 3px 9px; border-radius: 8px; background: rgba(0, 0, 0, .6); text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+</style>
+</head>
+<body>
+<div id="status" hidden><i></i><span id="statusText"></span></div>
+<div id="people"></div>
+<script>
+(function () {
+  "use strict";
+  var P = new URLSearchParams(location.hash.slice(1));
+  var key = P.get("key") || "";
+  var want = P.get("peer") || null;
+  var view = P.get("view") || "";
+  var wsBase = P.get("ws") || ((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  var page = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  // Подсказки — на языке приложения (lang в ссылке), по умолчанию русский.
+  var TEXT = {
+    en: {
+      click: "Enable sound", noClick: "The browser won't play sound without a click", reconnect: "No connection to WYX, reconnecting…",
+      waiting: "WYX: waiting for the call — turn on “Stream to OBS” in the call settings", failed: "Couldn't connect to WYX",
+      connecting: "WYX: connecting…", noKey: "No key in the link — copy the link in WYX again",
+      revoked: "This link no longer works — copy a new one in WYX", badKey: "Invalid link — copy it in WYX again",
+    },
+    ko: {
+      click: "소리 켜기", noClick: "클릭하지 않으면 브라우저가 소리를 재생하지 않아요", reconnect: "WYX 연결이 끊겼어요. 다시 연결하는 중…",
+      waiting: "WYX: 통화를 기다리는 중 — 통화 설정에서 ‘OBS로 방송’을 켜세요", failed: "WYX에 연결하지 못했어요",
+      connecting: "WYX: 연결하는 중…", noKey: "링크에 키가 없어요. WYX에서 링크를 다시 복사하세요",
+      revoked: "더 이상 쓸 수 없는 링크예요. WYX에서 새 링크를 복사하세요", badKey: "잘못된 링크예요. WYX에서 다시 복사하세요",
+    },
+    ru: {
+      click: "Включить звук", noClick: "Браузер не даёт играть звук без нажатия", reconnect: "Нет связи с WYX, переподключаюсь…",
+      waiting: "WYX: ждём звонка — включите «Трансляция в OBS» в настройках звонка", failed: "Не удалось соединиться с WYX",
+      connecting: "WYX: соединяемся…", noKey: "Нет ключа в ссылке — скопируйте ссылку в WYX заново",
+      revoked: "Ссылка больше не работает — скопируйте новую в WYX", badKey: "Ссылка неверная — скопируйте её в WYX заново",
+    },
+  };
+  var T = TEXT[P.get("lang")] || TEXT.ru;
+  document.documentElement.lang = TEXT[P.get("lang")] ? P.get("lang") : "ru";
+
+  var ws = null, ice = [], pc = null, owner = null, roster = [], fatal = false;
+  var iceQueue = [];
+  var media = {};          // id потока → { stream, audio, level }
+  var actx = null;
+  var needClick = false;
+
+  var $status = document.getElementById("status");
+  var $text = document.getElementById("statusText");
+  var $people = document.getElementById("people");
+
+  function status(text, kind) {
+    if (!text) { $status.hidden = true; return; }
+    $status.hidden = false;
+    $status.className = kind || "";
+    $text.textContent = text;
+    if (needClick) {
+      var b = document.createElement("button");
+      b.textContent = T.click;
+      b.onclick = function () { needClick = false; Object.keys(media).forEach(function (k) { media[k].audio.play().catch(function () {}); }); refresh(); };
+      $text.appendChild(b);
+    }
+  }
+
+  function refresh() {
+    var playing = Object.keys(media).length > 0;
+    if (fatal) return;
+    if (needClick) status(T.noClick, "err");
+    else if (!ws || ws.readyState !== 1) status(T.reconnect, "err");
+    else if (!owner) status(T.waiting);
+    else if (pc && pc.connectionState === "failed") status(T.failed, "err");
+    else if (!playing) status(T.connecting);
+    else status(null);
+    render();
+  }
+
+  function render() {
+    if (view !== "avatars") { $people.textContent = ""; return; }
+    var html = document.createDocumentFragment();
+    roster.forEach(function (r) {
+      if (want && r.id !== want) return;
+      var row = document.createElement("div");
+      row.className = "p";
+      row.dataset.stream = r.stream;
+      var a = document.createElement("div");
+      a.className = "a";
+      if (r.avatar) a.style.backgroundImage = "url(\"" + String(r.avatar).replace(/"/g, "") + "\")";
+      else a.textContent = (r.name || "?").slice(0, 1).toUpperCase();
+      var n = document.createElement("div");
+      n.className = "n";
+      n.textContent = r.name || "";
+      row.appendChild(a); row.appendChild(n);
+      html.appendChild(row);
+    });
+    $people.textContent = "";
+    $people.appendChild(html);
+  }
+
+  // Кто говорит — по громкости потока (только для view=avatars).
+  function meter(entry) {
+    if (view !== "avatars") return;
+    try {
+      actx = actx || new AudioContext();
+      var an = actx.createAnalyser();
+      an.fftSize = 512;
+      actx.createMediaStreamSource(entry.stream).connect(an);
+      entry.an = an;
+      entry.buf = new Uint8Array(an.fftSize);
+    } catch (e) { /* без подсветки */ }
+  }
+  function tick() {
+    Object.keys(media).forEach(function (id) {
+      var m = media[id];
+      if (!m.an) return;
+      m.an.getByteTimeDomainData(m.buf);
+      var peak = 0;
+      for (var i = 0; i < m.buf.length; i++) peak = Math.max(peak, Math.abs(m.buf[i] - 128));
+      m.level = Math.max(peak / 128, (m.level || 0) * 0.85);
+      var row = $people.querySelector('[data-stream="' + id + '"]');
+      if (row) row.classList.toggle("on", m.level > 0.06);
+    });
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  function attach(stream) {
+    if (!stream || media[stream.id]) return;
+    var audio = new Audio();
+    audio.autoplay = true;
+    audio.srcObject = stream;
+    audio.play().catch(function () { needClick = true; refresh(); });
+    var entry = { stream: stream, audio: audio, level: 0 };
+    media[stream.id] = entry;
+    meter(entry);
+    stream.onremovetrack = function () {
+      if (!stream.getAudioTracks().some(function (t) { return t.readyState === "live"; })) detach(stream.id);
+    };
+    refresh();
+  }
+  function detach(id) {
+    var m = media[id];
+    if (!m) return;
+    m.audio.srcObject = null;
+    delete media[id];
+    refresh();
+  }
+
+  function closePc() {
+    if (pc) { pc.onicecandidate = pc.ontrack = pc.onconnectionstatechange = null; pc.close(); }
+    pc = null;
+    iceQueue = [];
+    Object.keys(media).forEach(detach);
+  }
+
+  function signal(data) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "signal", data: data }));
+  }
+
+  // Голос пересылается второй раз — даём Opus запас битрейта, чтобы не мылило.
+  function boostOpus(sdp) {
+    var m = /a=rtpmap:(\d+) opus\/48000/i.exec(sdp);
+    if (!m) return sdp;
+    var re = new RegExp("(a=fmtp:" + m[1] + " [^\\r\\n]*)");
+    return re.test(sdp) && !/maxaveragebitrate/.test(sdp) ? sdp.replace(re, "$1;maxaveragebitrate=128000") : sdp;
+  }
+
+  function onSignal(d) {
+    if (!d || !d.kind) return;
+    if (d.kind === "ping") { signal({ kind: "hello", page: page, want: want }); return; }
+    if (d.page !== page) return;
+    if (d.kind === "offer") {
+      // Новое приложение (перезапустили WYX) — начинаем заново.
+      if (owner !== d.from) { closePc(); owner = d.from; }
+      if (!pc) {
+        pc = new RTCPeerConnection({ iceServers: ice });
+        pc.onicecandidate = function (e) { if (e.candidate) signal({ kind: "ice", page: page, to: owner, candidate: e.candidate.toJSON() }); };
+        pc.ontrack = function (e) { attach(e.streams[0]); };
+        pc.onconnectionstatechange = refresh;
+      }
+      roster = d.roster || [];
+      var cur = pc;
+      cur.setRemoteDescription({ type: "offer", sdp: d.sdp })
+        .then(function () { return cur.createAnswer(); })
+        .then(function (a) { return cur.setLocalDescription({ type: "answer", sdp: boostOpus(a.sdp) }); })
+        .then(function () {
+          signal({ kind: "answer", page: page, to: owner, sdp: cur.localDescription.sdp });
+          iceQueue.splice(0).forEach(function (c) { cur.addIceCandidate(c).catch(function () {}); });
+        })
+        .catch(function (e) { console.warn("obs offer", e); });
+      refresh();
+      return;
+    }
+    if (d.from !== owner) return;
+    if (d.kind === "roster") { roster = d.roster || []; render(); return; }
+    if (d.kind === "ice" && d.candidate && pc) {
+      if (pc.remoteDescription) pc.addIceCandidate(d.candidate).catch(function () {});
+      else iceQueue.push(d.candidate);
+      return;
+    }
+    if (d.kind === "stop") { closePc(); owner = null; roster = []; refresh(); }
+  }
+
+  function connect() {
+    if (!key) { fatal = true; status(T.noKey, "err"); return; }
+    ws = new WebSocket(wsBase.replace(/\/$/, "") + "/obs/");
+    ws.onopen = function () { ws.send(JSON.stringify({ type: "auth", key: key, page: page })); };
+    ws.onmessage = function (e) {
+      var m;
+      try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (m.type === "auth_ok") {
+        ice = m.ice_servers || [];
+        // После переподключения приложение заведёт соединение заново — и мы.
+        closePc(); owner = null; roster = [];
+        signal({ kind: "hello", page: page, want: want });
+        refresh();
+      } else if (m.type === "auth_error" || m.type === "revoked") {
+        fatal = true;
+        closePc();
+        status(m.type === "revoked" ? T.revoked : T.badKey, "err");
+      } else if (m.type === "signal") {
+        onSignal(m.data);
+      }
+    };
+    ws.onclose = function () {
+      if (fatal) return;
+      refresh();
+      setTimeout(connect, 3000);
+    };
+  }
+  setInterval(function () { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" })); }, 25000);
+  connect();
+  refresh();
+})();
+</script>
+</body>
+</html>

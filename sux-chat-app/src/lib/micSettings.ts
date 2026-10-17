@@ -91,4 +91,9 @@ export async function swapMicTrack(stream: MediaStream, pcs: Iterable<RTCPeerCon
   for (const sender of senders) await sender.replaceTrack(track);
   stream.removeTrack(old);
   stream.addTrack(track);
+  // Трансляция в OBS (lib/obsRelay.ts) шлёт мой микрофон отдельно — пусть подменит и там.
+  window.dispatchEvent(new Event(MIC_TRACK_EVENT));
 }
+
+/** Микрофон в звонке переоткрыт — дорожка новая. */
+export const MIC_TRACK_EVENT = "hyax:mic-track";

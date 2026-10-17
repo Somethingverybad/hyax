@@ -168,6 +168,8 @@ export class NativeCallService extends NativeBase {
   private peerCanVideo = false;
   private peerKnown = false;
   private remoteVideo = false;
+  /** Собеседник транслирует звонок в OBS (со своего компьютера). */
+  private peerObs = false;
 
   constructor(options: {
     wsService: WebSocketService;
@@ -210,6 +212,7 @@ export class NativeCallService extends NativeBase {
       noiseSuppression: true,
       native: true,
       canNoise: false,
+      peerObs: this.peerObs,
     };
   }
 
@@ -259,6 +262,7 @@ export class NativeCallService extends NativeBase {
     this.peerCanVideo = false;
     this.peerKnown = false;
     this.remoteVideo = false;
+    this.peerObs = false;
     this.emitMedia();
   }
 
@@ -363,8 +367,9 @@ export class NativeCallService extends NativeBase {
         this.finish((data.status as string) || "ended");
         break;
       case "webrtc_media":
-        // Собеседник включил или выключил камеру.
+        // Собеседник включил или выключил камеру, начал трансляцию в OBS.
         this.remoteVideo = !!data.video;
+        this.peerObs = !!data.obs;
         this.emitMedia();
         break;
       default:
@@ -649,6 +654,7 @@ export class NativeGroupCallService extends NativeBase {
       // Участник включил или выключил камеру / микрофон.
       const patch: Partial<GroupPeerMedia> = { video: !!data.video };
       if (typeof data.audio === "boolean") patch.muted = !data.audio;
+      if (typeof data.obs === "boolean") patch.obs = data.obs;
       this.patchPeer(from, patch);
       return;
     }

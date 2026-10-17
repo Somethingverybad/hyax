@@ -3381,18 +3381,8 @@ class IceServersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        import os
-        servers = [{"urls": "stun:stun.l.google.com:19302"}]
-        realm = os.getenv("TURN_REALM", "").strip()
-        username = os.getenv("TURN_USERNAME", "").strip()
-        password = os.getenv("TURN_PASSWORD", "").strip()
-        if realm and username and password:
-            servers.append({
-                "urls": [f"turn:{realm}:3478?transport=udp", f"turn:{realm}:3478?transport=tcp"],
-                "username": username,
-                "credential": password,
-            })
-        return Response({"iceServers": servers})
+        from .ice import ice_servers
+        return Response({"iceServers": ice_servers()})
 
 
 class PushRegisterView(APIView):

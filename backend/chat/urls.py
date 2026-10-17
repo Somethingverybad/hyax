@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import *
 from .radio import StationsView, StationView, StationControlView, StationListenView
 from .webapp import WebAppInitView, WebAppDataView, WebAppCatalogView, wyx_user_page
+from .obs import ObsKeyView
 from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
 from .themes import ThemesView, ThemeDetailView, ThemeInstallView
@@ -103,6 +104,8 @@ urlpatterns = [
     path('saved-images/<uuid:pk>/', SavedImagesView.as_view(), name='saved-image'),
     path('saved-images/<uuid:pk>/vibe/', SavedImageVibeView.as_view(), name='saved-image-vibe'),
     path('ice-servers/', IceServersView.as_view(), name='ice-servers'),
+    # Ключ трансляции звонка в OBS (chat/obs.py).
+    path('obs/key/', ObsKeyView.as_view(), name='obs-key'),
     path('bots/', BotsView.as_view(), name='bots'),
     path('bots/<uuid:pk>/', BotDetailView.as_view(), name='bot-detail'),
     path('bots/<uuid:pk>/start/', BotStartView.as_view(), name='bot-start'),

@@ -509,6 +509,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         call_session.save(update_fields=["status", "ended_at", "ended_by", "started_at"])
 
 
+# Сигнал трансляции в OBS — описание соединения или кандидат: килобайты.
+OBS_MAX_MESSAGE = 64 * 1024
+
+
 class UserConsumer(AsyncWebsocketConsumer):
     """Consumer для отправки уведомлений конкретному пользователю"""
     async def connect(self):
@@ -642,6 +646,15 @@ class UserConsumer(AsyncWebsocketConsumer):
                     chat = text_data_json.get('chat')
                     set_viewing(profile.id, chat, text_data_json.get('ttl'))
                     logger.info("presence: %s смотрит %s", str(profile.id)[:8], str(chat)[:8] if chat else "—")
+                return
+
+            # Трансляция звонка в OBS: сигналы WebRTC от моего приложения —
+            # моим же страницам OBS (chat/obs.py). Чужим не уйдёт: группа по
+            # моему id, а id в сокете проверен токеном.
+            if message_type == 'obs_signal':
+                data = text_data_json.get('data')
+                if isinstance(data, dict) and len(text_data) <= OBS_MAX_MESSAGE:
+                    await self.channel_layer.group_send(f"obs_{self.user_id}", {"type": "obs.forward", "data": data})
                 return
 
             # Р.Ё.В: «держу палец» / «отпустил». В историю не пишем — это
@@ -1373,6 +1386,10 @@ class UserConsumer(AsyncWebsocketConsumer):
             print(f"Error sending notification: {e}")
             # Если ошибка при отправке, просто пропускаем
     
+    # Страница OBS ответила (chat/obs.py) — моему приложению.
+    async def obs_signal(self, event):
+        await self.send(text_data=json.dumps({"type": "obs_signal", "data": event.get("data") or {}}))
+
     # Обработка call_signal для персонального канала
     async def call_signal_notification(self, event):
         # «Принят на другом устройстве» самому ответившему соединению не нужен.
@@ -1535,3 +1552,63 @@ class UserConsumer(AsyncWebsocketConsumer):
                    CallParticipant.objects.filter(call=call_session, user_id=profile_id).exists()
         except CallSession.DoesNotExist:
             return False
+
+
+@database_sync_to_async
+def _obs_owner(key):
+    if not key or len(key) < 20 or len(key) > 48:
+        return None
+    pid = Profile.objects.filter(obs_key=key, is_bot=False).values_list("id", flat=True).first()
+    return str(pid) if pid else None
+
+
+class ObsConsumer(AsyncWebsocketConsumer):
+    """Страница трансляции звонка в OBS (/obs.html, chat/obs.py). Первое
+    сообщение — {type: auth, key, page}: ключ не в адресе, адреса пишутся в
+    логи. Дальше — сигналы WebRTC между страницей и приложением владельца."""
+
+    async def connect(self):
+        self.owner = None
+        self.page = None
+        await self.accept()
+
+    async def receive(self, text_data=None, bytes_data=None):
+        if not text_data or len(text_data) > OBS_MAX_MESSAGE:
+            return
+        try:
+            msg = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        kind = msg.get("type")
+        if self.owner is None:
+            owner = await _obs_owner(str(msg.get("key") or "")) if kind == "auth" else None
+            if not owner:
+                await self.send(text_data=json.dumps({"type": "auth_error"}))
+                await self.close(code=4003)
+                return
+            from .ice import ice_servers
+            self.owner = owner
+            self.page = str(msg.get("page") or "")[:64]
+            await self.channel_layer.group_add(f"obs_{owner}", self.channel_name)
+            await self.send(text_data=json.dumps({"type": "auth_ok", "ice_servers": ice_servers()}))
+            return
+        if kind == "ping":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+        if kind == "signal" and isinstance(msg.get("data"), dict):
+            await self.channel_layer.group_send(f"user_{self.owner}", {"type": "obs_signal", "data": msg["data"]})
+
+    async def disconnect(self, close_code):
+        if not self.owner:
+            return
+        await self.channel_layer.group_discard(f"obs_{self.owner}", self.channel_name)
+        # Приложение владельца закроет соединение с ушедшей страницей.
+        if self.page:
+            await self.channel_layer.group_send(f"user_{self.owner}", {"type": "obs_signal", "data": {"kind": "bye", "page": self.page}})
+
+    async def obs_forward(self, event):
+        await self.send(text_data=json.dumps({"type": "signal", "data": event.get("data") or {}}))
+
+    async def obs_revoked(self, event):
+        await self.send(text_data=json.dumps({"type": "revoked"}))
+        await self.close(code=4003)

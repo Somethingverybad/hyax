@@ -31,6 +31,8 @@ type SignalData = {
   status?: string;
   /** webrtc_media: собеседник включил или выключил камеру. */
   video?: boolean;
+  /** webrtc_media: собеседник транслирует звонок в OBS. */
+  obs?: boolean;
 };
 
 /** Видео и шумодав в звонке — для экрана звонка (CallHost). */
@@ -55,6 +57,8 @@ export type CallMedia = {
   native?: boolean;
   /** Шумодав переключается (пока только в браузере). */
   canNoise?: boolean;
+  /** Собеседник транслирует звонок в OBS (сигнал webrtc_media, поле obs). */
+  peerObs?: boolean;
 };
 
 /** Видео личного звонка, который стал групповым (GroupCallService.adopt). */
@@ -118,6 +122,9 @@ export class OneToOneCallService {
   private peerCanVideo = false;
   private peerKnown = false;
   /** Параметры, с которыми открыт микрофон (micKey): поменялись — переоткрываем. */
+  /** Я транслирую звонок в OBS — собеседник узнаёт об этом сигналом webrtc_media. */
+  private broadcasting = false;
+  private peerObs = false;
   private micOpenedWith = "";
   /** Подмены микрофона — по очереди: две разом остановили бы не ту дорожку. */
   private micChain: Promise<void> = Promise.resolve();
@@ -158,6 +165,7 @@ export class OneToOneCallService {
       noiseSuppression: getMicSettings().noiseSuppression,
       localOn: !!this.localVideoTrack,
       canNoise: true,
+      peerObs: this.peerObs,
     };
   }
 
@@ -221,8 +229,18 @@ export class OneToOneCallService {
     if (!this.currentCallId) return;
     this.wsService.send({
       type: "webrtc_media",
-      data: { chat_id: this.chatId, call_id: this.currentCallId, to_user_id: this.targetUserId, video: !!this.localVideoTrack },
+      data: { chat_id: this.chatId, call_id: this.currentCallId, to_user_id: this.targetUserId, video: !!this.localVideoTrack, obs: this.broadcasting },
     });
+  }
+
+  /** Мой микрофон (для трансляции в OBS); нет звонка — null. */
+  getLocalStream(): MediaStream | null { return this.localStream; }
+
+  /** Трансляция в OBS включена — собеседник увидит пометку на экране звонка. */
+  setBroadcasting(on: boolean): void {
+    if (this.broadcasting === on) return;
+    this.broadcasting = on;
+    this.sendMedia();
   }
 
   /** Шумоподавление из экрана звонка: это та же настройка, что в
@@ -502,6 +520,7 @@ export class OneToOneCallService {
         break;
       case "webrtc_media":
         this.remoteVideo = !!data.video;
+        this.peerObs = !!data.obs;
         this.emitMedia();
         break;
       default:
@@ -807,6 +826,8 @@ export class OneToOneCallService {
     this.stopLocalVideo();
     this.videoTransceiver = null;
     this.remoteVideo = false;
+    this.peerObs = false;
+    this.broadcasting = false;
     this.peerCanVideo = false;
     this.peerKnown = false;
     this.front = true;

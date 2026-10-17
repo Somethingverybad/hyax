@@ -15,6 +15,8 @@ import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
 import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
+import { ObsRelay, obsLink, type ObsSource } from "@/lib/obsRelay";
+import { getMicSettings, onMicSettings, setMicSettings, MIC_TRACK_EVENT } from "@/lib/micSettings";
 
 /** Чат из кеша списка (session-cache «chats») — ровно то, что нужно звонку. */
 type CachedChat = {
@@ -99,6 +101,15 @@ const CallHost = () => {
     camWasOn.current = !!media?.localOn;
   }, [media]);
   const [videoBusy, setVideoBusy] = useState(false);
+  // Шумодав — общая настройка микрофона (Настройки → Микрофон).
+  const [noiseOn, setNoiseOn] = useState(() => getMicSettings().noiseSuppression);
+  useEffect(() => onMicSettings((m) => setNoiseOn(m.noiseSuppression)), []);
+  // Трансляция в OBS (браузер и компьютер): звук звонка — странице в OBS.
+  const obsRef = useRef<ObsRelay | null>(null);
+  const iceRef = useRef<RTCIceServer[]>([]);
+  const obsSourcesRef = useRef<() => ObsSource[]>(() => []);
+  const [obsOn, setObsOn] = useState(false);
+  const [obsPages, setObsPages] = useState(0);
 
   /** Открыть чат звонка на экране чатов (после ответа — как раньше). */
   const openChat = (chatId?: string | null, title?: string | null) => {
@@ -109,7 +120,11 @@ const CallHost = () => {
 
   // Звонок кончился — следующий начнётся развёрнутым.
   useEffect(() => {
-    if (callState === "idle" && groupState === "idle") { setMinimized(false); setCallChat(null); }
+    if (callState === "idle" && groupState === "idle") {
+      setMinimized(false); setCallChat(null);
+      // Трансляция — на звонок: следующий начнётся без неё.
+      if (obsRef.current?.active) { obsRef.current.stop(); setObsOn(false); }
+    }
   }, [callState, groupState]);
 
   // Сервисы — на каждый сокет (вход, смена пользователя); выход — закрываем
@@ -138,6 +153,16 @@ const CallHost = () => {
     // события сразу, а не после запроса серверов связи: приложение мог
     // запустить VoIP-пуш, сеть в фоне стоит, и ответ из CallKit приходил,
     // когда подписки ещё не было (баг-репорт 17c48d63).
+    // Трансляция в OBS — только браузер и компьютер: в приложениях звук
+    // звонка у нативного движка, переслать его странице нельзя.
+    if (!hasNativeCalls()) {
+      obsRef.current = new ObsRelay(
+        (data) => ws.send({ type: "obs_signal", data }),
+        () => obsSourcesRef.current(),
+        () => iceRef.current,
+        setObsPages,
+      );
+    }
     let markReady!: () => void;
     const ready = new Promise<void>((r) => { markReady = r; });
     const svcReady = async () => { await ready; return disposed ? null : callRef.current; };
@@ -221,6 +246,7 @@ const CallHost = () => {
 
     (async () => {
       const iceServers = await iceServersFast();
+      iceRef.current = iceServers;
       if (disposed || wsRef.current !== ws) return;
       // В приложении разговор ведёт нативный движок: в WebView звук не
       // уживался с CallKit и умирал при блокировке экрана.
@@ -303,6 +329,7 @@ const CallHost = () => {
 
     return () => {
       disposed = true;
+      obsRef.current?.stop(); obsRef.current = null; setObsOn(false);
       listeners.forEach((l) => l?.then((h) => h?.remove()));
       callRef.current?.dispose(); callRef.current = null;
       groupCallRef.current?.dispose(); groupCallRef.current = null;
@@ -311,6 +338,7 @@ const CallHost = () => {
 
   // Сигналы звонков из общего сокета.
   useEffect(() => onUserMessage((msg: any) => {
+    if (msg?.type === "obs_signal") { obsRef.current?.handle(msg.data); return; }
     const svc = callRef.current;
     if (msg?.type === "notification" && msg.data?.type === "incoming_call") {
       if (msg.data.group === "1" || msg.data.group === true) {
@@ -466,10 +494,42 @@ const CallHost = () => {
   );
   const toggleNoise = async () => {
     const svc = webSvc();
-    if (!svc) return;
-    try { await svc.setNoiseSuppression(!svc.getMedia().noiseSuppression); }
+    // Личный звонок ждёт, пока микрофон переоткроется, — чтобы сказать об ошибке.
+    try { if (svc && callState !== "idle") await svc.setNoiseSuppression(!noiseOn); else setMicSettings({ noiseSuppression: !noiseOn }); }
     catch { toast.error(tr("Не удалось переключить шумоподавление")); }
   };
+
+  // ── Трансляция в OBS ──
+  const groupWeb = () => (groupCallRef.current instanceof GroupCallService ? groupCallRef.current : null);
+  const toggleObs = () => {
+    const r = obsRef.current;
+    if (!r) return;
+    if (r.active) { r.stop(); setObsOn(false); }
+    else { r.start(); setObsOn(true); }
+  };
+  const copyObsLink = async (peerId?: string | null, renew = false) => {
+    try {
+      const link = obsLink(await api.obsKey(renew), peerId);
+      await navigator.clipboard.writeText(link);
+      toast.success(renew ? tr("Новая ссылка скопирована — прежние больше не работают") : tr("Ссылка для OBS скопирована"));
+    } catch (e) {
+      toast.error((e as Error)?.message || tr("Не удалось скопировать ссылку"));
+    }
+  };
+  // Участники видят пометку: флаг уходит им сигналом webrtc_media.
+  useEffect(() => {
+    webSvc()?.setBroadcasting(obsOn && callState !== "idle");
+    groupWeb()?.setBroadcasting(obsOn && groupState !== "idle");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obsOn, callState, groupState]);
+  // Состав и дорожки поменялись — странице OBS тоже.
+  useEffect(() => { obsRef.current?.sync(); }, [groupStreams, groupPeers, remoteStream, callState, groupState, peopleInfo, obsOn]);
+  useEffect(() => {
+    const h = () => obsRef.current?.sync();
+    window.addEventListener(MIC_TRACK_EVENT, h);
+    remoteStream?.addEventListener("addtrack", h);
+    return () => { window.removeEventListener(MIC_TRACK_EVENT, h); remoteStream?.removeEventListener("addtrack", h); };
+  }, [remoteStream]);
   const toggleMute = () => setMuted(!!callRef.current?.toggleMute());
   const toggleSpeaker = () => {
     const next = !speaker;
@@ -556,8 +616,52 @@ const CallHost = () => {
     },
   ];
 
+  // Что слышит страница OBS: каждый участник своей дорожкой и мой микрофон.
+  obsSourcesRef.current = () => {
+    const me = { id: myInfo?.id || "me", name: myInfo?.username || tr("Вы"), avatarUrl: myInfo?.avatar_url, self: true };
+    if (groupState !== "idle") {
+      return [
+        ...groupParticipants.map((p) => ({ id: p.id, name: p.name, avatarUrl: p.avatarUrl, track: p.stream?.getAudioTracks()[0] ?? null })),
+        { ...me, track: groupWeb()?.getLocalStream()?.getAudioTracks()[0] ?? null },
+      ];
+    }
+    if (callState !== "idle" && callPeer) {
+      return [
+        { id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, track: remoteStream?.getAudioTracks()[0] ?? null },
+        { ...me, track: webSvc()?.getLocalStream()?.getAudioTracks()[0] ?? null },
+      ];
+    }
+    return [];
+  };
+  // Кто транслирует звонок: все участники видят пометку.
+  const broadcasters = groupState !== "idle"
+    ? groupParticipants.filter((p) => groupMedia?.peers[p.id]?.obs).map((p) => p.name)
+    : callPeer && media?.peerObs ? [callPeer.name] : [];
+  const broadcastText = obsOn
+    ? tr("Вы транслируете звонок в OBS")
+    : broadcasters.length ? tr("{name} транслирует звонок", { name: broadcasters.join(", ") }) : null;
+  const shownBroadcasters = useRef("");
+  useEffect(() => {
+    const key = broadcasters.join(", ");
+    if (key && key !== shownBroadcasters.current) toast(tr("{name} транслирует звонок", { name: key }));
+    shownBroadcasters.current = key;
+  });
+  const obsPeople = obsSourcesRef.current().map((x) => ({ id: x.id, name: x.self ? tr("Я") : x.name }));
+  const obs = obsRef.current && (callState !== "idle" || groupState !== "idle") ? {
+    on: obsOn,
+    pages: obsPages,
+    onToggle: toggleObs,
+    onCopy: (peerId?: string | null) => void copyObsLink(peerId),
+    onRenew: () => void copyObsLink(null, true),
+    people: obsPeople,
+  } : undefined;
+  const noise = !hasNativeCalls() ? { on: noiseOn, onToggle: () => void toggleNoise() } : undefined;
+
   const common = {
     muted,
+    broadcast: broadcastText,
+    obs,
+    noise,
     volumes: peerVolumes,
     onVolume: setPeerVolume,
     onAdd: () => setAddToCallOpen(true),
@@ -626,7 +730,6 @@ const CallHost = () => {
             onToggle: () => void toggleVideo(),
             onFlip: () => void flipCamera(),
           } : undefined}
-          noise={webSvc() && media?.canNoise ? { on: media.noiseSuppression, onToggle: () => void toggleNoise() } : undefined}
           onAccept={acceptCall}
           onReject={rejectCall}
           onHangup={hangup}

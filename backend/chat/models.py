@@ -145,6 +145,9 @@ class Profile(models.Model):
     # кнопкой в чате с ботом и в его карточке (chat/webapp.py). Пусто — нет.
     webapp_url = models.TextField(blank=True, default="")
     webapp_title = models.CharField(max_length=32, blank=True, default="")
+    # Ключ трансляции звонка в OBS (источник «Браузер», chat/obs.py): по нему
+    # страница /obs.html получает звук звонка с компьютера владельца. Пусто — нет.
+    obs_key = models.CharField(max_length=48, blank=True, default="", db_index=True)
 
     def __str__(self):
         return f"🤖 {self.username}" if self.is_bot else self.username
