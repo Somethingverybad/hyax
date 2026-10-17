@@ -10,7 +10,7 @@ import Identicon from "@/components/Identicon";
 import AvatarZoom from "@/components/AvatarZoom";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import { api, mediaUrl, type SavedImage } from "@/api/client";
-import { shareProfile, PUBLIC_ORIGIN } from "@/lib/share";
+import { shareProfile, LINK_ORIGIN } from "@/lib/share";
 
 /**
  * Карточка по ссылке «Поделиться профилем» — https://huyax.e-tree.su/u/<ник>.
@@ -199,7 +199,7 @@ const PublicProfile = () => {
             {!Capacitor.isNativePlatform() && (
               <p className="text-caption text-subtle text-center">
                 {t("Удобнее в приложении —")}{" "}
-                <a href={`${PUBLIC_ORIGIN}/apk/`} className="underline text-foreground">{t("скачать WYX")}</a>
+                <a href={`${LINK_ORIGIN}/#download`} className="underline text-foreground">{t("скачать WYX")}</a>
               </p>
             )}
           </div>

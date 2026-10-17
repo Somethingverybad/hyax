@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "react-router-dom";
-import { PUBLIC_ORIGIN } from "./share";
+import { PUBLIC_ORIGIN, LINK_ORIGIN } from "./share";
 import { emojify } from "@/components/NotoEmoji";
 
 /**
@@ -37,8 +37,9 @@ const trimTail = (raw: string): [string, string] => {
 export function internalPath(raw: string): string | null {
   try {
     const u = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
-    // Свой домен и нейтральный wyx.su (ссылки на мини-приложения и профили).
-    if (u.host !== new URL(PUBLIC_ORIGIN).host && u.host !== "wyx.su" && u.host !== "www.wyx.su") return null;
+    // Нейтральный wyx.su (так делятся сейчас) и основной домен (старые ссылки).
+    const link = new URL(LINK_ORIGIN).host;
+    if (u.host !== new URL(PUBLIC_ORIGIN).host && u.host !== link && u.host !== `www.${link}`) return null;
     return /^\/(u|c|sp|stp|t|pl)\/[^/]+\/?$/.test(u.pathname) ? u.pathname + u.search : null;
   } catch {
     return null;

@@ -36,17 +36,29 @@
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/stp/" />
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/t/" />
                 <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/kt/" />
-                <!-- Нейтральный домен: профили, боты и мини-приложения (https://wyx.su/u/<бот>?app). -->
+                <data android:scheme="https" android:host="huyax.e-tree.su" android:pathPrefix="/pl/" />
+                <!-- Нейтральный домен: так «Поделиться» даёт ссылки сейчас (https://wyx.su/u/<ник>,
+                     /c/<канал>, паки, темы, плейлисты); старые на основном домене — выше. -->
                 <data android:scheme="https" android:host="wyx.su" android:pathPrefix="/u/" />
+                <data android:scheme="https" android:host="wyx.su" android:pathPrefix="/c/" />
+                <data android:scheme="https" android:host="wyx.su" android:pathPrefix="/sp/" />
+                <data android:scheme="https" android:host="wyx.su" android:pathPrefix="/stp/" />
+                <data android:scheme="https" android:host="wyx.su" android:pathPrefix="/t/" />
+                <data android:scheme="https" android:host="wyx.su" android:pathPrefix="/pl/" />
             </intent-filter>
 
-            <!-- whoyax://u/<ник>[?app] — кнопка «Открыть в WYX» на странице wyx.su/u/<ник>
-                 (если ссылку открыли в браузере, а не в приложении). -->
+            <!-- whoyax://u/<ник>[?app], whoyax://c/…, /stp/, /sp/, /t/, /pl/ — кнопка «Открыть в WYX»
+                 на карточке wyx.su (если ссылку открыли в браузере, а не в приложении). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="whoyax" android:host="u" />
+                <data android:scheme="whoyax" android:host="c" />
+                <data android:scheme="whoyax" android:host="pl" />
+                <data android:scheme="whoyax" android:host="t" />
+                <data android:scheme="whoyax" android:host="sp" />
+                <data android:scheme="whoyax" android:host="stp" />
             </intent-filter>
 
             <!-- «Поделиться → WYX» из других приложений: текст, ссылки, фото, видео,

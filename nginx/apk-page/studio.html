@@ -319,6 +319,12 @@
         </div>
       </div>
     </div>
+    <h2>Доступ</h2>
+    <div class="card">
+      <label class="chk" style="white-space:normal;color:inherit"><input type="checkbox" id="bvPrivate"> Приватный бот — только для меня</label>
+      <div class="result" id="bvPrivResult"></div>
+      <div class="hint mt">Приватного бота нет в поиске и в каталоге мини-приложений, его ссылка не открывается, начать с ним чат и написать ему может только владелец, а сам бот пишет только владельцу. Те, кто начал его раньше, писать ему больше не смогут.</div>
+    </div>
     <h2>Описание</h2>
     <div class="card">
       <textarea id="bvBio" rows="3" maxlength="500" placeholder="Что умеет бот и как им пользоваться"></textarea>
@@ -1157,7 +1163,7 @@
     box.appendChild(folder({isNew:true,name:"Новый бот",count:"ник, описание, аватар",icon:"＋",onClick:function(){ go("#/newbot"); }}));
     (bots||[]).forEach(function(b){
       box.appendChild(folder({name:"@"+b.username,count:b.bio?b.bio.slice(0,60):"без описания",cover:avaSrc(b),icon:"🤖",
-        onClick:function(){ go("#/bot/"+b.id); }}));
+        tag:b.private?"приватный":"", onClick:function(){ go("#/bot/"+b.id); }}));
     });
     el("botCount").textContent=(bots||[]).length;
   }
@@ -1217,7 +1223,8 @@
   function renderBot(b){
     curBot=b;
     el("bvTitle").textContent="@"+b.username;
-    el("bvMeta").textContent="Бот"+(b.created_at?" · создан "+new Date(b.created_at).toLocaleDateString("ru-RU"):"");
+    el("bvMeta").textContent=(b.private?"Приватный бот":"Бот")+(b.created_at?" · создан "+new Date(b.created_at).toLocaleDateString("ru-RU"):"");
+    el("bvPrivate").checked=!!b.private;
     var cov=el("bvCover"); cov.innerHTML = avaSrc(b) ? '<img alt="" src="'+esc(avaSrc(b))+'">' : "🤖";
     if(document.activeElement!==el("bvBio")) el("bvBio").value=b.bio||"";
     if(document.activeElement!==el("bvAppUrl")) el("bvAppUrl").value=b.webapp_url||"";
@@ -1250,6 +1257,15 @@
     });
     act.appendChild(link); act.appendChild(al); act.appendChild(del);
   }
+  el("bvPrivate").addEventListener("change", function(){
+    var b=curBot; if(!b) return;
+    var cb=this, res=el("bvPrivResult"), want=cb.checked; cb.disabled=true; res.className="result";
+    authJson("/api/bots/"+b.id+"/","PATCH",{private:want}).then(function(x){
+      cb.disabled=false;
+      if(x.ok && x.data.bot){ b.private=x.data.bot.private; res.className="result ok"; res.textContent=b.private?"Бот приватный — доступен только вам.":"Бот снова доступен всем."; renderBot(b); }
+      else { cb.checked=!want; res.className="result err"; res.textContent=(x.data&&x.data.error)||"Не удалось сохранить"; }
+    }).catch(function(){ cb.disabled=false; cb.checked=!want; });
+  });
   el("bvSaveBio").addEventListener("click", function(){
     var b=curBot; if(!b) return;
     var btn=this, res=el("bvBioResult"); btn.disabled=true; res.className="result";

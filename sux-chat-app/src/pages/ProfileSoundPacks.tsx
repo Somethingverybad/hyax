@@ -8,7 +8,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type SoundPackInfo } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
-import { PUBLIC_ORIGIN, shareSoundPack } from "@/lib/share";
+import { LINK_ORIGIN, shareSoundPack } from "@/lib/share";
 
 /**
  * Паки звуков: свои (созданные здесь или в студии) — чтобы делиться ими, и
@@ -47,7 +47,7 @@ const ProfileSoundPacks = () => {
   /** Вставленная ссылка вида …/sp/<id> — открываем карточку пака. */
   const openLink = () => {
     const m = link.trim().match(/\/sp\/([0-9a-f-]{36})/i);
-    if (!m) { toast.error(t("Нужна ссылка вида {url}", { url: PUBLIC_ORIGIN + "/sp/…" })); return; }
+    if (!m) { toast.error(t("Нужна ссылка вида {url}", { url: LINK_ORIGIN + "/sp/…" })); return; }
     navigate(`/sp/${m[1]}`);
   };
 
@@ -61,7 +61,7 @@ const ProfileSoundPacks = () => {
             <input
               value={link}
               onChange={(e) => setLink(e.target.value)}
-              placeholder={`${PUBLIC_ORIGIN}/sp/…`}
+              placeholder={`${LINK_ORIGIN}/sp/…`}
               className="flex-1 h-10 rounded-md bg-surface-4 border border-transparent px-3 text-body outline-none focus:border-amber"
             />
             <button type="button" onClick={openLink} className="h-10 px-4 rounded-md bg-primary text-primary-foreground font-medium active:opacity-90">{t("Открыть")}</button>

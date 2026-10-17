@@ -7,6 +7,7 @@ import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
 import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
+import { canEnableAdult } from "@/lib/device";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { toast } from "sonner";
 import { Ban, Lock, FileText, ShieldCheck, Trash2, Images, Mail, KeyRound, MonitorSmartphone } from "lucide-react";
@@ -19,7 +20,8 @@ type Blocked = { id: string; username: string; avatar_url?: string | null };
 /**
  * Конфиденциальность: чёрный список (разблокировать можно прямо отсюда — иначе
  * пришлось бы искать человека, чтобы открыть его карточку), показ паков 18+,
- * правила с политикой и удаление аккаунта.
+ * правила с политикой и удаление аккаунта. На iPhone раздела «Контент» нет,
+ * пока 18+ выключено (canEnableAdult): включить его там нельзя, только выключить.
  */
 const ProfilePrivacy = () => {
   const navigate = useNavigate();
@@ -190,6 +192,7 @@ const ProfilePrivacy = () => {
           />
         </SettingsCard>
 
+        {(canEnableAdult() || !!profile?.allow_adult) && <>
         <p className="px-1 pt-2 text-small text-subtle">{t("Контент")}</p>
         <SettingsCard>
           <SettingsRow
@@ -218,6 +221,7 @@ const ProfilePrivacy = () => {
             </div>
           )}
         </SettingsCard>
+        </>}
 
         <SettingsCard>
           <SettingsRow icon={FileText} label={t("Правила")} onClick={() => navigate("/terms")} />

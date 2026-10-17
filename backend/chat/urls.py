@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
 from .radio import StationsView, StationView, StationControlView, StationListenView
-from .webapp import WebAppInitView, WebAppDataView, WebAppCatalogView, wyx_user_page
+from .webapp import WebAppInitView, WebAppDataView, WebAppCatalogView, wyx_user_page, wyx_link_page
 from .obs import ObsKeyView
 from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
 from .inline import InlineQueryView, InlineAnswerView, InlineChooseView, InlineFillView
@@ -119,6 +119,9 @@ urlpatterns = [
     # Страница https://wyx.su/u/<ник> (nginx wyx.conf проксирует /u/ сюда).
     path('wyx/u/<str:username>', wyx_user_page, name='wyx-user-page'),
     path('wyx/u/<str:username>/', wyx_user_page),
+    # Каналы, паки, темы и плейлисты на wyx.su: /c/, /stp/, /sp/, /t/, /pl/.
+    path('wyx/<str:kind>/<str:ref>', wyx_link_page, name='wyx-link-page'),
+    path('wyx/<str:kind>/<str:ref>/', wyx_link_page),
     # Inline-боты (chat/inline.py): запрос → результаты → выбор → заполнение.
     path('bots/inline/query/', InlineQueryView.as_view(), name='inline-query'),
     path('bots/inline/<str:query_id>/answer/', InlineAnswerView.as_view(), name='inline-answer'),

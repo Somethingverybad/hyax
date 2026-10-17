@@ -86,6 +86,7 @@ class InlineQueryView(APIView):
         from django.db.models import Q
         bot = (Profile.objects.filter(is_bot=True, username__iexact=username)
                .filter(Q(chats__kind="direct", chats__bot_started=True, chats__participants=me) | Q(chats__id=chat.id))
+               .exclude(Q(bot_private=True) & ~Q(bot_owner=me))
                .distinct().first())
         if not bot:
             return Response({"error": "Бот не найден"}, status=404)

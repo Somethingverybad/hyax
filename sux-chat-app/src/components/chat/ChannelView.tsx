@@ -38,6 +38,7 @@ import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
 import { WallpaperLayer } from "./ChatWallpaper";
+import { canEnableAdult } from "@/lib/device";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -1192,7 +1193,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     {composeOpts && (
                       <label className="flex items-start gap-2 text-caption text-subtle rounded-lg bg-surface-2 px-3 py-2.5">
                         <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" checked={safe} onChange={(e) => setSafe(e.target.checked)} />
-                        <span><b className="text-foreground">{tr("Контент 4+")}</b> {tr("— без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+». Выбор запоминается.")}</span>
+                        <span><b className="text-foreground">{tr("Контент 4+")}</b> {canEnableAdult() ? tr("— без мата и материалов для взрослых. Без отметки пост увидят только те, кто включил «18+». Выбор запоминается.") : tr("— без мата и материалов для взрослых. Без отметки пост видят не все. Выбор запоминается.")}</span>
                       </label>
                     )}
                   </>
@@ -1621,7 +1622,7 @@ const WallInfo = ({ state, onClose, onChanged, onOpenProfile, onHide }: {
           <button type="button" onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
-          <p className="text-muted-foreground">{tr("Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят только те, кто включил «Показывать 18+».")}</p>
+          <p className="text-muted-foreground">{canEnableAdult() ? tr("Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят только те, кто включил «Показывать 18+».") : tr("Общая лента: пишут все, читают все. Посты без отметки «Контент 4+» видят не все.")}</p>
           <label className={cn("flex items-start gap-3", state.translate_available === false ? "opacity-60" : "cursor-pointer")}>
             <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary shrink-0" checked={!!state.translate} disabled={state.translate_available === false}
               onChange={(e) => void setTranslate(e.target.checked)} />

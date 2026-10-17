@@ -109,6 +109,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
             # с кем уже есть общий чат.
             me0 = getattr(self.request.user, 'profile', None)
             queryset = queryset.filter(Q(hide_from_search=False) | Q(id__in=_contact_ids(me0)))
+            queryset = queryset.exclude(Q(is_bot=True, bot_private=True) & ~Q(bot_owner=me0))
             # Ботов по нику не ищут: к боту приходят по ссылке и нажимают
             # «Начать». В поиске бот виден, только если личка с ним уже есть.
             me = getattr(self.request.user, 'profile', None)
@@ -131,6 +132,9 @@ class ProfileViewSet(viewsets.ModelViewSet):
         if profile is None:
             candidates = list(Profile.objects.filter(username__iexact=name)[:2])
             profile = candidates[0] if len(candidates) == 1 else None
+        # Приватный бот — только для владельца: остальным его как будто нет.
+        if profile is not None and profile.bot_closed_to(getattr(request.user, 'profile', None)):
+            profile = None
         if not profile:
             return Response({"error": "Пользователь не найден"}, status=404)
         return Response(PublicProfileSerializer(profile, context={'request': request}).data)
@@ -469,6 +473,14 @@ class ChatViewSet(viewsets.ModelViewSet):
         _me = getattr(request.user, 'profile', None)
         if _me is not None and _me.is_bot:
             return Response({'detail': 'Бот не пишет первым: человек должен нажать «Начать» на карточке бота'}, status=403)
+        _raw = request.data.get('participants', [])
+        _ids = [str(x) for x in (_raw if isinstance(_raw, list) else [_raw]) if x]
+        if _ids and _me is not None:
+            try:
+                if Profile.objects.filter(id__in=_ids, is_bot=True, bot_private=True).exclude(bot_owner=_me).exists():
+                    return Response({'detail': 'Бот не найден'}, status=404)
+            except Exception:
+                pass  # кривой id участника — дальше разберётся обычная проверка
         participant_ids = request.data.get('participants', [])
         print("Raw participant_ids:", participant_ids, type(participant_ids))
         
@@ -1742,6 +1754,13 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response({"error": "Этому боту нельзя писать — он только рассылает"}, status=403)
             if _ch and _ch.kind == 'direct' and profile.is_bot and not _ch.bot_started:
                 return Response({"error": "Человек ещё не нажал «Начать» — бот не пишет первым"}, status=403)
+            # Приватный бот: писать ему может только владелец, а сам он — только владельцу.
+            if _ch and not profile.is_bot and Profile.objects.filter(
+                    chatparticipant__chat=_ch, is_bot=True, bot_private=True).exclude(bot_owner=profile).exists():
+                return Response({"error": "Бот недоступен"}, status=403)
+            if _ch and profile.is_bot and profile.bot_private and Profile.objects.filter(
+                    chatparticipant__chat=_ch, is_bot=False).exclude(id=profile.bot_owner_id).exists():
+                return Response({"error": "Приватный бот пишет только владельцу"}, status=403)
             if _ch and _ch.kind == 'channel':
                 _cp = ChatParticipant.objects.filter(chat=_ch, user=profile).first()
                 if not _cp or _cp.role not in ('owner', 'admin'):
@@ -3502,6 +3521,7 @@ def _bot_payload(bot, with_token=False):
         "webapp_title": bot.webapp_title or "",
         "is_bot": True,
         "owner": str(bot.bot_owner_id) if bot.bot_owner_id else None,
+        "private": bool(bot.bot_private),
         "created_at": bot.created_at,
     }
     if with_token:
@@ -3563,7 +3583,7 @@ class BotStartView(APIView):
         if not me or me.is_bot:
             return Response({"error": "Нет профиля"}, status=403)
         bot = Profile.objects.filter(id=pk, is_bot=True).first()
-        if not bot:
+        if not bot or bot.bot_closed_to(me):
             return Response({"error": "Бот не найден"}, status=404)
         from .moderation import blocked_either_way
         if blocked_either_way(me.id, bot.id):
@@ -3627,10 +3647,16 @@ class BotDetailView(APIView):
         if "webapp_title" in request.data:
             bot.webapp_title = (request.data.get("webapp_title") or "").strip()[:32]
             fields.append("webapp_title")
+        mine = bot.bot_owner_id == getattr(getattr(request.user, "profile", None), "id", None)
+        if "private" in request.data:
+            # Приватность — только владелец (не сам бот своим токеном).
+            if not mine:
+                return Response({"error": "Приватность бота меняет только владелец"}, status=403)
+            bot.bot_private = str(request.data.get("private")).lower() in ("1", "true", "yes")
+            fields.append("bot_private")
         if not fields:
             return Response({"error": "Нечего менять"}, status=400)
         bot.save(update_fields=fields)
-        mine = bot.bot_owner_id == getattr(getattr(request.user, "profile", None), "id", None)
         return Response({"bot": _bot_payload(bot, with_token=mine)})
 
     def delete(self, request, pk):
@@ -3888,7 +3914,7 @@ class TelegramChannelView(APIView):
             return Response({"error": "Нет профиля"}, status=403)
         username = parse_channel_ref(request.data.get("url") or "")
         if not username:
-            return Response({"error": "Нужна ссылка вида t.me/канал или @канал"}, status=400)
+            return Response({"error": "Нужна ссылка на публичный канал или @имя"}, status=400)
         ch = Chat.objects.filter(tg_username__iexact=username).first()
         created = False
         if not ch:
@@ -4808,18 +4834,18 @@ class TelegramStickerImportView(APIView):
             return Response({"error": "На сервере не задан токен бота (TG_BOT)"}, status=503)
         name = _tg_pack_name(request.data.get('url') or request.data.get('name'))
         if not name:
-            return Response({"error": "Не похоже на ссылку на набор (t.me/addstickers/… или t.me/addemoji/…)"}, status=400)
+            return Response({"error": "Не похоже на ссылку на набор стикеров или эмодзи"}, status=400)
         try:
             r = _tg_session().get(f'https://api.telegram.org/bot{token}/getStickerSet', params={'name': name}, timeout=TG_TIMEOUT).json()
         except Exception:
-            return Response({"error": "Telegram не отвечает"}, status=502)
+            return Response({"error": "Сервис с набором не отвечает"}, status=502)
         if not r.get('ok'):
             return Response({"error": r.get('description') or "Пак не найден"}, status=404)
         s = r['result']
         stickers = [x for x in s.get('stickers', []) if x.get('file_id')][:200]
         # Набор эмодзи Telegram (t.me/addemoji/…) — набор своих эмодзи WYX.
         kind = 'emoji' if s.get('sticker_type') == 'custom_emoji' else 'sticker'
-        pack = StickerPack.objects.create(name=(s.get('title') or name)[:100], description=f'Импорт из Telegram: {name}',
+        pack = StickerPack.objects.create(name=(s.get('title') or name)[:100], description=f'Импорт по ссылке: {name}',
                                           author=profile, is_public=True, kind=kind)
         UserStickerPack.objects.get_or_create(user=profile, pack=pack)
         IMPORT_PROGRESS[str(pack.id)] = {'total': len(stickers), 'done': 0, 'failed': 0, 'finished': not stickers,

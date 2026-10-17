@@ -5,7 +5,7 @@ import { Radio, Share2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
-import { shareChannel, PUBLIC_ORIGIN } from "@/lib/share";
+import { shareChannel, LINK_ORIGIN } from "@/lib/share";
 import { t, tn } from "@/lib/i18n";
 
 /**
@@ -112,7 +112,7 @@ const PublicChannel = () => {
             {!Capacitor.isNativePlatform() && (
               <p className="text-caption text-subtle text-center">
                 {t("Удобнее в приложении —")}{" "}
-                <a href={`${PUBLIC_ORIGIN}/apk/`} className="underline text-foreground">{t("скачать WYX")}</a>
+                <a href={`${LINK_ORIGIN}/#download`} className="underline text-foreground">{t("скачать WYX")}</a>
               </p>
             )}
           </div>

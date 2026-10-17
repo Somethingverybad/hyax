@@ -126,7 +126,7 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-/** Ссылка https://huyax.e-tree.su/u/<ник>, открытая в установленном
+/** Ссылка https://wyx.su/u/<ник> (или старая на основной домен), открытая в установленном
  *  приложении (universal link / app link): система отдаёт нам URL — ведём на
  *  тот же путь внутри SPA. Отдельно — «холодный» старт по ссылке, когда
  *  слушатель ещё не висел. Веб этого не касается: там браузер сам открыл путь. */
@@ -163,8 +163,8 @@ const DeepLinks = () => {
         // whoyax://share — расширение «Поделиться» положило файлы (lib/shareInbox).
         if (u.protocol === "whoyax:") {
           if (u.host === "share") { window.dispatchEvent(new CustomEvent("hyax:share-inbox")); return; }
-          // whoyax://u/<ник>[?app] — кнопка «Открыть в WYX» на странице wyx.su/u/<ник>.
-          if (["u", "c", "pl"].includes(u.host)) navRef.current(`/${u.host}${u.pathname}${u.search}`);
+          // whoyax://u/<ник>[?app], whoyax://stp/<id>… — кнопка «Открыть в WYX» на карточке wyx.su.
+          if (["u", "c", "pl", "t", "sp", "stp"].includes(u.host)) navRef.current(`/${u.host}${u.pathname}${u.search}`);
           return;
         }
         if (["/u/", "/c/", "/t/", "/sp/", "/stp/", "/kt/", "/pl/"].some((pre) => u.pathname.startsWith(pre))) navRef.current(u.pathname + u.search + u.hash);

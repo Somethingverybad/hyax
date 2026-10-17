@@ -148,9 +148,17 @@ class Profile(models.Model):
     # кнопкой в чате с ботом и в его карточке (chat/webapp.py). Пусто — нет.
     webapp_url = models.TextField(blank=True, default="")
     webapp_title = models.CharField(max_length=32, blank=True, default="")
+    # Приватный бот (студия): доступен только владельцу — не открывается по
+    # ссылке, нет в каталоге и поиске, нельзя начать чат и написать, сам бот
+    # пишет только владельцу. Проверка — bot_closed_to().
+    bot_private = models.BooleanField(default=False)
     # Ключ трансляции звонка в OBS (источник «Браузер», chat/obs.py): по нему
     # страница /obs.html получает звук звонка с компьютера владельца. Пусто — нет.
     obs_key = models.CharField(max_length=48, blank=True, default="", db_index=True)
+
+    def bot_closed_to(self, viewer) -> bool:
+        """Приватный бот закрыт для всех, кроме своего владельца."""
+        return bool(self.is_bot and self.bot_private and (viewer is None or self.bot_owner_id != getattr(viewer, "id", None)))
 
     def __str__(self):
         return f"🤖 {self.username}" if self.is_bot else self.username

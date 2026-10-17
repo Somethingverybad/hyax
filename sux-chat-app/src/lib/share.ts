@@ -1,9 +1,10 @@
 /**
  * Поделиться профилем. Людей находят и поиском по нику (кроме скрывших себя
  * из поиска), но ссылка — самый прямой путь, и она работает всегда. Ссылка
- * https://huyax.e-tree.su/u/<ник>: на телефоне с установленным WYXом она
- * открывается прямо в приложении (universal link / app link), у остальных —
- * в браузере той же страницей с кнопкой «Написать» и ссылкой на установку.
+ * https://wyx.su/u/<ник>: на телефоне с установленным WYXом она открывается
+ * прямо в приложении (universal link / app link), у остальных — карточкой на
+ * wyx.su с «Открыть в WYX», «Веб-версия» и «Скачать». Так же — каналы, паки,
+ * темы и плейлисты. Старые ссылки на основной домен работают как раньше.
  *
  * Через системное меню «Поделиться» (Web Share API — работает в WKWebView и
  * Android WebView), с откатом в буфер обмена.
@@ -14,26 +15,29 @@ import { writeClipboard } from "./clipboard";
 
 export type ShareResult = "shared" | "copied" | "error";
 
-/** Домен ссылок захардкожен: в нативной сборке origin — capacitor://localhost. */
+/** Основной домен: веб-версия, тайлы карты, установщики, перенос ключей (/kt/).
+ *  Захардкожен: в нативной сборке origin — capacitor://localhost. */
 export const PUBLIC_ORIGIN = "https://huyax.e-tree.su";
+/** Домен ссылок «Поделиться» — нейтральный (nginx/conf.d/wyx.conf). */
+export const LINK_ORIGIN = "https://wyx.su";
 
-export const profileLink = (username: string) => `${PUBLIC_ORIGIN}/u/${encodeURIComponent(username)}`;
-/** Мини-приложение бота — на нейтральном домене: https://wyx.su/u/<бот>?app. */
-export const miniAppLink = (username: string) => `https://wyx.su/u/${encodeURIComponent(username)}?app`;
-/** Ссылка на пак звуков: по ней пак добавляют себе (см. pages/SoundPackPage). */
+export const profileLink = (username: string) => `${LINK_ORIGIN}/u/${encodeURIComponent(username)}`;
+/** Мини-приложение бота: https://wyx.su/u/<бот>?app. */
+export const miniAppLink = (username: string) => `${LINK_ORIGIN}/u/${encodeURIComponent(username)}?app`;
 /** Ссылка на тему оформления — /t/<id>, как у паков. */
-export const themeLink = (id: string) => `${PUBLIC_ORIGIN}/t/${id}`;
+export const themeLink = (id: string) => `${LINK_ORIGIN}/t/${id}`;
 
-export const soundPackLink = (id: string) => `${PUBLIC_ORIGIN}/sp/${id}`;
+/** Ссылка на пак звуков: по ней пак добавляют себе (см. pages/SoundPackPage). */
+export const soundPackLink = (id: string) => `${LINK_ORIGIN}/sp/${id}`;
 /** Ссылка на стикерпак: по ней пак добавляют себе (см. pages/StickerPackPage). */
-export const stickerPackLink = (id: string) => `${PUBLIC_ORIGIN}/stp/${id}`;
+export const stickerPackLink = (id: string) => `${LINK_ORIGIN}/stp/${id}`;
 
 /** Плейлист по ссылке: ключ, а не id — доступ можно отозвать. */
-export const playlistLink = (token: string) => `${PUBLIC_ORIGIN}/pl/${token}`;
+export const playlistLink = (token: string) => `${LINK_ORIGIN}/pl/${token}`;
 
 /** Ссылка на канал: по @username, а без него — по id (канал без хэндла тоже можно передать). */
 export const channelLink = (ch: { id: string; username?: string | null }) =>
-  `${PUBLIC_ORIGIN}/c/${encodeURIComponent(ch.username || ch.id)}`;
+  `${LINK_ORIGIN}/c/${encodeURIComponent(ch.username || ch.id)}`;
 
 /* Ссылка — внутри текста, одним элементом. Если отдать text и url порознь,
    пункт «Скопировать» системного меню на iPhone берёт только первый —

@@ -32,3 +32,10 @@ export function deviceName(): string {
 export function deviceInfo() {
   return { device_id: deviceId(), device_name: deviceName(), platform: devicePlatform(), app_version: APP_VERSION };
 }
+
+/**
+ * Включить «Показывать 18+» можно везде, кроме приложения для iPhone: там
+ * переключателя нет и по умолчанию виден только контент 4+. Включённую на
+ * сайте или в десктопе настройку на iPhone можно только выключить.
+ */
+export const canEnableAdult = () => Capacitor.getPlatform() !== "ios";
