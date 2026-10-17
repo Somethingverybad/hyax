@@ -10,7 +10,7 @@ import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "luci
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
-import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, ChevronDown as ChevronDownIcon } from "lucide-react";
+import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
   MessageSquare, 
   UserPlus, 
-  LogOut, 
   X,
-  ChevronLeft,
-  Menu,
   Users,
   Check,
   Trash2,
@@ -76,8 +73,6 @@ interface ChatSidebarProps {
   selectedChatId: string | null;
   onLogout: () => void;
   onOpenProfile?: () => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
   onChatDeleted: (chatId: string) => void;
   /** Стена — строка над списком (десктоп); на телефоне у неё вкладка. */
   onOpenWall?: () => void;
@@ -135,9 +130,6 @@ const ChatSidebar = ({
   selectedChatId, 
   onLogout,
   onOpenProfile,
-  
-  isCollapsed, 
-  onToggleCollapse,
   onChatDeleted,
   onChatCreated,
   savedChatId,
@@ -239,7 +231,7 @@ const ChatSidebar = ({
       window.removeEventListener("resize", set);
       document.documentElement.style.removeProperty("--player-top");
     };
-  }, [isCollapsed]);
+  }, []);
   // Участники — сразу из кеша, ещё до первой отрисовки: иначе при каждом
   // переходе между вкладками на мгновение показывались служебные названия
   // вида «Чат 32aec835…» — имя собеседника ещё не успевало прочитаться.
@@ -682,9 +674,7 @@ const ChatSidebar = ({
   return (
     <div
       ref={listRef}
-      className={`bg-background border-r border-border flex flex-col transition-all duration-300 ${
-      isCollapsed ? "w-16" : "w-full md:w-80 lg:w-96"
-    }`}>
+      className="bg-background border-r border-border flex flex-col w-full md:w-80 lg:w-96">
       {/* Шапка: аватар + имя + «В сети», справа шестерёнка и красный «+»
           (открывает диалог нового чата). Ниже — поиск по списку. */}
       <div ref={topRef} className={mint ? "mint-glass mint-glass-over px-4 pt-2 pb-3 pad-safe-top" : "px-4 pt-2 pb-3 pad-safe-top"}>
@@ -697,18 +687,7 @@ const ChatSidebar = ({
               <span className="mint-title">{t("Чаты")}</span>
             </>
           )}
-          {!isMobileLayout && isCollapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onToggleCollapse}
-              className="h-9 w-8 -ml-2 text-muted-foreground"
-              title={isCollapsed ? t("Развернуть сайдбар") : t("Свернуть сайдбар")}
-            >
-              {isCollapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-            </Button>
-          )}
-          {!isCollapsed && !mint && (
+          {!mint && (
             <>
               <button
                 type="button"
@@ -728,19 +707,6 @@ const ChatSidebar = ({
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 text-h2 md:text-[15px]">
                     <span className="truncate">{currentUser?.username || t("Загрузка…")}</span>
-                    {!isMobileLayout && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleCollapse?.(); }}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); onToggleCollapse?.(); } }}
-                        className="shrink-0 text-subtle hover:text-foreground"
-                        title={t("Свернуть сайдбар")}
-                        aria-label={t("Свернуть сайдбар")}
-                      >
-                        <ChevronDownIcon className="w-4 h-4" />
-                      </span>
-                    )}
                   </span>
                   {/* Вместо «В сети» — значение своей ауры; «Скрыт» остаётся подписью:
                       ауры при нём нет, и без подписи было бы непонятно почему. */}
@@ -761,7 +727,7 @@ const ChatSidebar = ({
               </button>
             </>
           )}
-        {!isCollapsed && (
+        {(
           <Dialog>
             <DialogTrigger asChild>
               {mint ? (
@@ -936,7 +902,7 @@ const ChatSidebar = ({
           </Dialog>
         )}
         </div>
-        {!isCollapsed && (
+        {(
           <label className={mint
             ? "mint-pill mt-[11px] flex items-center gap-[12px] h-[42px] px-[14px] mint-muted"
             : "ui-search mt-2 flex items-center gap-2 h-11 md:h-9 px-3 rounded-md bg-surface-1 md:bg-transparent md:border md:border-border text-subtle focus-within:ring-1 focus-within:ring-amber md:focus-within:border-amber md:focus-within:ring-0"}>
@@ -949,7 +915,7 @@ const ChatSidebar = ({
             />
           </label>
         )}
-        {!isCollapsed && (
+        {(
           <div className={mint
             ? "mint-card mt-[11px] h-[47px] flex items-center gap-2 px-[10px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             : "mt-2.5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 pb-1"}>
@@ -1006,7 +972,7 @@ const ChatSidebar = ({
             справа над перепиской, а список от него зря уезжал вниз. */}
         <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: mint ? `calc(${isMobileLayout ? "var(--player-h, 0px) + var(--call-h, 0px)" : "0px"} + var(--glass-h, 0px))` : isMobileLayout ? "calc(var(--player-h, 0px) + var(--call-h, 0px))" : "0px", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
-          {onOpenIdeabox && !isCollapsed && sections.ideabox && (
+          {onOpenIdeabox && sections.ideabox && (
             <div className="relative overflow-hidden">
             {hideSwipeButton("ideabox")}
             <button
@@ -1039,7 +1005,7 @@ const ChatSidebar = ({
             </button>
             </div>
           )}
-          {onOpenWall && !isCollapsed && sections.wall && (
+          {onOpenWall && sections.wall && (
             <div className="relative overflow-hidden hidden md:block">
             {hideSwipeButton("wall")}
             <button
@@ -1062,7 +1028,7 @@ const ChatSidebar = ({
             </button>
             </div>
           )}
-          {onOpenSaved && !isCollapsed && (
+          {onOpenSaved && (
             <button
               type="button"
               onClick={onOpenSaved}
@@ -1080,7 +1046,7 @@ const ChatSidebar = ({
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>
           )}
-          {peopleHits.length > 0 && !isCollapsed && (
+          {peopleHits.length > 0 && (
             <div className="px-4 pt-2 pb-1">
               <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Люди")}</p>
               {(peopleAll ? peopleHits : peopleHits.slice(0, 5)).map((person) => (
@@ -1188,11 +1154,10 @@ const ChatSidebar = ({
                     className={`chat-row-card group relative pl-3 pr-4 py-3 md:py-2.5 md:mr-1 md:rounded-r-lg flex items-center gap-3.5 md:gap-3 transition-transform border-l-4 ${
                       selectedChatId === chat.id ? "bg-surface-3 border-primary" : "bg-background border-transparent active:bg-surface-2 md:hover:bg-surface-2"
                     } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
-                      isCollapsed ? "justify-center" : ""
+                      ""
                     }`}
                     style={{ transform: swipedChatId === chat.id ? "translateX(-80px)" : pinSwipedId === chat.id ? "translateX(80px)" : "translateX(0)" }}
                     onContextMenu={(e) => {
-                      if (isCollapsed) return;
                       e.preventDefault();
                       setChatMenu({ x: e.clientX, y: e.clientY, chatId: chat.id, title: chatTitle });
                     }}
@@ -1202,7 +1167,7 @@ const ChatSidebar = ({
                     onTouchEnd={(e) => {
                       const s = swipeStartRef.current;
                       swipeStartRef.current = null;
-                      if (!s || s.id !== chat.id || isCollapsed) return;
+                      if (!s || s.id !== chat.id) return;
                       const t = e.changedTouches[0];
                       const dx = t.clientX - s.x, dy = t.clientY - s.y;
                       if (Math.abs(dx) > Math.abs(dy) * 1.5) {
@@ -1225,10 +1190,9 @@ const ChatSidebar = ({
                     // ширины своего содержимого, и длинное название чата
                     // выталкивало время отправки за правый край экрана.
                     className={`flex items-center gap-3 text-left ${
-                      isCollapsed ? "flex-col justify-center w-full" : "flex-1 min-w-0"
+                      "flex-1 min-w-0"
                     }`}
                     disabled={isDeleting}
-                    title={isCollapsed ? chatTitle : undefined}
                   >
                     {isWall ? (
                       <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-3 flex items-center justify-center">
@@ -1271,7 +1235,7 @@ const ChatSidebar = ({
                       })()
                     )}
 
-                    {!isCollapsed && (
+                    {(
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between gap-2">
                           <p className="text-h2 md:text-[15px] truncate min-w-0 flex items-center gap-1.5">
@@ -1372,14 +1336,12 @@ const ChatSidebar = ({
               );
             })}</div>
           ) : (
-            <div className={`text-center text-muted-foreground py-8 ${
-              isCollapsed ? "px-2 text-xs" : "px-4"
-            }`}>
-              {isCollapsed ? t("Нет чатов") : t("Нет чатов. Создайте первый чат!")}
+            <div className="text-center text-muted-foreground py-8 px-4">
+              {t("Нет чатов. Создайте первый чат!")}
               {/* У нового человека чатов нет и писать некому — единственный путь
                   к первому диалогу — отдать друзьям ссылку на свой профиль. Та же
                   системная «Поделиться», что и в профиле, с откатом в буфер. */}
-              {!isCollapsed && (
+              {(
                 <button
                   type="button"
                   disabled={!currentUser?.username}
@@ -1403,21 +1365,6 @@ const ChatSidebar = ({
         {/* Под плавающим островом «Мяты» — место, чтобы последний чат не прятался. */}
         <div aria-hidden style={{ height: "var(--mint-nav-space, 0px)" }} />
       </ScrollArea>
-
-      {/* Кнопка выхода в свернутом состоянии (внизу) */}
-      {isCollapsed && (
-        <div className="p-2 border-t border-border">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={onLogout}
-            className="w-full h-10"
-            title={t("Выйти")}
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
-        </div>
-      )}
 
       {/* Меню чата по правому клику (десктоп) */}
       {sectionMenu && (

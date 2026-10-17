@@ -95,7 +95,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     // Бейдж на вкладке живёт в BottomNav — ему сообщаем событием.
     window.dispatchEvent(new CustomEvent("hyax:wall", { detail: w }));
   }).catch(() => {});
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   // Список чатов «приезжает» слева только как возврат из переписки: при
   // запуске приложения он просто на месте.
   const hadChatOpenRef = useRef(false);
@@ -571,6 +570,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     if (!wall) { toast.error(tr("Стена ещё не загрузилась")); return; }
     setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle(tr("Стена"));
   };
+  // Широкое окно: вкладка «Стена» в левой панели (/wall) — Стена справа от списка.
+  useEffect(() => {
+    if (!wallMode || isMobile !== false || !wall) return;
+    setSelectedChatId(wall.id); setSelectedKind("wall"); setSelectedChatTitle(tr("Стена"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallMode, isMobile, wall?.id]);
   const ideaboxChat = chats.find((c) => (c as any).kind === "ideabox") || null;
   const openIdeabox = async () => {
     try {
@@ -706,9 +711,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     }
   };
 
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
-  };
+
 
   // Обработчик удаления чата
   const handleChatDeleted = (deletedChatId: string) => {
@@ -742,7 +745,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Показываем что-то одно — так же, как в привычных мессенджерах.
   if (isMobile) {
     return (
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-screen flex flex-col bg-background nav-rail-pad">
         {termsGate}
         {wallMode ? (
           <>
@@ -846,8 +849,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onRefresh={refreshChats}
             selectedChatId={selectedChatId}
             onLogout={handleLogout}
-            isCollapsed={false}
-            onToggleCollapse={toggleSidebar}
             onOpenProfile={() => navigate("/profile")}
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
@@ -864,7 +865,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background nav-rail-pad">
       <UpdateBanner />
       {termsGate}
       <div className="flex-1 flex min-h-0">
@@ -885,8 +886,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         }}
         selectedChatId={selectedChatId}
         onLogout={handleLogout}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={toggleSidebar}
         onOpenProfile={() => navigate("/profile")}
         onChatDeleted={handleChatDeleted}
         onChatCreated={handleChatCreated}
@@ -936,6 +935,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         </div>
       )}
       </div>
+      <BottomNav />
     </div>
   );
 };

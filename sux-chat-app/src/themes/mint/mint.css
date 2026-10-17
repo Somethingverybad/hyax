@@ -81,6 +81,22 @@
   transition: left 320ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) { .mint-nav-pill { transition: none; } }
+/* Тот же остров столбиком — на широком окне у левого края (NavRail). */
+.mint-rail-wrap { justify-content: center; }
+.mint-rail {
+  position: relative; width: 54px; padding: 4px;
+  display: flex; flex-direction: column; align-items: center;
+  border-radius: 20px; background: var(--mint-nav-bg);
+  border: var(--mint-border); box-shadow: var(--mint-card-shadow);
+}
+.mint-rail-item { position: relative; z-index: 1; width: 46px; height: 50px; display: flex; align-items: center; justify-content: center; color: var(--mint-ink); }
+.mint-rail-pill {
+  position: absolute; left: 4px; width: 46px; height: 50px; border-radius: 16px;
+  background: var(--mint-nav-on);
+  top: calc(4px + 50px * var(--i));
+  transition: top 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) { .mint-rail-pill { transition: none; } }
 
 /* Строка настроек: значок, подпись, значение, шеврон — как в макете профиля. */
 .mint-row { min-height: 51px; padding: 10px 18px; display: flex; align-items: center; gap: 14px; text-align: left; width: 100%; }

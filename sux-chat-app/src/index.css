@@ -1579,3 +1579,15 @@ html.native-video .call-layer {
   object-fit: contain;
   margin: 0 0.04em;
 }
+
+/* Вертикальная панель разделов на широком окне (components/BottomNav: NavRail).
+   Висит у левого края экрана; экраны с ней отступают на её ширину (nav-rail-pad).
+   Запрос — тот же, что у варианта md: и DESKTOP_QUERY в hooks/use-mobile. */
+:root { --nav-rail-w: 72px; }
+.nav-rail-wrap {
+  position: fixed; left: 0; top: 0; bottom: 0; z-index: 30; width: var(--nav-rail-w);
+  display: flex; flex-direction: column; align-items: center;
+}
+@media (min-width: 768px) and (min-height: 500px) {
+  .nav-rail-pad { padding-left: var(--nav-rail-w); }
+}

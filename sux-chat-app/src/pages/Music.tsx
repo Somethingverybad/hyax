@@ -378,7 +378,7 @@ const Music = () => {
   // ── Эфир
   if (openStation) {
     return (
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-screen flex flex-col bg-background nav-rail-pad">
         <StationView item={openStation} onBack={() => { setOpenStation(null); loadStations(); }} />
         <PlayerPanel />
         <BottomNav />
@@ -389,7 +389,7 @@ const Music = () => {
   // ── Открытый плейлист собеседника
   if (openShared) {
     return (
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-screen flex flex-col bg-background nav-rail-pad">
         <PublicPlaylistView
           item={openShared}
           onBack={() => { setOpenShared(null); loadShared(); }}
@@ -404,7 +404,7 @@ const Music = () => {
   // ── Плейлист целиком
   if (open) {
     return (
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-screen flex flex-col bg-background nav-rail-pad">
         <div className="shrink-0 px-2 py-3 pad-safe-top bg-background border-b border-border min-h-14 flex items-center gap-2">
           <button type="button" onClick={() => { setOpen(null); load(); }} className="ui-icon-btn p-2" aria-label={tr("Назад")}>
             <ChevronLeft className="w-5 h-5" />
@@ -651,7 +651,7 @@ const Music = () => {
 
   // ── Список плейлистов
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background nav-rail-pad">
       <div className="shrink-0 px-4 py-3 pad-safe-top bg-background border-b border-border min-h-14 flex items-center gap-2">
         <span className="text-h1 flex-1">{tr("Музыка")}</span>
         <button

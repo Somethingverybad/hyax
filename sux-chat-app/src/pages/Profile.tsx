@@ -254,7 +254,7 @@ const ProfilePage = () => {
   const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background nav-rail-pad">
       {mint ? (
         <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">

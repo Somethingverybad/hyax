@@ -9,6 +9,7 @@ import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import { readCache } from "@/lib/session-cache";
 import type { WallState } from "@/api/client";
 import { useSections } from "@/lib/sections";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /** Новые посты на Стене — бейдж на вкладке. Состояние кладёт Chat.tsx в кеш
  *  сессии и сообщает событием hyax:wall; при открытии Стены счётчик обнуляется. */
@@ -26,11 +27,11 @@ const WallBadge = ({ n }: { n: number }) => n > 0 ? (
 ) : null;
 
 /**
- * Нижняя навигация — только на телефоне. Три иконки без подписей, активная —
- * красная: так на референсах, и так экономнее по высоте.
- *
+ * Навигация по экранам. На телефоне — нижняя панель: иконки без подписей,
+ * активная — красная: так на референсах, и так экономнее по высоте.
  * Подкладывается под home-индикатор (pad-safe-bottom), чтобы фон доходил
- * до края экрана.
+ * до края экрана. На широком окне — вертикальная панель у левого края
+ * (NavRail); экраны с ней отступают слева на её ширину (класс nav-rail-pad).
  */
 const ITEMS = [
   { to: "/chat", label: "Чаты", icon: MessageSquare },
@@ -100,10 +101,46 @@ const MintIsland = () => {
   );
 };
 
+/** Широкое окно: те же вкладки столбиком у левого края, сверху вниз. */
+const NavRail = ({ mint }: { mint: boolean }) => {
+  const { pathname } = useLocation();
+  const wallNew = useWallNew();
+  const sections = useSections();
+  const items = ITEMS.filter((i) => i.to !== "/wall" || sections.wall);
+  const mintIcons = Object.fromEntries(MINT_ITEMS.map((i) => [i.to, i]));
+  const idx = items.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
+  const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
+  useLayoutEffect(() => {
+    if (idx < 0) return;
+    const raf = requestAnimationFrame(() => setPos(idx));
+    lastMintIndex = idx;
+    return () => cancelAnimationFrame(raf);
+  }, [idx]);
+  return (
+    <div className={cn("nav-rail-wrap", mint ? "mint-rail-wrap" : "ui-nav-rail border-r border-border bg-background")}>
+      <nav className={mint ? "mint-rail" : "flex flex-col gap-1 pt-3"} aria-label={t("Разделы")}>
+        {mint && pos >= 0 && pos < items.length && <span className="mint-rail-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
+        {items.map(({ to, label, icon: Icon }) => (
+          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)}
+            className={({ isActive }) => mint
+              ? cn("mint-rail-item", isActive && "mint-nav-on")
+              : cn("ui-nav-item relative flex items-center justify-center w-12 h-12 rounded-md transition-colors hover:bg-surface-2",
+                isActive ? "ui-nav-on text-primary" : "text-subtle")}>
+            {mint ? <MintIcon name={mintIcons[to].icon} size={mintIcons[to].size} /> : <Icon className="w-6 h-6" />}
+            {to === "/wall" && <WallBadge n={wallNew} />}
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  );
+};
+
 const BottomNav = () => {
   const mint = useMint();
   const wallNew = useWallNew();
   const sections = useSections();
+  const isMobile = useIsMobile();
+  if (isMobile === false) return <NavRail mint={mint} />;
   if (mint) return <MintIsland />;
   return (
     <nav className="ui-bottom-nav shrink-0 flex border-t border-border bg-background pad-safe-bottom">
