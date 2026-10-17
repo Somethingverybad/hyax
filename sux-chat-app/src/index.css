@@ -1591,3 +1591,17 @@ html.native-video .call-layer {
 @media (min-width: 768px) and (min-height: 500px) {
   .nav-rail-pad { padding-left: var(--nav-rail-w); }
 }
+
+/* Свои эмодзи в поле ввода (components/chat/ComposeMirror): текст поля
+   прозрачный, видна его копия поверх — с картинками на месте своих эмодзи. */
+.compose-has-custom { color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--compose-caret, currentColor); }
+.compose-mirror {
+  position: absolute; z-index: 1; pointer-events: none; overflow: hidden;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  border-style: solid; border-color: transparent; background: transparent; color: inherit;
+}
+.compose-cemoji { position: relative; color: transparent; -webkit-text-fill-color: transparent; }
+.compose-cemoji-img {
+  position: absolute; left: 50%; top: 50%; width: 1.35em; height: 1.35em;
+  transform: translate(-50%, -50%); object-fit: contain;
+}

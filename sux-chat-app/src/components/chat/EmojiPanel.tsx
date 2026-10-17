@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useScrollMemory } from "@/lib/scrollMemory";
 import { Clock, Plus, Search, Share2, Smile, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
@@ -80,7 +81,8 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
   const [menu, setMenu] = useState<{ pack: CustomPack; e: PanelEmoji } | null>(null);
   const [binding, setBinding] = useState<PanelEmoji | null>(null);
   const [bindValue, setBindValue] = useState("");
-  const scroller = useRef<HTMLDivElement>(null);
+  // Прокрутка — та же, что в прошлый раз (lib/scrollMemory); в поиске — с начала.
+  const scroller = useScrollMemory<HTMLDivElement>(q.trim() ? null : `emoji${standard ? "" : ":custom"}`);
   const sections = useRef<Record<string, HTMLDivElement | null>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const addTo = useRef<string | null>(null);

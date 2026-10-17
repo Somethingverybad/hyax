@@ -48,6 +48,7 @@ import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encry
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import CustomEmoji from "./CustomEmoji";
+import ComposeMirror from "./ComposeMirror";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
@@ -927,6 +928,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const hintTokenRef = useRef("");
   const updateStickerHints = (text: string) => {
     const tok = lastToken(text);
+    // Последнее «слово» — уже свой эмодзи (из подсказки или панели): стикеры к нему не предлагаем.
+    if (tok && customRef.current.some((r) => r.offset === text.length - tok.length && r.length === tok.length)) {
+      hintTokenRef.current = "";
+      if (stickerHints.length) setStickerHints([]);
+      return;
+    }
     hintTokenRef.current = tok;
     if (tok.length < 2) { if (stickerHints.length) setStickerHints([]); return; }
     void loadStickerIndex().then((idx) => {
@@ -937,8 +944,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   // Свои эмодзи по обычному: перед курсором обычный эмодзи, к которому в моих
   // наборах привязаны свои (lib/stickerIndex), — плашкой над полем. Тап делает
-  // набранный эмодзи своим; текст не меняется — обычный эмодзи и есть замена
-  // своего у старых версий и в пушах.
+  // набранный эмодзи своим: текст не меняется (обычный эмодзи и есть замена
+  // своего у старых версий и в пушах), а в поле сразу видна картинка
+  // (ComposeMirror) — и подсказки к нему больше не всплывают.
   const [emojiHints, setEmojiHints] = useState<{ at: number; len: number; items: IndexedEmoji[] } | null>(null);
   const [emojiPicked, setEmojiPicked] = useState<string | null>(null);
   const emojiHintKey = useRef("");
@@ -950,8 +958,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     emojiHintKey.current = key;
     if (!m) { setEmojiHints(null); setEmojiPicked(null); return; }
     const at = end - m.length;
-    // Уже свой (вставлен из панели) — подсветим его.
-    setEmojiPicked(customRef.current.find((r) => r.offset === at && r.length === m.length)?.emoji_id ?? null);
+    const picked = customRef.current.find((r) => r.offset === at && r.length === m.length)?.emoji_id ?? null;
+    setEmojiPicked(picked);
+    if (picked) { setEmojiHints(null); return; } // уже свой — подсказывать нечего
     void loadCustomEmojiIndex().then((idx) => {
       if (emojiHintKey.current !== key) return;
       const items = matchCustomEmoji(idx, m);
@@ -964,6 +973,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     customRef.current = customRef.current.filter((r) => r.offset + r.length <= h.at || r.offset >= h.at + h.len);
     customRef.current.push({ offset: h.at, length: h.len, emoji_id: e.id, url: e.file_url });
     setEmojiPicked(e.id);
+    setEmojiHints(null);
+    setStickerHints([]);
+    syncMirror();
   };
   // Inline-бот: «@бот запрос» в поле → через полсекунды тишины запрос боту
   // (api.inlineQuery), ответ приходит событием hyax:inline (Chat.tsx ловит его
@@ -1302,6 +1314,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Свои эмодзи в поле ввода: где стоят (в тексте поля). Правка текста сдвигает
   // их (trackCustomEdit), задетые правкой — забываются, остаётся обычный эмодзи.
   const customRef = useRef<CustomEmojiRange[]>([]);
+  // Копия поля со своими эмодзи-картинками (ComposeMirror) — только пока они в поле есть.
+  const [mirror, setMirror] = useState<{ text: string; ranges: CustomEmojiRange[] } | null>(null);
+  const syncMirror = () => {
+    const ranges = customRef.current;
+    setMirror((prev) => (ranges.length ? { text: draftRef.current, ranges: ranges.map((r) => ({ ...r })) } : prev && null));
+  };
   const trackCustomEdit = (prev: string, next: string, caret?: number | null) => {
     const list = customRef.current;
     if (!list.length || prev === next) return;
@@ -1387,6 +1405,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     updateEmojiHints(text);
     updateInline(text);
     scheduleDraftSave();
+    syncMirror();
   };
 
   // ---- Черновики (lib/drafts) ----
@@ -2206,6 +2225,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     customRef.current = [];
     setDraft(markup);
     customRef.current = custom;
+    syncMirror();
   };
   // После правки в поле возвращается черновик этого чата, если он был.
   const cancelEdit = () => { editingRef.current = null; setEditing(null); customRef.current = []; setDraft(savedDraft(chatId)); };
@@ -4659,9 +4679,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
-                onSelectSound={(sound) => setSelectedSound(sound)}
+                onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={insertEmoji}
+                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom); setStickersOpen(false); }}
                 standardEmoji={!isMobile}
               />
             </div>
@@ -4758,6 +4778,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   updateInline(e.target.value);
                   updateMentions();
                   scheduleDraftSave();
+                  syncMirror();
                 }}
                 onSelect={() => { if (mentionHints.length || mentionAtRef.current) updateMentions(); }}
                 onKeyDown={(e) => {
@@ -4798,9 +4819,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   }
                 }}
                 disabled={uploading}
-                className="ui-compose-field w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 md:bg-background border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground"
+                className={cn("ui-compose-field w-full resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-surface-2 md:bg-background border border-border rounded-md px-3.5 py-[11px] text-body focus:outline-none focus:border-amber placeholder:text-muted-foreground", mirror && "compose-has-custom")}
                 style={{ maxHeight: "6.5rem" }}
               />
+              {mirror && <ComposeMirror text={mirror.text} ranges={mirror.ranges} target={textareaRef} />}
             </div>
             
             {hasDraft || attachments.length || selectedSound ? (
@@ -4889,9 +4911,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
-                onSelectSound={(sound) => setSelectedSound(sound)}
+                onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={insertEmoji}
+                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom); setStickersOpen(false); }}
                 standardEmoji={!isMobile}
               />
             </div>

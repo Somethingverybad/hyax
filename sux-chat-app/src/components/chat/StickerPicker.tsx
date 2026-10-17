@@ -18,6 +18,7 @@ import { invalidateStickerIndex } from "@/lib/stickerIndex";
 import type { NotificationSoundInfo, ChatActionInfo } from "@/api/client";
 import { ActionGrid } from "@/components/chat/ActionSheet";
 import { isAnimatedFile } from "@/lib/animMedia";
+import { useScrollMemory } from "@/lib/scrollMemory";
 
 interface Sticker {
   id: string;
@@ -70,11 +71,16 @@ const TAB_KEY = "hyax:picker-tab";
  * отдельный сценарий, который мешал бы основному.
  */
 /** Кэш между открытиями окна стикеров (живёт, пока открыто приложение). */
+const PACK_KEY = "hyax:picker-pack";
 const pickerCache: { packs: UserStickerPack[] | null; lastPackId: string | null; stickers: Map<string, Sticker[]> } = {
-  packs: null, lastPackId: null, stickers: new Map(),
+  // Последний открытый набор — и между запусками приложения.
+  packs: null, lastPackId: (() => { try { return localStorage.getItem(PACK_KEY); } catch { return null; } })(), stickers: new Map(),
 };
 const activePackIdInit = (): string | null => {
-  const list = pickerCache.packs || [];
+  // Наборы ещё не загружены (первое открытие после запуска) — запомненный;
+  // когда список придёт, его сверят с ним (load).
+  if (!pickerCache.packs) return pickerCache.lastPackId;
+  const list = pickerCache.packs;
   return list.some((p) => p.pack.id === pickerCache.lastPackId) ? pickerCache.lastPackId : list[0]?.pack?.id ?? null;
 };
 
@@ -136,6 +142,13 @@ const StickerPicker = ({
   const [activePackId, setActivePackId] = useState<string | null>(activePackIdInit);
   const [stickers, setStickers] = useState<Sticker[]>(() => (activePackIdInit() && pickerCache.stickers.get(activePackIdInit()!)) || []);
   const [loading, setLoading] = useState(() => !pickerCache.packs);
+  // Открыли панель снова — каждый список на том же месте, что в прошлый раз
+  // (lib/scrollMemory); в поиске — с начала.
+  const stickerScroll = useScrollMemory(activePackId ? `stickers:${activePackId}` : null);
+  const stripScroll = useScrollMemory("stickers:strip", "x");
+  const soundPacksScroll = useScrollMemory(packMenuQuery.trim() ? null : "sounds");
+  const soundListScroll = useScrollMemory(soundView && !soundQuery.trim() ? `sounds:${soundView}` : null);
+  const actionsScroll = useScrollMemory("actions");
   // Создание набора: имя вводится один раз, дальше выбираются файлы.
   const [creating, setCreating] = useState(false);
   const [newPackName, setNewPackName] = useState("");
@@ -339,7 +352,10 @@ const StickerPicker = ({
   };
 
   useEffect(() => {
-    pickerCache.lastPackId = activePackId;
+    if (activePackId) {
+      pickerCache.lastPackId = activePackId;
+      try { localStorage.setItem(PACK_KEY, activePackId); } catch { /* приватный режим */ }
+    }
     if (!activePackId) {
       setStickers([]);
       return;
@@ -439,7 +455,7 @@ const StickerPicker = ({
   const actionsTab = (
     <div className={cn("flex flex-col relative", mint ? "h-[328px] pb-[52px] mint-sticker-panel" : "h-64")}>
       {tabs}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={actionsScroll} className="flex-1 overflow-y-auto">
         <ActionGrid compact onPick={(a) => onSelectAction?.(a)} />
       </div>
     </div>
@@ -511,7 +527,7 @@ const StickerPicker = ({
               className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div ref={soundPacksScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
             {gq ? (
               // Результаты поиска по всем пакам
               globalMatches.length === 0 ? (
@@ -557,7 +573,7 @@ const StickerPicker = ({
               className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div ref={soundListScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
             {packSounds.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">{t("Ничего не найдено")}</p>
             )}
@@ -644,7 +660,7 @@ const StickerPicker = ({
       {creating && createForm}
 
       {/* Полоса наборов */}
-      <div className={mint ? "flex items-center gap-[16px] mx-[11px] px-[8px] h-[49px] overflow-x-auto shrink-0 border-b border-[var(--mint-divider)]" : "flex gap-2 px-3 py-2 overflow-x-auto border-b border-border shrink-0"}>
+      <div ref={stripScroll} className={mint ? "flex items-center gap-[16px] mx-[11px] px-[8px] h-[49px] overflow-x-auto shrink-0 border-b border-[var(--mint-divider)]" : "flex gap-2 px-3 py-2 overflow-x-auto border-b border-border shrink-0"}>
         <button
           type="button"
           onClick={() => setCreating(true)}
@@ -757,7 +773,7 @@ const StickerPicker = ({
       />
 
       {/* Сетка стикеров */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <div ref={stickerScroll} className="flex-1 overflow-y-auto p-2">
         {stickers.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-3">
             <p className="text-sm text-muted-foreground">{t("В наборе пусто")}</p>
