@@ -1014,7 +1014,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       </div>
 
       {/* Лента */}
-      <div ref={feedRef} onScroll={onFeedScroll} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 md:px-6 [&>*]:md:max-w-[720px]">
+      <div ref={feedRef} onScroll={onFeedScroll} className="flex-1 overflow-y-auto px-3 pt-3 pb-8 space-y-3 md:px-6 [&>*]:md:max-w-[720px]"
+        // Стена-вкладка: лента до низа экрана, под остров навигации (как в чате под
+        // поле ввода), — отступ, чтобы последний пост можно было докрутить из-под
+        // острова и кнопки «+»; низ прикрывает вуаль .wall-veil.
+        style={wall && !onBack ? { paddingBottom: "calc(var(--mint-nav-space, 0px) + 88px)" } : undefined}>
         {hasMore && (
           <div className="flex justify-center">
             <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder}
@@ -1159,6 +1163,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         )}
       </div>
 
+      {/* Низ ленты растворяется в фоне, как над полем ввода в чате (.mint-compose-island),
+          а не обрывается резкой границей над композером канала и островом Стены. */}
+      {!(wall && !onBack) && <div aria-hidden className="feed-fade relative h-0 z-10 pointer-events-none" />}
+
       {/* Канал: кнопка «вниз» со счётчиком пропущенных, пока лента не внизу. */}
       {!wall && !atBottom && (
         <div className="relative h-0 z-20">
@@ -1183,7 +1191,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               </div>
             </div>
           )}
-          <div className={cn("pad-safe-bottom shrink-0", !onBack && "wall-tab-bottom")} />
+          {/* Вкладка: вуаль над островом навигации — лента под ним растворяется, а не
+              обрывается над пустой полосой (баг-репорт 0b0b94d0). Внутри чата — отступ снизу. */}
+          {!onBack ? <div aria-hidden className="wall-veil" /> : <div className="pad-safe-bottom shrink-0" />}
           {/* Не внизу — сначала «вниз» со счётчиком пропущенных; досмотрели — «+». */}
           {wallState && !composeOpen && (
             <button type="button"

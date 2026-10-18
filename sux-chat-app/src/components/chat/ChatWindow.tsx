@@ -1056,7 +1056,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   /** Эмодзи из панели — в место курсора; фокус остаётся в поле. Свой эмодзи
    *  (custom) вставляется своим «обычным» эмодзи, а где он стоит — помним
    *  (customRef): при отправке это станет картинкой (entities, custom_emoji). */
-  const insertEmoji = (emoji: string, custom?: { id: string; url?: string }) => {
+  const insertEmoji = (emoji: string, custom?: { id: string; url?: string }, opts?: { focus?: boolean }) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const v = ta.value;
@@ -1068,6 +1068,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       .map((r) => (r.offset >= e0 ? { ...r, offset: r.offset + delta } : r));
     if (custom) customRef.current.push({ offset: s0, length: emoji.length, emoji_id: custom.id, url: custom.url });
     setDraft(v.slice(0, s0) + emoji + v.slice(e0), { keepCustom: true });
+    // Из панели на телефоне клавиатуру не зовём: панель закрывается, и если
+    // тут же выезжает клавиатура, лента сначала падает на высоту панели, а
+    // потом поднимается обратно — «прыжок» (баг-репорт 0b0b94d0). Дописать —
+    // тапом по полю.
+    if (opts?.focus === false) return;
     const pos = s0 + emoji.length;
     requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
   };
@@ -4760,7 +4765,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom); setStickersOpen(false); }}
+                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom, { focus: !isTouchDevice() }); setStickersOpen(false); }}
                 standardEmoji={!isMobile}
               />
             </div>
@@ -4992,7 +4997,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom); setStickersOpen(false); }}
+                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom, { focus: !isTouchDevice() }); setStickersOpen(false); }}
                 standardEmoji={!isMobile}
               />
             </div>

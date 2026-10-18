@@ -1614,3 +1614,19 @@ html.native-video .call-layer {
 @supports (background: color-mix(in srgb, red, blue)) {
   .att-card { background: color-mix(in srgb, currentColor 10%, transparent); border-color: color-mix(in srgb, currentColor 24%, transparent); }
 }
+
+/* Растворение низа ленты Стены и каналов (ChannelView): 28px над нижним
+   краем ленты — от прозрачного к фону, как над полем ввода в чате. */
+.feed-fade::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px;
+  background: linear-gradient(to bottom, hsl(var(--background) / 0), hsl(var(--background) / 0.8) 60%, hsl(var(--background)));
+}
+
+/* Стена-вкладка (ChannelView): низ экрана поверх ленты — 28px растворения,
+   под ними сплошной фон до низа экрана (там остров навигации), как под полем
+   ввода в чате (.mint-compose-island::before). */
+.wall-veil {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; pointer-events: none;
+  height: calc(var(--mint-nav-space, 0px) + 28px);
+  background: linear-gradient(to bottom, hsl(var(--background) / 0) 0, hsl(var(--background) / 0.8) 17px, hsl(var(--background)) 28px);
+}
