@@ -15,8 +15,11 @@ export interface VoiceRecording {
   kind: RecordKind;
 }
 
-/** Дольше минуты — уже не «сообщение на бегу», обрываем сами. */
-const MAX_SECONDS = 60;
+/** Пределы записи. Треугольник (видео) — минута: он тяжёлый (~5 МБ). Голосовое —
+ *  до 15 минут: при 48 кбит/с это ~5 МБ, а сервер берёт до 25 МБ — с запасом,
+ *  если Safari запишет AAC с битрейтом выше заданного. */
+const MAX_VIDEO_SECONDS = 60;
+export const MAX_VOICE_SECONDS = 15 * 60;
 
 export function useMediaRecorder() {
   const [recording, setRecording] = useState(false);
@@ -144,7 +147,7 @@ export function useMediaRecorder() {
       timerRef.current = setInterval(() => {
         const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
         setSeconds(elapsed);
-        if (elapsed >= MAX_SECONDS) {
+        if (elapsed >= (kind === "video" ? MAX_VIDEO_SECONDS : MAX_VOICE_SECONDS)) {
           try {
             recorder.stop();
           } catch {

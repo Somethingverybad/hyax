@@ -2861,9 +2861,10 @@ class VoiceUploadView(APIView):
         if not file:
             return Response({"error": "No file provided"}, status=400)
         
-        # Проверяем размер файла (макс. 10MB для голосовых сообщений)
-        if file.size > 10 * 1024 * 1024:
-            return Response({"error": "File too large (max 10MB for voice messages)"}, status=400)
+        # Размер: голосовое до 15 минут (клиент обрывает сам) — при 48 кбит/с это
+        # ~5 МБ; 25 МБ — запас, если Safari запишет AAC с битрейтом выше заданного.
+        if file.size > 25 * 1024 * 1024:
+            return Response({"error": "File too large (max 25MB for voice messages)"}, status=400)
         
         # Проверяем, что это аудио файл
         allowed_extensions = ['.mp3', '.wav', '.ogg', '.webm', '.m4a', '.aac']

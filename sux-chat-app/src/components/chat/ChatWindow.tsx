@@ -3352,6 +3352,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Функция для сохранения файла локально (для Electron)
   /** Сохранить вложение: на телефоне — системное окно с «Сохранить в Файлы». */
   const handleSaveFile = (fileUrl: string, fileName: string) => saveFileToDevice(fileUrl, fileName);
+  /** Голосовое доиграло — следующее голосовое ниже по ленте (от старых к новым),
+   *  с подкруткой к нему. Пауза рукой цепочку не продолжает: только конец записи. */
+  const playNextVoice = (id: string) => {
+    const list = messagesListRef.current;
+    const i = list.findIndex((m) => m.id === id);
+    const next = i < 0 ? null : list.slice(i + 1).find((m) => m.voice_url && !m.pending && !m.deleted_for_all);
+    if (!next) return;
+    document.getElementById(`msg-${next.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    window.dispatchEvent(new CustomEvent("hyax:voice-play", { detail: next.id }));
+  };
 
   // Функция для форматирования даты
   const formatDate = (dateString: string) => {
@@ -4167,9 +4177,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         <div>
                           <div className="flex items-center gap-1">
                             <VoiceBubble
+                              id={message.id}
                               url={mediaUrl(message.voice_url)}
                               seconds={message.voice_duration || 0}
                               own={isOwn}
+                              onEnded={() => playNextVoice(message.id)}
                             />
                             {/* «Аа» — расшифровать; пока pending крутится, готовый текст ниже. */}
                             {!message.pending && !isSecret && (message.transcript_status !== "done" || hiddenTranscripts.has(message.id)) && (
@@ -4804,7 +4816,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   : recPhase === "finishing"
                     ? (cancelArmed ? tr("Отменяю…") : tr("Готовлю к отправке…"))
                     : recLocked
-                      ? tr("Запись закреплена · до минуты · кнопка — отправить")
+                      ? (recordKind === "video" ? tr("Запись закреплена · до минуты · кнопка — отправить") : tr("Запись закреплена · до 15 минут · кнопка — отправить"))
                       : cancelArmed
                         ? tr("Отпустите — запись отменится")
                         : recordKind === "video"
@@ -5457,8 +5469,10 @@ let voiceRate = 1;
  *  одновременно звучит только последнее запущенное. */
 let activeVoice: HTMLAudioElement | null = null;
 
-const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own: boolean }) => {
+const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: string; seconds: number; own: boolean; onEnded?: () => void }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(voiceRate);
   const [rateMenu, setRateMenu] = useState(false);
@@ -5489,7 +5503,10 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
   const [peaks, setPeaks] = useState<number[] | null>(null);
 
   // Настоящая форма волны из файла (с кэшем). Ошибку глушим — останется запас.
+  // Длинное голосовое (больше 3 минут) не раскодируем: волна строится из всего
+  // файла в памяти, а 15 минут — это ~170 МБ на одно сообщение (iPhone).
   useEffect(() => {
+    if (seconds > 180) return;
     let alive = true;
     loadWaveform(url, WAVE_BARS)
       .then((p) => alive && setPeaks(p))
@@ -5502,18 +5519,61 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
     if (activeVoice === audioRef.current) activeVoice = null;
   }, []);
 
-  const toggle = () => {
+  // Длительность: из файла, а если файл её не знает (запись с MediaRecorder —
+  // Infinity) — из сообщения.
+  const durationOf = (a: HTMLAudioElement) => (Number.isFinite(a.duration) && a.duration > 0 ? a.duration : seconds || 0);
+  const draggingRef = useRef(false);
+  const ensureAudio = () => {
     if (!audioRef.current) {
       const audio = new Audio(url);
-      audio.onended = () => { setPlaying(false); setProgress(0); };
+      audio.onended = () => { setPlaying(false); setProgress(0); onEndedRef.current?.(); };
       audio.onpause = () => setPlaying(false);
       audio.ontimeupdate = () => {
-        const d = audio.duration || seconds || 0;
+        if (draggingRef.current) return; // тянут по волне — показываем палец, а не плеер
+        const d = durationOf(audio);
         if (d > 0) setProgress(Math.min(1, audio.currentTime / d));
       };
       audioRef.current = audio;
     }
-    const audio = audioRef.current;
+    return audioRef.current;
+  };
+  /** Перемотка: доля 0..1 от длины. Играет — продолжит с нового места; на
+   *  паузе — место запомнится, «играть» начнёт оттуда. */
+  const seekTo = (frac: number) => {
+    const audio = ensureAudio();
+    const f = Math.min(1, Math.max(0, frac));
+    setProgress(f);
+    const apply = () => { const d = durationOf(audio); if (d > 0) audio.currentTime = Math.min(f * d, Math.max(0, d - 0.05)); };
+    if (audio.readyState >= 1) apply();
+    else { audio.preload = "metadata"; audio.addEventListener("loadedmetadata", apply, { once: true }); audio.load(); }
+  };
+  // Волна — дорожка перемотки: тап — в эту точку, можно вести пальцем.
+  const waveRef = useRef<HTMLSpanElement>(null);
+  const fracAt = (x: number) => {
+    const r = waveRef.current?.getBoundingClientRect();
+    return r && r.width ? (x - r.left) / r.width : 0;
+  };
+  const waveDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    // Не отдаём жест пузырю: там удержание — меню сообщения, свайп — «ответить».
+    e.stopPropagation();
+    draggingRef.current = true;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* не все платформы */ }
+    setProgress(Math.min(1, Math.max(0, fracAt(e.clientX))));
+  };
+  const waveMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!draggingRef.current) return;
+    e.stopPropagation();
+    setProgress(Math.min(1, Math.max(0, fracAt(e.clientX))));
+  };
+  const waveUp = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!draggingRef.current) return;
+    e.stopPropagation();
+    draggingRef.current = false;
+    seekTo(fracAt(e.clientX));
+  };
+
+  const toggle = () => {
+    const audio = ensureAudio();
     audio.playbackRate = voiceRate;
     if (playing) {
       audio.pause();
@@ -5524,35 +5584,61 @@ const VoiceBubble = ({ url, seconds, own }: { url: string; seconds: number; own:
     activeVoice = audio;
     audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
   };
+  // Предыдущее голосовое доиграло — очередь этого (ChatWindow: playNextVoice).
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+  useEffect(() => {
+    const on = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== id) return;
+      const a = audioRef.current;
+      if (!a || a.paused) toggleRef.current(); // уже играет — не трогаем
+    };
+    window.addEventListener("hyax:voice-play", on);
+    return () => window.removeEventListener("hyax:voice-play", on);
+  }, [id]);
 
-  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const fmt = (t: number) => { const v = Math.max(0, Math.round(t)); return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; };
+  // Играет или перемотано — текущее место, иначе — длина.
+  const label = progress > 0 || playing ? fmt(progress * (audioRef.current ? durationOf(audioRef.current) : seconds)) : fmt(seconds);
   const wave = peaks ?? FALLBACK_WAVE;
   const playedBars = Math.round(progress * wave.length);
 
   return (
     <div className="flex items-center gap-2 py-1 min-w-[15rem]">
-    <button type="button" onClick={toggle} className="flex items-center gap-2 flex-1 min-w-0">
-      <span className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20">
-        {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-      </span>
-      {/* Настоящая амплитуда: высота столбика = пик громкости интервала;
-          уже проигранная часть ярче. */}
-      {/* Своя ширина у волны: с кнопкой скорости остаток места сжимался до
-          нуля, и столбики с зазорами исчезали совсем. */}
-      <span className="flex-1 min-w-[6.5rem] flex items-center gap-px h-6">
-        {wave.map((v, i) => (
-          <span
-            key={i}
-            className="flex-1 bg-current rounded-full"
-            style={{
-              height: `${Math.max(3, Math.round(v * 22))}px`,
-              opacity: i < playedBars ? 0.95 : 0.45,
-            }}
-          />
-        ))}
-      </span>
-      <span className="text-xs opacity-80 shrink-0">{label}</span>
+    <button type="button" onClick={toggle} className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20" aria-label={playing ? tr("Пауза") : tr("Играть")}>
+      {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
     </button>
+    {/* Настоящая амплитуда: высота столбика = пик громкости интервала;
+        уже проигранная часть ярче. Волна — дорожка перемотки (тап, ведение). */}
+    {/* Своя ширина у волны: с кнопкой скорости остаток места сжимался до
+        нуля, и столбики с зазорами исчезали совсем. */}
+    <span
+      ref={waveRef}
+      role="slider"
+      aria-label={tr("Перемотка")}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(progress * 100)}
+      onPointerDown={waveDown}
+      onPointerMove={waveMove}
+      onPointerUp={waveUp}
+      onPointerCancel={() => { draggingRef.current = false; }}
+      onClick={(e) => e.stopPropagation()}
+      style={{ touchAction: "pan-y" }}
+      className="flex-1 min-w-[6.5rem] flex items-center gap-px h-8 cursor-pointer select-none"
+    >
+      {wave.map((v, i) => (
+        <span
+          key={i}
+          className="flex-1 bg-current rounded-full pointer-events-none"
+          style={{
+            height: `${Math.max(3, Math.round(v * 22))}px`,
+            opacity: i < playedBars ? 0.95 : 0.45,
+          }}
+        />
+      ))}
+    </span>
+    <span className="text-xs opacity-80 shrink-0 tabular-nums">{label}</span>
     {/* Скорость: тап — 1× → 1.5× → 2× → 0.5× по кругу, долгое нажатие —
         список от 0.5 до 2; выбор общий для всех голосовых. */}
     <span className="relative shrink-0">
