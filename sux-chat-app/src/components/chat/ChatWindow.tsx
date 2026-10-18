@@ -43,7 +43,7 @@ import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken } from "@/lib/linkify";
-import { FormattedText, type Mention, customEmojiAt, parseMarkup, parseMarkupWithEmoji, toMarkupWithEmoji, maskPreview, toggleMarker, type EntityType, type TextEntity, type CustomEmojiRange } from "@/lib/format";
+import { FormattedText, type Mention, carryCustomEmoji, customEmojiAt, parseMarkup, parseMarkupWithEmoji, toMarkupWithEmoji, maskPreview, toggleMarker, type EntityType, type TextEntity, type CustomEmojiRange } from "@/lib/format";
 import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload, videoThumb } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
@@ -4309,11 +4309,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {/* Карточка вырезала ссылку из текста — диапазоны оформления к нему
                               уже не подходят, такой текст рисуем без них. */}
                           {(() => {
-                            // Перевод на мой язык показываем вместо оригинала (без оформления —
-                            // диапазоны относятся к исходному тексту); тап по пометке — оригинал.
+                            // Перевод на мой язык показываем вместо оригинала: оформление к нему не
+                            // подходит (диапазоны — исходного текста), а свои эмодзи переносим по
+                            // их обычным двойникам (carryCustomEmoji); тап по пометке — оригинал.
                             const tr = message.translations?.[myLang];
                             const useTr = !!tr && tr !== message.content && !showOrig.has(message.id);
-                            if (useTr) return <Linkify text={tr!} />;
+                            if (useTr) {
+                              const carried = carryCustomEmoji(message.content || "", message.entities, tr!);
+                              return carried.length ? <FormattedText text={tr!} entities={carried} seed={message.id} /> : <Linkify text={tr!} />;
+                            }
                             return shownText === (message.content || "")
                               ? <FormattedText text={shownText} entities={message.entities} seed={message.id} mentions={message.mentions} myId={userId} onMention={openMention} />
                               : <Linkify text={shownText} />;

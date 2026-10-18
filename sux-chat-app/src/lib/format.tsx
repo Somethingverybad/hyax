@@ -47,6 +47,37 @@ export interface TextEntity {
   emoji_id?: string; url?: string; pack?: string; repaint?: boolean;
 }
 
+/**
+ * Свои эмодзи — в переводе. Переводчик возвращает новый текст, и диапазоны
+ * оригинала к нему не подходят: свой эмодзи становился обычным. Но эмодзи
+ * переводчики сохраняют, а у своего в тексте стоит его обычный двойник
+ * (колобок-подмигивание — 😉). Так что ищем в переводе тот же двойник с тем
+ * же номером появления и ставим своего на него. Остальное оформление (жирный,
+ * спойлер…) к переводу не переносим — его места в чужом тексте не угадать.
+ */
+export function carryCustomEmoji(original: string, entities: TextEntity[] | null | undefined, translated: string): TextEntity[] {
+  const list = (entities || []).filter((e) => e.type === "custom_emoji" && e.length > 0).sort((a, b) => a.offset - b.offset);
+  if (!list.length || !translated) return [];
+  const nth = (text: string, glyph: string, k: number) => {
+    let at = -1;
+    for (let i = 0; i <= k; i++) { at = text.indexOf(glyph, at + 1); if (at < 0) return -1; }
+    return at;
+  };
+  const count = (text: string, glyph: string, before: number) => {
+    let n = 0, at = text.indexOf(glyph);
+    while (at >= 0 && at < before) { n++; at = text.indexOf(glyph, at + glyph.length); }
+    return n;
+  };
+  const out: TextEntity[] = [];
+  for (const e of list) {
+    const glyph = original.slice(e.offset, e.offset + e.length);
+    if (!glyph) continue;
+    const at = nth(translated, glyph, count(original, glyph, e.offset));
+    if (at >= 0) out.push({ ...e, offset: at, length: glyph.length });
+  }
+  return out;
+}
+
 /** Свой эмодзи в поле ввода: где стоит (offset/length — в тексте поля) и какой. */
 export interface CustomEmojiRange { offset: number; length: number; emoji_id: string; url?: string }
 

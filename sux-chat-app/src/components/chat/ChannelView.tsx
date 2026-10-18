@@ -20,7 +20,7 @@ import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken } from "@/lib/linkify";
-import { FormattedText, type TextEntity } from "@/lib/format";
+import { FormattedText, carryCustomEmoji, type TextEntity } from "@/lib/format";
 import PackLinkCard from "./PackLinkCard";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
@@ -1072,7 +1072,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   const ts = trState(post);
                   return (
                     <p className="text-body whitespace-pre-wrap break-words">
-                      {ts.shown ? <Linkify text={ts.text!} /> : <FormattedText text={post.content} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} />}
+                      {ts.shown
+                        ? (() => {
+                            // Свои эмодзи — и в переводе (по обычным двойникам, lib/format).
+                            const carried = carryCustomEmoji(post.content || "", (post as { entities?: TextEntity[] }).entities, ts.text!);
+                            return carried.length ? <FormattedText text={ts.text!} entities={carried} seed={String(post.id)} /> : <Linkify text={ts.text!} />;
+                          })()
+                        : <FormattedText text={post.content} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} />}
                       {ts.on && (
                         <button type="button" onClick={() => toggleOrig(post.id)} className="ml-1.5 align-baseline text-[11px] opacity-60 underline underline-offset-2">
                           {ts.shown ? tr("перевод") : tr("Показать перевод")}
