@@ -1296,6 +1296,90 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [attachMenuOpen]);
 
+  // Панель выбора ↔ клавиатура (телефон): панель сворачивается и разворачивается
+  // тем же темпом и кривой, что и клавиатура (событие hyax:keyboard из main.tsx),
+  // а не исчезает и появляется рывком. Иначе поле ввода падало на высоту панели,
+  // пока клавиатуры ещё нет, и она толкала его обратно наверх (баг-репорт 2154d82b);
+  // так сумма «панель + подъём за клавиатурой» почти не меняется.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelSwapRef = useRef<"toKeyboard" | "toPanel" | null>(null);
+  const panelSwapTimer = useRef(0);
+  const kbHeightRef = useRef(0);
+  const resetPanelStyle = (el: HTMLElement | null) => {
+    if (!el) return;
+    el.style.transition = ""; el.style.height = ""; el.style.overflow = "";
+  };
+  const animatePanel = (from: number, to: number, ms: number, ease: string, delay: number, done?: () => void) => {
+    const el = panelRef.current;
+    window.clearTimeout(panelSwapTimer.current);
+    if (!el) { done?.(); return; }
+    el.style.overflow = "hidden";
+    el.style.transition = "none";
+    el.style.height = `${from}px`;
+    void el.offsetHeight; // зафиксировать начальную высоту до перехода
+    el.style.transition = `height ${ms}ms ${ease} ${delay}ms`;
+    el.style.height = `${to}px`;
+    panelSwapTimer.current = window.setTimeout(() => {
+      if (panelRef.current === el) resetPanelStyle(el);
+      done?.();
+    }, ms + Math.max(0, delay) + 30);
+  };
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ height: number; duration?: number; ease?: string; ts?: number }>).detail || { height: 0 };
+      kbHeightRef.current = Math.max(0, d.height || 0);
+      const swap = panelSwapRef.current;
+      if (!swap) return;
+      const ms = d.duration || 250, ease = d.ease || "ease-out";
+      // Событие доходит с опозданием на пару кадров — догоняем, как и подъём в main.tsx.
+      const late = d.ts ? Math.min(Math.max(0, Date.now() - d.ts), ms - 16) : 0;
+      if (swap === "toKeyboard" && d.height > 0) {
+        panelSwapRef.current = null;
+        animatePanel(panelRef.current?.offsetHeight || 0, 0, ms, ease, -late, () => setStickersOpen(false));
+      } else if (swap === "toPanel" && !d.height) {
+        panelSwapRef.current = null;
+        const el = panelRef.current;
+        const full = el ? el.scrollHeight : 0;
+        animatePanel(0, full, ms, ease, -late);
+      }
+    };
+    window.addEventListener("hyax:keyboard", on);
+    return () => window.removeEventListener("hyax:keyboard", on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** Тап по полю при открытой панели: панель уходит вместе с выездом клавиатуры. */
+  const panelToKeyboard = () => {
+    if (!stickersOpen || !isTouchDevice() || panelSwapRef.current === "toKeyboard") return;
+    panelSwapRef.current = "toKeyboard";
+    window.clearTimeout(panelSwapTimer.current);
+    // Клавиатура так и не выехала (внешняя, событие не пришло) — закрываем как раньше.
+    panelSwapTimer.current = window.setTimeout(() => {
+      if (panelSwapRef.current !== "toKeyboard") return;
+      panelSwapRef.current = null;
+      setStickersOpen(false);
+    }, 900);
+  };
+  /** Кнопка панели при открытой клавиатуре: панель выезжает, пока клавиатура уезжает. */
+  const keyboardToPanel = () => {
+    const kbOpen = kbHeightRef.current > 0;
+    hideKeyboard();
+    if (!kbOpen) return;
+    panelSwapRef.current = "toPanel";
+    window.clearTimeout(panelSwapTimer.current);
+    panelSwapTimer.current = window.setTimeout(() => {
+      if (panelSwapRef.current !== "toPanel") return;
+      panelSwapRef.current = null;
+      resetPanelStyle(panelRef.current);
+    }, 900);
+  };
+  // Панель появилась ради смены с клавиатурой — до первой отрисовки она нулевой
+  // высоты, разворачивается по событию клавиатуры. Закрыли — сбрасываем всё.
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (stickersOpen && el && panelSwapRef.current === "toPanel") { el.style.overflow = "hidden"; el.style.height = "0px"; }
+    if (!stickersOpen) { panelSwapRef.current = null; window.clearTimeout(panelSwapTimer.current); }
+  }, [stickersOpen]);
+
   // Панель стикеров/аудиостикеров закрывается тапом вне области ввода — не
   // нужно отдельно жать кнопку. Кнопка-переключатель внутри composeRef, так
   // что её тап панель не закроет (сработает её собственный onClick).
@@ -4758,7 +4842,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
 
           {stickersOpen && !mintM && (
-            <div className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
+            <div ref={panelRef} className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <StickerPicker
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
@@ -4827,7 +4911,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               variant="outline"
               size="icon"
               // На телефоне — либо панель, либо клавиатура: открываем панель — прячем клавиатуру.
-              onClick={() => { if (!stickersOpen && isTouchDevice()) hideKeyboard(); setStickersOpen((v) => !v); }}
+              onClick={() => { if (!stickersOpen && isTouchDevice()) keyboardToPanel(); setStickersOpen((v) => !v); }}
               className="mint-stk ui-compose-btn h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
               aria-label={tr("Стикеры")}
             >
@@ -4854,11 +4938,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 // Телефон: либо клавиатура, либо панель выбора — тап по полю (или
                 // фокус из «Ответить») закрывает панель. На десктопе панель живёт
                 // рядом с полем, и вставка эмодзи сама возвращает в него фокус.
-                // Закрываем по фокусу, а не по нажатию: убери панель на нажатии — поле
-                // съедет вниз из-под пальца, и mousedown касания придёт в ленту и
-                // снимет фокус (клавиатура не выедет). Фокус уже в поле — по клику.
-                onFocus={() => { if (stickersOpen && isTouchDevice()) setStickersOpen(false); }}
-                onClick={() => { if (stickersOpen && isTouchDevice()) setStickersOpen(false); }}
+                // По фокусу, а не по нажатию: убери панель на нажатии — поле съедет из-под
+                // пальца, mousedown придёт в ленту и снимет фокус. Сама панель уходит
+                // в такт выезду клавиатуры (panelToKeyboard). Фокус уже в поле — по клику.
+                onFocus={panelToKeyboard}
+                onClick={panelToKeyboard}
                 onChange={(e) => {
                   trackCustomEdit(draftRef.current, e.target.value, e.target.selectionEnd);
                   draftRef.current = e.target.value;
@@ -4999,7 +5083,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           </div>
           {/* «Мята»: панель стикеров — шторкой под полем ввода, как в макете. */}
           {stickersOpen && mintM && (
-            <div className="mint-sticker-sheet">
+            <div ref={panelRef} className="mint-sticker-sheet">
               <StickerPicker
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
