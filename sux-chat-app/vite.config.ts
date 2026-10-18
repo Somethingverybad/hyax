@@ -8,6 +8,9 @@ import { execSync } from "child_process";
 // (см. android/app/build.gradle) и поле build в манифесте загрузок. Одна цифра
 // на всех платформах, чтобы пользователь мог сверить приложение со страницей.
 const appBuild = (() => {
+  // Только для проверки обновления по воздуху в тестовом канале
+  // (scripts/ota-publish.py --test-build): бандл «новее» установленного.
+  if (process.env.HYAX_TEST_BUILD && process.env.VITE_OTA_CHANNEL) return process.env.HYAX_TEST_BUILD;
   try {
     return execSync("git rev-list --count HEAD", { stdio: ["ignore", "pipe", "ignore"] })
       .toString().trim() || "0";

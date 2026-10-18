@@ -5,13 +5,24 @@ import App from "./App.tsx";
 import "./index.css";
 import { initTheme } from "./lib/theme";
 import { installAppLog, applog } from "./lib/applog";
+import { otaBoot, startOtaChecks } from "./lib/ota";
 
 // Лог баг-репортов — с самого старта, чтобы поймать и ошибки инициализации.
 installAppLog();
 // Тему ставим до первой отрисовки: иначе светлая тема моргнёт тёмным кадром.
 initTheme();
 
-createRoot(document.getElementById("root")!).render(<App />);
+// Обновление по воздуху (lib/ota.ts): скачан новый бандл — переключаемся на
+// него до отрисовки, тогда этот не рисуем. Переключение не случилось — рисуем;
+// и если страница почему-то не перезагрузилась за 5 с — тоже.
+let rendered = false;
+const render = () => {
+  if (rendered) return;
+  rendered = true;
+  createRoot(document.getElementById("root")!).render(<App />);
+  startOtaChecks();
+};
+otaBoot().then((switching) => { if (switching) window.setTimeout(render, 5000); else render(); }, render);
 
 // Высота приложения. CSS-переменную читают .h-screen/.min-h-screen (см.
 // index.css). Берём её из visualViewport, а не из dvh: при открытии клавиатуры

@@ -594,6 +594,7 @@ const en: Record<string, string> = {
   "Играть": "Play",
   "Уже в «Моей музыке»": "Already in My music",
   "Ничего не воспроизводится": "Nothing is playing",
+  "по воздуху": "over the air",
   "Открыть «Музыку»": "Open Music",
   "Плеер": "Player",
   "Перемотка": "Seek",

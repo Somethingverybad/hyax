@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "./appVersion";
 import { t } from "./i18n";
 
@@ -68,8 +69,16 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     if (!res.ok) return null;
     const m: UpdateManifest = await res.json();
     if (!m?.version) return null;
-    const byVersion = cmp(m.version, APP_VERSION);
-    const localBuild = parseInt(APP_BUILD, 10) || 0;
+    // Android сравнивает установленный APK, а не веб-бандл: бандл мог прийти по
+    // воздуху (lib/ota.ts) и быть новее — APK от этого новее не стал, и
+    // наоборот, правка одного бандла не повод ставить APK заново.
+    let version = APP_VERSION;
+    let build = APP_BUILD;
+    if (Capacitor.getPlatform() === "android") {
+      try { const info = await App.getInfo(); version = info.version || version; build = info.build || build; } catch { /* как раньше — по бандлу */ }
+    }
+    const byVersion = cmp(m.version, version);
+    const localBuild = parseInt(build, 10) || 0;
     const newer = byVersion > 0 || (byVersion === 0 && typeof m.build === "number" && localBuild > 0 && m.build > localBuild);
     if (!newer) return null;
 

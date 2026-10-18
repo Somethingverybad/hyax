@@ -33,6 +33,23 @@ const config: CapacitorConfig = {
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"]
     },
+    // Обновление веб-части по воздуху (src/lib/ota.ts). Плагин только качает
+    // и подменяет бандл: когда проверять и когда применять, решаем сами, —
+    // поэтому autoUpdate выключен, а адреса сервиса Capgo пустые: никаких
+    // запросов и статистики на чужие серверы. Новая сборка из магазина
+    // (другой CFBundleVersion / versionCode) возвращает встроенный бандл.
+    CapacitorUpdater: {
+      autoUpdate: false,
+      resetWhenUpdate: true,
+      // Бандл, который не дошёл до notifyAppReady (первая отрисовка, см.
+      // lib/ota.ts) за 20 с, плагин считает сломанным и возвращает прежний.
+      appReadyTimeout: 20000,
+      updateUrl: "",
+      statsUrl: "",
+      channelUrl: "",
+      allowSetDefaultChannel: false,
+      shakeMenu: false,
+    },
   },
   ios: {
     // Весь скролл — во внутренних контейнерах страницы. Нативный скролл

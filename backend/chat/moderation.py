@@ -112,7 +112,11 @@ def deliver_bug(bug, origin):
         who = bug.reporter.username if bug.reporter else "неизвестно"
         lines = [
             f"🐞 Баг-репорт от {who}",
-            f"{meta.get('platform', '?')} · {meta.get('app_version', '?')} (сборка {meta.get('app_build', '?')})",
+            # Веб-бандл (app_build) мог прийти по воздуху и быть новее
+            # установленной сборки (native_build) — тогда видно обе.
+            f"{meta.get('platform', '?')} · {meta.get('app_version', '?')} (сборка {meta.get('app_build', '?')}"
+            + (f", приложение {meta['native_build']}" if meta.get('native_build') and str(meta.get('native_build')) != str(meta.get('app_build')) else "")
+            + ")",
         ]
         if meta.get("device"):
             lines.append(f"Устройство: {meta['device']}")

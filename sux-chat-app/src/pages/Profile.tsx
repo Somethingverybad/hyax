@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { writeClipboard } from "@/lib/clipboard";
 import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
+import { otaInfo } from "@/lib/ota";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
@@ -179,9 +180,12 @@ const ProfilePage = () => {
   // Нативный номер сборки (versionCode / CFBundleVersion): на Android совпадает
   // с APP_BUILD, на iOS — свой счётчик TestFlight.
   const [nativeBuild, setNativeBuild] = useState<string | null>(null);
+  // Веб-часть пришла по воздуху (lib/ota.ts) — новее той, что в сборке.
+  const [viaOta, setViaOta] = useState(false);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     App.getInfo().then((i) => setNativeBuild(i.build)).catch(() => {});
+    void otaInfo().then((i) => setViaOta(!!i?.ota));
   }, []);
   const platformLabel = Capacitor.getPlatform() === "ios" ? "iOS" : "Android";
 
@@ -540,6 +544,7 @@ const ProfilePage = () => {
           <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
             {t("WYX {version} · сборка {build}", { version: APP_VERSION, build: APP_BUILD })}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
+            {viaOta ? ` · ${t("по воздуху")}` : ""}
             {/* Лицензия анимированных эмодзи (CC BY 4.0) требует указать авторов. */}
             <div className="mt-1 opacity-80">{t("Анимированные эмодзи: Noto Emoji, Google, CC BY 4.0")}</div>
           </div>
