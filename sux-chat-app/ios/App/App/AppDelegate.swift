@@ -96,6 +96,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             ChatNotifs.remove([chat]) { completionHandler(.newData) }
             return
         }
+        // Сообщение удалили — его уведомление с экрана долой.
+        if (userInfo["type"] as? String) == "message_deleted", let m = userInfo["message_id"] as? String, !m.isEmpty {
+            ChatNotifs.removeMessage(m) { completionHandler(.newData) }
+            return
+        }
         completionHandler(.noData)
     }
 

@@ -70,6 +70,17 @@ enum ChatNotifs {
         return c.threadIdentifier.isEmpty ? nil : c.threadIdentifier
     }
 
+    /// Удалили сообщение — убрать его уведомление (id кладёт расширение в userInfo).
+    static func removeMessage(_ messageId: String, done: (() -> Void)? = nil) {
+        guard !messageId.isEmpty else { done?(); return }
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { list in
+            let ids = list.filter { ($0.request.content.userInfo["message_id"] as? String) == messageId }.map { $0.request.identifier }
+            if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
+            done?()
+        }
+    }
+
     static func remove(_ chatIds: Set<String>, done: (() -> Void)? = nil) {
         guard !chatIds.isEmpty else { done?(); return }
         let center = UNUserNotificationCenter.current()

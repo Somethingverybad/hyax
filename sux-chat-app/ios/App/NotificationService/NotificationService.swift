@@ -24,6 +24,12 @@ class NotificationService: UNNotificationServiceExtension {
                 info["chat_id"] = c
                 content.userInfo = info
             }
+            // id сообщения: удалят его — приложение уберёт это уведомление (message_deleted).
+            if let m = payload["message_id"] as? String, !m.isEmpty {
+                var info = content.userInfo
+                info["message_id"] = m
+                content.userInfo = info
+            }
         }
         // Служебные фразы сервер пишет по-русски («Новое сообщение», «Новое
         // сообщение в секретном чате», «Стикер»…), и заглушка остаётся, если

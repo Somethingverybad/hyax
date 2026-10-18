@@ -54,6 +54,11 @@ public class CallMessagingService extends FirebaseMessagingService {
             ChatNotifs.cancel(getApplicationContext(), data.get("chat_id"));
             return;
         }
+        // Сообщение удалили — убираем уведомление чата, если оно показывает его.
+        if ("message_deleted".equals(type)) {
+            ChatNotifs.cancelMessage(getApplicationContext(), data.get("chat_id"), data.get("message_id"));
+            return;
+        }
         if ("call_ended".equals(type)) {
             CallNotifications.cancel(getApplicationContext());
             VoipPlugin.deliverEnded(data.get("call_id"));
@@ -81,6 +86,7 @@ public class CallMessagingService extends FirebaseMessagingService {
         title = NativeLang.pushTitle(this, title);
         body = NativeLang.pushBody(this, body);
         String chatId = p != null ? p.optString("chat_id", "") : "";
+        String messageId = p != null ? p.optString("message_id", "") : "";
         String channel = data.get("ch");
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         // Канал аудио-стикера заводит приложение после скачивания звука; если
@@ -109,6 +115,12 @@ public class CallMessagingService extends FirebaseMessagingService {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setContentIntent(pi);
+        // Какое сообщение показано: удалят его — уведомление снимем (message_deleted).
+        if (!messageId.isEmpty()) {
+            Bundle shown = new Bundle();
+            shown.putString(ChatNotifs.EXTRA_MESSAGE, messageId);
+            b.addExtras(shown);
+        }
         // С тегом чата: прочитают — уберём именно его (ChatNotifs).
         if (chatId.isEmpty()) nm.notify(reqId, b.build());
         else nm.notify(ChatNotifs.tag(chatId), ChatNotifs.ID, b.build());

@@ -777,6 +777,27 @@ def _socket_new_message(message, request):
         logger.exception("пакетная пересылка: сокет не ответил")
 
 
+def _push_message_deleted(msg, only_profile=None):
+    """Сообщение удалили — его уведомление с экрана телефона тоже убираем:
+    тихий пуш message_deleted (iOS: AppDelegate, Android: CallMessagingService).
+    Только тем, кому по этому чату пуш действительно висит (presence.note_pushed),
+    — в канале на тысячи подписчиков иначе ушла бы рассылка всем. only_profile —
+    «удалить у себя»: только мои устройства."""
+    try:
+        from .presence import pushed_for, was_pushed
+        if only_profile is not None:
+            ids = [only_profile.id] if was_pushed(only_profile.id, msg.chat_id) else []
+        else:
+            ids = pushed_for(msg.chat_id)
+        if not ids:
+            return
+        from .fcm import notify_data
+        notify_data(Profile.objects.filter(id__in=ids),
+                    {"type": "message_deleted", "chat_id": str(msg.chat_id), "message_id": str(msg.id)})
+    except Exception:
+        logger.exception("message_deleted: тихий пуш не ушёл")
+
+
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
     # Стена: подписчиков нет, читают все по запросу — рассылать некому.
@@ -860,7 +881,7 @@ def _notify_new_message(message, profile, request):
                 _you = {"en": "you", "ko": "당신"}.get(_lang, "вам")
                 notify_profiles(Profile.objects.filter(id=_t.id), title=push_title,
                                 body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
-                                extra={"chat_id": str(message.chat.id)},
+                                extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
                                 sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
                                        else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None))
             recipients = recipients.exclude(id=message.action_target_id)
@@ -875,7 +896,8 @@ def _notify_new_message(message, profile, request):
             recipients,
             title=push_title,
             body=clip(preview, 150),
-            extra={"chat_id": str(message.chat.id)},
+            # message_id — удалят сообщение, телефон уберёт именно его уведомление.
+            extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
             # Звук: аудио-стикер поста, иначе звук канала, иначе «мой звук»
             # отправителя. У канала свой — подписчики узнают его по звуку.
             sound=(message.sound.slug if message.sound_id
@@ -1174,8 +1196,10 @@ class MessageViewSet(viewsets.ModelViewSet):
             msg.save(update_fields=['deleted_for_all', 'updated_at'])
             from .ideabox import relay_delete
             relay_delete(msg)
+            _push_message_deleted(msg)
         else:
             msg.deleted_for.add(profile)
+            _push_message_deleted(msg, only_profile=profile)
         return Response({"ok": True})
 
     @action(detail=True, methods=['post'])

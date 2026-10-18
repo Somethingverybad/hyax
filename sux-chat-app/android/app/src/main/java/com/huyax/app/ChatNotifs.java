@@ -18,6 +18,8 @@ import java.util.Set;
 final class ChatNotifs {
     static final int ID = 7001;
     private static final String PREFIX = "chat:";
+    /** id сообщения, которое сейчас показывает уведомление чата. */
+    static final String EXTRA_MESSAGE = "hyax_message_id";
 
     private ChatNotifs() {}
 
@@ -30,6 +32,20 @@ final class ChatNotifs {
         nm.cancel(tag(chatId), ID);
         // Уведомления прежних версий — без тега, номером был hashCode id чата.
         nm.cancel(chatId.hashCode());
+    }
+
+    /** Удалили сообщение: у чата одно уведомление — последнее сообщение; если
+     *  показывает удалённое — снимаем, если уже новее — оставляем. */
+    static void cancelMessage(Context ctx, String chatId, String messageId) {
+        if (chatId == null || chatId.isEmpty() || messageId == null || messageId.isEmpty()) return;
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        String t = tag(chatId);
+        for (StatusBarNotification sbn : nm.getActiveNotifications()) {
+            if (!t.equals(sbn.getTag())) continue;
+            String shown = sbn.getNotification().extras.getString(EXTRA_MESSAGE, "");
+            if (messageId.equals(shown)) nm.cancel(t, ID);
+        }
     }
 
     static List<String> active(Context ctx) {

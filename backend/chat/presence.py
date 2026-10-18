@@ -250,6 +250,21 @@ def note_pushed(profile_ids, chat_id) -> None:
             _pushed[(str(pid), str(chat_id))] = now + PUSHED_TTL
 
 
+def was_pushed(profile_id, chat_id) -> bool:
+    """Висит ли пуш по этому чату (с прошлого прочтения) — не забывая о нём:
+    удалили сообщение — убрать его уведомление, но сам чат ещё не прочитан."""
+    with _lock:
+        until = _pushed.get((str(profile_id), str(chat_id)))
+    return bool(until and until > time.monotonic())
+
+
+def pushed_for(chat_id) -> list:
+    """Кому по этому чату висит пуш — id профилей (для message_deleted)."""
+    now, cid = time.monotonic(), str(chat_id)
+    with _lock:
+        return [pid for (pid, c), until in _pushed.items() if c == cid and until > now]
+
+
 def take_pushed(profile_id, chat_id) -> bool:
     """Был ли пуш по этому чату с прошлого прочтения (и забыть о нём)."""
     with _lock:
