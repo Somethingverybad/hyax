@@ -36,7 +36,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
-import { DEFAULT_REACTION, type ReactionSummary } from "@/lib/reactions";
+import { DEFAULT_REACTION, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import PlaylistPicker from "@/components/chat/PlaylistPicker";
@@ -250,7 +250,7 @@ interface ChatWindowProps {
    *  сразу, не дожидаясь очередного опроса (см. эффект ниже). */
   messagePing?: number;
   /** Событие о реакциях из личного сокета (см. pages/Chat.tsx). */
-  reactionEvent?: { chat_id: string; message_id: string; reactions: { emoji: string; count: number; users: string[] }[]; at: number } | null;
+  reactionEvent?: { chat_id: string; message_id: string; reactions: (ReactionSummary & { users: string[] })[]; at: number } | null;
   /** Р.Ё.В: панель сообщает «держу/отпустил», сокетом заведует страница чатов. */
   onRov?: (on: boolean) => void;
   /** «Избранное»: чат без собеседника — без звонка, профиля и добавления людей. */
@@ -2933,7 +2933,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     if (!reactionEvent || reactionEvent.chat_id !== chatId) return;
     setMessages((prev) => prev.map((m) => (m.id === reactionEvent.message_id
-      ? { ...m, reactions: reactionEvent.reactions.map((r) => ({ emoji: r.emoji, count: r.count, mine: (r.users || []).includes(userId) })) }
+      ? { ...m, reactions: reactionEvent.reactions.map((r) => ({ emoji: r.emoji, key: r.key, custom: r.custom, count: r.count, mine: (r.users || []).includes(userId) })) }
       : m)));
   }, [reactionEvent?.at, chatId, userId]);
 
@@ -2956,13 +2956,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   /** Поставить или снять реакцию. Логика общая с каналами (Reactions.tsx). */
-  const toggleReaction = (message: Message, emoji: string) => {
+  const toggleReaction = (message: Message, key: string, pick?: ReactionPick) => {
     setReactFor(null);
     const before = messages.find((m) => m.id === message.id)?.reactions;
     const set = (rows: ReactionSummary[] | undefined) =>
       setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, reactions: rows } : m)));
-    set(applyReaction(before, emoji));
-    void sendReaction(message.id, emoji, set, () => set(before));
+    set(applyReaction(before, key, pick));
+    void sendReaction(message.id, key, set, () => set(before));
   };
 
   const processRecording = async (result: VoiceRecording | null) => {
@@ -5131,7 +5131,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       <ReactionPicker
         open={!!reactFor}
         onClose={() => setReactFor(null)}
-        onPick={(emoji) => { if (reactFor) toggleReaction(reactFor, emoji); }}
+        onPick={(key, pick) => { if (reactFor) toggleReaction(reactFor, key, pick); }}
       />
 
       {addOpen && (
@@ -5226,7 +5226,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             anchor={anchor}
             isOwn={isOwn}
             items={menuItems}
-            mine={(menuMessage.reactions || []).filter((r) => r.mine).map((r) => r.emoji)}
+            mine={(menuMessage.reactions || []).filter((r) => r.mine).map(reactionKey)}
             onReact={(emoji) => { const m = menuMessage; closeMenu(); if (!m.pending) toggleReaction(m, emoji); }}
             onMoreReactions={() => { const m = menuMessage; closeMenu(); setReactFor(m); }}
             onClose={closeMenu}

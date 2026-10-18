@@ -41,5 +41,21 @@ export const ALL_REACTIONS = [...MAIN_REACTIONS, ...EXTRA_REACTIONS];
 /** Двойной тап по сообщению ставит именно её. */
 export const DEFAULT_REACTION = MAIN_REACTIONS[0].emoji;
 
-/** Сводка под сообщением: сколько у какой реакции и моя ли она. */
-export type ReactionSummary = { emoji: string; count: number; mine?: boolean; users?: string[] };
+/** Свой эмодзи реакцией (набор эмодзи): картинка; repaint — одноцветный,
+ *  рисуется цветом текста. */
+export type ReactionPic = { url: string; repaint?: boolean };
+
+/** Сводка под сообщением: сколько у какой реакции и моя ли она. У своего
+ *  эмодзи emoji — обычный двойник (его видят старые клиенты и пуши), key —
+ *  «ce:<id>», им реакция и переключается, custom — картинка. */
+export type ReactionSummary = { emoji: string; key?: string; custom?: ReactionPic; count: number; mine?: boolean; users?: string[] };
+
+/** Чем реакцию переключать: у обычной — сам эмодзи. */
+export const reactionKey = (r: { emoji: string; key?: string }) => r.key || r.emoji;
+
+/** Свой эмодзи → значение реакции для сервера (backend/chat/reactions.py). */
+export const customReactionKey = (emojiId: string) => `ce:${emojiId}`;
+
+/** Что выбрали в списке реакций: обычный эмодзи — только key; свой — ещё
+ *  картинка и двойник, чтобы таблетка нарисовалась сразу, до ответа сервера. */
+export type ReactionPick = { key: string; emoji?: string; custom?: ReactionPic };

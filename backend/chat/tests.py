@@ -863,7 +863,31 @@ class ReactionTests(TestCase):
         self.assertEqual(PostReaction.objects.count(), 0)
 
     def test_outsider_cannot_react(self):
-        self.assertEqual(self.react(self.stranger, "❤️").status_code, 403)
+        # Чужого сообщения он не видит вовсе (404) — реагировать тем более нельзя.
+        self.assertIn(self.react(self.stranger, "❤️").status_code, (403, 404))
+        self.assertEqual(PostReaction.objects.count(), 0)
+
+    def test_custom_emoji_reaction(self):
+        """Свой эмодзи реакцией: «ce:<id>», картинка и обычный двойник —
+        в сводке; стикер и чужой адрес — нет."""
+        pack = StickerPack.objects.create(name="эмодзи", author=self.me, kind="emoji")
+        emo = Sticker.objects.create(pack=pack, file_url="/media/emoji/a.png", file_name="a.png", emoji="🔥")
+        far = Sticker.objects.create(pack=pack, file_url="https://example.com/b.png", file_name="b.png")
+        spack = StickerPack.objects.create(name="стикеры", author=self.me)
+        stk = Sticker.objects.create(pack=spack, file_url="/media/stickers/c.png", file_name="c.png")
+        key = f"ce:{emo.id}"
+        r = self.react(self.me, key)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["reactions"], [{"emoji": "🔥", "key": key, "custom": {"url": "/media/emoji/a.png"}, "count": 1, "mine": True}])
+        # набор удалили — реакция с картинкой осталась
+        pack.delete()
+        self.assertEqual(self.summary(self.friend)[0]["custom"], {"url": "/media/emoji/a.png"})
+        for bad in (f"ce:{far.id}", f"ce:{stk.id}", "ce:нет"):
+            self.assertEqual(self.react(self.me, bad).status_code, 400)
+        # эмодзи уже нет: новой не поставить, а свою снять можно
+        self.assertEqual(self.react(self.friend, key).status_code, 400)
+        r = self.react(self.me, key)
+        self.assertEqual((r.status_code, r.data["reactions"]), (200, []))
 
     def test_sync_brings_reactions(self):
         """Реакция доезжает обычной синхронизацией: у кого чат был закрыт,

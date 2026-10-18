@@ -11,7 +11,7 @@ import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import { cn } from "@/lib/utils";
-import { type ReactionSummary } from "@/lib/reactions";
+import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
@@ -897,13 +897,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
   /** Реакция на пост — тем же модулем и тем же запросом, что в переписке:
    *  пост канала это тоже сообщение (см. components/chat/Reactions.tsx). */
-  const react = (post: Post, emoji: string) => {
+  const react = (post: Post, key: string, pick?: ReactionPick) => {
     setReactPickFor(null);
     const before = posts.find((p) => p.id === post.id)?.reactions;
     const set = (rows: ReactionSummary[] | undefined) =>
       setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, reactions: rows } : p)));
-    set(applyReaction(before, emoji));
-    void sendReaction(post.id, emoji, set, () => set(before));
+    set(applyReaction(before, key, pick));
+    void sendReaction(post.id, key, set, () => set(before));
   };
 
   const subscribe = async () => {
@@ -1529,7 +1529,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       <ReactionPicker
         open={!!reactPickFor}
         onClose={() => setReactPickFor(null)}
-        onPick={(emoji) => { const post = posts.find((p) => p.id === reactPickFor); if (post) react(post, emoji); }}
+        onPick={(key, pick) => { const post = posts.find((p) => p.id === reactPickFor); if (post) react(post, key, pick); }}
       />
 
       {menuFor && (

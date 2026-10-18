@@ -134,7 +134,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Последнее событие о реакциях — ChatWindow применяет его к своей ленте.
   const [reactionEvent, setReactionEvent] = useState<{
     chat_id: string; message_id: string;
-    reactions: { emoji: string; count: number; users: string[] }[]; at: number;
+    reactions: { emoji: string; key?: string; custom?: { url: string; repaint?: boolean }; count: number; users: string[] }[]; at: number;
   } | null>(null);
   chatsRef.current = chats;
   // Непрочитанные в момент открытия: эффект ниже обнулит бейдж, а лента должна

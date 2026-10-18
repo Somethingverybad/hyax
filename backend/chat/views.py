@@ -987,18 +987,14 @@ def _notify_reactions(message):
     """
     from channels.layers import get_channel_layer
     from asgiref.sync import async_to_sync
-    from .reactions import ALL
+    from .reactions import describe, grouped
 
     layer = get_channel_layer()
     if not layer:
         return
-    order = {emoji: i for i, (emoji, _) in enumerate(ALL)}
-    groups = {}
-    for r in message.reactions.all():
-        groups.setdefault(r.value, []).append(str(r.user_id))
     payload = [
-        {"emoji": e, "count": len(users), "users": users}
-        for e, users in sorted(groups.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))
+        {**describe(v, custom), "count": len(users), "users": users}
+        for v, custom, users in grouped(message.reactions.all(), lambda r: str(r.user_id))
     ]
     try:
         for row in ChatParticipant.objects.filter(chat_id=message.chat_id):
@@ -1317,12 +1313,10 @@ class MessageViewSet(viewsets.ModelViewSet):
                    .exclude(user_id=msg.sender_id).exclude(user__hide_online=True)
                    .select_related("user").order_by("-read_at")[:200])
         read_by = [{"id": str(r.user_id), "username": r.user.username, "avatar_url": r.user.avatar_url, "read_at": r.read_at.isoformat()} for r in readers]
-        from .reactions import ALL
-        order = {emoji: i for i, (emoji, _) in enumerate(ALL)}
-        grouped = {}
-        for r in msg.reactions.select_related("user").order_by("created_at"):
-            grouped.setdefault(r.value, []).append({"id": str(r.user_id), "username": r.user.username, "avatar_url": r.user.avatar_url, "at": r.created_at.isoformat()})
-        reactions = [{"emoji": e, "users": u} for e, u in sorted(grouped.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))]
+        from .reactions import describe, grouped
+        rows = grouped(msg.reactions.select_related("user").order_by("created_at"),
+                       lambda r: {"id": str(r.user_id), "username": r.user.username, "avatar_url": r.user.avatar_url, "at": r.created_at.isoformat()})
+        reactions = [{**describe(v, custom), "users": u} for v, custom, u in rows]
         return Response({"read_by": read_by, "reactions": reactions})
 
     @action(detail=True, methods=['post'])
@@ -1377,9 +1371,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Поставить или снять реакцию: {emoji}. Повторное нажатие снимает.
 
         Разных реакций от одного человека — не больше Profile.reaction_limit
-        (по умолчанию три). Набор эмодзи закрытый: chat/reactions.py.
+        (по умолчанию три). Набор эмодзи закрытый: chat/reactions.py; свой
+        эмодзи — «ce:<id>» (там же, parse).
         """
-        from .reactions import ALLOWED
+        from .reactions import glyph, parse
         from .serializers import reactions_payload
         msg = self.get_object()
         try:
@@ -1388,13 +1383,15 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Profile not found"}, status=400)
         if not _can_see_chat(msg.chat, profile):
             return Response({"error": "Нет доступа к сообщению"}, status=403)
-        emoji = (request.data.get('emoji') or '').strip()
-        if emoji not in ALLOWED:
-            return Response({"error": "Такой реакции нет"}, status=400)
-
-        # Повторное нажатие снимает реакцию; разных — не больше предела профиля.
-        removed = PostReaction.objects.filter(post=msg, user=profile, value=emoji).delete()[0]
+        emoji, custom = (request.data.get('emoji') or '').strip()[:64], None
+        # Повторное нажатие снимает реакцию — и ту, чей эмодзи уже удалили
+        # вместе с набором; разных — не больше предела профиля.
+        removed = PostReaction.objects.filter(post=msg, user=profile, value=emoji).delete()[0] if emoji else 0
         if not removed:
+            parsed = parse(emoji)
+            if not parsed:
+                return Response({"error": "Такой реакции нет"}, status=400)
+            emoji, kind, custom = parsed
             limit = profile.reaction_limit or 3
             if PostReaction.objects.filter(post=msg, user=profile).count() >= limit:
                 return Response(
@@ -1402,7 +1399,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                      "limit": limit},
                     status=409,
                 )
-            PostReaction.objects.create(post=msg, user=profile, value=emoji, kind="emoji")
+            PostReaction.objects.create(post=msg, user=profile, value=emoji, kind=kind, custom=custom)
 
         # Помечаем сообщение изменённым: обычная синхронизация (since=…)
         # приносит только то, что менялось, и без этого реакция не доезжала
@@ -1412,7 +1409,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         msg.refresh_from_db()
         _notify_reactions(msg)
         if not removed:
-            _push_reaction(msg, profile, emoji)
+            _push_reaction(msg, profile, glyph(emoji, custom))
         if msg.chat.kind in ("channel", "wall"):
             _touch_post(msg)
         return Response({"reactions": reactions_payload(msg, profile.id)})
@@ -4577,19 +4574,19 @@ class PostReactView(APIView):
         me = _prof(request)
         if not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
             return Response({"error": "Подпишитесь, чтобы реагировать"}, status=403)
-        value = (request.data.get("value") or "").strip()
-        if not value:
-            return Response({"error": "Пустая реакция"}, status=400)
+        from .reactions import parse
+        value = (request.data.get("value") or "").strip()[:64]
         # Те же правила, что у сообщений: повторное нажатие снимает, разных
-        # реакций — не больше предела профиля.
-        if not PostReaction.objects.filter(post=msg, user=me, value=value[:64]).delete()[0]:
+        # реакций — не больше предела профиля, набор тот же.
+        if not (value and PostReaction.objects.filter(post=msg, user=me, value=value).delete()[0]):
+            parsed = parse(value)
+            if not parsed:
+                return Response({"error": "Такой реакции нет"}, status=400)
+            value, kind, custom = parsed
             limit = me.reaction_limit or 3
             if PostReaction.objects.filter(post=msg, user=me).count() >= limit:
                 return Response({"error": "Больше реакций на этот пост поставить нельзя", "limit": limit}, status=409)
-            PostReaction.objects.create(
-                post=msg, user=me, value=value[:64],
-                kind=(request.data.get("kind") or "emoji")[:10],
-            )
+            PostReaction.objects.create(post=msg, user=me, value=value, kind=kind, custom=custom)
         _touch_post(msg)
         return Response(_post_payload(msg, request))
 

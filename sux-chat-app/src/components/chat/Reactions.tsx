@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
-import { MAIN_REACTIONS, EXTRA_REACTIONS, type ReactionSummary } from "@/lib/reactions";
+import { MAIN_REACTIONS, EXTRA_REACTIONS, customReactionKey, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { Smile, Plus } from "lucide-react";
 import { t } from "@/lib/i18n";
 import NotoEmoji from "@/components/NotoEmoji";
+import CustomEmoji from "@/components/chat/CustomEmoji";
+import { cachedCustomPacks, refreshCustomPacks } from "@/components/chat/EmojiPanel";
 
 /**
  * Реакции — один модуль на переписку и на каналы.
@@ -14,7 +16,9 @@ import NotoEmoji from "@/components/NotoEmoji";
  * запрос один: api.reactToMessage. Меняем здесь — меняется везде.
  *
  * Размеры из тайллиста: S 28, M 32, L 40 — высота таблетки; эмодзи в
- * ней 20–24 px — анимированные Google Noto (components/NotoEmoji).
+ * ней 20–24 px — анимированные Google Noto (components/NotoEmoji) или свой
+ * эмодзи из набора (custom). Реакцию везде узнаём по reactionKey: у своего
+ * эмодзи emoji — лишь обычный двойник для старых клиентов.
  */
 export type ReactionSize = "s" | "m" | "l";
 
@@ -30,14 +34,14 @@ const EMOJI_PX: Record<ReactionSize, number> = { s: 20, m: 22, l: 24 };
  *  проигрывает анимацию; нажатие — таблетка чуть увеличивается и играет. */
 export const ReactionBar = ({ reactions, onToggle, size = "m", className }: {
   reactions?: ReactionSummary[];
-  onToggle: (emoji: string) => void;
+  onToggle: (key: string) => void;
   size?: ReactionSize;
   className?: string;
 }) => {
   const prev = useRef<Map<string, number> | null>(null);
   const [plays, setPlays] = useState<Record<string, number>>({});
   useEffect(() => {
-    const now = new Map((reactions || []).map((r) => [r.emoji, r.count] as const));
+    const now = new Map((reactions || []).map((r) => [reactionKey(r), r.count] as const));
     const was = prev.current;
     prev.current = now;
     if (!was) return;
@@ -47,14 +51,14 @@ export const ReactionBar = ({ reactions, onToggle, size = "m", className }: {
   if (!reactions?.length) return null;
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
-      {reactions.map((r) => (
+      {reactions.map((r) => { const key = reactionKey(r); return (
         <button
-          key={r.emoji}
+          key={key}
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (!r.mine) e.currentTarget.animate([{ transform: "scale(1)" }, { transform: "scale(1.16)", offset: 0.35 }, { transform: "scale(1)" }], { duration: 420, easing: "cubic-bezier(.3, 1.4, .5, 1)" });
-            onToggle(r.emoji);
+            onToggle(key);
           }}
           aria-pressed={!!r.mine}
           aria-label={r.emoji}
@@ -66,28 +70,39 @@ export const ReactionBar = ({ reactions, onToggle, size = "m", className }: {
               : "border-border bg-surface-3 text-muted-foreground active:bg-surface-4",
           )}
         >
-          <NotoEmoji emoji={r.emoji} size={EMOJI_PX[size]} play={plays[r.emoji] || 0} />
+          {r.custom
+            ? <CustomEmoji url={r.custom.url} alt={r.emoji} repaint={r.custom.repaint} className="shrink-0 object-contain"
+                style={{ width: EMOJI_PX[size], height: EMOJI_PX[size] }} />
+            : <NotoEmoji emoji={r.emoji} size={EMOJI_PX[size]} play={plays[key] || 0} />}
           {r.count > 1 && <span className="leading-none tabular-nums">{r.count}</span>}
         </button>
-      ))}
+      ); })}
     </div>
   );
 };
 
-/** Выбор реакции: основной набор в ряд, остальные — по кнопке «ещё». */
+/** Выбор реакции: основной набор в ряд, остальные — по кнопке «ещё»; ниже —
+ *  мои наборы своих эмодзи (свои и сохранённые), как в панели эмодзи. */
 export const ReactionPicker = ({ open, onPick, onClose }: {
   open: boolean;
-  onPick: (emoji: string) => void;
+  onPick: (key: string, pick?: ReactionPick) => void;
   onClose: () => void;
 }) => {
   const [all, setAll] = useState(false);
+  const [packs, setPacks] = useState(cachedCustomPacks);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    refreshCustomPacks().then((p) => { if (alive) setPacks(p); }).catch(() => {});
+    return () => { alive = false; };
+  }, [open]);
   if (!open) return null;
   const list = all ? [...MAIN_REACTIONS, ...EXTRA_REACTIONS] : MAIN_REACTIONS;
   return (
     <div className="fixed inset-0 z-[75] flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
       <div
-        className="ui-card relative w-full rounded-t-[16px] bg-surface-2 p-4 pb-[calc(var(--sab)+20px)]"
+        className="ui-card relative w-full max-h-[75vh] overflow-y-auto overscroll-contain rounded-t-[16px] bg-surface-2 p-4 pb-[calc(var(--sab)+20px)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
@@ -115,6 +130,29 @@ export const ReactionPicker = ({ open, onPick, onClose }: {
             </button>
           )}
         </div>
+        {(packs || []).filter((p) => p.items.length).map((p) => (
+          <section key={p.id} className="mt-4">
+            <p className="mb-2 text-caption text-subtle truncate">{p.name}</p>
+            <div className="flex flex-wrap gap-2">
+              {p.items.map((e) => {
+                const custom = { url: e.file_url, ...(e.repaint ? { repaint: true } : {}) };
+                const glyph = e.emoji || "🙂";
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    title={glyph}
+                    aria-label={glyph}
+                    onClick={() => onPick(customReactionKey(e.id), { key: customReactionKey(e.id), emoji: glyph, custom })}
+                    className="w-12 h-12 rounded-full bg-surface-4 flex items-center justify-center text-foreground active:opacity-70"
+                  >
+                    <CustomEmoji url={e.file_url} alt={glyph} repaint={e.repaint} className="w-[30px] h-[30px] object-contain" />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );
@@ -137,16 +175,17 @@ export const AddReactionButton = ({ onClick, className }: { onClick: () => void;
  * потом поправит числа, ошибка — вернёт как было. Общая логика для переписки
  * и каналов, поэтому живёт здесь, а не в экранах.
  */
-export function applyReaction(list: ReactionSummary[] | undefined, emoji: string): ReactionSummary[] {
+export function applyReaction(list: ReactionSummary[] | undefined, key: string, pick?: ReactionPick): ReactionSummary[] {
   const rows = (list || []).map((r) => ({ ...r }));
-  const found = rows.find((r) => r.emoji === emoji);
+  const found = rows.find((r) => reactionKey(r) === key);
   if (found?.mine) {
     found.count -= 1;
     found.mine = false;
     return rows.filter((r) => r.count > 0);
   }
   if (found) { found.count += 1; found.mine = true; return rows; }
-  return [...rows, { emoji, count: 1, mine: true }];
+  if (pick?.custom) return [...rows, { emoji: pick.emoji || "🙂", key, custom: pick.custom, count: 1, mine: true }];
+  return [...rows, { emoji: key, count: 1, mine: true }];
 }
 
 export async function sendReaction(

@@ -732,13 +732,16 @@ class PostReaction(models.Model):
     Разных реакций от одного человека — не больше Profile.reaction_limit
     (по умолчанию три), поэтому уникальность по тройке post+user+value,
     а не по паре: повторное нажатие на то же эмодзи снимает реакцию.
-    kind обобщён: сейчас emoji, потом custom (реакции из Creative Space) —
-    value хранит символ или id ассета."""
+    kind: emoji — value это символ из закрытого набора (chat/reactions.py);
+    custom — свой эмодзи из набора эмодзи, value «ce:<id>», а в custom —
+    картинка и обычный эмодзи-двойник ({url, glyph, repaint?}): набор могут
+    удалить, реакция должна остаться."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     post = models.ForeignKey('Message', on_delete=models.CASCADE, related_name="reactions")
     user = models.ForeignKey('Profile', on_delete=models.CASCADE, related_name="post_reactions")
     kind = models.CharField(max_length=10, default="emoji")
     value = models.CharField(max_length=64)
+    custom = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

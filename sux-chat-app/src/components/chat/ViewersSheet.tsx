@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Eye, X } from "lucide-react";
 import Identicon from "@/components/Identicon";
+import CustomEmoji from "@/components/chat/CustomEmoji";
+import { reactionKey } from "@/lib/reactions";
 import { api } from "@/api/client";
 import { t, getLang } from "@/lib/i18n";
 
@@ -28,7 +30,7 @@ const ViewersSheet = ({ messageId, onClose, onOpenProfile }: { messageId: string
     return () => { alive = false; };
   }, [messageId]);
 
-  const Row = ({ id, username, avatar, right }: { id: string; username: string; avatar?: string | null; right: string }) => (
+  const Row = ({ id, username, avatar, right }: { id: string; username: string; avatar?: string | null; right: ReactNode }) => (
     <button
       type="button"
       onClick={() => { if (onOpenProfile) { onClose(); onOpenProfile(id); } }}
@@ -70,8 +72,9 @@ const ViewersSheet = ({ messageId, onClose, onOpenProfile }: { messageId: string
                 {data.reactions.length === 0
                   ? <p className="text-small text-subtle">{t("Реакций нет")}</p>
                   : data.reactions.map((g) => (
-                    <div key={g.emoji} className="space-y-1.5">
-                      {g.users.map((u) => <Row key={g.emoji + u.id} id={u.id} username={u.username} avatar={u.avatar_url} right={g.emoji} />)}
+                    <div key={reactionKey(g)} className="space-y-1.5">
+                      {g.users.map((u) => <Row key={reactionKey(g) + u.id} id={u.id} username={u.username} avatar={u.avatar_url}
+                        right={g.custom ? <CustomEmoji url={g.custom.url} alt={g.emoji} repaint={g.custom.repaint} className="inline-block w-5 h-5 align-middle object-contain text-foreground" /> : g.emoji} />)}
                     </div>
                   ))}
               </section>

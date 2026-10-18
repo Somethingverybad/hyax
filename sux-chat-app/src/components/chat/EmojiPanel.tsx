@@ -58,6 +58,11 @@ async function loadCustomPacks(): Promise<CustomPack[]> {
   });
 }
 
+/** Мои наборы эмодзи — и для выбора реакции (components/chat/Reactions):
+ *  сразу из памяти, если панель их уже грузила, свежие — следом. */
+export const cachedCustomPacks = () => packsCache;
+export const refreshCustomPacks = () => loadCustomPacks().then((p) => { packsCache = p; return p; });
+
 /**
  * Выбор эмодзи. Сверху — свои наборы (картинки, их вставляют в текст:
  * entities custom_emoji), ниже — анимированные эмодзи Noto, которыми WYX рисует

@@ -484,17 +484,13 @@ def reactions_payload(message, me_id=None):
 
     Клиенту не нужен поимённый список — он рисует таблетку «эмодзи + число» и
     подсвечивает свои. Поимённо это была бы лишняя выдача на каждое сообщение.
+    Свой эмодзи — ещё key и custom (chat/reactions.describe).
     """
-    from .reactions import ALL
-    order = {emoji: i for i, (emoji, _) in enumerate(ALL)}
-    counts, mine = {}, set()
-    for r in message.reactions.all():
-        counts[r.value] = counts.get(r.value, 0) + 1
-        if me_id and str(r.user_id) == str(me_id):
-            mine.add(r.value)
+    from .reactions import describe, grouped
+    me = str(me_id) if me_id else None
     return [
-        {"emoji": e, "count": c, "mine": e in mine}
-        for e, c in sorted(counts.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))
+        {**describe(v, custom), "count": len(users), "mine": me in users}
+        for v, custom, users in grouped(message.reactions.all(), lambda r: str(r.user_id))
     ]
 
 

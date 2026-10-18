@@ -1214,7 +1214,7 @@ export const api = {
   /** Кто прочитал сообщение и кто какие реакции поставил (поимённо). */
   messageViewers: async (messageId: string): Promise<{
     read_by: { id: string; username: string; avatar_url?: string | null; read_at: string }[];
-    reactions: { emoji: string; users: { id: string; username: string; avatar_url?: string | null; at: string }[] }[];
+    reactions: { emoji: string; key?: string; custom?: { url: string; repaint?: boolean }; users: { id: string; username: string; avatar_url?: string | null; at: string }[] }[];
   }> => {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/viewers/`, { method: "GET", headers: authHeaders() });
     const d = await res.json().catch(() => ({}));
