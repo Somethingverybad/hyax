@@ -3480,10 +3480,13 @@ class NotificationSoundListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        # Не всё всем: стандартные паки (галочка в админке) и звуки вне паков —
-        # у каждого; остальное — то, что человек создал сам или добавил по ссылке.
+        # Публичные паки — у всех, как и стандартные и звуки вне паков; приватные —
+        # автору и тем, кто добавил пак. Пуш играет звук отправителя или канала,
+        # а iPhone может сыграть только уже скачанный файл: с одними «своими» паками
+        # звуки друзей приходили со стандартным звуком (на компьютере звук
+        # играет само приложение по ссылке, там этого не видно).
         me = getattr(request.user, "profile", None)
-        visible = models.Q(pack__isnull=True) | models.Q(pack__is_default=True)
+        visible = models.Q(pack__isnull=True) | models.Q(pack__is_default=True) | models.Q(pack__is_public=True)
         if me:
             visible |= models.Q(pack__creator=me) | models.Q(pack__added_by_users__user=me)
         sounds = NotificationSound.objects.filter(is_active=True).filter(visible)

@@ -92,6 +92,20 @@ class AdultPacksTests(TestCase):
         self.assertEqual(self.slugs(self.adult), {"clean", "dirty"})
         self.assertEqual(self.slugs(self.author), {"clean", "dirty"})
 
+    def test_sound_list_has_public_packs_of_others(self):
+        """Звук друга из его публичного пака должен быть у всех: пуш с ним
+        iPhone сыграет, только если файл уже скачан. Приватный — нет."""
+        pub = SoundPack.objects.create(name="Друга", creator=self.author)
+        priv = SoundPack.objects.create(name="Личный", creator=self.author, is_public=False)
+        NotificationSound.objects.bulk_create([
+            NotificationSound(slug="friend", name="f", pack=pub, file="sounds/f.mp3"),
+            NotificationSound(slug="secret", name="s", pack=priv, file="sounds/s.mp3"),
+        ])
+        self.assertEqual(self.slugs(self.kid), {"clean", "friend"})
+        self.assertEqual(self.slugs(self.author), {"clean", "dirty", "friend", "secret"})
+        UserSoundPack.objects.create(user=self.kid, pack=priv)
+        self.assertEqual(self.slugs(self.kid), {"clean", "friend", "secret"})
+
     def test_sound_pack_card_is_locked(self):
         r = client_for(self.kid).get(f"/api/sounds/pack/{self.spack.id}/")
         self.assertEqual(r.status_code, 200)
