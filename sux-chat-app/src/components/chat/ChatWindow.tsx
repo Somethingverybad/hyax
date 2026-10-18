@@ -2862,7 +2862,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Отправка готовой записи (голос/видео) на сервер.
   // Расшифровка голосового: ставим pending сразу, сервер вернёт то же; текст
   // приедет через sync по updated_at (опрос раз в 3 с) — отдельно ждать не надо.
+  // Длиннее минуты не расшифровываем (сервер тоже откажет): кнопка остаётся,
+  // по нажатию — объяснение, почему нет.
+  const transcribeTooLong = (m: Message) => (m.voice_duration || 0) > VOICE_TRANSCRIBE_MAX
+    && !(m.transcript_status === "done" && m.voice_transcript);
   const transcribeVoice = async (m: Message) => {
+    if (transcribeTooLong(m)) { toast(tr("Сообщение слишком длинное для расшифровки")); return; }
     setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, transcript_status: "pending" } : x)));
     try {
       const upd = await api.transcribeVoice(m.id);
@@ -2877,6 +2882,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // сервер расшифрует и переведёт, текст и перевод приедут через sync.
   const translateVoice = async (m: Message) => {
     closeMenu();
+    if (transcribeTooLong(m)) { toast(tr("Сообщение слишком длинное для расшифровки")); return; }
     setHiddenTranscripts((s) => { if (!s.has(m.id)) return s; const n = new Set(s); n.delete(m.id); return n; });
     setShowOrig((s) => { const k = `t:${m.id}`; if (!s.has(k)) return s; const n = new Set(s); n.delete(k); return n; });
     const ready = m.transcript_status === "done" && !!m.voice_transcript;
@@ -5462,6 +5468,8 @@ function markBurstsSeen(ids: string[]) {
 // Скорость воспроизведения голосовых — одна на все сообщения, как в Telegram:
 // выбрал 1.5× — следующее голосовое тоже пойдёт на 1.5×.
 const VOICE_RATES = [1, 1.5, 2, 0.5];            // короткий тап — по кругу
+/** Голосовые длиннее минуты не расшифровываем (сервер: transcribe.TRANSCRIBE_MAX_SECONDS). */
+const VOICE_TRANSCRIBE_MAX = 60;
 const VOICE_RATES_ALL = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]; // долгое нажатие — список
 let voiceRate = 1;
 

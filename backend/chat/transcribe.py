@@ -20,6 +20,14 @@ _model_lock = threading.Lock()
 _run_lock = threading.Semaphore(1)
 
 MODEL_NAME = os.getenv("WHISPER_MODEL", "small")
+#: Голосовые длиннее минуты не расшифровываем: модель одна на сервер и работает
+#: по очереди — 15-минутное заняло бы её на минуты и задержало расшифровку у всех.
+TRANSCRIBE_MAX_SECONDS = 60
+TOO_LONG_ERROR = "Сообщение слишком длинное для расшифровки"
+
+
+def too_long(msg) -> bool:
+    return (msg.voice_duration or 0) > TRANSCRIBE_MAX_SECONDS
 MODEL_DIR = os.getenv("WHISPER_MODEL_DIR", "/app/whisper-models")
 
 
@@ -51,7 +59,7 @@ def _audio_source(voice_url: str):
 def transcribe_message(message_id: str):
     from .models import Message
     msg = Message.objects.filter(id=message_id).first()
-    if not msg or not msg.voice_url:
+    if not msg or not msg.voice_url or too_long(msg):
         return
     with _run_lock:
         try:

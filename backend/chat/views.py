@@ -1222,10 +1222,12 @@ class MessageViewSet(viewsets.ModelViewSet):
     def transcribe(self, request, pk=None):
         """Расшифровать голосовое — любой, кто видит чат. Идёт в фоне;
         готовый текст приезжает через /messages/sync/ (updated_at)."""
-        from .transcribe import transcribe_async
+        from .transcribe import transcribe_async, too_long, TOO_LONG_ERROR
         msg = self.get_object()
         if msg.chat.kind == 'secret':
             return Response({"error": "Голосовые секретного чата сервер не расшифрует"}, status=400)
+        if too_long(msg):
+            return Response({"error": TOO_LONG_ERROR, "too_long": True}, status=422)
         profile = getattr(request.user, 'profile', None)
         if profile is None or not _can_see_chat(msg.chat, profile):
             return Response({"error": "Нет доступа"}, status=403)
@@ -4020,8 +4022,11 @@ def _translate_voice(request, msg, me, to):
     запрашиваем её и переводим сразу после (в фоне); ответ — сообщение как
     есть, текст и перевод приедут через sync."""
     from .translate import translate_text, norm_lang, same_text, TranslateNotConfigured, provider
+    from .transcribe import too_long, TOO_LONG_ERROR
     if msg.chat.kind == "secret":
         return Response({"error": "Голосовые секретного чата сервер не расшифрует"}, status=400)
+    if too_long(msg) and not (msg.transcript_status == "done" and (msg.voice_transcript or "").strip()):
+        return Response({"error": TOO_LONG_ERROR, "too_long": True}, status=422)
     if not provider():
         return Response({"error": "Перевод пока не настроен"}, status=503)
     text = (msg.voice_transcript or "").strip()

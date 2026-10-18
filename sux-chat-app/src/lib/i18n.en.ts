@@ -271,6 +271,7 @@ const en: Record<string, string> = {
   "Неизвестная ошибка": "Unknown error",
   "Не удалось добавить": "Couldn't add",
   "Не удалось расшифровать": "Couldn't decrypt",
+  "Сообщение слишком длинное для расшифровки": "This message is too long to transcribe",
   "Нет ключа": "No key",
   "В секретный чат — файлы до 50 МБ": "Secret chat: files up to 50 MB",
   "Не удалось отправить файл": "Couldn't send the file",
