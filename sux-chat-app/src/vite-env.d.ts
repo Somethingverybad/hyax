@@ -12,3 +12,6 @@ declare global {
     electronAPI?: ElectronAPI;
   }
 }
+
+// Модуль, а не скрипт: иначе declare global выше молча не действует.
+export {};

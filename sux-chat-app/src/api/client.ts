@@ -201,6 +201,7 @@ export interface Profile {
   id: string;
   username: string;
   avatar_url?: string;
+  bio?: string | null;
   /** Обложка профиля — баннер за аватаром. Пусто — однотонная подложка. */
   cover_url?: string | null;
   status?: string;

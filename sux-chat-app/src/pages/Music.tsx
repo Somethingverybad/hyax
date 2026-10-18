@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  * экран, а мини-плеер и экран блокировки работают сами собой.
  */
 const trackToQueue = (t: PlaylistTrack): Track => ({
-  id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined,
+  id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined, source: "mine",
 });
 
 /** Трек пришёл из переписки (файл вложения), а не загружен в плейлист сам. */

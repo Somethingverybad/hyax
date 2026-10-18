@@ -33,8 +33,9 @@ interface ChatType {
   id: string;
   name?: string;
   is_group?: boolean;
-  created_at: string;
-  updated_at: string;
+  // Даты чата из API бывают не у всех видов (Стена, «Избранное») — необязательные.
+  created_at?: string;
+  updated_at?: string;
   participants?: ProfileType[];
   /** Закрепление (личное) и время последнего сообщения — порядок списка. */
   pinned_at?: string | null;
@@ -386,7 +387,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     });
 
     return () => {
-      appStateListener.remove();
+      // addListener отдаёт Promise: синхронный remove() устарел (предупреждение в логе iOS).
+      void appStateListener.then((h) => h.remove());
     };
   }, []);
 
@@ -780,8 +782,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                   messagePing={messagePing}
             onLatest={handleLatest}
             unreadAtOpen={unreadAtOpen}
-          reactionEvent={reactionEvent}
-            reactionEvent={reactionEvent}
                   reactionEvent={reactionEvent}
                   title={tr("Избранное")}
                 />
@@ -823,7 +823,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             messagePing={messagePing}
             onLatest={handleLatest}
             unreadAtOpen={unreadAtOpen}
-          reactionEvent={reactionEvent}
             reactionEvent={reactionEvent}
             onBack={() => setSelectedChatId(null)}
             title={chatHeaderTitle}

@@ -82,7 +82,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .mint-nav-pill { transition: none; } }
 /* Тот же остров столбиком — на широком окне у левого края (NavRail). */
-.mint-rail-wrap { justify-content: center; }
+.mint-rail-wrap { justify-content: center; justify-content: safe center; padding: 8px 0; }
 .mint-rail {
   position: relative; width: 54px; padding: 4px;
   display: flex; flex-direction: column; align-items: center;

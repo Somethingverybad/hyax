@@ -135,6 +135,8 @@ const ChatMediaSheet = ({ chatId, title, onClose, onJump }: {
       raw: (tab === "voice" ? x.voice_url : x.file_url) as string,
       title: tab === "voice" ? t("Голосовое") : (x.file_name || t("Аудио")).replace(/\.[^.]+$/, ""),
       artist: x.sender?.username,
+      // Голосовое — не музыка: «Добавить себе» у него нет.
+      source: tab === "voice" ? undefined : ("message" as const),
     }));
     void playQueue(queue, Math.max(0, list.findIndex((x) => x.id === m.id)));
   };

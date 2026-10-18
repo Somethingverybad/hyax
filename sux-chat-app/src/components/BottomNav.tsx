@@ -10,6 +10,7 @@ import { readCache } from "@/lib/session-cache";
 import type { WallState } from "@/api/client";
 import { useSections } from "@/lib/sections";
 import { useIsMobile } from "@/hooks/use-mobile";
+import RailPlayer from "@/components/RailPlayer";
 
 /** Новые посты на Стене — бейдж на вкладке. Состояние кладёт Chat.tsx в кеш
  *  сессии и сообщает событием hyax:wall; при открытии Стены счётчик обнуляется. */
@@ -131,6 +132,7 @@ const NavRail = ({ mint }: { mint: boolean }) => {
           </NavLink>
         ))}
       </nav>
+      <RailPlayer mint={mint} />
     </div>
   );
 };

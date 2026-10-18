@@ -96,7 +96,8 @@ const Auth = () => {
         ? await api.login(username, password)
         : await api.register(username, password, agreed);
 
-      if (data.error) throw new Error(data.error);
+      const failed = (data as { error?: string }).error;
+      if (failed) throw new Error(failed);
 
       // Регистрация возвращает только id созданного пользователя, без токенов —
       // поэтому сразу входим теми же данными. Иначе переход на /chat случался,

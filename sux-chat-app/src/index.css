@@ -1630,3 +1630,15 @@ html.native-video .call-layer {
   height: calc(var(--mint-nav-space, 0px) + 28px);
   background: linear-gradient(to bottom, hsl(var(--background) / 0) 0, hsl(var(--background) / 0.8) 17px, hsl(var(--background)) 28px);
 }
+
+/* Плеер в панели разделов (components/RailPlayer): под разделами, своим островом. */
+.rail-player { margin-top: 12px; gap: 2px; }
+.rail-vertical {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 110px; padding: 6px 0;
+}
+/* Окно низкое (Electron пускает до 600px) — без названия, чтобы колонка влезла;
+   ещё ниже — колонка прокручивается, а не обрезается (safe center в «Мяте»). */
+@media (max-height: 760px) { .rail-player-title { display: none; } }
+.nav-rail-wrap { overflow-y: auto; scrollbar-width: none; }
+.nav-rail-wrap::-webkit-scrollbar { display: none; }

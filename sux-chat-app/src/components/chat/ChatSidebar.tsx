@@ -59,6 +59,10 @@ interface Chat {
   pinned_at?: string | null;
   /** Время последнего сообщения — по нему сортируется список. */
   last_message_at?: string | null;
+  /** direct · group · channel · saved · system… и прочее, что сервер отдаёт о чате. */
+  kind?: string;
+  updated_at?: string;
+  unread_count?: number;
 }
 
 interface ChatSidebarProps {

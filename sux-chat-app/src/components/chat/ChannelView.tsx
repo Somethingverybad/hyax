@@ -613,6 +613,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       raw: x.file_url as string,
       title: (x.file_name || tr("Аудио")).replace(/\.[^.]+$/, ""),
       artist: x.sender?.username,
+      source: "message" as const,
     }));
     void playQueue(queue, Math.max(0, audios.findIndex((x) => x.id === p.id)));
   };

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { Pause, Play, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer } from "@/lib/player";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /**
  * Мини-плеер: полоса под шапкой — там же, где полоса закреплённого сообщения.
@@ -18,7 +19,10 @@ const MiniPlayer = () => {
   const t = currentTrack();
   const box = useRef<HTMLDivElement>(null);
   // На вкладке «Музыка» плеер — часть экрана (PlayerPanel), полоска там лишняя.
-  const onMusicTab = useLocation().pathname.startsWith("/music");
+  const { pathname } = useLocation();
+  // Десктоп: на экранах с панелью разделов слева плеер стоит в ней (RailPlayer).
+  const desktop = useIsMobile() === false;
+  const onMusicTab = pathname.startsWith("/music") || (desktop && /^\/(chat|wall|saved|profile)\/?$/.test(pathname));
 
   // Высота полосы — наружу: по ней сдвигается закреплённое сообщение.
   useEffect(() => {

@@ -10,7 +10,7 @@ import { playQueue, usePlayer, currentTrack, fmtTime, type Track } from "@/lib/p
 import { cn } from "@/lib/utils";
 
 const toQueue = (t: PlaylistTrack): Track => ({
-  id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined,
+  id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined, source: "track",
 });
 
 /**

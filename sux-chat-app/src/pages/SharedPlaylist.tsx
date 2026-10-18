@@ -98,7 +98,7 @@ const SharedPlaylist = () => {
                       label={t.title}
                       hint={t.artist || undefined}
                       value={isNow && player.duration ? fmtTime(player.time) : undefined}
-                      onClick={() => void playQueue(data.tracks.map(toQueue), i)}
+                      onClick={() => void playQueue(data.tracks.map((x) => ({ ...toQueue(x), source: "track", token })), i)}
                     />
                   );
                 })}

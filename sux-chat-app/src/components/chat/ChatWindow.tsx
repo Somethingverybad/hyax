@@ -2205,6 +2205,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       raw: x.file_url as string,
       title: (x.file_name || tr("Аудио")).replace(/\.[^.]+$/, ""),
       artist: x.sender?.username,
+      source: "message" as const,
     }));
     const idx = Math.max(0, audios.findIndex((x) => x.id === m.id));
     void playQueue(queue, idx);

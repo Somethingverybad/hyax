@@ -19,6 +19,11 @@ export interface Track {
   raw: string;
   title: string;
   artist?: string;
+  /** Откуда трек — для «Добавить себе» в плеере (RailPlayer): message — файл из
+   *  сообщения или поста (id — сообщения), track — трек чужого плейлиста или
+   *  эфира (id — трека; token — плейлист по ссылке), mine — уже в моей музыке. */
+  source?: "message" | "track" | "mine";
+  token?: string;
 }
 
 /** Эфир, который сейчас слушаем (@/lib/radio): трек и место в нём задаёт

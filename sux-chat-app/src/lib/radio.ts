@@ -46,7 +46,7 @@ const serverNow = () => {
 let beat: ReturnType<typeof setInterval> | null = null;
 let boundary: ReturnType<typeof setTimeout> | null = null;
 
-const toQueue = (t: PlaylistTrack): Track => ({ id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined });
+const toQueue = (t: PlaylistTrack): Track => ({ id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined, source: "track" });
 
 /** Где должен быть эфир сейчас, в секундах от начала текущего трека. */
 const expected = (d: StationState) =>

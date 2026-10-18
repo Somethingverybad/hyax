@@ -61,7 +61,8 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
   const me = readCache<{ username?: string }>("user")?.username;
   const mine = !!data && !!me && data.owner === me;
   const name = data ? (data.playlist.is_default ? tr(data.playlist.name) : data.playlist.name) : tr("Загрузка…");
-  const queue = data?.tracks.map(toQueue) || [];
+  // Трек по ссылке — «Добавить себе» в плеере тянет его с ключом ссылки; свой — уже мой.
+  const queue = data?.tracks.map((x) => ({ ...toQueue(x), source: mine ? "mine" as const : "track" as const, token: token || undefined })) || [];
   const fromHere = !!playing && !!data?.tracks.some((t) => t.id === playing.id) && !player.live;
 
   const playAll = (e: React.MouseEvent) => {
