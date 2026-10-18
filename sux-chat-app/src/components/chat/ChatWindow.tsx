@@ -1068,10 +1068,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       .map((r) => (r.offset >= e0 ? { ...r, offset: r.offset + delta } : r));
     if (custom) customRef.current.push({ offset: s0, length: emoji.length, emoji_id: custom.id, url: custom.url });
     setDraft(v.slice(0, s0) + emoji + v.slice(e0), { keepCustom: true });
-    // Из панели на телефоне клавиатуру не зовём: панель закрывается, и если
-    // тут же выезжает клавиатура, лента сначала падает на высоту панели, а
-    // потом поднимается обратно — «прыжок» (баг-репорт 0b0b94d0). Дописать —
-    // тапом по полю.
+    // Из панели на телефоне клавиатуру не зовём: панель остаётся (можно набрать
+    // несколько эмодзи подряд), а клавиатура вместе с ней — нагромождение и
+    // «прыжок» ленты (баг-репорт 0b0b94d0). Тап по полю закрывает панель и
+    // открывает клавиатуру (см. onPointerDown/onFocus у textarea).
     if (opts?.focus === false) return;
     const pos = s0 + emoji.length;
     requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
@@ -4765,7 +4765,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom, { focus: !isTouchDevice() }); setStickersOpen(false); }}
+                onInsertEmoji={(emoji, custom) => insertEmoji(emoji, custom, { focus: !isTouchDevice() })}
                 standardEmoji={!isMobile}
               />
             </div>
@@ -4826,7 +4826,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setStickersOpen((v) => !v)}
+              // На телефоне — либо панель, либо клавиатура: открываем панель — прячем клавиатуру.
+              onClick={() => { if (!stickersOpen && isTouchDevice()) hideKeyboard(); setStickersOpen((v) => !v); }}
               className="mint-stk ui-compose-btn h-11 w-11 shrink-0 rounded-md bg-surface-2 md:bg-transparent border border-border text-foreground hover:bg-surface-3"
               aria-label={tr("Стикеры")}
             >
@@ -4850,6 +4851,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 spellCheck
                 enterKeyHint={isTouchDevice() ? "enter" : "send"}
                 onPaste={onPasteFile}
+                // Телефон: либо клавиатура, либо панель выбора — тап по полю (или
+                // фокус из «Ответить») закрывает панель. На десктопе панель живёт
+                // рядом с полем, и вставка эмодзи сама возвращает в него фокус.
+                // Закрываем по фокусу, а не по нажатию: убери панель на нажатии — поле
+                // съедет вниз из-под пальца, и mousedown касания придёт в ленту и
+                // снимет фокус (клавиатура не выедет). Фокус уже в поле — по клику.
+                onFocus={() => { if (stickersOpen && isTouchDevice()) setStickersOpen(false); }}
+                onClick={() => { if (stickersOpen && isTouchDevice()) setStickersOpen(false); }}
                 onChange={(e) => {
                   trackCustomEdit(draftRef.current, e.target.value, e.target.selectionEnd);
                   draftRef.current = e.target.value;
@@ -4997,7 +5006,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
-                onInsertEmoji={(emoji, custom) => { insertEmoji(emoji, custom, { focus: !isTouchDevice() }); setStickersOpen(false); }}
+                onInsertEmoji={(emoji, custom) => insertEmoji(emoji, custom, { focus: !isTouchDevice() })}
                 standardEmoji={!isMobile}
               />
             </div>
