@@ -15,6 +15,7 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import CustomEmoji from "@/components/chat/CustomEmoji";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -100,6 +101,24 @@ const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
  *  строкой (chat/serializers.py) — такие переводим, текст людей не трогаем. */
 const SERVER_PREVIEWS = new Set(["Стикер", "Видео-сообщение", "Голосовое сообщение", "Файл", "Сообщение", "📍 Геопозиция", "Зашифрованное сообщение"]);
 const serverPreview = (s: string) => (s && SERVER_PREVIEWS.has(s) ? t(s) : s);
+
+/** Превью последнего сообщения — со своими эмодзи на их местах (сервер отдаёт
+ *  last_message.emoji: offset/length в этом превью, UTF-16 — как в JS). */
+type PreviewEmoji = { offset: number; length: number; url: string; repaint?: boolean };
+const PreviewText = ({ text, emoji }: { text: string; emoji?: PreviewEmoji[] }) => {
+  if (!emoji?.length) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  for (const e of [...emoji].sort((a, b) => a.offset - b.offset)) {
+    if (e.offset < pos || e.offset + e.length > text.length) continue;
+    if (e.offset > pos) parts.push(text.slice(pos, e.offset));
+    parts.push(<CustomEmoji key={e.offset} url={e.url} alt={text.slice(e.offset, e.offset + e.length)} repaint={e.repaint} loop={false}
+      className="inline-block w-[1.25em] h-[1.25em] align-[-0.25em] object-contain" />);
+    pos = e.offset + e.length;
+  }
+  parts.push(text.slice(pos));
+  return <>{parts}</>;
+};
 
 function readParticipantsCache(): {[chatId: string]: any[]} {
   try {
@@ -1302,10 +1321,10 @@ const ChatSidebar = ({
                               : drafts[chat.id] && chat.id !== selectedChatId && (chat as any).kind !== "secret"
                                 ? <><span className="text-destructive">{t("Черновик:")}</span> {drafts[chat.id].replace(/\s+/g, " ").slice(0, 140)}</>
                               : (chat as any).last_message
-                                ? `${(chat as any).last_message.sender_id === currentUser?.id ? t("Вы: ") : ""}${
+                                ? <>{(chat as any).last_message.sender_id === currentUser?.id ? t("Вы: ") : ""}{
                                     (chat as any).last_message.cipher
                                       ? (secretPreview[chat.id + (chat as any).last_message.cipher.slice(0, 16)] ?? t("🔒 Зашифрованное сообщение"))
-                                      : serverPreview((chat as any).last_message.text)}`
+                                      : <PreviewText text={serverPreview((chat as any).last_message.text)} emoji={(chat as any).last_message.emoji} />}</>
                                 : t("Сообщений пока нет")}
                           </p>
                           {(chat as any).unread_mention && (

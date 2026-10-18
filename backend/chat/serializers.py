@@ -262,8 +262,11 @@ class ChatSerializer(serializers.ModelSerializer):
         # У постов зеркал Telegram отправителя нет — ориентируемся на id поста.
         if sender_id is None and getattr(obj, 'last_id_a', None) is None:
             return None
-        from .formatting import mask_preview
-        text = mask_preview(getattr(obj, 'last_text_a', '') or '', getattr(obj, 'last_entities_a', None)).strip()
+        from .formatting import mask_preview, utf16_len
+        ents = getattr(obj, 'last_entities_a', None)
+        masked = mask_preview(getattr(obj, 'last_text_a', '') or '', ents)
+        text = masked.strip()
+        lead = utf16_len(masked[:len(masked) - len(masked.lstrip())])
         if getattr(obj, 'last_geo_a', None) is not None:
             text = GEO_PREVIEW
         if not text:
@@ -279,6 +282,21 @@ class ChatSerializer(serializers.ModelSerializer):
                 text = 'Сообщение'
         # read — прочитал ли кто-то кроме автора: вторая галка в списке чатов.
         out = {'text': text[:120], 'sender_id': str(sender_id) if sender_id else None, 'read': bool(getattr(obj, 'last_read_a', False))}
+        # Свои эмодзи — и в списке чатов: где стоят в этом превью (UTF-16, как в JS).
+        if text and isinstance(ents, list):
+            limit = utf16_len(out['text'])
+            emoji = []
+            for e in ents:
+                if not isinstance(e, dict) or e.get('type') != 'custom_emoji' or not e.get('url'):
+                    continue
+                try:
+                    off, ln = int(e['offset']) - lead, int(e['length'])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if off >= 0 and off + ln <= limit:
+                    emoji.append({'offset': off, 'length': ln, 'url': e['url'], **({'repaint': True} if e.get('repaint') else {})})
+            if emoji:
+                out['emoji'] = emoji
         # Секретный чат: текста у сервера нет — превью расшифрует устройство с ключом.
         cipher = getattr(obj, 'last_cipher_a', None)
         if cipher:
