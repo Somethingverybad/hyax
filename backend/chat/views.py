@@ -2850,6 +2850,58 @@ class StickerUploadView(APIView):
         })
 
 
+#: Голосовые длиннее минуты пережимаем (_compress_long_voice): короткие и так малы.
+VOICE_COMPRESS_AFTER = 60
+
+
+def _audio_seconds(path):
+    """Длительность аудио, с. У записи браузера (MediaRecorder, webm) длины в
+    файле нет — тогда прогоняем его через ffmpeg вхолостую и берём последнее time=."""
+    import re, subprocess
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                             capture_output=True, text=True, timeout=30).stdout.strip()
+        return float(out)
+    except (ValueError, OSError, subprocess.SubprocessError):
+        pass
+    try:
+        err = subprocess.run(["ffmpeg", "-nostdin", "-i", path, "-vn", "-f", "null", "-"],
+                             capture_output=True, text=True, timeout=120).stderr
+        m = re.findall(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)", err)
+        if m:
+            h, mi, se = m[-1]
+            return int(h) * 3600 + int(mi) * 60 + float(se)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def _compress_long_voice(path):
+    """Голосовое длиннее минуты — в AAC 40 кбит/с моно (m4a): его играют все
+    платформы, включая iPhone, а речи этого хватает; 15 минут — ~4.5 МБ вместо
+    5–15. Берём, только если вышло меньше; не вышло — остаётся исходный файл."""
+    import subprocess
+    dur = _audio_seconds(path)
+    if not dur or dur <= VOICE_COMPRESS_AFTER:
+        return path
+    out = os.path.splitext(path)[0] + ".m4a"
+    if out == path:
+        out = os.path.splitext(path)[0] + ".c.m4a"
+    try:
+        subprocess.run(["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", path, "-vn", "-ac", "1", "-ar", "24000",
+                        "-c:a", "aac", "-b:a", "40k", "-movflags", "+faststart", out], check=True, timeout=180)
+        if os.path.getsize(out) < os.path.getsize(path):
+            os.remove(path)
+            return out
+    except (OSError, subprocess.SubprocessError):
+        logger.exception("voice compress %s", path)
+    try:
+        os.remove(out)
+    except OSError:
+        pass
+    return path
+
+
 # Загрузка голосовых сообщений
 class VoiceUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
@@ -2892,6 +2944,9 @@ class VoiceUploadView(APIView):
         with open(full_path, 'wb+') as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
+        # Длинное голосовое пережимаем; путь мог смениться (.m4a).
+        full_path = _compress_long_voice(full_path)
+        file_path = os.path.relpath(full_path, settings.MEDIA_ROOT)
         
         # Используем относительный путь
         file_url = f'/media/{file_path}'

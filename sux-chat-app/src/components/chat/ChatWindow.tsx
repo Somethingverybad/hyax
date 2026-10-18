@@ -49,6 +49,7 @@ import SecretChatIntro from "./SecretChatIntro";
 import PackLinkCard from "./PackLinkCard";
 import CustomEmoji from "./CustomEmoji";
 import ComposeMirror from "./ComposeMirror";
+import { readCache } from "@/lib/session-cache";
 import { MESSAGE_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import { openMiniApp } from "@/lib/miniapp";
@@ -3363,7 +3364,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const playNextVoice = (id: string) => {
     const list = messagesListRef.current;
     const i = list.findIndex((m) => m.id === id);
-    const next = i < 0 ? null : list.slice(i + 1).find((m) => m.voice_url && !m.pending && !m.deleted_for_all);
+    const next = i < 0 ? null : list.slice(i + 1).find((m) => m.voice_url && !m.pending && !(m as { deleted_for_all?: boolean }).deleted_for_all);
     if (!next) return;
     document.getElementById(`msg-${next.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     window.dispatchEvent(new CustomEvent("hyax:voice-play", { detail: next.id }));
