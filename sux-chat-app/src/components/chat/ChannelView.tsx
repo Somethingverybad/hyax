@@ -6,6 +6,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type RefObject } from "react";
 import { api, mediaUrl, type Chat, type NotificationSoundInfo, type PollInfo, type WallState } from "@/api/client";
 import PollCard from "@/components/chat/PollCard";
+import AnchoredMenu from "@/components/AnchoredMenu";
 import StickerView from "@/components/chat/StickerView";
 import { GraffitiSheet, type GraffitiSticker } from "@/components/chat/Graffiti";
 import UserProfileModal from "@/components/UserProfileModal";
@@ -419,6 +420,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [attachOpen, setAttachOpen] = useState(false);
   // Обёртка кнопки-скрепки и её меню: тапы внутри неё меню не закрывают.
   const attachRef = useRef<HTMLDivElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   // Вложения поста: несколько фото/видео уходят альбомом, музыка играет
   // плеером, лишнее убирается крестиком до публикации.
   type AttachMode = "photo" | "video" | "audio" | "file";
@@ -776,6 +778,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     if (!attachOpen) return;
     const onDown = (e: PointerEvent) => {
       if (attachRef.current && attachRef.current.contains(e.target as Node)) return;
+      // Меню вынесено в body (AnchoredMenu) — касание по нему тоже «внутри».
+      if (attachMenuRef.current && attachMenuRef.current.contains(e.target as Node)) return;
       setAttachOpen(false);
     };
     document.addEventListener("pointerdown", onDown, true);
@@ -1402,7 +1406,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                           <Paperclip className="w-4 h-4" /> {tr("Медиа")}{attachments.length ? ` · ${attachments.length}` : ""}
                         </button>
                         {attachOpen && (
-                          <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
+                          <AnchoredMenu ref={attachMenuRef} anchor={attachRef} className="w-44">
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}><ImageIcon className="w-4 h-4 text-primary" /> {tr("Фото")}</button>
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}><Video className="w-4 h-4 text-primary" /> {tr("Видео")}</button>
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> {tr("Музыка")}</button>
@@ -1410,7 +1414,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); setGraffitiOpen(true); }}><Brush className="w-4 h-4 text-primary" /> {tr("Граффити")}</button>
                             {/* Опрос — без вложений, как в постах с вопросом. */}
                             <button type="button" disabled={attachments.length > 0} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary disabled:opacity-40" onClick={() => { setAttachOpen(false); setPollOpts(["", ""]); }}><ListChecks className="w-4 h-4 text-primary" /> {tr("Опрос")}</button>
-                          </div>
+                          </AnchoredMenu>
                         )}
                       </div>
                       <button type="button" onClick={() => setComposeOpts((v) => !v)} aria-label={tr("Настройки поста")} aria-expanded={composeOpts}
@@ -1500,7 +1504,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 <Paperclip className="w-5 h-5" />
               </button>
               {attachOpen && (
-                <div className="absolute bottom-full left-0 mb-2 w-44 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
+                <AnchoredMenu ref={attachMenuRef} anchor={attachRef} className="w-44">
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); photoInputRef.current?.click(); }}>
                     <ImageIcon className="w-4 h-4 text-primary" /> {tr("Фото")}
                   </button>
@@ -1520,7 +1524,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   <button type="button" disabled={attachments.length > 0} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary disabled:opacity-40" onClick={() => { setAttachOpen(false); setPollOpts(["", ""]); composerRef.current?.focus(); }}>
                     <ListChecks className="w-4 h-4 text-primary" /> {tr("Опрос")}
                   </button>
-                </div>
+                </AnchoredMenu>
               )}
             </div>
             <button type="button" onClick={openSounds} disabled={recording} className={cn("w-11 h-11 shrink-0 rounded-md bg-surface-2 border border-border flex items-center justify-center", sound && "text-primary border-primary")} aria-label={tr("Звук пуша")}>

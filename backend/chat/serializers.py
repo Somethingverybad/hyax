@@ -645,11 +645,15 @@ class MessageSerializer(serializers.ModelSerializer):
                 preview = "Файл"
             else:
                 preview = "Сообщение"
-        return {
+        out = {
             "id": str(r.id),
             "sender_username": r.sender.username if r.sender else "",
             "preview": preview[:120],
         }
+        # Ответ на выделенный кусок — показываем его вместо начала сообщения.
+        if obj.reply_quote:
+            out["quote"] = obj.reply_quote
+        return out
     
     def to_representation(self, instance):
         """Переопределяем для правильной сериализации UUID в строки"""

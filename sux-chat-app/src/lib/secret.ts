@@ -306,7 +306,9 @@ export interface SecretMedia {
   fl?: boolean;       // треугольник вершиной вниз
   th?: string | null; // миниатюра JPEG, base64 — пока файл качается
 }
-export interface SecretPayload { t: string; e?: unknown[]; m?: SecretMedia }
+/** Шифротекст сообщения: t — текст, e — оформление, m — вложение, q — цитата
+ *  в ответе (выделенный кусок того сообщения; на сервер открытым не уходит). */
+export interface SecretPayload { t: string; e?: unknown[]; m?: SecretMedia; q?: string }
 
 /** Первый кадр записанного видео (кружка) — JPEG base64 для постера: в
  *  секретном чате сервер превью не делает, а Android WebView до тапа кадр не

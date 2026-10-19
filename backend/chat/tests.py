@@ -1657,3 +1657,39 @@ class TrackUploadRepeatTests(TestCase):
         self.assertEqual((a.status_code, b.status_code), (201, 200), (a.data, b.data))
         self.assertEqual(a.data["track"]["id"], b.data["track"]["id"])
         self.assertEqual(PlaylistTrack.objects.filter(playlist__owner=me).count(), 1)
+
+
+class ReplyQuoteTests(TestCase):
+    """Ответ на выделенный кусок сообщения: цитата хранится и приходит в reply_to."""
+
+    def setUp(self):
+        self.me = make_user("quoter")
+        self.peer = make_user("quoted")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.orig = Message.objects.create(chat=self.chat, sender=self.peer, content="Первая фраза. Вторая фраза.")
+
+    def send(self, **extra):
+        return client_for(self.me).post("/api/messages/", {"chat": str(self.chat.id), "content": "ответ", **extra}, format="json")
+
+    def test_quote_with_reply(self):
+        r = self.send(reply_to_id=str(self.orig.id), reply_quote="  Вторая фраза.  ")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["reply_to"]["quote"], "Вторая фраза.")
+        rows = client_for(self.peer).get(f"/api/messages/?chat={self.chat.id}").data
+        rows = rows.get("results", rows) if isinstance(rows, dict) else rows
+        self.assertEqual(rows[-1]["reply_to"]["quote"], "Вторая фраза.")
+
+    def test_quote_without_reply_ignored(self):
+        r = self.send(reply_quote="Вторая фраза.")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIsNone(Message.objects.get(id=r.data["id"]).reply_quote)
+
+    def test_plain_reply_has_no_quote(self):
+        r = self.send(reply_to_id=str(self.orig.id))
+        self.assertNotIn("quote", r.data["reply_to"])
+
+    def test_quote_is_capped(self):
+        r = self.send(reply_to_id=str(self.orig.id), reply_quote="я" * 5000)
+        self.assertEqual(len(Message.objects.get(id=r.data["id"]).reply_quote), 1000)

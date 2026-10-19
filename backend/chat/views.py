@@ -1074,6 +1074,8 @@ def _media_q(kind):
 
 # Сколько автор может править свой пост на Стене (MessageViewSet.edit).
 WALL_EDIT_WINDOW = timedelta(hours=24)
+# Длина цитаты в ответе (выделенный кусок сообщения).
+REPLY_QUOTE_MAX = 1000
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -1914,6 +1916,10 @@ class MessageViewSet(viewsets.ModelViewSet):
                 )
             except Message.DoesNotExist:
                 pass
+        # Цитата — выделенный кусок того сообщения (только вместе с ответом).
+        quote = request.data.get('reply_quote')
+        if save_kwargs.get('reply_to') and isinstance(quote, str) and quote.strip():
+            save_kwargs['reply_quote'] = quote.strip()[:REPLY_QUOTE_MAX]
 
         if voice_url:
             save_kwargs.update({

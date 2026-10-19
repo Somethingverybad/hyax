@@ -354,6 +354,11 @@ class Message(models.Model):
     # Реплай: на какое сообщение отвечаем. SET_NULL — если оригинал удалят,
     # ответ остаётся, просто теряет цитату.
     reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, blank=True, null=True, related_name='replies')
+    # Цитата: выделенный кусок сообщения, на которое отвечаем (или его
+    # перевода) — показывается в ответе вместо начала оригинала. NULL, а не
+    # пустая строка по умолчанию: процессы со старой моделью (зеркало
+    # Telegram) вставляют строки без этой колонки и не должны падать.
+    reply_quote = models.TextField(blank=True, null=True)
     # Вложение отправлено как «Файл» (без обработки): показывать строкой со
     # скачиванием, а не инлайн-превью — даже если это картинка/видео.
     download_only = models.BooleanField(default=False)

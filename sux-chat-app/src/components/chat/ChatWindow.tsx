@@ -5,14 +5,15 @@ import CachedImg from "@/components/CachedImg";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
-import { MAX_VOICE_SECONDS, useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
+import { MAX_VOICE_SECONDS, useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder"
+import SelectTextSheet from "@/components/chat/SelectTextSheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import { actionTemplate, type ActionView } from "@/lib/actionText";
 import type { ChatTranslate } from "@/api/client";
-import { Brush, Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid } from "lucide-react";
+import { Brush, Languages, Quote, TextSelect, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -132,7 +133,7 @@ interface Message {
   /** Аудио-стикер: звук, который слышит получатель. */
   sound?: { id: string; slug: string; name: string; url: string } | null;
   /** Цитата: на какое сообщение это ответ (компактное превью с сервера). */
-  reply_to?: { id: string; sender_username: string; preview: string } | null;
+  reply_to?: { id: string; sender_username: string; preview: string; quote?: string } | null;
   /** Голосовое сообщение и его длительность в секундах. */
   voice_url?: string | null;
   voice_duration?: number | null;
@@ -192,6 +193,9 @@ interface Message {
   _rec?: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string };
   /** Вложение, которое не доехало, — для кнопки «Повторить». */
   _att?: Attach;
+  /** Ответ на выделенный кусок («Выделить текст» → «Цитировать»): цитата —
+   *  только у сообщения в панели ответа, уходит вместе с ответом. */
+  _quote?: string;
   /** Пересылка: от кого пришло изначально (профиль, если есть) и подпись. */
   forwarded_from?: { id: string; username: string; avatar_url?: string | null } | null;
   forwarded_title?: string;
@@ -649,6 +653,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // null — нижняя шторка (телефон, долгое удержание).
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = () => { setMenuMessage(null); setMenuPos(null); };
+  // «Выделить текст»: окно с выделяемым текстом сообщения (SelectTextSheet).
+  const [selectFor, setSelectFor] = useState<Message | null>(null);
   // Добавление людей в чат: личная переписка при этом становится группой.
   const [addOpen, setAddOpen] = useState(false);
   // Закреплённое сообщение чата (одно) — полоса под шапкой.
@@ -894,7 +900,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         if (m.content != null || !out.has(m.id)) return m;
         const p = out.get(m.id);
         if (!p) return { ...m, content: tr("🔒 Сообщение не открывается на этом устройстве"), _ready: true };
-        const base = { ...m, content: p.t, entities: (p.e as TextEntity[] | undefined) ?? null };
+        const base = { ...m, content: p.t, entities: (p.e as TextEntity[] | undefined) ?? null,
+          ...(p.q && m.reply_to ? { reply_to: { ...m.reply_to, quote: p.q } } : {}) };
         if (!p.m) return { ...base, _ready: true };
         const ready = blobRef.current.get(m.id);
         if (ready) return { ...base, ...ready, _ready: true, _sm: null };
@@ -1134,7 +1141,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const optimistic: Message = {
       id: tempId, content: text || null, file_url: t.file_url, file_name: fileName,
       sender_id: userId, sender: { id: userId } as Profile, created_at: new Date().toISOString(),
-      reply_to: reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
+      reply_to: optimisticReply(reply),
       pending: true, _key: tempId,
     };
     setMessages((prev) => [...prev, optimistic]);
@@ -2409,6 +2416,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (m.file_url) return tr("Файл");
     return tr("Сообщение");
   };
+  /** reply_to временного пузыря; с цитатой — там, где она уходит вместе с ответом. */
+  const optimisticReply = (m: Message | null, withQuote = false): Message["reply_to"] =>
+    m ? { id: m.id, sender_username: m.sender?.username || "", preview: replyPreviewText(m), ...(withQuote && m._quote ? { quote: m._quote } : {}) } : null;
 
   /** Стикер уходит так же, как текст: появляется в ленте сразу, с той же
    *  анимацией, а ответ сервера подменяет временное сообщение. Раньше он ждал
@@ -2546,14 +2556,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // ---- Секретные вложения: шифруем файл на устройстве, грузим шифротекст ----
   const SECRET_MAX = 50 * 1024 * 1024;
   const sendSecretFile = async (
-    file: Blob, meta: Omit<SecretMedia, "key" | "iv" | "size">, caption: { t: string; e: TextEntity[] } | null,
+    file: Blob, meta: Omit<SecretMedia, "key" | "iv" | "size">, caption: { t: string; e: TextEntity[]; q?: string } | null,
     replyId: string | undefined, onProgress: (p: number) => void,
   ): Promise<Message> => {
     if (!skey || !chatId) throw new Error(tr("Нет ключа"));
     if (file.size > SECRET_MAX) throw new Error(tr("В секретный чат — файлы до 50 МБ"));
     const enc = await encryptFile(file);
     const up = await api.uploadFile(new File([enc.blob], "secret.bin", { type: "application/octet-stream" }), undefined, onProgress);
-    const payload: SecretPayload = { t: caption?.t || "", e: caption?.e || [], m: { ...meta, key: enc.key, iv: enc.iv, size: file.size } };
+    const payload: SecretPayload = { t: caption?.t || "", e: caption?.e || [], m: { ...meta, key: enc.key, iv: enc.iv, size: file.size }, ...(caption?.q ? { q: caption.q } : {}) };
     return api.sendSecretMessage(chatId, await encryptPayload(skey.key, payload), replyId, { file_url: up.file_url, file_size: up.file_size });
   };
   const secretKindOf = (att: Attach): SecretMedia["k"] =>
@@ -2576,7 +2586,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         id: tempId, content: first ? (text || null) : null, entities: first ? entities : null,
         file_url: null, file_name: null, sender_id: userId, sender: { id: userId } as Profile,
         created_at: new Date(Date.now() + i).toISOString(),
-        reply_to: first && reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
+        reply_to: first ? optimisticReply(reply, true) : null,
         pending: true, _key: tempId, _progress: 0, _ready: true, _dims: att.dims ?? null, ...local,
       } as Message;
       return { att, kind, tempId, local, name, first, optimistic };
@@ -2589,12 +2599,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         const sent = await sendSecretFile(j.att.file, {
           k: j.kind, mime: j.att.file.type || "application/octet-stream", name: j.name,
           w: th?.w ?? j.att.dims?.w ?? null, h: th?.h ?? j.att.dims?.h ?? null, th: th?.th ?? null,
-        }, j.first ? { t: text, e: entities } : null, j.first ? reply?.id : undefined,
+        }, j.first ? { t: text, e: entities, q: reply?._quote } : null, j.first ? reply?.id : undefined,
         (p) => setMessages((prev) => prev.map((m) => (m.id === j.tempId ? { ...m, _progress: p } : m))));
         blobRef.current.set(sent.id, j.local);
         setMessages((prev) => prev.some((m) => m.id === sent.id)
           ? prev.filter((m) => m.id !== j.tempId)
-          : prev.map((m) => (m.id === j.tempId ? { ...m, ...sent, ...j.local, content: m.content ?? "", entities: m.entities, pending: false, _progress: null, _ready: true, _key: j.tempId } : m)));
+          : prev.map((m) => (m.id === j.tempId ? { ...m, ...sent, ...j.local, content: m.content ?? "", entities: m.entities, reply_to: m.reply_to, pending: false, _progress: null, _ready: true, _key: j.tempId } : m)));
       } catch (e) {
         toast.error((e as Error).message || tr("Не удалось отправить файл"));
         setMessages((prev) => prev.filter((m) => m.id !== j.tempId));
@@ -2663,9 +2673,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         sender: { id: userId } as Profile,
         created_at: new Date().toISOString(),
         sound,
-        reply_to: reply
-          ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
-          : null,
+        reply_to: optimisticReply(reply, true),
         pending: true,
         _key: tempId,
       };
@@ -2674,14 +2682,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       try {
         // Секретный чат: на сервер уходит только шифротекст; у себя оставляем
         // открытый текст оптимистичного сообщения.
+        const secretText: SecretPayload = { t: text, e: entities, ...(reply?._quote ? { q: reply._quote } : {}) };
         const sent = isSecret
-          ? await api.sendSecretMessage(chatId, await encryptPayload(skey!.key, { t: text, e: entities }), reply?.id)
-          : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities);
-        if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, p: { t: text, e: entities } });
+          ? await api.sendSecretMessage(chatId, await encryptPayload(skey!.key, secretText), reply?.id)
+          : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities, reply?._quote ? { reply_quote: reply._quote } : undefined);
+        if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, p: secretText });
         setMessages(prev =>
           prev.some(m => m.id === sent.id)
             ? prev.filter(m => m.id !== tempId)
-            : prev.map(m => (m.id === tempId ? { ...m, ...sent, ...(isSecret ? { content: text, entities } : {}), pending: false, _key: tempId } : m))
+            : prev.map(m => (m.id === tempId ? { ...m, ...sent, ...(isSecret ? { content: text, entities, reply_to: m.reply_to } : {}), pending: false, _key: tempId } : m))
         );
       } catch (error: any) {
         console.error("Error sending message:", error);
@@ -2721,9 +2730,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         sound: first ? sound : null,
         download_only: att.mode === "file",
         album_id: albumId,
-        reply_to: first && reply
-          ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) }
-          : null,
+        reply_to: first ? optimisticReply(reply, true) : null,
         pending: true,
         _key: tempId,
         _dims: att.dims ?? null,
@@ -2732,7 +2739,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         _progress: -1,
         _att: att,
       };
-      return { tempId, att, optimistic, content: first ? text : "", entities: first ? entities : undefined, soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, albumId };
+      return { tempId, att, optimistic, content: first ? text : "", entities: first ? entities : undefined, soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, replyQuote: first ? reply?._quote : undefined, albumId };
       });
     });
 
@@ -2744,7 +2751,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => scrollToBottom(true), 50);
 
     for (const j of jobs) {
-      await sendAttachment(j.tempId, j.att, { content: j.content, entities: j.entities, soundId: j.soundId, replyId: j.replyId, albumId: j.albumId });
+      await sendAttachment(j.tempId, j.att, { content: j.content, entities: j.entities, soundId: j.soundId, replyId: j.replyId, replyQuote: j.replyQuote, albumId: j.albumId });
     }
   };
 
@@ -2752,7 +2759,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const sendAttachment = async (
     tempId: string,
     att: Attach,
-    opts: { content?: string; entities?: TextEntity[]; soundId?: string; replyId?: string; albumId?: string | null } = {},
+    opts: { content?: string; entities?: TextEntity[]; soundId?: string; replyId?: string; replyQuote?: string; albumId?: string | null } = {},
   ) => {
     if (!chatId) return;
     // Чат запоминаем на старте: пока идёт загрузка, человек мог перейти в
@@ -2780,7 +2787,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         poster_url: uploadResult.poster_url ?? null,
         album_id: opts.albumId ?? null,
         entities: opts.entities,
-      }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file");
+      }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file", opts.replyQuote ? { reply_quote: opts.replyQuote } : undefined);
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
       // размеры — DOM не перемонтируется, картинка не мигает. Если
       // синхронизация уже принесла это сообщение по сокету/опросу — просто
@@ -2857,8 +2864,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
-  const copyMessage = async (message: Message) => {
-    const text = message.content?.trim();
+  const copyText = async (raw: string | null | undefined) => {
+    const text = raw?.trim();
     if (!text) return;
     try {
       await writeClipboard(text);
@@ -2867,6 +2874,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       toast.error(tr("Не удалось скопировать"));
     }
     closeMenu();
+  };
+  const copyMessage = (message: Message) => copyText(message.content);
+  /** Цитировать выделенный кусок: ответ на сообщение с этой цитатой. */
+  const quoteFragment = (m: Message, fragment: string) => {
+    setSelectFor(null);
+    setReplyTo({ ...m, _quote: fragment.slice(0, 1000) });
+    textareaRef.current?.focus();
+    requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   // Отправка готовой записи (голос/видео) на сервер.
@@ -2997,7 +3012,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       ...(result.kind === "video"
         ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror, video_flip: flip }
         : { voice_url: localUrl, voice_duration: result.seconds }),
-      reply_to: reply ? { id: reply.id, sender_username: reply.sender?.username || "", preview: replyPreviewText(reply) } : null,
+      reply_to: optimisticReply(reply),
       pending: true,
       _key: tempId,
       _progress: 0,
@@ -3432,6 +3447,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         } },
         { label: tr("Действие…"), icon: <Sparkles className="w-5 h-5" />, show: !!menuMessage.sender?.id && menuMessage.sender.id !== userId && !saved && !isSecret && !menuMessage.pending, onClick: () => { setActionFor({ id: menuMessage.sender!.id, username: menuMessage.sender!.username || "" }); closeMenu(); } },
         { label: tr("Скопировать"), icon: <Copy className="w-5 h-5" />, show: !!menuMessage.content?.trim(), onClick: () => copyMessage(menuMessage) },
+        { label: tr("Скопировать перевод"), icon: <Copy className="w-5 h-5" />,
+          show: !!menuMessage.translations?.[myLang] && menuMessage.translations[myLang] !== menuMessage.content,
+          onClick: () => copyText(menuMessage.translations?.[myLang]) },
+        // Выделить кусок текста — скопировать или процитировать в ответе.
+        { label: tr("Выделить текст"), icon: <TextSelect className="w-5 h-5" />, show: !!menuMessage.content?.trim(),
+          onClick: () => { const m = menuMessage; closeMenu(); setSelectFor(m); } },
         { label: menuMessage.translations?.[myLang] ? (showOrig.has(menuMessage.id) ? tr("Показать перевод") : tr("Показать оригинал")) : tr("Перевести"), icon: <Languages className="w-5 h-5" />,
           show: !isSecret && !!menuMessage.content?.trim() && !menuMessage.pending,
           onClick: () => {
@@ -4143,9 +4164,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           <div className="font-medium line-clamp-1 break-all opacity-90">
                             {message.reply_to.sender_username}
                           </div>
-                          <div className="line-clamp-1 break-all opacity-75">
-                            {isSecret ? (messages.find((x) => x.id === message.reply_to!.id)?.content || tr("Сообщение")) : serverPreview(message.reply_to.preview)}
-                          </div>
+                          {message.reply_to.quote ? (
+                            // Ответ на выделенный кусок: он и показан (до трёх строк).
+                            <div className="flex gap-1 opacity-80">
+                              <Quote className="w-3 h-3 shrink-0 mt-0.5 opacity-70" />
+                              <span className="line-clamp-3 break-words whitespace-pre-wrap">{message.reply_to.quote}</span>
+                            </div>
+                          ) : (
+                            <div className="line-clamp-1 break-all opacity-75">
+                              {isSecret ? (messages.find((x) => x.id === message.reply_to!.id)?.content || tr("Сообщение")) : serverPreview(message.reply_to.preview)}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -4646,9 +4675,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <div className="text-xs font-medium text-primary truncate">
                   {replyTo.sender?.username || tr("Ответ")}
                 </div>
-                <div className="text-sm text-muted-foreground truncate">
-                  {replyPreviewText(replyTo)}
-                </div>
+                {replyTo._quote ? (
+                  <div className="text-sm text-muted-foreground flex gap-1">
+                    <Quote className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="line-clamp-2 break-words">{replyTo._quote}</span>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground truncate">
+                    {replyPreviewText(replyTo)}
+                  </div>
+                )}
                 {/* «Идеи»: реплай админа на идею бот отнесёт автору в его «Долгий ящик»
                     (backend/chat/ideabox.py); остальное в этом чате — внутреннее. */}
                 {chatInfo?.kind === "system" && chatInfo?.name === "Идеи" && !!replyTo.forwarded_from && !!readCache<{ is_admin?: boolean }>("user")?.is_admin && (
@@ -5396,6 +5432,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => void applyEdit(editFor, f)} />
       )}
       {trackPickerOpen && <TrackPicker onPick={(t) => void sendTrack(t)} onClose={() => setTrackPickerOpen(false)} />}
+      {selectFor && (
+        <SelectTextSheet
+          original={selectFor.content || ""}
+          translation={selectFor.translations?.[myLang] && selectFor.translations[myLang] !== selectFor.content ? selectFor.translations[myLang] : null}
+          showTranslation={!showOrig.has(selectFor.id)}
+          canQuote={!selectFor.pending && !selectFor._failed}
+          onQuote={(q) => quoteFragment(selectFor, q)}
+          onCopy={(t) => { void copyText(t); setSelectFor(null); }}
+          onClose={() => setSelectFor(null)}
+        />
+      )}
       {forwardFor && (
         <ShareToChat
           open
