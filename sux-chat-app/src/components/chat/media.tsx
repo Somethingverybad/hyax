@@ -499,7 +499,11 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
 export const AlbumGrid = ({ items, localMap, onOpen, className }: {
   items: AlbumItem[]; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void; className?: string;
 }) => (
-  <div className={cn("msg-media grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,100%)]", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
+  // Ширина — своя, не процент от пузыря: пузырь подстраивается под
+  // содержимое, и пока фото не загружены, сетка схлопывалась в ноль — а
+  // нулевую ячейку useNearView считает невидимой и не грузит (замкнутый
+  // круг: после возврата в чат альбом оставался пустым, баг-репорт 567b8940).
+  <div className={cn("msg-media grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,72vw)]", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
     {items.map((it) => <AlbumCell key={it.id} item={it} localMap={localMap} onOpen={onOpen} />)}
   </div>
 );
