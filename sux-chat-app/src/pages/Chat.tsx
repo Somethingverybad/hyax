@@ -312,6 +312,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
         const data = (e?.notification?.data as any) || {};
         if (data.kind === "vibe") { navigate("/profile"); return; }
+        // Пост собеседника на Стене. Старые сборки тип пуша из шифротекста не
+        // передают — узнаём Стену по chat_id.
+        const wallId = readCache<WallState>("wall")?.id;
+        if (data.kind === "wall_post" || (wallId && String(data.chat_id) === wallId)) { navigate("/wall"); return; }
         const chatId = data.chat_id;
         if (chatId) {
           setSelectedChatId(String(chatId));

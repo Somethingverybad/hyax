@@ -90,6 +90,13 @@ const emit = () => {
 
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
 const snapshot = () => state;
+export const subscribePlayer = subscribe;
+
+/** Откуда очередь — плейлист (свой или чужой по ссылке): по нему lib/playlistResume
+ *  запоминает на сервере, где человек остановился. null — музыка из чата, эфир. */
+export interface QueueSource { playlistId: string; token?: string }
+let source: QueueSource | null = null;
+export const queueSource = () => source;
 
 export const usePlayer = () => useSyncExternalStore(subscribe, snapshot, snapshot);
 export const playerState = () => state;
@@ -167,13 +174,16 @@ async function start(index: number, at?: () => number) {
   updateSession();
 }
 
-/** Поставить очередь и начать с нужного трека. Повторный тап по играющему — пауза. */
-export async function playQueue(queue: Track[], index: number) {
+/** Поставить очередь и начать с нужного трека. Повторный тап по играющему — пауза.
+ *  source — из какого плейлиста очередь; at — с какой секунды (продолжить, где остановился). */
+export async function playQueue(queue: Track[], index: number, opts?: { source?: QueueSource; at?: number }) {
   dropLive();
   const same = currentTrack()?.id === queue[index]?.id;
   state.queue = queue;
+  source = opts?.source ?? null;
   if (same && audio) { await toggle(); return; }
-  await start(index);
+  const at = opts?.at;
+  await start(index, at && at > 1 ? () => at : undefined);
 }
 
 export async function toggle() {
@@ -213,6 +223,7 @@ export async function toggle() {
 /** Эфир: включить трек с места, которое к моменту загрузки посчитает at(). */
 export async function playLive(track: Track, at: () => number, live: LiveInfo) {
   state.live = live;
+  source = null;
   state.queue = [track];
   heard = new Set();
   await start(0, at);
@@ -295,6 +306,7 @@ export function seek(sec: number) {
 
 export function stop() {
   dropLive();
+  source = null;
   audio?.pause();
   if (audio) audio.src = "";
   // Перемешивание и повтор — настройки человека, они переживают остановку.

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { Pause, Play, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer } from "@/lib/player";
+import ShareTrackButton from "@/components/music/ShareTrackButton";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 /**
@@ -85,6 +86,7 @@ const MiniPlayer = () => {
             <input type="range" min={0} max={1} step={0.02} value={s.volume} onChange={(e) => setVolume(Number(e.target.value))}
               className="w-20 h-1 accent-primary cursor-pointer" aria-label={tr("Громкость")} />
           </div>
+          <ShareTrackButton track={t} className="w-8 h-8" />
           <button type="button" onClick={stop} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label={tr("Закрыть плеер")}>
             <X className="w-4 h-4" />
           </button>

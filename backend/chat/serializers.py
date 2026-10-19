@@ -110,7 +110,7 @@ class OwnProfileSerializer(ProfileSerializer):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at', 'email', 'email_verified']
 
@@ -453,14 +453,34 @@ class PlaylistTrackSerializer(serializers.ModelSerializer):
 
 class PlaylistSerializer(serializers.ModelSerializer):
     tracks_count = serializers.SerializerMethodField()
+    likes = serializers.SerializerMethodField()
+    liked = serializers.SerializerMethodField()
+    resume = serializers.SerializerMethodField()
 
     def get_tracks_count(self, obj):
         return obj.tracks.count()
 
+    def get_likes(self, obj):
+        return obj.likes.count()
+
+    def get_liked(self, obj):
+        # Лайкнул ли смотрящий — его передают в context["me"].
+        me = self.context.get("me")
+        return bool(me) and obj.likes.filter(profile=me).exists()
+
+    def get_resume(self, obj):
+        """Где смотрящий остановился в этом плейлисте: {track_id, position} или None."""
+        from .models import PlaylistProgress
+        me = self.context.get("me")
+        if not me:
+            return None
+        p = PlaylistProgress.objects.filter(playlist=obj, profile=me, track__isnull=False).first()
+        return {"track_id": str(p.track_id), "position": p.position} if p else None
+
     class Meta:
         model = Playlist
-        fields = ["id", "name", "is_default", "created_at", "tracks_count", "share_token", "is_public"]
-        read_only_fields = ["id", "is_default", "created_at", "tracks_count", "share_token", "is_public"]
+        fields = ["id", "name", "is_default", "created_at", "tracks_count", "share_token", "is_public", "plays", "likes", "liked", "resume"]
+        read_only_fields = ["id", "is_default", "created_at", "tracks_count", "share_token", "is_public", "plays", "likes", "liked", "resume"]
 
 
 class MessageSenderSerializer(serializers.ModelSerializer):

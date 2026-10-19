@@ -984,6 +984,17 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       toast.success(tr("{name} больше не показывается", { name: a.username }), { description: tr("Вернуть можно в сведениях о Стене") });
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
+  // Пуши о постах этого автора (chat/wall_notify.py): посты видны, уведомлений нет.
+  const toggleNotifyAuthor = async (post: Post) => {
+    setMenuFor(null);
+    const a = post.sender;
+    if (!a) return;
+    const muted = !!wallState?.notify_muted?.includes(a.id);
+    try {
+      setWallState(await api.muteWallNotify(a.id, !muted));
+      toast.success(muted ? tr("Снова уведомляем о постах {name}", { name: a.username }) : tr("О постах {name} больше не уведомляем", { name: a.username }));
+    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
+  };
   const adminPost = async (post: Post, data: { hidden?: boolean; wall_safe?: boolean }) => {
     setMenuFor(null);
     try {
@@ -1703,6 +1714,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             {menuFor.sender?.id !== userId && (
               <button type="button" onClick={() => void hideAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
                 <EyeOff className="w-5 h-5 text-muted-foreground" /> {tr("Скрыть автора {name}", { name: menuFor.sender?.username ?? "" })}
+              </button>
+            )}
+            {/* Уведомления о его постах — если они вообще включены (настройки → уведомления). */}
+            {wall && menuFor.sender?.id && menuFor.sender.id !== userId && wallState?.notify !== false && (
+              <button type="button" onClick={() => void toggleNotifyAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                {wallState?.notify_muted?.includes(menuFor.sender.id)
+                  ? <><Bell className="w-5 h-5 text-muted-foreground" /> {tr("Уведомлять о постах {name}", { name: menuFor.sender.username ?? "" })}</>
+                  : <><BellOff className="w-5 h-5 text-muted-foreground" /> {tr("Не уведомлять о постах {name}", { name: menuFor.sender.username ?? "" })}</>}
               </button>
             )}
             {wallAdmin && (

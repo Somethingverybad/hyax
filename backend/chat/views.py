@@ -801,8 +801,14 @@ def _push_message_deleted(msg, only_profile=None):
 
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
-    # Стена: подписчиков нет, читают все по запросу — рассылать некому.
+    # Стена: подписчиков нет, читают все по запросу; пуш — только собеседникам
+    # автора по личке (chat/wall_notify.py).
     if getattr(message.chat, "kind", "") == "wall":
+        try:
+            from .wall_notify import notify_wall_post
+            notify_wall_post(message, profile)
+        except Exception:
+            logger.exception("wall push: не удалось поставить отправку")
         return
     """Разослать новое сообщение: в сокет чата, пуш остальным участникам и
     персональные уведомления в сокеты (веб/десктоп без пушей). Общее для
@@ -4206,7 +4212,7 @@ class MessageTranslateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        from .translate import translate_text, norm_lang, same_text, gave_up, TranslateNotConfigured
+        from .translate import translate_text, norm_lang, same_text, gave_up, plausible, TranslateNotConfigured
         me = getattr(request.user, 'profile', None)
         msg = Message.objects.filter(id=pk).select_related('chat', 'sender').first()
         if not me or not msg or not _can_see_chat(msg.chat, me):
@@ -4218,8 +4224,8 @@ class MessageTranslateView(APIView):
         if msg.cipher or not (msg.content or "").strip():
             return Response({"error": "Здесь переводить нечего"}, status=400)
         tr = dict(msg.translations or {})
-        if to in tr and same_text(tr[to], msg.content):
-            tr.pop(to)  # старый «перевод», равный оригиналу, — переводим заново
+        if to in tr and (same_text(tr[to], msg.content) or not plausible(msg.content, tr[to], to)):
+            tr.pop(to)  # старый «перевод», равный оригиналу или не перевод вовсе, — заново
         # Текст уже на этом языке (по письменности) — переводчик не зовём:
         # автоперевод Стены спрашивает про каждый видимый пост.
         from .translate import detect_lang
@@ -5273,7 +5279,7 @@ class PlaylistView(APIView):
         if not pl:
             return Response({"error": "Плейлист не найден"}, status=404)
         return Response({
-            "playlist": PlaylistSerializer(pl).data,
+            "playlist": PlaylistSerializer(pl, context={"me": pl.owner}).data,
             "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
         })
 
@@ -5349,7 +5355,7 @@ class SharedPlaylistView(APIView):
         if not pl:
             return Response({"error": "Плейлист не найден или ссылка отозвана"}, status=404)
         return Response({
-            "playlist": PlaylistSerializer(pl).data,
+            "playlist": PlaylistSerializer(pl, context={"me": _prof(request)}).data,
             "owner": pl.owner.username,
             "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
         })
@@ -5437,7 +5443,8 @@ class PublicPlaylistsView(APIView):
         )
         return Response({"playlists": [
             {"id": str(pl.id), "name": pl.name, "is_default": pl.is_default,
-             "tracks_count": pl.n, "updated_at": pl.last, "owner": _owner_brief(pl.owner)}
+             "tracks_count": pl.n, "updated_at": pl.last, "owner": _owner_brief(pl.owner),
+             "plays": pl.plays, "likes": pl.likes.count()}
             for pl in rows
         ]})
 
@@ -5452,7 +5459,7 @@ class PublicPlaylistView(APIView):
         if not pl:
             return Response({"error": "Плейлист не найден или закрыт"}, status=404)
         return Response({
-            "playlist": PlaylistSerializer(pl).data,
+            "playlist": PlaylistSerializer(pl, context={"me": me}).data,
             "owner": pl.owner.username,
             "owner_info": _owner_brief(pl.owner),
             "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
@@ -5464,6 +5471,102 @@ class PublicPlaylistView(APIView):
         if not pl:
             return Response({"error": "Плейлист не найден или закрыт"}, status=404)
         return _copy_playlist(pl, me)
+
+
+def _listenable_playlist(me, pk, token=""):
+    """Плейлист, который я могу слушать: свой, открытый собеседника или по
+    ссылке (token — ключ из неё: страница /pl/<token> и карточка в чате)."""
+    import secrets
+    pl = Playlist.objects.filter(id=pk).select_related("owner").first()
+    if not pl:
+        return None
+    if pl.owner_id == me.id:
+        return pl
+    if token and pl.share_token and secrets.compare_digest(str(token), pl.share_token):
+        return pl
+    return _public_playlist(me, pk)
+
+
+class PlaylistPlayView(APIView):
+    """POST {token?} — «запустил плейлист»: счётчик прослушиваний
+    (свои и повторы в течение получаса не считаются, chat/playlist_stats.py)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        from .playlist_stats import count_play, state
+        me = _prof(request)
+        pl = _listenable_playlist(me, pk, request.data.get("token") or "") if me else None
+        if not pl:
+            return Response({"error": "Плейлист не найден или закрыт"}, status=404)
+        count_play(pl, me)
+        return Response(state(pl, me))
+
+
+class PlaylistProgressView(APIView):
+    """PUT {track_id, position, token?} — где я остановился в плейлисте
+    (свой или чужой, который могу слушать); DELETE — забыть. Включу его снова —
+    клиент продолжит отсюда (поле resume в ответах о плейлисте)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, pk):
+        from .models import PlaylistProgress
+        me = _prof(request)
+        pl = _listenable_playlist(me, pk, request.data.get("token") or "") if me else None
+        if not pl:
+            return Response({"error": "Плейлист не найден или закрыт"}, status=404)
+        try:
+            track = PlaylistTrack.objects.filter(id=uuid.UUID(str(request.data.get("track_id") or "")), playlist=pl).first()
+        except ValueError:
+            track = None
+        if not track:
+            return Response({"error": "Трека нет в плейлисте"}, status=400)
+        try:
+            pos = max(0.0, min(float(request.data.get("position") or 0), 24 * 3600.0))
+        except (TypeError, ValueError):
+            pos = 0.0
+        PlaylistProgress.objects.update_or_create(playlist=pl, profile=me, defaults={"track": track, "position": round(pos, 1)})
+        return Response({"track_id": str(track.id), "position": round(pos, 1)})
+
+    def delete(self, request, pk):
+        from .models import PlaylistProgress
+        me = _prof(request)
+        if me:
+            PlaylistProgress.objects.filter(playlist_id=pk, profile=me).delete()
+        return Response(status=204)
+
+
+class PlaylistLikeView(APIView):
+    """POST {token?} — лайк чужого плейлиста (+5 к вайбометру создателя),
+    DELETE — снять (вайб обратно)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _target(self, request, pk):
+        me = _prof(request)
+        token = request.data.get("token") or request.query_params.get("token") or ""
+        pl = _listenable_playlist(me, pk, token) if me else None
+        if not pl:
+            return me, None, Response({"error": "Плейлист не найден или закрыт"}, status=404)
+        if pl.owner_id == me.id:
+            return me, None, Response({"error": "Свой плейлист не лайкнуть"}, status=400)
+        if me.is_bot:
+            return me, None, Response({"error": "Боты не лайкают"}, status=403)
+        return me, pl, None
+
+    def post(self, request, pk):
+        from .playlist_stats import like, state
+        me, pl, err = self._target(request, pk)
+        if err:
+            return err
+        like(pl, me)
+        return Response(state(pl, me))
+
+    def delete(self, request, pk):
+        from .playlist_stats import unlike, state
+        me, pl, err = self._target(request, pk)
+        if err:
+            return err
+        unlike(pl, me)
+        return Response(state(pl, me))
 
 
 class PlaylistTracksView(APIView):

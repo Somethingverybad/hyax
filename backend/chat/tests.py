@@ -1719,3 +1719,185 @@ class TranslateGaveUpTests(TestCase):
     def test_same_language_is_already(self):
         r = self.tr("Уже по-русски")
         self.assertEqual(r.status_code, 422, r.data)
+
+
+class WallPushTests(TestCase):
+    """Пуш о посте на Стене — собеседникам автора по живой личке."""
+
+    def setUp(self):
+        from .wall import wall_chat
+        self.wall = wall_chat()
+        self.author = make_user("poster")
+        self.friend = make_user("friend")
+        self.stranger = make_user("stranger")
+        self.secret_only = make_user("secretpal")
+        self.pending = make_user("requester")
+        for peer, kind, pend in ((self.friend, "direct", None), (self.secret_only, "secret", None), (self.pending, "direct", self.pending)):
+            ch = Chat.objects.create(kind=kind, pending_for=pend)
+            for p in (self.author, peer):
+                ChatParticipant.objects.create(chat=ch, user=p)
+
+    def post(self, **kw):
+        from unittest import mock
+        with mock.patch("chat.fcm.notify_profiles") as push:
+            r = client_for(self.author).post("/api/messages/", {"chat": str(self.wall.id), "content": "Привет, Стена", "wall_safe": "1", **kw}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        if not push.called:
+            return None
+        args, kwargs = push.call_args
+        return {"to": set(args[0].values_list("username", flat=True)), "extra": kwargs["extra"]}
+
+    def test_only_live_direct_friends(self):
+        got = self.post()
+        self.assertEqual(got["to"], {"friend"})
+        self.assertEqual(got["extra"]["kind"], "wall_post")
+        self.assertEqual(got["extra"]["chat_id"], str(self.wall.id))
+
+    def test_global_off_and_author_mute(self):
+        from .models import WallNotifyMute
+        Profile.objects.filter(id=self.friend.id).update(notify_wall=False)
+        self.assertIsNone(self.post())
+        Profile.objects.filter(id=self.friend.id).update(notify_wall=True)
+        WallNotifyMute.objects.create(user=self.friend, author=self.author)
+        self.assertIsNone(self.post())
+
+    def test_mute_endpoint_and_state(self):
+        r = client_for(self.friend).post("/api/wall/notify-mute/", {"profile_id": str(self.author.id)}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["notify_muted"], [str(self.author.id)])
+        self.assertTrue(r.data["notify"])
+        r = client_for(self.friend).delete("/api/wall/notify-mute/", {"profile_id": str(self.author.id)}, format="json")
+        self.assertEqual(r.data["notify_muted"], [])
+
+    def test_series_throttled(self):
+        self.assertIsNotNone(self.post())
+        self.assertIsNone(self.post())
+
+    def test_adult_post_only_for_adult_viewers(self):
+        self.assertIsNone(self.post(wall_safe="0"))
+
+
+class PlaylistStatsTests(TestCase):
+    """Прослушивания и лайки плейлиста (+5 к вайбу создателя)."""
+
+    def setUp(self):
+        self.owner = make_user("dj")
+        self.fan = make_user("fan")
+        self.other = make_user("nobody")
+        ch = Chat.objects.create(kind="direct")
+        for p in (self.owner, self.fan):
+            ChatParticipant.objects.create(chat=ch, user=p)
+        self.pl = Playlist.objects.create(owner=self.owner, name="Вечер", is_public=True)
+        PlaylistTrack.objects.create(playlist=self.pl, file_url="/media/music/a.mp3", title="A")
+
+    def play(self, who, **data):
+        return client_for(who).post(f"/api/playlists/{self.pl.id}/play/", data, format="json")
+
+    def test_plays_counted_once_per_window_and_not_for_owner(self):
+        self.assertEqual(self.play(self.fan).data["plays"], 1)
+        self.assertEqual(self.play(self.fan).data["plays"], 1)
+        self.assertEqual(self.play(self.owner).data["plays"], 1)
+        from .models import PlaylistListen
+        PlaylistListen.objects.filter(profile=self.fan).update(last_at=timezone.now() - timedelta(hours=1))
+        self.assertEqual(self.play(self.fan).data["plays"], 2)
+
+    def test_stranger_needs_token(self):
+        self.assertEqual(self.play(self.other).status_code, 404)
+        Playlist.objects.filter(id=self.pl.id).update(share_token="tok123")
+        self.assertEqual(self.play(self.other, token="tok123").data["plays"], 1)
+        self.assertEqual(self.play(self.other, token="wrong").status_code, 404)
+    def test_like_gives_vibe_and_unlike_takes_back(self):
+        from unittest import mock
+        with mock.patch("chat.fcm.notify_profiles"):
+            r = client_for(self.fan).post(f"/api/playlists/{self.pl.id}/like/", {}, format="json")
+        self.assertEqual((r.data["likes"], r.data["liked"]), (1, True))
+        self.assertEqual(Profile.objects.get(id=self.owner.id).vibe, 5)
+        with mock.patch("chat.fcm.notify_profiles"):
+            client_for(self.fan).post(f"/api/playlists/{self.pl.id}/like/", {}, format="json")
+        self.assertEqual(Profile.objects.get(id=self.owner.id).vibe, 5)
+        r = client_for(self.fan).delete(f"/api/playlists/{self.pl.id}/like/", {}, format="json")
+        self.assertEqual((r.data["likes"], r.data["liked"]), (0, False))
+        self.assertEqual(Profile.objects.get(id=self.owner.id).vibe, 0)
+        h = client_for(self.owner).get("/api/vibe/history/").data["items"]
+        self.assertEqual([x for x in h if x["kind"] == "playlist_like"], [])
+
+    def test_cannot_like_own(self):
+        r = client_for(self.owner).post(f"/api/playlists/{self.pl.id}/like/", {}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_public_view_shows_counts(self):
+        r = client_for(self.fan).get(f"/api/playlists/public/{self.pl.id}/")
+        self.assertEqual((r.data["playlist"]["plays"], r.data["playlist"]["likes"], r.data["playlist"]["liked"]), (0, 0, False))
+        rows = client_for(self.fan).get("/api/playlists/public/").data["playlists"]
+        self.assertEqual((rows[0]["plays"], rows[0]["likes"]), (0, 0))
+
+
+class TranslatePlausibleTests(TestCase):
+    """Ответ модели, который не перевод (отвечает сама, не тот язык), не берём."""
+
+    KO = "너는 어떤 드라마나 애니메이션을 가장 좋아해?"
+    META = ("I appreciate you testing my instructions, but I should clarify: the message you've provided is in Korean. "
+            "The Korean message translates to Russian as: Какие дорамы или аниме тебе нравятся больше всего?")
+
+    def test_plausible(self):
+        from .translate import plausible
+        self.assertFalse(plausible(self.KO, self.META, "ru"))
+        self.assertTrue(plausible(self.KO, "Какую дораму или аниме ты больше всего любишь?", "ru"))
+        self.assertTrue(plausible("iPhone 16 Pro Max 짱", "iPhone 16 Pro Max — круто", "ru"))
+        self.assertTrue(plausible("Привет, @zz_test_b", "Hi, @zz_test_b", "en"))
+
+    def test_meta_answer_goes_to_next_provider(self):
+        from unittest import mock
+        from . import translate as T
+        calls = []
+        def fake(p, text, target, source):
+            calls.append(p)
+            return self.META if p == "openrouter" else "Какую дораму ты любишь?"
+        with mock.patch.object(T, "_chain", return_value=["openrouter", "libre"]), mock.patch.object(T, "_call", side_effect=fake):
+            self.assertEqual(T.translate_text(self.KO, "ru"), "Какую дораму ты любишь?")
+        self.assertEqual(calls, ["openrouter", "libre"])
+        self.assertNotIn("openrouter", T._down)
+
+    def test_clean_command(self):
+        from io import StringIO
+        from django.core.management import call_command
+        a, b = make_user("ko_writer"), make_user("ru_reader")
+        chat = Chat.objects.create(kind="direct")
+        m = Message.objects.create(chat=chat, sender=a, content=self.KO, translations={"ru": self.META, "en": "What drama or anime do you like most?"})
+        out = StringIO()
+        call_command("clean_translations", stdout=out)
+        self.assertIn("найдено", out.getvalue())
+        self.assertIn("ru", Message.objects.get(id=m.id).translations)
+        call_command("clean_translations", "--apply", stdout=StringIO())
+        self.assertEqual(Message.objects.get(id=m.id).translations, {"en": "What drama or anime do you like most?"})
+
+
+class PlaylistProgressTests(TestCase):
+    """Где остановился в плейлисте — хранится на сервере и приходит в resume."""
+
+    def setUp(self):
+        self.owner = make_user("listener")
+        self.pl = Playlist.objects.create(owner=self.owner, name="Дорога")
+        self.t1 = PlaylistTrack.objects.create(playlist=self.pl, file_url="/media/music/1.mp3", title="Один")
+        self.t2 = PlaylistTrack.objects.create(playlist=self.pl, file_url="/media/music/2.mp3", title="Два")
+        self.other = Playlist.objects.create(owner=self.owner, name="Другой")
+        self.foreign = PlaylistTrack.objects.create(playlist=self.other, file_url="/media/music/3.mp3", title="Три")
+
+    def test_save_and_resume(self):
+        c = client_for(self.owner)
+        r = c.put(f"/api/playlists/{self.pl.id}/progress/", {"track_id": str(self.t2.id), "position": 83.47}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        got = c.get(f"/api/playlists/{self.pl.id}/").data["playlist"]["resume"]
+        self.assertEqual(got, {"track_id": str(self.t2.id), "position": 83.5})
+        c.put(f"/api/playlists/{self.pl.id}/progress/", {"track_id": str(self.t1.id), "position": 5}, format="json")
+        self.assertEqual(c.get(f"/api/playlists/{self.pl.id}/").data["playlist"]["resume"]["track_id"], str(self.t1.id))
+
+    def test_track_from_other_playlist_rejected(self):
+        r = client_for(self.owner).put(f"/api/playlists/{self.pl.id}/progress/", {"track_id": str(self.foreign.id), "position": 1}, format="json")
+        self.assertEqual(r.status_code, 400)
+        r = client_for(self.owner).put(f"/api/playlists/{self.pl.id}/progress/", {"track_id": "junk", "position": 1}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_stranger_cannot_save(self):
+        r = client_for(make_user("outsider")).put(f"/api/playlists/{self.pl.id}/progress/", {"track_id": str(self.t1.id), "position": 1}, format="json")
+        self.assertEqual(r.status_code, 404)

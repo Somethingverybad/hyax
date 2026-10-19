@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/api/client";
 import { resolveMediaUrl } from "@/hooks/use-media-url";
 import { saveFileToDevice } from "@/lib/saveFile";
+import ShareTrackButton from "@/components/music/ShareTrackButton";
 import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer, type Track } from "@/lib/player";
 
 /**
@@ -107,6 +108,7 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
         aria-label={s.volume > 0 ? tr("Выключить звук") : tr("Включить звук")} title={s.volume > 0 ? tr("Выключить звук") : tr("Включить звук")}>
         {s.volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
       </button>
+      <ShareTrackButton track={tk} className={btn} />
       <button type="button" onClick={stop} className={cn(btn, "text-subtle")} aria-label={tr("Закрыть плеер")} title={tr("Закрыть плеер")}>
         <X className="w-4 h-4" />
       </button>

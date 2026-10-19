@@ -13,7 +13,7 @@ from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView
 from .polls import PollVoteView, PollVotersView
 from .graffiti import GraffitiView
-from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
+from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
 
@@ -44,6 +44,7 @@ urlpatterns = [
     path('wall/seen/', WallSeenView.as_view(), name='wall-seen'),
     path('wall/posts/', WallPostsView.as_view(), name='wall-posts'),
     path('wall/mute/', WallMuteView.as_view(), name='wall-mute'),
+    path('wall/notify-mute/', WallNotifyMuteView.as_view(), name='wall-notify-mute'),
     path('wall/repost/', WallRepostView.as_view(), name='wall-repost'),
     path('wall/admin/posts/<uuid:pk>/', WallAdminPostView.as_view(), name='wall-admin-post'),
     path('wall/admin/bans/', WallAdminBansView.as_view(), name='wall-admin-bans'),
@@ -86,6 +87,9 @@ urlpatterns = [
     path('playlists/tracks/', PlaylistTracksView.as_view(), name='playlist-tracks-default'),
     path('playlists/all-tracks/', MyTracksView.as_view(), name='playlist-all-tracks'),
     path('playlists/<uuid:pk>/share/', PlaylistShareView.as_view(), name='playlist-share'),
+    path('playlists/<uuid:pk>/play/', PlaylistPlayView.as_view(), name='playlist-play'),
+    path('playlists/<uuid:pk>/like/', PlaylistLikeView.as_view(), name='playlist-like'),
+    path('playlists/<uuid:pk>/progress/', PlaylistProgressView.as_view(), name='playlist-progress'),
     path('playlists/shared/<str:token>/', SharedPlaylistView.as_view(), name='playlist-shared'),
     path('playlists/public/', PublicPlaylistsView.as_view(), name='playlists-public'),
     path('playlists/public/<uuid:pk>/', PublicPlaylistView.as_view(), name='playlist-public'),

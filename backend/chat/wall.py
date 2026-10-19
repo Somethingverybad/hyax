@@ -21,7 +21,7 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Chat, ChatParticipant, Message, Profile, WallBan, WallMute
+from .models import Chat, ChatParticipant, Message, Profile, WallBan, WallMute, WallNotifyMute
 from .moderation import blocked_ids
 from .serializers import is_admin_profile
 
@@ -119,6 +119,10 @@ def _state(me, chat):
             {"id": str(m.author_id), "username": m.author.username, "avatar_url": m.author.avatar_url}
             for m in WallMute.objects.filter(user=me).select_related("author")
         ],
+        # Пуши о постах собеседников (chat/wall_notify.py): общий выключатель
+        # и авторы, о чьих постах не уведомлять.
+        "notify": bool(me.notify_wall),
+        "notify_muted": [str(a) for a in WallNotifyMute.objects.filter(user=me).values_list("author_id", flat=True)],
     }
 
 
@@ -216,6 +220,28 @@ class WallMuteView(APIView):
         if not me:
             return Response({"error": "Profile not found"}, status=400)
         WallMute.objects.filter(user=me, author_id=request.data.get("profile_id")).delete()
+        return Response(_state(me, wall_chat()))
+
+
+class WallNotifyMuteView(APIView):
+    """POST {profile_id} — не уведомлять о постах автора; DELETE — снова уведомлять."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        me = _prof(request)
+        author = Profile.objects.filter(id=request.data.get("profile_id")).first()
+        if not me or not author:
+            return Response({"error": "Профиль не найден"}, status=404)
+        if author.id == me.id:
+            return Response({"error": "О своих постах уведомлений и так нет"}, status=400)
+        WallNotifyMute.objects.get_or_create(user=me, author=author)
+        return Response(_state(me, wall_chat()))
+
+    def delete(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Profile not found"}, status=400)
+        WallNotifyMute.objects.filter(user=me, author_id=request.data.get("profile_id")).delete()
         return Response(_state(me, wall_chat()))
 
 

@@ -427,7 +427,7 @@ def _me(request):
     return me if me and not me.is_bot else None
 
 
-def _notify_vibe(target, voter, anonymous, saved=False, push=True):
+def _notify_vibe(target, voter, anonymous, saved=False, push=True, playlist=None):
     """Сказать человеку, что его вайб подняли: в персональный сокет (веб и
     десктоп) и пушем. Анонимно — без имени; в пуше kind=vibe, по тапу
     клиент открывает свой профиль."""
@@ -450,6 +450,7 @@ def _notify_vibe(target, voter, anonymous, saved=False, push=True):
         # На языке того, чей вайб подняли (notify_profiles знает его язык).
         body = (L("Кто-то поднял ваш вайб — уже {n}", n=target.vibe) if anonymous
                 else L("{name} лайкнул(а) вашу сохранёнку — вайб уже {n}", name=voter.username, n=target.vibe) if saved
+                else L("{name} лайкнул(а) ваш плейлист «{playlist}» — вайб уже {n}", name=voter.username, playlist=playlist, n=target.vibe) if playlist
                 else L("{name} поднял(а) ваш вайб — уже {n}", name=voter.username, n=target.vibe))
         notify_profiles(Profile.objects.filter(id=target.id), title=L("Вайбометр"), body=body,
                         extra={"kind": "vibe", "profile_id": str(target.id)})
@@ -505,7 +506,7 @@ class VibeHistoryView(APIView):
     LIMIT = 200
 
     def get(self, request):
-        from .models import VibeVote, SavedImageVibe, Report, VIBE_REPORT_PENALTY, VIBE_SILENT
+        from .models import VibeVote, SavedImageVibe, PlaylistLike, Report, PLAYLIST_LIKE_VIBE, VIBE_REPORT_PENALTY, VIBE_SILENT
         me = _me(request)
         if not me or me.is_bot:
             return Response({"error": "Нет профиля"}, status=403)
@@ -516,6 +517,8 @@ class VibeHistoryView(APIView):
             rows.append((v.created_at, {"kind": "profile", "points": 1, "who": None if v.anonymous else who(v.voter)}))
         for v in SavedImageVibe.objects.filter(image__owner=me).select_related("voter", "image").order_by("-created_at")[:n]:
             rows.append((v.created_at, {"kind": "saved", "points": 1, "who": who(v.voter), "image": v.image.file_url}))
+        for v in PlaylistLike.objects.filter(playlist__owner=me).select_related("profile", "playlist").order_by("-created_at")[:n]:
+            rows.append((v.created_at, {"kind": "playlist_like", "points": PLAYLIST_LIKE_VIBE, "who": who(v.profile), "playlist": v.playlist.name}))
         for v in IdeaVote.objects.filter(idea__author=me, value__gt=0).select_related("idea").order_by("-created_at")[:n]:
             rows.append((v.created_at, {"kind": "idea_like", "points": LIKE_POINTS, "idea": _clip(v.idea.text, 120)}))
         for v in IdeaVote.objects.filter(voter=me).select_related("idea").order_by("-created_at")[:n]:

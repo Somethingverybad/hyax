@@ -8,6 +8,9 @@ import Identicon from "@/components/Identicon";
 import { api, type Playlist, type PlaylistTrack, type PublicPlaylist } from "@/api/client";
 import { playQueue, usePlayer, currentTrack, fmtTime, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
+import { PlaylistStatsBar, reportPlaylistPlay } from "@/components/music/PlaylistStats";
+import ResumeButton from "@/components/music/ResumeButton";
+import { playPlaylist, resumeTrack } from "@/lib/playlistResume";
 
 const toQueue = (t: PlaylistTrack): Track => ({
   id: t.id, raw: t.file_url, title: t.title, artist: t.artist || undefined, source: "track",
@@ -24,6 +27,7 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
   onSaved: (pl: Playlist) => void;
 }) => {
   const [tracks, setTracks] = useState<PlaylistTrack[] | null>(null);
+  const [stats, setStats] = useState<Pick<Playlist, "plays" | "likes" | "liked" | "resume"> | null>(null);
   const [missing, setMissing] = useState(false);
   const [saving, setSaving] = useState(false);
   // Треки, уже забранные в «Мою музыку» за этот заход: галочка вместо плюса.
@@ -35,7 +39,7 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
 
   useEffect(() => {
     api.getPublicPlaylist(item.id)
-      .then((r) => setTracks(r.tracks))
+      .then((r) => { setTracks(r.tracks); setStats(r.playlist); })
       .catch(() => setMissing(true));
   }, [item.id]);
 
@@ -77,6 +81,7 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
             {(() => { const [before, after = ""] = tr("Плейлист {owner}").split("{owner}"); return <>{before}<b className="text-foreground">{item.owner.username}</b>{after}</>; })()}
             {tracks && <>{" · "}{tn(tracks.length, "{n} трек", "{n} трека", "{n} треков")}</>}
           </p>
+          {stats && <PlaylistStatsBar id={item.id} own={false} plays={stats.plays} likes={stats.likes} liked={stats.liked} className="ml-auto shrink-0" />}
         </div>
 
         {missing ? (
@@ -96,6 +101,13 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
             >
               <Download className="w-4 h-4" /> {saving ? tr("Сохраняю…") : tr("Сохранить плейлист себе")}
             </button>
+            {(() => {
+              const at = resumeTrack(tracks, item.id, stats?.resume);
+              return at && stats?.resume ? (
+                <ResumeButton track={at} position={stats.resume.position}
+                  onClick={() => { void playPlaylist(tracks, toQueue, { playlistId: item.id }, stats.resume); reportPlaylistPlay(item.id); }} />
+              ) : null;
+            })()}
             {tracks.length === 0 ? (
               <p className="px-1 text-small text-subtle">{tr("Плейлист пуст.")}</p>
             ) : (
@@ -115,7 +127,7 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
                       label={t.title}
                       hint={t.artist || undefined}
                       value={isNow && player.duration ? fmtTime(player.time) : undefined}
-                      onClick={() => void playQueue(tracks.map(toQueue), i)}
+                      onClick={() => { void playQueue(tracks.map(toQueue), i, { source: { playlistId: item.id } }); reportPlaylistPlay(item.id); }}
                       trailing={
                         <span className="flex items-center shrink-0">
                           <button

@@ -8,6 +8,8 @@ import { currentTrack, playQueue, toggle, usePlayer, type Track } from "@/lib/pl
 import { readCache } from "@/lib/session-cache";
 import { t as tr, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { PlaylistStatsBar, reportPlaylistPlay } from "@/components/music/PlaylistStats";
+import { playPlaylist } from "@/lib/playlistResume";
 
 type Data = { playlist: Playlist; owner: string; tracks: PlaylistTrack[] };
 
@@ -69,7 +71,12 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
     e.stopPropagation();
     if (!queue.length) return;
     if (fromHere) void toggle();
-    else void playQueue(queue, 0);
+    else if (data) {
+      // Уже слушал — с того места, где остановился (lib/playlistResume).
+      const byId = new Map(queue.map((q) => [q.id, q]));
+      void playPlaylist(data.tracks, (x) => byId.get(x.id)!, { playlistId: data.playlist.id, token }, data.playlist.resume);
+      if (!mine) reportPlaylistPlay(data.playlist.id, token);
+    }
   };
 
   const save = async (e: React.MouseEvent) => {
@@ -129,6 +136,8 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
               <Plus className="w-3.5 h-3.5" /> {busy ? "…" : tr("Себе")}
             </button>
           )}
+          <PlaylistStatsBar id={data.playlist.id} token={token} own={mine} plays={data.playlist.plays}
+            likes={data.playlist.likes} liked={data.playlist.liked} className="shrink-0 pl-1 opacity-90 [&_*]:!text-inherit" />
         </div>
       )}
 
@@ -140,7 +149,7 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
             const isNow = playing?.id === t.id && !player.live;
             return (
               <div key={t.id} className="flex items-center gap-2 px-2.5 py-1.5">
-                <button type="button" onClick={(e) => { e.stopPropagation(); void playQueue(queue, i); }}
+                <button type="button" onClick={(e) => { e.stopPropagation(); void playQueue(queue, i, { source: { playlistId: data.playlist.id, token } }); if (!mine) reportPlaylistPlay(data.playlist.id, token); }}
                   className="min-w-0 flex-1 flex items-center gap-2 text-left" aria-label={t.title}>
                   <span className={cn("w-7 h-7 shrink-0 rounded-md flex items-center justify-center",
                     isNow ? "bg-primary text-primary-foreground" : "bg-surface-4")}>

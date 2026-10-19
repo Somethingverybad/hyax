@@ -22,8 +22,9 @@ export function VibeBar({ vibe }: { vibe: number | null }) {
 
 /**
  * Вайбометр в профиле. Чужой — можно один раз «поднять вайб» (+1).
- * Свой — только смотреть. Баллы ещё и за голоса в «Долгом ящике» (+5) и
- * лайки своих идей (+10). Сервер: chat/ideabox.py (VibeView).
+ * Свой — только смотреть. Баллы ещё и за голоса в «Долгом ящике» (+5),
+ * лайки своих идей (+10) и плейлистов (+5, chat/playlist_stats.py).
+ * Сервер: chat/ideabox.py (VibeView).
  */
 export default function Vibometer({ profileId, own, initial }: { profileId: string; own?: boolean; initial?: number | null }) {
   const [vibe, setVibe] = useState<number | null>(initial ?? null);

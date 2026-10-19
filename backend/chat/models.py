@@ -8,6 +8,8 @@ from django.utils import timezone
 VIBE_SILENT = -99999
 # Каждая жалоба на человека снимает столько вайба (ReportView).
 VIBE_REPORT_PENALTY = 100
+# Лайк чужого плейлиста — столько вайба его создателю; сняли лайк — обратно.
+PLAYLIST_LIKE_VIBE = 5
 
 
 class Profile(models.Model):
@@ -65,6 +67,9 @@ class Profile(models.Model):
     # «Стена» (chat/wall.py) в списке чатов. «Удалить» Стену из списка —
     # выключить её здесь; включается обратно в настройках.
     wall_enabled = models.BooleanField(default=True)
+    # Пуш, когда собеседник (живая личка) написал на Стене (chat/wall_notify.py).
+    # Отдельных авторов глушат в меню поста — WallNotifyMute.
+    notify_wall = models.BooleanField(default=True, db_default=True)
     # «Долгий ящик» в списке чатов: скрыл — строки нет и пушей от бота нет;
     # возвращается в настройках («Внешний вид» → «Разделы»).
     ideabox_enabled = models.BooleanField(default=True)
@@ -894,6 +899,10 @@ class Playlist(models.Model):
     # личке), их можно слушать и сохранить себе. Ссылка (share_token) — другое:
     # по ней открывает любой, кому её дали.
     is_public = models.BooleanField(default=False)
+    # Сколько раз плейлист слушали другие (не владелец): со страницы
+    # плейлиста, по ссылке, из карточки в чате, в эфире. Повтор одним
+    # человеком в течение получаса не считается (chat/playlist_stats.py).
+    plays = models.PositiveIntegerField(default=0, db_default=0)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -970,6 +979,40 @@ class Station(models.Model):
 
     def __str__(self):
         return f"📻 {self.owner.username}: {self.playlist.name}"
+
+
+class PlaylistListen(models.Model):
+    """Когда человек последний раз запускал чужой плейлист — чтобы повтор
+    в течение получаса не накручивал счётчик (Playlist.plays)."""
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="listens")
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    last_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("playlist", "profile")
+
+
+class PlaylistProgress(models.Model):
+    """Где человек остановился в плейлисте (своём или чужом): трек и секунда.
+    Включил его снова — продолжаем отсюда (src/lib/playlistResume.ts)."""
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="progress")
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    track = models.ForeignKey("PlaylistTrack", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    position = models.FloatField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("playlist", "profile")
+
+
+class PlaylistLike(models.Model):
+    """Лайк чужого плейлиста: +PLAYLIST_LIKE_VIBE к вайбометру создателя."""
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name="likes")
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="playlist_likes")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("playlist", "profile")
 
 
 class StationListener(models.Model):
@@ -1261,6 +1304,16 @@ class VibeConfig(models.Model):
 class WallMute(models.Model):
     """Стена: «скрыть автора» — его постов этот человек больше не видит."""
     user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="wall_mutes")
+    author = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("user", "author")
+
+
+class WallNotifyMute(models.Model):
+    """Стена: «не уведомлять о постах автора» — посты видны, пушей о них нет."""
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="wall_notify_mutes")
     author = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
     created_at = models.DateTimeField(default=timezone.now)
 

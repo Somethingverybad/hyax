@@ -46,6 +46,8 @@ export interface Profile {
   status?: string;
   push_preview?: boolean;
   notify_silent?: boolean;
+  /** Пуш, когда собеседник написал на Стене (chat/wall_notify.py). */
+  notify_wall?: boolean;
   rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
   /** Звук входящего звонка: "" — стандартный, "classic", "sound:<id>" (lib/ringtone.ts). */

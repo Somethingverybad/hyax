@@ -7,6 +7,10 @@ import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
 import { playQueue, usePlayer, currentTrack, fmtTime, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
+import { readCache } from "@/lib/session-cache";
+import { PlaylistStatsBar, reportPlaylistPlay } from "@/components/music/PlaylistStats";
+import ResumeButton from "@/components/music/ResumeButton";
+import { playPlaylist, resumeTrack } from "@/lib/playlistResume";
 
 /**
  * Плейлист по ссылке: послушать и забрать себе.
@@ -27,6 +31,8 @@ const SharedPlaylist = () => {
   const [saving, setSaving] = useState(false);
   const player = usePlayer();
   const playing = currentTrack();
+  // Свой плейлист по своей же ссылке: лайкнуть нельзя, прослушивание не в счёт.
+  const own = !!data && data.owner.toLowerCase() === (readCache<{ username?: string }>("user")?.username || "").toLowerCase();
 
   useEffect(() => {
     api.getSharedPlaylist(token)
@@ -70,6 +76,7 @@ const SharedPlaylist = () => {
               {(() => { const [before, after = ""] = tr("Плейлист {owner}").split("{owner}"); return <>{before}<b>{data.owner}</b>{after}</>; })()}
               {" · "}{tn(data.tracks.length, "{n} трек", "{n} трека", "{n} треков")}
             </p>
+            <PlaylistStatsBar id={data.playlist.id} token={token} own={own} plays={data.playlist.plays} likes={data.playlist.likes} liked={data.playlist.liked} className="px-1" />
             <button
               type="button"
               onClick={() => void save()}
@@ -79,6 +86,13 @@ const SharedPlaylist = () => {
               <Download className="w-4 h-4" /> {saving ? tr("Сохраняю…") : tr("Сохранить себе")}
             </button>
 
+            {(() => {
+              const at = resumeTrack(data.tracks, data.playlist.id, data.playlist.resume);
+              return at && data.playlist.resume ? (
+                <ResumeButton track={at} position={data.playlist.resume.position}
+                  onClick={() => { void playPlaylist(data.tracks, (x) => ({ ...toQueue(x), source: "track", token }), { playlistId: data.playlist.id, token }, data.playlist.resume); if (!own) reportPlaylistPlay(data.playlist.id, token); }} />
+              ) : null;
+            })()}
             {data.tracks.length === 0 ? (
               <p className="px-1 text-small text-subtle">{tr("Плейлист пуст.")}</p>
             ) : (
@@ -98,7 +112,7 @@ const SharedPlaylist = () => {
                       label={t.title}
                       hint={t.artist || undefined}
                       value={isNow && player.duration ? fmtTime(player.time) : undefined}
-                      onClick={() => void playQueue(data.tracks.map((x) => ({ ...toQueue(x), source: "track", token })), i)}
+                      onClick={() => { void playQueue(data.tracks.map((x) => ({ ...toQueue(x), source: "track", token })), i, { source: { playlistId: data.playlist.id, token } }); if (!own) reportPlaylistPlay(data.playlist.id, token); }}
                     />
                   );
                 })}

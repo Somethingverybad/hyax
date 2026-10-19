@@ -36,6 +36,7 @@ const ProfileVibeHistory = () => {
       case "idea_like": return t("Лайк вашей идеи");
       case "idea_vote": return t("Вы проголосовали за идею");
       case "report": return t("Жалоба на вас");
+      case "playlist_like": return name ? t("{name} лайкнул(а) ваш плейлист", { name }) : t("Лайк вашего плейлиста");
     }
   };
   const icon = (e: VibeEvent) => {
@@ -76,6 +77,7 @@ const ProfileVibeHistory = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-body line-clamp-2 break-words">{title(e)}</p>
                     {e.idea && <p className="text-caption text-subtle line-clamp-2 break-words">«{e.idea}»</p>}
+                    {e.playlist && <p className="text-caption text-subtle line-clamp-1 break-words">«{e.playlist}»</p>}
                     <p className="text-caption text-subtle">{when(e.at)}</p>
                   </div>
                   {e.image && <img src={mediaUrl(e.image)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" loading="lazy" />}

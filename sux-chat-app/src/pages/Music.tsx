@@ -18,6 +18,10 @@ import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, to
 import { cn } from "@/lib/utils";
 import { Capacitor } from "@capacitor/core";
 import { clearFinished, enqueueTracks, nativeTrackUploads, pickNativeTracks, retryFailed, useTrackUploads } from "@/lib/trackUploads";
+import { PlaylistStatsBar } from "@/components/music/PlaylistStats";
+import ResumeButton from "@/components/music/ResumeButton";
+import ShareTrackButton from "@/components/music/ShareTrackButton";
+import { playPlaylist, resumeTrack } from "@/lib/playlistResume";
 
 /**
  * Музыка: плейлисты из того, что присылали в переписке.
@@ -68,6 +72,7 @@ const PlayerPanel = ({ onLive }: { onLive?: () => void }) => {
               {s.live ? ` · 📻 ${s.live.name}` : s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
             </span>
           </span>
+          <ShareTrackButton track={t} className="p-2" />
           <button type="button" onClick={stop} className="p-2 text-subtle" aria-label={tr("Закрыть плеер")}>
             <X className="w-4 h-4" />
           </button>
@@ -482,6 +487,17 @@ const Music = () => {
             </div>
           ) : (
             <>
+            {/* Прослушивания и лайки — от других; у личного плейлиста их нет, строку не показываем. */}
+            {(open.is_public || !!open.share_token || !!open.plays || !!open.likes) && (
+              <PlaylistStatsBar id={open.id} own plays={open.plays} likes={open.likes} className="px-1" />
+            )}
+            {(() => {
+              const at = resumeTrack(tracks, open.id, open.resume);
+              return at && open.resume ? (
+                <ResumeButton track={at} position={open.resume.position}
+                  onClick={() => void playPlaylist(tracks, trackToQueue, { playlistId: open.id }, open.resume)} />
+              ) : null;
+            })()}
             {(() => {
               // Этот плейлист уже в эфире (от меня или от канала) — кнопка ведёт в эфир.
               const air = (stations || []).find((st) => st.mine && st.playlist_id === open.id);
@@ -513,7 +529,7 @@ const Music = () => {
                     label={t.title}
                     hint={t.artist || (!t.source && fromChat(t) ? tr("Сообщение удалено, музыка осталась") : undefined)}
                     value={isNow && player.duration ? fmtTime(player.time) : undefined}
-                    onClick={() => void playQueue(tracks.map(trackToQueue), i)}
+                    onClick={() => void playQueue(tracks.map(trackToQueue), i, { source: { playlistId: open.id } })}
                     trailing={
                       <span className="flex items-center">
                         <button
@@ -772,7 +788,7 @@ const Music = () => {
                 key={pl.id}
                 icon={pl.is_default ? Music2 : ListMusic}
                 label={playlistName(pl)}
-                hint={pl.is_public ? tr("Видят собеседники") : undefined}
+                hint={[pl.is_public ? tr("Видят собеседники") : null, playsHint(pl.plays, pl.likes)].filter(Boolean).join(" · ") || undefined}
                 value={pluralTracks(pl.tracks_count || 0)}
                 onClick={() => void openList(pl)}
               />
@@ -798,7 +814,7 @@ const Music = () => {
                 key={pl.id}
                 leading={<Identicon id={pl.owner.id} avatarUrl={pl.owner.avatar_url} className="w-9 h-9 rounded-md shrink-0" />}
                 label={pl.is_default ? tr(pl.name) : pl.name}
-                hint={pl.owner.username}
+                hint={[pl.owner.username, playsHint(pl.plays, pl.likes)].filter(Boolean).join(" · ")}
                 value={pluralTracks(pl.tracks_count || 0)}
                 onClick={() => setOpenShared(pl)}
               />
@@ -812,6 +828,11 @@ const Music = () => {
   );
 };
 
+
+/** «12 прослушиваний · ♥ 3» в строке списка — только то, что есть. */
+const playsHint = (plays?: number, likes?: number) =>
+  [plays ? tn(plays, "{n} прослушивание", "{n} прослушивания", "{n} прослушиваний") : null, likes ? `♥ ${likes}` : null]
+    .filter(Boolean).join(" · ") || null;
 
 /** Выбор папки браузером — где он это умеет (компьютер и веб); на телефоне — плагином (nativeTrackUploads). */
 const canPickFolder = typeof HTMLInputElement !== "undefined" && "webkitdirectory" in HTMLInputElement.prototype && !Capacitor.isNativePlatform();

@@ -447,7 +447,14 @@ class StationListenView(APIView):
             return Response({"error": "Эфир закончился"}, status=404)
         if me.is_bot:
             return Response({"error": "Боты эфир не слушают — только ведут"}, status=403)
-        StationListener.objects.update_or_create(station=st, profile=me, defaults={"seen_at": timezone.now()})
+        _, joined = StationListener.objects.update_or_create(station=st, profile=me, defaults={"seen_at": timezone.now()})
+        # Пришёл в эфир — прослушивание его плейлиста (повтор в полчаса не в счёт).
+        if joined and st.playlist_id:
+            try:
+                from .playlist_stats import count_play
+                count_play(st.playlist, me)
+            except Exception:
+                logger.exception("radio: прослушивание плейлиста не засчитано")
         return Response(station_state(st, me))
 
     def delete(self, request, pk):

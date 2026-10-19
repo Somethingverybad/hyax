@@ -218,6 +218,8 @@ export interface Profile {
   push_preview?: boolean;
   /** Входящие без звука: играет только звук, отправленный специально. */
   notify_silent?: boolean;
+  /** Пуш, когда собеседник написал на Стене. Только в своём профиле. */
+  notify_wall?: boolean;
   /** «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников. */
   notify_sound?: NotificationSoundInfo | null;
   /** Звук входящего звонка (lib/ringtone.ts). Только в своём профиле. */
@@ -300,12 +302,14 @@ export interface SoundPackInfo {
 /** Стикерпак — карточка по ссылке /stp/<id>. author — сериализованный профиль. */
 /** Событие вайбометра (chat/ideabox.py, VibeHistoryView). who нет — анонимно. */
 export interface VibeEvent {
-  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report";
+  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report" | "playlist_like";
   points: number;
   at: string;
   who?: { id: string; username: string; avatar_url?: string | null } | null;
   image?: string;
   idea?: string;
+  /** playlist_like: название плейлиста, который лайкнули. */
+  playlist?: string;
 }
 export interface VibeHistory { vibe: number; silent: boolean; items: VibeEvent[] }
 
@@ -366,7 +370,17 @@ export interface Playlist {
   is_public?: boolean;
   created_at?: string;
   tracks_count?: number;
+  /** Сколько раз его слушали другие (свои запуски и повторы в полчаса не в счёт). */
+  plays?: number;
+  /** Лайки; liked — мой (только у чужого плейлиста). Лайк — +5 к вайбу создателя. */
+  likes?: number;
+  liked?: boolean;
+  /** Где я остановился: трек и секунда (lib/playlistResume). */
+  resume?: { track_id: string; position: number } | null;
 }
+
+/** Прослушивания и лайки плейлиста (ответ play/like). */
+export interface PlaylistStats { plays: number; likes: number; liked: boolean }
 
 /** Эфир (радиостанция): плейлист, который собеседники слушают вместе. */
 export interface StationInfo {
@@ -414,6 +428,8 @@ export interface PublicPlaylist {
   /** Когда туда последний раз добавляли музыку. */
   updated_at?: string | null;
   owner: { id: string; username: string; avatar_url?: string | null };
+  plays?: number;
+  likes?: number;
 }
 
 export interface PlaylistTrack {
@@ -467,6 +483,8 @@ export interface WallState {
   muted_authors: { id: string; username: string; avatar_url?: string | null }[];
   /** Автоперевод чужих постов на мой язык и есть ли переводчик на сервере. */
   translate?: boolean; translate_available?: boolean;
+  /** Пуши о постах собеседников: общий выключатель и авторы, о ком не уведомлять. */
+  notify?: boolean; notify_muted?: string[];
 }
 
 export interface Chat {
@@ -1310,6 +1328,26 @@ export const api = {
     return (await res.json()).playlists || [];
   },
 
+  /** Запустил чужой плейлист — счётчик прослушиваний. token — ключ ссылки, если открыт по ней. */
+  playlistPlayed: async (id: string, token?: string): Promise<PlaylistStats> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/play/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ token: token || undefined }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
+    return body;
+  },
+  /** Где я остановился в плейлисте (lib/playlistResume). */
+  savePlaylistProgress: async (id: string, trackId: string, position: number, token?: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/progress/`, { method: "PUT", headers: authHeaders(), body: JSON.stringify({ track_id: trackId, position, token: token || undefined }) });
+    if (!res.ok) throw new LError("Не получилось");
+  },
+  /** Лайк чужого плейлиста (on=false — снять). */
+  likePlaylist: async (id: string, on: boolean, token?: string): Promise<PlaylistStats> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/like/`, { method: on ? "POST" : "DELETE", headers: authHeaders(), body: JSON.stringify({ token: token || undefined }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
+    return body;
+  },
+
   getPublicPlaylist: async (id: string): Promise<{ playlist: Playlist; owner: string; owner_info?: PublicPlaylist["owner"]; tracks: PlaylistTrack[] }> => {
     const res = await fetchWithAuth(`${API_URL}/playlists/public/${id}/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new LError("Плейлист не найден или закрыт");
@@ -1466,7 +1504,8 @@ export const api = {
   sendTrackToChat: async (chatId: string, track: { file_url: string; title: string }): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST", headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, content: "", file_url: track.file_url, file_name: `${track.title}.mp3` }),
+      // Расширение — как у файла: m4a/flac под именем .mp3 не открываются у получателя.
+      body: JSON.stringify({ chat: chatId, content: "", file_url: track.file_url, file_name: `${track.title}${(track.file_url.split("?")[0].match(/\.[a-z0-9]{2,5}$/i) || [".mp3"])[0]}` }),
     });
     if (!res.ok) throw new LError("Не удалось отправить");
   },
@@ -1547,6 +1586,13 @@ export const api = {
   },
   muteWallAuthor: async (profileId: string, mute = true): Promise<WallState> => {
     const res = await fetchWithAuth(`${API_URL}/wall/mute/`, { method: mute ? "POST" : "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
+    return body;
+  },
+  /** Не уведомлять о постах автора на Стене (mute=false — снова уведомлять). */
+  muteWallNotify: async (profileId: string, mute = true): Promise<WallState> => {
+    const res = await fetchWithAuth(`${API_URL}/wall/notify-mute/`, { method: mute ? "POST" : "DELETE", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body;
@@ -2352,7 +2398,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
