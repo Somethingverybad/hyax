@@ -1050,7 +1050,8 @@ class ButtonTests(TestCase):
                                      {"chat": str(self.chat.id), "content": "Выберите", "buttons": self.rows},
                                      format="json").data
         r = client_for(self.stranger).post(f"/api/messages/{msg['id']}/press/", {"data": "pick:1"}, format="json")
-        self.assertEqual(r.status_code, 403)
+        # Чужого чата посторонний не видит вовсе: сообщение для него не существует.
+        self.assertEqual(r.status_code, 404)
 
 
 
