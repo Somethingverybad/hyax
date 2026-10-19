@@ -183,9 +183,10 @@ const ProfilePage = () => {
   // Веб-часть пришла по воздуху (lib/ota.ts) — новее той, что в сборке.
   const [viaOta, setViaOta] = useState(false);
   useEffect(() => {
+    // «По воздуху» — и на компьютере (electron/ota.cjs), не только на телефоне.
+    void otaInfo().then((i) => setViaOta(!!i?.ota));
     if (!Capacitor.isNativePlatform()) return;
     App.getInfo().then((i) => setNativeBuild(i.build)).catch(() => {});
-    void otaInfo().then((i) => setViaOta(!!i?.ota));
   }, []);
   const platformLabel = Capacitor.getPlatform() === "ios" ? "iOS" : "Android";
 
