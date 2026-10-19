@@ -6,7 +6,8 @@ import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
 import { MAX_VOICE_SECONDS, useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder"
-import SelectTextSheet from "@/components/chat/SelectTextSheet";
+import SelectTextSheet from "@/components/chat/SelectTextSheet"
+import { activityLabel, reportActivity, useChatActivity } from "@/lib/chatActivity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
@@ -547,6 +548,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => { setHeaderTitle(title || ""); }, [title]);
   const isGroup = !!group?.is_group;
   const isGroupAdmin = isGroup && group?.creator === userId;
+  // «Печатает…», «записывает голосовое…» собеседника (lib/chatActivity): в группе — с именем.
+  const activityText = activityLabel(useChatActivity(chatId), isGroup);
+  // Ушли из чата — «печатает» там больше не горит.
+  useEffect(() => () => reportActivity(chatId, "stop"), [chatId]);
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
   const {
@@ -561,6 +566,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Р.Ё.В. Короткий тап переключает режим, удержание запускает действие.
   type ComposerMode = RecordKind | "rov";
   const [recordKind, setRecordKind] = useState<ComposerMode>("audio");
+  // Пока пишем голосовое или треугольник — собеседник видит «записывает…» / «снимает…».
+  useEffect(() => {
+    if (!recording || !chatId || recordKind === "rov") return;
+    const kind = recordKind === "video" ? "video" : "voice";
+    reportActivity(chatId, kind);
+    const timer = setInterval(() => reportActivity(chatId, kind), 3000);
+    return () => { clearInterval(timer); reportActivity(chatId, "stop"); };
+  }, [recording, recordKind, chatId]);
   // Панель записи: тап по кнопке записи раскрывает ряд кнопок на ширину строки —
   // голосовое (над ним — запись без рук), треугольник (над ним — переворот и
   // камера), Р.Ё.В. и «свернуть»; поле текста на это время прячется. Удержание
@@ -2652,6 +2665,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const reply = replyTo;
 
     setDraft("");
+    reportActivity(chatId, "stop");
     setAttachments([]);
     setSelectedSound(null);
     setReplyTo(null);
@@ -3637,8 +3651,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
                 <span className="truncate">{headerTitle || peer?.username || group?.name || tr("Чат")}</span>
               </span>
-              <span className="max-w-full truncate text-[11.7px] leading-[16px] mint-muted">
-                {peer ? (peer.is_bot ? tr("бот") : peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))
+              <span className={cn("max-w-full truncate text-[11.7px] leading-[16px]", activityText ? "text-primary font-medium" : "mint-muted")}>
+                {activityText ? activityText : peer ? (peer.is_bot ? tr("бот") : peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))
                   : isGroup ? tn(group?.participants?.length || 0, "{n} участник", "{n} участника", "{n} участников")
                   : saved ? tr("Сообщения для себя") : ""}
               </span>
@@ -3686,8 +3700,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 </span>
                 <span className="text-small text-muted-foreground truncate">
                   {!peer.is_bot && (
-                    <span className={peer.is_online ? "text-online" : undefined}>
-                      {peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen)}
+                    <span className={activityText ? "text-primary" : peer.is_online ? "text-online" : undefined}>
+                      {activityText || (peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))}
                     </span>
                   )}
                   {!peer.is_bot && " · "}@{peer.username}
@@ -3708,7 +3722,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               )}
               <span className="min-w-0 flex flex-col">
                 <span className="text-h1 truncate leading-tight">{headerTitle || group?.name || tr("Группа")}</span>
-                <span className="text-small text-muted-foreground truncate">{tr("Группа")}</span>
+                <span className={cn("text-small truncate", activityText ? "text-primary" : "text-muted-foreground")}>{activityText || tr("Группа")}</span>
               </span>
             </button>
           ) : (
@@ -5025,6 +5039,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onFocus={panelToKeyboard}
                 onClick={panelToKeyboard}
                 onChange={(e) => {
+                  // «Печатает…» у собеседников; стёр всё — перестал (lib/chatActivity).
+                  reportActivity(chatId, e.target.value.trim() ? "typing" : "stop");
                   trackCustomEdit(draftRef.current, e.target.value, e.target.selectionEnd);
                   draftRef.current = e.target.value;
                   // setState с тем же значением React пропускает — перерисовка

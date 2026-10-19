@@ -1932,3 +1932,39 @@ class RecentStickersTests(TestCase):
         self.assertEqual(self.ids(), [str(self.b.id), str(self.a.id)])
         Profile.objects.filter(id=self.me.id).update(allow_adult=True)
         self.assertEqual(self.ids(), [str(self.b.id), str(self.a.id), str(self.x.id)])
+
+
+class ActivityTargetsTests(TestCase):
+    """«Печатает…»: кому сигнал уходит (chat/consumers.py UserConsumer.activity_targets)."""
+
+    def targets(self, chat, who):
+        from .consumers import activity_targets_for
+        return activity_targets_for(str(chat.id), who)[2]
+
+    def setUp(self):
+        self.me, self.peer, self.third = make_user("typer"), make_user("reader1"), make_user("reader2")
+        self.direct = Chat.objects.create(kind="direct")
+        self.group = Chat.objects.create(kind="group", is_group=True, name="Компания")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.direct, user=p)
+        for p in (self.me, self.peer, self.third):
+            ChatParticipant.objects.create(chat=self.group, user=p)
+
+    def test_direct_and_group(self):
+        self.assertEqual(self.targets(self.direct, self.me), [str(self.peer.id)])
+        self.assertEqual(set(self.targets(self.group, self.me)), {str(self.peer.id), str(self.third.id)})
+
+    def test_not_participant_channel_hidden_and_blocked(self):
+        outsider = make_user("outsider2")
+        self.assertEqual(self.targets(self.direct, outsider), [])
+        ch = Chat.objects.create(kind="channel", name="Канал")
+        ChatParticipant.objects.create(chat=ch, user=self.me)
+        ChatParticipant.objects.create(chat=ch, user=self.peer)
+        self.assertEqual(self.targets(ch, self.me), [])
+        from .models import Block
+        Block.objects.create(blocker=self.third, blocked=self.me)
+        self.assertEqual(self.targets(self.group, self.me), [str(self.peer.id)])
+        Profile.objects.filter(id=self.me.id).update(hide_online=True)
+        self.assertEqual(self.targets(self.direct, Profile.objects.get(id=self.me.id)), [])
+        from .consumers import activity_targets_for
+        self.assertEqual(activity_targets_for("not-a-uuid", self.peer)[2], [])

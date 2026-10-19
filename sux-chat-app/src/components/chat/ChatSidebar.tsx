@@ -1,6 +1,7 @@
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { allDrafts } from "@/lib/drafts";
+import { activityLabel, useAllActivity } from "@/lib/chatActivity";
 import CachedImg from "@/components/CachedImg";
 import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
@@ -203,6 +204,8 @@ const ChatSidebar = ({
   const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
   // Черновики (lib/drafts): в строке чата вместо последнего сообщения.
   const [drafts, setDrafts] = useState<Record<string, string>>(() => allDrafts());
+  // «Печатает…» и прочее — вместо последнего сообщения (lib/chatActivity).
+  const activityFor = useAllActivity();
   useEffect(() => {
     const on = () => setDrafts(allDrafts());
     window.addEventListener("hyax:drafts", on);
@@ -1322,6 +1325,8 @@ const ChatSidebar = ({
                                 ? ((chat as any).secret?.state === "pending"
                                     ? ((chat as any).secret?.initiator_id === currentUser?.id ? t("Ждём, когда собеседник примет") : t("Приглашение в секретный чат"))
                                     : (chat as any).secret?.state === "declined" ? t("Секретный чат отклонён") : t("Секретный чат"))
+                              : activityFor(chat.id).length
+                                ? <span className="text-primary">{activityLabel(activityFor(chat.id), !!(chat as any).is_group)}</span>
                               : drafts[chat.id] && chat.id !== selectedChatId && (chat as any).kind !== "secret"
                                 ? <><span className="text-destructive">{t("Черновик:")}</span> {drafts[chat.id].replace(/\s+/g, " ").slice(0, 140)}</>
                               : (chat as any).last_message

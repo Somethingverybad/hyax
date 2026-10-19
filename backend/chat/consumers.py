@@ -673,6 +673,12 @@ class UserConsumer(AsyncWebsocketConsumer):
                 await self.handle_rov(text_data_json)
                 return
 
+            # «Печатает», «записывает голосовое», «снимает треугольник» —
+            # живой сигнал собеседникам (src/lib/chatActivity.ts), в историю не пишем.
+            if message_type == 'activity':
+                await self.handle_activity(text_data_json)
+                return
+
             # Обработка звонков через персональный канал
             if message_type in {
                 "call_invite",
@@ -764,6 +770,49 @@ class UserConsumer(AsyncWebsocketConsumer):
                     },
                 },
             )
+
+    # ── «Печатает…» ──────────────────────────────────────────────────────────
+    # Клиент шлёт {type:'activity', chat:<id>, kind:'typing'|'voice'|'video'}
+    # раз в несколько секунд, пока печатает или пишет, и kind:'stop', когда
+    # перестал. Приёмник сам гасит подпись, если повторов нет (обрыв связи).
+    ACTIVITY_KINDS = ("typing", "voice", "video", "stop")
+    ACTIVITY_MAX_RATE = 4        # сообщений в секунду — защита от флуда
+    ACTIVITY_MAX_PEOPLE = 50     # больше — это уже не разговор, а толпа
+    ACTIVITY_CACHE_SECONDS = 60  # кому слать — не спрашиваем базу на каждый сигнал
+
+    async def handle_activity(self, payload):
+        import time
+        kind = payload.get('kind')
+        chat_id = str(payload.get('chat') or '')
+        if kind not in self.ACTIVITY_KINDS or not chat_id:
+            return
+        now = time.monotonic()
+        window = getattr(self, '_act_window', (0.0, 0))
+        if now - window[0] >= 1.0:
+            window = (now, 0)
+        window = (window[0], window[1] + 1)
+        self._act_window = window
+        if window[1] > self.ACTIVITY_MAX_RATE:
+            return
+        cache = getattr(self, '_act_targets', None)
+        if cache is None:
+            cache = self._act_targets = {}
+        hit = cache.get(chat_id)
+        if hit and hit[0] > now:
+            me_id, me_name, targets = hit[1]
+        else:
+            profile = await self.get_user_profile(self.user)
+            if not profile:
+                return
+            me_id, me_name, targets = await self.activity_targets(chat_id, profile)
+            cache[chat_id] = (now + self.ACTIVITY_CACHE_SECONDS, (me_id, me_name, targets))
+        data = {'type': 'activity', 'chat_id': chat_id, 'user_id': me_id, 'username': me_name, 'kind': kind}
+        for target_id in targets:
+            await self.channel_layer.group_send(f'user_{target_id}', {'type': 'notification', 'data': data})
+
+    @database_sync_to_async
+    def activity_targets(self, chat_id, profile):
+        return activity_targets_for(chat_id, profile, self.ACTIVITY_MAX_PEOPLE)
 
     async def broadcast_presence(self, profile):
         """Собеседникам по личным чатам — «в сети» / «не в сети»."""
@@ -1622,3 +1671,31 @@ class ObsConsumer(AsyncWebsocketConsumer):
     async def obs_revoked(self, event):
         await self.send(text_data=json.dumps({"type": "revoked"}))
         await self.close(code=4003)
+
+
+def activity_targets_for(chat_id, profile, max_people=50):
+    """Кому показывать «печатает…»: собеседники по этому чату (не боты).
+    Каналы, Стену и служебные чаты мимо; кто скрыл «в сети» — и «печатает» не
+    показывает; блокировка в любую сторону — тоже мимо. Возвращает
+    (мой id, моё имя, [id получателей])."""
+    from django.db.models import Q
+    from .models import Block, Chat, ChatParticipant
+    me = (str(profile.id), profile.username)
+    if profile.is_bot or getattr(profile, 'hide_online', False):
+        return (*me, [])
+    try:
+        chat = Chat.objects.filter(id=chat_id).only('id', 'kind').first()
+    except Exception:
+        return (*me, [])
+    if not chat or getattr(chat, 'kind', '') in ('channel', 'wall', 'saved', 'ideabox', 'system'):
+        return (*me, [])
+    if not ChatParticipant.objects.filter(chat=chat, user=profile).exists():
+        return (*me, [])
+    ids = list(ChatParticipant.objects.filter(chat=chat, user__is_bot=False).exclude(user=profile)
+               .values_list('user_id', flat=True)[:max_people + 1])
+    if len(ids) > max_people:
+        return (*me, [])
+    blocked = set()
+    for a, b in Block.objects.filter(Q(blocker=profile, blocked_id__in=ids) | Q(blocked=profile, blocker_id__in=ids)).values_list('blocker_id', 'blocked_id'):
+        blocked.add(b if a == profile.id else a)
+    return (*me, [str(i) for i in ids if i not in blocked])
