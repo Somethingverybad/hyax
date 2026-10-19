@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Обновление веб-части по воздуху (electron/ota.cjs): «жив» и сведения.
   otaReady: () => ipcRenderer.send('ota-ready'),
   otaInfo: () => ipcRenderer.invoke('ota-info'),
+  // Применить скачанный бандл сейчас (перезагрузка окна, без перезапуска).
+  otaApply: () => ipcRenderer.invoke('ota-apply'),
   // Как установлено на Linux: appimage | deb | other; иначе native.
   installKind: () => ipcRenderer.invoke('install-kind'),
   // Язык интерфейса (ru | en | ko) — для трея, меню и диалогов main-процесса.

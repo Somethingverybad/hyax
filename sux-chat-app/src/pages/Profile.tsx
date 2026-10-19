@@ -2,7 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { writeClipboard } from "@/lib/clipboard";
 import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
-import { otaInfo } from "@/lib/ota";
+import { otaApplyNow, otaInfo, otaPending } from "@/lib/ota";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
@@ -11,7 +11,7 @@ import LoopVideo from "@/components/LoopVideo";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
-import { Globe, Wand2, LayoutGrid, Cloud } from "lucide-react";
+import { Globe, Wand2, LayoutGrid, Cloud, CloudDownload } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -182,6 +182,17 @@ const ProfilePage = () => {
   const [nativeBuild, setNativeBuild] = useState<string | null>(null);
   // Веб-часть пришла по воздуху (lib/ota.ts) — новее той, что в сборке.
   const [viaOta, setViaOta] = useState(false);
+  // Скачан новый интерфейс, ещё не применён — «Обновить сейчас».
+  const [otaReady, setOtaReady] = useState(false);
+  const [otaApplying, setOtaApplying] = useState(false);
+  useEffect(() => {
+    const check = () => void otaPending().then(setOtaReady);
+    check();
+    window.addEventListener("hyax:ota-pending", check);
+    // Компьютер скачивает в main-процессе — спрашиваем время от времени.
+    const t = window.setInterval(check, 60 * 1000);
+    return () => { window.removeEventListener("hyax:ota-pending", check); window.clearInterval(t); };
+  }, []);
   useEffect(() => {
     // «По воздуху» — и на компьютере (electron/ota.cjs), не только на телефоне.
     void otaInfo().then((i) => setViaOta(!!i?.ota));
@@ -546,10 +557,18 @@ const ProfilePage = () => {
             {t("WYX {version} · сборка {build}", { version: APP_VERSION, build: APP_BUILD })}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
             {/* Интерфейс пришёл по воздуху (OTA) — облачко, подпись — при наведении. */}
-            {viaOta && (
+            {viaOta && !otaReady && (
               <span className="inline-flex align-[-2px] ml-1.5" title={t("Обновлено по воздуху (OTA)")} aria-label={t("Обновлено по воздуху (OTA)")} role="img">
                 <Cloud className="w-3.5 h-3.5" />
               </span>
+            )}
+            {/* Новый интерфейс скачан — применить сразу, без перезапуска. */}
+            {otaReady && (
+              <button type="button" disabled={otaApplying}
+                onClick={() => { setOtaApplying(true); void otaApplyNow("кнопка").then((ok) => { if (!ok) setOtaApplying(false); }); }}
+                className="ml-2 inline-flex items-center gap-1 align-[-3px] text-primary font-medium disabled:opacity-60">
+                <CloudDownload className="w-3.5 h-3.5" /> {otaApplying ? t("Обновляю…") : t("Обновить сейчас")}
+              </button>
             )}
             {/* Лицензия анимированных эмодзи (CC BY 4.0) требует указать авторов. */}
             <div className="mt-1 opacity-80">{t("Анимированные эмодзи: Noto Emoji, Google, CC BY 4.0")}</div>

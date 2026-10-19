@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { writeClipboard } from "@/lib/clipboard";
+import { setBusy } from "@/lib/busy";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/api/client";
@@ -62,6 +63,13 @@ const NO_LEVELS: AudioLevels = { peers: {}, local: 0 };
 const CallHost = () => {
   const navigate = useNavigate();
   const [callState, setCallState] = useState<CallState>("idle");
+  // Звонок (и входящий тоже) — «занято»: обновление по воздуху не
+  // перезагрузит интерфейс посреди разговора (lib/busy, lib/ota).
+  useEffect(() => {
+    if (callState === "idle") return;
+    setBusy("call", true);
+    return () => setBusy("call", false);
+  }, [callState]);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [callPeer, setCallPeer] = useState<{ id: string; name: string; avatarUrl?: string | null } | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);

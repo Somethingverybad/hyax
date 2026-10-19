@@ -5,8 +5,9 @@
 // Манифест и архив — те же, что для телефонов (scripts/ota-publish.py):
 // hyax-public/ota/manifest.json → zip с dist. Скачали и сверили sha256 —
 // распаковываем в <userData>/ota/<сборка>-<sha8>/ и ставим «ждёт запуска».
-// Применяем при следующем запуске, а не сразу: перезагрузка посреди работы
-// оборвала бы звонок, музыку и загрузку файла.
+// Применяем при следующем запуске — или на лету (applyNow), когда интерфейс
+// решит, что момент безопасный (окно свёрнуто или давно без касаний, нет
+// звонка, записи, музыки — src/lib/ota.ts), или по кнопке «Обновить сейчас».
 //
 // Откат: новый бандл должен сказать «жив» (ota-ready — после первой отрисовки
 // интерфейса) за 20 с; не сказал или программа упала до этого — при следующем
@@ -196,10 +197,27 @@ function startChecks() {
   setInterval(() => void check(), CHECK_EVERY_MS);
 }
 
-/** Для профиля и плашки обновления: работает ли бандл по воздуху и какой встроенный. */
+/** Применить скачанный бандл сейчас, без перезапуска программы: окно
+ *  перезагружается и app:// отдаёт уже его; «жив» — как при запуске. Когда
+ *  это безопасно (нет звонка, записи, музыки), решает интерфейс (src/lib/ota.ts). */
+function applyNow(win) {
+  if (!state || !state.pending || !okDir(state.pending)) return false;
+  state.previous = state.current;
+  state.current = state.pending.builtin ? null : state.pending;
+  state.pending = null;
+  state.trial = !!state.current;
+  save();
+  log('ota: применён на лету', state.current ? state.current.version : 'встроенный');
+  if (win && !win.isDestroyed()) { win.reload(); watch(win); }
+  return true;
+}
+
+/** Для профиля и плашки обновления: работает ли бандл по воздуху, ждёт ли
+ *  новый и какой встроенный. */
 function info() {
   return { ota: !!(state && okDir(state.current)), version: state && state.current ? state.current.version : null,
+           pending: !!(state && state.pending && okDir(state.pending)),
            builtinVersion: builtin.version, builtinBuild: builtin.build };
 }
 
-module.exports = { init, root, watch, ready, startChecks, info, check };
+module.exports = { init, root, watch, ready, startChecks, info, check, applyNow };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { setBusy } from "@/lib/busy";
 
 /**
  * Запись сообщения удержанием кнопки: голос или короткое видео с фронтальной
@@ -23,6 +24,13 @@ export const MAX_VOICE_SECONDS = 15 * 60;
 
 export function useMediaRecorder() {
   const [recording, setRecording] = useState(false);
+  // Пока пишем — «занято»: обновление по воздуху не перезагрузит интерфейс
+  // посреди записи (lib/busy, lib/ota).
+  useEffect(() => {
+    if (!recording) return;
+    setBusy("record", true);
+    return () => setBusy("record", false);
+  }, [recording]);
   const [seconds, setSeconds] = useState(0);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const kindRef = useRef<RecordKind>("audio");

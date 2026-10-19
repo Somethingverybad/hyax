@@ -595,6 +595,8 @@ const en: Record<string, string> = {
   "Уже в «Моей музыке»": "Already in My music",
   "Ничего не воспроизводится": "Nothing is playing",
   "Обновлено по воздуху (OTA)": "Updated over the air (OTA)",
+  "Обновить сейчас": "Update now",
+  "Обновляю…": "Updating…",
   "по воздуху": "over the air",
   "У вас без звука — эфир идёт": "Muted for you — the broadcast goes on",
   "Опрос можно создать только на Стене или в канале": "Polls can only be created on the Wall or in a channel",

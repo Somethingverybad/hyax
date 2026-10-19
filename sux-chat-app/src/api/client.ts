@@ -336,6 +336,7 @@ export interface SavedImage {
 
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
 import type { ReactionSummary } from "@/lib/reactions";
+import { withBusy } from "@/lib/busy";
 
 /** Опрос в посте Стены. votes — только если results (проголосовал или автор). */
 export interface PollInfo {
@@ -2655,3 +2656,10 @@ export const api = {
   },
 
 };
+
+// Загрузки — «занято» (lib/busy): обновление по воздуху не перезагрузит
+// интерфейс посреди отправки файла, голосового или трека.
+for (const k of ["uploadFile", "uploadVoice", "uploadTrack"] as const) {
+  const run = api[k] as (...args: unknown[]) => Promise<unknown>;
+  (api as Record<string, unknown>)[k] = (...args: unknown[]) => withBusy("upload", () => run(...args));
+}

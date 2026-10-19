@@ -5,7 +5,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { initTheme } from "./lib/theme";
 import { installAppLog, applog } from "./lib/applog";
-import { otaBoot, startOtaChecks } from "./lib/ota";
+import { otaBoot, startOtaAutoApply, startOtaChecks } from "./lib/ota";
 
 // Лог баг-репортов — с самого старта, чтобы поймать и ошибки инициализации.
 installAppLog();
@@ -21,6 +21,7 @@ const render = () => {
   rendered = true;
   createRoot(document.getElementById("root")!).render(<App />);
   startOtaChecks();
+  startOtaAutoApply();
 };
 otaBoot().then((switching) => { if (switching) window.setTimeout(render, 5000); else render(); }, render);
 

@@ -3,6 +3,8 @@ import { App } from "@capacitor/app";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { APP_BUILD, APP_VERSION } from "@/lib/appVersion";
 import { applog } from "@/lib/applog";
+import { isBusy } from "@/lib/busy";
+import { playerState } from "@/lib/player";
 
 /**
  * Обновление веб-части по воздуху (iPhone и Android).
@@ -23,6 +25,11 @@ import { applog } from "@/lib/applog";
  *   как сломанную и больше её не ставим;
  * - новая сборка из магазина сама возвращает встроенный бандл
  *   (resetWhenUpdate), а старее встроенного бандл не ставим.
+ *
+ * Кроме запуска, скачанный бандл применяется на лету — тогда, когда это
+ * никому не мешает (startOtaAutoApply): приложение ушло в фон или к
+ * компьютеру давно не прикасались, и нет звонка, записи, загрузки, не играет
+ * музыка или эфир (lib/busy, плеер). И по кнопке «Обновить сейчас» в профиле.
  *
  * Нативный код (плагины, расширение пушей, службы Android, capacitor.config)
  * так не обновляется — только новой сборкой.
@@ -103,10 +110,15 @@ export async function otaBoot(): Promise<boolean> {
     applog.warn(`ota: ${pending.version} не запустился, остаёмся на ${BUNDLE_VERSION}`);
     return false;
   }
+  return switchTo(pending);
+}
+
+/** Переключиться на скачанный бандл: страница перезагрузится в нём. */
+async function switchTo(pending: Pending): Promise<boolean> {
   write(PENDING_KEY, { ...pending, tried: true });
   try {
     // После set/reset страница перезагружается и промис не вернётся; если за
-    // 5 с перезагрузки не было — рисуем этот бандл, а не белый экран.
+    // 5 с перезагрузки не было — остаёмся на этом бандле, а не на белом экране.
     const switching = pending.id === "builtin" ? CapacitorUpdater.reset() : CapacitorUpdater.set({ id: pending.id });
     await Promise.race([switching, new Promise((_, fail) => window.setTimeout(() => fail(new Error("нет перезагрузки за 5 с")), 5000))]);
     return true;
@@ -190,7 +202,8 @@ export async function otaCheck(force = false): Promise<void> {
       .find((b) => b.version === m.version && b.status !== "error" && b.status !== "deleted");
     const bundle = have || await CapacitorUpdater.download({ url: m.url, version: m.version, checksum: m.sha256 });
     write(PENDING_KEY, { id: bundle.id, version: m.version, build: m.build });
-    applog.info(`ota: скачан ${m.version}, применится при следующем запуске`);
+    applog.info(`ota: скачан ${m.version}`);
+    window.dispatchEvent(new Event("hyax:ota-pending"));
   } catch (e) {
     applog.warn(`ota: проверка не удалась: ${(e as Error)?.message || e}`);
   } finally {
@@ -219,5 +232,75 @@ export async function otaInfo(): Promise<{ ota: boolean; native: string } | null
     return { ota: cur.bundle.id !== "builtin", native: info.build };
   } catch {
     return null;
+  }
+}
+
+// ---- Применить на лету ----
+
+type DesktopOta = {
+  otaInfo?: () => Promise<{ ota: boolean; pending?: boolean; builtinBuild: number } | null>;
+  otaApply?: () => Promise<boolean>;
+};
+const desktopOta = () => (window as { electronAPI?: DesktopOta }).electronAPI;
+
+/** Скачан ли новый бандл, который ещё не применён. */
+export async function otaPending(): Promise<boolean> {
+  const d = desktopOta();
+  if (d?.otaApply && d.otaInfo) return !!(await d.otaInfo().catch(() => null))?.pending;
+  if (!otaEnabled()) return false;
+  const p = read<Pending>(PENDING_KEY);
+  return !!p && !p.tried && p.build !== (parseInt(APP_BUILD, 10) || 0);
+}
+
+/** Сейчас перезагрузка интерфейса никому не помешает. */
+export function otaSafeNow(): boolean {
+  if (isBusy()) return false;
+  const p = playerState();
+  return !p.playing && !p.live;
+}
+
+/** Применить скачанный бандл сейчас (кнопка в профиле или безопасный момент). */
+export async function otaApplyNow(why: string): Promise<boolean> {
+  if (!(await otaPending())) return false;
+  applog.info(`ota: применяю на лету (${why})`);
+  const d = desktopOta();
+  if (d?.otaApply) return d.otaApply().catch(() => false);
+  const p = read<Pending>(PENDING_KEY);
+  return p ? switchTo(p) : false;
+}
+
+/** Через сколько в фоне применять при возвращении (если в фоне не успели). */
+const AWAY_MS = 3 * 60 * 1000;
+/** Компьютер: сколько окно должно простоять без касаний. */
+const IDLE_MS = 10 * 60 * 1000;
+
+/**
+ * Применять на лету в безопасный момент: приложение ушло в фон (через пару
+ * секунд, пока страница ещё жива) или вернулось после долгого фона — тогда
+ * перезагрузка выглядит как обычный запуск; на компьютере — окно 10 минут
+ * без касаний. Всегда — только если ничего не идёт (otaSafeNow).
+ */
+export function startOtaAutoApply() {
+  const d = desktopOta();
+  if (!otaEnabled() && !d?.otaApply) return;
+  let lastTouch = Date.now();
+  let hiddenAt = 0;
+  const touch = () => { lastTouch = Date.now(); };
+  for (const ev of ["pointerdown", "keydown", "wheel", "touchstart"]) window.addEventListener(ev, touch, { passive: true, capture: true });
+  const tryApply = async (why: string) => { if (otaSafeNow() && await otaPending()) await otaApplyNow(why); };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      hiddenAt = Date.now();
+      window.setTimeout(() => { if (document.visibilityState === "hidden") void tryApply("в фоне"); }, 1500);
+    } else {
+      const away = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (away >= AWAY_MS) void tryApply("после фона");
+    }
+  });
+  if (d?.otaApply) {
+    window.setInterval(() => {
+      if (Date.now() - lastTouch >= IDLE_MS) void tryApply("простой");
+    }, 60 * 1000);
   }
 }

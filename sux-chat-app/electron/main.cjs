@@ -375,6 +375,7 @@ ipcMain.handle('app-version', () => app.getVersion());
 // Обновление по воздуху: интерфейс отрисовался — бандл жив; сведения — профилю и плашке.
 ipcMain.on('ota-ready', () => { if (!isDev) ota.ready(); });
 ipcMain.handle('ota-info', () => (isDev ? null : ota.info()));
+ipcMain.handle('ota-apply', () => (isDev ? false : ota.applyNow(mainWindow)));
 ipcMain.on('minimize-window', () => mainWindow?.minimize());
 ipcMain.on('close-window', () => mainWindow?.close());
 
