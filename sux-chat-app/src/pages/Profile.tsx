@@ -11,7 +11,7 @@ import LoopVideo from "@/components/LoopVideo";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
-import { Globe, Wand2, LayoutGrid } from "lucide-react";
+import { Globe, Wand2, LayoutGrid, Cloud } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -545,7 +545,12 @@ const ProfilePage = () => {
           <div className="shrink-0 mt-auto pt-4 text-center text-caption text-subtle select-text">
             {t("WYX {version} · сборка {build}", { version: APP_VERSION, build: APP_BUILD })}
             {nativeBuild && nativeBuild !== APP_BUILD ? ` · ${platformLabel} ${nativeBuild}` : ""}
-            {viaOta ? ` · ${t("по воздуху")}` : ""}
+            {/* Интерфейс пришёл по воздуху (OTA) — облачко, подпись — при наведении. */}
+            {viaOta && (
+              <span className="inline-flex align-[-2px] ml-1.5" title={t("Обновлено по воздуху (OTA)")} aria-label={t("Обновлено по воздуху (OTA)")} role="img">
+                <Cloud className="w-3.5 h-3.5" />
+              </span>
+            )}
             {/* Лицензия анимированных эмодзи (CC BY 4.0) требует указать авторов. */}
             <div className="mt-1 opacity-80">{t("Анимированные эмодзи: Noto Emoji, Google, CC BY 4.0")}</div>
           </div>

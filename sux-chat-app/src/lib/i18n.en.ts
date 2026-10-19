@@ -594,6 +594,7 @@ const en: Record<string, string> = {
   "Играть": "Play",
   "Уже в «Моей музыке»": "Already in My music",
   "Ничего не воспроизводится": "Nothing is playing",
+  "Обновлено по воздуху (OTA)": "Updated over the air (OTA)",
   "по воздуху": "over the air",
   "У вас без звука — эфир идёт": "Muted for you — the broadcast goes on",
   "Опрос можно создать только на Стене или в канале": "Polls can only be created on the Wall or in a channel",
