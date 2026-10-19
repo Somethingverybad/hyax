@@ -642,6 +642,7 @@ const en: Record<string, string> = {
   "Трека нет в плейлисте": "This track isn't in the playlist",
   "Поделиться треком": "Share track",
   "Трек отправлен: {chat}": "Track sent: {chat}",
+  "Здесь появятся стикеры, которые вы отправляете чаще всего": "Stickers you send most often will appear here",
   "Загружаю {i} из {n}": "Uploading {i} of {n}",
   "Не загрузилось: {n}": "Not uploaded: {n}",
   "Файл недоступен — выберите его снова": "The file is unavailable — pick it again",

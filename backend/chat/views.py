@@ -2829,6 +2829,33 @@ def _emoji_image(src):
         return None
 
 
+class RecentStickersView(APIView):
+    """GET — «Недавние» в панели стикеров: что я сам отправлял чаще всего
+    (по последним стикерам в моих сообщениях; при равенстве — что свежее).
+    Удалённые стикеры и наборы 18+ без «Показывать 18+» — мимо."""
+    permission_classes = [permissions.IsAuthenticated]
+    LIMIT = 30
+    LOOKBACK = 400
+
+    def get(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"stickers": []})
+        ids = list(Message.objects.filter(sender=me, sticker__isnull=False, deleted_for_all=False)
+                   .order_by("-created_at").values_list("sticker_id", flat=True)[:self.LOOKBACK])
+        count, first = {}, {}
+        for i, sid in enumerate(ids):
+            count[sid] = count.get(sid, 0) + 1
+            first.setdefault(sid, i)
+        top = sorted(count, key=lambda sid: (-count[sid], first[sid]))
+        qs = Sticker.objects.filter(id__in=top, pack__kind="sticker").select_related("pack")
+        if not me.allow_adult:
+            qs = qs.filter(pack__is_adult=False)
+        by_id = {s.id: s for s in qs}
+        rows = [by_id[sid] for sid in top if sid in by_id][:self.LIMIT]
+        return Response({"stickers": StickerSerializer(rows, many=True).data})
+
+
 class StickerUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]

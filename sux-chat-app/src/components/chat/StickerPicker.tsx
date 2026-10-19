@@ -9,7 +9,7 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users, Smile, Brush } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users, Smile, Brush, Clock } from "lucide-react";
 import EmojiPanel from "@/components/chat/EmojiPanel";
 import { shareStickerPack } from "@/lib/share";
 import ImageCropper from "@/components/ImageCropper";
@@ -78,6 +78,15 @@ const pickerCache: { packs: UserStickerPack[] | null; lastPackId: string | null;
   // Последний открытый набор — и между запусками приложения.
   packs: null, lastPackId: (() => { try { return localStorage.getItem(PACK_KEY); } catch { return null; } })(), stickers: new Map(),
 };
+/** «Недавние» — первая вкладка полосы наборов: что человек отправляет чаще
+ *  всего (сервер считает по его сообщениям, /stickers/recent/). Отправил
+ *  стикер — он сразу встаёт первым, не дожидаясь сервера. */
+const RECENT = "__recent__";
+const RECENT_MAX = 30;
+function bumpRecent(s: Sticker) {
+  const cur = pickerCache.stickers.get(RECENT) || [];
+  pickerCache.stickers.set(RECENT, [s, ...cur.filter((x) => x.id !== s.id)].slice(0, RECENT_MAX));
+}
 /** Наборы поменялись не из панели (например, первое граффити завело «Мои
  *  граффити») — при следующем открытии перечитать. */
 export function forgetStickerPacks(packId?: string) {
@@ -87,7 +96,7 @@ export function forgetStickerPacks(packId?: string) {
 const activePackIdInit = (): string | null => {
   // Наборы ещё не загружены (первое открытие после запуска) — запомненный;
   // когда список придёт, его сверят с ним (load).
-  if (!pickerCache.packs) return pickerCache.lastPackId;
+  if (!pickerCache.packs || pickerCache.lastPackId === RECENT) return pickerCache.lastPackId;
   const list = pickerCache.packs;
   return list.some((p) => p.pack.id === pickerCache.lastPackId) ? pickerCache.lastPackId : list[0]?.pack?.id ?? null;
 };
@@ -170,7 +179,7 @@ const StickerPicker = ({
       const list = ((await api.getMyStickerPacks()) || []).filter((p: UserStickerPack) => (p.pack as { kind?: string })?.kind !== "emoji");
       pickerCache.packs = list;
       setPacks(list);
-      setActivePackId((prev) => selectId ?? (prev && list.some((p: UserStickerPack) => p.pack.id === prev) ? prev : list[0]?.pack?.id ?? null));
+      setActivePackId((prev) => selectId ?? (prev && (prev === RECENT || list.some((p: UserStickerPack) => p.pack.id === prev)) ? prev : list[0]?.pack?.id ?? null));
     } catch {
       setPacks([]);
     } finally {
@@ -373,7 +382,7 @@ const StickerPicker = ({
     setStickers(pickerCache.stickers.get(activePackId) || []);
     (async () => {
       try {
-        const list = (await api.getStickers(activePackId)) || [];
+        const list = (activePackId === RECENT ? await api.getRecentStickers() : await api.getStickers(activePackId)) || [];
         pickerCache.stickers.set(activePackId, list);
         if (alive) setStickers(list);
       } catch {
@@ -704,6 +713,18 @@ const StickerPicker = ({
             <MoreHorizontal className="w-4 h-4" />
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setActivePackId(RECENT)}
+          title={t("Недавние")}
+          aria-label={t("Недавние")}
+          aria-pressed={activePackId === RECENT}
+          className={mint
+            ? cn("shrink-0 w-[25px] h-[25px] rounded-[6px] flex items-center justify-center mint-ink transition-transform", activePackId === RECENT ? "ring-2 ring-[var(--mint-ink)] ring-offset-1 scale-110" : "opacity-80")
+            : cn("px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors flex items-center gap-1", activePackId === RECENT ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
+        >
+          <Clock className="w-3.5 h-3.5" />{!mint && t("Недавние")}
+        </button>
         {packs.map((p) => (
           <button
             key={p.pack.id}
@@ -791,7 +812,7 @@ const StickerPicker = ({
       <div ref={stickerScroll} className="flex-1 overflow-y-auto p-2">
         {stickers.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-3">
-            <p className="text-sm text-muted-foreground">{t("В наборе пусто")}</p>
+            <p className="text-sm text-muted-foreground px-6 text-center">{activePackId === RECENT ? t("Здесь появятся стикеры, которые вы отправляете чаще всего") : t("В наборе пусто")}</p>
             {canAdd && (
             <button
               type="button"
@@ -826,13 +847,13 @@ const StickerPicker = ({
                   if (editMode) return;
                   holdFiredRef.current = false;
                   if (holdRef.current) clearTimeout(holdRef.current);
-                  holdRef.current = setTimeout(() => { holdFiredRef.current = true; onSelect(s, true); }, 450);
+                  holdRef.current = setTimeout(() => { holdFiredRef.current = true; bumpRecent(s); onSelect(s, true); }, 450);
                 }}
                 onPointerUp={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
                 onPointerLeave={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
                 onPointerCancel={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
                 onContextMenu={(e) => e.preventDefault()}
-                onClick={() => { if (holdFiredRef.current) { holdFiredRef.current = false; return; } if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else onSelect(s); }}
+                onClick={() => { if (holdFiredRef.current) { holdFiredRef.current = false; return; } if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else { bumpRecent(s); onSelect(s); } }}
                 style={{ touchAction: "pan-y" }}
                 className={cn("relative aspect-square rounded-lg p-1 active:scale-90 transition-transform select-none", editMode && isAuthor && "ring-1 ring-primary/50")}
               >

@@ -74,6 +74,7 @@ urlpatterns = [
     path('upload/chunk/', ChunkUploadView.as_view(), name='file-upload-chunk'),
     path('upload/chunk/<str:upload_id>/', ChunkUploadView.as_view(), name='file-upload-chunk-status'),
     path('stickers/upload/', StickerUploadView.as_view(), name='sticker-upload'),
+    path('stickers/recent/', RecentStickersView.as_view(), name='stickers-recent'),
     path('graffiti/', GraffitiView.as_view(), name='graffiti'),
     path('voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('avatar/upload/', AvatarUploadView.as_view(), name='avatar-upload'),

@@ -1903,3 +1903,30 @@ class PlaylistProgressTests(TestCase):
     def test_stranger_cannot_save(self):
         r = client_for(make_user("outsider")).put(f"/api/playlists/{self.pl.id}/progress/", {"track_id": str(self.t1.id), "position": 1}, format="json")
         self.assertEqual(r.status_code, 404)
+
+
+class RecentStickersTests(TestCase):
+    """«Недавние» стикеры: чаще отправленные — выше, 18+ — только кому можно."""
+
+    def setUp(self):
+        self.me = make_user("stickerfan")
+        self.peer = make_user("stickerpeer")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        pack = StickerPack.objects.create(name="Коты", author=self.peer)
+        adult = StickerPack.objects.create(name="Взрослые", is_adult=True, author=self.peer)
+        self.a = Sticker.objects.create(pack=pack, file_url="/media/stickers/a.webp", file_name="a.webp")
+        self.b = Sticker.objects.create(pack=pack, file_url="/media/stickers/b.webp", file_name="b.webp")
+        self.x = Sticker.objects.create(pack=adult, file_url="/media/stickers/x.webp", file_name="x.webp")
+        for st in (self.a, self.b, self.b, self.x, self.a, self.b):
+            Message.objects.create(chat=self.chat, sender=self.me, sticker=st)
+        Message.objects.create(chat=self.chat, sender=self.peer, sticker=self.a)
+
+    def ids(self):
+        return [s["id"] for s in client_for(self.me).get("/api/stickers/recent/").data["stickers"]]
+
+    def test_order_and_adult_filter(self):
+        self.assertEqual(self.ids(), [str(self.b.id), str(self.a.id)])
+        Profile.objects.filter(id=self.me.id).update(allow_adult=True)
+        self.assertEqual(self.ids(), [str(self.b.id), str(self.a.id), str(self.x.id)])

@@ -2144,6 +2144,12 @@ export const api = {
     return res.json();
   },
 
+  /** «Недавние»: стикеры, которые я отправляю чаще всего (сервер считает по моим сообщениям). */
+  getRecentStickers: async (): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/stickers/recent/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Failed to load stickers");
+    return (await res.json()).stickers || [];
+  },
   getStickers: async (packId?: string): Promise<any[]> => {
     const url = packId ? `${API_URL}/stickers/?pack=${packId}` : `${API_URL}/stickers/`;
     const res = await fetchWithAuth(url, {
