@@ -1025,6 +1025,15 @@ class ButtonTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data["buttons"], self.rows)
 
+    def test_person_writing_first_lets_bot_answer(self):
+        """Человек сам написал боту, не нажав «Начать», — бот может ответить."""
+        Chat.objects.filter(id=self.chat.id).update(bot_started=False)
+        bot_reply = lambda: self.bot_client().post("/api/messages/", {"chat": str(self.chat.id), "content": "привет"}, format="json")
+        self.assertEqual(bot_reply().status_code, 403)
+        r = client_for(self.me).post("/api/messages/", {"chat": str(self.chat.id), "content": "https://youtu.be/x"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(bot_reply().status_code, 201)
+
     def test_person_cannot_fake_buttons(self):
         r = client_for(self.me).post("/api/messages/",
                                      {"chat": str(self.chat.id), "content": "я бот", "buttons": self.rows},

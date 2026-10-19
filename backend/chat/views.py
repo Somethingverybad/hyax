@@ -1806,6 +1806,13 @@ class MessageViewSet(viewsets.ModelViewSet):
             if _ch and profile.is_bot and profile.bot_private and Profile.objects.filter(
                     chatparticipant__chat=_ch, is_bot=False).exclude(id=profile.bot_owner_id).exists():
                 return Response({"error": "Приватный бот пишет только владельцу"}, status=403)
+            # Человек сам написал боту — это и есть «начал»: дальше бот может
+            # отвечать. Раньше без нажатия «Начать» ответы бота сервер
+            # отклонял, и бот молчал тем, кто просто прислал ему ссылку.
+            if _ch and _ch.kind == 'direct' and not profile.is_bot and not _ch.bot_started and \
+                    Profile.objects.filter(chatparticipant__chat=_ch, is_bot=True).exists():
+                Chat.objects.filter(id=_ch.id).update(bot_started=True)
+                _ch.bot_started = True
             if _ch and _ch.kind == 'channel':
                 _cp = ChatParticipant.objects.filter(chat=_ch, user=profile).first()
                 if not _cp or _cp.role not in ('owner', 'admin'):
