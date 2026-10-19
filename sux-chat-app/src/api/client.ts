@@ -28,6 +28,13 @@ export const getApiOrigin = () => apiOrigin;
  * лимит, неудачный кусок повторяется сам, прогресс идёт ровно.
  */
 const uploadBase = () => API_URL;
+/** Куда слать загрузку мимо WebView (фоновая на телефоне, lib/trackUploads):
+ *  текущий адрес, а если это CDN — ещё и прямой, на случай, когда CDN оборвёт
+ *  или не примет большой файл. */
+export function uploadTargets(path: string): string[] {
+  const first = `${uploadBase()}${path}`;
+  return first.startsWith(CDN_ORIGIN) ? [first, first.replace(CDN_ORIGIN, DIRECT_ORIGIN)] : [first];
+}
 /** С какого размера рубим на куски и по сколько. */
 const CHUNK_MIN = 6 * 1024 * 1024;
 const CHUNK_SIZE = 4 * 1024 * 1024;

@@ -27,6 +27,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ShareInboxPlugin.class);
         registerPlugin(NativeLangPlugin.class);
         registerPlugin(ChatNotificationsPlugin.class);
+        registerPlugin(MusicUploadPlugin.class);
         super.onCreate(savedInstanceState);
         MessageChannels.ensure(this);
         handleCallIntent(getIntent());

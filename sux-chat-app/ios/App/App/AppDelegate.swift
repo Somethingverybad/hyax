@@ -76,6 +76,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    // Фоновая загрузка треков (MusicUploader) закончилась, пока приложение
+    // спало или было выгружено: система будит его, чтобы сессия отдала
+    // события. Обработчик вызываем, когда сессия их все разобрала.
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard identifier == MusicUploader.sessionId else { completionHandler(); return }
+        MusicUploader.shared.backgroundCompletion = completionHandler
+        MusicUploader.shared.restore()
+    }
+
     // MARK: - Push (@capacitor-firebase/messaging)
     // Плагин слушает эти нотификации, чтобы отдать APNs-токен в Firebase SDK
     // и получить взамен FCM-токен. Без проброса токен на iOS не выдаётся.

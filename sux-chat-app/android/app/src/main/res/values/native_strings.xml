@@ -23,4 +23,8 @@
     <string name="push_sticker">Стикер</string>
     <string name="push_file">Файл</string>
     <string name="push_location">📍 Геопозиция</string>
+    <!-- Загрузка своих треков (MusicUploadService) -->
+    <string name="channel_music_upload">Загрузка музыки</string>
+    <string name="music_upload_title">Загрузка музыки</string>
+    <string name="music_upload_missing">Файл недоступен — выберите его снова</string>
 </resources>

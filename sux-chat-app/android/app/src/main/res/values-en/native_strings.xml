@@ -21,4 +21,8 @@
     <string name="push_sticker">Sticker</string>
     <string name="push_file">File</string>
     <string name="push_location">📍 Location</string>
+    <!-- Uploading own tracks (MusicUploadService) -->
+    <string name="channel_music_upload">Music uploads</string>
+    <string name="music_upload_title">Uploading music</string>
+    <string name="music_upload_missing">File unavailable — pick it again</string>
 </resources>

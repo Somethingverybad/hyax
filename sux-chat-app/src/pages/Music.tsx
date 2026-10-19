@@ -17,7 +17,7 @@ import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, to
          toggleShuffle, cycleRepeat, setVolume, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
 import { Capacitor } from "@capacitor/core";
-import { clearFinished, enqueueTracks, retryFailed, useTrackUploads } from "@/lib/trackUploads";
+import { clearFinished, enqueueTracks, nativeTrackUploads, pickNativeTracks, retryFailed, useTrackUploads } from "@/lib/trackUploads";
 
 /**
  * Музыка: плейлисты из того, что присылали в переписке.
@@ -282,6 +282,15 @@ const Music = () => {
     if (!n) toast.error(tr("Музыки не нашлось — поддерживаются MP3, M4A, FLAC, WAV, OGG, OPUS"));
     else if (n < list.length) toast(tr("Музыки — {n} из {all}, остальное пропущено", { n, all: list.length }));
   };
+  /** Кнопки «Загрузить» и «Папку»: на телефоне со сборкой, где есть плагин, —
+   *  системный выбор и фоновая отправка (идёт и при заблокированном экране). */
+  const pickTracks = (folder: boolean) => {
+    if (!nativeTrackUploads) { (folder ? folderInput : fileInput).current?.click(); return; }
+    if (!open) return;
+    pickNativeTracks(open.id, folder).then((n) => {
+      if (n === 0) toast.error(tr("Музыки не нашлось — поддерживаются MP3, M4A, FLAC, WAV, OGG, OPUS"));
+    }).catch((e) => toast.error(tr((e as Error).message || "Не удалось открыть выбор файлов")));
+  };
   // Перетащили файлы или папки — обходим папки целиком (вложенные тоже).
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();
@@ -544,12 +553,12 @@ const Music = () => {
                 onDrop={(e) => void onDrop(e)}
                 className={cn("flex gap-2 rounded-md", dragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background")}
               >
-                <button type="button" onClick={() => fileInput.current?.click()}
+                <button type="button" onClick={() => pickTracks(false)}
                   className="flex-1 h-11 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:opacity-80">
                   <Upload className="w-4 h-4" /> {tr("Загрузить свои треки")}
                 </button>
-                {canPickFolder && (
-                  <button type="button" onClick={() => folderInput.current?.click()}
+                {(canPickFolder || nativeTrackUploads) && (
+                  <button type="button" onClick={() => pickTracks(true)}
                     className="h-11 px-3 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:opacity-80">
                     <FolderUp className="w-4 h-4" /> {tr("Папку")}
                   </button>
@@ -804,12 +813,20 @@ const Music = () => {
 };
 
 
-/** Выбор папки — там, где браузер это умеет (компьютер и веб; не в приложении на телефоне). */
+/** Выбор папки браузером — где он это умеет (компьютер и веб); на телефоне — плагином (nativeTrackUploads). */
 const canPickFolder = typeof HTMLInputElement !== "undefined" && "webkitdirectory" in HTMLInputElement.prototype && !Capacitor.isNativePlatform();
 
 /** Полоса загрузки: сколько из скольких, текущий трек с процентами, ошибки. */
 const UploadQueueBar = () => {
-  const { items } = useTrackUploads();
+  const { items, preparing } = useTrackUploads();
+  // Выбор сделан, плагин копирует файлы (папка может быть большой).
+  if (!items.length && preparing) {
+    return (
+      <div className="rounded-md bg-surface-2 border border-border px-3 py-2.5 flex items-center gap-2 text-small">
+        <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" /> {tr("Готовлю файлы…")}
+      </div>
+    );
+  }
   if (!items.length) return null;
   const done = items.filter((x) => x.status === "done").length;
   const failed = items.filter((x) => x.status === "error");

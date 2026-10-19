@@ -24,6 +24,7 @@ class CallViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(KeyboardSyncPlugin())
         bridge?.registerPluginInstance(ShareInboxPlugin())
         bridge?.registerPluginInstance(NativeLangPlugin())
+        bridge?.registerPluginInstance(MusicUploadPlugin())
         webView?.configuration.userContentController.add(ComposeSelectionHandler(owner: self), name: "hyaxComposeSel")
     }
 
