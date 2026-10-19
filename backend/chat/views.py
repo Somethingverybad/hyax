@@ -1933,10 +1933,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         if _chat_id and _ch and _ch.kind == 'wall':
             save_kwargs['wall_safe'] = str(request.data.get('wall_safe') or '').lower() in ('1', 'true', 'yes')
 
-        # Опрос (chat/polls.py) — пока только на Стене; вопрос — текст поста.
+        # Опрос (chat/polls.py) — на Стене и в канале (там постят только админы,
+        # это проверено выше); вопрос — текст поста.
         if request.data.get('poll'):
-            if not (_chat_id and _ch and _ch.kind == 'wall'):
-                return Response({"error": "Опрос можно создать только на Стене"}, status=400)
+            if not (_chat_id and _ch and _ch.kind in ('wall', 'channel')):
+                return Response({"error": "Опрос можно создать только на Стене или в канале"}, status=400)
             if save_kwargs.get('file_url') or save_kwargs.get('voice_url') or save_kwargs.get('video_url'):
                 return Response({"error": "К опросу нельзя приложить файл"}, status=400)
             from .polls import create_poll, parse_poll

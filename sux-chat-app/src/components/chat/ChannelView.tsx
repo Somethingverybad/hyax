@@ -846,13 +846,51 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // канала: там поиск и паки, а каталог уже под сотню звуков.
   const openSounds = () => setSoundOpen((v) => !v);
 
+  // Редактор вариантов опроса — общий для шторки Стены и нижней панели канала.
+  const pollEditor = pollOpts && (
+<div className="rounded-lg bg-surface-2 border border-border p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <ListChecks className="w-4 h-4 text-primary" />
+                          <span className="flex-1 text-small font-semibold">{tr("Варианты ответа")}</span>
+                          <button type="button" onClick={() => setPollOpts(null)} disabled={sending} className="text-caption text-subtle underline underline-offset-2">{tr("Убрать опрос")}</button>
+                        </div>
+                        {pollOpts.map((v, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <input
+                              value={v}
+                              maxLength={100}
+                              disabled={sending}
+                              onChange={(e) => setPollOpts((prev) => prev && prev.map((x, j) => (j === i ? e.target.value : x)))}
+                              placeholder={tr("Вариант {n}", { n: i + 1 })}
+                              className="flex-1 min-w-0 h-10 bg-surface-1 border border-border rounded-md px-3 text-body outline-none focus:border-amber"
+                            />
+                            {pollOpts.length > 2 && (
+                              <button type="button" onClick={() => setPollOpts((prev) => prev && prev.filter((_, j) => j !== i))} disabled={sending}
+                                className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-subtle" aria-label={tr("Убрать вариант")}>
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {pollOpts.length < 10 && (
+                          <button type="button" onClick={() => setPollOpts((prev) => prev && [...prev, ""])} disabled={sending}
+                            className="flex items-center gap-1.5 text-small text-primary font-medium">
+                            <Plus className="w-4 h-4" /> {tr("Добавить вариант")}
+                          </button>
+                        )}
+                        <label className="flex items-start gap-2 text-caption text-subtle pt-1">
+                          <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" checked={pollAnon} onChange={(e) => setPollAnon(e.target.checked)} />
+                          <span><b className="text-foreground">{tr("Анонимный опрос")}</b> — {pollAnon ? tr("никто не узнает, кто как проголосовал.") : tr("выключено: проголосовавшие и автор увидят, кто что выбрал.")}</span>
+                        </label>
+                      </div>
+  );
   const publish = async () => {
     const body = text.trim();
     // Пост может быть и одним звуком — без текста и вложений.
     if ((!body && !attachments.length && !sound) || sending) return;
     // Опрос: вопрос — текст поста, вариантов — хотя бы два разных.
     const opts = pollOpts;
-    const poll = wall && opts ? { options: opts.map((o) => o.trim()).filter(Boolean), anonymous: pollAnon } : null;
+    const poll = opts ? { options: opts.map((o) => o.trim()).filter(Boolean), anonymous: pollAnon } : null;
     if (poll) {
       if (!body) { toast.error(tr("Напишите вопрос")); return; }
       if (new Set(poll.options.map((o) => o.toLowerCase())).size < 2) { toast.error(tr("Нужно хотя бы два разных варианта ответа")); return; }
@@ -867,7 +905,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     try {
       if (!list.length) {
         try {
-          await api.sendMessage(channelId, body, snd?.id, undefined, undefined, wall ? { wall_safe: safe, ...(poll ? { poll } : {}) } : undefined);
+          const extra = { ...(wall ? { wall_safe: safe } : {}), ...(poll ? { poll } : {}) };
+          await api.sendMessage(channelId, body, snd?.id, undefined, undefined, Object.keys(extra).length ? extra : undefined);
         } catch (e) {
           // Опрос не ушёл — вернуть набранное, чтобы не собирать заново.
           if (poll) { setText(body); setPollOpts(opts); }
@@ -1352,43 +1391,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       </div>
                     )}
                     {attachments.length > 10 && <p className="text-caption text-subtle">{tr("Выбрано {n} — уйдут по 10 в посте", { n: attachments.length })}</p>}
-                    {pollOpts && (
-                      <div className="rounded-lg bg-surface-2 border border-border p-3 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <ListChecks className="w-4 h-4 text-primary" />
-                          <span className="flex-1 text-small font-semibold">{tr("Варианты ответа")}</span>
-                          <button type="button" onClick={() => setPollOpts(null)} disabled={sending} className="text-caption text-subtle underline underline-offset-2">{tr("Убрать опрос")}</button>
-                        </div>
-                        {pollOpts.map((v, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <input
-                              value={v}
-                              maxLength={100}
-                              disabled={sending}
-                              onChange={(e) => setPollOpts((prev) => prev && prev.map((x, j) => (j === i ? e.target.value : x)))}
-                              placeholder={tr("Вариант {n}", { n: i + 1 })}
-                              className="flex-1 min-w-0 h-10 bg-surface-1 border border-border rounded-md px-3 text-body outline-none focus:border-amber"
-                            />
-                            {pollOpts.length > 2 && (
-                              <button type="button" onClick={() => setPollOpts((prev) => prev && prev.filter((_, j) => j !== i))} disabled={sending}
-                                className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-subtle" aria-label={tr("Убрать вариант")}>
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        {pollOpts.length < 10 && (
-                          <button type="button" onClick={() => setPollOpts((prev) => prev && [...prev, ""])} disabled={sending}
-                            className="flex items-center gap-1.5 text-small text-primary font-medium">
-                            <Plus className="w-4 h-4" /> {tr("Добавить вариант")}
-                          </button>
-                        )}
-                        <label className="flex items-start gap-2 text-caption text-subtle pt-1">
-                          <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" checked={pollAnon} onChange={(e) => setPollAnon(e.target.checked)} />
-                          <span><b className="text-foreground">{tr("Анонимный опрос")}</b> — {pollAnon ? tr("никто не узнает, кто как проголосовал.") : tr("выключено: проголосовавшие и автор увидят, кто что выбрал.")}</span>
-                        </label>
-                      </div>
-                    )}
+                    {pollEditor}
                     <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e, "photo")} />
                     <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => pick(e, "video")} />
                     <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => pick(e, "audio")} />
@@ -1448,6 +1451,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               <button type="button" onClick={() => setSound(null)} className="ml-1"><X className="w-3.5 h-3.5" /></button>
             </div>
           )}
+          {pollOpts && <div className="mb-2 max-h-[45vh] overflow-y-auto">{pollEditor}</div>}
           {attachments.length > 10 && (
             <p className="mb-1 text-caption text-subtle">{tr("Выбрано {n} — уйдут по 10 в посте", { n: attachments.length })}</p>
           )}
@@ -1492,7 +1496,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => pick(e, "file")} />
           <div className="flex items-end gap-2">
             <div ref={attachRef} className="relative shrink-0">
-              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center", attachments.length > 0 && "text-primary border-primary")} aria-label={tr("Прикрепить")}>
+              <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || recording || !!pollOpts} className={cn("w-11 h-11 rounded-md bg-surface-2 border border-border flex items-center justify-center disabled:opacity-40", attachments.length > 0 && "text-primary border-primary")} aria-label={tr("Прикрепить")}>
                 <Paperclip className="w-5 h-5" />
               </button>
               {attachOpen && (
@@ -1512,6 +1516,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); setGraffitiOpen(true); }}>
                     <Brush className="w-4 h-4 text-primary" /> {tr("Граффити")}
                   </button>
+                  {/* Опрос — без вложений: вопрос — текст поста. */}
+                  <button type="button" disabled={attachments.length > 0} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary disabled:opacity-40" onClick={() => { setAttachOpen(false); setPollOpts(["", ""]); composerRef.current?.focus(); }}>
+                    <ListChecks className="w-4 h-4 text-primary" /> {tr("Опрос")}
+                  </button>
                 </div>
               )}
             </div>
@@ -1523,7 +1531,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               value={text}
               onPaste={onPasteFile}
               onChange={(e) => setText(e.target.value)}
-              placeholder={attachments.length ? tr("Подпись…") : tr("Написать в канал…")}
+              placeholder={pollOpts ? tr("Вопрос") : attachments.length ? tr("Подпись…") : tr("Написать в канал…")}
               rows={1}
               disabled={recording}
               className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-3.5 py-[11px] text-body outline-none focus:border-amber max-h-40"

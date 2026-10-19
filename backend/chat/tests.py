@@ -1486,6 +1486,17 @@ class PollTests(TestCase):
         self.assertEqual(client_for(self.voter).get(f"/api/posts/{anon['id']}/poll/voters/?option={x}").status_code, 403)
         self.assertEqual(client_for(self.author).get(f"/api/posts/{anon['id']}/poll/voters/?option={x}").status_code, 403)
 
+    def test_channel_poll(self):
+        ch = Chat.objects.create(kind="channel", name="канал", is_public=True)
+        ChatParticipant.objects.create(chat=ch, user=self.author, role="owner")
+        ChatParticipant.objects.create(chat=ch, user=self.voter, role="member")
+        r = self.create(chat=ch)
+        self.assertEqual(r.status_code, 201, r.data)
+        a = r.data["poll"]["options"][0]["id"]
+        self.assertEqual(self.vote(self.voter, r.data["id"], a).status_code, 200)
+        self.assertEqual(self.vote(self.other, r.data["id"], a).status_code, 403)  # не подписан
+        self.assertEqual(self.create(who=self.voter, chat=ch).status_code, 403)  # постят только админы
+
     def test_adult_post_hidden_and_no_edit(self):
         post = self.create(safe=False).data  # без «4+» — только тем, кто включил 18+
         a = post["poll"]["options"][0]["id"]

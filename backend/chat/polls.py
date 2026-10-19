@@ -1,4 +1,4 @@
-"""Опросы в постах Стены.
+"""Опросы в постах Стены и каналов.
 
 Создаются вместе с постом: POST /api/messages/ с полем poll = {options,
 anonymous}, вопрос — текст поста (content). Голосуют через
@@ -8,7 +8,8 @@ anonymous}, вопрос — текст поста (content). Голосуют �
 
 Результаты (сколько у каждого варианта) видит тот, кто уже проголосовал, и
 автор; до голоса — только сколько всего голосов, чтобы чужие цифры не
-подталкивали к выбору. Один вариант на человека.
+подталкивали к выбору. Один вариант на человека. В канале голосуют
+подписчики — как и реагируют (читать открытый канал может любой).
 """
 import json
 
@@ -113,11 +114,13 @@ class PollVoteView(APIView):
         return Response({"poll": poll_payload(msg.poll, me.id, msg.sender_id)})
 
     def post(self, request, pk):
-        from .models import PollVote
+        from .models import ChatParticipant, PollVote
         found, err = _post_for(request, pk)
         if err:
             return err
         msg, me = found
+        if msg.chat.kind == "channel" and not ChatParticipant.objects.filter(chat=msg.chat, user=me).exists():
+            return Response({"error": "Подпишитесь, чтобы голосовать"}, status=403)
         option = msg.poll.options.filter(id=str(request.data.get("option") or "")).first() if request.data.get("option") else None
         if not option:
             return Response({"error": "Такого варианта нет"}, status=400)

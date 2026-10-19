@@ -595,6 +595,8 @@ const en: Record<string, string> = {
   "Уже в «Моей музыке»": "Already in My music",
   "Ничего не воспроизводится": "Nothing is playing",
   "по воздуху": "over the air",
+  "Опрос можно создать только на Стене или в канале": "Polls can only be created on the Wall or in a channel",
+  "Подпишитесь, чтобы голосовать": "Subscribe to vote",
   "Граффити": "Graffiti",
   "Нарисовать": "Draw",
   "Нарисовать граффити": "Draw graffiti",
