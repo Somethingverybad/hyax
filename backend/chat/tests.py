@@ -1561,6 +1561,18 @@ class WallPostEditDeleteTests(TestCase):
         self.assertEqual(PostComment.objects.filter(post=self.post, deleted=False).count(), 0)
         self.assertEqual(self.comments().status_code, 404)
 
+    def test_comment_attachments(self):
+        url = f"/api/posts/{self.post.id}/comments/"
+        r = client_for(self.reader).post(url, {"content": "", "file_url": "/media/uploads/a.jpg", "file_kind": "image", "file_name": "a.jpg", "file_width": 800, "file_height": 600}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual((r.data["file_kind"], r.data["file_width"], r.data["content"]), ("image", 800, ""))
+        r = client_for(self.reader).post(url, {"content": "трек", "file_url": "s3://uploads/b.mp3", "file_kind": "audio", "file_name": "b.mp3"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        for bad in ({"file_url": "https://evil.example/x.jpg", "file_kind": "image"}, {"file_url": "/media/x.pdf", "file_kind": "file"}, {"content": ""}):
+            self.assertEqual(client_for(self.reader).post(url, bad, format="json").status_code, 400, bad)
+        rows = self.comments().data["comments"]
+        self.assertEqual([x["file_kind"] for x in rows], ["image", "audio"])
+
     def test_outsider_cannot_read_private_comments(self):
         ch = Chat.objects.create(kind="channel", name="закрытый", is_public=False)
         ChatParticipant.objects.create(chat=ch, user=self.author, role="owner")

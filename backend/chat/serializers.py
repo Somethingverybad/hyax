@@ -779,13 +779,14 @@ class PostCommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PostComment
-        fields = ['id', 'post', 'author', 'parent', 'content', 'created_at', 'deleted']
-        read_only_fields = ['id', 'author', 'created_at', 'deleted']
+        fields = ['id', 'post', 'author', 'parent', 'content', 'created_at', 'deleted',
+                  'file_url', 'file_name', 'file_kind', 'file_size', 'file_width', 'file_height']
+        read_only_fields = fields
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
         if obj.deleted:
-            data.update(content="", author=None)
+            data.update(content="", author=None, file_url="", file_name="", file_kind="", file_size=None, file_width=None, file_height=None)
         return data
 
 

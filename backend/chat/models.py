@@ -799,7 +799,15 @@ class PostComment(models.Model):
     post = models.ForeignKey('Message', on_delete=models.CASCADE, related_name="comments")
     author = models.ForeignKey('Profile', on_delete=models.CASCADE, related_name="post_comments")
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name="replies")
-    content = models.TextField()
+    content = models.TextField(blank=True, default="")
+    # Вложение: фото (image) или музыка (audio) — один файл на комментарий,
+    # загружен тем же /api/upload/, что и вложения сообщений (s3:// или /media/).
+    file_url = models.TextField(blank=True, default="")
+    file_name = models.CharField(max_length=255, blank=True, default="")
+    file_kind = models.CharField(max_length=8, blank=True, default="")
+    file_size = models.BigIntegerField(null=True, blank=True)
+    file_width = models.PositiveIntegerField(null=True, blank=True)
+    file_height = models.PositiveIntegerField(null=True, blank=True)
     deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
 

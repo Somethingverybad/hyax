@@ -4667,7 +4667,25 @@ class PostCommentsView(APIView):
         if msg.chat.kind == "channel" and not msg.chat.comments_enabled:
             return Response({"error": "В этом канале комментарии выключены"}, status=403)
         content = (request.data.get("content") or "").strip()
-        if not content:
+        # Вложение — фото или музыка, загруженные заранее (/api/upload/): только
+        # наши адреса, чтобы в комментарий не подсунули чужую ссылку.
+        file = {}
+        file_url = str(request.data.get("file_url") or "").strip()
+        if file_url:
+            kind = str(request.data.get("file_kind") or "")
+            if kind not in ("image", "audio"):
+                return Response({"error": "К комментарию — только фото или музыка"}, status=400)
+            if not (file_url.startswith("s3://") or file_url.startswith("/media/")) or len(file_url) > 1000:
+                return Response({"error": "Файл не загружен"}, status=400)
+            def _num(k):
+                try:
+                    v = int(request.data.get(k))
+                    return v if v >= 0 else None
+                except (TypeError, ValueError):
+                    return None
+            file = {"file_url": file_url, "file_kind": kind, "file_name": str(request.data.get("file_name") or "")[:255],
+                    "file_size": _num("file_size"), "file_width": _num("file_width"), "file_height": _num("file_height")}
+        if not content and not file:
             return Response({"error": "Пустой комментарий"}, status=400)
         parent = None
         parent_id = request.data.get("parent")
@@ -4678,7 +4696,7 @@ class PostCommentsView(APIView):
                 parent = None
             if not parent:
                 return Response({"error": "Комментарий, на который вы отвечаете, удалён"}, status=400)
-        c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content[:2000])
+        c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content[:2000], **file)
         _touch_post(msg)
         return Response(PostCommentSerializer(c).data, status=201)
 

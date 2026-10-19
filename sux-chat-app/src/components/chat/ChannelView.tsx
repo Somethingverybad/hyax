@@ -18,7 +18,7 @@ import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2 } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -30,7 +30,7 @@ import ChannelLinkCard from "./ChannelLinkCard";
 import PhotoEditor from "@/components/PhotoEditor";
 import { saveFileToDevice } from "@/lib/saveFile";
 import ProfileLinkCard from "./ProfileLinkCard";
-import { playQueue, type Track } from "@/lib/player";
+import { currentTrack, playQueue, toggle as togglePlay, usePlayer, type Track } from "@/lib/player";
 import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
@@ -1792,7 +1792,37 @@ interface PostCommentRow {
   content: string;
   created_at: string;
   deleted?: boolean;
+  /** Вложение: фото или музыка (один файл). */
+  file_url?: string; file_name?: string; file_kind?: "image" | "audio" | ""; file_width?: number | null; file_height?: number | null;
 }
+
+/** Фото в комментарии: небольшое превью по пропорциям, тап — на весь экран. */
+const CommentImage = ({ raw, w, h, onOpen }: { raw: string; w?: number | null; h?: number | null; onOpen: (url: string) => void }) => {
+  const url = useMediaUrl(raw);
+  const ratio = w && h ? w / h : 1;
+  const box = ratio >= 1 ? { width: 220, height: Math.round(220 / ratio) } : { width: Math.round(220 * ratio), height: 220 };
+  return (
+    <button type="button" onClick={() => url && onOpen(url)} className="mt-1 block rounded-lg overflow-hidden bg-black/10" style={box} aria-label={tr("Открыть фото")}>
+      {url && <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />}
+    </button>
+  );
+};
+
+/** Музыка в комментарии — играет общим плеером. */
+const CommentAudio = ({ id, raw, name }: { id: string; raw: string; name: string }) => {
+  const s = usePlayer();
+  const mine = currentTrack()?.id === id;
+  const title = name.replace(/\.[a-z0-9]{2,5}$/i, "") || tr("Трек");
+  return (
+    <button type="button" onClick={() => (mine ? void togglePlay() : void playQueue([{ id, raw, title }], 0))}
+      className="mt-1 flex items-center gap-2 max-w-full rounded-lg bg-surface-4 pl-1.5 pr-3 py-1.5 text-left active:opacity-80">
+      <span className="w-8 h-8 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+        {mine && s.playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+      </span>
+      <span className="min-w-0 text-sm truncate">{title}</span>
+    </button>
+  );
+};
 
 /** Глубже — без отступа: на узком экране ветка иначе уезжает в столбик. */
 const COMMENT_MAX_DEPTH = 3;
@@ -1814,6 +1844,20 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<PostCommentRow | null>(null);
+  // Вложение: фото или музыка (один файл), загрузка — при отправке.
+  const [attach, setAttach] = useState<{ file: File; kind: "image" | "audio"; preview?: string } | null>(null);
+  const [attachMenu, setAttachMenu] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [viewer, setViewer] = useState<string | null>(null);
+  const photoRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLInputElement>(null);
+  const pickAttach = (e: React.ChangeEvent<HTMLInputElement>, kind: "image" | "audio") => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setAttach((prev) => { if (prev?.preview) URL.revokeObjectURL(prev.preview); return { file: f, kind, preview: kind === "image" ? URL.createObjectURL(f) : undefined }; });
+  };
+  const dropAttach = () => setAttach((prev) => { if (prev?.preview) URL.revokeObjectURL(prev.preview); return null; });
   // Ветки, которые человек развернул или свернул сам (иначе — по длине).
   const [folds, setFolds] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1845,10 +1889,18 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
 
   const add = async () => {
     const body = text.trim();
-    if (!body || sending) return;
+    if ((!body && !attach) || sending) return;
     setSending(true);
     try {
-      await api.addPostComment(post.id, body, replyTo?.id);
+      let file: Parameters<typeof api.addPostComment>[3];
+      if (attach) {
+        setProgress(0);
+        const src = attach.kind === "image" ? await compressImage(attach.file) : attach.file;
+        const up = await api.uploadFile(src, undefined, (p) => setProgress(p));
+        file = { file_url: up.file_url, file_name: up.file_name || attach.file.name, file_kind: attach.kind, file_size: up.file_size, file_width: up.width ?? null, file_height: up.height ?? null };
+      }
+      await api.addPostComment(post.id, body, replyTo?.id, file);
+      dropAttach();
       // Ответили в свёрнутую ветку — разворачиваем, чтобы ответ было видно.
       if (replyTo) setFolds((f) => ({ ...f, [rootOf(replyTo)]: true }));
       setText("");
@@ -1858,6 +1910,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
       toast.error(e?.message || tr("Не удалось"));
     } finally {
       setSending(false);
+      setProgress(null);
     }
   };
   const del = async (id: string) => {
@@ -1896,7 +1949,9 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
                   {depth > COMMENT_MAX_DEPTH && parent?.author && <span className="text-xs text-muted-foreground"> → {parent.author.username}</span>}
                   {" "}<span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span>
                 </p>
-                <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>
+                {c.content && <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>}
+                {c.file_url && c.file_kind === "image" && <CommentImage raw={c.file_url} w={c.file_width} h={c.file_height} onOpen={setViewer} />}
+                {c.file_url && c.file_kind === "audio" && <CommentAudio id={`comment-${c.id}`} raw={c.file_url} name={c.file_name || ""} />}
                 <div className="flex items-center gap-4 mt-0.5 text-xs text-muted-foreground">
                   {canComment && <button type="button" onClick={() => reply(c)} className="font-medium active:opacity-70">{tr("Ответить")}</button>}
                   {(mine || canModerate) && (
@@ -1962,11 +2017,36 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
                 <button type="button" onClick={() => setReplyTo(null)} className="p-1 text-muted-foreground" aria-label={tr("Не отвечать")}><X className="w-4 h-4" /></button>
               </div>
             )}
+            {attach && (
+              <div className="flex items-center gap-2 px-3 pt-2">
+                {attach.kind === "image" && attach.preview
+                  ? <img src={attach.preview} alt="" className="w-12 h-12 rounded-md object-cover shrink-0" />
+                  : <span className="w-12 h-12 rounded-md bg-surface-4 flex items-center justify-center shrink-0"><Music2 className="w-5 h-5 text-primary" /></span>}
+                <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
+                  {progress !== null ? tr("Загружаю… {n}%", { n: progress }) : attach.file.name}
+                </span>
+                <button type="button" onClick={dropAttach} disabled={sending} className="p-1 text-muted-foreground" aria-label={tr("Убрать вложение")}><X className="w-4 h-4" /></button>
+              </div>
+            )}
+            <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickAttach(e, "image")} />
+            <input ref={audioRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" className="hidden" onChange={(e) => pickAttach(e, "audio")} />
             <div className="flex items-end gap-2 px-3 py-2">
+              <div className="relative shrink-0">
+                <button type="button" onClick={() => setAttachMenu((v) => !v)} disabled={sending} aria-label={tr("Прикрепить")}
+                  className={cn("w-11 h-11 flex items-center justify-center bg-secondary text-muted-foreground disabled:opacity-40", attach && "text-primary")}>
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                {attachMenu && (
+                  <div className="absolute bottom-full left-0 mb-2 w-40 bg-surface-1 border border-border rounded-lg overflow-hidden z-10">
+                    <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachMenu(false); photoRef.current?.click(); }}><ImageIcon className="w-4 h-4 text-primary" /> {tr("Фото")}</button>
+                    <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachMenu(false); audioRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> {tr("Музыка")}</button>
+                  </div>
+                )}
+              </div>
               <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1}
-                placeholder={replyTo ? tr("Ответ…") : tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
-              <button type="button" onClick={() => void add()} disabled={!text.trim() || sending} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
-                <Send className="w-5 h-5" />
+                placeholder={replyTo ? tr("Ответ…") : attach ? tr("Подпись…") : tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
+              <button type="button" onClick={() => void add()} disabled={(!text.trim() && !attach) || sending} aria-label={tr("Отправить")} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
+                {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </button>
             </div>
           </div>
@@ -1974,6 +2054,12 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
           <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || tr("Подпишитесь, чтобы комментировать")}</p>
         )}
       </div>
+      {viewer && (
+        <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); setViewer(null); }}>
+          <img src={viewer} alt="" className="max-w-full max-h-full object-contain" />
+          <button type="button" onClick={() => setViewer(null)} className="absolute top-[calc(var(--sat,0px)+12px)] right-4 w-10 h-10 rounded-full bg-white/15 text-white flex items-center justify-center" aria-label={tr("Закрыть")}><X className="w-5 h-5" /></button>
+        </div>
+      )}
     </div>,
     document.body,
   );

@@ -1666,8 +1666,10 @@ export const api = {
     const d = await res.json();
     return d.comments || [];
   },
-  addPostComment: async (msgId: string, content: string, parent?: string): Promise<any> => {
-    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ content, parent }) });
+  /** file — вложение комментария (фото или музыка), загруженное через uploadFile. */
+  addPostComment: async (msgId: string, content: string, parent?: string,
+    file?: { file_url: string; file_name: string; file_kind: "image" | "audio"; file_size?: number; file_width?: number | null; file_height?: number | null }): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ content, parent, ...(file || {}) }) });
     const d = await res.json();
     if (!res.ok) throw new LError(d.error || "Ошибка");
     return d;
