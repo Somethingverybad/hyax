@@ -1182,7 +1182,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [uploading, setUploading] = useState(false);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const composeRef = useRef<HTMLDivElement>(null);
+  const composeRef = useRef<HTMLDivElement | null>(null);
+  // Сам элемент панели — для наблюдателя её высоты (ниже, «Мята»): панели может
+  // не быть при открытии чата (секретный чат без ключа на этом устройстве —
+  // вместо неё «открыт на другом устройстве») и появиться позже.
+  const [composeEl, setComposeEl] = useState<HTMLDivElement | null>(null);
+  const setComposeNode = useCallback((el: HTMLDivElement | null) => { composeRef.current = el; setComposeEl(el); }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -3501,7 +3506,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Высота панели плавает (ответ, стикеры, запись), поэтому меряем её;
   // рост поля ввода уже учтён в --compose-extra (fitTextarea) — вычитаем.
   useEffect(() => {
-    const cs = composeRef.current, sc = scrollRef.current;
+    // Панель — та, что сейчас на экране: секретный чат открылся без ключа,
+    // ключ перенесли — панель появилась, и наблюдатель должен начать мерить
+    // её. Раньше он брал панель один раз при открытии чата, без неё молчал,
+    // и лента не отводила места под появившуюся панель — переписка уезжала
+    // под неё и за край экрана (баг-репорт c7ed0f2e).
+    const cs = composeEl, sc = scrollRef.current;
     if (!mintM || !cs || !sc || typeof ResizeObserver === "undefined") return;
     let last = -1;
     const set = () => {
@@ -3536,7 +3546,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       window.removeEventListener("hyax:keyboard", onKb);
       window.visualViewport?.removeEventListener("resize", onKb);
     };
-  }, [mintM, chatId]);
+  }, [mintM, chatId, composeEl]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
                 <>
@@ -4583,7 +4593,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
         </div>
       ) : (
-      <div ref={composeRef} className={cn("chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0", mintM && "mint-compose-island")}>
+      <div ref={setComposeNode} className={cn("chat-compose px-4 py-2 md:px-4 md:pt-2 md:pb-0 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0", mintM && "mint-compose-island")}>
         {/* На десктопе композер — панель с обводкой, как в референсе; отступ снизу
             даём панели (pad-safe-bottom перебивает padding контейнера). */}
         <div className="max-w-4xl mx-auto md:border md:border-border md:rounded-lg md:p-3 md:mb-2">
@@ -5050,6 +5060,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onTouchStart={(e) => e.preventDefault()}
                 onTouchEnd={(e) => { e.preventDefault(); if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
                 disabled={uploading}
+                aria-label={tr("Отправить")}
                 className="ui-compose-send h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
                 size="icon"
               >
