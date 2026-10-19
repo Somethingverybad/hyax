@@ -1693,3 +1693,29 @@ class ReplyQuoteTests(TestCase):
     def test_quote_is_capped(self):
         r = self.send(reply_to_id=str(self.orig.id), reply_quote="я" * 5000)
         self.assertEqual(len(Message.objects.get(id=r.data["id"]).reply_quote), 1000)
+
+
+class TranslateGaveUpTests(TestCase):
+    """Переводчик вернул текст как был: если он на другом языке — это неудача
+    перевода (502), а не «уже на вашем языке» (422)."""
+
+    def setUp(self):
+        self.me = make_user("reader", language="ru")
+        self.peer = make_user("writer", language="ko")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+
+    def tr(self, content):
+        from unittest import mock
+        msg = Message.objects.create(chat=self.chat, sender=self.peer, content=content)
+        with mock.patch("chat.translate.translate_text", side_effect=lambda t, to, src="": t):
+            return client_for(self.me).post(f"/api/messages/{msg.id}/translate/", {"to": "ru"}, format="json")
+
+    def test_foreign_unchanged_is_failure(self):
+        r = self.tr("아직 보지는 않았어 ㅎㅎ")
+        self.assertEqual(r.status_code, 502, r.data)
+
+    def test_same_language_is_already(self):
+        r = self.tr("Уже по-русски")
+        self.assertEqual(r.status_code, 422, r.data)

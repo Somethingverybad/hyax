@@ -4133,7 +4133,7 @@ def _translate_voice(request, msg, me, to):
     """Перевод расшифровки голосового на язык to. Расшифровки ещё нет —
     запрашиваем её и переводим сразу после (в фоне); ответ — сообщение как
     есть, текст и перевод приедут через sync."""
-    from .translate import translate_text, norm_lang, same_text, TranslateNotConfigured, provider
+    from .translate import translate_text, norm_lang, same_text, gave_up, TranslateNotConfigured, provider
     from .transcribe import too_long, TOO_LONG_ERROR
     if msg.chat.kind == "secret":
         return Response({"error": "Голосовые секретного чата сервер не расшифрует"}, status=400)
@@ -4156,6 +4156,9 @@ def _translate_voice(request, msg, me, to):
                 return Response({"error": "Перевод пока не настроен"}, status=503)
             except Exception:
                 logger.exception("translate voice on demand %s", msg.id)
+                return Response({"error": "Не удалось перевести"}, status=502)
+            if gave_up(text, out, to):
+                logger.warning("translate voice: переводчик вернул текст без изменений %s", msg.id)
                 return Response({"error": "Не удалось перевести"}, status=502)
             if same_text(out, text):
                 return Response({"error": "Сообщение уже на вашем языке"}, status=422)
@@ -4203,7 +4206,7 @@ class MessageTranslateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        from .translate import translate_text, norm_lang, same_text, TranslateNotConfigured
+        from .translate import translate_text, norm_lang, same_text, gave_up, TranslateNotConfigured
         me = getattr(request.user, 'profile', None)
         msg = Message.objects.filter(id=pk).select_related('chat', 'sender').first()
         if not me or not msg or not _can_see_chat(msg.chat, me):
@@ -4226,6 +4229,9 @@ class MessageTranslateView(APIView):
             try:
                 src = norm_lang(msg.sender.language) if msg.sender_id else ""
                 out = translate_text(msg.content, to, src)
+                if gave_up(msg.content, out, to):
+                    logger.warning("translate: переводчик вернул текст без изменений %s", pk)
+                    return Response({"error": "Не удалось перевести"}, status=502)
                 if same_text(out, msg.content):
                     return Response({"error": "Сообщение уже на вашем языке"}, status=422)
                 tr[to] = out
