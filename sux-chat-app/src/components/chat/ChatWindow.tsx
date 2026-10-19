@@ -5,7 +5,7 @@ import CachedImg from "@/components/CachedImg";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
-import { useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
+import { MAX_VOICE_SECONDS, useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
@@ -3090,7 +3090,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setRecPhase("starting");
     recHaptic(false);
     const ok = await startRec(kind as RecordKind, facing, (auto) => {
-      // Минута вышла, запись остановилась сама — отправляем, что есть.
+      // Предел вышел (голосовое — 1,5 минуты, треугольник — минута), запись
+      // остановилась сама — отправляем, что есть.
       startedRef.current = false;
       recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
       cancelArmedRef.current = false; setCancelArmed(false);
@@ -4830,7 +4831,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 <span className="w-2.5 h-2.5 bg-primary animate-pulse shrink-0" />
               )}
               {recording && (
-                <span className="font-mono text-sm">
+                <span className={cn("font-mono text-sm", recordKind === "audio" && recSeconds >= MAX_VOICE_SECONDS - 10 && "text-primary font-semibold")}>
                   {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
                   {String(recSeconds % 60).padStart(2, "0")}
                 </span>
@@ -4841,7 +4842,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   : recPhase === "finishing"
                     ? (cancelArmed ? tr("Отменяю…") : tr("Готовлю к отправке…"))
                     : recLocked
-                      ? (recordKind === "video" ? tr("Запись закреплена · до минуты · кнопка — отправить") : tr("Запись закреплена · до 15 минут · кнопка — отправить"))
+                      ? (recordKind === "video" ? tr("Запись закреплена · до минуты · кнопка — отправить") : tr("Запись закреплена · до 1,5 минуты · кнопка — отправить"))
                       : cancelArmed
                         ? tr("Отпустите — запись отменится")
                         : recordKind === "video"

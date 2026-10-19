@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { setBusy } from "@/lib/busy";
+import { keepScreenAwake } from "@/lib/screenAwake";
 
 /**
  * Запись сообщения удержанием кнопки: голос или короткое видео с фронтальной
@@ -16,20 +17,21 @@ export interface VoiceRecording {
   kind: RecordKind;
 }
 
-/** Пределы записи. Треугольник (видео) — минута: он тяжёлый (~5 МБ). Голосовое —
- *  до 15 минут: при 48 кбит/с это ~5 МБ, а сервер берёт до 25 МБ — с запасом,
- *  если Safari запишет AAC с битрейтом выше заданного. */
+/** Пределы записи. Треугольник (видео) — минута: он тяжёлый (~5 МБ).
+ *  Голосовое — полторы минуты; дошли до предела — запись уходит сама. */
 const MAX_VIDEO_SECONDS = 60;
-export const MAX_VOICE_SECONDS = 15 * 60;
+export const MAX_VOICE_SECONDS = 90;
 
 export function useMediaRecorder() {
   const [recording, setRecording] = useState(false);
   // Пока пишем — «занято»: обновление по воздуху не перезагрузит интерфейс
-  // посреди записи (lib/busy, lib/ota).
+  // посреди записи (lib/busy, lib/ota). И экран не гаснет: с блокировкой
+  // телефон отбирает микрофон, и запись обрывается (lib/screenAwake).
   useEffect(() => {
     if (!recording) return;
     setBusy("record", true);
-    return () => setBusy("record", false);
+    keepScreenAwake("record", true);
+    return () => { setBusy("record", false); keepScreenAwake("record", false); };
   }, [recording]);
   const [seconds, setSeconds] = useState(0);
   const [stream, setStream] = useState<MediaStream | null>(null);

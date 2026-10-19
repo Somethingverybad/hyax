@@ -508,6 +508,7 @@ const en: Record<string, string> = {
   "Отменяю…": "Cancelling…",
   "Готовлю к отправке…": "Getting ready to send…",
   "Запись закреплена · до минуты · кнопка — отправить": "Recording locked · up to a minute · button sends",
+  "Запись закреплена · до 1,5 минуты · кнопка — отправить": "Recording locked · up to 1.5 minutes · tap the button to send",
   "Запись закреплена · до 15 минут · кнопка — отправить": "Recording locked · up to 15 minutes · tap the button to send",
   "Отпустите — запись отменится": "Release to cancel the recording",
   "Треугольник · влево — отмена, вверх — закрепить": "Triangle · left to cancel, up to lock",

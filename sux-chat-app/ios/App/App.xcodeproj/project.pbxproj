@@ -36,6 +36,7 @@
 		C0DE00012026082200000001 /* NativeCallPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00022026082200000002 /* NativeCallPlugin.swift */; };
 		C0DE00032026082200000001 /* NativeCallAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00042026082200000002 /* NativeCallAudio.swift */; };
 		C527302614CE88F1BDBCF1F2 /* NativeLangPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F956BE94762B201A5884B8F4 /* NativeLangPlugin.swift */; };
+		DFFDA60E5CCF31373990B0C1 /* ScreenAwakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D2444EC471EED9B418509C /* ScreenAwakePlugin.swift */; };
 		E30C87420B87716E13286C53 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D274E1035E54C4015C423BC8 /* Localizable.strings */; };
 		E608F6A9ABD29907EA528372 /* ShareInboxPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED379667670D792A0A0F21B7 /* ShareInboxPlugin.swift */; };
 		EC9D80B8E2B04BD284F486E3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25B699FA0D7DC8FE07940A44 /* Foundation.framework */; };
@@ -99,6 +100,7 @@
 		7287D95575A8CE03C0F28767 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		744AD230D7DEE2BC6E6EC8E2 /* ShareExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		7B3C1E9A2F4D5A6B8C9D0E20 /* KeyboardSyncPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardSyncPlugin.swift; sourceTree = "<group>"; };
+		97D2444EC471EED9B418509C /* ScreenAwakePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScreenAwakePlugin.swift; sourceTree = "<group>"; };
 		9A77330A3DA33D0913557776 /* PushSecretPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PushSecretPlugin.swift; sourceTree = "<group>"; };
 		A1C0FFEE2026081800000002 /* receive.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = receive.caf; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -216,6 +218,7 @@
 				F956BE94762B201A5884B8F4 /* NativeLangPlugin.swift */,
 				1F2840E233603AE4525C0128 /* MusicUploader.swift */,
 				C0C7D44678A04F6988C44FFC /* MusicUploadPlugin.swift */,
+				97D2444EC471EED9B418509C /* ScreenAwakePlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -439,6 +442,7 @@
 				C527302614CE88F1BDBCF1F2 /* NativeLangPlugin.swift in Sources */,
 				1107C759771DDE190056F34F /* MusicUploader.swift in Sources */,
 				822C8275AB840634EA2B1E30 /* MusicUploadPlugin.swift in Sources */,
+				DFFDA60E5CCF31373990B0C1 /* ScreenAwakePlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
