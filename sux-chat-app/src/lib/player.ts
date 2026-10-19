@@ -49,6 +49,10 @@ interface State {
   volume: number;
   /** Слушаем эфир — null, когда играет своя очередь. */
   live: LiveInfo | null;
+  /** Эфир без звука на этом устройстве: «пауза» слушателя. Эфир не стоит —
+   *  трек идёт дальше по расписанию (беззвучно), и следующий не включит звук
+   *  сам; playing при этом false — кнопки показывают «играть». */
+  liveMuted: boolean;
 }
 
 const VOLUME_KEY = "hyax:volume";
@@ -58,7 +62,7 @@ const readVolume = () => {
 };
 
 let state: State = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-                     shuffle: false, repeat: "off", volume: readVolume(), live: null };
+                     shuffle: false, repeat: "off", volume: readVolume(), live: null, liveMuted: false };
 // Что уже играли в перемешанном порядке: чтобы не повторять одно и то же,
 // пока не кончится очередь.
 let heard = new Set<number>();
@@ -74,6 +78,8 @@ export const setLiveHooks = (h: typeof liveHooks) => { liveHooks = h; };
 const dropLive = () => {
   if (!state.live) return;
   state.live = null;
+  state.liveMuted = false;
+  if (audio) audio.muted = false;
   liveHooks.left?.();
 };
 
@@ -118,7 +124,9 @@ const updateSession = () => {
 const attach = (el: HTMLAudioElement) => {
   el.ontimeupdate = () => { state.time = el.currentTime; emit(); };
   el.onloadedmetadata = () => { state.duration = el.duration || 0; emit(); };
-  el.onplay = () => { state.playing = true; emit(); updateSession(); };
+  // Эфир без звука: файл идёт (следующий трек тоже стартует), но для
+  // человека это пауза — кнопки «играть», экран блокировки «на паузе».
+  el.onplay = () => { state.playing = !(state.live && state.liveMuted); emit(); updateSession(); };
   el.onpause = () => { state.playing = false; emit(); updateSession(); };
   el.onended = () => { if (state.live) liveHooks.ended?.(); else void next(true); };
   el.onerror = () => { state.playing = false; emit(); };
@@ -139,6 +147,7 @@ async function start(index: number, at?: () => number) {
   const src = await resolve(t);
   if (state.index !== index || seq !== startSeq) return; // успели переключить
   if (!audio) { audio = new Audio(); attach(audio); audio.volume = state.volume; }
+  audio.muted = !!(state.live && state.liveMuted);
   audio.src = src;
   // Эфир: встаём на место по расписанию, когда файл открылся, — позицию
   // считаем в этот момент, с учётом того, сколько он грузился.
@@ -169,6 +178,30 @@ export async function playQueue(queue: Track[], index: number) {
 
 export async function toggle() {
   if (!audio || state.index < 0) return;
+  // Эфир: «пауза» — тишина на этом устройстве, а не остановка. У остальных
+  // эфир идёт как шёл, а у нас при смене трека звук не вернётся сам — только
+  // когда человек снова нажмёт «играть», и сразу с того места, где эфир сейчас.
+  if (state.live) {
+    if (!audio.paused && !state.liveMuted) {
+      state.liveMuted = true;
+      audio.muted = true;
+      state.playing = false;
+      emit();
+      updateSession();
+      return;
+    }
+    if (state.liveMuted) {
+      state.liveMuted = false;
+      audio.muted = false;
+      state.playing = !audio.paused;
+      emit();
+    }
+    if (audio.paused) { try { await audio.play(); } catch { /* автоплей */ } }
+    // Сверка с эфиром: догнать, если звук стоял (или ведущий на паузе — снова встанем).
+    liveHooks.resumed?.();
+    updateSession();
+    return;
+  }
   if (audio.paused) {
     try { await audio.play(); } catch { /* автоплей */ }
     // Эфир за паузу ушёл вперёд — догоняем.
@@ -266,7 +299,7 @@ export function stop() {
   if (audio) audio.src = "";
   // Перемешивание и повтор — настройки человека, они переживают остановку.
   state = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume, live: null };
+            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume, live: null, liveMuted: false };
   heard = new Set();
   emit();
 }

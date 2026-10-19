@@ -147,7 +147,7 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
               </div>
               <div className="flex items-center justify-between text-caption text-subtle tabular-nums">
                 <span>{live ? fmtTime(player.time) : ""}</span>
-                <span>{info.paused ? tr("Эфир на паузе") : live && player.duration ? fmtTime(player.duration) : ""}</span>
+                <span>{info.paused ? tr("Эфир на паузе") : live && player.liveMuted ? tr("У вас без звука — эфир идёт") : live && player.duration ? fmtTime(player.duration) : ""}</span>
               </div>
               <div className="flex items-center justify-center gap-3">
                 {live && (

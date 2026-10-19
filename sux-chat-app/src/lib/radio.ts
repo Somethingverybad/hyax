@@ -90,7 +90,8 @@ function apply(d: StationState) {
     // Ведущий снял паузу: своя пауза слушателя тут ни при чём — играем.
     liveSeek(expected(d));
     void livePlay();
-  } else if (p.playing && Math.abs(p.time - expected(d)) > DRIFT_S) {
+  } else if ((p.playing || p.liveMuted) && Math.abs(p.time - expected(d)) > DRIFT_S) {
+    // И без звука держим место по расписанию: включат — звук сразу где надо.
     liveSeek(expected(d));
   }
   // Смена трека — по расписанию, а не по концу файла: длительность в
