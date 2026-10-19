@@ -7,7 +7,8 @@ import { applog } from "@/lib/applog";
 import { outbox, mergePending } from "@/lib/outbox";
 import { MAX_VOICE_SECONDS, useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder"
 import SelectTextSheet from "@/components/chat/SelectTextSheet"
-import { activityLabel, reportActivity, useChatActivity } from "@/lib/chatActivity";
+import { activityLabel, reportActivity, useChatActivity } from "@/lib/chatActivity"
+import { LiquidIsland, LiquidText } from "@/components/LiquidIsland";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
@@ -3645,18 +3646,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 {otherUnread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#345c54] text-white text-[10.7px] leading-[18px] text-center">{otherUnread > 99 ? "99+" : otherUnread}</span>}
               </button>
             ) : <span />}
-            <button type="button" onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)}
-              className="mint-pill h-[43px] px-5 min-w-[120px] max-w-[60vw] flex flex-col items-center justify-center">
+            {/* Островок с ником и статусом перетекает, как жидкость (LiquidIsland). */}
+            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill h-[43px]">
               <span className="max-w-full truncate text-[16.3px] font-semibold leading-[18px] flex items-center gap-1" style={{ color: "var(--mint-title)" }}>
                 {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
-                <span className="truncate">{headerTitle || peer?.username || group?.name || tr("Чат")}</span>
+                <LiquidText className="min-w-0" text={headerTitle || peer?.username || group?.name || tr("Чат")} />
               </span>
-              <span className={cn("max-w-full truncate text-[11.7px] leading-[16px]", activityText ? "text-primary font-medium" : "mint-muted")}>
-                {activityText ? activityText : peer ? (peer.is_bot ? tr("бот") : peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))
+              <span className={cn("liquid-color max-w-full text-[11.7px] leading-[16px]", activityText ? "text-primary font-medium" : "mint-muted")}>
+                <LiquidText text={activityText ? activityText : peer ? (peer.is_bot ? tr("бот") : peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))
                   : isGroup ? tn(group?.participants?.length || 0, "{n} участник", "{n} участника", "{n} участников")
-                  : saved ? tr("Сообщения для себя") : ""}
+                  : saved ? tr("Сообщения для себя") : ""} />
               </span>
-            </button>
+            </LiquidIsland>
             <span className="relative">
               <Aura active={!!peer && !peer.is_bot && !!peer.is_online} owner={peer} size={43}>
               <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label={tr("Меню чата")}

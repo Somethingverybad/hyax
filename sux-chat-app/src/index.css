@@ -1642,3 +1642,24 @@ html.native-video .call-layer {
 @media (max-height: 760px) { .rail-player-title { display: none; } }
 .nav-rail-wrap { overflow-y: auto; scrollbar-width: none; }
 .nav-rail-wrap::-webkit-scrollbar { display: none; }
+
+/* «Жидкий» островок шапки чата: ширина — пружиной, текст перетекает
+   (components/LiquidIsland.tsx). */
+.liquid-island { display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; max-width: 60vw; }
+.liquid-island-anim { transition: width 560ms cubic-bezier(.34, 1.56, .64, 1); }
+.liquid-island-inner { display: inline-flex; flex-direction: column; align-items: center; width: max-content; max-width: calc(60vw - 40px); }
+.liquid-text { display: inline-grid; justify-items: center; max-width: 100%; min-width: 0; }
+.liquid-text > span { grid-area: 1 / 1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liquid-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+.liquid-out { animation: liquid-out 700ms ease-in forwards; }
+.liquid-in { animation: liquid-in 700ms ease-out forwards; }
+.liquid-color { transition: color 450ms ease; }
+/* Подобрано на мелком тексте статуса (11–16 px): сильнее размытие — буквы
+   проваливаются под порог и середина перехода пустеет; слабее — нет «капель».
+   Обе фразы в середине держим непрозрачными, чтобы чернила не рвались. */
+@keyframes liquid-out { 0% { opacity: 1; filter: blur(0); } 50% { opacity: 1; filter: blur(1.76px); } 100% { opacity: 0; filter: blur(2.2px); } }
+@keyframes liquid-in { 0% { opacity: 0; filter: blur(2.2px); } 50% { opacity: 1; filter: blur(1.76px); } 100% { opacity: 1; filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .liquid-island-anim { transition: none; }
+  .liquid-out, .liquid-in { animation: none; }
+}
