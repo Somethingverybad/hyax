@@ -1636,3 +1636,24 @@ class GraffitiTests(TestCase):
         rows = client_for(self.friend).get(f"/api/messages/?chat={chat.id}").data
         rows = rows.get("results", rows) if isinstance(rows, dict) else rows
         self.assertEqual(rows[-1]["sticker"]["file_url"], s["file_url"])
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class TrackUploadRepeatTests(TestCase):
+    """Повтор загрузки трека с той же меткой (очередь на устройстве) не плодит дубли."""
+
+    def test_same_client_id_once(self):
+        import os as _os
+        import shutil as _sh
+        import unittest
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        if not _sh.which("ffprobe"):
+            raise unittest.SkipTest("нет ffprobe")
+        me = make_user("uploader")
+        song = _os.path.join(_os.path.dirname(__file__), "..", "..", "sux-chat-app", "public", "sounds", "call.mp3")
+        data = open(song, "rb").read()
+        up = lambda: client_for(me).post("/api/playlists/tracks/upload/", {"file": SimpleUploadedFile("call.mp3", data, content_type="audio/mpeg"), "client_id": "q-1"}, format="multipart")
+        a, b = up(), up()
+        self.assertEqual((a.status_code, b.status_code), (201, 200), (a.data, b.data))
+        self.assertEqual(a.data["track"]["id"], b.data["track"]["id"])
+        self.assertEqual(PlaylistTrack.objects.filter(playlist__owner=me).count(), 1)

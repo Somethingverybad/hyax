@@ -1357,13 +1357,20 @@ export const api = {
   },
 
   /** Загрузить свой трек прямо в плейлист (без playlistId — в «Мою музыку»). */
-  uploadTrack: async (file: File, playlistId?: string): Promise<{ track: PlaylistTrack; playlist: Playlist }> => {
+  uploadTrack: async (file: File, playlistId?: string, opts?: { clientId?: string; onProgress?: (percent: number) => void }): Promise<{ track: PlaylistTrack; playlist: Playlist; repeat?: boolean }> => {
     const fd = new FormData();
     fd.append("file", file);
+    // Метка загрузки: повтор после оборванного ответа сервер узнает и не
+    // заведёт второй такой же трек (очередь lib/trackUploads.ts).
+    if (opts?.clientId) fd.append("client_id", opts.clientId);
+    if (opts?.onProgress) {
+      const path = playlistId ? `/playlists/${playlistId}/tracks/upload/` : "/playlists/tracks/upload/";
+      return uploadWithProgress(`${uploadBase()}${path}`, fd, opts.onProgress);
+    }
     const url = playlistId ? `${API_URL}/playlists/${playlistId}/tracks/upload/` : `${API_URL}/playlists/tracks/upload/`;
     const res = await fetchWithAuthMultipart(url, { method: "POST", body: fd });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new LError(d.error || "Не удалось загрузить трек");
+    if (!res.ok) throw Object.assign(new LError(d.error || "Не удалось загрузить трек"), { status: res.status });
     return d;
   },
 

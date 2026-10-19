@@ -5576,6 +5576,13 @@ class PlaylistTrackUploadView(APIView):
         ext = os.path.splitext(f.name or "")[1].lower()
         if not AUDIO_RE.search(ext):
             return Response({"error": "Это не музыка"}, status=400)
+        # Повтор загрузки (ответ в прошлый раз не дошёл — экран заблокировали,
+        # сеть моргнула): трек уже есть — отдаём его, второй не заводим.
+        client_id = str(request.data.get("client_id") or "")[:64]
+        if client_id:
+            done = PlaylistTrack.objects.filter(playlist__owner=me, client_id=client_id).select_related("playlist").first()
+            if done:
+                return Response({"track": PlaylistTrackSerializer(done).data, "playlist": PlaylistSerializer(done.playlist).data, "repeat": True})
         rel = os.path.join("music", f"{uuid.uuid4()}{ext}")
         full = os.path.join(settings.MEDIA_ROOT, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
@@ -5601,7 +5608,7 @@ class PlaylistTrackUploadView(APIView):
         pos = next_position(pl) if play_next else (
             (pl.tracks.order_by("-position").values_list("position", flat=True).first() or 0) + 1)
         track = PlaylistTrack.objects.create(playlist=pl, file_url=url, title=title, artist=artist,
-                                             duration=round(duration, 2), position=pos)
+                                             duration=round(duration, 2), position=pos, client_id=client_id)
         return Response({"track": PlaylistTrackSerializer(track).data, "playlist": PlaylistSerializer(pl).data}, status=201)
 
 

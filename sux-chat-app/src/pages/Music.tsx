@@ -3,7 +3,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe, Radio, Headphones, Upload, Link2, Link2Off,
-         Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
+         Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX, Check, Loader2, FolderUp } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack, type PublicPlaylist, type StationInfo } from "@/api/client";
@@ -16,6 +16,8 @@ import Identicon from "@/components/Identicon";
 import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, toggle,
          toggleShuffle, cycleRepeat, setVolume, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
+import { Capacitor } from "@capacitor/core";
+import { clearFinished, enqueueTracks, retryFailed, useTrackUploads } from "@/lib/trackUploads";
 
 /**
  * Музыка: плейлисты из того, что присылали в переписке.
@@ -152,7 +154,10 @@ const Music = () => {
   const radio = useRadio();
   // Загрузка своих треков в открытый плейлист: файлы по одному, счётчик — в кнопке.
   const fileInput = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  // Очередь загрузки (lib/trackUploads): живёт выше экрана, оборванное повторяет.
+  const queue = useTrackUploads();
+  const [dragOver, setDragOver] = useState(false);
   const [open, setOpen] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<PlaylistTrack[] | null>(null);
   const cachedTracks = (id: string) =>
@@ -269,24 +274,45 @@ const Music = () => {
     finally { setBusy(false); }
   };
 
-  /** Свои треки — с устройства прямо в плейлист. */
-  const uploadFiles = async (files: FileList | null) => {
-    if (!open || !files?.length) return;
-    const list = Array.from(files);
-    const pl = open;
-    let ok = 0;
-    setUploading({ done: 0, total: list.length });
-    for (const [i, f] of list.entries()) {
-      try { await api.uploadTrack(f, pl.id); ok++; }
-      catch (e: any) { toast.error(`${f.name}: ${e?.message || tr("Не получилось")}`); }
-      setUploading({ done: i + 1, total: list.length });
-    }
-    setUploading(null);
-    if (fileInput.current) fileInput.current.value = "";
-    if (ok) toast.success(tn(ok, "Загружен {n} трек", "Загружено {n} трека", "Загружено {n} треков"));
-    void openList(pl);
-    load();
+  /** Свои треки — с устройства прямо в плейлист: файлами, папкой (на
+   *  компьютере и в браузере) или перетаскиванием файлов и папок. */
+  const uploadFiles = (list: File[]) => {
+    if (!open || !list.length) return;
+    const n = enqueueTracks(list, open.id);
+    if (!n) toast.error(tr("Музыки не нашлось — поддерживаются MP3, M4A, FLAC, WAV, OGG, OPUS"));
+    else if (n < list.length) toast(tr("Музыки — {n} из {all}, остальное пропущено", { n, all: list.length }));
   };
+  // Перетащили файлы или папки — обходим папки целиком (вложенные тоже).
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const entries = [...e.dataTransfer.items].map((it) => it.webkitGetAsEntry?.()).filter(Boolean) as FileSystemEntry[];
+    if (!entries.length) { uploadFiles([...e.dataTransfer.files]); return; }
+    const out: File[] = [];
+    const walk = async (en: FileSystemEntry): Promise<void> => {
+      if (en.isFile) { out.push(await new Promise<File>((ok, fail) => (en as FileSystemFileEntry).file(ok, fail))); return; }
+      const reader = (en as FileSystemDirectoryEntry).createReader();
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((ok, fail) => reader.readEntries(ok, fail));
+        if (!batch.length) break;
+        for (const child of batch) await walk(child);
+      }
+    };
+    for (const en of entries) await walk(en).catch(() => {});
+    uploadFiles(out);
+  };
+  // Трек дошёл — список перечитываем (не чаще раза в секунду).
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<{ playlistId: string }>).detail?.playlistId;
+      if (t) return;
+      t = setTimeout(() => { t = null; if (open && open.id === id) void openList(open); load(); }, 1000);
+    };
+    window.addEventListener("hyax:track-uploaded", on);
+    return () => { window.removeEventListener("hyax:track-uploaded", on); if (t) clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open?.id]);
 
   /** Запустить эфир плейлиста: от себя или от канала, где я админ. */
   const startAir = async (pl: Playlist, channelId?: string) => {
@@ -508,12 +534,29 @@ const Music = () => {
           {tracks !== null && (
             <>
               <input ref={fileInput} type="file" accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus" multiple hidden
-                onChange={(e) => void uploadFiles(e.target.files)} />
-              <button type="button" disabled={!!uploading} onClick={() => fileInput.current?.click()}
-                className="w-full h-11 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:opacity-80 disabled:opacity-60">
-                <Upload className="w-4 h-4" />
-                {uploading ? tr("Загружаю {i} из {n}…", { i: Math.min(uploading.done + 1, uploading.total), n: uploading.total }) : tr("Загрузить свои треки")}
-              </button>
+                onChange={(e) => { const l = [...(e.target.files || [])]; e.target.value = ""; uploadFiles(l); }} />
+              {/* Папка (и вложенные) — где браузер умеет выбирать папки: компьютер и веб. */}
+              <input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: "", directory: "" }}
+                onChange={(e) => { const l = [...(e.target.files || [])]; e.target.value = ""; uploadFiles(l); }} />
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => void onDrop(e)}
+                className={cn("flex gap-2 rounded-md", dragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background")}
+              >
+                <button type="button" onClick={() => fileInput.current?.click()}
+                  className="flex-1 h-11 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:opacity-80">
+                  <Upload className="w-4 h-4" /> {tr("Загрузить свои треки")}
+                </button>
+                {canPickFolder && (
+                  <button type="button" onClick={() => folderInput.current?.click()}
+                    className="h-11 px-3 rounded-md border border-dashed border-border text-small font-medium flex items-center justify-center gap-2 active:opacity-80">
+                    <FolderUp className="w-4 h-4" /> {tr("Папку")}
+                  </button>
+                )}
+              </div>
+              {canPickFolder && <p className="px-1 -mt-1 text-caption text-subtle">{tr("Можно перетащить сюда файлы или папки.")}</p>}
+              <UploadQueueBar />
             </>
           )}
           {/* Подписи — в прокрутке: под ней отступ на нижнюю панель, а снаружи
@@ -756,6 +799,42 @@ const Music = () => {
       </div>
       <PlayerPanel onLive={openLive} />
       <BottomNav />
+    </div>
+  );
+};
+
+
+/** Выбор папки — там, где браузер это умеет (компьютер и веб; не в приложении на телефоне). */
+const canPickFolder = typeof HTMLInputElement !== "undefined" && "webkitdirectory" in HTMLInputElement.prototype && !Capacitor.isNativePlatform();
+
+/** Полоса загрузки: сколько из скольких, текущий трек с процентами, ошибки. */
+const UploadQueueBar = () => {
+  const { items } = useTrackUploads();
+  if (!items.length) return null;
+  const done = items.filter((x) => x.status === "done").length;
+  const failed = items.filter((x) => x.status === "error");
+  const active = items.find((x) => x.status === "uploading") || items.find((x) => x.status === "queued");
+  const total = items.length;
+  const finished = !active;
+  return (
+    <div className="rounded-md bg-surface-2 border border-border px-3 py-2.5 space-y-1.5">
+      <div className="flex items-center gap-2 text-small">
+        {finished ? <Check className="w-4 h-4 text-primary shrink-0" /> : <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />}
+        <span className="flex-1 min-w-0 truncate">
+          {finished ? tr("Загружено {n} из {all}", { n: done, all: total }) : tr("Загружаю {i} из {n}", { i: Math.min(done + failed.length + 1, total), n: total })}
+          {active && <span className="text-subtle"> · {active.name}{active.status === "uploading" ? ` · ${active.progress}%` : ""}</span>}
+        </span>
+        {finished && <button type="button" onClick={clearFinished} className="text-caption text-subtle underline underline-offset-2 shrink-0">{tr("Готово")}</button>}
+      </div>
+      <div className="h-1 rounded-full bg-black/15 overflow-hidden">
+        <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(((done + (active?.status === "uploading" ? active.progress / 100 : 0)) / total) * 100)}%` }} />
+      </div>
+      {failed.length > 0 && (
+        <div className="flex items-center gap-2 text-caption">
+          <span className="flex-1 min-w-0 truncate text-destructive">{tr("Не загрузилось: {n}", { n: failed.length })} — {failed[0].name}: {failed[0].error}</span>
+          <button type="button" onClick={retryFailed} className="underline underline-offset-2 shrink-0">{tr("Повторить")}</button>
+        </div>
+      )}
     </div>
   );
 };

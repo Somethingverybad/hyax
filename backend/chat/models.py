@@ -914,6 +914,9 @@ class PlaylistTrack(models.Model):
     title = models.CharField(max_length=200)
     artist = models.CharField(max_length=200, blank=True, default="")
     duration = models.FloatField(null=True, blank=True)
+    # Метка загрузки с устройства (очередь src/lib/trackUploads.ts): повтор
+    # после оборванного ответа не создаёт второй такой же трек.
+    client_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
     position = models.IntegerField(default=0)
     added_at = models.DateTimeField(default=timezone.now)
 
