@@ -1007,7 +1007,8 @@ class ButtonTests(TestCase):
         bot_user = User.objects.create_user(username="botty")
         self.bot = Profile.objects.create(user=bot_user, username="botty", is_bot=True,
                                           bot_owner=self.me, bot_token="tok-123")
-        self.chat = Chat.objects.create(kind="direct")
+        # Человек уже нажал «Начать»: иначе бот первым не пишет (403).
+        self.chat = Chat.objects.create(kind="direct", bot_started=True)
         for p in (self.me, self.bot):
             ChatParticipant.objects.create(chat=self.chat, user=p)
         self.rows = [[{"text": "Первый", "data": "pick:1"}, {"text": "Второй", "data": "pick:2"}]]
