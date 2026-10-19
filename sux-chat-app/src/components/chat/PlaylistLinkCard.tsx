@@ -114,6 +114,14 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         </span>
       </button>
 
+      {/* Прослушивания и лайк — своей строкой: в ряду кнопок им места нет,
+          «Слушать» сжималась до полоски. */}
+      {data && (
+        <div className="px-2.5 -mt-1 pb-1.5 pl-[62px]">
+          <PlaylistStatsBar id={data.playlist.id} token={token} own={mine} plays={data.playlist.plays}
+            likes={data.playlist.likes} liked={data.playlist.liked} className="opacity-90 [&_*]:!text-inherit" />
+        </div>
+      )}
       {data && (
         <div className="px-2.5 pb-2 flex gap-1.5">
           <button type="button" onClick={playAll} disabled={!queue.length}
@@ -136,8 +144,6 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
               <Plus className="w-3.5 h-3.5" /> {busy ? "…" : tr("Себе")}
             </button>
           )}
-          <PlaylistStatsBar id={data.playlist.id} token={token} own={mine} plays={data.playlist.plays}
-            likes={data.playlist.likes} liked={data.playlist.liked} className="shrink-0 pl-1 opacity-90 [&_*]:!text-inherit" />
         </div>
       )}
 
