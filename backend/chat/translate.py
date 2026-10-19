@@ -112,8 +112,13 @@ def plausible(original, out, target):
     if len(out) > 3 * len(original or "") + 80:
         return False
     seen = {w.casefold() for w in re.findall(r"\w+", original or "")}
-    rest = " ".join(w for w in re.findall(r"\w+", out) if w.casefold() not in seen)
-    return detect_lang(rest) in ("", norm_lang(target))
+    rest = _URL.sub(" ", " ".join(w for w in re.findall(r"\w+", out) if w.casefold() not in seen))
+    # Слог хангыля несёт столько же, сколько две-три буквы: «고마워 Апрелюшka»
+    # (имя осталось кириллицей) — перевод на корейский, а не на русский.
+    w = {"ko": 3 * len(_HANGUL.findall(rest)), "ru": len(_CYR.findall(rest)), "en": len(_LAT.findall(rest))}
+    if not any(w.values()):
+        return True
+    return max(w, key=w.get) == norm_lang(target)
 
 
 def gave_up(original, out, target):

@@ -1845,6 +1845,8 @@ class TranslatePlausibleTests(TestCase):
         self.assertTrue(plausible(self.KO, "Какую дораму или аниме ты больше всего любишь?", "ru"))
         self.assertTrue(plausible("iPhone 16 Pro Max 짱", "iPhone 16 Pro Max — круто", "ru"))
         self.assertTrue(plausible("Привет, @zz_test_b", "Hi, @zz_test_b", "en"))
+        self.assertTrue(plausible("Спасибо Апрелюшка 😘", "고마워 Апрелюшka 😘", "ko"))
+        self.assertFalse(plausible("Апрель ещё не собрала свечи 👀", "에이프릴은 아직 양초를 모으지 않았어요 👀", "ru"))
 
     def test_meta_answer_goes_to_next_provider(self):
         from unittest import mock
