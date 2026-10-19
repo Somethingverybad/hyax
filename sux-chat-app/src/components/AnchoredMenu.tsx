@@ -8,6 +8,12 @@ import { cn } from "@/lib/utils";
  * верхние пункты «Медиа» уходили под край. Встаёт над кнопкой, а если сверху
  * не помещается — под ней; за края экрана не выходит.
  *
+ * Кнопка может уехать, пока меню открыто: касание «Медиа» прячет клавиатуру,
+ * и окно поста опускается на её высоту — а размер страницы при этом не
+ * меняется (клавиатуру учитываем сами, kbsync в main.tsx), событий нет. Поэтому
+ * положение кнопки сверяем каждый кадр, пока меню открыто: это один замер
+ * прямоугольника, а меню открыто секунды.
+ *
  * Меню вне кнопки по DOM: закрытие по касанию снаружи должно проверять и его
  * (ref), иначе пункт пропадёт раньше, чем сработает нажатие.
  */
@@ -29,13 +35,10 @@ const AnchoredMenu = forwardRef<HTMLDivElement, { anchor: RefObject<HTMLElement>
         const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
         setPos((p) => (p && p.top === top && p.left === left ? p : { top, left }));
       };
-      place();
-      window.addEventListener("resize", place);
-      window.addEventListener("scroll", place, true);
-      return () => {
-        window.removeEventListener("resize", place);
-        window.removeEventListener("scroll", place, true);
-      };
+      let raf = 0;
+      const follow = () => { place(); raf = requestAnimationFrame(follow); };
+      follow();
+      return () => cancelAnimationFrame(raf);
     }, [anchor]);
 
     return createPortal(
