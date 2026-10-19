@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type RefObject } from "react";
-import { api, mediaUrl, type Chat, type NotificationSoundInfo, type WallState } from "@/api/client";
+import { api, mediaUrl, type Chat, type NotificationSoundInfo, type PollInfo, type WallState } from "@/api/client";
+import PollCard from "@/components/chat/PollCard";
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
 import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
@@ -15,7 +16,7 @@ import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -71,6 +72,8 @@ interface Post {
   translations?: Record<string, string> | null;
   reactions?: ReactionSummary[]; reactions_total?: number;
   comments_count?: number; views_count?: number;
+  /** Опрос (Стена): вопрос — content. */
+  poll?: PollInfo | null;
   sound?: { name: string } | null;
   /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер).
    *  _failed + _retry — не ушло: пост остаётся с «Повторить»/«Удалить», снятое не теряется. */
@@ -387,6 +390,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   type AttachMode = "photo" | "video" | "audio" | "file";
   interface Attach { id: string; file: File; mode: AttachMode; url: string }
   const [attachments, setAttachments] = useState<Attach[]>([]);
+  // Опрос в посте Стены: null — обычный пост, иначе — варианты ответа
+  // (вопрос — текст поста). Анонимность запоминается, как «4+».
+  const [pollOpts, setPollOpts] = useState<string[] | null>(null);
+  const [pollAnon, setPollAnonState] = useState(() => { try { return localStorage.getItem("hyax:poll-anon") !== "0"; } catch { return true; } });
+  const setPollAnon = (v: boolean) => { setPollAnonState(v); try { localStorage.setItem("hyax:poll-anon", v ? "1" : "0"); } catch { /* приватный режим */ } };
   // Редактор фото (рисовалка, кадр, поворот) для вложения поста.
   const [editFor, setEditFor] = useState<Attach | null>(null);
   const applyEdit = (target: Attach, edited: File) => {
@@ -791,15 +799,29 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     const body = text.trim();
     // Пост может быть и одним звуком — без текста и вложений.
     if ((!body && !attachments.length && !sound) || sending) return;
+    // Опрос: вопрос — текст поста, вариантов — хотя бы два разных.
+    const opts = pollOpts;
+    const poll = wall && opts ? { options: opts.map((o) => o.trim()).filter(Boolean), anonymous: pollAnon } : null;
+    if (poll) {
+      if (!body) { toast.error(tr("Напишите вопрос")); return; }
+      if (new Set(poll.options.map((o) => o.toLowerCase())).size < 2) { toast.error(tr("Нужно хотя бы два разных варианта ответа")); return; }
+    }
     setSending(true);
-    const list = attachments;
+    const list = poll ? [] : attachments;
     setAttachments([]);
     setText("");
+    setPollOpts(null);
     const snd = sound;
     setSound(null);
     try {
       if (!list.length) {
-        await api.sendMessage(channelId, body, snd?.id, undefined, undefined, wall ? { wall_safe: safe } : undefined);
+        try {
+          await api.sendMessage(channelId, body, snd?.id, undefined, undefined, wall ? { wall_safe: safe, ...(poll ? { poll } : {}) } : undefined);
+        } catch (e) {
+          // Опрос не ушёл — вернуть набранное, чтобы не собирать заново.
+          if (poll) { setText(body); setPollOpts(opts); }
+          throw e;
+        }
       } else {
         // Выбранное разом — один пост с общим album_id (фото, видео и музыка
         // вместе); больше ALBUM_MAX за раз не кладём, остальное уходит
@@ -1071,7 +1093,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   // Перевод — вместо оригинала, без оформления (диапазоны
                   // относятся к исходному тексту); пометка «перевод» — оригинал.
                   const ts = trState(post);
-                  return (
+                  const text = (
                     <p className="text-body whitespace-pre-wrap break-words">
                       {ts.shown
                         ? (() => {
@@ -1087,6 +1109,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       )}
                     </p>
                   );
+                  // Опрос: текст поста — его вопрос.
+                  if (post.poll && !post._pending) {
+                    return <PollCard postId={post.id} question={text} poll={post.poll}
+                      onChange={(poll) => setPosts((prev) => prev.map((x) => (x.id === post.id ? { ...x, poll } : x)))}
+                      onOpenProfile={(id) => setProfileFor(id)} />;
+                  }
+                  return text;
                 })()}
                 {(() => {
                   // Пак или тема по ссылке в посте — плиткой с «Добавить себе»,
@@ -1237,7 +1266,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     <textarea
                       value={text}
                       onChange={(e) => setText(e.target.value)}
-                      placeholder={tr("Что нового?")}
+                      placeholder={pollOpts ? tr("Вопрос") : tr("Что нового?")}
                       rows={4}
                       autoFocus
                       disabled={sending}
@@ -1269,13 +1298,50 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       </div>
                     )}
                     {attachments.length > 10 && <p className="text-caption text-subtle">{tr("Выбрано {n} — уйдут по 10 в посте", { n: attachments.length })}</p>}
+                    {pollOpts && (
+                      <div className="rounded-lg bg-surface-2 border border-border p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <ListChecks className="w-4 h-4 text-primary" />
+                          <span className="flex-1 text-small font-semibold">{tr("Варианты ответа")}</span>
+                          <button type="button" onClick={() => setPollOpts(null)} disabled={sending} className="text-caption text-subtle underline underline-offset-2">{tr("Убрать опрос")}</button>
+                        </div>
+                        {pollOpts.map((v, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <input
+                              value={v}
+                              maxLength={100}
+                              disabled={sending}
+                              onChange={(e) => setPollOpts((prev) => prev && prev.map((x, j) => (j === i ? e.target.value : x)))}
+                              placeholder={tr("Вариант {n}", { n: i + 1 })}
+                              className="flex-1 min-w-0 h-10 bg-surface-1 border border-border rounded-md px-3 text-body outline-none focus:border-amber"
+                            />
+                            {pollOpts.length > 2 && (
+                              <button type="button" onClick={() => setPollOpts((prev) => prev && prev.filter((_, j) => j !== i))} disabled={sending}
+                                className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-subtle" aria-label={tr("Убрать вариант")}>
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {pollOpts.length < 10 && (
+                          <button type="button" onClick={() => setPollOpts((prev) => prev && [...prev, ""])} disabled={sending}
+                            className="flex items-center gap-1.5 text-small text-primary font-medium">
+                            <Plus className="w-4 h-4" /> {tr("Добавить вариант")}
+                          </button>
+                        )}
+                        <label className="flex items-start gap-2 text-caption text-subtle pt-1">
+                          <input type="checkbox" className="w-4 h-4 mt-0.5 accent-primary" checked={pollAnon} onChange={(e) => setPollAnon(e.target.checked)} />
+                          <span><b className="text-foreground">{tr("Анонимный опрос")}</b> — {pollAnon ? tr("никто не узнает, кто как проголосовал.") : tr("выключено: проголосовавшие и автор увидят, кто что выбрал.")}</span>
+                        </label>
+                      </div>
+                    )}
                     <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e, "photo")} />
                     <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => pick(e, "video")} />
                     <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" multiple className="hidden" onChange={(e) => pick(e, "audio")} />
                     <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => pick(e, "file")} />
                     <div className="flex items-center gap-2">
                       <div ref={attachRef} className="relative">
-                        <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending} className={cn("h-10 px-3 rounded-full bg-surface-2 border border-border flex items-center gap-2 text-small font-medium", attachments.length > 0 && "text-primary border-primary")} aria-label={tr("Прикрепить")}>
+                        <button type="button" onClick={() => setAttachOpen((v) => !v)} disabled={sending || !!pollOpts} className={cn("h-10 px-3 rounded-full bg-surface-2 border border-border flex items-center gap-2 text-small font-medium disabled:opacity-40", attachments.length > 0 && "text-primary border-primary")} aria-label={tr("Прикрепить")}>
                           <Paperclip className="w-4 h-4" /> {tr("Медиа")}{attachments.length ? ` · ${attachments.length}` : ""}
                         </button>
                         {attachOpen && (
@@ -1284,6 +1350,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}><Video className="w-4 h-4 text-primary" /> {tr("Видео")}</button>
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> {tr("Музыка")}</button>
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}><FileText className="w-4 h-4 text-primary" /> {tr("Файл")}</button>
+                            {/* Опрос — без вложений, как в постах с вопросом. */}
+                            <button type="button" disabled={attachments.length > 0} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary disabled:opacity-40" onClick={() => { setAttachOpen(false); setPollOpts(["", ""]); }}><ListChecks className="w-4 h-4 text-primary" /> {tr("Опрос")}</button>
                           </div>
                         )}
                       </div>

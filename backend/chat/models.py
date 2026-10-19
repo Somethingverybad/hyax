@@ -412,6 +412,9 @@ class Message(models.Model):
     # Действие («подмигивает») и его адресат — сообщение-жест (ChatAction).
     action = models.ForeignKey('ChatAction', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     action_target = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    # Опрос в посте (chat/polls.py): вопрос — сам текст сообщения. Ссылка
+    # здесь, а не в Poll, чтобы сериализатору хватало poll_id без запроса.
+    poll = models.OneToOneField('Poll', on_delete=models.SET_NULL, null=True, blank=True, related_name='message')
     # Момент последнего изменения (текст, удаление у всех). По нему клиент
     # синхронизирует свой кэш: GET /messages/sync/?since=… отдаёт только то,
     # что менялось. auto_now срабатывает на save(); при save(update_fields=…)
@@ -747,6 +750,43 @@ class PostReaction(models.Model):
     class Meta:
         unique_together = ("post", "user", "value")
         indexes = [models.Index(fields=["post"], name="chat_reaction_post_idx")]
+
+
+class Poll(models.Model):
+    """Опрос в посте (пока — на Стене, chat/polls.py). Вопрос — текст самого
+    сообщения (Message.content): его видят старые клиенты, пуши, поиск и
+    перевод. anonymous — кто как голосовал, не узнает никто, даже автор;
+    голос всё равно привязан к человеку, иначе не удержать «один голос»."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    anonymous = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Опрос {self.id}"
+
+
+class PollOption(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="options")
+    text = models.CharField(max_length=100)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return self.text
+
+
+class PollVote(models.Model):
+    """Голос: один на человека в опросе (переголосовать — заменить)."""
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="votes")
+    option = models.ForeignKey(PollOption, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="poll_votes")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("poll", "user")
 
 
 class PostComment(models.Model):

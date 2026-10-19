@@ -337,6 +337,16 @@ export interface SavedImage {
 /** Закреплённое сообщение в списке чатов: id + превью, полный текст в ленте. */
 import type { ReactionSummary } from "@/lib/reactions";
 
+/** Опрос в посте Стены. votes — только если results (проголосовал или автор). */
+export interface PollInfo {
+  id: string;
+  anonymous: boolean;
+  total: number;
+  voted: string[];
+  results: boolean;
+  options: { id: string; text: string; votes: number | null }[];
+}
+
 /** Плейлист и трек: музыка из переписки, собранная в списки. */
 export interface Playlist {
   id: string;
@@ -1626,6 +1636,25 @@ export const api = {
   reactToPost: async (msgId: string, value: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/react/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ value }) });
     return res.json();
+  },
+  /** Опрос поста (backend chat/polls.py): голос или новый выбор, отзыв, кто голосовал. */
+  votePoll: async (postId: string, optionId: string): Promise<{ poll: PollInfo }> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${postId}/poll/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ option: optionId }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось проголосовать");
+    return body;
+  },
+  unvotePoll: async (postId: string): Promise<{ poll: PollInfo }> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${postId}/poll/`, { method: "DELETE", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось отменить голос");
+    return body;
+  },
+  pollVoters: async (postId: string, optionId: string): Promise<{ count: number; voters: { id: string; username: string; avatar_url?: string | null }[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${postId}/poll/voters/?option=${encodeURIComponent(optionId)}`, { method: "GET", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось загрузить");
+    return body;
   },
   unreactPost: async (msgId: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/react/`, { method: "DELETE", headers: authHeaders() });

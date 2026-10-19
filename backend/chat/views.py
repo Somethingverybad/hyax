@@ -1221,6 +1221,9 @@ class MessageViewSet(viewsets.ModelViewSet):
         content = (request.data.get('content') or '').strip()
         if not content:
             return Response({"error": "Пустой текст"}, status=400)
+        # Текст опроса — его вопрос: за него уже голосовали.
+        if msg.poll_id:
+            return Response({"error": "Опрос нельзя изменить"}, status=400)
         msg.content = content
         # Оформление присылают вместе с текстом; без поля — снимаем старое,
         # его диапазоны к новому тексту уже не подходят.
@@ -1918,6 +1921,18 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Стена: отметка «Контент 4+» — только от автора и только здесь.
         if _chat_id and _ch and _ch.kind == 'wall':
             save_kwargs['wall_safe'] = str(request.data.get('wall_safe') or '').lower() in ('1', 'true', 'yes')
+
+        # Опрос (chat/polls.py) — пока только на Стене; вопрос — текст поста.
+        if request.data.get('poll'):
+            if not (_chat_id and _ch and _ch.kind == 'wall'):
+                return Response({"error": "Опрос можно создать только на Стене"}, status=400)
+            if save_kwargs.get('file_url') or save_kwargs.get('voice_url') or save_kwargs.get('video_url'):
+                return Response({"error": "К опросу нельзя приложить файл"}, status=400)
+            from .polls import create_poll, parse_poll
+            poll_data, poll_error = parse_poll(request.data.get('poll'), request.data.get('content'))
+            if poll_error:
+                return Response({"error": poll_error}, status=400)
+            save_kwargs['poll'] = create_poll(poll_data)
 
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)

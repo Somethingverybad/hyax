@@ -1412,3 +1412,84 @@ class TelegramMirrorTests(TestCase):
             message = "читать тут и там"
             entities = [E(7, 3, "https://a.example"), E(13, 3, "https://b.example")]
         self.assertEqual(text_from_tg(M()), "читать тут (https://a.example) и там (https://b.example)")
+
+
+class PollTests(TestCase):
+    """Опросы на Стене: создание, голос, смена и отзыв голоса, кто голосовал."""
+
+    def setUp(self):
+        from .wall import wall_chat
+        self.author = make_user("pollauthor")
+        self.voter = make_user("pollvoter")
+        self.other = make_user("pollother")
+        self.wall = wall_chat()
+
+    def create(self, who=None, question="Чай или кофе?", options=("Чай", "Кофе"), anonymous=True, chat=None, safe=True):
+        return client_for(who or self.author).post("/api/messages/", {
+            "chat": str((chat or self.wall).id), "content": question, "wall_safe": safe,
+            "poll": {"options": list(options), "anonymous": anonymous},
+        }, format="json")
+
+    def vote(self, who, post, option):
+        return client_for(who).post(f"/api/posts/{post}/poll/", {"option": option}, format="json")
+
+    def test_create_and_validate(self):
+        r = self.create(options=("Чай", "Кофе", " чай ", "", "Какао"))
+        self.assertEqual(r.status_code, 201, r.data)
+        p = r.data["poll"]
+        self.assertEqual([o["text"] for o in p["options"]], ["Чай", "Кофе", "Какао"])  # повтор и пустой — долой
+        self.assertTrue(p["anonymous"])
+        self.assertTrue(p["results"])  # автор видит числа сразу
+        self.assertEqual(r.data["content"], "Чай или кофе?")
+        self.assertEqual(self.create(options=("Один",)).status_code, 400)
+        self.assertEqual(self.create(options=[str(i) for i in range(11)]).status_code, 400)
+        self.assertEqual(self.create(question="  ").status_code, 400)
+        dm = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=dm, user=self.author)
+        self.assertEqual(self.create(chat=dm).status_code, 400)
+
+    def test_vote_change_and_retract(self):
+        post = self.create().data
+        a, b = [o["id"] for o in post["poll"]["options"]]
+        before = client_for(self.voter).get(f"/api/wall/posts/").data["posts"][-1]["poll"]
+        self.assertFalse(before["results"])
+        self.assertIsNone(before["options"][0]["votes"])  # до голоса чужих цифр не видно
+        r = self.vote(self.voter, post["id"], a)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["poll"]["voted"], [a])
+        self.assertEqual([o["votes"] for o in r.data["poll"]["options"]], [1, 0])
+        self.vote(self.other, post["id"], a)
+        r = self.vote(self.voter, post["id"], b)  # передумал
+        self.assertEqual([o["votes"] for o in r.data["poll"]["options"]], [1, 1])
+        self.assertEqual(r.data["poll"]["total"], 2)
+        r = client_for(self.voter).delete(f"/api/posts/{post['id']}/poll/")
+        self.assertEqual(r.data["poll"]["voted"], [])
+        self.assertFalse(r.data["poll"]["results"])
+        self.assertEqual(r.data["poll"]["total"], 1)
+        self.assertEqual(self.vote(self.voter, post["id"], "00000000-0000-0000-0000-000000000000").status_code, 400)
+
+    def test_voters_only_in_open_poll(self):
+        open_post = self.create(anonymous=False).data
+        a = open_post["poll"]["options"][0]["id"]
+        url = f"/api/posts/{open_post['id']}/poll/voters/?option={a}"
+        self.assertEqual(client_for(self.voter).get(url).status_code, 403)  # сначала проголосуй
+        self.vote(self.voter, open_post["id"], a)
+        r = client_for(self.other).get(url)
+        self.assertEqual(r.status_code, 403)
+        r = client_for(self.author).get(url)
+        self.assertEqual((r.status_code, [v["username"] for v in r.data["voters"]]), (200, ["pollvoter"]))
+        anon = self.create().data
+        x = anon["poll"]["options"][0]["id"]
+        self.vote(self.voter, anon["id"], x)
+        self.assertEqual(client_for(self.voter).get(f"/api/posts/{anon['id']}/poll/voters/?option={x}").status_code, 403)
+        self.assertEqual(client_for(self.author).get(f"/api/posts/{anon['id']}/poll/voters/?option={x}").status_code, 403)
+
+    def test_adult_post_hidden_and_no_edit(self):
+        post = self.create(safe=False).data  # без «4+» — только тем, кто включил 18+
+        a = post["poll"]["options"][0]["id"]
+        self.assertEqual(self.vote(self.voter, post["id"], a).status_code, 404)
+        self.voter.allow_adult = True
+        self.voter.save()
+        self.assertEqual(self.vote(self.voter, post["id"], a).status_code, 200)
+        r = client_for(self.author).post(f"/api/messages/{post['id']}/edit/", {"content": "Другой вопрос"}, format="json")
+        self.assertEqual(r.status_code, 400)

@@ -11,6 +11,7 @@ from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclin
 from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransferBlobView
 from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView
+from .polls import PollVoteView, PollVotersView
 from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
@@ -142,6 +143,9 @@ urlpatterns = [
     path('channels/<uuid:pk>/admins/', ChannelAdminsView.as_view(), name='channel-admins'),
     path('channels/<uuid:pk>/posts/', ChannelPostsView.as_view(), name='channel-posts'),
     path('posts/<uuid:pk>/react/', PostReactView.as_view(), name='post-react'),
+    # Опросы в постах Стены (chat/polls.py)
+    path('posts/<uuid:pk>/poll/', PollVoteView.as_view(), name='post-poll'),
+    path('posts/<uuid:pk>/poll/voters/', PollVotersView.as_view(), name='post-poll-voters'),
     path('posts/<uuid:pk>/comments/', PostCommentsView.as_view(), name='post-comments'),
     path('posts/<uuid:pk>/view/', PostViewMark.as_view(), name='post-view'),
     path('posts/comments/<uuid:pk>/', PostCommentDetailView.as_view(), name='post-comment-detail'),
