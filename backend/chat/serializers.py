@@ -773,12 +773,20 @@ class ChannelSerializer(serializers.ModelSerializer):
 
 
 class PostCommentSerializer(serializers.ModelSerializer):
+    """Комментарий; parent — на какой отвечает (ветки). Удалённый приходит,
+    только если на него есть ответы, — заглушкой без текста и автора."""
     author = ProfileSerializer(read_only=True)
 
     class Meta:
         model = PostComment
-        fields = ['id', 'post', 'author', 'parent', 'content', 'created_at']
-        read_only_fields = ['id', 'author', 'created_at']
+        fields = ['id', 'post', 'author', 'parent', 'content', 'created_at', 'deleted']
+        read_only_fields = ['id', 'author', 'created_at', 'deleted']
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if obj.deleted:
+            data.update(content="", author=None)
+        return data
 
 
 class SavedImageSerializer(serializers.ModelSerializer):

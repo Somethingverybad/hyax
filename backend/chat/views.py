@@ -2,6 +2,7 @@ import re
 import shutil
 import uuid
 import logging
+from datetime import timedelta
 from django.db import models
 
 from rest_framework.decorators import api_view, permission_classes
@@ -1071,6 +1072,10 @@ def _media_q(kind):
     return has_file & ~aud & (models.Q(download_only=True) | (~models.Q(file_url__iregex=_IMG_RE) & ~models.Q(file_url__iregex=_VID_RE)))
 
 
+# Сколько автор может править свой пост на Стене (MessageViewSet.edit).
+WALL_EDIT_WINDOW = timedelta(hours=24)
+
+
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     queryset = Message.objects.all()
@@ -1190,6 +1195,8 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response({"error": "Удалить у всех может только автор"}, status=403)
             msg.deleted_for_all = True
             msg.save(update_fields=['deleted_for_all', 'updated_at'])
+            # Пост канала или Стены — вместе с комментариями.
+            PostComment.objects.filter(post=msg, deleted=False).update(deleted=True)
             from .ideabox import relay_delete
             relay_delete(msg)
             _push_message_deleted(msg)
@@ -1224,6 +1231,10 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Текст опроса — его вопрос: за него уже голосовали.
         if msg.poll_id:
             return Response({"error": "Опрос нельзя изменить"}, status=400)
+        # Пост на Стене правится только в первые сутки: потом его уже прочитали
+        # и обсудили, и правка задним числом меняла бы смысл комментариев.
+        if msg.chat.kind == 'wall' and timezone.now() - msg.created_at > WALL_EDIT_WINDOW:
+            return Response({"error": "Пост можно изменить только в первые сутки после публикации"}, status=403)
         msg.content = content
         # Оформление присылают вместе с текстом; без поля — снимаем старое,
         # его диапазоны к новому тексту уже не подходят.
@@ -4622,9 +4633,22 @@ class PostCommentsView(APIView):
 
     def get(self, request, pk):
         msg = _post_or_none(pk)
-        if not msg:
+        me = _prof(request)
+        if not msg or msg.deleted_for_all or not me or not _can_see_chat(msg.chat, me):
             return Response({"error": "Пост не найден"}, status=404)
-        comments = msg.comments.filter(deleted=False).select_related("author").order_by("created_at")
+        rows = list(msg.comments.select_related("author").order_by("created_at"))
+        # Ветки: удалённый комментарий, на который есть живые ответы, остаётся
+        # заглушкой — иначе ответы повисли бы без того, на что отвечали.
+        by_id = {c.id: c for c in rows}
+        keep = {c.id for c in rows if not c.deleted}
+        for c in rows:
+            if c.deleted:
+                continue
+            p = by_id.get(c.parent_id)
+            while p is not None and p.id not in keep:
+                keep.add(p.id)
+                p = by_id.get(p.parent_id)
+        comments = [c for c in rows if c.id in keep]
         return Response({"comments": PostCommentSerializer(comments, many=True).data})
 
     def post(self, request, pk):
@@ -4647,7 +4671,12 @@ class PostCommentsView(APIView):
         parent = None
         parent_id = request.data.get("parent")
         if parent_id:
-            parent = PostComment.objects.filter(id=parent_id, post=msg).first()
+            try:
+                parent = PostComment.objects.filter(id=uuid.UUID(str(parent_id)), post=msg, deleted=False).first()
+            except ValueError:
+                parent = None
+            if not parent:
+                return Response({"error": "Комментарий, на который вы отвечаете, удалён"}, status=400)
         c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content[:2000])
         _touch_post(msg)
         return Response(PostCommentSerializer(c).data, status=201)

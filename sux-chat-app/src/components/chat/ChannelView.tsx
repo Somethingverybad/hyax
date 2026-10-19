@@ -3,7 +3,7 @@ import { t as tr, tn, getLang } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type RefObject } from "react";
 import { api, mediaUrl, type Chat, type NotificationSoundInfo, type PollInfo, type WallState } from "@/api/client";
 import PollCard from "@/components/chat/PollCard";
 import UserProfileModal from "@/components/UserProfileModal";
@@ -74,6 +74,7 @@ interface Post {
   comments_count?: number; views_count?: number;
   /** Опрос (Стена): вопрос — content. */
   poll?: PollInfo | null;
+  is_edited?: boolean;
   sound?: { name: string } | null;
   /** Клиентские поля: пост показан до ответа сервера, _progress — загрузка вложения (100 — ждём сервер).
    *  _failed + _retry — не ушло: пост остаётся с «Повторить»/«Удалить», снятое не теряется. */
@@ -314,6 +315,28 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       setUndoBar(null);
       deleteTimerRef.current = null;
     }, 5000);
+  };
+  // Правка своего поста на Стене (первые сутки — WALL_EDIT_MS, как на сервере).
+  const [editPost, setEditPost] = useState<Post | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const saveEdit = async () => {
+    const p = editPost;
+    const body = editText.trim();
+    if (!p || !body || editSaving) return;
+    if (body === (p.content || "").trim()) { setEditPost(null); return; }
+    setEditSaving(true);
+    try {
+      const r = await api.editMessage(p.id, body);
+      setPosts((prev) => prev.map((x) => (x.id === p.id
+        ? { ...x, content: r.content, is_edited: true, translations: r.translations, ...({ entities: r.entities } as object) }
+        : x)));
+      setEditPost(null);
+    } catch (e) {
+      toast.error((e as Error)?.message || tr("Не удалось изменить"));
+    } finally {
+      setEditSaving(false);
+    }
   };
   const undoDelete = () => {
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
@@ -1144,7 +1167,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   </div>
                 )}
                 <div className="flex items-center gap-4 mt-2 text-caption text-subtle">
-                  <span>{post._pending ? tr("отправка") : fmtTime(post.created_at)}</span>
+                  <span>{post._pending ? tr("отправка") : fmtTime(post.created_at)}{post.is_edited && !post._pending ? ` · ${tr("изменено")}` : ""}</span>
                   <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{post.views_count ?? 0}</span>
                   {post.sound && <span className="flex items-center gap-1"><Music2 className="w-3.5 h-3.5" />{post.sound.name}</span>}
                 </div>
@@ -1167,6 +1190,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 <button
                   type="button"
                   onClick={() => setCommentsFor(post)}
+                  aria-label={tr("Комментарии")}
                   className="ml-auto h-8 rounded-full bg-surface-4 inline-flex items-center gap-1 px-2.5 text-small text-muted-foreground"
                 >
                   <MessageCircle className="w-4 h-4" />
@@ -1222,7 +1246,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           {undoBar && (
             <div className="px-3 pb-2 shrink-0">
               <div className="flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
-                <span className="text-sm">{tr("Пост удалён")}</span>
+                <span className="text-sm">{undoBar.comments_count ? tr("Пост удалён вместе с комментариями") : tr("Пост удалён")}</span>
                 <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">{tr("Отменить")}</button>
               </div>
             </div>
@@ -1383,7 +1407,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <div className={cn("pad-safe-bottom px-3 py-2 shrink-0")}>
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
-              <span className="text-sm">{tr("Пост удалён")}</span>
+              <span className="text-sm">{undoBar.comments_count ? tr("Пост удалён вместе с комментариями") : tr("Пост удалён")}</span>
               <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">{tr("Отменить")}</button>
             </div>
           )}
@@ -1651,12 +1675,37 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 )}
               </>
             )}
+            {/* Свой пост — править в первые сутки (сервер проверит сам), опрос — нет. */}
+            {wall && menuFor.sender?.id === userId && !menuFor.poll && Date.now() - new Date(menuFor.created_at).getTime() < WALL_EDIT_MS && (
+              <button type="button" onClick={() => { const p = menuFor; setMenuFor(null); setEditPost(p); setEditText(p.content || ""); }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                <Pencil className="w-5 h-5 text-muted-foreground" /> {tr("Изменить")}
+              </button>
+            )}
             {(wallAdmin || menuFor.sender?.id === userId) && (
               <button type="button" onClick={() => { const p = menuFor; setMenuFor(null); startDelete(p); }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary text-destructive">
                 <Trash2 className="w-5 h-5" /> {tr("Удалить пост")}
               </button>
             )}
             <button type="button" onClick={() => setMenuFor(null)} className="w-full px-4 py-3 text-left text-body text-muted-foreground">{tr("Отмена")}</button>
+          </div>
+        </div>
+        </SheetPortal>
+      )}
+      {editPost && (
+        <SheetPortal>
+        <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => !editSaving && setEditPost(null)}>
+          <div className="bg-card border-t-2 border-border pad-safe-bottom px-4 py-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <p className="font-semibold flex items-center gap-2"><Pencil className="w-5 h-5 text-primary" /> {tr("Изменить пост")}</p>
+            <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={5} autoFocus disabled={editSaving}
+              className="w-full resize-none bg-surface-2 border border-border rounded-md px-3.5 py-3 text-body outline-none focus:border-amber max-h-64" />
+            <p className="text-caption text-subtle">{tr("Пост можно изменить в течение суток после публикации.")}</p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setEditPost(null)} disabled={editSaving} className="h-10 px-4 rounded-full text-small text-muted-foreground">{tr("Отмена")}</button>
+              <button type="button" onClick={() => void saveEdit()} disabled={editSaving || !editText.trim()}
+                className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-semibold text-small disabled:opacity-40">
+                {editSaving ? tr("Сохраняю…") : tr("Сохранить")}
+              </button>
+            </div>
           </div>
         </div>
         </SheetPortal>
@@ -1674,6 +1723,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           onAuthor={wall ? (id) => setProfileFor(id) : undefined}
           onClose={() => setCommentsFor(null)}
           onCountChange={(n) => setPosts((prev) => prev.map((p) => (p.id === commentsFor.id ? { ...p, comments_count: n } : p)))}
+          userId={userId}
+          canModerate={wall ? wallAdmin : isAdmin}
         />
       )}
     </div>
@@ -1686,50 +1737,155 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
  *  ложилась поверх низа шторки (поле ввода, кнопки). */
 const SheetPortal = ({ children }: { children: React.ReactNode }) => createPortal(children, document.body);
 
-/** Комментарии к посту. */
-const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCountChange }: {
+/** Сколько автор может править пост на Стене (сервер: WALL_EDIT_WINDOW). */
+const WALL_EDIT_MS = 24 * 60 * 60 * 1000;
+
+/** Комментарий к посту; parent — на какой отвечает (ветки). Удалённый
+ *  приходит заглушкой, только если на него есть ответы. */
+interface PostCommentRow {
+  id: string;
+  parent: string | null;
+  author: { id: string; username: string; avatar_url?: string | null } | null;
+  content: string;
+  created_at: string;
+  deleted?: boolean;
+}
+
+/** Глубже — без отступа: на узком экране ветка иначе уезжает в столбик. */
+const COMMENT_MAX_DEPTH = 3;
+/** Ветка с бо́льшим числом ответов сначала свёрнута. */
+const COMMENT_FOLD_FROM = 3;
+
+/**
+ * Комментарии к посту — ветками: ответ стоит под тем, на что отвечает, со
+ * сдвигом и линией слева; длинные ветки свёрнуты («Показать ответы»). Глубже
+ * трёх уровней сдвиг не растёт, а у ответа пишется, кому он. Удалённый
+ * комментарий с ответами остаётся заглушкой — ответы не теряют, к чему они.
+ */
+const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCountChange, userId, canModerate }: {
   post: Post; canComment: boolean; bannedText?: string; onAuthor?: (id: string) => void; onClose: () => void; onCountChange: (n: number) => void;
+  userId: string; canModerate: boolean;
 }) => {
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<PostCommentRow[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [replyTo, setReplyTo] = useState<PostCommentRow | null>(null);
+  // Ветки, которые человек развернул или свернул сам (иначе — по длине).
+  const [folds, setFolds] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useAutoGrow(inputRef, text, 112);
+  const apply = useCallback((list: PostCommentRow[]) => {
+    setComments(list);
+    onCountChange(list.filter((c) => !c.deleted).length); // счётчик под постом — сразу по факту
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const load = useCallback(async () => {
-    try {
-      const list = await api.getPostComments(post.id);
-      setComments(list);
-      onCountChange(list.length); // счётчик под постом — сразу по факту, не ждём опроса
-    } finally { setLoading(false); }
-  }, [post.id]);
+    try { apply(await api.getPostComments(post.id)); } finally { setLoading(false); }
+  }, [post.id, apply]);
   useEffect(() => { load(); }, [load]);
   // Открытые комментарии подтягиваем, пока шторка видна: чужие появляются сами.
   useEffect(() => {
-    const t = setInterval(() => { api.getPostComments(post.id).then((fresh) => { setComments(fresh); onCountChange(fresh.length); }).catch(() => {}); }, 5000);
+    const t = setInterval(() => { api.getPostComments(post.id).then(apply).catch(() => {}); }, 5000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [post.id]);
+  }, [post.id, apply]);
+
+  const byId = useMemo(() => new Map(comments.map((c) => [c.id, c])), [comments]);
+  const kids = useMemo(() => {
+    const m = new Map<string, PostCommentRow[]>();
+    for (const c of comments) if (c.parent && byId.has(c.parent)) m.set(c.parent, [...(m.get(c.parent) || []), c]);
+    return m;
+  }, [comments, byId]);
+  const roots = useMemo(() => comments.filter((c) => !c.parent || !byId.has(c.parent)), [comments, byId]);
+  const countDown = (id: string): number => (kids.get(id) || []).reduce((n, k) => n + (k.deleted ? 0 : 1) + countDown(k.id), 0);
+  const rootOf = (c: PostCommentRow): string => { let x = c; while (x.parent && byId.has(x.parent)) x = byId.get(x.parent)!; return x.id; };
 
   const add = async () => {
     const body = text.trim();
-    if (!body) return;
+    if (!body || sending) return;
+    setSending(true);
     try {
-      await api.addPostComment(post.id, body);
+      await api.addPostComment(post.id, body, replyTo?.id);
+      // Ответили в свёрнутую ветку — разворачиваем, чтобы ответ было видно.
+      if (replyTo) setFolds((f) => ({ ...f, [rootOf(replyTo)]: true }));
       setText("");
-      const fresh = await api.getPostComments(post.id);
-      setComments(fresh);
-      onCountChange(fresh.length);
+      setReplyTo(null);
+      apply(await api.getPostComments(post.id));
     } catch (e: any) {
       toast.error(e?.message || tr("Не удалось"));
+    } finally {
+      setSending(false);
     }
   };
   const del = async (id: string) => {
     try {
       await api.deletePostComment(id);
-      const fresh = comments.filter((c) => c.id !== id);
-      setComments(fresh);
-      onCountChange(fresh.length);
-    } catch { toast.error(tr("Ошибка")); }
+      if (replyTo?.id === id) setReplyTo(null);
+      apply(await api.getPostComments(post.id));
+    } catch (e: any) { toast.error(e?.message || tr("Ошибка")); }
+  };
+  const reply = (c: PostCommentRow) => {
+    setReplyTo(c);
+    window.setTimeout(() => inputRef.current?.focus(), 30);
+  };
+
+  const node = (c: PostCommentRow, depth: number): JSX.Element => {
+    const children = kids.get(c.id) || [];
+    const parent = c.parent ? byId.get(c.parent) : undefined;
+    const mine = !!c.author && c.author.id === userId;
+    // Свёрнуто: ветка длинная и человек её не разворачивал (только у корней).
+    const total = depth === 0 ? countDown(c.id) : 0;
+    const folded = depth === 0 && children.length > 0 && !(folds[c.id] ?? total < COMMENT_FOLD_FROM);
+    return (
+      <div key={c.id}>
+        <div className="flex gap-2">
+          {c.deleted || !c.author
+            ? <span className="w-7 h-7 shrink-0 rounded-full bg-surface-4" aria-hidden />
+            : <Identicon id={c.author.id} avatarUrl={c.author.avatar_url} className="w-7 h-7 shrink-0" />}
+          <div className="flex-1 min-w-0">
+            {c.deleted ? (
+              <p className="text-sm italic text-muted-foreground py-1">{tr("Комментарий удалён")}</p>
+            ) : (
+              <>
+                <p className="text-sm">
+                  {onAuthor && c.author?.id ? <button type="button" className="font-bold active:opacity-70" onClick={() => onAuthor(c.author!.id)}>{c.author.username}</button> : <b>{c.author?.username}</b>}
+                  {/* Глубже предела отступ не растёт — пишем, кому ответ. */}
+                  {depth > COMMENT_MAX_DEPTH && parent?.author && <span className="text-xs text-muted-foreground"> → {parent.author.username}</span>}
+                  {" "}<span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span>
+                </p>
+                <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>
+                <div className="flex items-center gap-4 mt-0.5 text-xs text-muted-foreground">
+                  {canComment && <button type="button" onClick={() => reply(c)} className="font-medium active:opacity-70">{tr("Ответить")}</button>}
+                  {(mine || canModerate) && (
+                    <button type="button" onClick={() => void del(c.id)} className="active:opacity-70 flex items-center gap-1" aria-label={tr("Удалить")}>
+                      <Trash2 className="w-3.5 h-3.5" /> {tr("Удалить")}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        {children.length > 0 && (
+          folded ? (
+            <button type="button" onClick={() => setFolds((f) => ({ ...f, [c.id]: true }))}
+              className="ml-9 mt-1.5 text-xs font-semibold text-primary active:opacity-70">
+              {tr("Показать ответы: {n}", { n: total })}
+            </button>
+          ) : (
+            <div className={cn("mt-2 space-y-3", depth < COMMENT_MAX_DEPTH && "ml-3.5 pl-3 border-l-2 border-border")}>
+              {children.map((k) => node(k, depth + 1))}
+              {depth === 0 && total >= COMMENT_FOLD_FROM && (
+                <button type="button" onClick={() => setFolds((f) => ({ ...f, [c.id]: false }))}
+                  className="text-xs font-semibold text-muted-foreground active:opacity-70">
+                  {tr("Скрыть ответы")}
+                </button>
+              )}
+            </div>
+          )
+        )}
+      </div>
+    );
   };
 
   // Порталом на body: экран с анимацией перехода (transform) запирал шторку в
@@ -1743,34 +1899,33 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
           <span className="font-semibold flex-1">{tr("Комментарии")}</span>
           <button type="button" onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
           {loading ? (
             <p className="text-sm text-muted-foreground text-center py-6">{tr("Загрузка…")}</p>
-          ) : comments.length === 0 ? (
+          ) : roots.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">{tr("Пока нет комментариев")}</p>
           ) : (
-            comments.map((c) => (
-              <div key={c.id} className="flex gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">
-                    {onAuthor && c.author?.id ? <button type="button" className="font-bold active:opacity-70" onClick={() => onAuthor(c.author.id)}>{c.author?.username}</button> : <b>{c.author?.username}</b>}
-                    {" "}<span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span>
-                  </p>
-                  <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>
-                </div>
-                <button type="button" onClick={() => del(c.id)} className="p-1 text-muted-foreground shrink-0" aria-label={tr("Удалить")}>
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))
+            roots.map((c) => node(c, 0))
           )}
         </div>
         {canComment ? (
-          <div className="flex items-end gap-2 px-3 py-2 border-t border-border shrink-0">
-            <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
-            <button type="button" onClick={add} disabled={!text.trim()} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
-              <Send className="w-5 h-5" />
-            </button>
+          <div className="border-t border-border shrink-0">
+            {replyTo && (
+              <div className="flex items-center gap-2 px-3 pt-2 text-xs">
+                <span className="w-0.5 self-stretch rounded-full bg-primary" aria-hidden />
+                <span className="flex-1 min-w-0 truncate text-muted-foreground">
+                  {tr("Ответ {name}", { name: replyTo.author?.username || "" })}: <span className="text-foreground">{replyTo.content}</span>
+                </span>
+                <button type="button" onClick={() => setReplyTo(null)} className="p-1 text-muted-foreground" aria-label={tr("Не отвечать")}><X className="w-4 h-4" /></button>
+              </div>
+            )}
+            <div className="flex items-end gap-2 px-3 py-2">
+              <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1}
+                placeholder={replyTo ? tr("Ответ…") : tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
+              <button type="button" onClick={() => void add()} disabled={!text.trim() || sending} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         ) : (
           <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || tr("Подпишитесь, чтобы комментировать")}</p>

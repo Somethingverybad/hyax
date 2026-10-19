@@ -1672,7 +1672,8 @@ export const api = {
     return d;
   },
   deletePostComment: async (commentId: string): Promise<void> => {
-    await fetchWithAuth(`${API_URL}/posts/comments/${commentId}/`, { method: "DELETE", headers: authHeaders() });
+    const res = await fetchWithAuth(`${API_URL}/posts/comments/${commentId}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось удалить комментарий");
   },
   markPostView: async (msgId: string): Promise<void> => {
     await fetchWithAuth(`${API_URL}/posts/${msgId}/view/`, { method: "POST", headers: authHeaders() }).catch(() => {});
@@ -2001,7 +2002,8 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/messages/${messageId}/edit/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ content, entities: entities || [] }),
     });
-    if (!res.ok) throw new LError("Не удалось изменить");
+    // Причину отказа — человеку: «только в первые сутки», «опрос нельзя изменить».
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось изменить");
     return res.json();
   },
 

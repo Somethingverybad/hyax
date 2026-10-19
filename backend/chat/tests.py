@@ -1,12 +1,14 @@
 import tempfile
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
     Chat, ChatParticipant, Message, MessageReadStatus, NotificationSound, Playlist, PlaylistTrack,
-    PostReaction, Profile, SavedImage, SoundPack, Sticker, StickerPack,
+    PostComment, PostReaction, Profile, SavedImage, SoundPack, Sticker, StickerPack,
     UserSoundPack, UserStickerPack,
 )
 
@@ -1493,3 +1495,65 @@ class PollTests(TestCase):
         self.assertEqual(self.vote(self.voter, post["id"], a).status_code, 200)
         r = client_for(self.author).post(f"/api/messages/{post['id']}/edit/", {"content": "Другой вопрос"}, format="json")
         self.assertEqual(r.status_code, 400)
+
+
+class WallPostEditDeleteTests(TestCase):
+    """Пост на Стене: правка в первые сутки, удаление вместе с комментариями,
+    ветки ответов в комментариях."""
+
+    def setUp(self):
+        from .wall import wall_chat
+        self.author = make_user("wallauthor")
+        self.reader = make_user("wallreader")
+        self.wall = wall_chat()
+        self.post = Message.objects.create(chat=self.wall, sender=self.author, content="первый вариант", wall_safe=True)
+
+    def edit(self, who, text="второй вариант"):
+        return client_for(who).post(f"/api/messages/{self.post.id}/edit/", {"content": text}, format="json")
+
+    def comment(self, who, text, parent=None):
+        body = {"content": text}
+        if parent:
+            body["parent"] = parent
+        return client_for(who).post(f"/api/posts/{self.post.id}/comments/", body, format="json")
+
+    def comments(self, who=None):
+        return client_for(who or self.reader).get(f"/api/posts/{self.post.id}/comments/")
+
+    def test_edit_within_a_day(self):
+        r = self.edit(self.author)
+        self.assertEqual((r.status_code, r.data["content"], r.data["is_edited"]), (200, "второй вариант", True))
+        self.assertEqual(self.edit(self.reader).status_code, 403)
+        Message.objects.filter(id=self.post.id).update(created_at=timezone.now() - timedelta(hours=25))
+        self.assertEqual(self.edit(self.author, "третий").status_code, 403)
+
+    def test_threads_and_deleted_placeholder(self):
+        a = self.comment(self.reader, "корень").data["id"]
+        b = self.comment(self.author, "ответ", parent=a).data["id"]
+        c = self.comment(self.reader, "ответ на ответ", parent=b).data["id"]
+        rows = self.comments().data["comments"]
+        self.assertEqual([(x["content"], x["parent"] and str(x["parent"])) for x in rows], [("корень", None), ("ответ", a), ("ответ на ответ", b)])
+        client_for(self.reader).delete(f"/api/posts/comments/{a}/")
+        rows = {x["id"]: x for x in self.comments().data["comments"]}
+        self.assertTrue(rows[a]["deleted"])  # заглушка: на него есть ответы
+        self.assertEqual((rows[a]["content"], rows[a]["author"]), ("", None))
+        self.assertEqual(self.comment(self.author, "в удалённый", parent=a).status_code, 400)
+        client_for(self.author).delete(f"/api/posts/comments/{b}/")
+        client_for(self.reader).delete(f"/api/posts/comments/{c}/")
+        self.assertEqual(self.comments().data["comments"], [])
+
+    def test_delete_post_with_comments(self):
+        self.comment(self.reader, "раз")
+        self.comment(self.reader, "два")
+        r = client_for(self.author).post(f"/api/messages/{self.post.id}/remove/", {"scope": "all"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(PostComment.objects.filter(post=self.post, deleted=False).count(), 0)
+        self.assertEqual(self.comments().status_code, 404)
+
+    def test_outsider_cannot_read_private_comments(self):
+        ch = Chat.objects.create(kind="channel", name="закрытый", is_public=False)
+        ChatParticipant.objects.create(chat=ch, user=self.author, role="owner")
+        post = Message.objects.create(chat=ch, sender=self.author, content="для своих")
+        PostComment.objects.create(post=post, author=self.author, content="секрет")
+        self.assertEqual(client_for(self.reader).get(f"/api/posts/{post.id}/comments/").status_code, 404)
+        self.assertEqual(len(client_for(self.author).get(f"/api/posts/{post.id}/comments/").data["comments"]), 1)
