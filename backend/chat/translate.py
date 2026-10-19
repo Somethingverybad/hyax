@@ -101,6 +101,21 @@ def detect_lang(text, fallback=""):
     return best if counts[best] else norm_lang(fallback)
 
 
+def plausible(original, out, target):
+    """Похоже ли out на перевод original на язык target. Модель иногда не
+    переводит, а отвечает сама: на корейский вопрос «что ты любишь?» выдала
+    по-английски «I appreciate you testing my instructions…». Слова, перенесённые
+    из оригинала как есть (имена, бренды, @упоминания), не считаем; остальное
+    должно быть на целевом языке, и ответ не раздут объяснениями."""
+    if not out or not out.strip():
+        return False
+    if len(out) > 3 * len(original or "") + 80:
+        return False
+    seen = {w.casefold() for w in re.findall(r"\w+", original or "")}
+    rest = " ".join(w for w in re.findall(r"\w+", out) if w.casefold() not in seen)
+    return detect_lang(rest) in ("", norm_lang(target))
+
+
 def gave_up(original, out, target):
     """Переводчик вернул текст как был, хотя по письменности он на другом
     языке, — это не «уже на вашем языке», а неудачный перевод."""
@@ -147,8 +162,6 @@ def translate_text(text, target, source=""):
     for p in alive:
         try:
             out = _call(p, text, target, source)
-            _down.pop(p, None)
-            return out
         except TranslateNotConfigured:
             raise
         except Exception as e:
@@ -157,6 +170,14 @@ def translate_text(text, target, source=""):
                 _down[p] = now + DOWN_FOR
             status = getattr(getattr(e, "response", None), "status_code", "")
             logger.warning("translate: %s не ответил (%s %s), пробую следующий", p, type(e).__name__, status)
+            continue
+        _down.pop(p, None)
+        if plausible(text, out, target):
+            return out
+        # Ответил, но не переводом — провайдер жив (в «лежачие» не пишем),
+        # просто этот ответ не берём.
+        logger.warning("translate: %s ответил не переводом на %s — пробую следующий", p, target)
+        last = ValueError(f"{p}: ответ не похож на перевод")
     raise last
 
 
