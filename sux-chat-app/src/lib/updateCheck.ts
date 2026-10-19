@@ -77,6 +77,12 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     if (Capacitor.getPlatform() === "android") {
       try { const info = await App.getInfo(); version = info.version || version; build = info.build || build; } catch { /* как раньше — по бандлу */ }
     }
+    // Компьютер — так же по установщику: веб-часть могла прийти по воздуху
+    // (electron/ota.cjs) и быть новее того, что внутри программы.
+    const ed = (window as { electronAPI?: { otaInfo?: () => Promise<{ builtinVersion: string; builtinBuild: number } | null> } }).electronAPI;
+    if (ed?.otaInfo) {
+      try { const i = await ed.otaInfo(); if (i?.builtinBuild) { version = i.builtinVersion || version; build = String(i.builtinBuild); } } catch { /* по бандлу */ }
+    }
     const byVersion = cmp(m.version, version);
     const localBuild = parseInt(build, 10) || 0;
     const newer = byVersion > 0 || (byVersion === 0 && typeof m.build === "number" && localBuild > 0 && m.build > localBuild);

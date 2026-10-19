@@ -1,8 +1,9 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { execSync } from "child_process";
+import { readFileSync } from "fs";
 
 // Номер сборки — число коммитов, то же, что versionCode у Android
 // (см. android/app/build.gradle) и поле build в манифесте загрузок. Одна цифра
@@ -25,7 +26,20 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 5143,
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [
+    react(),
+    mode === "development" && componentTagger(),
+    // dist/build.json — версия и сборка бандла: по нему программа для
+    // компьютера знает, какой бандл встроен и какой пришёл по воздуху
+    // (electron/ota.cjs).
+    ({
+      name: "hyax-build-info",
+      generateBundle() {
+        const version = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf8")).version;
+        this.emitFile({ type: "asset", fileName: "build.json", source: JSON.stringify({ version, build: Number(appBuild) || 0 }) });
+      },
+    } satisfies Plugin),
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

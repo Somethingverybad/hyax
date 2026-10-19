@@ -50,8 +50,9 @@ interface Manifest {
   build: number;
   url: string;
   sha256: string;
-  /** Нижняя нативная сборка по платформам: CFBundleVersion / versionCode. */
-  min_native?: { ios?: number; android?: number };
+  /** Нижняя нативная сборка по платформам: CFBundleVersion / versionCode;
+   *  desktop — встроенная сборка установщика (смотрит electron/ota.cjs). */
+  min_native?: { ios?: number; android?: number; desktop?: number };
 }
 
 /** Скачан и ждёт запуска: build — по нему узнаём, что переключились (у
@@ -80,6 +81,10 @@ export const otaEnabled = () =>
  * переключиться на него. true — сейчас будет перезагрузка, рисовать не нужно.
  */
 export async function otaBoot(): Promise<boolean> {
+  // Компьютер: бандл выбирает main-процесс (electron/ota.cjs) — ему только
+  // сказать «жив», когда интерфейс отрисовался.
+  const desktop = (window as { electronAPI?: { otaReady?: () => void } }).electronAPI;
+  if (desktop?.otaReady) window.addEventListener("hyax:ready", () => desktop.otaReady!(), { once: true });
   if (!otaEnabled()) return false;
   // Бандл жив — когда интерфейс отрисовался; без этого плагин откатит его.
   window.addEventListener("hyax:ready", () => { void CapacitorUpdater.notifyAppReady().catch(() => {}); }, { once: true });
@@ -203,6 +208,11 @@ export function startOtaChecks() {
 
 /** Для строки версии в профиле: работаем ли на бандле, пришедшем по воздуху. */
 export async function otaInfo(): Promise<{ ota: boolean; native: string } | null> {
+  const desktop = (window as { electronAPI?: { otaInfo?: () => Promise<{ ota: boolean; builtinBuild: number } | null> } }).electronAPI;
+  if (desktop?.otaInfo) {
+    const i = await desktop.otaInfo().catch(() => null);
+    return i ? { ota: i.ota, native: String(i.builtinBuild) } : null;
+  }
   if (!otaEnabled()) return null;
   try {
     const [cur, info] = await Promise.all([CapacitorUpdater.current(), App.getInfo()]);

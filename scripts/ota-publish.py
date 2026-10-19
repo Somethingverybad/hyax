@@ -116,7 +116,7 @@ def main():
     version = re.search(r'APP_VERSION = "([^"]+)"', open(os.path.join(APP, "src/lib/appVersion.ts"), encoding="utf-8").read()).group(1)
     bundle = f"{version}-{build}"
     min_native = {k: v for k, v in json.load(open(os.path.join(APP, "ota-min-native.json"), encoding="utf-8")).items()
-                  if k in ("ios", "android")}
+                  if k in ("ios", "android", "desktop")}
 
     if not a.skip_build:
         env = {**os.environ, "VITE_OTA_CHANNEL": a.channel}
@@ -138,6 +138,10 @@ def main():
     if f'"{build}"' not in code or f'"{version}"' not in code:
         raise SystemExit(f"в {js.group(0)} нет версии {version} или сборки {build} — dist собран не из этого коммита?")
     # Сборщик не склеивает адрес манифеста — ищем сам канал рядом с «manifest-».
+    # Программа для компьютера узнаёт версию бандла по build.json (electron/ota.cjs).
+    info = json.load(open(os.path.join(DIST, "build.json"), encoding="utf-8")) if os.path.exists(os.path.join(DIST, "build.json")) else {}
+    if info.get("build") != build or info.get("version") != version:
+        raise SystemExit(f"dist/build.json не тот: {info} — нужен {version} / {build}")
     if a.channel and not re.search(r'manifest-.{0,80}"%s"|"%s".{0,80}manifest-' % (a.channel, a.channel), code):
         raise SystemExit(f"dist собран не для канала {a.channel} (VITE_OTA_CHANNEL)")
 

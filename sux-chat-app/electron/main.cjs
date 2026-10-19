@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
+const ota = require('./ota.cjs');
 
 // Каталог данных переименование не задело: Electron берёт его из поля name в
 // package.json (hyax-messenger), а не из productName, — проверено на сборке
@@ -59,10 +60,12 @@ function serveDist() {
   protocol.handle('app', (request) => {
     const { pathname } = new URL(request.url);
     let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
-    let full = path.join(DIST, rel);
+    // Веб-часть — встроенная или пришедшая по воздуху (electron/ota.cjs).
+    const base = ota.root();
+    let full = path.join(base, rel);
     // SPA: любой маршрут без файла на диске — это index.html.
     if (!rel || !fs.existsSync(full) || fs.statSync(full).isDirectory()) {
-      full = path.join(DIST, 'index.html');
+      full = path.join(base, 'index.html');
     }
     return net.fetch(pathToFileURL(full).toString());
   });
@@ -369,6 +372,9 @@ try { require('electron').autoUpdater.on('before-quit-for-update', () => { app.i
 setInterval(() => { if (updaterEnabled() && updaterSupported()) autoUpdater.checkForUpdates().catch(() => {}); }, 60 * 60 * 1000);
 
 ipcMain.handle('app-version', () => app.getVersion());
+// Обновление по воздуху: интерфейс отрисовался — бандл жив; сведения — профилю и плашке.
+ipcMain.on('ota-ready', () => { if (!isDev) ota.ready(); });
+ipcMain.handle('ota-info', () => (isDev ? null : ota.info()));
 ipcMain.on('minimize-window', () => mainWindow?.minimize());
 ipcMain.on('close-window', () => mainWindow?.close());
 
@@ -574,9 +580,12 @@ if (!gotLock) {
   app.whenReady().then(() => {
     installAppMenu();
     logLine('ready');
-    if (!isDev) serveDist();
+    // Обновление веб-части по воздуху: до первой страницы — решить, из какого
+    // бандла её отдавать; проверка нового — в фоне.
+    if (!isDev) { ota.init({ dist: DIST, log: logLine }); serveDist(); }
     allowMediaPermissions();
     createWindow();
+    if (!isDev) { ota.watch(mainWindow); ota.startChecks(); }
     createTray();
     // Крестик — в трей, а не выход (если не выключено в меню трея).
     mainWindow?.on('close', (e) => {
