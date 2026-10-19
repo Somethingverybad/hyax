@@ -6,6 +6,8 @@ import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type RefObject } from "react";
 import { api, mediaUrl, type Chat, type NotificationSoundInfo, type PollInfo, type WallState } from "@/api/client";
 import PollCard from "@/components/chat/PollCard";
+import StickerView from "@/components/chat/StickerView";
+import { GraffitiSheet, type GraffitiSticker } from "@/components/chat/Graffiti";
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
 import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
@@ -16,7 +18,7 @@ import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush } from "lucide-react";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -171,6 +173,15 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
     );
   }
   if (!post.file_url) return null;
+  // Граффити (components/chat/Graffiti) — как стикер: без подложки и не во всю
+  // ширину, иначе под прозрачным фоном видна серая заглушка картинки.
+  if (post.file_url.includes("/stickers/graffiti/")) {
+    return (
+      <button type="button" onClick={() => onOpenImage?.(mediaUrl(post.file_url!), post)} className="mt-2 block" aria-label={tr("Граффити")}>
+        <StickerView url={post.file_url} alt={tr("Граффити")} className="w-44 h-44 object-contain" />
+      </button>
+    );
+  }
   if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (isAudioFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
@@ -411,7 +422,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // Вложения поста: несколько фото/видео уходят альбомом, музыка играет
   // плеером, лишнее убирается крестиком до публикации.
   type AttachMode = "photo" | "video" | "audio" | "file";
-  interface Attach { id: string; file: File; mode: AttachMode; url: string }
+  /** remote — файл уже на сервере (граффити из «Моих граффити»): не грузим заново. */
+  interface Attach { id: string; file: File; mode: AttachMode; url: string; remote?: { file_url: string; width?: number; height?: number } }
   const [attachments, setAttachments] = useState<Attach[]>([]);
   // Опрос в посте Стены: null — обычный пост, иначе — варианты ответа
   // (вопрос — текст поста). Анонимность запоминается, как «4+».
@@ -482,6 +494,22 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [noteFlip, setNoteFlip] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
 
+  // Граффити в пост — картинкой: PNG как есть, без сжатия в JPEG (иначе
+  // прозрачный фон станет чёрным). Сам рисунок уже лежит в «Моих граффити».
+  const [graffitiOpen, setGraffitiOpen] = useState(false);
+  const attachGraffiti = async (g: GraffitiSticker) => {
+    setGraffitiOpen(false);
+    const url = mediaUrl(g.file_url);
+    // Размеры — для раскладки поста; картинку не скачиваем (файл уже на сервере).
+    const size = await new Promise<{ width?: number; height?: number }>((done) => {
+      const img = new Image();
+      img.onload = () => done({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => done({});
+      img.src = url;
+    });
+    const file = new File([], "graffiti.png", { type: "image/png" });
+    setAttachments((prev) => [...prev, { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file, mode: "photo", url, remote: { file_url: g.file_url, ...size } }]);
+  };
   const pick = async (e: React.ChangeEvent<HTMLInputElement>, mode: AttachMode) => {
     const list = Array.from(e.target.files || []);
     e.target.value = "";
@@ -868,7 +896,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             _progress: 0,
           });
           try {
-            const uploaded = await api.uploadFile(att.file, att.mode === "video" ? "video" : undefined, (p) => temp.progress(p));
+            const uploaded = att.remote
+              ? { file_url: att.remote.file_url, file_name: att.file.name, file_size: 0, width: att.remote.width, height: att.remote.height, poster_url: null }
+              : await api.uploadFile(att.file, att.mode === "video" ? "video" : undefined, (p) => temp.progress(p));
             temp.progress(100);
             temp.confirm(await api.sendMessageWithFile(
               channelId,
@@ -1301,9 +1331,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                         {attachments.map((a) => (
                           <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
                             {a.mode === "photo" ? (
-                              <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label={tr("Редактировать фото")}>
+                              <button type="button" onClick={() => !a.remote && setEditFor(a)} disabled={sending} className="w-full h-full" aria-label={tr("Редактировать фото")}>
                                 <img src={a.url} alt="" className="w-full h-full object-cover" />
-                                <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
+                                {!a.remote && <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>}
                               </button>
                             ) : a.mode === "video" ? (
                               <video src={a.url} muted playsInline className="w-full h-full object-cover" />
@@ -1374,6 +1404,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); videoInputRef.current?.click(); }}><Video className="w-4 h-4 text-primary" /> {tr("Видео")}</button>
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); audioInputRef.current?.click(); }}><Music2 className="w-4 h-4 text-primary" /> {tr("Музыка")}</button>
                             <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}><FileText className="w-4 h-4 text-primary" /> {tr("Файл")}</button>
+                            <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); setGraffitiOpen(true); }}><Brush className="w-4 h-4 text-primary" /> {tr("Граффити")}</button>
                             {/* Опрос — без вложений, как в постах с вопросом. */}
                             <button type="button" disabled={attachments.length > 0} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary disabled:opacity-40" onClick={() => { setAttachOpen(false); setPollOpts(["", ""]); }}><ListChecks className="w-4 h-4 text-primary" /> {tr("Опрос")}</button>
                           </div>
@@ -1425,9 +1456,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               {attachments.map((a) => (
                 <div key={a.id} className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-surface-2 border border-border">
                   {a.mode === "photo" ? (
-                    <button type="button" onClick={() => setEditFor(a)} disabled={sending} className="w-full h-full" aria-label={tr("Редактировать фото")}>
+                    <button type="button" onClick={() => !a.remote && setEditFor(a)} disabled={sending} className="w-full h-full" aria-label={tr("Редактировать фото")}>
                       <img src={a.url} alt="" className="w-full h-full object-cover" />
-                      <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>
+                      {!a.remote && <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>}
                     </button>
                   ) : a.mode === "video" ? (
                     <video src={a.url} muted playsInline className="w-full h-full object-cover" />
@@ -1477,6 +1508,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                   </button>
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}>
                     <FileText className="w-4 h-4 text-primary" /> {tr("Файл")}
+                  </button>
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary" onClick={() => { setAttachOpen(false); setGraffitiOpen(true); }}>
+                    <Brush className="w-4 h-4 text-primary" /> {tr("Граффити")}
                   </button>
                 </div>
               )}
@@ -1691,6 +1725,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         </div>
         </SheetPortal>
       )}
+      {graffitiOpen && <GraffitiSheet onClose={() => setGraffitiOpen(false)} onPick={(g) => void attachGraffiti(g)} />}
       {editPost && (
         <SheetPortal>
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => !editSaving && setEditPost(null)}>

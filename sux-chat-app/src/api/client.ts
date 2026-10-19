@@ -2144,6 +2144,20 @@ export const api = {
     return res.json();
   },
 
+  /** Граффити (backend chat/graffiti.py): PNG рисунка → стикер в паке «Мои граффити». */
+  saveGraffiti: async (png: Blob): Promise<{ id: string; pack: string; file_url: string; emoji?: string }> => {
+    const formData = new FormData();
+    formData.append("file", png, "graffiti.png");
+    const res = await fetchWithAuthMultipart(`${uploadBase()}/graffiti/`, { method: "POST", body: formData });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось сохранить граффити");
+    return res.json();
+  },
+  /** Мои граффити — новые первыми; пака ещё нет — пусто. */
+  myGraffiti: async (): Promise<{ id: string; pack: string; file_url: string; emoji?: string }[]> => {
+    const packs = await api.getMyStickerPacks();
+    const pack = packs.map((r: any) => r.pack || r).find((p: any) => p?.is_graffiti);
+    return pack ? api.getStickers(pack.id) : [];
+  },
   /** kind: sticker — стикеры, emoji — набор своих эмодзи (вставляются в текст). */
   createStickerPack: async (name: string, description?: string, isPublic = true, kind: "sticker" | "emoji" = "sticker"): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/sticker-packs/`, {

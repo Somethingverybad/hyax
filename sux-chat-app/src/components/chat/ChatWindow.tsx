@@ -12,7 +12,7 @@ import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import { actionTemplate, type ActionView } from "@/lib/actionText";
 import type { ChatTranslate } from "@/api/client";
-import { Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid } from "lucide-react";
+import { Brush, Languages, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_REACTION, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
+import { GraffitiSheet } from "@/components/chat/Graffiti";
 import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
@@ -301,6 +302,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
   const [stickersOpen, setStickersOpen] = useState(false);
+  // Граффити: окно с моими рисунками (pick) или сразу холст (draw, кисть в панели стикеров).
+  const [graffiti, setGraffiti] = useState<null | "pick" | "draw">(null);
   // Действие из меню сообщения — адресат автор сообщения; из панели в группе —
   // сначала выбираем, кому.
   const [actionFor, setActionFor] = useState<{ id: string; username: string } | null>(null);
@@ -4875,6 +4878,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
                 onInsertEmoji={(emoji, custom) => insertEmoji(emoji, custom, { focus: !isTouchDevice() })}
                 standardEmoji={!isMobile}
+                onDraw={!isSecret ? () => { setStickersOpen(false); setGraffiti("draw"); } : undefined}
               />
             </div>
           )}
@@ -4920,6 +4924,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
                     <FileText className="w-4 h-4 text-primary" />{tr("Файл")}</button>
+                  {!isSecret && (
+                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
+                    onClick={() => { setAttachMenuOpen(false); hideKeyboard(); setGraffiti("pick"); }}>
+                    <Brush className="w-4 h-4 text-primary" /> {tr("Граффити")}
+                  </button>
+                  )}
                   {!isSecret && (
                   <button type="button" className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left active:bg-secondary"
                     onClick={() => { setAttachMenuOpen(false); hideKeyboard(); setGeoOpen(true); }}>
@@ -5116,6 +5126,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onSelectAction={!saved && !isSecret ? pickAction : undefined}
                 onInsertEmoji={(emoji, custom) => insertEmoji(emoji, custom, { focus: !isTouchDevice() })}
                 standardEmoji={!isMobile}
+                onDraw={!isSecret ? () => { setStickersOpen(false); setGraffiti("draw"); } : undefined}
               />
             </div>
           )}
@@ -5127,6 +5138,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         message={playlistFor}
         onClose={() => setPlaylistFor(null)}
       />
+
+      {graffiti && (
+        <GraffitiSheet draw={graffiti === "draw"} onClose={() => setGraffiti(null)}
+          onPick={(sticker) => { setGraffiti(null); void sendSticker(sticker); }} />
+      )}
 
       <ReactionPicker
         open={!!reactFor}

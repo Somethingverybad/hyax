@@ -12,6 +12,7 @@ from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransf
 from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView
 from .polls import PollVoteView, PollVotersView
+from .graffiti import GraffitiView
 from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
@@ -72,6 +73,7 @@ urlpatterns = [
     path('upload/chunk/', ChunkUploadView.as_view(), name='file-upload-chunk'),
     path('upload/chunk/<str:upload_id>/', ChunkUploadView.as_view(), name='file-upload-chunk-status'),
     path('stickers/upload/', StickerUploadView.as_view(), name='sticker-upload'),
+    path('graffiti/', GraffitiView.as_view(), name='graffiti'),
     path('voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('avatar/upload/', AvatarUploadView.as_view(), name='avatar-upload'),
     path('avatar/animated/', AnimatedAvatarUploadView.as_view(), name='avatar-animated'),

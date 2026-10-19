@@ -9,7 +9,7 @@ import { api, mediaUrl } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users, Smile } from "lucide-react";
+import { Plus, Music2, Play, Square, Check, ChevronLeft, ChevronRight, Pencil, Trash2, MoreHorizontal, Share2, Sparkles, Users, Smile, Brush } from "lucide-react";
 import EmojiPanel from "@/components/chat/EmojiPanel";
 import { shareStickerPack } from "@/lib/share";
 import ImageCropper from "@/components/ImageCropper";
@@ -58,6 +58,8 @@ interface StickerPickerProps {
   onInsertEmoji?: (emoji: string, custom?: { id: string; url?: string }) => void;
   /** Эмодзи Noto во вкладке — на десктопе: на телефоне они есть в клавиатуре. */
   standardEmoji?: boolean;
+  /** Кисть в полосе наборов — нарисовать граффити (components/chat/Graffiti). */
+  onDraw?: () => void;
 }
 
 type PickerTab = "emoji" | "stickers" | "sounds" | "actions";
@@ -76,6 +78,12 @@ const pickerCache: { packs: UserStickerPack[] | null; lastPackId: string | null;
   // Последний открытый набор — и между запусками приложения.
   packs: null, lastPackId: (() => { try { return localStorage.getItem(PACK_KEY); } catch { return null; } })(), stickers: new Map(),
 };
+/** Наборы поменялись не из панели (например, первое граффити завело «Мои
+ *  граффити») — при следующем открытии перечитать. */
+export function forgetStickerPacks(packId?: string) {
+  pickerCache.packs = null;
+  if (packId) { pickerCache.stickers.delete(packId); pickerCache.lastPackId = packId; }
+}
 const activePackIdInit = (): string | null => {
   // Наборы ещё не загружены (первое открытие после запуска) — запомненный;
   // когда список придёт, его сверят с ним (load).
@@ -92,6 +100,7 @@ const StickerPicker = ({
   onSelectAction,
   onInsertEmoji,
   standardEmoji = true,
+  onDraw,
 }: StickerPickerProps) => {
   // Последняя открытая вкладка; есть эмодзи — по умолчанию они (как в мессенджерах).
   const [tab, setTabState] = useState<PickerTab>(() => {
@@ -669,6 +678,12 @@ const StickerPicker = ({
         >
           <Plus className="w-4 h-4" />
         </button>
+        {onDraw && (
+          <button type="button" onClick={onDraw} aria-label={t("Нарисовать граффити")} title={t("Нарисовать граффити")}
+            className={cn("shrink-0 w-8 h-8 rounded-full flex items-center justify-center", mint ? "mint-ink" : "bg-muted text-primary")}>
+            <Brush className="w-4 h-4" />
+          </button>
+        )}
         {isAuthor && (
           <button
             type="button"

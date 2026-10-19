@@ -638,6 +638,9 @@ class StickerPack(models.Model):
     # sticker — стикеры (отдельным сообщением), emoji — свои эмодзи из картинок:
     # вставляются в текст и рисуются в строке (Message.entities, custom_emoji).
     kind = models.CharField(max_length=8, default="sticker", db_index=True)
+    # «Мои граффити» (chat/graffiti.py): закрытый пак, который заводится сам
+    # с первым нарисованным граффити, по одному на человека.
+    is_graffiti = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
     

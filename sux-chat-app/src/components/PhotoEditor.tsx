@@ -15,12 +15,12 @@ import { t } from "@/lib/i18n";
  * На экране — один display-холст: work + ink, вписанный в сцену.
  */
 type Tool = "draw" | "crop";
-type Pt = { x: number; y: number };
-type Stroke = { color: string; width: number; erase: boolean; points: Pt[] };
+export type Pt = { x: number; y: number };
+export type Stroke = { color: string; width: number; erase: boolean; points: Pt[] };
 type Rect = { x: number; y: number; w: number; h: number };
 type Aspect = { label: string; value: number | null };
 
-const COLORS = ["#ffffff", "#0a0a0a", "#ff3b30", "#ff9500", "#ffd60a", "#30d158", "#0a84ff", "#bf5af2"];
+export const COLORS = ["#ffffff", "#0a0a0a", "#ff3b30", "#ff9500", "#ffd60a", "#30d158", "#0a84ff", "#bf5af2"];
 const SIZES = [4, 9, 16];
 const ASPECTS: Aspect[] = [
   { label: "Свободно", value: null }, { label: "1:1", value: 1 }, { label: "4:3", value: 4 / 3 },
@@ -37,7 +37,8 @@ const makeCanvas = (w: number, h: number) => {
   return c;
 };
 
-const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke, from = 0) => {
+/** Штрих на холсте (и в граффити, components/chat/Graffiti.tsx). */
+export const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke, from = 0) => {
   if (s.points.length === 0) return;
   ctx.save();
   ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";

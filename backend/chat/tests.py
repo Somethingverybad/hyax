@@ -1557,3 +1557,59 @@ class WallPostEditDeleteTests(TestCase):
         PostComment.objects.create(post=post, author=self.author, content="секрет")
         self.assertEqual(client_for(self.reader).get(f"/api/posts/{post.id}/comments/").status_code, 404)
         self.assertEqual(len(client_for(self.author).get(f"/api/posts/{post.id}/comments/").data["comments"]), 1)
+
+
+def _png(w=4, h=4):
+    """Настоящий PNG w×h с прозрачностью — для граффити."""
+    import struct as _st
+    import zlib as _z
+
+    def chunk(kind, data):
+        return _st.pack(">I", len(data)) + kind + data + _st.pack(">I", _z.crc32(kind + data) & 0xFFFFFFFF)
+    raw = b"".join(b"\x00" + b"\x00\x00\x00\x00" * w for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", _st.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", _z.compress(raw)) + chunk(b"IEND", b""))
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class GraffitiTests(TestCase):
+    """Граффити: пак «Мои граффити» заводится сам, рисунки — стикерами."""
+
+    def setUp(self):
+        self.me = make_user("drawer", language="en")
+        self.friend = make_user("drawfriend")
+
+    def upload(self, data, name="g.png"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return client_for(self.me).post("/api/graffiti/", {"file": SimpleUploadedFile(name, data, content_type="image/png")}, format="multipart")
+
+    def test_pack_created_once_and_newest_first(self):
+        a = self.upload(_png())
+        self.assertEqual(a.status_code, 201, a.data)
+        pack = StickerPack.objects.get(id=a.data["pack"])
+        self.assertEqual((pack.is_graffiti, pack.is_public, pack.name, pack.author_id), (True, False, "My graffiti", self.me.id))
+        self.assertTrue(UserStickerPack.objects.filter(user=self.me, pack=pack).exists())
+        b = self.upload(_png())
+        self.assertEqual(b.data["pack"], a.data["pack"])
+        self.assertLess(b.data["order"], a.data["order"])  # новые — первыми
+        mine = client_for(self.me).get("/api/sticker-packs/my_packs/").data
+        self.assertTrue(any(p["pack"]["is_graffiti"] for p in mine))
+        # Чужой закрытый пак не виден.
+        self.assertEqual(client_for(self.friend).get(f"/api/sticker-packs/{pack.id}/").status_code, 404)
+
+    def test_rejects_non_png_and_big(self):
+        self.assertEqual(self.upload(b"\xff\xd8\xff\xe0 not png", "g.jpg").status_code, 400)
+        self.assertEqual(self.upload(_png(2000, 10)).status_code, 400)
+        self.assertEqual(self.upload(_png() + b"\x00" * (1024 * 1024)).status_code, 400)
+        self.assertFalse(StickerPack.objects.filter(is_graffiti=True).exists())
+
+    def test_send_as_sticker(self):
+        s = self.upload(_png()).data
+        chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=chat, user=p)
+        r = client_for(self.me).post("/api/messages/", {"chat": str(chat.id), "sticker_id": s["id"]}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        rows = client_for(self.friend).get(f"/api/messages/?chat={chat.id}").data
+        rows = rows.get("results", rows) if isinstance(rows, dict) else rows
+        self.assertEqual(rows[-1]["sticker"]["file_url"], s["file_url"])
