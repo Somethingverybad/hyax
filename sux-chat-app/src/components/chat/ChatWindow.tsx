@@ -3279,7 +3279,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setCancelArmed(false);
       if (!forceCancel) {
         if (pressFromPanelRef.current) toast(tr("Удерживайте кнопку"));
-        else { hideKeyboard(); setRecExpanded(true); }
+        // Раскрылась панель (голосовое, треугольник, Р.Ё.В.) — лёгкий толчок.
+        else { hideKeyboard(); setRecExpanded(true); recHaptic(false); }
       }
       return;
     }
@@ -3638,7 +3639,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {mintM && (onBack || title || peer || isGroup) && (
-        <div ref={headerRef} className="mint-glass mint-glass-over mint-glass-flat relative z-20 shrink-0 pad-safe-top" style={{ marginBottom: "calc(-1 * var(--glass-h, 0px))" }}>
+        <div ref={headerRef} className="mint-glass mint-glass-over mint-glass-flat relative z-[21] shrink-0 pad-safe-top" style={{ marginBottom: "calc(-1 * var(--glass-h, 0px))" }}>
           <div className="mint-head !pb-[11px] !pt-[19px]">
             {onBack ? (
               <button type="button" onClick={onBack} aria-label={tr("Назад")} className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">
@@ -3647,7 +3648,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             ) : <span />}
             {/* Островок с ником и статусом перетекает, как жидкость (LiquidIsland). */}
-            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill" minHeight={43}>
+            {/* Длинный статус растит островок вниз, поверх ленты: шапка, кнопки по бокам и лента остаются на месте. */}
+            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill" minHeight={43} growDown>
               <span className="max-w-full truncate text-[16.3px] font-semibold leading-[18px] flex items-center gap-1" style={{ color: "var(--mint-title)" }}>
                 {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
                 <LiquidText className="min-w-0" text={headerTitle || peer?.username || group?.name || tr("Чат")} />

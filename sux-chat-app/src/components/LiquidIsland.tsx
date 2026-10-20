@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
  *
  * Длинный статус («строчит как из пулемёта…», «Вася печатает… и ещё 2») не
  * обрезается: переносится по словам (wrap), а капсула так же пружиной
- * подрастает по высоте.
+ * подрастает по высоте. С growDown место в раскладке остаётся высотой в одну
+ * строку, а капсула растёт вниз поверх того, что под ней: шапка не пухнет,
+ * соседние кнопки и лента не съезжают (баг-репорт 00b57f40).
  *
  * Кто выключил анимации в системе (prefers-reduced-motion) — без эффектов.
  */
@@ -53,7 +55,7 @@ export function LiquidText({ text, className, wrap }: { text: string; className?
   );
 }
 
-export function LiquidIsland({ children, className, onClick, minWidth = 120, minHeight = 0, padX = 20, padY = 5, title }: {
+export function LiquidIsland({ children, className, onClick, minWidth = 120, minHeight = 0, padX = 20, padY = 5, title, growDown }: {
   children: ReactNode;
   className?: string;
   onClick?: () => void;
@@ -64,6 +66,8 @@ export function LiquidIsland({ children, className, onClick, minWidth = 120, min
   padX?: number;
   padY?: number;
   title?: string;
+  /** Расти вниз поверх соседей, не меняя высоту места в раскладке (minHeight). */
+  growDown?: boolean;
 }) {
   const btn = useRef<HTMLButtonElement>(null);
   const inner = useRef<HTMLSpanElement>(null);
@@ -101,11 +105,18 @@ export function LiquidIsland({ children, className, onClick, minWidth = 120, min
     return () => ro.disconnect();
   }, [minWidth, minHeight, padX, padY]);
 
-  return (
+  const island = (
     <button ref={btn} type="button" onClick={onClick} title={title}
-      className={cn("liquid-island", animated && "liquid-island-anim", className)}
+      className={cn("liquid-island", animated && "liquid-island-anim", growDown && "liquid-island-float", className)}
       style={{ width: size?.w, height: size?.h, minHeight: minHeight || undefined, paddingLeft: padX, paddingRight: padX }}>
       <span ref={inner} className="liquid-island-inner">{children}</span>
     </button>
+  );
+  if (!growDown) return island;
+  // Место в раскладке: ширина — как у капсулы (тянется той же пружиной), высота — одна строка.
+  return (
+    <span className={cn("liquid-island-slot", animated && "liquid-island-anim")} style={{ width: size?.w ?? minWidth, height: minHeight || undefined }}>
+      {island}
+    </span>
   );
 }

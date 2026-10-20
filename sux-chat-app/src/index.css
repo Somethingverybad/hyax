@@ -1647,6 +1647,8 @@ html.native-video .call-layer {
    (components/LiquidIsland.tsx). */
 .liquid-island { display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; max-width: 60vw; }
 .liquid-island-anim { transition: width 560ms cubic-bezier(.34, 1.56, .64, 1), height 560ms cubic-bezier(.34, 1.56, .64, 1); }
+.liquid-island-slot { position: relative; display: block; flex-shrink: 0; max-width: 60vw; }
+.liquid-island-float { position: absolute; top: 0; left: 0; z-index: 1; }
 .liquid-island-inner { display: inline-flex; flex-direction: column; align-items: center; width: max-content; max-width: calc(60vw - 40px); }
 .liquid-text { display: inline-grid; justify-items: center; max-width: 100%; min-width: 0; }
 .liquid-text > span { grid-area: 1 / 1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
