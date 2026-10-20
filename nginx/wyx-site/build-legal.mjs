@@ -121,6 +121,11 @@ const DELETION = {
     sections: [
       { h: "В приложении", p: ["Откройте «Профиль → Конфиденциальность → Удалить аккаунт» и подтвердите паролем. Аккаунт удаляется сразу."] },
       { h: "Если войти не получается", p: [`Напишите на ${SUPPORT_EMAIL} и укажите логин аккаунта — удалим по запросу.`] },
+      { h: "Удаление части данных без удаления аккаунта", p: [
+        "Сообщения и вложения: меню сообщения → «Удалить». Чат целиком — из его меню. Созданные вами каналы, стикерпаки, паки звуков и ботов удаляет их владелец из настроек. Почта для восстановления отвязывается в «Профиль → Конфиденциальность».",
+        "Удалённое исчезает у собеседников сразу; вложения стираются из облачного хранилища в течение 30 дней. Жалобы, которые уже разобраны, не удаляются.",
+        `Если нужного действия нет в приложении, напишите на ${SUPPORT_EMAIL} с логином и описанием, что удалить.`,
+      ] },
       { h: "Что удаляется", p: [
         "Сразу: профиль и почта для восстановления, ваши сообщения, личные чаты и «Избранное», созданные вами каналы, стикерпаки и паки звуков, ваши боты, токены уведомлений и список заблокированных.",
         "Вложения — фото, видео, файлы, голосовые — становятся недоступны сразу и стираются из облачного хранилища в течение 30 дней.",
@@ -138,6 +143,11 @@ const DELETION = {
     sections: [
       { h: "In the app", p: ["Open Profile → Privacy → Delete account and confirm with your password. The account is deleted immediately."] },
       { h: "If you can't sign in", p: [`Email ${SUPPORT_EMAIL} with your account login, and we will delete it on request.`] },
+      { h: "Deleting some of your data without deleting the account", p: [
+        "Messages and attachments: message menu → Delete. A whole chat — from its menu. Channels, sticker packs, sound packs and bots you created are deleted by their owner from their settings. The recovery email can be unlinked in Profile → Privacy.",
+        "Deleted content disappears for other participants immediately; attachments are erased from cloud storage within 30 days. Reports that have already been reviewed are not deleted.",
+        `If the action you need is not in the app, email ${SUPPORT_EMAIL} with your login and what to delete.`,
+      ] },
       { h: "What is deleted", p: [
         "Immediately: your profile and recovery email, your messages, direct chats and Saved messages, channels you created, your sticker and sound packs, your bots, notification tokens and your block list.",
         "Attachments — photos, videos, files, voice messages — become inaccessible immediately and are erased from cloud storage within 30 days.",
@@ -155,6 +165,11 @@ const DELETION = {
     sections: [
       { h: "앱에서 삭제", p: ["프로필 → 개인정보 → 계정 삭제를 열고 비밀번호로 확인하세요. 계정은 즉시 삭제됩니다."] },
       { h: "로그인할 수 없는 경우", p: [`${SUPPORT_EMAIL}로 계정 아이디를 적어 보내 주시면 요청에 따라 삭제해 드립니다.`] },
+      { h: "계정을 삭제하지 않고 일부 데이터만 삭제하기", p: [
+        "메시지와 첨부 파일: 메시지 메뉴 → 삭제. 채팅 전체는 채팅 메뉴에서 삭제합니다. 내가 만든 채널, 스티커 팩, 사운드 팩, 봇은 소유자가 설정에서 삭제합니다. 복구 이메일은 프로필 → 개인정보에서 연결을 해제할 수 있습니다.",
+        "삭제된 내용은 상대방에게서도 즉시 사라지며, 첨부 파일은 30일 이내에 클라우드 저장소에서 삭제됩니다. 이미 처리된 신고는 삭제되지 않습니다.",
+        `앱에 필요한 기능이 없다면 ${SUPPORT_EMAIL}로 아이디와 삭제할 내용을 적어 보내 주세요.`,
+      ] },
       { h: "삭제되는 정보", p: [
         "즉시: 프로필과 복구 이메일, 내가 보낸 메시지, 1:1 채팅과 저장한 메시지, 내가 만든 채널, 스티커 팩과 사운드 팩, 내 봇, 알림 토큰, 차단 목록.",
         "첨부 파일(사진, 동영상, 파일, 음성 메시지)은 즉시 접근할 수 없게 되며 30일 이내에 클라우드 저장소에서 삭제됩니다.",
