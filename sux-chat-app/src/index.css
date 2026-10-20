@@ -837,9 +837,11 @@ textarea,
   box-shadow: var(--soft-shadow-sm);
 }
 
-/* Полоса закрепа — карточка под шапкой. */
+/* Полоса закрепа — карточка под шапкой. Шапка «стеклянная» и лежит поверх
+   ленты (--glass-h, themes/mint/glass.ts): отсчитываем от её низа, иначе
+   карточка прячется под шапку и закреп «не срабатывает» (баг-репорт d6767bf3). */
 [data-shape="soft"] .pinned-bar {
-  left: 12px; right: 12px; top: 4px;
+  left: 12px; right: 12px; top: calc(var(--glass-h, 0px) + 4px);
   border: 1px solid var(--soft-line);
   border-radius: var(--radius);
   background: var(--soft-surface);
