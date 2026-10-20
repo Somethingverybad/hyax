@@ -668,6 +668,8 @@ const en: Record<string, string> = {
   "репетирует перед камерой": "is rehearsing on camera",
   "снимает влог": "is shooting a vlog",
   "и ещё {n}": "and {n} more",
+  "Закрыть мини-плеер": "Close mini player",
+  "Мини-плеер поверх окон": "Mini player on top",
   "Загружаю {i} из {n}": "Uploading {i} of {n}",
   "Не загрузилось: {n}": "Not uploaded: {n}",
   "Файл недоступен — выберите его снова": "The file is unavailable — pick it again",

@@ -7,6 +7,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const ota = require('./ota.cjs');
+const playerWidget = require('./playerWidget.cjs');
 
 // Каталог данных переименование не задело: Electron берёт его из поля name в
 // package.json (hyax-messenger), а не из productName, — проверено на сборке
@@ -17,6 +18,9 @@ const ota = require('./ota.cjs');
 // %APPDATA%/hyax-messenger/logs (win), ~/.config/hyax-messenger/logs (linux).
 // Упакованное приложение не пишет в консоль, а падение при старте или ошибку
 // автообновления иначе не увидеть.
+// HYAX_USER_DATA — отдельный профиль для проверки собранного приложения:
+// не трогает настоящий (вход, настройки) и не мешает уже запущенному WYX.
+if (process.env.HYAX_USER_DATA) app.setPath('userData', process.env.HYAX_USER_DATA);
 const logFile = (() => {
   try { app.setAppLogsPath(); return path.join(app.getPath('logs'), 'main.log'); }
   catch { try { return path.join(app.getPath('userData'), 'main.log'); } catch { return path.join(require('os').tmpdir(), 'hyax-main.log'); } }
@@ -423,6 +427,13 @@ const SHELL_DICT = {
     'Открыть WYX': 'Open WYX',
     'Сворачивать в трей при закрытии': 'Minimize to tray on close',
     'Выйти': 'Quit',
+    'Мини-плеер': 'Mini player',
+    'Закрыть мини-плеер': 'Close mini player',
+    'Предыдущий': 'Previous',
+    'Следующий': 'Next',
+    'Играть': 'Play',
+    'Пауза': 'Pause',
+    'Стоп': 'Stop',
   },
   ko: {
     'Вид': '보기',
@@ -439,6 +450,13 @@ const SHELL_DICT = {
     'Открыть WYX': 'WYX 열기',
     'Сворачивать в трей при закрытии': '닫을 때 트레이로 최소화',
     'Выйти': '종료',
+    'Мини-плеер': '미니 플레이어',
+    'Закрыть мини-плеер': '미니 플레이어 닫기',
+    'Предыдущий': '이전',
+    'Следующий': '다음',
+    'Играть': '재생',
+    'Пауза': '일시정지',
+    'Стоп': '정지',
   },
 };
 // app.getLocale() работает только после ready; раньше — без кэша и по-русски.
@@ -471,6 +489,7 @@ ipcMain.on('set-lang', (_e, l) => {
   // возьмут новый язык; готовые меню приложения и трея пересобираем.
   installAppMenu();
   if (tray) tray.setContextMenu(buildTrayMenu());
+  playerWidget.relabel();
 });
 
 let tray = null;
@@ -483,6 +502,8 @@ function trayIcon() {
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: tr('Открыть WYX'), click: focusMainWindow },
+    // Мини-плеер поверх окон (electron/playerWidget.cjs).
+    playerWidget.menuItem(),
     { type: 'separator' },
     { label: tr('Сворачивать в трей при закрытии'), type: 'checkbox', checked: trayEnabled(), click: (item) => writeSettings({ minimizeToTray: item.checked }) },
     { type: 'separator' },
@@ -587,6 +608,10 @@ if (!gotLock) {
     allowMediaPermissions();
     createWindow();
     if (!isDev) { ota.watch(mainWindow); ota.startChecks(); }
+    playerWidget.init({
+      getMain: () => mainWindow, focusMain: focusMainWindow, readSettings, writeSettings, tr, getLang: getShellLang,
+      onMenuChange: () => { if (tray) tray.setContextMenu(buildTrayMenu()); },
+    });
     createTray();
     // Крестик — в трей, а не выход (если не выключено в меню трея).
     mainWindow?.on('close', (e) => {

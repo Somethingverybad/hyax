@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X, Music2, Plus, Download } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X, Music2, Plus, Download, PictureInPicture2 } from "lucide-react";
 import { t as tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { api } from "@/api/client";
 import { resolveMediaUrl } from "@/hooks/use-media-url";
 import { saveFileToDevice } from "@/lib/saveFile";
 import ShareTrackButton from "@/components/music/ShareTrackButton";
+import { hasPlayerWidget } from "@/lib/desktopPlayer";
 import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer, type Track } from "@/lib/player";
 
 /**
@@ -109,10 +110,30 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
         {s.volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
       </button>
       <ShareTrackButton track={tk} className={btn} />
+      {hasPlayerWidget && <WidgetToggle className={btn} />}
       <button type="button" onClick={stop} className={cn(btn, "text-subtle")} aria-label={tr("Закрыть плеер")} title={tr("Закрыть плеер")}>
         <X className="w-4 h-4" />
       </button>
     </div>
+  );
+};
+
+/** Мини-плеер поверх окон (electron/playerWidget.cjs): включить или выключить.
+ *  Галочка та же, что в меню трея, — сверяемся с ней, когда окно в фокусе. */
+const WidgetToggle = ({ className }: { className: string }) => {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const read = () => { void window.electronAPI?.playerWidgetEnabled?.().then((v) => setOn(!!v)).catch(() => {}); };
+    read();
+    window.addEventListener("focus", read);
+    return () => window.removeEventListener("focus", read);
+  }, []);
+  const label = on ? tr("Закрыть мини-плеер") : tr("Мини-плеер поверх окон");
+  return (
+    <button type="button" onClick={() => { window.electronAPI?.setPlayerWidget?.(!on); setOn(!on); }}
+      className={cn(className, on ? "text-primary" : "text-subtle")} aria-label={label} aria-pressed={on} title={label}>
+      <PictureInPicture2 className="w-4 h-4" />
+    </button>
   );
 };
 

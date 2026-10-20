@@ -31,4 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installKind: () => ipcRenderer.invoke('install-kind'),
   // Язык интерфейса (ru | en | ko) — для трея, меню и диалогов main-процесса.
   setLang: (l) => ipcRenderer.send('set-lang', l),
+  // Мини-плеер поверх окон, меню Dock и кнопки превью на панели задач
+  // (electron/playerWidget.cjs): состояние плеера туда, команды обратно.
+  playerState: (s) => ipcRenderer.send('player-state', s),
+  onPlayerCmd: (cb) => { const h = (_e, c) => cb(c); ipcRenderer.on('player-cmd', h); return () => ipcRenderer.removeListener('player-cmd', h); },
+  setPlayerWidget: (on) => ipcRenderer.send('player-widget', !!on),
+  playerWidgetEnabled: () => ipcRenderer.invoke('player-widget-enabled'),
 });
