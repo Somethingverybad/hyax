@@ -288,6 +288,7 @@ file=@track.mp3  title=Northern Lights  artist=Aurora  next=1
 <pre><code><span class="k">POST</span> /api/radio/
 {"playlist_id": "&lt;playlist_id&gt;"}                         <span class="c">от себя</span>
 {"playlist_id": "&lt;playlist_id&gt;", "channel_id": "&lt;id&gt;"}   <span class="c">от канала, где бот — админ</span>
+{"playlist_id": "&lt;playlist_id&gt;", "shuffle": true}          <span class="c">вперемешку</span>
 <span class="c">→ 201</span> состояние эфира (ниже)
 
 <span class="k">GET</span>  /api/radio/                     <span class="c">свои эфиры и каналы, от которых можно вести</span>
@@ -296,9 +297,12 @@ file=@track.mp3  title=Northern Lights  artist=Aurora  next=1
 {"action": "skip"}                               <span class="c">следующий трек</span>
 {"action": "play", "track_id": "&lt;track_id&gt;"}   <span class="c">включить этот трек сейчас</span>
 {"action": "pause"}  /  {"action": "resume"}
+{"action": "shuffle", "on": true}                <span class="c">вперемешку; false — по порядку плейлиста</span>
 <span class="k">DELETE</span> /api/radio/&lt;station_id&gt;/       <span class="c">остановить эфир</span></code></pre>
-    <p>Повторный <code>POST /api/radio/</code> с другим плейлистом ставит его в тот же эфир, с первого трека: у бота один
-      личный эфир и по одному на каждый канал.</p>
+    <p>Повторный <code>POST /api/radio/</code> с другим плейлистом ставит его в тот же эфир, с первого трека (вперемешку — со
+      случайного): у бота один личный эфир и по одному на каждый канал. Без <code>shuffle</code> эфир остаётся таким, каким был.</p>
+    <p>Вперемешку порядок задаёт сервер — у всех слушателей он один, каждый круг новый; играющий трек при переключении
+      доигрывает, а трек, добавленный с <code>next</code>, идёт сразу за ним. В состоянии — <code>station.shuffle</code>.</p>
     <p>Состояние эфира — время в миллисекундах по часам сервера:</p>
 <pre><code>{"station": {"id": "…", "name": "Ночной сет", "paused": false, "listeners": 12,
              "listeners_preview": [{"id": "…", "username": "…"}], "can_control": true, …},

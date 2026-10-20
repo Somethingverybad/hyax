@@ -968,6 +968,10 @@ class Station(models.Model):
     anchor_at = models.DateTimeField(default=timezone.now)
     # На паузе: эфир застыл в этот момент, слушатели стоят.
     paused_at = models.DateTimeField(null=True, blank=True)
+    # Вперемешку: треки идут в порядке shuffle_order (id треков), каждый круг —
+    # новый порядок (chat/radio.py). Порядок у всех слушателей один.
+    shuffle = models.BooleanField(db_default=False)
+    shuffle_order = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

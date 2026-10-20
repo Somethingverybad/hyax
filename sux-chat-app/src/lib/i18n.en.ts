@@ -1914,6 +1914,8 @@ const en: Record<string, string> = {
   "Продолжить": "Resume",
   "Стоп": "Stop",
   "Дальше в эфире": "Up next",
+  "Вперемешку: вкл.": "Shuffle: on",
+  "Вперемешку: выкл.": "Shuffle: off",
   "Выйти из эфира": "Stop listening",
   "Все слушают эфир одновременно: перемотки нет, трек меняется у всех разом. Понравившееся забирайте себе — а потом запускайте свой эфир из любого плейлиста.": "Everyone hears the broadcast at the same time: no seeking, tracks change for everybody at once. Save what you like — then start your own broadcast from any playlist.",
   "Эфир закончился": "The broadcast has ended",

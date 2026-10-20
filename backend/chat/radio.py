@@ -2,7 +2,8 @@
 
 Звук не транслируется — каждый слушатель играет тот же файл с той же секунды.
 Сервер хранит только расписание (Station: «трек anchor_track начался в
-anchor_at», дальше по порядку плейлиста по кругу) и отдаёт клиенту текущий
+anchor_at», дальше по порядку плейлиста по кругу, а вперемешку — в своём
+порядке, новом на каждом круге) и отдаёт клиенту текущий
 трек с моментом его начала по своим часам. Клиент сверяет часы и
 перематывает на нужное место (sux-chat-app/src/lib/radio.ts).
 
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -123,15 +125,58 @@ def fill_durations_later(playlist_id) -> None:
 # ---- Расписание ----
 
 def _queue(st):
-    return list(
+    tracks = list(
         PlaylistTrack.objects.filter(playlist_id=st.playlist_id, duration__gt=MIN_DURATION)
         .order_by("position", "added_at")
     )
+    return _shuffled(st, tracks) if st.shuffle and tracks else tracks
+
+
+def _shuffled(st, tracks):
+    """Порядок эфира вперемешку. Убранные треки пропускаем; новых в порядке
+    ещё нет — ставим на случайное место дальше в этом круге, а поставленный
+    «следующим» (next_position: место сразу за играющим) — сразу за ним."""
+    by_id = {str(t.id): t for t in tracks}
+    order = [i for i in (st.shuffle_order or []) if i in by_id]
+    known = set(order)
+    anchor = str(st.anchor_track_id) if st.anchor_track_id else None
+    after = order.index(anchor) + 1 if anchor in known else 0
+    for t in tracks:
+        tid = str(t.id)
+        if tid in known:
+            continue
+        at = after if t.position == st.anchor_position + 1 else random.randint(after, len(order))
+        order.insert(at, tid)
+        known.add(tid)
+    if order != (st.shuffle_order or []):
+        st.shuffle_order = order
+        st.save(update_fields=["shuffle_order"])
+    return [by_id[i] for i in order]
+
+
+def _new_round(st, tracks, last=None):
+    """Новый круг вперемешку: все треки в случайном порядке, только не тот,
+    что сыграл последним, первым — иначе он прозвучал бы дважды подряд."""
+    order = tracks[:]
+    random.shuffle(order)
+    if last is not None and len(order) > 1 and order[0].id == last.id:
+        order.append(order.pop(0))
+    st.shuffle_order = [str(t.id) for t in order]
+    return order
+
+
+def _following(st, tracks, i, pool=None):
+    """Трек после i-го. В конце круга вперемешку — первый нового круга
+    (pool — из каких треков его собрать, если какой-то сейчас убирают)."""
+    if st.shuffle and i == len(tracks) - 1 and len(pool or tracks) > 2:
+        return _new_round(st, pool or tracks, last=tracks[i])[0]
+    return tracks[(i + 1) % len(tracks)]
 
 
 def _walk(st, tracks, at):
     """Какой трек играет в момент at и когда он начался: от якоря по порядку,
-    целые круги плейлиста пропускаем арифметикой."""
+    целые круги плейлиста пропускаем арифметикой. Третье — когда кончился
+    круг (дошли до конца списка), если кончился."""
     idx = next((i for i, t in enumerate(tracks) if t.id == st.anchor_track_id), None)
     if idx is None:
         # Якорь пропал (трек убрали) — эфир идёт со следующего по месту.
@@ -139,6 +184,8 @@ def _walk(st, tracks, at):
     start = st.anchor_at
     total = sum(t.duration for t in tracks)
     elapsed = max(0.0, (at - start).total_seconds())
+    to_end = sum(t.duration for t in tracks[idx:])
+    round_end = start + timedelta(seconds=to_end) if elapsed >= to_end else None
     if elapsed >= total:
         loops = int(elapsed // total)
         start += timedelta(seconds=loops * total)
@@ -148,7 +195,7 @@ def _walk(st, tracks, at):
         elapsed -= tracks[i].duration
         start += timedelta(seconds=tracks[i].duration)
         i = (i + 1) % len(tracks)
-    return i, start
+    return i, start, round_end
 
 
 def _rebase(st, now, tracks=None):
@@ -157,13 +204,24 @@ def _rebase(st, now, tracks=None):
     tracks = _queue(st) if tracks is None else tracks
     if not tracks:
         return tracks, None
-    i, start = _walk(st, tracks, st.paused_at or now)
+    at = st.paused_at or now
+    i, start, round_end = _walk(st, tracks, at)
+    fields = ["anchor_track", "anchor_position", "anchor_at"]
+    if round_end is not None and st.shuffle and len(tracks) > 2:
+        # Круг вперемешку кончился — следующий в новом порядке, с того
+        # момента, как кончился прошлый.
+        tracks = _new_round(st, tracks, last=tracks[-1])
+        st.anchor_track = tracks[0]
+        st.anchor_position = tracks[0].position
+        st.anchor_at = round_end
+        i, start, _ = _walk(st, tracks, at)
+        fields.append("shuffle_order")
     cur = tracks[i]
-    if cur.id != st.anchor_track_id or start != st.anchor_at:
+    if cur.id != st.anchor_track_id or start != st.anchor_at or len(fields) > 3:
         st.anchor_track = cur
         st.anchor_position = cur.position
         st.anchor_at = start
-        st.save(update_fields=["anchor_track", "anchor_position", "anchor_at"])
+        st.save(update_fields=fields)
     return tracks, i
 
 
@@ -185,11 +243,11 @@ def before_track_removed(track) -> None:
         rest = [t for t in tracks if t.id != track.id]
         if not rest:
             continue
-        nxt = tracks[(i + 1) % len(tracks)]
+        nxt = _following(st, tracks, i, pool=rest)
         st.anchor_track = nxt
         st.anchor_position = nxt.position
         st.anchor_at = st.paused_at or now
-        st.save(update_fields=["anchor_track", "anchor_position", "anchor_at"])
+        st.save(update_fields=["anchor_track", "anchor_position", "anchor_at", "shuffle_order"])
 
 
 # ---- Кто видит и кто ведёт ----
@@ -280,6 +338,7 @@ def _station_info(st, me, now, tracks=None, idx=None):
         "mine": st.owner_id == me.id,
         "can_control": _can_control(st, me),
         "paused": bool(st.paused_at),
+        "shuffle": st.shuffle,
         "listeners": live.count(),
         "listeners_preview": [_brief(x.profile) for x in live.order_by("-seen_at")[:5]],
         "now_title": cur.title if cur else "",
@@ -318,8 +377,9 @@ def _me(request):
 
 class StationsView(APIView):
     """GET — эфиры, которые мне видны, и каналы, от имени которых я могу
-    вести эфир. POST {playlist_id, channel_id?} — запустить эфир (или
-    поставить в уже идущий другой плейлист — с первого трека)."""
+    вести эфир. POST {playlist_id, channel_id?, shuffle?} — запустить эфир (или
+    поставить в уже идущий другой плейлист — с первого трека, а вперемешку —
+    со случайного)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -354,13 +414,21 @@ class StationsView(APIView):
         # остальные — в фоне, они встанут в очередь по мере готовности.
         fill_durations(pl.id, limit=12)
         fill_durations_later(pl.id)
-        first = PlaylistTrack.objects.filter(playlist=pl, duration__gt=MIN_DURATION).order_by("position", "added_at").first()
-        if not first:
+        ready = list(PlaylistTrack.objects.filter(playlist=pl, duration__gt=MIN_DURATION).order_by("position", "added_at"))
+        if not ready:
             return Response({"error": "В плейлисте нет треков, которые можно поставить в эфир"}, status=400)
         st = (Station.objects.filter(channel=channel).first() if channel
               else Station.objects.filter(owner=me, channel__isnull=True).first())
+        # Вперемешку — как просили, а без просьбы — как было в этом эфире.
+        shuffle = request.data.get("shuffle")
+        shuffle = bool(st and st.shuffle) if shuffle is None else shuffle in (True, "true", "1", 1)
+        order = None
+        if shuffle:
+            random.shuffle(ready)
+            order = [str(t.id) for t in ready]
+        first = ready[0]
         fields = dict(playlist=pl, anchor_track=first, anchor_position=first.position,
-                      anchor_at=timezone.now(), paused_at=None)
+                      anchor_at=timezone.now(), paused_at=None, shuffle=shuffle, shuffle_order=order)
         if st:
             for k, v in fields.items():
                 setattr(st, k, v)
@@ -392,8 +460,9 @@ class StationView(APIView):
 
 
 class StationControlView(APIView):
-    """POST {action: skip | pause | resume | play, track_id?} — ведущий
-    управляет эфиром. play — сразу включить трек track_id из плейлиста эфира."""
+    """POST {action: skip | pause | resume | play | shuffle, track_id?, on?} —
+    ведущий управляет эфиром. play — сразу включить трек track_id из плейлиста
+    эфира; shuffle — вперемешку ({on: true/false}, без on — переключить)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
@@ -407,11 +476,22 @@ class StationControlView(APIView):
         if i is None:
             return Response({"error": "В эфире нет треков"}, status=400)
         if action == "skip":
-            nxt = tracks[(i + 1) % len(tracks)]
+            nxt = _following(st, tracks, i)
             st.anchor_track = nxt
             st.anchor_position = nxt.position
             st.anchor_at = st.paused_at or now
-            st.save(update_fields=["anchor_track", "anchor_position", "anchor_at"])
+            st.save(update_fields=["anchor_track", "anchor_position", "anchor_at", "shuffle_order"])
+        elif action == "shuffle":
+            # {on: bool}; без on — переключить. Играющий трек доигрывает, меняется то, что дальше.
+            on = request.data.get("on")
+            on = (not st.shuffle) if on is None else on in (True, "true", "1", 1)
+            if on != st.shuffle:
+                st.shuffle = on
+                cur = tracks[i]
+                rest = [t for t in tracks if t.id != cur.id]
+                random.shuffle(rest)
+                st.shuffle_order = [str(t.id) for t in [cur, *rest]] if on else None
+                st.save(update_fields=["shuffle", "shuffle_order"])
         elif action == "play":
             target = next((t for t in tracks if str(t.id) == str(request.data.get("track_id"))), None)
             if not target:

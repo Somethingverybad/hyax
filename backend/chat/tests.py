@@ -1977,3 +1977,114 @@ class ActivityTargetsTests(TestCase):
         self.assertEqual(self.targets(self.direct, Profile.objects.get(id=self.me.id)), [])
         from .consumers import activity_targets_for
         self.assertEqual(activity_targets_for("not-a-uuid", self.peer)[2], [])
+
+
+class StationShuffleTests(TestCase):
+    """Эфир вперемешку: порядок у всех один, играющий трек не перескакивает,
+    каждый круг — новый порядок, «следующим» — сразу за играющим."""
+
+    def setUp(self):
+        from unittest import mock
+        patcher = mock.patch("chat.radio.fill_durations_later")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.dj = make_user("dj")
+        self.fan = make_user("fan")
+        ch = Chat.objects.create(kind="direct")
+        for p in (self.dj, self.fan):
+            ChatParticipant.objects.create(chat=ch, user=p)
+        self.pl = Playlist.objects.create(owner=self.dj, name="Сет")
+        self.tracks = [PlaylistTrack.objects.create(playlist=self.pl, file_url=f"/media/music/{i}.mp3", title=f"T{i}",
+                                                    position=i + 1, duration=100) for i in range(8)]
+        self.ids = {str(t.id) for t in self.tracks}
+
+    def start(self, **extra):
+        r = client_for(self.dj).post("/api/radio/", {"playlist_id": str(self.pl.id), **extra}, format="json")
+        self.assertEqual(r.status_code, 201)
+        return r.data["station"]["id"]
+
+    def control(self, sid, who=None, **data):
+        return client_for(who or self.dj).post(f"/api/radio/{sid}/control/", data, format="json")
+
+    def state(self, sid):
+        return client_for(self.fan).post(f"/api/radio/{sid}/listen/", {}, format="json").data
+
+    def test_shuffle_on_keeps_current_track(self):
+        from .models import Station
+        sid = self.start()
+        r = self.control(sid, action="shuffle", on=True)
+        self.assertTrue(r.data["station"]["shuffle"])
+        self.assertEqual(r.data["now"]["track"]["id"], str(self.tracks[0].id))
+        order = Station.objects.get(id=sid).shuffle_order
+        self.assertEqual((order[0], set(order), len(order)), (str(self.tracks[0].id), self.ids, 8))
+        self.assertEqual([n["track"]["id"] for n in r.data["next"]], order[1:4])
+        # Слушатель видит тот же порядок.
+        self.assertEqual([n["track"]["id"] for n in self.state(sid)["next"]], order[1:4])
+
+    def test_round_end_reshuffles_without_repeat(self):
+        from .models import Station
+        sid = self.start()
+        self.control(sid, action="shuffle", on=True)
+        st = Station.objects.get(id=sid)
+        old = st.shuffle_order
+        began = timezone.now() - timedelta(seconds=850)
+        Station.objects.filter(id=sid).update(anchor_at=began)
+        d = self.state(sid)
+        st.refresh_from_db()
+        self.assertEqual((set(st.shuffle_order), len(st.shuffle_order)), (self.ids, 8))
+        self.assertNotEqual(st.shuffle_order[0], old[-1])
+        self.assertEqual(d["now"]["track"]["id"], st.shuffle_order[0])
+        self.assertEqual(d["now"]["started_at"], int((began + timedelta(seconds=800)).timestamp() * 1000))
+
+    def test_skip_at_round_end_starts_new_round(self):
+        from .models import Station
+        sid = self.start(shuffle=True)
+        st = Station.objects.get(id=sid)
+        last = st.shuffle_order[-1]
+        Station.objects.filter(id=sid).update(anchor_track_id=last, anchor_at=timezone.now())
+        r = self.control(sid, action="skip")
+        self.assertNotEqual(r.data["now"]["track"]["id"], last)
+        st.refresh_from_db()
+        self.assertEqual(st.shuffle_order[0], r.data["now"]["track"]["id"])
+
+    def test_play_next_goes_right_after_current(self):
+        from .radio import next_position
+        sid = self.start(shuffle=True)
+        pos = next_position(self.pl)
+        new = PlaylistTrack.objects.create(playlist=self.pl, file_url="/media/music/new.mp3", title="New",
+                                           position=pos, duration=100)
+        self.assertEqual(self.state(sid)["next"][0]["track"]["id"], str(new.id))
+
+    def test_added_track_plays_later_this_round(self):
+        from .models import Station
+        sid = self.start(shuffle=True)
+        cur = self.state(sid)["now"]["track"]["id"]
+        new = PlaylistTrack.objects.create(playlist=self.pl, file_url="/media/music/new.mp3", title="New",
+                                           position=50, duration=100)
+        self.state(sid)
+        order = Station.objects.get(id=sid).shuffle_order
+        self.assertGreater(order.index(str(new.id)), order.index(cur))
+
+    def test_start_shuffled_and_restart_keeps_setting(self):
+        from .models import Station
+        sid = self.start(shuffle=True)
+        st = Station.objects.get(id=sid)
+        self.assertTrue(st.shuffle)
+        self.assertEqual(str(st.anchor_track_id), st.shuffle_order[0])
+        self.assertEqual(self.start(), sid)
+        self.assertTrue(Station.objects.get(id=sid).shuffle)
+
+    def test_shuffle_off_back_to_playlist_order(self):
+        from .models import Station
+        sid = self.start(shuffle=True)
+        cur = PlaylistTrack.objects.get(id=Station.objects.get(id=sid).anchor_track_id)
+        r = self.control(sid, action="shuffle")
+        self.assertFalse(r.data["station"]["shuffle"])
+        self.assertIsNone(Station.objects.get(id=sid).shuffle_order)
+        self.assertEqual(r.data["now"]["track"]["id"], str(cur.id))
+        after = [t for t in self.tracks if t.position > cur.position] + [t for t in self.tracks if t.position < cur.position]
+        self.assertEqual([n["track"]["id"] for n in r.data["next"]], [str(t.id) for t in after[:3]])
+
+    def test_listener_cannot_shuffle(self):
+        sid = self.start()
+        self.assertEqual(self.control(sid, who=self.fan, action="shuffle", on=True).status_code, 404)

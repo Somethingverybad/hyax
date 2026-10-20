@@ -394,6 +394,8 @@ export interface StationInfo {
   mine: boolean;
   can_control: boolean;
   paused: boolean;
+  /** Вперемешку: порядок задаёт сервер, у всех слушателей один. */
+  shuffle?: boolean;
   listeners: number;
   listeners_preview: { id: string; username: string; avatar_url?: string | null }[];
   now_title: string;
@@ -1468,9 +1470,9 @@ export const api = {
     await fetchWithAuth(`${API_URL}/radio/${id}/listen/`, { method: "DELETE", headers: authHeaders() }).catch(() => undefined);
   },
 
-  controlStation: async (id: string, action: "skip" | "pause" | "resume"): Promise<StationState> => {
+  controlStation: async (id: string, action: "skip" | "pause" | "resume" | "shuffle", extra?: { on?: boolean }): Promise<StationState> => {
     const res = await fetchWithAuth(`${API_URL}/radio/${id}/control/`, {
-      method: "POST", headers: authHeaders(), body: JSON.stringify({ action }),
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ action, ...extra }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не получилось");

@@ -1,7 +1,7 @@
 import { t as tr, tn } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Ban, Check, ChevronLeft, Flag, Heart, Pause, Play, Plus, Radio, SkipForward, Square } from "lucide-react";
+import { Ban, Check, ChevronLeft, Flag, Heart, Pause, Play, Plus, Radio, Shuffle, SkipForward, Square } from "lucide-react";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
 import ReportSheet from "@/components/ReportSheet";
@@ -19,7 +19,7 @@ export const stationName = (s: { name: string; is_default: boolean }) => (s.is_d
  * Экран эфира: что играет сейчас и дальше, кто слушает. Открыли — значит,
  * слушаем: подключаемся сразу. Ушли с экрана — эфир играет дальше, как и
  * обычная музыка; выйти из эфира — кнопкой внизу или крестиком плеера.
- * Ведущему (владельцу, админу канала) — пропуск, пауза и остановка.
+ * Ведущему (владельцу, админу канала) — пропуск, пауза, вперемешку и остановка.
  */
 const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }) => {
   const radio = useRadio();
@@ -43,10 +43,10 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
-  const control = async (action: "skip" | "pause" | "resume") => {
+  const control = async (action: "skip" | "pause" | "resume" | "shuffle", extra?: { on?: boolean }) => {
     if (busy) return;
     setBusy(true);
-    try { applyControl(await api.controlStation(item.id, action)); }
+    try { applyControl(await api.controlStation(item.id, action, extra)); }
     catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
     finally { setBusy(false); }
   };
@@ -182,12 +182,21 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
               className="h-11 rounded-md bg-surface-4 text-destructive flex items-center justify-center gap-1.5 text-small">
               <Square className="w-4 h-4" /> {tr("Стоп")}
             </button>
+            <button type="button" disabled={busy || !now} aria-pressed={!!info.shuffle}
+              onClick={() => void control("shuffle", { on: !info.shuffle })}
+              className={cn("col-span-3 h-11 rounded-md flex items-center justify-center gap-1.5 text-small disabled:opacity-50",
+                info.shuffle ? "bg-primary/15 text-primary" : "bg-surface-4")}>
+              <Shuffle className="w-4 h-4" /> {info.shuffle ? tr("Вперемешку: вкл.") : tr("Вперемешку: выкл.")}
+            </button>
           </div>
         )}
 
         {!!data?.next.length && (
           <>
-            <p className="px-1 pt-1 text-small font-semibold text-subtle">{tr("Дальше в эфире")}</p>
+            <p className="px-1 pt-1 text-small font-semibold text-subtle flex items-center gap-1.5">
+              {tr("Дальше в эфире")}
+              {info.shuffle && <Shuffle className="w-3.5 h-3.5" aria-label={tr("Вперемешку: вкл.")} />}
+            </p>
             <SettingsCard>
               {data.next.map((n) => (
                 <SettingsRow key={`${n.track.id}-${n.started_at}`} label={n.track.title} hint={n.track.artist || undefined}
