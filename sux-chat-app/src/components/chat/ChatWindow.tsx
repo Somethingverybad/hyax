@@ -3647,13 +3647,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               </button>
             ) : <span />}
             {/* Островок с ником и статусом перетекает, как жидкость (LiquidIsland). */}
-            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill h-[43px]">
+            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill" minHeight={43}>
               <span className="max-w-full truncate text-[16.3px] font-semibold leading-[18px] flex items-center gap-1" style={{ color: "var(--mint-title)" }}>
                 {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
                 <LiquidText className="min-w-0" text={headerTitle || peer?.username || group?.name || tr("Чат")} />
               </span>
               <span className={cn("liquid-color max-w-full text-[11.7px] leading-[16px]", activityText ? "text-primary font-medium" : "mint-muted")}>
-                <LiquidText text={activityText ? activityText : peer ? (peer.is_bot ? tr("бот") : peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))
+                <LiquidText wrap text={activityText ? activityText : peer ? (peer.is_bot ? tr("бот") : peer.is_online ? tr("в сети") : lastSeenText(peer.last_seen))
                   : isGroup ? tn(group?.participants?.length || 0, "{n} участник", "{n} участника", "{n} участников")
                   : saved ? tr("Сообщения для себя") : ""} />
               </span>

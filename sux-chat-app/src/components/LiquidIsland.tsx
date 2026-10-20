@@ -11,6 +11,10 @@ import { cn } from "@/lib/utils";
  * прозрачности (SVG-фильтр) склеивает буквы, как капли. Фильтр — только на
  * время перехода: в покое текст остаётся чётким.
  *
+ * Длинный статус («строчит как из пулемёта…», «Вася печатает… и ещё 2») не
+ * обрезается: переносится по словам (wrap), а капсула так же пружиной
+ * подрастает по высоте.
+ *
  * Кто выключил анимации в системе (prefers-reduced-motion) — без эффектов.
  */
 
@@ -18,7 +22,7 @@ const MORPH_MS = 700;
 const reducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export function LiquidText({ text, className }: { text: string; className?: string }) {
+export function LiquidText({ text, className, wrap }: { text: string; className?: string; wrap?: boolean }) {
   const [shown, setShown] = useState(text);
   const [prev, setPrev] = useState<string | null>(null);
   const [n, setN] = useState(0);
@@ -34,7 +38,7 @@ export function LiquidText({ text, className }: { text: string; className?: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
   return (
-    <span className={cn("liquid-text", className)} style={prev !== null ? { filter: `url(#${fid})` } : undefined}>
+    <span className={cn("liquid-text", wrap && "liquid-text-wrap", className)} style={prev !== null ? { filter: `url(#${fid})` } : undefined}>
       <svg aria-hidden width="0" height="0" className="liquid-defs">
         <defs>
           {/* Порог прозрачности: размытые буквы сливаются в «капли». */}
@@ -49,33 +53,38 @@ export function LiquidText({ text, className }: { text: string; className?: stri
   );
 }
 
-export function LiquidIsland({ children, className, onClick, minWidth = 120, padX = 20, title }: {
+export function LiquidIsland({ children, className, onClick, minWidth = 120, minHeight = 0, padX = 20, padY = 5, title }: {
   children: ReactNode;
   className?: string;
   onClick?: () => void;
   minWidth?: number;
-  /** Отступ слева и справа — входит в ширину капсулы. */
+  /** Высота в одну строку статуса; перенёсся на вторую — капсула выше. */
+  minHeight?: number;
+  /** Отступы — входят в размер капсулы. */
   padX?: number;
+  padY?: number;
   title?: string;
 }) {
   const btn = useRef<HTMLButtonElement>(null);
   const inner = useRef<HTMLSpanElement>(null);
-  const [width, setWidth] = useState<number | null>(null);
-  const last = useRef<number | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const last = useRef<{ w: number; h: number } | null>(null);
   const [animated, setAnimated] = useState(false);
 
   useLayoutEffect(() => {
     const el = inner.current;
     if (!el) return;
     const measure = () => {
-      const next = Math.max(minWidth, Math.ceil(el.getBoundingClientRect().width) + padX * 2);
+      const r = el.getBoundingClientRect();
+      const next = { w: Math.max(minWidth, Math.ceil(r.width) + padX * 2), h: Math.max(minHeight, Math.ceil(r.height) + padY * 2) };
       const prev = last.current;
-      if (prev === next) return;
+      if (prev && prev.w === next.w && prev.h === next.h) return;
       last.current = next;
-      setWidth(next);
-      // Заметно поменялась — капсула «желейно» качнётся, пока тянется к новой ширине.
-      if (prev !== null && Math.abs(prev - next) > 6 && !reducedMotion() && btn.current?.animate) {
-        const grow = next > prev;
+      setSize(next);
+      // Заметно поменялась — капсула «желейно» качнётся, пока тянется к новому размеру.
+      const dw = prev ? next.w - prev.w : 0, dh = prev ? next.h - prev.h : 0;
+      if (prev && (Math.abs(dw) > 6 || Math.abs(dh) > 4) && !reducedMotion() && btn.current?.animate) {
+        const grow = Math.abs(dw) >= Math.abs(dh) ? dw > 0 : dh < 0;
         btn.current.animate([
           { transform: "scale(1, 1)" },
           { transform: grow ? "scale(1.035, 0.93)" : "scale(0.97, 1.06)", offset: 0.3 },
@@ -90,12 +99,12 @@ export function LiquidIsland({ children, className, onClick, minWidth = 120, pad
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [minWidth, padX]);
+  }, [minWidth, minHeight, padX, padY]);
 
   return (
     <button ref={btn} type="button" onClick={onClick} title={title}
       className={cn("liquid-island", animated && "liquid-island-anim", className)}
-      style={{ width: width ?? undefined, paddingLeft: padX, paddingRight: padX }}>
+      style={{ width: size?.w, height: size?.h, minHeight: minHeight || undefined, paddingLeft: padX, paddingRight: padX }}>
       <span ref={inner} className="liquid-island-inner">{children}</span>
     </button>
   );
