@@ -1979,6 +1979,169 @@ class ActivityTargetsTests(TestCase):
         self.assertEqual(activity_targets_for("not-a-uuid", self.peer)[2], [])
 
 
+class LiveTranslateTests(TestCase):
+    """Живой перевод (chat/live.py): фразы из звонков и вставленный текст."""
+
+    def setUp(self):
+        self.me = make_user("listener_ru", language="ru")
+
+    def test_whisper_lang_and_phantoms(self):
+        from .live import phantom, whisper_lang
+        self.assertEqual([whisper_lang("russian"), whisper_lang("Spanish"), whisper_lang("ko"), whisper_lang("")], ["ru", "es", "ko", ""])
+        self.assertTrue(phantom("Продолжение следует..."))
+        self.assertTrue(phantom("Субтитры сделал DimaTorzok"))
+        self.assertTrue(phantom(" ... "))
+        self.assertFalse(phantom("Продолжим после обеда, хорошо?"))
+
+    def _speech(self, **form):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        audio = SimpleUploadedFile("speech.wav", b"RIFF0000WAVEfmt ", content_type="audio/wav")
+        return client_for(self.me).post("/api/live/speech/", {"audio": audio, **form}, format="multipart")
+
+    def test_speech_translated_into_my_language(self):
+        from unittest import mock
+        with mock.patch("chat.live.recognize", return_value=("Hola, ¿cómo estás?", "es")), \
+                mock.patch("chat.live.translate_text", return_value="Привет, как дела?") as tr:
+            r = self._speech()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data, {"text": "Hola, ¿cómo estás?", "lang": "es", "to": "ru", "translation": "Привет, как дела?"})
+        tr.assert_called_once_with("Hola, ¿cómo estás?", "ru", "es", trust_source=True)
+
+    def test_speech_in_my_language_is_not_translated(self):
+        from unittest import mock
+        with mock.patch("chat.live.recognize", return_value=("Привет", "ru")), mock.patch("chat.live.translate_text") as tr:
+            r = self._speech()
+        self.assertEqual((r.status_code, r.data["translation"]), (200, ""))
+        tr.assert_not_called()
+
+    def test_locked_language_goes_to_recognizer(self):
+        from unittest import mock
+        with mock.patch("chat.live.recognize", return_value=("Привіт", "uk")) as rec, \
+                mock.patch("chat.live.translate_text", return_value="Привет"):
+            r = self._speech(lang="uk", to="ru")
+        self.assertEqual(rec.call_args.args[1], "uk")
+        self.assertEqual((r.data["lang"], r.data["translation"]), ("uk", "Привет"))
+
+    def test_speech_needs_audio(self):
+        r = client_for(self.me).post("/api/live/speech/", {}, format="multipart")
+        self.assertEqual(r.status_code, 400)
+
+    def test_text_direction(self):
+        from unittest import mock
+        c = client_for(self.me)
+        with mock.patch("chat.live.translate_text", return_value="перевод") as tr:
+            r = c.post("/api/live/text/", {"text": "See you tomorrow"}, format="json")
+            self.assertEqual((r.status_code, r.data["from"], r.data["to"]), (200, "en", "ru"))
+            r = c.post("/api/live/text/", {"text": "До завтра"}, format="json")
+            self.assertEqual(r.data["to"], "en")
+            r = c.post("/api/live/text/", {"text": "До завтра", "other": "es"}, format="json")
+            self.assertEqual(r.data["to"], "es")
+            r = c.post("/api/live/text/", {"text": "Hasta mañana", "from": "es"}, format="json")
+            self.assertEqual((r.data["from"], r.data["to"]), ("es", "ru"))
+        self.assertEqual(tr.call_args.kwargs, {"trust_source": True})
+
+    def test_text_nothing_to_translate(self):
+        r = client_for(self.me).post("/api/live/text/", {"text": "👍 123"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_translate_text_trusts_exact_source(self):
+        from unittest import mock
+        from . import translate as T
+        with mock.patch.object(T, "_chain", return_value=["openrouter"]), \
+                mock.patch.object(T, "_call", return_value="Hi friends") as call:
+            self.assertEqual(T.translate_text("Hola amigos", "en", "es", trust_source=True), "Hi friends")
+            call.assert_called_once_with("openrouter", "Hola amigos", "en", "es")
+            # Без точного языка латиница — «английский», переводить на en нечего.
+            self.assertEqual(T.translate_text("Hola amigos", "en", "es"), "Hola amigos")
+
+    def test_translate_text_non_latin_scripts(self):
+        from unittest import mock
+        from . import translate as T
+        with mock.patch.object(T, "_chain", return_value=["openrouter"]), mock.patch.object(T, "_call", return_value="Привет"):
+            self.assertEqual(T.translate_text("你好", "ru", "zh", trust_source=True), "Привет")
+        self.assertTrue(T.plausible("Привет", "你好", "zh"))
+        self.assertTrue(T.plausible("Hello", "Привіт", "uk"))
+        self.assertFalse(T.plausible("Hello", "Hello there my friend", "uk"))
+
+    def test_cloud_stt_request_and_parsing(self):
+        import os
+        from unittest import mock
+        from . import live
+        sent = {}
+
+        class Resp:
+            def __init__(self, body): self.body = body
+            def raise_for_status(self): pass
+            def json(self): return self.body
+
+        def client(body):
+            c = mock.MagicMock()
+            c.__enter__.return_value.post.side_effect = lambda url, data, files, headers: (sent.update(url=url, data=data, headers=headers), Resp(body))[1]
+            return c
+
+        env = {"LIVE_STT_URL": "https://api.groq.com/openai/v1/audio/transcriptions", "LIVE_STT_KEY": "k", "LIVE_STT_PROXY": "http://ytproxy:8888"}
+        with mock.patch.dict(os.environ, env), mock.patch.object(live.httpx, "Client") as Client:
+            Client.return_value = client({"text": " Hola, ¿qué tal? ", "language": "Spanish", "segments": [{"no_speech_prob": 0.1}]})
+            self.assertEqual(live.recognize(b"wav"), ("Hola, ¿qué tal?", "es"))
+            self.assertEqual(Client.call_args.kwargs["proxy"], "http://ytproxy:8888")
+            self.assertEqual((sent["data"]["model"], sent["headers"]["Authorization"]), ("whisper-large-v3-turbo", "Bearer k"))
+            self.assertNotIn("language", sent["data"])
+            live.recognize(b"wav", "uk")
+            self.assertEqual(sent["data"]["language"], "uk")
+            # Всё «скорее не речь» — шум; «Продолжение следует» — галлюцинация.
+            Client.return_value = client({"text": "Thank you.", "language": "english", "segments": [{"no_speech_prob": 0.9}]})
+            self.assertEqual(live.recognize(b"wav")[0], "")
+            Client.return_value = client({"text": "Продолжение следует...", "language": "russian", "segments": []})
+            self.assertEqual(live.recognize(b"wav")[0], "")
+
+
+class LiveOpenRouterSttTests(TestCase):
+    """Распознавание фраз звонка через OpenRouter (chat/live.py): Voxtral, при сбое Gemini."""
+
+    class Resp:
+        def __init__(self, status, body):
+            self.status_code, self._body = status, body
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self):
+            return self._body
+
+    def run_with(self, fake, **env):
+        import os
+        from unittest import mock
+        from . import live
+        env = {"OPENROUTER_BASE_URL": "https://relay.example/api/v1", **env}
+        with mock.patch.dict(os.environ, env), mock.patch("chat.live.httpx.post", side_effect=fake):
+            os.environ.pop("LIVE_STT_URL", None)
+            return live.recognize(b"RIFF-fake-wav", "")
+
+    def test_fallback_and_fenced_json(self):
+        from . import live
+        calls = []
+        def fake(url, **kw):
+            calls.append(kw["json"]["model"])
+            if kw["json"]["model"].startswith("mistralai"):
+                return self.Resp(503, {})
+            return self.Resp(200, {"choices": [{"message": {"content": '```json\n{"lang": "ru", "text": "Привет, как дела?"}\n```'}}]})
+        self.assertEqual(self.run_with(fake), ("Привет, как дела?", "ru"))
+        self.assertEqual(calls, list(live.OPENROUTER_STT_MODELS))
+
+    def test_no_speech_is_empty(self):
+        fake = lambda url, **kw: self.Resp(200, {"choices": [{"message": {"content": '{"lang": "", "text": ""}'}}]})
+        self.assertEqual(self.run_with(fake)[0], "")
+
+    def test_local_can_be_forced(self):
+        import os
+        from unittest import mock
+        from . import live
+        with mock.patch.dict(os.environ, {"OPENROUTER_BASE_URL": "https://relay.example/api/v1", "LIVE_STT_PROVIDER": "local"}):
+            os.environ.pop("LIVE_STT_URL", None)
+            self.assertIs(live._engine(), live._local)
+
+
 class StationShuffleTests(TestCase):
     """Эфир вперемешку: порядок у всех один, играющий трек не перескакивает,
     каждый круг — новый порядок, «следующим» — сразу за играющим."""

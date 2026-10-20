@@ -12,6 +12,7 @@ from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransf
 from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView
 from .polls import PollVoteView, PollVotersView
+from .live import LiveSpeechView, LiveTextView
 from .graffiti import GraffitiView
 from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -147,6 +148,9 @@ urlpatterns = [
     path('chats/<uuid:pk>/wallpaper/', ChatWallpaperView.as_view(), name='chat-wallpaper'),
     path('chats/<uuid:pk>/translate/', ChatTranslateView.as_view(), name='chat-translate'),
     path('messages/<uuid:pk>/translate/', MessageTranslateView.as_view(), name='message-translate'),
+    # Живой перевод (chat/live.py): субтитры звонков и вставленный текст.
+    path('live/speech/', LiveSpeechView.as_view(), name='live-speech'),
+    path('live/text/', LiveTextView.as_view(), name='live-text'),
     path('channels/<uuid:pk>/admins/', ChannelAdminsView.as_view(), name='channel-admins'),
     path('channels/<uuid:pk>/posts/', ChannelPostsView.as_view(), name='channel-posts'),
     path('posts/<uuid:pk>/react/', PostReactView.as_view(), name='post-react'),

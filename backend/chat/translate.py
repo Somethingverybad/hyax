@@ -43,6 +43,24 @@ logger = logging.getLogger(__name__)
 
 LANGS = {"ru": "Russian", "en": "English", "ko": "Korean"}
 
+#: Языки живого перевода (chat/live.py: субтитры звонков, вставленный текст):
+#: собеседник в Meet или Zoom может говорить на любом из них. Чаты и профиль
+#: по-прежнему на LANGS — norm_lang; сюда — live_lang.
+NAMES = {
+    **LANGS,
+    "uk": "Ukrainian", "be": "Belarusian", "kk": "Kazakh", "uz": "Uzbek", "az": "Azerbaijani",
+    "hy": "Armenian", "ka": "Georgian", "de": "German", "fr": "French", "es": "Spanish",
+    "it": "Italian", "pt": "Portuguese", "pl": "Polish", "cs": "Czech", "nl": "Dutch",
+    "sv": "Swedish", "fi": "Finnish", "ro": "Romanian", "hu": "Hungarian", "el": "Greek",
+    "bg": "Bulgarian", "sr": "Serbian", "tr": "Turkish", "ar": "Arabic", "he": "Hebrew",
+    "fa": "Persian", "hi": "Hindi", "zh": "Chinese", "ja": "Japanese", "th": "Thai",
+    "vi": "Vietnamese", "id": "Indonesian",
+}
+# Письменность языка — для проверки «похоже ли на перевод» (plausible): ко
+# кириллице и латинице сводим по ru и en, остальные не проверяем по буквам.
+_CYR_LANGS = {"ru", "uk", "be", "kk", "bg", "sr"}
+_LAT_LANGS = {"en", "uz", "az", "de", "fr", "es", "it", "pt", "pl", "cs", "nl", "sv", "fi", "ro", "hu", "tr", "vi", "id"}
+
 
 class TranslateNotConfigured(Exception):
     pass
@@ -84,10 +102,25 @@ def norm_lang(code):
     return code if code in LANGS else ""
 
 
+def live_lang(code):
+    """Код языка живого перевода (NAMES) или пусто."""
+    code = (code or "").strip().lower()[:2]
+    return code if code in NAMES else ""
+
+
+def _script(lang):
+    """Письменность языка как код detect_lang: ko | ru | en; пусто — другая."""
+    lang = live_lang(lang)
+    if lang == "ko":
+        return "ko"
+    return "ru" if lang in _CYR_LANGS else "en" if lang in _LAT_LANGS else ""
+
+
 _HANGUL = re.compile(r"[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]")
 _CYR = re.compile(r"[\u0400-\u04ff]")
 _LAT = re.compile(r"[A-Za-z]")
 _URL = re.compile(r"https?://\S+|@\w+")
+_LETTER = re.compile(r"[^\W\d_]")  # любая буква: и иероглиф, и арабская
 
 
 def detect_lang(text, fallback=""):
@@ -111,6 +144,9 @@ def plausible(original, out, target):
         return False
     if len(out) > 3 * len(original or "") + 80:
         return False
+    want = _script(target)
+    if not want:
+        return True  # китайский, арабский и т. п. — по буквам не проверить
     seen = {w.casefold() for w in re.findall(r"\w+", original or "")}
     rest = _URL.sub(" ", " ".join(w for w in re.findall(r"\w+", out) if w.casefold() not in seen))
     # Слог хангыля несёт столько же, сколько две-три буквы: «고마워 Апрелюшka»
@@ -118,13 +154,13 @@ def plausible(original, out, target):
     w = {"ko": 3 * len(_HANGUL.findall(rest)), "ru": len(_CYR.findall(rest)), "en": len(_LAT.findall(rest))}
     if not any(w.values()):
         return True
-    return max(w, key=w.get) == norm_lang(target)
+    return max(w, key=w.get) == want
 
 
 def gave_up(original, out, target):
     """Переводчик вернул текст как был, хотя по письменности он на другом
     языке, — это не «уже на вашем языке», а неудачный перевод."""
-    return same_text(out, original) and detect_lang(original) not in ("", norm_lang(target))
+    return same_text(out, original) and detect_lang(original) not in ("", _script(target))
 
 
 def same_text(a, b):
@@ -147,15 +183,18 @@ def _call(p, text, target, source):
     raise TranslateNotConfigured()
 
 
-def translate_text(text, target, source=""):
-    """Перевод строки. Бросает TranslateNotConfigured без провайдера."""
-    target = norm_lang(target)
+def translate_text(text, target, source="", trust_source=False):
+    """Перевод строки. Бросает TranslateNotConfigured без провайдера.
+    trust_source — язык source точный (его определил Whisper или закрепил сам
+    человек), по письменности не переопределяем: латиница бывает не только
+    английской, кириллица — не только русской."""
+    target = live_lang(target)
     if not text or not text.strip() or not target:
         return text
     stripped = _URL.sub(" ", text)
-    if not (_HANGUL.search(stripped) or _CYR.search(stripped) or _LAT.search(stripped)):
+    if not _LETTER.search(stripped):
         return text  # одни эмодзи, числа, ссылки — переводить нечего
-    source = detect_lang(text, source)
+    source = live_lang(source) if trust_source and live_lang(source) else detect_lang(text, source)
     if source == target:
         return text
     chain = _chain()
@@ -205,8 +244,8 @@ def _yandex(text, target, source):
     """Яндекс Переводчик (Translate API v2). Источник — подсказка: если язык
     текста определили по письменности, передаём, иначе Яндекс определит сам."""
     body = {"targetLanguageCode": target, "texts": [text], "format": "PLAIN_TEXT"}
-    if norm_lang(source):
-        body["sourceLanguageCode"] = norm_lang(source)
+    if live_lang(source):
+        body["sourceLanguageCode"] = live_lang(source)
     if os.environ.get("YANDEX_FOLDER_ID"):
         body["folderId"] = os.environ["YANDEX_FOLDER_ID"]
     r = httpx.post(
@@ -223,7 +262,7 @@ def _openrouter(text, target):
     """Перевод моделью через OpenRouter. Сообщение — внутри <message>, чтобы
     его текст не читался как указание модели («забудь инструкции» и т. п.)."""
     model = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-haiku-4.5")
-    lang = LANGS[target]
+    lang = NAMES[target]
     system = (
         f"You translate chat messages in a messenger into {lang}. "
         "The user turn contains one message inside <message> tags. Translate its content and output ONLY the translation, "
@@ -267,9 +306,9 @@ def _gemini(text, target):
     key = os.environ["GEMINI_API_KEY"]
     model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
     prompt = (
-        f"Translate the chat message below into {LANGS[target]}. Output only the translation, nothing else. "
+        f"Translate the chat message below into {NAMES[target]}. Output only the translation, nothing else. "
         "Keep emojis, line breaks, @mentions, links and the casual tone. "
-        f"If the message is already in {LANGS[target]}, output it unchanged.\n\nMessage:\n{text}"
+        f"If the message is already in {NAMES[target]}, output it unchanged.\n\nMessage:\n{text}"
     )
     r = httpx.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
