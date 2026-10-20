@@ -25,4 +25,10 @@
     <string name="channel_music_upload">Music uploads</string>
     <string name="music_upload_title">Uploading music</string>
     <string name="music_upload_missing">File unavailable — pick it again</string>
+    <string name="channel_music_playback">Music</string>
+    <string name="media_play">Play</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_next">Next</string>
+    <string name="media_prev">Previous</string>
+    <string name="media_stop">Close</string>
 </resources>

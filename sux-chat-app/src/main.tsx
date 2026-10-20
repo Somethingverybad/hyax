@@ -8,6 +8,8 @@ import { installAppLog, applog } from "./lib/applog";
 import { otaBoot, startOtaAutoApply, startOtaChecks } from "./lib/ota";
 // Мини-плеер и кнопки плеера в оболочке компьютера (electron/playerWidget.cjs).
 import "./lib/desktopPlayer";
+// Android: музыка и эфир при заблокированном экране (MediaPlaybackService.java).
+import "./lib/nativeMedia";
 
 // Лог баг-репортов — с самого старта, чтобы поймать и ошибки инициализации.
 installAppLog();
