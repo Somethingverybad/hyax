@@ -609,10 +609,27 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   };
 
   /** Слияние с тем, что уже на экране: правки применяем, удалённые убираем,
-   *  неподтверждённые (публикующиеся) посты не трогаем. */
-  const applyPosts = (incoming: Post[], deleted: string[] = [], mode: "merge" | "prepend" = "merge") => {
+   *  неподтверждённые (публикующиеся) посты не трогаем.
+   *
+   *  page — это страница ленты (не since-приращение): она истина для своего
+   *  отрезка времени. Пост из кэша в этом отрезке, которого на странице нет,
+   *  удалили или скрыли, пока приложение не смотрело: since-синхронизация о нём
+   *  уже не скажет — она начинается после открытия (баг «удалённый пост всё
+   *  равно виден»). */
+  const applyPosts = (incoming: Post[], deleted: string[] = [], mode: "merge" | "prepend" = "merge",
+                      page?: { hasMore: boolean; before?: string }) => {
     setPosts((prev) => {
       const gone = new Set(deleted);
+      if (page) {
+        const ids = new Set(incoming.map((p) => p.id));
+        // Страница по возрастанию: первый — самый старый в ней; дальше старых нет — с начала ленты.
+        const from = page.hasMore && incoming.length ? Date.parse(incoming[0].created_at) : -Infinity;
+        const to = page.before ? Date.parse(page.before) : Infinity;
+        for (const p of prev) {
+          const t = Date.parse(p.created_at);
+          if (!p._pending && !ids.has(p.id) && t >= from && t < to) gone.add(p.id);
+        }
+      }
       const byId = new Map(prev.filter((p) => !gone.has(p.id)).map((p) => [p.id, p]));
       for (const d of incoming) {
         const local = byId.get(d.id);
@@ -632,7 +649,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       const r = await fetchPosts(since && !initial ? { since } : { limit: 50 });
       syncedAtRef.current = r.now;
       if (!since || initial) { setHasMore(r.has_more); hasMoreRef.current = r.has_more; }
-      if (r.posts.length || r.deleted.length) applyPosts(r.posts, r.deleted);
+      const isPage = !since || initial;
+      if (r.posts.length || r.deleted.length || isPage) applyPosts(r.posts, r.deleted, "merge", isPage ? { hasMore: r.has_more } : undefined);
       // У кого-то сменились ник или аватар — подписи у старых постов тоже.
       if (r.authors?.length) {
         const by = new Map(r.authors.map((a) => [a.id, a]));
@@ -657,7 +675,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
       setHasMore(r.has_more);
       hasMoreRef.current = r.has_more;
-      if (r.posts.length) applyPosts(r.posts, [], "prepend");
+      applyPosts(r.posts, [], "prepend", { hasMore: r.has_more, before: first.created_at });
     } catch {
       /* ignore */
     } finally {
