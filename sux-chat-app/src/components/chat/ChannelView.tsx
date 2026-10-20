@@ -116,7 +116,11 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
   const [loaded, setLoaded] = useState(false);
   // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
   // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
-  const style = dims ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 320 } : { height: 160 };
+  // На широкой карточке (планшет, компьютер) высота упирается в предел, и
+  // бокс сужается до ширины картинки — иначе по бокам серые поля.
+  const style = dims
+    ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 320, width: `min(100%, ${Math.round(320 * dims.w / dims.h)}px)` }
+    : { height: 160 };
   return (
     <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
       {!loaded && <MediaSkeleton className="absolute inset-0" />}
