@@ -537,7 +537,7 @@ export interface IdeaItem {
   created_at: string; done_at: string | null; mine: boolean; my_vote: number;
   /** Голосовая идея: само голосовое; transcript — состояние расшифровки, пока текста нет
    *  (pending — расшифровываем, error — не вышло, done без текста — тишина). */
-  voice?: { url: string; duration: number } | null;
+  voice?: { url: string; duration: number; video?: boolean } | null;
   transcript?: string;
 }
 export interface IdeasPage {

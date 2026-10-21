@@ -26,8 +26,18 @@ TRANSCRIBE_MAX_SECONDS = 60
 TOO_LONG_ERROR = "Сообщение слишком длинное для расшифровки"
 
 
+def media_of(msg):
+    """Что расшифровывать: голосовое или видео-сообщение («треугольник» — whisper
+    берёт звуковую дорожку из mp4 сам). (ссылка, длительность)."""
+    if msg.voice_url:
+        return msg.voice_url, msg.voice_duration or 0
+    if msg.video_url:
+        return msg.video_url, msg.video_duration or 0
+    return None, 0
+
+
 def too_long(msg) -> bool:
-    return (msg.voice_duration or 0) > TRANSCRIBE_MAX_SECONDS
+    return media_of(msg)[1] > TRANSCRIBE_MAX_SECONDS
 MODEL_DIR = os.getenv("WHISPER_MODEL_DIR", "/app/whisper-models")
 
 
@@ -59,15 +69,16 @@ def _audio_source(voice_url: str):
 def transcribe_message(message_id: str):
     from .models import Message
     msg = Message.objects.filter(id=message_id).first()
-    if not msg or not msg.voice_url or too_long(msg):
+    url = media_of(msg)[0] if msg else None
+    if not msg or not url or too_long(msg):
         return
     with _run_lock:
         try:
-            src = _audio_source(msg.voice_url)
+            src = _audio_source(url)
             if src.startswith("http"):
                 import requests, tempfile
                 data = requests.get(src, timeout=60).content
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(msg.voice_url)[1] or ".ogg")
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(url.split("?")[0])[1] or ".ogg")
                 tmp.write(data); tmp.close(); src = tmp.name
             segments, info = get_model().transcribe(src, beam_size=2, vad_filter=True,
                                                     condition_on_previous_text=False)

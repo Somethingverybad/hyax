@@ -4009,6 +4009,60 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
             const lastInGroup = !nextMessage || nextMessage.sender?.id !== message.sender?.id || shouldShowDate(nextMessage, message);
 
+            // «Аа» и расшифровка — общие для голосового и треугольника (видео
+            // расшифровывает тот же whisper по звуковой дорожке).
+            const aaButton = !message.pending && !isSecret && (message.transcript_status !== "done" || hiddenTranscripts.has(message.id)) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Расшифровка уже есть, но свёрнута — просто раскрываем.
+                                  if (message.transcript_status === "done") setHiddenTranscripts((prev) => { const n = new Set(prev); n.delete(message.id); return n; });
+                                  else transcribeVoice(message);
+                                }}
+                                disabled={message.transcript_status === "pending"}
+                                className="w-8 h-8 shrink-0 rounded-md bg-black/20 text-xs font-semibold disabled:opacity-50"
+                                title={message.transcript_status === "done" ? tr("Показать расшифровку") : tr("Расшифровать")}
+                              >
+                                {message.transcript_status === "pending" ? "…" : tr("Аа")}
+                              </button>
+                            );
+            const transcriptUi = (
+              <>
+                          {message.transcript_status === "pending" && (
+                            <p className="mt-1 text-xs opacity-70">{tr("Распознаю…")}</p>
+                          )}
+                          {message.transcript_status === "error" && (
+                            <p className="mt-1 text-xs opacity-70">{tr("Не удалось расшифровать — попробуй ещё раз.")}</p>
+                          )}
+                          {message.transcript_status === "done" && message.voice_transcript && !hiddenTranscripts.has(message.id) && (
+                            <div className="mt-1.5 border-t border-white/15 pt-1.5">
+                              {(() => {
+                                // Перевод расшифровки на мой язык (автоперевод), тап по пометке — оригинал.
+                                const trT = message.transcript_translations?.[myLang];
+                                const useTr = !!trT && trT !== message.voice_transcript && !showOrig.has(`t:${message.id}`);
+                                return (
+                                  <>
+                                    <p className="text-body break-words whitespace-pre-wrap opacity-90">{useTr ? trT : message.voice_transcript}</p>
+                                    {!!trT && trT !== message.voice_transcript && (
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); setShowOrig((s) => { const n = new Set(s); const k = `t:${message.id}`; if (n.has(k)) n.delete(k); else n.add(k); return n; }); }}
+                                        className="text-[11px] opacity-60 underline underline-offset-2">
+                                        {showOrig.has(`t:${message.id}`) ? tr("Показать перевод") : tr("перевод")}
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                              <div className="mt-1 flex items-center gap-3 text-xs opacity-75">
+                                <button type="button" onClick={async (e) => { e.stopPropagation(); const trT = message.transcript_translations?.[myLang]; const txt = trT && !showOrig.has(`t:${message.id}`) ? trT : (message.voice_transcript || ""); try { await writeClipboard(txt); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось скопировать")); } }} className="inline-flex items-center gap-1 active:opacity-60">
+                                  <Copy className="w-3.5 h-3.5" />{tr("Скопировать")}</button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setHiddenTranscripts((prev) => new Set(prev).add(message.id)); }} className="inline-flex items-center gap-1 active:opacity-60">
+                                  <ChevronUp className="w-3.5 h-3.5" />{tr("Свернуть")}</button>
+                              </div>
+                            </div>
+                          )}
+              </>
+            );
             return (
               <div
                 key={message._key ?? message.id}
@@ -4265,15 +4319,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                       {/* Видео-сообщение: треугольник вершиной вверх (или вниз) */}
                       {message.video_url && (
-                        <VideoNote
-                          id={message.id}
-                          url={message.video_url}
-                          seconds={message.video_duration || 0}
-                          own={isOwn}
-                          mirror={message.video_mirror}
-                          flip={message.video_flip}
-                          poster={(message as { video_poster?: string | null }).video_poster}
-                        />
+                        <div>
+                          {/* Своё — треугольник к правому краю, «Аа» слева от него: пузырёк
+                              расшифровки ниже тогда выровнен с ним по правой стороне. */}
+                          <div className={cn("flex items-end gap-1 min-w-0", isOwn && "flex-row-reverse")}>
+                            <VideoNote
+                              id={message.id}
+                              url={message.video_url}
+                              seconds={message.video_duration || 0}
+                              own={isOwn}
+                              mirror={message.video_mirror}
+                              flip={message.video_flip}
+                              poster={(message as { video_poster?: string | null }).video_poster}
+                            />
+                            {aaButton}
+                          </div>
+                          {/* Треугольник без пузыря — расшифровке даём свой пузырёк, иначе текст
+                              лежал бы прямо на фоне чата. Край — по стороне сообщения. */}
+                          {(message.transcript_status === "pending" || message.transcript_status === "error"
+                            || (message.transcript_status === "done" && !!message.voice_transcript && !hiddenTranscripts.has(message.id))) && (
+                            <div className={cn("mt-1.5 w-fit max-w-[min(300px,80vw)] px-3 pb-2 pt-0.5 msg-bubble", isOwn ? "msg-own ml-auto" : "msg-peer")}>
+                              {transcriptUi}
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* Голосовое сообщение */}
@@ -4287,56 +4356,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               own={isOwn}
                               onEnded={() => playNextVoice(message.id)}
                             />
-                            {/* «Аа» — расшифровать; пока pending крутится, готовый текст ниже. */}
-                            {!message.pending && !isSecret && (message.transcript_status !== "done" || hiddenTranscripts.has(message.id)) && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // Расшифровка уже есть, но свёрнута — просто раскрываем.
-                                  if (message.transcript_status === "done") setHiddenTranscripts((prev) => { const n = new Set(prev); n.delete(message.id); return n; });
-                                  else transcribeVoice(message);
-                                }}
-                                disabled={message.transcript_status === "pending"}
-                                className="w-8 h-8 shrink-0 rounded-md bg-black/20 text-xs font-semibold disabled:opacity-50"
-                                title={message.transcript_status === "done" ? tr("Показать расшифровку") : tr("Расшифровать")}
-                              >
-                                {message.transcript_status === "pending" ? "…" : tr("Аа")}
-                              </button>
-                            )}
+                            {aaButton}
                           </div>
-                          {message.transcript_status === "pending" && (
-                            <p className="mt-1 text-xs opacity-70">{tr("Распознаю…")}</p>
-                          )}
-                          {message.transcript_status === "error" && (
-                            <p className="mt-1 text-xs opacity-70">{tr("Не удалось расшифровать — попробуй ещё раз.")}</p>
-                          )}
-                          {message.transcript_status === "done" && message.voice_transcript && !hiddenTranscripts.has(message.id) && (
-                            <div className="mt-1.5 border-t border-white/15 pt-1.5">
-                              {(() => {
-                                // Перевод расшифровки на мой язык (автоперевод), тап по пометке — оригинал.
-                                const trT = message.transcript_translations?.[myLang];
-                                const useTr = !!trT && trT !== message.voice_transcript && !showOrig.has(`t:${message.id}`);
-                                return (
-                                  <>
-                                    <p className="text-body break-words whitespace-pre-wrap opacity-90">{useTr ? trT : message.voice_transcript}</p>
-                                    {!!trT && trT !== message.voice_transcript && (
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); setShowOrig((s) => { const n = new Set(s); const k = `t:${message.id}`; if (n.has(k)) n.delete(k); else n.add(k); return n; }); }}
-                                        className="text-[11px] opacity-60 underline underline-offset-2">
-                                        {showOrig.has(`t:${message.id}`) ? tr("Показать перевод") : tr("перевод")}
-                                      </button>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                              <div className="mt-1 flex items-center gap-3 text-xs opacity-75">
-                                <button type="button" onClick={async (e) => { e.stopPropagation(); const trT = message.transcript_translations?.[myLang]; const txt = trT && !showOrig.has(`t:${message.id}`) ? trT : (message.voice_transcript || ""); try { await writeClipboard(txt); toast.success(tr("Текст скопирован")); } catch { toast.error(tr("Не удалось скопировать")); } }} className="inline-flex items-center gap-1 active:opacity-60">
-                                  <Copy className="w-3.5 h-3.5" />{tr("Скопировать")}</button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setHiddenTranscripts((prev) => new Set(prev).add(message.id)); }} className="inline-flex items-center gap-1 active:opacity-60">
-                                  <ChevronUp className="w-3.5 h-3.5" />{tr("Свернуть")}</button>
-                              </div>
-                            </div>
-                          )}
+                          {transcriptUi}
                         </div>
                       )}
 

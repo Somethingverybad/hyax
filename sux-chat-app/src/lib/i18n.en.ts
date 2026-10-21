@@ -2080,5 +2080,7 @@ const en: Record<string, string> = {
   "Не удалось расшифровать голосовое": "Couldn't transcribe the voice message",
   "В голосовом не разобрать слов": "No words could be made out in the voice message",
   "Голосовая идея": "Voice idea",
+  "Видео-идея": "Video idea",
+  "Расшифровываю видео…": "Transcribing the video…",
 };
 export default en;

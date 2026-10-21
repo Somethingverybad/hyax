@@ -2,7 +2,7 @@ import { t as tr, getLang } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send, Flag, Play, Pause, Mic } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send, Flag, Play, Pause, Mic, Video } from "lucide-react";
 import { isCurrent, playQueue, usePlayer, fmtTime } from "@/lib/player";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -39,7 +39,8 @@ function VoiceIdea({ idea }: { idea: IdeaItem }) {
   const s = usePlayer();
   const current = isCurrent(idea.id);
   const playing = current && s.playing;
-  const play = () => void playQueue([{ id: idea.id, raw: idea.voice!.url, title: tr("Голосовая идея"), source: "message", kind: "voice" }], 0);
+  const video = !!idea.voice!.video;
+  const play = () => void playQueue([{ id: idea.id, raw: idea.voice!.url, title: tr(video ? "Видео-идея" : "Голосовая идея"), source: "message", kind: "voice" }], 0);
   return (
     <div className="mb-1.5 flex items-center gap-2">
       <button type="button" onClick={play} aria-label={playing ? tr("Пауза") : tr("Играть")}
@@ -47,7 +48,7 @@ function VoiceIdea({ idea }: { idea: IdeaItem }) {
         {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
       </button>
       <span className="text-caption text-subtle tabular-nums flex items-center gap-1">
-        <Mic className="w-3.5 h-3.5" />{current && s.duration ? `${fmtTime(s.time)} / ${fmtTime(s.duration)}` : fmtTime(idea.voice!.duration)}
+        {video ? <Video className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}{current && s.duration ? `${fmtTime(s.time)} / ${fmtTime(s.duration)}` : fmtTime(idea.voice!.duration)}
       </span>
     </div>
   );
@@ -205,7 +206,7 @@ export default function ProfileIdeas() {
                         <p className="text-body whitespace-pre-wrap break-words">{idea.text}</p>
                       ) : idea.voice ? (
                         <p className="text-small text-subtle italic">
-                          {idea.transcript === "pending" ? tr("Расшифровываю голосовое…")
+                          {idea.transcript === "pending" ? tr(idea.voice.video ? "Расшифровываю видео…" : "Расшифровываю голосовое…")
                             : idea.transcript === "error" ? tr("Не удалось расшифровать голосовое")
                             : tr("В голосовом не разобрать слов")}
                         </p>

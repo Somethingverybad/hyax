@@ -158,8 +158,8 @@ def deliver_idea(message: Message, author: Profile, thank: bool = True) -> Idea 
         text = (message.content or "").strip()
         if len(text) >= MIN_IDEA_LEN:
             idea = Idea.objects.create(author=author, message=message, text=text[:4000])
-        elif not text and message.voice_url:
-            # Голосовая идея: в список сразу, текст приедет из расшифровки
+        elif not text and (message.voice_url or message.video_url):
+            # Голосовая идея (или треугольник): в список сразу, текст приедет из расшифровки
             # (transcribe_message → idea_transcribed). Длинное — не расшифруем.
             from .transcribe import too_long, transcribe_async
             if too_long(message):
@@ -206,7 +206,7 @@ def idea_transcribed(msg: Message):
     text = (msg.voice_transcript or "").strip()
     if msg.transcript_status == "done" and text and text != "(тишина)":
         Idea.objects.filter(message=msg).update(text=text[:4000])
-    fwd = Message.objects.filter(origin_message=msg, voice_url=msg.voice_url).first()
+    fwd = Message.objects.filter(origin_message=msg).first()
     if fwd:
         fwd.voice_transcript = msg.voice_transcript
         fwd.transcript_status = msg.transcript_status
@@ -451,7 +451,12 @@ def handle_press(msg, profile, data, request=None, caps=()):
 
 def idea_payload(idea, viewer, my_votes):
     m = idea.message if idea.message_id else None
-    voice = {"url": m.voice_url, "duration": m.voice_duration or 0} if m and m.voice_url else None
+    voice = None
+    if m and m.voice_url:
+        voice = {"url": m.voice_url, "duration": m.voice_duration or 0}
+    elif m and m.video_url:
+        # Треугольник: клиенту — звуковая дорожка в том же плеере и пометка «видео».
+        voice = {"url": m.video_url, "duration": m.video_duration or 0, "video": True}
     return {
         "id": str(idea.id),
         "text": idea.text,

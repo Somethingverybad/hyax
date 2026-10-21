@@ -1273,7 +1273,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         profile = getattr(request.user, 'profile', None)
         if profile is None or not _can_see_chat(msg.chat, profile):
             return Response({"error": "Нет доступа"}, status=403)
-        if not msg.voice_url:
+        if not msg.voice_url and not msg.video_url:
             return Response({"error": "Это не голосовое"}, status=400)
         # Расшифровка личная: запоминаем, кто попросил, — остальным текст не
         # показываем (MessageSerializer.to_representation).
@@ -3363,7 +3363,7 @@ class MediaSignView(APIView):
         # Голосовая идея из общего списка (chat/ideabox.py): слушать её могут все,
         # кто видит список, — как и читать текст. Убранную админом — нет.
         from .models import Idea
-        is_idea_voice = Idea.objects.filter(message__voice_url=marker).exclude(status="hidden").exists()
+        is_idea_voice = Idea.objects.filter(Q(message__voice_url=marker) | Q(message__video_url=marker)).exclude(status="hidden").exists()
         if not is_wallpaper and not in_my_playlist and not is_idea_voice and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
             # в два чата. Право на скачивание — если он виден хотя бы в одном чате,

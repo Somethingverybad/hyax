@@ -2404,6 +2404,29 @@ class IdeaVoiceTests(TestCase):
         r = client_for(self.me).get("/api/ideas/?sort=mine")
         self.assertEqual(r.data["items"][0]["transcript"], "done")
 
+    def test_video_note_idea(self):
+        from .ideabox import idea_transcribed
+        from .models import Idea
+        from unittest import mock
+        with mock.patch("chat.transcribe.transcribe_async") as t:
+            r = client_for(self.me).post("/api/messages/", {"chat": str(self.chat.id), "video_url": "/media/video/n.mp4",
+                                                             "video_duration": 7}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        msg = Message.objects.get(id=r.data["id"])
+        t.assert_called_once_with(msg.id)
+        idea = Idea.objects.get(message=msg)
+        r = client_for(self.me).get("/api/ideas/?sort=mine")
+        item = next(i for i in r.data["items"] if i["id"] == str(idea.id))
+        self.assertEqual((item["transcript"], item["voice"]), ("pending", {"url": "/media/video/n.mp4", "duration": 7, "video": True}))
+        msg.voice_transcript = "Кружки тоже расшифровывайте"; msg.transcript_status = "done"; msg.save()
+        idea_transcribed(msg)
+        idea.refresh_from_db()
+        self.assertEqual(idea.text, "Кружки тоже расшифровывайте")
+        # Кнопка «Аа» у треугольника — тот же эндпоинт.
+        with mock.patch("chat.transcribe.transcribe_async"):
+            r = client_for(self.me).post(f"/api/messages/{msg.id}/transcribe/")
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_too_long_voice_not_listed(self):
         from .ideabox import VOICE_TOO_LONG, ideabox_bot
         from .models import Idea
