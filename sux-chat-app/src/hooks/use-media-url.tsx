@@ -50,3 +50,23 @@ export function useMediaUrl(fileUrl?: string | null): string {
 
   return url;
 }
+
+/** То же, что useMediaUrl, плюс признак отказа: сервер не подписал ссылку
+ *  (вложение удалено, доступа нет) — показывать «грузится» дальше незачем. */
+export function useMediaUrlState(fileUrl?: string | null): { url: string; failed: boolean } {
+  const isS3 = !!fileUrl && fileUrl.startsWith("s3://");
+  const [st, setSt] = useState<{ url: string; failed: boolean }>(() => ({ url: cachedMediaUrl(fileUrl), failed: false }));
+
+  useEffect(() => {
+    if (!fileUrl) { setSt({ url: "", failed: false }); return; }
+    const hit = cachedMediaUrl(fileUrl);
+    if (hit) { setSt({ url: hit, failed: false }); return; }
+    let alive = true;
+    resolveMediaUrl(fileUrl)
+      .then((u) => { if (alive) setSt({ url: u, failed: false }); })
+      .catch(() => { if (alive) setSt({ url: "", failed: true }); });
+    return () => { alive = false; };
+  }, [fileUrl, isS3]);
+
+  return st;
+}

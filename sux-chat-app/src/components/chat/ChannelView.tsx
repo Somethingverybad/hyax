@@ -11,7 +11,7 @@ import StickerView from "@/components/chat/StickerView";
 import { GraffitiSheet, type GraffitiSticker } from "@/components/chat/Graffiti";
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
-import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
+import { useMediaUrl, useMediaUrlState, resolveMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import { cn } from "@/lib/utils";
@@ -112,7 +112,7 @@ const fmtTime = (iso: string) =>
 const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: number } | null; onOpen?: (url: string) => void }) => {
   // Подпись и загрузка — когда пост рядом с видимой частью ленты (use-near-view).
   const [nearRef, near] = useNearView();
-  const url = useMediaUrl(near ? raw : null);
+  const { url, failed } = useMediaUrlState(near ? raw : null);
   const [loaded, setLoaded] = useState(false);
   // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
   // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
@@ -123,7 +123,8 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
     : { height: 160 };
   return (
     <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
-      {!loaded && <MediaSkeleton className="absolute inset-0" />}
+      {/* Подпись не дали (пост удалён, доступа нет) — тихий серый бокс, а не вечно пульсирующий скелет. */}
+      {!loaded && !failed && <MediaSkeleton className="absolute inset-0" />}
       {url && (
         <img src={url} alt="" loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen?.(url)}
           className={cn("w-full h-full object-contain cursor-zoom-in transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
@@ -655,6 +656,17 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       if (!since || initial) { setHasMore(r.has_more); hasMoreRef.current = r.has_more; }
       const isPage = !since || initial;
       if (r.posts.length || r.deleted.length || isPage) applyPosts(r.posts, r.deleted, "merge", isPage ? { hasMore: r.has_more } : undefined);
+      // Первая страница покрывает только свежее, а since-синхронизация — лишь
+      // то, что менялось после прошлой сверки: пост, удалённый давно и лежащий
+      // в кэше ниже страницы, иначе живёт вечно, а его картинка без конца
+      // «грузится» (баг-репорт c35445dd). Остальное из кэша сверяем отдельно.
+      if (isPage) {
+        const got = new Set(r.posts.map((p) => p.id));
+        const stale = postsRef.current.filter((p) => !p._pending && !got.has(p.id)).map((p) => p.id);
+        if (stale.length) {
+          api.checkPosts(stale, wall ? null : channelId).then((gone) => { if (gone.length) applyPosts([], gone); }).catch(() => {});
+        }
+      }
       // У кого-то сменились ник или аватар — подписи у старых постов тоже.
       if (r.authors?.length) {
         const by = new Map(r.authors.map((a) => [a.id, a]));

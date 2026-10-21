@@ -14,7 +14,7 @@ from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeH
 from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
 from .graffiti import GraffitiView
-from .wall import WallView, WallSeenView, WallPostsView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
+from .wall import WallView, WallSeenView, WallPostsView, WallPostsCheckView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
 
@@ -44,6 +44,7 @@ urlpatterns = [
     path('wall/', WallView.as_view(), name='wall'),
     path('wall/seen/', WallSeenView.as_view(), name='wall-seen'),
     path('wall/posts/', WallPostsView.as_view(), name='wall-posts'),
+    path('wall/posts/check/', WallPostsCheckView.as_view(), name='wall-posts-check'),
     path('wall/mute/', WallMuteView.as_view(), name='wall-mute'),
     path('wall/notify-mute/', WallNotifyMuteView.as_view(), name='wall-notify-mute'),
     path('wall/repost/', WallRepostView.as_view(), name='wall-repost'),
@@ -153,6 +154,7 @@ urlpatterns = [
     path('live/text/', LiveTextView.as_view(), name='live-text'),
     path('channels/<uuid:pk>/admins/', ChannelAdminsView.as_view(), name='channel-admins'),
     path('channels/<uuid:pk>/posts/', ChannelPostsView.as_view(), name='channel-posts'),
+    path('channels/<uuid:pk>/posts/check/', ChannelPostsCheckView.as_view(), name='channel-posts-check'),
     path('posts/<uuid:pk>/react/', PostReactView.as_view(), name='post-react'),
     # Опросы в постах Стены (chat/polls.py)
     path('posts/<uuid:pk>/poll/', PollVoteView.as_view(), name='post-poll'),

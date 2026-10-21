@@ -201,6 +201,25 @@ class WallPostsView(APIView):
                          "has_more": has_more, "now": now.isoformat()})
 
 
+class WallPostsCheckView(APIView):
+    """POST {ids: [...]} → {gone: [...]} — каких постов из кэша клиента для меня
+    больше нет: удалены у всех, стёрты, скрыты, автор заглушён. since-синхронизация
+    приносит только то, что менялось после последней сверки, а первая страница
+    покрывает лишь свежее — старые удалённые посты в кэше иначе жили вечно
+    (картинка такого поста не подписывается, баг-репорт c35445dd)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        me = _prof(request)
+        if not me:
+            return Response({"error": "Profile not found"}, status=400)
+        ids = [str(i) for i in (request.data.get("ids") or [])][:500]
+        if not ids:
+            return Response({"gone": []})
+        alive = set(str(i) for i in feed_queryset(me, wall_chat(), is_admin_profile(me)).filter(id__in=ids).values_list("id", flat=True))
+        return Response({"gone": [i for i in ids if i not in alive]})
+
+
 class WallMuteView(APIView):
     """POST {profile_id} — скрыть автора; DELETE {profile_id} — вернуть."""
     permission_classes = [permissions.IsAuthenticated]

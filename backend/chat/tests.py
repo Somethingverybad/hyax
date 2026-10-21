@@ -2312,3 +2312,37 @@ class UploadDedupTests(TestCase):
         self.assertIn(r.status_code, (200, 202), r.data)
         self.assertEqual(r.data["file_url"], first.data["file_url"])
         self.assertEqual(len(self.files_in("messages")) - before, 1)
+
+
+class PostsCheckTests(TestCase):
+    """Сверка кэша ленты: каких постов для меня больше нет (удалены у всех,
+    стёрты, автор заглушён) — чтобы клиент убрал их из кэша."""
+
+    def setUp(self):
+        from .wall import wall_chat
+        self.me = make_user("chk_me")
+        self.author = make_user("chk_author")
+        self.wall = wall_chat()
+        for p in (self.me, self.author):
+            ChatParticipant.objects.get_or_create(chat=self.wall, user=p)
+        self.alive = Message.objects.create(chat=self.wall, sender=self.author, content="есть", wall_safe=True)
+        self.deleted = Message.objects.create(chat=self.wall, sender=self.author, content="удалён", wall_safe=True, deleted_for_all=True)
+
+    def test_wall_check(self):
+        import uuid as _u
+        from .models import WallMute
+        erased = str(_u.uuid4())
+        r = client_for(self.me).post("/api/wall/posts/check/", {"ids": [str(self.alive.id), str(self.deleted.id), erased]}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(set(r.data["gone"]), {str(self.deleted.id), erased})
+        WallMute.objects.create(user=self.me, author=self.author)
+        r = client_for(self.me).post("/api/wall/posts/check/", {"ids": [str(self.alive.id)]}, format="json")
+        self.assertEqual(r.data["gone"], [str(self.alive.id)])
+
+    def test_channel_check(self):
+        ch = Chat.objects.create(kind="channel", name="К", is_public=True)
+        ChatParticipant.objects.create(chat=ch, user=self.author, role="owner")
+        ok = Message.objects.create(chat=ch, sender=self.author, content="пост")
+        gone = Message.objects.create(chat=ch, sender=self.author, content="снят", deleted_for_all=True)
+        r = client_for(self.me).post(f"/api/channels/{ch.id}/posts/check/", {"ids": [str(ok.id), str(gone.id)]}, format="json")
+        self.assertEqual((r.status_code, r.data["gone"]), (200, [str(gone.id)]))

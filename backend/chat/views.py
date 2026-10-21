@@ -4668,6 +4668,25 @@ class ChannelAdminsView(APIView):
         return Response({"ok": True, "user_id": str(target.id), "role": cp.role})
 
 
+class ChannelPostsCheckView(APIView):
+    """POST {ids} → {gone}: каких постов канала из кэша клиента больше нет
+    (удалены у всех или стёрты) — пара к WallPostsCheckView."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ch = _channel_or_none(pk)
+        if not ch:
+            return Response({"error": "Канал не найден"}, status=404)
+        me = _prof(request)
+        if not ch.is_public and _role_in(ch, me) is None:
+            return Response({"error": "Канал приватный"}, status=403)
+        ids = [str(i) for i in (request.data.get("ids") or [])][:500]
+        if not ids:
+            return Response({"gone": []})
+        alive = set(str(i) for i in Message.objects.filter(chat=ch, deleted_for_all=False, id__in=ids).values_list("id", flat=True))
+        return Response({"gone": [i for i in ids if i not in alive]})
+
+
 class ChannelPostsView(APIView):
     """GET — лента канала со сводкой откликов, постранично и приращениями
     (как /messages/sync/ у чатов, чтобы клиент держал кэш и не тянул всё

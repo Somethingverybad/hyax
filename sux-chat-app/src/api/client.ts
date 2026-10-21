@@ -1577,6 +1577,15 @@ export const api = {
   markWallSeen: async (): Promise<void> => {
     await fetchWithAuth(`${API_URL}/wall/seen/`, { method: "POST", headers: authHeaders() }).catch(() => {});
   },
+  /** Сверка кэша ленты: каких постов для меня больше нет (удалены, скрыты). */
+  checkPosts: async (ids: string[], channelId?: string | null): Promise<string[]> => {
+    if (!ids.length) return [];
+    const url = channelId ? `${API_URL}/channels/${channelId}/posts/check/` : `${API_URL}/wall/posts/check/`;
+    const res = await fetchWithAuth(url, { method: "POST", headers: authHeaders(), body: JSON.stringify({ ids }) });
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
+    return (await res.json()).gone || [];
+  },
+
   getWallPosts: async (opts: { limit?: number; before?: string; since?: string } = {}): Promise<{ posts: any[]; deleted: string[]; has_more: boolean; now: string; authors?: { id: string; username: string; avatar_url?: string | null }[] }> => {
     const q = new URLSearchParams();
     if (opts.limit) q.set("limit", String(opts.limit));
