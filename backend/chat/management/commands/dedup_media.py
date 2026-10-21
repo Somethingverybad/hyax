@@ -3,6 +3,8 @@
 
     manage.py dedup_media                 # только посчитать и показать
     manage.py dedup_media --apply         # переписать ссылки на один экземпляр и удалить лишние
+    manage.py dedup_media --orphans       # кандидаты в сироты: ключ не встречается нигде в базе, объект старше 30 дней
+    manage.py dedup_media --orphans --apply-orphans   # удалить этих кандидатов (после просмотра списка!)
     manage.py dedup_media --prefix messages/ --prefix music/   # по умолчанию эти два
 
 Как ищем одинаковое: ETag объекта, загруженного одним куском, — это MD5
@@ -47,6 +49,9 @@ class Command(BaseCommand):
         p.add_argument("--apply", action="store_true", help="переписать ссылки и удалить лишние объекты")
         p.add_argument("--prefix", action="append", help="префиксы в бакете (по умолчанию messages/ и music/)")
         p.add_argument("--limit", type=int, default=0, help="показать не больше N групп")
+        p.add_argument("--orphans", action="store_true", help="основательно проверить объекты без ссылок: ключ ищется во всех текстовых и JSON-полях")
+        p.add_argument("--apply-orphans", action="store_true", help="удалить найденных кандидатов в сироты")
+        p.add_argument("--min-age-days", type=int, default=30, help="сироты моложе не трогаем (недозалитое, в работе)")
 
     def handle(self, *args, **o):
         if not s3_enabled():
@@ -120,8 +125,11 @@ class Command(BaseCommand):
         orphan_bytes = sum(objs[k]["size"] for k in orphans)
         self.stdout.write(f"без ссылок в базе: {len(orphans)}, {orphan_bytes / 1e9:.2f} ГБ (секретные чаты, JSON-поля, удалённые аккаунты — не удаляем)")
 
+        if o["orphans"]:
+            self._orphans(s3, bucket, objs, orphans, o)
         if not o["apply"]:
-            self.stdout.write("ничего не менял: запустите с --apply")
+            if not o["orphans"]:
+                self.stdout.write("ничего не менял: запустите с --apply")
             return
 
         # 4. Применить: ссылки → канонический ключ, лишнее удалить.
@@ -141,3 +149,52 @@ class Command(BaseCommand):
                 freed += objs[key]["size"]
                 deleted += 1
         self.stdout.write(f"дубли: переписано ссылок {rewritten}, удалено {deleted} объектов, {freed / 1e9:.2f} ГБ")
+
+    def _orphans(self, s3, bucket, objs, orphans, o):
+        """Кандидаты в сироты: ключ не встречается ни в одном текстовом или JSON-поле
+        базы (включая шифротекст, кнопки ботов, темы), объект старше min-age-days."""
+        import json
+        from datetime import timedelta
+        from django.utils import timezone
+        # Весь текст базы одной строкой: все Text/Char/JSON-поля всех моделей chat.
+        parts = []
+        for m in apps.get_app_config("chat").get_models():
+            names = [f.name for f in m._meta.get_fields()
+                     if isinstance(f, (models.TextField, models.CharField, models.JSONField))]
+            if not names:
+                continue
+            for row in m.objects.values_list(*names).iterator(chunk_size=2000):
+                for v in row:
+                    if v:
+                        parts.append(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
+        haystack = "\n".join(parts)
+        try:
+            with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "private", "s3_orphans.log"), encoding="utf-8") as f:
+                orphan_log = f.read()
+        except OSError:
+            orphan_log = ""
+        cutoff = timezone.now() - timedelta(days=o["min_age_days"])
+        cands, young, mentioned = [], 0, 0
+        for key in orphans:
+            if objs[key]["at"] > cutoff:
+                young += 1
+                continue
+            base = os.path.basename(key)
+            if base in haystack:
+                mentioned += 1
+                continue
+            cands.append(key)
+        cands.sort(key=lambda k: -objs[k]["size"])
+        cand_bytes = sum(objs[k]["size"] for k in cands)
+        logged = sum(1 for k in cands if os.path.basename(k) in orphan_log)
+        self.stdout.write(f"сироты: моложе {o['min_age_days']} дн. — {young} (пропущены); упомянуты где-то в базе — {mentioned} (оставлены); "
+                          f"кандидатов на удаление — {len(cands)}, {cand_bytes / 1e9:.2f} ГБ, из них {logged} уже отмечены в s3_orphans.log")
+        for k in cands[: o["limit"] or 20]:
+            self.stdout.write(f"  {objs[k]['size'] / 1e6:7.1f} МБ  {objs[k]['at']:%Y-%m-%d}  {k}")
+        if not o["apply_orphans"]:
+            return
+        freed = 0
+        for k in cands:
+            s3.delete_object(Bucket=bucket, Key=k)
+            freed += objs[k]["size"]
+        self.stdout.write(f"сироты: удалено {len(cands)} объектов, {freed / 1e9:.2f} ГБ")
