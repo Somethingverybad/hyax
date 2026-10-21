@@ -4326,10 +4326,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {mixedOrigins && <p className="text-caption opacity-70 leading-tight">{originOf(m)}</p>}
                           <p className="text-body break-words whitespace-pre-wrap">
                             <FormattedText text={m.content || ""} entities={m.entities} seed={m.id} mentions={m.mentions} myId={userId} onMention={openMention} />
-                            {i === albumText.length - 1 && isOwn && !bareBubble && !albumMedia.length && !albumAudio.length && !albumRest.length && (
+                            {i === albumText.length - 1 && !bareBubble && !albumMedia.length && !albumAudio.length && !albumRest.length && (
                               <span className="float-right ml-3 mt-[5px] inline-flex items-center gap-1 text-[10px] leading-[12px] opacity-[0.55] whitespace-nowrap">
                                 {formatTime(message.created_at)}
-                                {message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />}
+                                {isOwn && (message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />)}
                               </span>
                             )}
                           </p>
@@ -4352,10 +4352,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {message.geo_lat != null && message.geo_lng != null && (
                         <div>
                           <GeoCard lat={message.geo_lat} lng={message.geo_lng} />
-                          {isOwn && !bareBubble && (
+                          {!bareBubble && (
                             <span className="float-right -mt-4 ml-3 inline-flex items-center gap-1 text-[10px] leading-[12px] opacity-[0.55] whitespace-nowrap">
                               {formatTime(message.created_at)}
-                              {message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />}
+                              {isOwn && (message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />)}
                             </span>
                           )}
                         </div>
@@ -4393,11 +4393,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               {showOrig.has(message.id) ? tr("Показать перевод") : tr("перевод")}
                             </button>
                           )}
-                          {/* У своих время и галочки внутри пузыря, в конце текста. */}
-                          {isOwn && !bareBubble && (
+                          {/* Время внутри пузыря, в конце текста — и у своих, и у чужих (по макету); галочки только у своих. */}
+                          {!bareBubble && (
                             <span className="float-right ml-3 mt-[5px] inline-flex items-center gap-1 text-[10px] leading-[12px] opacity-[0.55] whitespace-nowrap">
                               {message.is_edited ? `${tr("изм.")} ` : ""}{formatTime(message.created_at)}
-                              {message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />}
+                              {isOwn && (message.pending ? <Clock className="w-3 h-3" /> : readByOthers(message) ? <span className="msg-check2" aria-label={tr("Прочитано")} /> : <Check className="w-3 h-3" strokeWidth={1.75} aria-label={tr("Доставлено")} />)}
                             </span>
                           )}
                         </p>
@@ -4521,9 +4521,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       className={cn("mt-1", isOwn && "justify-end")}
                     />
 
-                    {/* Время и статус снаружи — у чужих и у пузырей без текста
-                        (картинка, треугольник): внутри им негде. */}
-                    {(!isOwn || bareBubble || !message.content) && (
+                    {/* Время и статус снаружи — только у пузырей без текста (картинка,
+                        треугольник, голосовое): внутри им негде. */}
+                    {(bareBubble || !message.content) && (
                       <div className={cn(
                         "flex items-center gap-1.5 mt-1",
                         isOwn ? "flex-row-reverse" : ""
