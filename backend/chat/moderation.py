@@ -116,7 +116,9 @@ def deliver_bug(bug, origin):
             # установленной сборки (native_build) — тогда видно обе.
             f"{meta.get('platform', '?')} · {meta.get('app_version', '?')} (сборка {meta.get('app_build', '?')}"
             + (f", приложение {meta['native_build']}" if meta.get('native_build') and str(meta.get('native_build')) != str(meta.get('app_build')) else "")
-            + ")",
+            + ")"
+            # Сборка из Google Play: обновления только через магазин, по воздуху не приходят.
+            + (" · Google Play" if meta.get("distribution") == "play" else ""),
         ]
         if meta.get("device"):
             lines.append(f"Устройство: {meta['device']}")

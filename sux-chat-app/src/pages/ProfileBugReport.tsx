@@ -9,6 +9,7 @@ import { api } from "@/api/client";
 import { compressImage } from "@/lib/compressImage";
 import { dumpLog } from "@/lib/applog";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
+import { PLAY_BUILD } from "@/lib/updateCheck";
 import { t, tn } from "@/lib/i18n";
 
 /**
@@ -84,6 +85,9 @@ const ProfileBugReport = () => {
         app_version: APP_VERSION,
         app_build: APP_BUILD,
         native_build: nativeBuild,
+        // Сборка из Google Play обновляется только через магазин, без OTA, — в
+        // заголовке репорта это видно сразу (баг-репорт aff2aa33).
+        distribution: PLAY_BUILD ? "play" : undefined,
         device: navigator.userAgent,
         screen: `${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}`,
         lang: navigator.language,
