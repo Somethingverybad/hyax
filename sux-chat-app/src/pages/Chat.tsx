@@ -308,22 +308,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         if (e?.token) sendPushTokenToServer(e.token);
       });
 
-      // По тапу на пуш открываем чат из data.chat_id.
-      await FirebaseMessaging.addListener('notificationActionPerformed', (e) => {
-        const data = (e?.notification?.data as any) || {};
-        if (data.kind === "vibe") { navigate("/profile"); return; }
-        // Пост собеседника на Стене. Старые сборки тип пуша из шифротекста не
-        // передают — узнаём Стену по chat_id.
-        const wallId = readCache<WallState>("wall")?.id;
-        if (data.kind === "wall_post" || (wallId && String(data.chat_id) === wallId)) { navigate("/wall"); return; }
-        const chatId = data.chat_id;
-        if (chatId) {
-          setSelectedChatId(String(chatId));
-          // Чат мог быть новым — подтянем список, чтобы заголовок и участники
-          // подхватились, а не остались от предыдущего диалога.
-          refreshChats();
-        }
-      });
+      // Тап по пушу ведёт в чат — слушатель живёт в App.tsx (PushOpen): этот
+      // экран на «Музыке» или в профиле размонтирован, и переключение чата
+      // здесь уходило в никуда.
 
       // Тихий пуш «отбой»: звонящий отменил вызов, пока наш WebSocket молчал.
       await FirebaseMessaging.addListener('notificationReceived', (e) => {

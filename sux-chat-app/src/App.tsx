@@ -87,6 +87,33 @@ const closeWindow = () => {
 // между вкладками одного уровня направления не имеет, там прежнее проявление.
 const routeDepth = (path: string) => path.split("/").filter(Boolean).length;
 
+/** Тап по пушу: открыть чат, Стену или профиль — с любого экрана.
+ *  Раньше слушатель жил в Chat.tsx и переключал там выбранный чат; на
+ *  «Музыке», в профиле или на Стене экран чатов размонтирован, и нажатие
+ *  уходило в никуда. Переход через state — Chat.tsx ловит его и когда уже
+ *  открыт (по location.key), и при монтировании. Плагин хранит последний
+ *  тап до появления слушателя, так что холодный старт из пуша тоже доходит. */
+const PushOpen = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let handle: { remove: () => Promise<void> } | null = null;
+    void import("@capacitor-firebase/messaging").then(({ FirebaseMessaging }) =>
+      FirebaseMessaging.addListener("notificationActionPerformed", (e) => {
+        const data = ((e as { notification?: { data?: Record<string, unknown> } })?.notification?.data) || {};
+        if (data.kind === "vibe") { navigate("/profile"); return; }
+        // Пост собеседника на Стене. Старые сборки тип пуша из шифротекста не
+        // передают — узнаём Стену по chat_id.
+        const wallId = readCache<{ id?: string }>("wall")?.id;
+        if (data.kind === "wall_post" || (wallId && String(data.chat_id) === wallId)) { navigate("/wall"); return; }
+        if (data.chat_id) navigate("/chat", { state: { chatId: String(data.chat_id) } });
+      }),
+    ).then((h) => { handle = h; }).catch(() => { /* нет плагина — нет пушей */ });
+    return () => { void handle?.remove(); };
+  }, [navigate]);
+  return null;
+};
+
 /** Тема с сервера — на любом экране, а не только в чатах.
  *  Открытие по ссылке сразу в «Музыку» или в профиль раньше оставляло
  *  тему по умолчанию: выбор подхватывался только тем экраном, который
@@ -291,6 +318,7 @@ const App = () => {
             {/* Мини-приложения ботов — окно поверх всего (lib/miniapp.ts). */}
             <MiniAppHost />
             <ThemeFromProfile />
+            <PushOpen />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
                   Токен есть → в чат, нет → на вход. */}
