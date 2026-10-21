@@ -2073,5 +2073,8 @@ const en: Record<string, string> = {
   "Нужна ссылка на публичный канал или @имя": "Enter a link to a public channel or @name",
   "Бот недоступен": "This bot is unavailable",
   "Приватный бот пишет только владельцу": "A private bot can only message its owner",
+  "{n} с": "{n} s",
+  "На весь экран": "Full screen",
+  "Играет в виджете": "Playing in widget",
 };
 export default en;

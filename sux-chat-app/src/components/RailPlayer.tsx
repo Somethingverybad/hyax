@@ -43,7 +43,13 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
   }
 
   const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
-  const canAdd = tk.source === "message" || tk.source === "track";
+  // Перемотка ведением: палец показывает место, плеер встаёт туда при отпускании.
+  const [drag, setDrag] = useState<number | null>(null);
+  const seekFrac = (e: React.PointerEvent) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (r.bottom - e.clientY) / r.height));
+  };
+  const canAdd = tk.kind !== "voice" && (tk.source === "message" || tk.source === "track");
   const add = async () => {
     setAdding(true);
     try { toast.success((await addToMine(tk)) ? tr("Уже в «Моей музыке»") : tr("Добавлено в «Мою музыку»")); }
@@ -81,14 +87,22 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
         aria-valuemax={100}
         aria-valuenow={Math.round(frac * 100)}
         title={`${fmtTime(s.time)}${s.duration ? ` / ${fmtTime(s.duration)}` : ""}`}
-        onClick={(e) => {
+        onPointerDown={(e) => {
           if (s.live || !s.duration) return;
-          const r = e.currentTarget.getBoundingClientRect();
-          seek(Math.min(1, Math.max(0, (r.bottom - e.clientY) / r.height)) * s.duration);
+          e.stopPropagation();
+          try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* не везде */ }
+          setDrag(seekFrac(e));
         }}
-        className={cn("relative my-1 w-1.5 h-14 shrink-0 rounded-full bg-black/15 overflow-hidden", !s.live && "cursor-pointer")}
+        onPointerMove={(e) => { if (drag !== null) setDrag(seekFrac(e)); }}
+        onPointerUp={(e) => { if (drag === null) return; setDrag(null); seek(seekFrac(e) * s.duration); }}
+        onPointerCancel={() => setDrag(null)}
+        style={{ touchAction: "none" }}
+        className={cn("relative my-1 w-1.5 h-14 shrink-0 rounded-full bg-black/15", !s.live && "cursor-pointer")}
       >
-        <span className="absolute left-0 right-0 bottom-0 bg-primary rounded-full" style={{ height: `${frac * 100}%` }} />
+        <span className="absolute left-0 right-0 bottom-0 bg-primary rounded-full" style={{ height: `${(drag ?? frac) * 100}%` }} />
+        {drag !== null && (
+          <span className="absolute left-1/2 -translate-x-1/2 translate-y-1/2 w-3 h-3 rounded-full bg-primary shadow" style={{ bottom: `${drag * 100}%` }} />
+        )}
       </span>
       <span className="text-[10px] text-subtle tabular-nums">{fmtTime(s.time)}</span>
       <span className="rail-player-title rail-vertical text-caption" title={tk.title}>

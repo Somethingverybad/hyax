@@ -69,7 +69,7 @@ import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
 import type { PlaylistTrack } from "@/api/client";
-import { playQueue, type Track } from "@/lib/player";
+import { currentTrack, playQueue, playerState, toggle as playerToggle, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
@@ -553,6 +553,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const activityText = activityLabel(useChatActivity(chatId), isGroup);
   // Ушли из чата — «печатает» там больше не горит.
   useEffect(() => () => reportActivity(chatId, "stop"), [chatId]);
+  // Ушли из чата, пока играло голосовое, — оно доигрывает в общем плеере
+  // (MiniPlayer / RailPlayer) с того же места и той же скоростью, а за ним
+  // следующие голосовые ленты, как цепочка в чате (playNextVoice). Пузырь
+  // мог размонтироваться раньше нас (detachedVoice) или ещё играть (activeVoice).
+  useEffect(() => () => {
+    const d = detachedVoice;
+    detachedVoice = null;
+    const from = activeVoice && activeVoiceId && !activeVoice.paused
+      ? { id: activeVoiceId, time: activeVoice.currentTime }
+      : d && Date.now() - d.at < 1500 ? d : null;
+    if (!from) return;
+    const list = messagesListRef.current;
+    const i = list.findIndex((m) => m.id === from.id);
+    if (i < 0) return;
+    const queue: Track[] = list.slice(i)
+      .filter((m) => m.voice_url && !m.pending && !(m as { deleted_for_all?: boolean }).deleted_for_all)
+      .map((m) => ({
+        id: m.id,
+        raw: m.voice_url!,
+        title: tr("Голосовое сообщение"),
+        artist: m.sender?.username || undefined,
+        source: "message",
+        kind: "voice",
+        rate: voiceRate,
+      }));
+    if (!queue.length) return;
+    void playQueue(queue, 0, { at: from.time });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
   const {
@@ -3136,6 +3165,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       return;
     }
     startedRef.current = true;
+    // Запись пошла — чужое голосовое на паузу, иначе оно попадёт в микрофон.
+    pauseVoicePlayback();
     // Палец отпустили ещё во время инициализации устройства — завершаем
     // запись сразу, как только она стартовала.
     if (stopRequestedRef.current) {
@@ -4235,6 +4266,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Видео-сообщение: треугольник вершиной вверх (или вниз) */}
                       {message.video_url && (
                         <VideoNote
+                          id={message.id}
                           url={message.video_url}
                           seconds={message.video_duration || 0}
                           own={isOwn}
@@ -5343,7 +5375,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           userId={peer.id}
           onClose={() => setProfileOpen(false)}
           onCall={onCall}
-          hideWrite
         />
       )}
       {geoOpen && <LocationSheet onSend={(f) => void sendLocation(f)} onClose={() => setGeoOpen(false)} />}
@@ -5580,6 +5611,18 @@ let voiceRate = 1;
 /** Голосовое, которое играет сейчас: новое останавливает предыдущее —
  *  одновременно звучит только последнее запущенное. */
 let activeVoice: HTMLAudioElement | null = null;
+let activeVoiceId: string | null = null;
+/** Пузырь играющего голосового размонтировался (ушли из чата): где
+ *  остановились — чтобы ChatWindow передал его глобальному плееру. */
+let detachedVoice: { id: string; time: number; at: number } | null = null;
+/** Начали записывать своё голосовое или треугольник — чужое голосовое на
+ *  паузу (в пузыре или уже в общем плеере): место запомнится, «играть»
+ *  продолжит оттуда. Музыку не трогаем. */
+const pauseVoicePlayback = () => {
+  activeVoice?.pause();
+  const t = currentTrack();
+  if (t?.kind === "voice" && playerState().playing) void playerToggle();
+};
 
 const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: string; seconds: number; own: boolean; onEnded?: () => void }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -5627,8 +5670,11 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
   }, [url]);
 
   useEffect(() => () => {
-    audioRef.current?.pause();
-    if (activeVoice === audioRef.current) activeVoice = null;
+    const a = audioRef.current;
+    if (a && activeVoice === a && !a.paused) detachedVoice = { id, time: a.currentTime, at: Date.now() };
+    a?.pause();
+    if (activeVoice === a) { activeVoice = null; activeVoiceId = null; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Длительность: из файла, а если файл её не знает (запись с MediaRecorder —
@@ -5694,6 +5740,7 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
     }
     if (activeVoice && activeVoice !== audio) activeVoice.pause();
     activeVoice = audio;
+    activeVoiceId = id;
     audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
   };
   // Предыдущее голосовое доиграло — очередь этого (ChatWindow: playNextVoice).

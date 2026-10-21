@@ -1,5 +1,5 @@
 import { t as tr } from "@/lib/i18n";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Pause, Play, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX } from "lucide-react";
 import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer } from "@/lib/player";
@@ -15,6 +15,55 @@ import { useIsMobile } from "@/hooks/use-mobile";
  * месте, поэтому высоту плеер сообщает переменной --player-h, а закреп по ней
  * сдвигается (см. ChatWindow и index.css).
  */
+/** Перемотка: тап — в точку, можно вести пальцем (палец показывает место,
+ *  плеер встаёт туда при отпускании). В эфире закрыта — там место задаёт
+ *  расписание станции. */
+const SeekBar = ({ time, duration, live }: { time: number; duration: number; live: boolean }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<number | null>(null);
+  const fracAt = (x: number) => {
+    const r = ref.current?.getBoundingClientRect();
+    return r && r.width ? Math.min(1, Math.max(0, (x - r.left) / r.width)) : 0;
+  };
+  const down = (e: React.PointerEvent) => {
+    if (live || !duration) return;
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* не везде */ }
+    setDrag(fracAt(e.clientX));
+  };
+  const move = (e: React.PointerEvent) => { if (drag !== null) setDrag(fracAt(e.clientX)); };
+  const up = (e: React.PointerEvent) => {
+    if (drag === null) return;
+    const f = fracAt(e.clientX);
+    setDrag(null);
+    seek(f * duration);
+  };
+  const frac = drag ?? (duration ? Math.min(1, time / duration) : 0);
+  return (
+    <div
+      ref={ref}
+      role="slider"
+      aria-label={tr("Перемотка")}
+      aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(frac * 100)}
+      className={live ? "h-1 bg-black/20" : "relative h-3 flex items-center cursor-pointer select-none"}
+      style={{ touchAction: "none" }}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => setDrag(null)}
+    >
+      {live ? null : (
+        <>
+          <div className="absolute inset-x-0 top-0 h-1 bg-black/20">
+            <div className="h-full bg-primary" style={{ width: `${frac * 100}%` }} />
+          </div>
+          {/* Ручка — только пока ведут: в покое полоска тонкая, как была. */}
+          {drag !== null && (
+            <div className="absolute top-0.5 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-primary shadow" style={{ left: `${frac * 100}%` }} />
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 const MiniPlayer = () => {
   const s = usePlayer();
   const t = currentTrack();
@@ -43,19 +92,11 @@ const MiniPlayer = () => {
   return (
     <div
       ref={box}
-      className="player-bar fixed left-0 right-0 z-30 px-2 md:left-auto md:right-3 md:w-[380px]"
+      className="player-bar fixed left-0 right-0 z-[19] px-2 md:left-auto md:right-3 md:w-[380px]"
       style={{ top: "var(--player-top, calc(var(--sat) + 56px))" }}
     >
       <div className="rounded-lg border border-border bg-surface-2 shadow-lg overflow-hidden">
-        <div
-          className={s.live ? "h-1 bg-black/20" : "h-1 bg-black/20 cursor-pointer"}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            if (s.duration) seek(((e.clientX - r.left) / r.width) * s.duration);
-          }}
-        >
-          <div className="h-full bg-primary" style={{ width: `${frac * 100}%` }} />
-        </div>
+        <SeekBar time={s.time} duration={s.duration} live={!!s.live} />
         <div className="flex items-center gap-2 px-2 py-2">
           {/* В эфире треки переключает расписание станции (@/lib/radio). */}
           {!s.live && (
@@ -86,7 +127,7 @@ const MiniPlayer = () => {
             <input type="range" min={0} max={1} step={0.02} value={s.volume} onChange={(e) => setVolume(Number(e.target.value))}
               className="w-20 h-1 accent-primary cursor-pointer" aria-label={tr("Громкость")} />
           </div>
-          <ShareTrackButton track={t} className="w-8 h-8" />
+          {t.kind !== "voice" && <ShareTrackButton track={t} className="w-8 h-8" />}
           <button type="button" onClick={stop} className="w-8 h-8 shrink-0 flex items-center justify-center text-subtle" aria-label={tr("Закрыть плеер")}>
             <X className="w-4 h-4" />
           </button>

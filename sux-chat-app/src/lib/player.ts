@@ -24,6 +24,10 @@ export interface Track {
    *  эфира (id — трека; token — плейлист по ссылке), mine — уже в моей музыке. */
   source?: "message" | "track" | "mine";
   token?: string;
+  /** Голосовое из переписки, доигрывающее в плеере после ухода из чата:
+   *  в «Мою музыку» не добавляется, скорость — та, что была в пузыре. */
+  kind?: "voice";
+  rate?: number;
 }
 
 /** Эфир, который сейчас слушаем (@/lib/radio): трек и место в нём задаёт
@@ -156,6 +160,9 @@ async function start(index: number, at?: () => number) {
   if (!audio) { audio = new Audio(); attach(audio); audio.volume = state.volume; }
   audio.muted = !!(state.live && state.liveMuted);
   audio.src = src;
+  // Скорость — только у голосовых (как в пузыре); музыка всегда 1×.
+  audio.defaultPlaybackRate = t.rate || 1;
+  audio.playbackRate = t.rate || 1;
   // Эфир: встаём на место по расписанию, когда файл открылся, — позицию
   // считаем в этот момент, с учётом того, сколько он грузился.
   if (at) {

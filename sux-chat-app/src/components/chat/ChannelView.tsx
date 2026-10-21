@@ -174,7 +174,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
   if (post.video_url) {
     return (
       <div className="mt-2">
-        <VideoNote url={post.video_url} seconds={post.video_duration || 0} own={false} mirror={post.video_mirror} flip={post.video_flip} />
+        <VideoNote id={post.id} url={post.video_url} seconds={post.video_duration || 0} own={false} mirror={post.video_mirror} flip={post.video_flip} />
       </div>
     );
   }

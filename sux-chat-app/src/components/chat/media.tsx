@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
+import { fmtNoteTime, inlineNote, openNoteFull, startNote, useNoteHost, useVideoNoteSlice } from "@/lib/videoNote";
 import { t as tr } from "@/lib/i18n";
 
 /**
@@ -426,16 +427,38 @@ export const MessageFile = ({ raw, name, onSave }: {
   );
 };
 
-export const VideoNote = ({ url, seconds, mirror, flip, poster }: { url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null }) => {
+export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: string; url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null }) => {
+  const noteId = id || url;
   const [nearRef, near] = useNearView<HTMLVideoElement>();
   const src = useMediaUrl(near ? url : null);
   const ref = useRef<HTMLVideoElement | null>(null);
   const setVideo = useCallback((el: HTMLVideoElement | null) => { ref.current = el; nearRef(el); }, [nearRef]);
-  const [playing, setPlaying] = useState(false);
   // С постером кадр есть сразу — скелетон не нужен.
   const [ready, setReady] = useState(!!poster);
   // Размер внутреннего треугольника — как в GlassTriangle(size=176, rim=3).
   const innerH = 176 - 3 - 3 * Math.sqrt(5);
+  // Играет ли это сообщение в общем проигрывателе (lib/videoNote) и где
+  // оно сейчас: в этом треугольнике, на весь экран или виджетом.
+  const mode = useVideoNoteSlice((st) => (st.note?.id === noteId ? st.mode : null));
+  const active = mode !== null;
+  const playing = useVideoNoteSlice((st) => st.note?.id === noteId && st.playing);
+  const time = useVideoNoteSlice((st) => (st.note?.id === noteId ? Math.floor(st.time) : -1));
+  const clip = triClip(innerH, innerH, !!flip);
+  const hostRef = useNoteHost(mode === "inline", { fit: "cover", clip });
+  // Треугольник на экране? Уехал за край ленты — ролик продолжает виджетом,
+  // вернулся — снова здесь. Следим только пока играет это сообщение.
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const el = boxRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") { inlineNote(noteId, true); return () => inlineNote(noteId, false); }
+    const io = new IntersectionObserver((list) => {
+      const last = list[list.length - 1];
+      if (last) inlineNote(noteId, last.isIntersecting);
+    }, { threshold: 0.05 });
+    io.observe(el);
+    return () => { io.disconnect(); inlineNote(noteId, false); };
+  }, [active, noteId]);
   // iOS не грузит данные видео до тапа, и loadeddata может не прийти вовсе —
   // тогда скелетон висел бы вечно. Готово по первому же признаку жизни,
   // а не дождались — всё равно показываем рамку с видео.
@@ -457,46 +480,48 @@ export const VideoNote = ({ url, seconds, mirror, flip, poster }: { url: string;
     }
   };
 
-  const toggle = () => {
-    const el = ref.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      return;
-    }
-    // Звук включаем только на время просмотра: до тапа элемент немой,
-    // иначе первый кадр не покажется без разрешения на автовоспроизведение.
-    el.muted = false;
-    el.currentTime = 0;
-    el.play().catch(() => {});
+  // Тап: не играет — запустить со звуком (общий проигрыватель; при уходе
+  // из чата или прокрутке ролик продолжится виджетом); играет — во весь экран.
+  const tap = () => {
+    if (active) { openNoteFull(); return; }
+    if (!src) return;
+    startNote({ id: noteId, src, poster, mirror, flip, seconds });
   };
 
-  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const label = active && time >= 0
+    ? fmtNoteTime(time)
+    : `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <GlassTriangle size={176} flip={flip} onClick={toggle} innerClassName={ready ? "bg-black" : "bg-transparent"}>
+    <div ref={boxRef} className="shrink-0" style={{ width: 176, height: 176 }}>
+    <GlassTriangle size={176} flip={flip} onClick={tap} innerClassName={ready ? "bg-black" : "bg-transparent"}>
       {!ready && <LoadingSkeleton className="absolute inset-0" />}
+      {/* Превью (первый кадр, без звука); пока играет — его место занимает общий <video>. */}
       <video
         ref={setVideo}
         src={src || undefined}
         poster={poster || undefined}
         playsInline
-        muted={!playing}
+        muted
         preload="metadata"
         onLoadedMetadata={() => { showFirstFrame(); setReady(true); }}
         onLoadedData={() => { showFirstFrame(); setReady(true); }}
         onSeeked={() => setReady(true)}
         onError={() => setReady(true)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-        className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", ready ? "opacity-100" : "opacity-0")}
+        className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", ready && !active ? "opacity-100" : "opacity-0")}
         // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
         // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
         // clip-path и на самом видео: слой видео в Android WebView обёртку не слушает.
-        style={{ transform: mirror ? "scaleX(-1)" : undefined, clipPath: triClip(innerH, innerH, !!flip) }}
+        style={{ transform: mirror ? "scaleX(-1)" : undefined, clipPath: clip }}
       />
-      {!playing && ready && (
+      <div ref={hostRef} className={cn("absolute inset-0", mode !== "inline" && "hidden")} />
+      {/* Ушёл во весь экран или виджетом — здесь остаётся кадр-подложка и подпись. */}
+      {active && mode !== "inline" && (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-white/90 text-[11px] font-medium">
+          {mode === "full" ? tr("На весь экран") : tr("Играет в виджете")}
+        </span>
+      )}
+      {!playing && ready && mode !== "full" && mode !== "float" && (
         <span className="tri-play-pos">
           <span className="tri-glass w-11 h-11 rounded-full flex items-center justify-center">
             <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
@@ -507,6 +532,7 @@ export const VideoNote = ({ url, seconds, mirror, flip, poster }: { url: string;
         {label}
       </span>
     </GlassTriangle>
+    </div>
   );
 };
 

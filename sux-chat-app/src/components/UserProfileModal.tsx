@@ -41,13 +41,10 @@ const UserProfileModal = ({
   userId,
   onClose,
   onCall,
-  hideWrite,
 }: {
   userId: string;
   onClose: () => void;
   onCall?: () => void;
-  /** Профиль открыт из его же переписки — «Написать» там ни к чему. */
-  hideWrite?: boolean;
 }) => {
   const navigate = useNavigate();
   // Свайп вниз по шторке закрывает её — и мы снова там, откуда открыли профиль.
@@ -180,17 +177,15 @@ const UserProfileModal = ({
             </div>
 
             <div className="flex gap-3">
-              {!hideWrite && (
-                <button
-                  type="button"
-                  onClick={write}
-                  disabled={writing}
-                  className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  {writing ? t("Открываю…") : isBot ? t("Начать") : t("Написать")}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={write}
+                disabled={writing}
+                className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
+              >
+                <MessageSquare className="w-4 h-4" />
+                {writing ? t("Открываю…") : isBot ? t("Начать") : t("Написать")}
+              </button>
               {/* Мини-приложение бота — прямо из карточки. */}
               {isBot && (profile as { webapp_url?: string } | null)?.webapp_url && (
                 <button
