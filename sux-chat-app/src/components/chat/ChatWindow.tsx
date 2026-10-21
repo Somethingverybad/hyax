@@ -3649,7 +3649,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             ) : <span />}
             {/* Островок с ником и статусом перетекает, как жидкость (LiquidIsland). */}
             {/* Длинный статус растит островок вниз, поверх ленты: шапка, кнопки по бокам и лента остаются на месте. */}
-            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill" minHeight={43} growDown>
+            <LiquidIsland onClick={() => (peer ? setProfileOpen(true) : isGroup ? setGroupOpen(true) : undefined)} className="mint-pill" minHeight={43} padY={4.5} growDown>
               <span className="max-w-full truncate text-[16.3px] font-semibold leading-[18px] flex items-center gap-1" style={{ color: "var(--mint-title)" }}>
                 {isSecret && <Lock className="w-3.5 h-3.5 shrink-0 text-online" aria-label={tr("Секретный чат")} />}
                 <LiquidText className="min-w-0" text={headerTitle || peer?.username || group?.name || tr("Чат")} />
@@ -3660,7 +3660,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   : saved ? tr("Сообщения для себя") : ""} />
               </span>
             </LiquidIsland>
-            <span className="relative">
+            {/* flex, не строчный: у строчной обёртки под аватаром оставался зазор базовой линии, и аватар стоял на 3px выше кнопки «назад» и островка. */}
+            <span className="relative flex">
               <Aura active={!!peer && !peer.is_bot && !!peer.is_online} owner={peer} size={43}>
               <button type="button" onClick={() => ((peer || isGroup) ? setHeaderMenuOpen((v) => !v) : undefined)} aria-label={tr("Меню чата")}
                 className="block w-[43px] h-[43px] rounded-full overflow-hidden border-2 border-white" style={{ boxShadow: "var(--mint-shadow)" }}>

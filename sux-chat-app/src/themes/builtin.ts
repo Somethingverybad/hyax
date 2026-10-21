@@ -229,9 +229,10 @@ export const MINT: ThemeDef = {
     ring: "#2F5B53",
     ink: "#23463F",
     accentSoft: "#ECF9CF",
+    // По макету: свои — тёмно-зелёные, входящие — серо-зелёные, текст белый.
     bubbleOwn: "#2F5B53",
     bubbleOwnFg: "#FFFFFF",
-    bubbleIn: "#2F5B53",
+    bubbleIn: "#789184",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#E3EDDB",
   },
@@ -264,7 +265,8 @@ export const MINT_DARK: ThemeDef = {
     ring: "#C7F964",
     ink: "#FFFFFF",
     accentSoft: "#34422F",
-    bubbleOwn: "#2F5B53",
+    // В тёмной — наоборот: свои светлее, входящие темнее.
+    bubbleOwn: "#789184",
     bubbleOwnFg: "#FFFFFF",
     bubbleIn: "#2F5B53",
     bubbleInFg: "#FFFFFF",
