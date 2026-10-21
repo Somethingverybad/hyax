@@ -126,7 +126,7 @@ class Command(BaseCommand):
         self.stdout.write(f"без ссылок в базе: {len(orphans)}, {orphan_bytes / 1e9:.2f} ГБ (секретные чаты, JSON-поля, удалённые аккаунты — не удаляем)")
 
         if o["orphans"]:
-            self._orphans(s3, bucket, objs, orphans, o)
+            self._orphans(s3, bucket, objs, orphans, refs, o)
         if not o["apply"]:
             if not o["orphans"]:
                 self.stdout.write("ничего не менял: запустите с --apply")
@@ -150,7 +150,7 @@ class Command(BaseCommand):
                 deleted += 1
         self.stdout.write(f"дубли: переписано ссылок {rewritten}, удалено {deleted} объектов, {freed / 1e9:.2f} ГБ")
 
-    def _orphans(self, s3, bucket, objs, orphans, o):
+    def _orphans(self, s3, bucket, objs, orphans, refs, o):
         """Кандидаты в сироты: ключ не встречается ни в одном текстовом или JSON-поле
         базы (включая шифротекст, кнопки ботов, темы), объект старше min-age-days."""
         import json
