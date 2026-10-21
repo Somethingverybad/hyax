@@ -80,6 +80,12 @@ def transcribe_message(message_id: str):
             logger.exception("whisper: расшифровка не удалась (%s)", message_id)
             msg.transcript_status = "error"
         msg.save(update_fields=["voice_transcript", "transcript_status", "transcript_lang", "updated_at"])
+    # Голосовая идея в «Долгом ящике»: текст — в список идей (chat/ideabox.py).
+    try:
+        from .ideabox import idea_transcribed
+        idea_transcribed(msg)
+    except Exception:
+        logger.exception("ideabox: расшифровка %s не легла в идею", message_id)
     # Автоперевод расшифровки — уже вне блокировки whisper (сеть, не CPU).
     if msg.transcript_status == "done":
         from .translate import translate_transcript

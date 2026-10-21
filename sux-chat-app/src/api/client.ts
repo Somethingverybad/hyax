@@ -535,6 +535,10 @@ export interface VibeLevelsConfig { bar_length: number; levels: VibeLevel[] }
 export interface IdeaItem {
   id: string; text: string; likes: number; dislikes: number; status: "" | "done" | "hidden";
   created_at: string; done_at: string | null; mine: boolean; my_vote: number;
+  /** Голосовая идея: само голосовое; transcript — состояние расшифровки, пока текста нет
+   *  (pending — расшифровываем, error — не вышло, done без текста — тишина). */
+  voice?: { url: string; duration: number } | null;
+  transcript?: string;
 }
 export interface IdeasPage {
   sort: string; page: number; pages: number; count: number; is_admin: boolean; my_vibe: number;

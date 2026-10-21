@@ -2076,5 +2076,9 @@ const en: Record<string, string> = {
   "{n} с": "{n} s",
   "На весь экран": "Full screen",
   "Играет в виджете": "Playing in widget",
+  "Расшифровываю голосовое…": "Transcribing the voice message…",
+  "Не удалось расшифровать голосовое": "Couldn't transcribe the voice message",
+  "В голосовом не разобрать слов": "No words could be made out in the voice message",
+  "Голосовая идея": "Voice idea",
 };
 export default en;

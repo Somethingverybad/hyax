@@ -2346,3 +2346,68 @@ class PostsCheckTests(TestCase):
         gone = Message.objects.create(chat=ch, sender=self.author, content="снят", deleted_for_all=True)
         r = client_for(self.me).post(f"/api/channels/{ch.id}/posts/check/", {"ids": [str(ok.id), str(gone.id)]}, format="json")
         self.assertEqual((r.status_code, r.data["gone"]), (200, [str(gone.id)]))
+
+
+class IdeaVoiceTests(TestCase):
+    """Голосовая идея в «Долгом ящике»: попадает в список сразу, текст приезжает
+    из расшифровки; длиннее минуты — в список не идёт, бот объясняет почему."""
+
+    def setUp(self):
+        from .ideabox import user_chat
+        self.me = make_user("idea_voice_me")
+        self.chat = user_chat(self.me)
+
+    def _send(self, duration):
+        from unittest import mock
+        with mock.patch("chat.transcribe.transcribe_async") as t:
+            r = client_for(self.me).post("/api/messages/", {"chat": str(self.chat.id), "voice_url": "/media/voice/x.ogg",
+                                                             "voice_duration": duration}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        return Message.objects.get(id=r.data["id"]), t
+
+    def test_voice_idea_transcribed(self):
+        from .ideabox import idea_transcribed
+        from .models import Idea
+        msg, t = self._send(12)
+        t.assert_called_once_with(msg.id)
+        idea = Idea.objects.get(message=msg)
+        self.assertEqual(idea.text, "")
+        msg.refresh_from_db()
+        self.assertEqual(msg.transcript_status, "pending")
+        self.assertIn(str(self.me.id), msg.transcript_for)
+        r = client_for(self.me).get("/api/ideas/?sort=new")
+        item = next(i for i in r.data["items"] if i["id"] == str(idea.id))
+        self.assertEqual((item["transcript"], item["voice"]["url"], item["voice"]["duration"]), ("pending", "/media/voice/x.ogg", 12))
+        # Расшифровка готова — текст в идее и в копии для разработчика.
+        msg.voice_transcript = "Сделайте тёмную тему для стены"
+        msg.transcript_status = "done"
+        msg.transcript_lang = "ru"
+        msg.save()
+        idea_transcribed(msg)
+        idea.refresh_from_db()
+        self.assertEqual(idea.text, "Сделайте тёмную тему для стены")
+        fwd = Message.objects.filter(origin_message=msg).first()
+        if fwd:
+            self.assertEqual((fwd.voice_transcript, fwd.transcript_status), (msg.voice_transcript, "done"))
+        r = client_for(self.me).get("/api/ideas/?sort=mine")
+        item = next(i for i in r.data["items"] if i["id"] == str(idea.id))
+        self.assertEqual((item["text"], item["transcript"]), ("Сделайте тёмную тему для стены", ""))
+
+    def test_silence_keeps_idea_without_text(self):
+        from .ideabox import idea_transcribed
+        from .models import Idea
+        msg, _ = self._send(5)
+        msg.voice_transcript = "(тишина)"; msg.transcript_status = "done"; msg.save()
+        idea_transcribed(msg)
+        idea = Idea.objects.get(message=msg)
+        self.assertEqual(idea.text, "")
+        r = client_for(self.me).get("/api/ideas/?sort=mine")
+        self.assertEqual(r.data["items"][0]["transcript"], "done")
+
+    def test_too_long_voice_not_listed(self):
+        from .ideabox import VOICE_TOO_LONG, ideabox_bot
+        from .models import Idea
+        msg, t = self._send(90)
+        t.assert_not_called()
+        self.assertFalse(Idea.objects.filter(message=msg).exists())
+        self.assertTrue(Message.objects.filter(chat=self.chat, sender=ideabox_bot(), content=VOICE_TOO_LONG).exists())

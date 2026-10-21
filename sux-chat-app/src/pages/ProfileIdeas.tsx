@@ -2,7 +2,8 @@ import { t as tr, getLang } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send, Flag } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Check, Undo2, Trash2, Sparkles, Send, Flag, Play, Pause, Mic } from "lucide-react";
+import { isCurrent, playQueue, usePlayer, fmtTime } from "@/lib/player";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type IdeaItem } from "@/api/client";
@@ -32,6 +33,25 @@ const EMPTY: Record<Tab, string> = {
 };
 const PAGE = 20;
 const dateFmt = (s: string) => new Date(s).toLocaleDateString(getLang(), { day: "numeric", month: "short" });
+
+/** Голосовая идея: кнопка «играть» через общий плеер (lib/player) и длительность. */
+function VoiceIdea({ idea }: { idea: IdeaItem }) {
+  const s = usePlayer();
+  const current = isCurrent(idea.id);
+  const playing = current && s.playing;
+  const play = () => void playQueue([{ id: idea.id, raw: idea.voice!.url, title: tr("Голосовая идея"), source: "message", kind: "voice" }], 0);
+  return (
+    <div className="mb-1.5 flex items-center gap-2">
+      <button type="button" onClick={play} aria-label={playing ? tr("Пауза") : tr("Играть")}
+        className="w-9 h-9 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:opacity-90">
+        {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+      </button>
+      <span className="text-caption text-subtle tabular-nums flex items-center gap-1">
+        <Mic className="w-3.5 h-3.5" />{current && s.duration ? `${fmtTime(s.time)} / ${fmtTime(s.duration)}` : fmtTime(idea.voice!.duration)}
+      </span>
+    </div>
+  );
+}
 
 export default function ProfileIdeas() {
   const [params, setParams] = useSearchParams();
@@ -63,6 +83,13 @@ export default function ProfileIdeas() {
     }
   }, []);
   useEffect(() => { setItems(null); void load(tab, 1); }, [tab, load]);
+  // Голосовая идея ещё расшифровывается — через несколько секунд перечитаем первую страницу.
+  const pending = !!items?.some((i) => i.voice && !i.text && i.transcript === "pending");
+  useEffect(() => {
+    if (!pending) return;
+    const t = window.setTimeout(() => void load(tab, 1), 6000);
+    return () => window.clearTimeout(t);
+  }, [pending, items, tab, load]);
 
   const patch = (idea: IdeaItem) => setItems((prev) => prev && prev.map((i) => (i.id === idea.id ? idea : i)));
 
@@ -173,7 +200,16 @@ export default function ProfileIdeas() {
                   <div className="flex items-start gap-3">
                     {tab === "top" && <span className="shrink-0 w-6 text-h2 text-subtle tabular-nums">{i + 1}</span>}
                     <div className="min-w-0 flex-1">
-                      <p className="text-body whitespace-pre-wrap break-words">{idea.text}</p>
+                      {idea.voice && <VoiceIdea idea={idea} />}
+                      {idea.text ? (
+                        <p className="text-body whitespace-pre-wrap break-words">{idea.text}</p>
+                      ) : idea.voice ? (
+                        <p className="text-small text-subtle italic">
+                          {idea.transcript === "pending" ? tr("Расшифровываю голосовое…")
+                            : idea.transcript === "error" ? tr("Не удалось расшифровать голосовое")
+                            : tr("В голосовом не разобрать слов")}
+                        </p>
+                      ) : null}
                       <p className="mt-1.5 text-caption text-subtle flex flex-wrap gap-x-2">
                         <span>{dateFmt(idea.created_at)}</span>
                         {idea.status === "done" && <span className="text-online">✓ {tr("реализовано")}{idea.done_at ? ` ${dateFmt(idea.done_at)}` : ""}</span>}

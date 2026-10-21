@@ -70,6 +70,10 @@ OLD_WELCOMES = (
     "Всё попадает прямо к разработчику. Ответ не обещаю, но каждую идею прочитаю.",
 )
 THANKS = "Положил в долгий ящик 📦 Спасибо! Если вспомнится ещё что-то — пиши сюда же."
+# Голосовая идея длиннее минуты: расшифровать не сможем (chat/transcribe.py),
+# в общий список она не попадёт — но разработчику ушла.
+VOICE_TOO_LONG = ("Голосовое длиннее минуты я расшифровать не смогу, поэтому в общий список идей оно "
+                  "не попадёт — но разработчику ушло. Если хотите в список — напишите текстом или покороче голосом.")
 SCREEN = "/profile/ideas"
 TOP_SIZE = 10
 MIN_IDEA_LEN = 3
@@ -149,14 +153,35 @@ def deliver_idea(message: Message, author: Profile, thank: bool = True) -> Idea 
     if answer:
         return None
     idea = None
+    voice_too_long = False
     try:
         text = (message.content or "").strip()
         if len(text) >= MIN_IDEA_LEN:
             idea = Idea.objects.create(author=author, message=message, text=text[:4000])
+        elif not text and message.voice_url:
+            # Голосовая идея: в список сразу, текст приедет из расшифровки
+            # (transcribe_message → idea_transcribed). Длинное — не расшифруем.
+            from .transcribe import too_long, transcribe_async
+            if too_long(message):
+                voice_too_long = True
+            else:
+                idea = Idea.objects.create(author=author, message=message, text="")
+                me = str(author.id)
+                if me not in (message.transcript_for or []):
+                    message.transcript_for = [*(message.transcript_for or []), me]
+                message.transcript_status = "pending"
+                message.save(update_fields=["transcript_for", "transcript_status", "updated_at"])
+                transcribe_async(message.id)
     except Exception:
         logger.exception("Идея %s не попала в список", message.id)
     if not thank:
         return idea
+    if voice_too_long:
+        try:
+            _bot_say(message.chat_id, tr(VOICE_TOO_LONG, lang_of(author)), menu(lang_of(author)))
+        except Exception:
+            logger.exception("Не ответил на длинную голосовую идею %s", message.id)
+        return None
     try:
         box_bot = ideabox_bot()
         lang = lang_of(author)
@@ -171,6 +196,22 @@ def deliver_idea(message: Message, author: Profile, thank: bool = True) -> Idea 
     except Exception:
         logger.exception("Не ответил на идею %s", message.id)
     return idea
+
+
+def idea_transcribed(msg: Message):
+    """Расшифровка голосовой идеи готова (chat/transcribe.py): текст — в список,
+    а копии в «Идеях» — та же расшифровка, чтобы разработчик не гонял whisper второй раз."""
+    if getattr(msg.chat, "kind", "") != KIND:
+        return
+    text = (msg.voice_transcript or "").strip()
+    if msg.transcript_status == "done" and text and text != "(тишина)":
+        Idea.objects.filter(message=msg).update(text=text[:4000])
+    fwd = Message.objects.filter(origin_message=msg, voice_url=msg.voice_url).first()
+    if fwd:
+        fwd.voice_transcript = msg.voice_transcript
+        fwd.transcript_status = msg.transcript_status
+        fwd.transcript_lang = msg.transcript_lang
+        fwd.save(update_fields=["voice_transcript", "transcript_status", "transcript_lang", "updated_at"])
 
 
 def _staff_note(chat, text):
@@ -300,17 +341,17 @@ def hide(idea_id):
 
 
 def top_qs():
-    return (Idea.objects.filter(status="")
+    return (Idea.objects.filter(status="").select_related("message")
             .annotate(score=F("likes") - F("dislikes"))
             .order_by("-score", "-likes", "-created_at"))
 
 
 def new_qs():
-    return Idea.objects.exclude(status="hidden").order_by("-created_at")
+    return Idea.objects.exclude(status="hidden").select_related("message").order_by("-created_at")
 
 
 def done_qs():
-    return Idea.objects.filter(status="done").order_by("-done_at")
+    return Idea.objects.filter(status="done").select_related("message").order_by("-done_at")
 
 
 def _clip(t, n=160):
@@ -409,9 +450,15 @@ def handle_press(msg, profile, data, request=None, caps=()):
 
 
 def idea_payload(idea, viewer, my_votes):
+    m = idea.message if idea.message_id else None
+    voice = {"url": m.voice_url, "duration": m.voice_duration or 0} if m and m.voice_url else None
     return {
         "id": str(idea.id),
         "text": idea.text,
+        # Голосовая идея: само голосовое и, пока текста нет, состояние расшифровки
+        # (pending / error / done-«тишина»).
+        "voice": voice,
+        "transcript": (m.transcript_status or "") if voice and not idea.text else "",
         "likes": idea.likes,
         "dislikes": idea.dislikes,
         "status": idea.status,
@@ -603,7 +650,7 @@ class IdeasListView(APIView):
             return Response({"error": "Нет профиля"}, status=403)
         sort = request.query_params.get("sort") or "top"
         if sort == "mine":
-            qs = Idea.objects.filter(author=me).exclude(status="hidden").order_by("-created_at")
+            qs = Idea.objects.filter(author=me).exclude(status="hidden").select_related("message").order_by("-created_at")
         else:
             qs = {"top": top_qs, "new": new_qs, "done": done_qs}.get(sort, top_qs)()
         try:

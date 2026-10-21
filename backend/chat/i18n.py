@@ -62,6 +62,10 @@ EN = {
         "Text, voice, a picture — whatever works for you. It all goes straight to the developer.\n\n"
         "Text ideas go into a shared list — without the author's name. You can vote on other "
         "people's ideas: every vote is +5 to your vibe meter, and every like on your idea is +10 for you.",
+    "Голосовое длиннее минуты я расшифровать не смогу, поэтому в общий список идей оно "
+    "не попадёт — но разработчику ушло. Если хотите в список — напишите текстом или покороче голосом.":
+        "I can't transcribe a voice message longer than a minute, so it won't make the shared idea list — "
+        "but it did reach the developer. To get it on the list, write it as text or record a shorter one.",
     "Положил в долгий ящик 📦 Спасибо! Если вспомнится ещё что-то — пиши сюда же.":
         "Put it on the back burner 📦 Thanks! If anything else comes to mind, write here too.",
     "🏆 Топ-10": "🏆 Top 10",
@@ -136,6 +140,10 @@ KO = {
         "텍스트, 음성, 사진 등 편한 방식이면 돼요. 모두 개발자에게 바로 전달돼요.\n\n"
         "텍스트 아이디어는 작성자 이름 없이 공용 목록에 올라가요. 다른 사람의 아이디어에 투표할 수 있어요. "
         "투표할 때마다 내 바이브 미터 +5, 내 아이디어가 좋아요를 받을 때마다 +10이에요.",
+    "Голосовое длиннее минуты я расшифровать не смогу, поэтому в общий список идей оно "
+    "не попадёт — но разработчику ушло. Если хотите в список — напишите текстом или покороче голосом.":
+        "1분이 넘는 음성은 받아쓰기할 수 없어서 공용 아이디어 목록에는 올라가지 않아요. 개발자에게는 전달됐어요. "
+        "목록에 올리고 싶다면 텍스트로 쓰거나 더 짧게 녹음해 주세요.",
     "Положил в долгий ящик 📦 Спасибо! Если вспомнится ещё что-то — пиши сюда же.":
         "아이디어 서랍에 넣었어요 📦 고마워요! 더 생각나면 여기에 또 보내 주세요.",
     "🏆 Топ-10": "🏆 인기 10",

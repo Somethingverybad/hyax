@@ -3360,7 +3360,11 @@ class MediaSignView(APIView):
             Chat.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker) | Q(wallpaper_anim=marker), participants=profile).exists()
             or ChatParticipant.objects.filter(Q(wallpaper_url=marker) | Q(wallpaper_poster=marker) | Q(wallpaper_anim=marker), user=profile).exists()
         )
-        if not is_wallpaper and not in_my_playlist and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
+        # Голосовая идея из общего списка (chat/ideabox.py): слушать её могут все,
+        # кто видит список, — как и читать текст. Убранную админом — нет.
+        from .models import Idea
+        is_idea_voice = Idea.objects.filter(message__voice_url=marker).exclude(status="hidden").exists()
+        if not is_wallpaper and not in_my_playlist and not is_idea_voice and not any(can_see_saved(owner_id, profile.id) for owner_id in saved_owners):
             # Один файл может лежать в нескольких сообщениях: переслали, отправили
             # в два чата. Право на скачивание — если он виден хотя бы в одном чате,
             # где человек участник. Раньше брали first() (порядок по UUID —
