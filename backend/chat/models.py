@@ -1441,3 +1441,24 @@ class Device(models.Model):
 
     class Meta:
         unique_together = ("profile", "device_id")
+
+
+class FileBlob(models.Model):
+    """Загруженный файл по содержимому: один и тот же файл (по sha256) кладём в
+    хранилище один раз, повторные загрузки получают тот же адрес (views._blob_*).
+    variant — как файл обработан: "" как есть, "video" — пережат ffmpeg."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sha256 = models.CharField(max_length=64, db_index=True)
+    variant = models.CharField(max_length=8, blank=True, default="")
+    size = models.BigIntegerField()
+    file_url = models.TextField()
+    poster_url = models.TextField(blank=True, null=True)
+    width = models.IntegerField(blank=True, null=True)
+    height = models.IntegerField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("sha256", "variant")
+
+    def __str__(self):
+        return f"{self.sha256[:12]}… {self.file_url}"

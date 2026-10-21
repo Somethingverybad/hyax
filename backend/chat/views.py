@@ -2158,11 +2158,76 @@ def _make_poster(video_path, rel_base, local_only=False):
     return f"/media/{rel}"
 
 
+# ---- Один файл в хранилище на одно содержимое (FileBlob) ----
+
+def _sha256_file(path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _blob_variant(compress, file_extension) -> str:
+    is_video = file_extension.lower() in ('.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv')
+    return 'video' if (compress == 'video' and is_video) else ''
+
+
+def _blob_lookup(sha, variant, original_name):
+    """Такое содержимое уже в хранилище — тот же ответ, что дала бы загрузка,
+    только с именем файла от этого отправителя."""
+    from .models import FileBlob
+    b = FileBlob.objects.filter(sha256=sha, variant=variant).first()
+    if not b:
+        return None
+    name = original_name
+    if variant == 'video' and b.file_url.lower().endswith('.mp4'):
+        name = f"{os.path.splitext(original_name)[0]}.mp4"
+    return {"file_url": b.file_url, "file_name": name, "file_size": b.size,
+            "width": b.width, "height": b.height, "poster_url": b.poster_url}
+
+
+def _blob_store(sha, variant, result) -> None:
+    """Запомнить, что это содержимое лежит по такому адресу. Только то, что ушло
+    в хранилище: локальные (local_only) копии живут недолго."""
+    from .models import FileBlob
+    try:
+        FileBlob.objects.get_or_create(sha256=sha, variant=variant, defaults={
+            "size": result.get("file_size") or 0, "file_url": result["file_url"], "poster_url": result.get("poster_url"),
+            "width": result.get("width"), "height": result.get("height")})
+    except Exception:
+        logger.exception("FileBlob: не записали")
+
+
 def _finalize_upload(request, file_path, original_name, out_size, file_extension):
     """Общий хвост загрузки для запроса: см. _finalize_file."""
     compress = (request.data.get('compress') or '').lower()
     local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
-    return Response(_finalize_file(file_path, original_name, out_size, file_extension, compress, local_only))
+    return Response(_finalize_dedup(file_path, original_name, out_size, file_extension, compress, local_only))
+
+
+def _finalize_dedup(file_path, original_name, out_size, file_extension, compress, local_only, sha=None):
+    """_finalize_file с дедупликацией: такое содержимое уже в хранилище — не
+    кладём второй раз, отдаём адрес первого; иначе обрабатываем и запоминаем."""
+    full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+    if local_only:
+        return _finalize_file(file_path, original_name, out_size, file_extension, compress, local_only)
+    try:
+        sha = sha or _sha256_file(full_path)
+    except OSError:
+        return _finalize_file(file_path, original_name, out_size, file_extension, compress, local_only)
+    variant = _blob_variant(compress, file_extension)
+    hit = _blob_lookup(sha, variant, original_name)
+    if hit:
+        try:
+            os.remove(full_path)
+        except OSError:
+            pass
+        return hit
+    result = _finalize_file(file_path, original_name, out_size, file_extension, compress, local_only)
+    _blob_store(sha, variant, result)
+    return result
 
 
 def _finalize_file(file_path, original_name, out_size, file_extension, compress, local_only):
@@ -2263,11 +2328,15 @@ class FileUploadView(APIView):
         messages_dir = os.path.join(settings.MEDIA_ROOT, 'messages')
         os.makedirs(messages_dir, exist_ok=True)
         file_path = os.path.join('messages', f"{uuid.uuid4()}{file_extension}")
+        import hashlib
+        digest = hashlib.sha256()
         with open(os.path.join(settings.MEDIA_ROOT, file_path), 'wb+') as destination:
             for chunk in file.chunks():
+                digest.update(chunk)
                 destination.write(chunk)
-
-        return _finalize_upload(request, file_path, file.name, file.size, file_extension)
+        compress = (request.data.get('compress') or '').lower()
+        local_only = str(request.data.get('local') or '').lower() in ('1', 'true', 'yes')
+        return Response(_finalize_dedup(file_path, file.name, file.size, file_extension, compress, local_only, sha=digest.hexdigest()))
 
 
 class ChunkUploadView(APIView):
@@ -2432,7 +2501,7 @@ class ChunkUploadView(APIView):
         import json as _json
         from django.db import close_old_connections
         try:
-            result = _finalize_file(file_path, original_name, size, file_extension, compress, local_only)
+            result = _finalize_dedup(file_path, original_name, size, file_extension, compress, local_only)
             with open(self._state(upload_id, 'done.json'), 'w', encoding='utf-8') as f:
                 _json.dump(result, f, ensure_ascii=False)
         except Exception as e:
@@ -5735,20 +5804,32 @@ class PlaylistTrackUploadView(APIView):
         rel = os.path.join("music", f"{uuid.uuid4()}{ext}")
         full = os.path.join(settings.MEDIA_ROOT, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
+        import hashlib
+        digest = hashlib.sha256()
         with open(full, "wb+") as dst:
             for chunk in f.chunks():
+                digest.update(chunk)
                 dst.write(chunk)
         duration, tag_title, tag_artist = _probe_audio(full)
         if not duration:
             os.remove(full)
             return Response({"error": "Не удалось прочитать файл — это точно аудио?"}, status=400)
-        url = f"/media/{rel}"
-        if s3_enabled():
-            try:
-                url = s3_upload(full, rel)
-                os.remove(full)
-            except Exception:
-                logger.exception("music upload: S3 не принял файл — оставляю локально")
+        # Тот же файл уже загружали (с этого или другого аккаунта) — в
+        # хранилище второй раз не кладём, трек ссылается на первый.
+        sha = digest.hexdigest()
+        known = _blob_lookup(sha, "", f.name or "")
+        if known:
+            os.remove(full)
+            url = known["file_url"]
+        else:
+            url = f"/media/{rel}"
+            if s3_enabled():
+                try:
+                    url = s3_upload(full, rel)
+                    os.remove(full)
+                except Exception:
+                    logger.exception("music upload: S3 не принял файл — оставляю локально")
+            _blob_store(sha, "", {"file_url": url, "file_size": f.size})
         title = ((request.data.get("title") or "").strip() or tag_title
                  or re.sub(r"\.[^.]+$", "", f.name or "") or "Без названия")[:200]
         artist = ((request.data.get("artist") or "").strip() or tag_artist)[:200]

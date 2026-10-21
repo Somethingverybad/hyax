@@ -2251,3 +2251,64 @@ class StationShuffleTests(TestCase):
     def test_listener_cannot_shuffle(self):
         sid = self.start()
         self.assertEqual(self.control(sid, who=self.fan, action="shuffle", on=True).status_code, 404)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), CHUNK_UPLOAD_SYNC=True)
+class UploadDedupTests(TestCase):
+    """Одинаковое содержимое — один файл в хранилище (FileBlob): повтор отдаёт
+    тот же адрес и не плодит копий; другое содержимое — другой файл."""
+
+    def setUp(self):
+        self.me = make_user("dup_a")
+        self.other = make_user("dup_b")
+
+    def upload(self, who, name, data, **extra):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return client_for(who).post("/api/upload/", {"file": SimpleUploadedFile(name, data, content_type="image/png"), **extra}, format="multipart")
+
+    def files_in(self, sub):
+        import os
+        from django.conf import settings
+        d = os.path.join(settings.MEDIA_ROOT, sub)
+        return sorted(os.listdir(d)) if os.path.isdir(d) else []
+
+    def test_same_content_reuses_url_even_across_users(self):
+        from .models import FileBlob
+        data = b"\x89PNG" + b"\x01" * 4096
+        before = len(self.files_in("messages"))
+        r1 = self.upload(self.me, "a.png", data)
+        r2 = self.upload(self.other, "same-but-renamed.png", data)
+        self.assertEqual((r1.status_code, r2.status_code), (200, 200))
+        self.assertEqual(r1.data["file_url"], r2.data["file_url"])
+        self.assertEqual(r2.data["file_name"], "same-but-renamed.png")
+        self.assertEqual(r2.data["file_size"], len(data))
+        self.assertEqual(len(self.files_in("messages")) - before, 1)
+        self.assertEqual(FileBlob.objects.count(), 1)
+
+    def test_different_content_is_separate(self):
+        before = len(self.files_in("messages"))
+        r1 = self.upload(self.me, "a.png", b"\x89PNG" + b"\x01" * 4096)
+        r2 = self.upload(self.me, "a.png", b"\x89PNG" + b"\x02" * 4096)
+        self.assertNotEqual(r1.data["file_url"], r2.data["file_url"])
+        self.assertEqual(len(self.files_in("messages")) - before, 2)
+
+    def test_local_only_is_not_recorded(self):
+        from .models import FileBlob
+        r = self.upload(self.me, "tmp.png", b"\x89PNG" + b"\x03" * 2048, local="1")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(FileBlob.objects.count(), 0)
+
+    def test_chunked_upload_dedups_against_plain(self):
+        import uuid as _u
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        data = b"\x89PNG" + b"\x07" * 5000
+        before = len(self.files_in("messages"))
+        first = self.upload(self.me, "a.png", data)
+        uid = _u.uuid4().hex
+        r = client_for(self.other).post("/api/upload/chunk/", {
+            "upload_id": uid, "index": 0, "total": 1, "name": "copy.png",
+            "chunk": SimpleUploadedFile("part", data, content_type="application/octet-stream"),
+        }, format="multipart")
+        self.assertIn(r.status_code, (200, 202), r.data)
+        self.assertEqual(r.data["file_url"], first.data["file_url"])
+        self.assertEqual(len(self.files_in("messages")) - before, 1)
