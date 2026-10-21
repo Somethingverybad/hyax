@@ -38,7 +38,9 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
     try {
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
       const { Share } = await import("@capacitor/share");
-      const res = await Filesystem.downloadFile({ url, path, directory: Directory.Cache });
+      // recursive: папки share/ в кэше может не быть (система чистит кэш) —
+      // без неё запись падала с ENOENT (баг-репорт 553367b8).
+      const res = await Filesystem.downloadFile({ url, path, directory: Directory.Cache, recursive: true });
       toast.dismiss(id);
       const uri = res.path ? (await Filesystem.getUri({ path, directory: Directory.Cache })).uri : null;
       if (!uri) throw new Error("no path");
