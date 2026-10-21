@@ -3,7 +3,6 @@
 
     manage.py dedup_media                 # только посчитать и показать
     manage.py dedup_media --apply         # переписать ссылки на один экземпляр и удалить лишние
-    manage.py dedup_media --apply --orphans   # удалить и сирот (объекты без ссылок в базе)
     manage.py dedup_media --prefix messages/ --prefix music/   # по умолчанию эти два
 
 Как ищем одинаковое: ETag объекта, загруженного одним куском, — это MD5
@@ -12,8 +11,11 @@
 с кем-то ещё. Канонический экземпляр группы — самый старый по дате в бакете.
 
 Ссылки в базе: все текстовые поля моделей chat, чьё имя кончается на _url или
-равно sticker_file, со значением s3://<ключ>. Удаляем только объекты, на
-которые после переписывания не осталось ни одной ссылки.
+равно sticker_file, со значением s3://<ключ>. Адрес вложения секретного чата
+лежит внутри шифротекста, в JSON-полях (кнопки ботов, свои реакции, темы) —
+тоже не разглядеть, поэтому «без ссылок» не значит «не нужен»: удаляем только
+те дубли, чьи ссылки мы сами переписали на канонический экземпляр. Сироты
+лишь считаются.
 """
 from __future__ import annotations
 
@@ -43,7 +45,6 @@ class Command(BaseCommand):
 
     def add_arguments(self, p):
         p.add_argument("--apply", action="store_true", help="переписать ссылки и удалить лишние объекты")
-        p.add_argument("--orphans", action="store_true", help="с --apply: удалить и объекты без ссылок в базе")
         p.add_argument("--prefix", action="append", help="префиксы в бакете (по умолчанию messages/ и music/)")
         p.add_argument("--limit", type=int, default=0, help="показать не больше N групп")
 
@@ -103,15 +104,21 @@ class Command(BaseCommand):
             self.stdout.write(f"многочастных сравнили по sha256: {hashed}")
         groups = [sorted(keys, key=lambda k: objs[k]["at"]) for keys in by_sig.values() if len(keys) > 1]
         groups.sort(key=lambda g: -objs[g[0]]["size"] * (len(g) - 1))
-        dup_bytes = sum(objs[g[0]]["size"] * (len(g) - 1) for g in groups)
-        dup_count = sum(len(g) - 1 for g in groups)
-        self.stdout.write(f"групп дублей: {len(groups)}, лишних объектов: {dup_count}, освободится {dup_bytes / 1e9:.2f} ГБ")
+        # Канонический — самый старый из тех, на кого есть ссылки (иначе просто самый старый).
+        for g in groups:
+            g.sort(key=lambda k: (not refs.get(k), objs[k]["at"]))
+        removable = [(g[0], [k for k in g[1:] if refs.get(k)]) for g in groups]
+        dup_bytes = sum(objs[k]["size"] for _, rest in removable for k in rest)
+        dup_count = sum(len(rest) for _, rest in removable)
+        blind = sum(1 for g in groups for k in g[1:] if not refs.get(k))
+        self.stdout.write(f"групп дублей: {len(groups)}, лишних со ссылками (можно удалить): {dup_count}, освободится {dup_bytes / 1e9:.2f} ГБ; "
+                          f"лишних без ссылок (не трогаем — могут быть вложения секретных чатов): {blind}")
         for g in groups[: o["limit"] or 15]:
             self.stdout.write(f"  {objs[g[0]]['size'] / 1e6:7.1f} МБ × {len(g)}  {g[0]}  (ссылок: {sum(len(refs.get(k, [])) for k in g)})")
 
         orphans = [k for k in objs if k not in refs]
         orphan_bytes = sum(objs[k]["size"] for k in orphans)
-        self.stdout.write(f"сирот (без ссылок в базе): {len(orphans)}, {orphan_bytes / 1e9:.2f} ГБ")
+        self.stdout.write(f"без ссылок в базе: {len(orphans)}, {orphan_bytes / 1e9:.2f} ГБ (секретные чаты, JSON-поля, удалённые аккаунты — не удаляем)")
 
         if not o["apply"]:
             self.stdout.write("ничего не менял: запустите с --apply")
@@ -120,20 +127,17 @@ class Command(BaseCommand):
         # 4. Применить: ссылки → канонический ключ, лишнее удалить.
         freed = 0
         deleted = 0
-        for g in groups:
-            canon, rest = g[0], g[1:]
+        rewritten = 0
+        for canon, rest in removable:
+            if not rest:
+                continue
             with transaction.atomic():
                 for key in rest:
                     for m, field, pk in refs.get(key, []):
                         m.objects.filter(pk=pk).update(**{field: f"s3://{canon}"})
+                        rewritten += 1
             for key in rest:
                 s3.delete_object(Bucket=bucket, Key=key)
                 freed += objs[key]["size"]
                 deleted += 1
-        self.stdout.write(f"дубли: переписано ссылок {sum(len(refs.get(k, [])) for g in groups for k in g[1:])}, удалено {deleted} объектов, {freed / 1e9:.2f} ГБ")
-        if o["orphans"]:
-            of = 0
-            for key in orphans:
-                s3.delete_object(Bucket=bucket, Key=key)
-                of += objs[key]["size"]
-            self.stdout.write(f"сироты: удалено {len(orphans)} объектов, {of / 1e9:.2f} ГБ")
+        self.stdout.write(f"дубли: переписано ссылок {rewritten}, удалено {deleted} объектов, {freed / 1e9:.2f} ГБ")
