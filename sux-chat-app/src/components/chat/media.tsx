@@ -560,7 +560,9 @@ export const AlbumGrid = ({ items, localMap, onOpen, className }: {
   // содержимое, и пока фото не загружены, сетка схлопывалась в ноль — а
   // нулевую ячейку useNearView считает невидимой и не грузит (замкнутый
   // круг: после возврата в чат альбом оставался пустым, баг-репорт 567b8940).
-  <div className={cn("msg-media grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,72vw)]", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
+  // Но не шире внутренности пузыря: тот занимает 72% ленты минус свои отступы
+  // (≈72vw − 42px), иначе сетка торчала из пузыря ступенькой (баг-репорт 7b7111f4).
+  <div className={cn("msg-media grid gap-0.5 rounded-lg overflow-hidden w-[min(320px,calc(72vw-42px))] max-w-full", items.length >= 5 ? "grid-cols-3" : "grid-cols-2", className)}>
     {items.map((it) => <AlbumCell key={it.id} item={it} localMap={localMap} onOpen={onOpen} />)}
   </div>
 );
