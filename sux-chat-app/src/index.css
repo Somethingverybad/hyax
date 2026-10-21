@@ -1323,6 +1323,12 @@ textarea,
    пузырь шире экрана: overflow-wrap: break-word не влияет на min-content
    флекс-элемента, anywhere — влияет (баг-репорт 0e17e00b). */
 .bubble-own, .bubble-in { min-width: 0; overflow-wrap: anywhere; }
+/* …и не только у последнего в группе, а у любого пузыря. Абзац внутри несёт
+   break-words (overflow-wrap: break-word) — он перекрывает anywhere с пузыря,
+   и min-content снова считался по неразрывной строке: список адресов через
+   запятую уезжал за левый край экрана (баг-репорт 062de607). */
+.msg-bubble { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.msg-bubble .break-words { overflow-wrap: anywhere; }
 .fmt-code, .fmt-pre { overflow-wrap: anywhere; word-break: break-word; }
 .fmt-code {
   white-space: pre-wrap;
