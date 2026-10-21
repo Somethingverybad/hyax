@@ -39,7 +39,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
@@ -1412,7 +1412,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                                 {!a.remote && <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>}
                               </button>
                             ) : a.mode === "video" ? (
-                              <video src={a.url} muted playsInline className="w-full h-full object-cover" />
+                              <AttachVideoPreview src={a.url} />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-center">
                                 {a.mode === "audio" ? <Music2 className="w-5 h-5 text-primary" /> : <FileText className="w-5 h-5 text-primary" />}
@@ -1502,7 +1502,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                       {!a.remote && <span className="absolute bottom-0.5 left-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"><Pencil className="w-3 h-3" /></span>}
                     </button>
                   ) : a.mode === "video" ? (
-                    <video src={a.url} muted playsInline className="w-full h-full object-cover" />
+                    <AttachVideoPreview src={a.url} />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-1 text-center">
                       {a.mode === "audio" ? <Music2 className="w-5 h-5 text-primary" /> : <FileText className="w-5 h-5 text-primary" />}

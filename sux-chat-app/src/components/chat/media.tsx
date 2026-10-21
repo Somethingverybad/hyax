@@ -324,6 +324,30 @@ const VideoViewer = ({ src, poster, onClose }: { src: string; poster?: string | 
   );
 };
 
+/** Превью выбранного видео в панели ввода (до отправки): Android WebView не
+ *  декодирует кадр, пока видео не запустят, — без подталкивания перемоткой
+ *  оставалась пустая серая коробка (баг-репорт 1abb3da6). Тот же приём, что у
+ *  VideoThumb в ленте, плюс значок «play». */
+export const AttachVideoPreview = ({ src }: { src: string }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  return (
+    <>
+      <video
+        ref={ref}
+        src={src}
+        muted
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={() => { const el = ref.current; if (el && el.currentTime === 0) { try { el.currentTime = 0.05; } catch { /* кадр покажется при просмотре */ } } }}
+        className="w-full h-full object-cover bg-black"
+      />
+      <span className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden>
+        <span className="w-7 h-7 rounded-full bg-black/55 text-white flex items-center justify-center"><Play className="w-3.5 h-3.5 ml-0.5" fill="currentColor" /></span>
+      </span>
+    </>
+  );
+};
+
 /** Превью видео в ленте: постер с сервера, а без него (старые видео) — первый
  *  кадр, к которому WebKit нужно подтолкнуть перемоткой: сам он до тапа ничего
  *  не декодирует, и раньше здесь до тапа висела заглушка. Тап — VideoViewer. */
