@@ -288,7 +288,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
           }}
         >
           {prevUrl && (
-            <div className="absolute inset-0 flex items-center justify-center" style={{ left: "-100%" }} aria-hidden>
+            <div className="absolute top-0 bottom-0 w-full flex items-center justify-center" style={{ left: "-100%" }} aria-hidden>
               <img src={prevUrl} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} />
             </div>
           )}
@@ -310,7 +310,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
             )}
           </div>
           {nextUrl && (
-            <div className="absolute inset-0 flex items-center justify-center" style={{ left: "100%" }} aria-hidden>
+            <div className="absolute top-0 bottom-0 w-full flex items-center justify-center" style={{ left: "100%" }} aria-hidden>
               <img src={nextUrl} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} />
             </div>
           )}
