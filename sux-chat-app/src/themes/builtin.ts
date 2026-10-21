@@ -268,7 +268,7 @@ export const MINT_DARK: ThemeDef = {
     // В тёмной — наоборот: свои светлее, входящие темнее.
     bubbleOwn: "#789184",
     bubbleOwnFg: "#FFFFFF",
-    bubbleIn: "#2F5B53",
+    bubbleIn: "#3B6B62",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#1C2420",
   },

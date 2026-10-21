@@ -54,6 +54,10 @@
 }
 .mint-head > :first-child { justify-self: start; }
 .mint-head > :last-child { justify-self: end; }
+/* Шапка чата: средний элемент (островок) — по центру промежутка между
+   соседями, а не экрана: кнопка «назад» с бейджем шире аватара. */
+.mint-head-between { display: flex; align-items: center; gap: 8px; }
+.mint-head-between > :nth-child(2) { margin-left: auto; margin-right: auto; }
 .mint-btn { height: 33px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.7px; line-height: 1; }
 .mint-round { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; }
 
