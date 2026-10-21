@@ -158,16 +158,27 @@ class Command(BaseCommand):
         from django.utils import timezone
         # Весь текст базы одной строкой: все Text/Char/JSON-поля всех моделей chat.
         parts = []
-        for m in apps.get_app_config("chat").get_models():
+        scanned = 0
+        for m in apps.get_models():
             names = [f.name for f in m._meta.get_fields()
                      if isinstance(f, (models.TextField, models.CharField, models.JSONField))]
             if not names:
                 continue
             for row in m.objects.values_list(*names).iterator(chunk_size=2000):
+                scanned += 1
                 for v in row:
                     if v:
                         parts.append(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
         haystack = "\n".join(parts)
+        # Самопроверка поиска: каждый ключ, у которого ссылки точно есть, обязан
+        # находиться подстрокой. Не нашёлся хоть один — поиск дырявый, не удаляем.
+        known = [k for k in objs if refs.get(k)]
+        missed = [k for k in known if os.path.basename(k) not in haystack]
+        self.stdout.write(f"самопроверка: строк просмотрено {scanned}, моделей {len(list(apps.get_models()))}; "
+                          f"известных ключей {len(known)}, не найдено подстрокой {len(missed)}")
+        if missed:
+            self.stderr.write("самопроверка не прошла — удаление отключено; примеры: " + ", ".join(missed[:3]))
+            o["apply_orphans"] = False
         try:
             with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "private", "s3_orphans.log"), encoding="utf-8") as f:
                 orphan_log = f.read()
