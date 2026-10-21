@@ -316,6 +316,17 @@ export function stop() {
   emit();
 }
 
+// Запустили видео со звуком (видеофайл в чате, треугольник, пост) — музыка и
+// эфир умолкают: два звука разом не нужны. Беззвучные ролики (стикеры,
+// обои, превью) и видео звонка (поток камеры, srcObject) не в счёт.
+if (typeof document !== "undefined") {
+  document.addEventListener("play", (e) => {
+    const v = e.target;
+    if (!(v instanceof HTMLVideoElement) || v.muted || v.srcObject) return;
+    if (state.playing) void toggle();
+  }, true);
+}
+
 export const fmtTime = (sec: number) => {
   const s = Math.max(0, Math.floor(sec || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;

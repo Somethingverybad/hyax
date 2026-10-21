@@ -266,8 +266,40 @@ const VideoViewer = ({ src, poster, onClose }: { src: string; poster?: string | 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  // Свайп вниз закрывает, как у картинок (ImageViewer): видео едет за пальцем,
+  // фон светлеет; не дотянули — возвращается. Нижняя полоса — системные
+  // кнопки плеера (перемотка, звук), там жест не начинаем.
+  const [drag, setDrag] = useState(0);
+  const pan = useRef<{ id: number; y: number; at: number; on: boolean } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "mouse") return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    if (e.clientY > r.bottom - 72) return;
+    pan.current = { id: e.pointerId, y: e.clientY, at: performance.now(), on: false };
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const p = pan.current;
+    if (!p || p.id !== e.pointerId) return;
+    const dy = e.clientY - p.y;
+    if (!p.on && dy > 12) p.on = true;
+    if (p.on) setDrag(Math.max(0, dy));
+  };
+  const onUp = (e: React.PointerEvent) => {
+    const p = pan.current;
+    if (!p || p.id !== e.pointerId) return;
+    pan.current = null;
+    const dy = e.clientY - p.y;
+    const speed = dy / Math.max(1, performance.now() - p.at);
+    if (p.on && (dy > 110 || (dy > 40 && speed > 0.6))) { onClose(); return; }
+    setDrag(0);
+  };
   return createPortal(
-    <div className="fixed inset-0 z-[85] bg-black flex items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[85] flex items-center justify-center"
+      style={{ backgroundColor: `rgba(0,0,0,${1 - Math.min(drag / 450, 0.7)})`, transition: pan.current?.on ? "none" : "background-color 180ms ease-out" }}
+      onClick={onClose}
+      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+    >
       <video
         src={src}
         poster={poster || undefined}
@@ -275,13 +307,14 @@ const VideoViewer = ({ src, poster, onClose }: { src: string; poster?: string | 
         autoPlay
         playsInline
         className="w-full max-h-[100dvh] object-contain"
+        style={{ transform: `translateY(${drag}px) scale(${1 - Math.min(drag / 1600, 0.15)})`, transition: pan.current?.on ? "none" : "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)" }}
         onClick={(e) => e.stopPropagation()}
       />
       <button
         type="button"
         onClick={onClose}
         className="absolute left-3 w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center active:opacity-70"
-        style={{ top: "calc(var(--sat) + 0.5rem)" }}
+        style={{ top: "calc(var(--sat) + 0.5rem)", opacity: drag ? Math.max(0, 1 - drag / 120) : 1 }}
         aria-label={tr("Закрыть")}
       >
         <X className="w-6 h-6" />
