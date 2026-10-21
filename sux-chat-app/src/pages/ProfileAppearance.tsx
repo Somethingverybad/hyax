@@ -9,7 +9,8 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { getSetting, setSetting } from "@/lib/settings";
 import { api } from "@/api/client";
-import { BUILTIN_THEMES, setInstalledThemes, setTheme, useInstalledThemes, useTheme } from "@/lib/theme";
+import { BUILTIN_THEMES, setInstalledThemes, setTheme, useInstalledThemes, useTheme, setThemeSync, useThemeSync } from "@/lib/theme";
+import { hasBootAnim, isBootAnimOn, setBootAnimOn } from "@/lib/bootAnim";
 import { normalizeTheme } from "@/themes/engine";
 import { themeLink } from "@/lib/share";
 import type { ThemeDef } from "@/themes/types";
@@ -155,10 +156,43 @@ const ProfileAppearance = () => {
           {tr("Выбор запоминается в профиле и применяется на всех ваших устройствах. Своей темой можно поделиться ссылкой.")}
         </p>
 
+        <ThemeSyncCard />
         <SectionsCard />
         <DeleteAnimCard />
       </div>
     </div>
+  );
+};
+
+/** Настройки этого устройства, не аккаунта: одна тема на всех устройствах или
+ *  своя здесь (lib/theme), заставка при запуске (lib/bootAnim — только в приложениях). */
+const ThemeSyncCard = () => {
+  const on = useThemeSync();
+  const [boot, setBoot] = useState(isBootAnimOn);
+  return (
+    <>
+      <p className="px-1 pt-2 text-small text-subtle">{tr("На этом устройстве")}</p>
+      <SettingsCard>
+        <SettingsRow
+          label={tr("Одна тема на всех устройствах")}
+          hint={on ? tr("Сменили тему здесь — сменится и на остальных") : tr("Выключено: у этого устройства своя тема, смены на других его не трогают")}
+          trailing={
+            <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr("Одна тема на всех устройствах")}
+              checked={on} onChange={(e) => setThemeSync(e.target.checked)} />
+          }
+        />
+        {hasBootAnim() && (
+          <SettingsRow
+            label={tr("Анимация при запуске")}
+            hint={tr("Логотип при открытии приложения")}
+            trailing={
+              <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr("Анимация при запуске")}
+                checked={boot} onChange={(e) => { setBootAnimOn(e.target.checked); setBoot(e.target.checked); }} />
+            }
+          />
+        )}
+      </SettingsCard>
+    </>
   );
 };
 

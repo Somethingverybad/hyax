@@ -1766,6 +1766,12 @@ const en: Record<string, string> = {
   "Скрыто. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы»": "Hidden. You can bring it back in Profile → Appearance → Sections",
   "Вкладка и строка Стены пропадут. Вернуть можно в «Профиль» → «Внешний вид» → «Разделы».": "The Wall tab and row will disappear. You can bring them back in Profile → Appearance → Sections.",
   "Разделы": "Sections",
+  "На этом устройстве": "On this device",
+  "Анимация при запуске": "Launch animation",
+  "Логотип при открытии приложения": "The logo when the app opens",
+  "Одна тема на всех устройствах": "One theme on all devices",
+  "Сменили тему здесь — сменится и на остальных": "Change the theme here and it changes everywhere",
+  "Выключено: у этого устройства своя тема, смены на других его не трогают": "Off: this device keeps its own theme, changes elsewhere don't affect it",
   "Общая лента: вкладка внизу и строка в списке чатов": "The public feed: the bottom tab and a row in the chat list",
   "Идеи и предложения разработчику — строка в списке чатов": "Ideas and suggestions for the developer — a row in the chat list",
   // Полный проход по интерфейсу (2026-10-14)

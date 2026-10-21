@@ -34,7 +34,9 @@
          генератор — design/splash/make_lottie.py) на белом — системный сплэш тоже
          белый, переход бесшовный. Уходит, когда анимация доиграла и приложение
          отрисовалось (событие hyax:ready из App.tsx); не дольше 10 с на случай
-         сбоя. Только в приложениях: в браузере плеер даже не грузится. -->
+         сбоя. Только в приложениях: в браузере плеер даже не грузится.
+         Выключена в настройках («Внешний вид», hyax:boot-anim = 0) — просто фон
+         темы до первого кадра приложения, без логотипа. -->
     <div id="boot-splash" style="position:fixed;inset:0;z-index:2147483647;background:#F4F8F1;display:none;align-items:center;justify-content:center;transition:opacity 280ms ease-out">
       <div id="boot-anim" style="width:min(100vw,520px);height:min(100vw,520px);pointer-events:none"></div>
     </div>
@@ -70,6 +72,8 @@
         var H = cap && cap.Plugins && cap.Plugins.Haptics;
         function buzz(kind) { try { if (H && H.impact) H.impact({ style: kind === "medium" ? "MEDIUM" : "LIGHT" }); } catch (e) {} }
         var ended = false, ready = false, gone = false;
+        var animOff = false;
+        try { animOff = localStorage.getItem("hyax:boot-anim") === "0"; } catch (e) {}
         function done() {
           if (gone || !ended || !ready) return;
           gone = true; el.style.opacity = "0";
@@ -79,6 +83,7 @@
         window.addEventListener("hyax:ready", function () { ready = true; done(); });
         setTimeout(finish, 7000);
         setTimeout(function () { ended = true; ready = true; done(); }, 10000);
+        if (animOff) { finish(); return; }
         var s = document.createElement("script");
         s.src = "./lottie_light.min.js";
         s.onerror = finish;

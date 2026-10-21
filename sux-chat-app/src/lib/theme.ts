@@ -16,6 +16,9 @@ import type { ThemeDef } from "@/themes/types";
 const KEY_ID = "hyax-theme";
 const KEY_DEF = "hyax-theme-def";
 const KEY_LIST = "hyax-themes";
+/** Одна тема на всех устройствах (по умолчанию) или своя на этом: настройка
+ *  устройства, не аккаунта — хранится только здесь. */
+const KEY_SYNC = "hyax-theme-sync";
 
 const listeners = new Set<() => void>();
 let current: ThemeDef = DEFAULT_THEME;
@@ -95,14 +98,51 @@ let legacyMigrated = false;
 export function getTheme(): ThemeDef { return current; }
 export function getInstalledThemes(): ThemeDef[] { return installed; }
 
+/** Синхронизация темы между устройствами включена? (по умолчанию — да) */
+export function isThemeSync(): boolean {
+  try { return localStorage.getItem(KEY_SYNC) !== "0"; } catch { return true; }
+}
+/** Включили — тема этого устройства становится общей; выключили — устройство
+ *  живёт своей темой, чужие смены его не трогают. */
+export function setThemeSync(on: boolean) {
+  write(KEY_SYNC, on ? "1" : "0");
+  emit();
+  if (on) void import("@/api/client").then(({ api }) => api.setActiveTheme(current.id)).catch(() => {});
+}
+export function useThemeSync(): boolean {
+  return useSyncExternalStore(subscribe, isThemeSync, () => true);
+}
+
+/** Смена темы — с переходом: новая раскрывается кругом из центра поверх
+ *  старой (View Transitions), а где этого нет — цвета перетекают (класс
+ *  theme-switch в index.css). Кто выключил анимации — без эффектов. */
+function repaint(t: ThemeDef) {
+  const root = document.documentElement;
+  const still = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const vt = (document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } }).startViewTransition;
+  if (still) { paint(t); return; }
+  if (typeof vt === "function") {
+    root.classList.add("theme-vt");
+    try {
+      vt.call(document, () => paint(t)).finished.finally(() => root.classList.remove("theme-vt"));
+      return;
+    } catch { root.classList.remove("theme-vt"); }
+  }
+  root.classList.add("theme-switch");
+  paint(t);
+  window.setTimeout(() => root.classList.remove("theme-switch"), 520);
+}
+
 /** Применить тему. remote=false — не сообщать серверу (значение пришло с него). */
 export function setTheme(t: ThemeDef, remote = true) {
+  const changed = t.id !== current.id;
+  const prev = current;
   current = t;
   write(KEY_ID, t.id);
   write(KEY_DEF, t);
-  paint(t);
+  if (changed && prev !== t) repaint(t); else paint(t);
   emit();
-  if (remote) void import("@/api/client").then(({ api }) => api.setActiveTheme(t.id)).catch(() => {});
+  if (remote && isThemeSync()) void import("@/api/client").then(({ api }) => api.setActiveTheme(t.id)).catch(() => {});
 }
 
 /** Заменить список установленных (ответ сервера). Активная пользовательская
@@ -119,7 +159,7 @@ export function setInstalledThemes(list: ThemeDef[]) {
 
 /** Профиль пришёл с сервера: на этом устройстве ставим ту же тему. */
 export async function syncThemeFromProfile(activeId: string | null | undefined) {
-  if (!activeId) return;
+  if (!activeId || !isThemeSync()) return;
   const known = builtinById(activeId) || installed.find((t) => t.id === activeId);
   // На сервере записана прежняя встроенная тема — переводим на «Мяту» и там.
   if (known && known.id !== activeId) { if (known.id !== current.id || legacyMigrated) setTheme(known, true); legacyMigrated = false; return; }
