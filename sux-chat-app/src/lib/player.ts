@@ -28,6 +28,9 @@ export interface Track {
    *  в «Мою музыку» не добавляется, скорость — та, что была в пузыре. */
   kind?: "voice";
   rate?: number;
+  /** Чат, из которого голосовое: пока он открыт, полоску плеера не показываем —
+   *  управление в самом пузыре (ChatWindow.VoiceBubble). */
+  chatId?: string;
 }
 
 /** Эфир, который сейчас слушаем (@/lib/radio): трек и место в нём задаёт
@@ -57,6 +60,9 @@ interface State {
    *  трек идёт дальше по расписанию (беззвучно), и следующий не включит звук
    *  сам; playing при этом false — кнопки показывают «играть». */
   liveMuted: boolean;
+  /** Какой чат сейчас открыт (ChatWindow): голосовое из него полоской плеера не
+   *  показываем — им управляет пузырь в ленте. */
+  openChat: string | null;
 }
 
 const VOLUME_KEY = "hyax:volume";
@@ -66,7 +72,7 @@ const readVolume = () => {
 };
 
 let state: State = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-                     shuffle: false, repeat: "off", volume: readVolume(), live: null, liveMuted: false };
+                     shuffle: false, repeat: "off", volume: readVolume(), live: null, liveMuted: false, openChat: null };
 // Что уже играли в перемешанном порядке: чтобы не повторять одно и то же,
 // пока не кончится очередь.
 let heard = new Set<number>();
@@ -103,6 +109,10 @@ let source: QueueSource | null = null;
 export const queueSource = () => source;
 
 export const usePlayer = () => useSyncExternalStore(subscribe, snapshot, snapshot);
+/** Срез состояния примитивом: подписчик перерисовывается, только когда меняется он,
+ *  а не на каждый timeupdate (пузыри голосовых в ленте). */
+export const usePlayerSlice = <T extends string | number | boolean | null | undefined>(pick: (s: State) => T) =>
+  useSyncExternalStore(subscribe, () => pick(state), () => pick(state));
 export const playerState = () => state;
 
 export const currentTrack = (): Track | null =>
@@ -147,6 +157,20 @@ const attach = (el: HTMLAudioElement) => {
 // включить другой трек. В эфире индекс всегда 0 — сверяем по номеру.
 let startSeq = 0;
 
+/** Музыка, которую прервало голосовое: когда цепочка голосовых доиграет,
+ *  вернёмся к ней на то же место (как в мессенджерах). Закрыли плеер или
+ *  включили другую музыку — забываем. */
+let parked: { queue: Track[]; index: number; time: number; source: QueueSource | null; playing: boolean } | null = null;
+
+async function resumeParked() {
+  const p = parked!;
+  parked = null;
+  state.queue = p.queue;
+  source = p.source;
+  await start(p.index, () => p.time);
+  if (!p.playing) audio?.pause();
+}
+
 async function start(index: number, at?: () => number) {
   const t = state.queue[index];
   if (!t) return;
@@ -184,6 +208,13 @@ async function start(index: number, at?: () => number) {
 /** Поставить очередь и начать с нужного трека. Повторный тап по играющему — пауза.
  *  source — из какого плейлиста очередь; at — с какой секунды (продолжить, где остановился). */
 export async function playQueue(queue: Track[], index: number, opts?: { source?: QueueSource; at?: number }) {
+  const voices = queue.length > 0 && queue.every((t) => t.kind === "voice");
+  const cur = currentTrack();
+  if (voices && !state.live && cur && cur.kind !== "voice") {
+    parked = { queue: state.queue, index: state.index, time: state.time, source, playing: state.playing };
+  } else if (!voices) {
+    parked = null;
+  }
   dropLive();
   const same = currentTrack()?.id === queue[index]?.id;
   state.queue = queue;
@@ -275,8 +306,23 @@ export async function next(auto = false) {
   // человек нажимает, чтобы сменить трек, а не услышать тот же.
   if (auto && state.repeat === "one") { await start(state.index); return; }
   const i = nextIndex();
-  if (i === null) stop();
-  else await start(i);
+  if (i === null) {
+    if (parked) await resumeParked();
+    else stop();
+  } else await start(i);
+}
+
+/** ChatWindow сообщает, какой чат открыт (null — вышли). */
+export function setOpenChat(chatId: string | null) {
+  if (state.openChat === chatId) return;
+  state = { ...state, openChat: chatId };
+  emit();
+}
+
+/** Скорость голосовых (общая для всех пузырей): текущему — сразу, остальным в очереди — при запуске. */
+export function setRate(rate: number) {
+  for (const t of state.queue) if (t.kind === "voice") t.rate = rate;
+  if (audio && currentTrack()?.kind === "voice") { audio.defaultPlaybackRate = rate; audio.playbackRate = rate; }
 }
 
 export function toggleShuffle() {
@@ -313,12 +359,13 @@ export function seek(sec: number) {
 
 export function stop() {
   dropLive();
+  parked = null;
   source = null;
   audio?.pause();
   if (audio) audio.src = "";
   // Перемешивание и повтор — настройки человека, они переживают остановку.
   state = { queue: [], index: -1, playing: false, time: 0, duration: 0,
-            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume, live: null, liveMuted: false };
+            shuffle: state.shuffle, repeat: state.repeat, volume: state.volume, live: null, liveMuted: false, openChat: state.openChat };
   heard = new Set();
   emit();
 }

@@ -73,19 +73,22 @@ const MiniPlayer = () => {
   // Десктоп: на экранах с панелью разделов слева плеер стоит в ней (RailPlayer).
   const desktop = useIsMobile() === false;
   const onMusicTab = pathname.startsWith("/music") || (desktop && /^\/(chat|wall|saved|profile)\/?$/.test(pathname));
+  // Голосовое из открытого чата: им управляет сам пузырь в ленте, полоска не нужна —
+  // появится, когда из чата выйдут (lib/player: Track.chatId).
+  const inItsChat = !!t && t.kind === "voice" && !!t.chatId && s.openChat === t.chatId;
 
   // Высота полосы — наружу: по ней сдвигается закреплённое сообщение.
   useEffect(() => {
     const root = document.documentElement;
     // На «Музыке» полоски нет — и места она не занимает (иначе виджет
     // свёрнутого звонка висел бы ниже пустоты).
-    if (!t || onMusicTab) { root.style.setProperty("--player-h", "0px"); return; }
+    if (!t || onMusicTab || inItsChat) { root.style.setProperty("--player-h", "0px"); return; }
     const h = box.current?.offsetHeight || 56;
     root.style.setProperty("--player-h", `${h}px`);
     return () => { root.style.setProperty("--player-h", "0px"); };
-  }, [t?.id, !!t, onMusicTab]);
+  }, [t?.id, !!t, onMusicTab, inItsChat]);
 
-  if (!t || onMusicTab) return null;
+  if (!t || onMusicTab || inItsChat) return null;
 
   const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
 

@@ -69,7 +69,7 @@ import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
 import type { PlaylistTrack } from "@/api/client";
-import { currentTrack, playQueue, playerState, toggle as playerToggle, type Track } from "@/lib/player";
+import { currentTrack, isCurrent, playQueue, playerState, seek as playerSeek, setOpenChat, setRate as playerSetRate, subscribePlayer, toggle as playerToggle, usePlayerSlice, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
@@ -553,35 +553,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const activityText = activityLabel(useChatActivity(chatId), isGroup);
   // Ушли из чата — «печатает» там больше не горит.
   useEffect(() => () => reportActivity(chatId, "stop"), [chatId]);
-  // Ушли из чата, пока играло голосовое, — оно доигрывает в общем плеере
-  // (MiniPlayer / RailPlayer) с того же места и той же скоростью, а за ним
-  // следующие голосовые ленты, как цепочка в чате (playNextVoice). Пузырь
-  // мог размонтироваться раньше нас (detachedVoice) или ещё играть (activeVoice).
-  useEffect(() => () => {
-    const d = detachedVoice;
-    detachedVoice = null;
-    const from = activeVoice && activeVoiceId && !activeVoice.paused
-      ? { id: activeVoiceId, time: activeVoice.currentTime }
-      : d && Date.now() - d.at < 1500 ? d : null;
-    if (!from) return;
-    const list = messagesListRef.current;
-    const i = list.findIndex((m) => m.id === from.id);
-    if (i < 0) return;
-    const queue: Track[] = list.slice(i)
-      .filter((m) => m.voice_url && !m.pending && !(m as { deleted_for_all?: boolean }).deleted_for_all)
-      .map((m) => ({
-        id: m.id,
-        raw: m.voice_url!,
-        title: tr("Голосовое сообщение"),
-        artist: m.sender?.username || undefined,
-        source: "message",
-        kind: "voice",
-        rate: voiceRate,
-      }));
-    if (!queue.length) return;
-    void playQueue(queue, 0, { at: from.time });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Голосовые играют в общем плеере (lib/player) с первого тапа: при уходе из
+  // чата ничего не переключается — полоска плеера просто становится видна.
+  // Очередь — это голосовое и следующие за ним по ленте (цепочка, как в
+  // мессенджерах); перешло к следующему — подкручиваем ленту к нему.
+  useEffect(() => {
+    setOpenChat(chatId);
+    return () => setOpenChat(null);
+  }, [chatId]);
+  useEffect(() => {
+    let last = currentTrack()?.id;
+    return subscribePlayer(() => {
+      const t = currentTrack();
+      if (t?.id === last) return;
+      last = t?.id;
+      if (t?.kind === "voice" && t.chatId === chatId && messagesListRef.current.some((m) => m.id === t.id)) {
+        document.getElementById(`msg-${t.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    });
+  }, [chatId]);
   // Голосовые: удержание кнопки пишет, отпускание отправляет, увод пальца
   // в сторону отменяет — как в мессенджерах.
   const {
@@ -3431,15 +3421,25 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Функция для сохранения файла локально (для Electron)
   /** Сохранить вложение: на телефоне — системное окно с «Сохранить в Файлы». */
   const handleSaveFile = (fileUrl: string, fileName: string) => saveFileToDevice(fileUrl, fileName);
-  /** Голосовое доиграло — следующее голосовое ниже по ленте (от старых к новым),
-   *  с подкруткой к нему. Пауза рукой цепочку не продолжает: только конец записи. */
-  const playNextVoice = (id: string) => {
+  /** Запустить голосовое в общем плеере — с него и дальше по ленте (от старых
+   *  к новым), с нужной секунды. Удалённые и ещё не отправленные пропускаем. */
+  const playVoiceFrom = (id: string, at?: number) => {
     const list = messagesListRef.current;
     const i = list.findIndex((m) => m.id === id);
-    const next = i < 0 ? null : list.slice(i + 1).find((m) => m.voice_url && !m.pending && !(m as { deleted_for_all?: boolean }).deleted_for_all);
-    if (!next) return;
-    document.getElementById(`msg-${next.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    window.dispatchEvent(new CustomEvent("hyax:voice-play", { detail: next.id }));
+    if (i < 0) return;
+    const queue: Track[] = list.slice(i)
+      .filter((m) => m.voice_url && !m.pending && !(m as { deleted_for_all?: boolean }).deleted_for_all)
+      .map((m) => ({
+        id: m.id,
+        raw: m.voice_url!,
+        title: tr("Голосовое сообщение"),
+        artist: m.sender?.username || undefined,
+        source: "message",
+        kind: "voice",
+        rate: voiceRate,
+        chatId,
+      }));
+    if (queue.length) void playQueue(queue, 0, { at });
   };
 
   // Функция для форматирования даты
@@ -4354,7 +4354,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               url={mediaUrl(message.voice_url)}
                               seconds={message.voice_duration || 0}
                               own={isOwn}
-                              onEnded={() => playNextVoice(message.id)}
+                              play={(at) => playVoiceFrom(message.id, at)}
                             />
                             {aaButton}
                           </div>
@@ -5630,27 +5630,24 @@ const VOICE_TRANSCRIBE_MAX = 60;
 const VOICE_RATES_ALL = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]; // долгое нажатие — список
 let voiceRate = 1;
 
-/** Голосовое, которое играет сейчас: новое останавливает предыдущее —
- *  одновременно звучит только последнее запущенное. */
-let activeVoice: HTMLAudioElement | null = null;
-let activeVoiceId: string | null = null;
-/** Пузырь играющего голосового размонтировался (ушли из чата): где
- *  остановились — чтобы ChatWindow передал его глобальному плееру. */
-let detachedVoice: { id: string; time: number; at: number } | null = null;
 /** Начали записывать своё голосовое или треугольник — чужое голосовое на
- *  паузу (в пузыре или уже в общем плеере): место запомнится, «играть»
- *  продолжит оттуда. Музыку не трогаем. */
+ *  паузу (оно в общем плеере): место запомнится, «играть» продолжит оттуда.
+ *  Музыку не трогаем. */
 const pauseVoicePlayback = () => {
-  activeVoice?.pause();
   const t = currentTrack();
   if (t?.kind === "voice" && playerState().playing) void playerToggle();
 };
 
-const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: string; seconds: number; own: boolean; onEnded?: () => void }) => {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const onEndedRef = useRef(onEnded);
-  onEndedRef.current = onEnded;
-  const [playing, setPlaying] = useState(false);
+const VoiceBubble = ({ id, url, seconds, play }: { id: string; url: string; seconds: number; own: boolean; play: (at?: number) => void }) => {
+  // Звук — в общем плеере (lib/player): пузырь лишь показывает его состояние и
+  // управляет им, поэтому при уходе из чата ничего не переключается.
+  const current = usePlayerSlice(() => isCurrent(id));
+  const playing = usePlayerSlice((s) => isCurrent(id) && s.playing);
+  const time = usePlayerSlice((s) => (isCurrent(id) ? s.time : 0));
+  const playerDur = usePlayerSlice((s) => (isCurrent(id) && s.duration > 0 ? s.duration : 0));
+  // Длительность: из файла, а если файл её не знает (запись с MediaRecorder —
+  // Infinity) — из сообщения.
+  const dur = playerDur || seconds || 0;
   const [rate, setRate] = useState(voiceRate);
   const [rateMenu, setRateMenu] = useState(false);
   const rateHold = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -5658,7 +5655,7 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
   const applyRate = (next: number) => {
     voiceRate = next;
     setRate(next);
-    if (audioRef.current) audioRef.current.playbackRate = next;
+    playerSetRate(next);
   };
   const cycleRate = () => {
     const i = VOICE_RATES.indexOf(voiceRate);
@@ -5676,7 +5673,12 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
     if (rateHold.current) { clearTimeout(rateHold.current); rateHold.current = null; }
     if (!rateHeld.current) cycleRate();
   };
-  const [progress, setProgress] = useState(0); // 0..1 по времени воспроизведения
+  // Пока ведут пальцем по волне — показываем палец, а не плеер.
+  const [drag, setDragState] = useState<number | null>(null);
+  // Ref рядом с состоянием: pointerup может прийти до перерисовки после pointerdown.
+  const dragRef = useRef<number | null>(null);
+  const setDrag = (v: number | null) => { dragRef.current = v; setDragState(v); };
+  const progress = drag ?? (current && dur > 0 ? Math.min(1, time / dur) : 0); // 0..1
   const [peaks, setPeaks] = useState<number[] | null>(null);
 
   // Настоящая форма волны из файла (с кэшем). Ошибку глушим — останется запас.
@@ -5691,96 +5693,49 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
     return () => { alive = false; };
   }, [url]);
 
-  useEffect(() => () => {
-    const a = audioRef.current;
-    if (a && activeVoice === a && !a.paused) detachedVoice = { id, time: a.currentTime, at: Date.now() };
-    a?.pause();
-    if (activeVoice === a) { activeVoice = null; activeVoiceId = null; }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Длительность: из файла, а если файл её не знает (запись с MediaRecorder —
-  // Infinity) — из сообщения.
-  const durationOf = (a: HTMLAudioElement) => (Number.isFinite(a.duration) && a.duration > 0 ? a.duration : seconds || 0);
-  const draggingRef = useRef(false);
-  const ensureAudio = () => {
-    if (!audioRef.current) {
-      const audio = new Audio(url);
-      audio.onended = () => { setPlaying(false); setProgress(0); onEndedRef.current?.(); };
-      audio.onpause = () => setPlaying(false);
-      audio.ontimeupdate = () => {
-        if (draggingRef.current) return; // тянут по волне — показываем палец, а не плеер
-        const d = durationOf(audio);
-        if (d > 0) setProgress(Math.min(1, audio.currentTime / d));
-      };
-      audioRef.current = audio;
-    }
-    return audioRef.current;
-  };
-  /** Перемотка: доля 0..1 от длины. Играет — продолжит с нового места; на
-   *  паузе — место запомнится, «играть» начнёт оттуда. */
+  /** Перемотка: доля 0..1 от длины. Это голосовое в плеере — встаём на место
+   *  (и играем, если стояло на паузе); нет — запускаем с этого места. */
   const seekTo = (frac: number) => {
-    const audio = ensureAudio();
     const f = Math.min(1, Math.max(0, frac));
-    setProgress(f);
-    const apply = () => { const d = durationOf(audio); if (d > 0) audio.currentTime = Math.min(f * d, Math.max(0, d - 0.05)); };
-    if (audio.readyState >= 1) apply();
-    else { audio.preload = "metadata"; audio.addEventListener("loadedmetadata", apply, { once: true }); audio.load(); }
+    if (current) {
+      playerSeek(f * dur);
+      if (!playing) void playerToggle();
+    } else {
+      play(f * (seconds || 0));
+    }
   };
   // Волна — дорожка перемотки: тап — в эту точку, можно вести пальцем.
   const waveRef = useRef<HTMLSpanElement>(null);
   const fracAt = (x: number) => {
     const r = waveRef.current?.getBoundingClientRect();
-    return r && r.width ? (x - r.left) / r.width : 0;
+    return r && r.width ? Math.min(1, Math.max(0, (x - r.left) / r.width)) : 0;
   };
   const waveDown = (e: React.PointerEvent<HTMLSpanElement>) => {
     // Не отдаём жест пузырю: там удержание — меню сообщения, свайп — «ответить».
     e.stopPropagation();
-    draggingRef.current = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* не все платформы */ }
-    setProgress(Math.min(1, Math.max(0, fracAt(e.clientX))));
+    setDrag(fracAt(e.clientX));
   };
   const waveMove = (e: React.PointerEvent<HTMLSpanElement>) => {
-    if (!draggingRef.current) return;
+    if (dragRef.current === null) return;
     e.stopPropagation();
-    setProgress(Math.min(1, Math.max(0, fracAt(e.clientX))));
+    setDrag(fracAt(e.clientX));
   };
   const waveUp = (e: React.PointerEvent<HTMLSpanElement>) => {
-    if (!draggingRef.current) return;
+    if (dragRef.current === null) return;
     e.stopPropagation();
-    draggingRef.current = false;
+    setDrag(null);
     seekTo(fracAt(e.clientX));
   };
 
   const toggle = () => {
-    const audio = ensureAudio();
-    audio.playbackRate = voiceRate;
-    if (playing) {
-      audio.pause();
-      setPlaying(false);
-      return;
-    }
-    if (activeVoice && activeVoice !== audio) activeVoice.pause();
-    activeVoice = audio;
-    activeVoiceId = id;
-    audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    if (current) void playerToggle();
+    else play();
   };
-  // Предыдущее голосовое доиграло — очередь этого (ChatWindow: playNextVoice).
-  const toggleRef = useRef(toggle);
-  toggleRef.current = toggle;
-  useEffect(() => {
-    const on = (e: Event) => {
-      if ((e as CustomEvent<string>).detail !== id) return;
-      const a = audioRef.current;
-      if (!a || a.paused) toggleRef.current(); // уже играет — не трогаем
-    };
-    window.addEventListener("hyax:voice-play", on);
-    return () => window.removeEventListener("hyax:voice-play", on);
-  }, [id]);
 
   const fmt = (t: number) => { const v = Math.max(0, Math.round(t)); return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; };
   // Играет или перемотано — текущее место, иначе — длина.
-  const label = progress > 0 || playing ? fmt(progress * (audioRef.current ? durationOf(audioRef.current) : seconds)) : fmt(seconds);
+  const label = current || drag !== null ? fmt(progress * dur) : fmt(seconds);
   const wave = peaks ?? FALLBACK_WAVE;
   const playedBars = Math.round(progress * wave.length);
 
@@ -5803,7 +5758,7 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
       onPointerDown={waveDown}
       onPointerMove={waveMove}
       onPointerUp={waveUp}
-      onPointerCancel={() => { draggingRef.current = false; }}
+      onPointerCancel={() => setDrag(null)}
       onClick={(e) => e.stopPropagation()}
       style={{ touchAction: "pan-y" }}
       className="flex-1 min-w-[4.5rem] flex items-center gap-px h-8 cursor-pointer select-none"
