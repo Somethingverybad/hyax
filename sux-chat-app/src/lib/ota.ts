@@ -76,12 +76,13 @@ const write = (key: string, value: unknown) => {
   } catch { /* приватный режим — переживём */ }
 };
 
-/** Только приложение на телефоне с плагином; сборка для Google Play обновляется
- *  только через Play (правила магазина), десктоп — своим установщиком. */
+/** Только приложение на телефоне с плагином; десктоп — своим установщиком.
+ *  Сборке из Google Play веб по воздуху тоже можно: правила Play запрещают
+ *  догружать исполняемый код (dex, so), а для JavaScript в WebView делают
+ *  исключение. Нельзя там другое — предлагать APK в обход магазина
+ *  (lib/updateCheck, PLAY_BUILD). */
 export const otaEnabled = () =>
-  Capacitor.isNativePlatform()
-  && import.meta.env.VITE_DISTRIBUTION !== "play"
-  && Capacitor.isPluginAvailable("CapacitorUpdater");
+  Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("CapacitorUpdater");
 
 /**
  * Начало запуска: подтвердить плагину, что бандл жив, и, если скачан новый,

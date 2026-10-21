@@ -16,7 +16,13 @@ const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
  * Play — правила магазина запрещают приложению ставить себя в обход него, так
  * что плашки с APK нет, а «Проверить обновления» открывает страницу в Play.
  */
-export const PLAY_BUILD = import.meta.env.VITE_DISTRIBUTION === "play";
+// Веб-бандл приходит по воздуху и собран без VITE_DISTRIBUTION, поэтому
+// признак «поставлено из Play» переживает обновления в localStorage: его
+// пишет первый запуск Play-сборки, дальше читают любые бандлы.
+const DIST_KEY = "hyax:distribution";
+const readPlay = () => { try { return localStorage.getItem(DIST_KEY) === "play"; } catch { return false; } };
+if (import.meta.env.VITE_DISTRIBUTION === "play") { try { localStorage.setItem(DIST_KEY, "play"); } catch { /* приватный режим */ } }
+export const PLAY_BUILD = import.meta.env.VITE_DISTRIBUTION === "play" || readPlay();
 export const PLAY_URL = "https://play.google.com/store/apps/details?id=com.hyax.messenger";
 
 export function updatesViaPlay() {
