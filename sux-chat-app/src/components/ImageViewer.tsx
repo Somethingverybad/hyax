@@ -26,10 +26,31 @@ export interface ViewerItem {
 const quickUrl = (raw: string, localMap?: Map<string, string>) =>
   (raw.startsWith("blob:") ? raw : localMap?.get(raw)) || cachedMediaUrl(raw);
 
+/** Ссылка на картинку: сразу из кэша, иначе подписываем. Соседние кадры
+ *  готовим так же — при листании они уже на месте. */
+const useItemUrl = (item: ViewerItem | undefined, localMap?: Map<string, string>) => {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const quick = item ? quickUrl(item.raw, localMap) : "";
+    setUrl(quick);
+    if (item && !quick) resolveMediaUrl(item.raw).then((u) => { if (alive) setUrl(u); }).catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.raw]);
+  return url;
+};
+
+/** Листание: кадр едет за пальцем, отпустили — доезжает до соседнего. */
+const SLIDE_MS = 240;
+
 /**
  * Полноэкранный просмотр картинок с перелистыванием: свайп влево-вправо на
  * телефоне, стрелки и кнопки по краям на десктопе. Список — все картинки
  * этой переписки по порядку, поэтому снимки из одного альбома идут подряд.
+ * Кадры стоят лентой (предыдущий, текущий, следующий): при свайпе лента едет
+ * за пальцем, отпустили — доезжает до соседа пружинкой, и соседний кадр
+ * становится текущим; у края ленты палец встречает сопротивление.
  *
  * Тап по картинке (или «⋮») открывает шторку действий: переслать, в
  * сохранёнки, скачать, удалить — набор передаёт вызывающий экран. Тап по
@@ -56,8 +77,16 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
   const [menuOpen, setMenuOpen] = useState(false);
   // Сердечки двойного тапа: каждое живёт, пока идёт его анимация.
   const [hearts, setHearts] = useState<{ id: number; x: number; y: number }[]>([]);
-  const [url, setUrl] = useState("");
   const item = items[index];
+  const url = useItemUrl(item, localMap);
+  const prevUrl = useItemUrl(items[index - 1], localMap);
+  const nextUrl = useItemUrl(items[index + 1], localMap);
+  // Сдвиг ленты кадров (px): за пальцем при листании и до соседа после.
+  const [shift, setShift] = useState(0);
+  // Лента доезжает до соседа: жесты не принимаем, по концу — смена кадра.
+  const sliding = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Кадр сменился — лента встаёт на место без анимации (иначе уехала бы обратно).
+  const [snap, setSnap] = useState(false);
   // Зум: масштаб и сдвиг картинки. Щипок — масштаб вокруг пальцев, один
   // палец при зуме — сдвиг, двойной тап — 2.5× в точку и обратно, колесо —
   // на десктопе. При масштабе 1 горизонтальный свайп листает.
@@ -100,19 +129,19 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
 
   const go = (step: number) => {
     const next = index + step;
-    if (next < 0 || next >= items.length) return;
+    if (next < 0 || next >= items.length || sliding.current) return;
     setMenuOpen(false);
-    onIndex(next);
+    const w = stageRef.current?.clientWidth || window.innerWidth;
+    setShift(-step * w);
+    sliding.current = setTimeout(() => {
+      sliding.current = null;
+      setSnap(true);
+      setShift(0);
+      onIndex(next);
+      requestAnimationFrame(() => requestAnimationFrame(() => setSnap(false)));
+    }, SLIDE_MS);
   };
-
-  useEffect(() => {
-    let alive = true;
-    const quick = item ? quickUrl(item.raw, localMap) : "";
-    setUrl(quick);
-    if (item && !quick) resolveMediaUrl(item.raw).then((u) => { if (alive) setUrl(u); }).catch(() => {});
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.raw]);
+  useEffect(() => () => { if (sliding.current) clearTimeout(sliding.current); }, []);
 
   // Стрелки на десктопе, Esc — закрыть.
   useEffect(() => {
@@ -158,9 +187,12 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
     const dx = e.clientX - p.p.x, dy = e.clientY - p.p.y;
     if (Math.hypot(dx, dy) > 6) p.moved = true;
     if (tRef.current.s > 1) { setT(clampT({ s: tRef.current.s, x: p.t.x + dx, y: p.t.y + dy })); return; }
+    if (sliding.current) return;
     // Направление решаем один раз, на первых пикселях: дальше вбок — листание, вниз — закрытие.
     if (!p.axis && Math.hypot(dx, dy) > 10) p.axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
     if (p.axis === "y") setDrag(Math.max(0, dy));
+    // Лента за пальцем; у первого и последнего кадра — с сопротивлением.
+    else if (p.axis === "x") setShift((dx < 0 ? index + 1 < items.length : index > 0) ? dx : dx / 3);
   };
   const onUp = (e: React.PointerEvent) => {
     const had = pointers.current.has(e.pointerId);
@@ -178,8 +210,16 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
       setDrag(0);
       return;
     }
-    // Свайп при масштабе 1 — листание.
-    if (tRef.current.s === 1 && Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy)) { go(dx < 0 ? 1 : -1); return; }
+    // Свайп при масштабе 1 — листание: достаточно далеко или достаточно быстро,
+    // иначе лента возвращается на место.
+    if (p.axis === "x" && tRef.current.s === 1) {
+      const speed = Math.abs(dx) / Math.max(1, performance.now() - p.at);
+      const step = dx < 0 ? 1 : -1;
+      const can = step > 0 ? index + 1 < items.length : index > 0;
+      if (can && (Math.abs(dx) >= 60 || (Math.abs(dx) > 35 && speed > 0.5))) { go(step); return; }
+      setShift(0);
+      return;
+    }
     if (p.moved) return;
     // Тап. Двойной — зум; одиночный ждёт 280 мс, чтобы не сработать вместе с ним.
     const now = performance.now();
@@ -239,21 +279,42 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
         onPointerCancel={onUp}
         onWheel={onWheel}
       >
-        {url ? (
-          <img
-            ref={imgRef}
-            src={url}
-            alt=""
-            className="max-h-full max-w-full object-contain select-none"
-            draggable={false}
-            style={{
-              transform: `translate(${t.x}px, ${t.y + drag}px) scale(${t.s * (1 - Math.min(drag / 1600, 0.15))})`,
-              transition: pointers.current.size ? "none" : "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-            }}
-          />
-        ) : (
-          <div className="text-white/60 text-small">{tr("Загрузка…")}</div>
-        )}
+        {/* Лента кадров: соседи по бокам, текущий — в центре с зумом. */}
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `translateX(${shift}px)`,
+            transition: snap || (pointers.current.size && !sliding.current) ? "none" : `transform ${SLIDE_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`,
+          }}
+        >
+          {prevUrl && (
+            <div className="absolute inset-0 flex items-center justify-center" style={{ left: "-100%" }} aria-hidden>
+              <img src={prevUrl} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} />
+            </div>
+          )}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {url ? (
+              <img
+                ref={imgRef}
+                src={url}
+                alt=""
+                className="max-h-full max-w-full object-contain select-none"
+                draggable={false}
+                style={{
+                  transform: `translate(${t.x}px, ${t.y + drag}px) scale(${t.s * (1 - Math.min(drag / 1600, 0.15))})`,
+                  transition: pointers.current.size ? "none" : "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+                }}
+              />
+            ) : (
+              <div className="text-white/60 text-small">{tr("Загрузка…")}</div>
+            )}
+          </div>
+          {nextUrl && (
+            <div className="absolute inset-0 flex items-center justify-center" style={{ left: "100%" }} aria-hidden>
+              <img src={nextUrl} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} />
+            </div>
+          )}
+        </div>
       </div>
 
       <div
