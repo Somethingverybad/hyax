@@ -4077,7 +4077,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
                   {/* Контент сообщения */}
                   <div className={cn(
-                    "flex flex-col max-w-[72%] sm:max-w-[65%] md:max-w-[55%]",
+                    // Голосовое: плеер с волной и «Аа» шире текста — на узком экране
+                    // пузырю нужно больше места, иначе кнопка выезжала за край (баг-репорт da0b1f1b).
+                    message.voice_url ? "flex flex-col max-w-[90%] sm:max-w-[70%] md:max-w-[55%]" : "flex flex-col max-w-[72%] sm:max-w-[65%] md:max-w-[55%]",
                     isOwn ? "items-end" : "items-start"
                   )}>
                     {/* Имя отправителя (только для чужих сообщений). «Мята» — как в
@@ -4243,7 +4245,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                       {/* Голосовое сообщение */}
                       {message.voice_url && (
                         <div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 min-w-0">
                             <VoiceBubble
                               id={message.id}
                               url={mediaUrl(message.voice_url)}
@@ -5712,7 +5714,7 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
   const playedBars = Math.round(progress * wave.length);
 
   return (
-    <div className="flex items-center gap-2 py-1 min-w-[15rem]">
+    <div className="flex items-center gap-2 py-1 flex-1 min-w-0">
     <button type="button" onClick={toggle} className="w-9 h-9 shrink-0 flex items-center justify-center bg-black/20" aria-label={playing ? tr("Пауза") : tr("Играть")}>
       {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
     </button>
@@ -5733,7 +5735,7 @@ const VoiceBubble = ({ id, url, seconds, own, onEnded }: { id: string; url: stri
       onPointerCancel={() => { draggingRef.current = false; }}
       onClick={(e) => e.stopPropagation()}
       style={{ touchAction: "pan-y" }}
-      className="flex-1 min-w-[6.5rem] flex items-center gap-px h-8 cursor-pointer select-none"
+      className="flex-1 min-w-[4.5rem] flex items-center gap-px h-8 cursor-pointer select-none"
     >
       {wave.map((v, i) => (
         <span
