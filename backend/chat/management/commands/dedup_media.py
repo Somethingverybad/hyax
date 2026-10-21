@@ -204,8 +204,15 @@ class Command(BaseCommand):
             self.stdout.write(f"  {objs[k]['size'] / 1e6:7.1f} МБ  {objs[k]['at']:%Y-%m-%d}  {k}")
         if not o["apply_orphans"]:
             return
+        # Журнал удалённого — рядом с s3_orphans.log, не в media (его раздаёт nginx).
+        from django.conf import settings
+        log_dir = os.path.join(settings.BASE_DIR, "private")
+        os.makedirs(log_dir, exist_ok=True)
         freed = 0
-        for k in cands:
-            s3.delete_object(Bucket=bucket, Key=k)
-            freed += objs[k]["size"]
-        self.stdout.write(f"сироты: удалено {len(cands)} объектов, {freed / 1e9:.2f} ГБ")
+        with open(os.path.join(log_dir, "s3_deleted.log"), "a", encoding="utf-8") as log:
+            stamp = timezone.now().isoformat(timespec="seconds")
+            for k in cands:
+                s3.delete_object(Bucket=bucket, Key=k)
+                freed += objs[k]["size"]
+                log.write(f"{stamp}\t{k}\t{objs[k]['size']}\t{objs[k]['at']:%Y-%m-%d}\n")
+        self.stdout.write(f"сироты: удалено {len(cands)} объектов, {freed / 1e9:.2f} ГБ; журнал private/s3_deleted.log")
