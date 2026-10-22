@@ -2110,5 +2110,13 @@ const en: Record<string, string> = {
   "Поиск по сообщениям": "Search messages",
   "Ищем сообщение…": "Looking for the message…",
   "Поиск сейчас недоступен": "Search is unavailable right now",
+  "Аметистовый": "Amethyst",
+  "Топазовый": "Topaz",
+  "Аквамариновый": "Aquamarine",
+  "Сапфировый": "Sapphire",
+  "Рубиновый": "Ruby",
+  "Изумрудный": "Emerald",
+  "Александритовый": "Alexandrite",
+  "Бриллиантовый": "Diamond",
 };
 export default en;
