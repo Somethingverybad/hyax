@@ -79,17 +79,20 @@ export function useMessageSearch(q: string, chatId?: string) {
   const [hits, setHits] = useState<MessageHit[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Сервер отказал (старый сервер без поиска — 404, лимит — 429): говорим об
+  // этом, а не «ничего не найдено».
+  const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
   const query = q.trim();
   useEffect(() => {
     const my = ++seq.current;
-    if (query.length < 2) { setHits([]); setHasMore(false); setLoading(false); return; }
+    if (query.length < 2) { setHits([]); setHasMore(false); setLoading(false); setError(null); return; }
     setLoading(true);
     const timer = setTimeout(() => {
       api.searchMessages(query, { chat: chatId }).then((r) => {
         if (my !== seq.current) return;
-        setHits(r.items); setHasMore(r.has_more); setLoading(false);
-      }).catch(() => { if (my === seq.current) { setHits([]); setHasMore(false); setLoading(false); } });
+        setHits(r.items); setHasMore(r.has_more); setLoading(false); setError(null);
+      }).catch((e: Error) => { if (my === seq.current) { setHits([]); setHasMore(false); setLoading(false); setError(e?.message || t("Поиск сейчас недоступен")); } });
     }, 350);
     return () => clearTimeout(timer);
   }, [query, chatId]);
@@ -103,7 +106,7 @@ export function useMessageSearch(q: string, chatId?: string) {
       setHits((prev) => [...prev, ...r.items.filter((x) => !prev.some((p) => p.id === x.id))]); setHasMore(r.has_more); setLoading(false);
     }).catch(() => { if (my === seq.current) setLoading(false); });
   };
-  return { hits, hasMore, loading, more, active: query.length >= 2 };
+  return { hits, hasMore, loading, more, error, active: query.length >= 2 };
 }
 
 /** Поиск внутри чата: поле сверху, результаты списком; тап — к сообщению. */
@@ -130,7 +133,7 @@ export function ChatSearchPanel({ chatId, onPick, onClose }: { chatId: string; o
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-2">
         {!s.active && <p className="py-10 text-center text-small text-subtle">{t("Введите хотя бы две буквы")}</p>}
-        {s.active && !s.loading && !s.hits.length && <p className="py-10 text-center text-small text-subtle">{t("Ничего не найдено")}</p>}
+        {s.active && !s.loading && !s.hits.length && <p className="py-10 text-center text-small text-subtle">{s.error ? t("Поиск сейчас недоступен") : t("Ничего не найдено")}</p>}
         {s.active && s.loading && !s.hits.length && <p className="py-10 text-center text-small text-subtle">{t("Ищу…")}</p>}
         <MessageHits hits={s.hits} q={q} showChat={false} onPick={(h) => onPick(h.id)} hasMore={s.hasMore} onMore={s.more} loading={s.loading} />
       </div>

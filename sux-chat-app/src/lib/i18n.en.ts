@@ -2109,5 +2109,6 @@ const en: Record<string, string> = {
   "Введите хотя бы две буквы": "Type at least two characters",
   "Поиск по сообщениям": "Search messages",
   "Ищем сообщение…": "Looking for the message…",
+  "Поиск сейчас недоступен": "Search is unavailable right now",
 };
 export default en;

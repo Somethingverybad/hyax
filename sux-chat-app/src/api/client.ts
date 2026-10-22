@@ -1701,7 +1701,8 @@ export const api = {
     if (opts?.limit) p.set("limit", String(opts.limit));
     const res = await fetchWithAuth(`${API_URL}/messages/search/?${p}`, { method: "GET", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new LError(body?.error || "Не удалось найти");
+    // 404 — сервер старее клиента, поиска там ещё нет.
+    if (!res.ok) throw new LError(res.status === 404 ? "Поиск сейчас недоступен" : body?.error || "Не удалось найти");
     return body;
   },
   /** Админ: шаблоны причин начисления и само начисление (или снятие) с причиной. */
