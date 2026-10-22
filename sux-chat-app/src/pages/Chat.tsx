@@ -82,13 +82,22 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return () => window.removeEventListener("hyax:profile-patch", on);
   }, []);
   const [chats, setChats] = useState<ChatType[]>(() => readCache<ChatType[]>("chats") || []);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  // Вкладки «Избранное» и «Стена» (на широком окне) открываются сразу с нужным
+  // чатом из кеша: раньше его подставлял эффект после первой отрисовки, и
+  // каждый переход на вкладку мелькал «Загрузка…» / «Выберите чат»
+  // (баг-репорт 08f7f108). Сервер потом только подтверждает id.
+  const initialOpen = (): { id: string; kind: string; title?: string } | null => {
+    if (savedMode) { const c = readCache<ChatType>("saved"); return c?.id ? { id: c.id, kind: "saved" } : null; }
+    if (wallMode && !isMobile) { const w = readCache<WallState>("wall"); return w?.id ? { id: w.id, kind: "wall", title: tr("Стена") } : null; }
+    return null;
+  };
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(() => initialOpen()?.id ?? null);
   // Имя собеседника для шапки: приходит из сайдбара, он единственный, кто его
   // вычисляет — участники грузятся отдельно от списка чатов.
-  const [selectedChatTitle, setSelectedChatTitle] = useState<string>(() => tr("Чат"));
+  const [selectedChatTitle, setSelectedChatTitle] = useState<string>(() => initialOpen()?.title ?? tr("Чат"));
   // Подсказка типа выбранного чата: канал из поиска может отсутствовать в
   // списке chats (пока не подписан), поэтому храним kind отдельно.
-  const [selectedKind, setSelectedKind] = useState<string | undefined>(undefined);
+  const [selectedKind, setSelectedKind] = useState<string | undefined>(() => initialOpen()?.kind);
   // Стена: строка наверху списка, пока она включена (chat/wall.py).
   const [wall, setWall] = useState<WallState | null>(() => readCache<WallState>("wall"));
   const refreshWall = () => api.getWall().then((w) => {

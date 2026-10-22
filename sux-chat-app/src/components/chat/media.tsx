@@ -5,6 +5,7 @@ import { Paperclip, Download, Play, Pause, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
+import { markMediaSeen, mediaSeen } from "@/lib/mediaSeen";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
 import { fmtNoteTime, inlineNote, noteCurrentTime, openNoteBig, seekNote, startNote, toggleNote, useNoteHost, useVideoNoteSlice } from "@/lib/videoNote";
 import { t as tr } from "@/lib/i18n";
@@ -238,10 +239,12 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   const localBlob = raw.startsWith("blob:") ? raw : localMap.get(raw);
   // Подпись и загрузка — когда картинка рядом с видимой частью ленты (use-near-view).
   const [nearRef, near] = useNearView();
-  const signed = useMediaUrl(localBlob || !near ? null : raw);
+  // Уже показывали (lib/mediaSeen) — сразу, без скелетона и ожидания зоны видимости.
+  const seen = mediaSeen(raw);
+  const signed = useMediaUrl(localBlob || !(near || seen) ? null : raw);
   const src = localBlob || signed;
   // Своё из blob декодируется мгновенно — без скелетона; чужое ждёт onLoad.
-  const [loaded, setLoaded] = useState(!!localBlob);
+  const [loaded, setLoaded] = useState(!!localBlob || seen);
   return (
     <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden max-w-full" style={fillBox(dims, 240, 192, { width: 160, height: 112 })}>
       {!loaded && <MediaSkeleton className="absolute inset-0" />}
@@ -249,10 +252,11 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
         <img
           src={src}
           alt={name || tr("Изображение")}
-          loading="lazy"
+          loading={seen ? "eager" : "lazy"}
+          decoding={seen ? "sync" : "async"}
           // absolute: натуральный размер картинки не должен раздувать пузырь (ширина — от бокса).
-          className={cn("absolute inset-0 w-full h-full object-cover cursor-pointer block transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
-          onLoad={() => setLoaded(true)}
+          className={cn("absolute inset-0 w-full h-full object-cover cursor-pointer block", seen ? "" : "transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
+          onLoad={() => { setLoaded(true); markMediaSeen(raw); }}
           onClick={() => onOpen(src, name || "image")}
           onError={onError}
         />
@@ -354,8 +358,10 @@ export const AttachVideoPreview = ({ src }: { src: string }) => {
 /** Превью видео в ленте: постер с сервера, а без него (старые видео) — первый
  *  кадр, к которому WebKit нужно подтолкнуть перемоткой: сам он до тапа ничего
  *  не декодирует, и раньше здесь до тапа висела заглушка. Тап — VideoViewer. */
-const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: string | null; cover?: boolean }) => {
-  const [ready, setReady] = useState(false);
+const VideoThumb = ({ src, poster, cover, seenKey }: { src: string | null; poster?: string | null; cover?: boolean; seenKey?: string | null }) => {
+  // Постер уже показывали (lib/mediaSeen) — без скелетона; ключ — маркер постера.
+  const seen = !!poster && mediaSeen(seenKey);
+  const [ready, setReady] = useState(seen);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLVideoElement>(null);
   const fit = cover ? "object-cover" : "object-contain";
@@ -363,8 +369,8 @@ const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: strin
     <>
       {!ready && <MediaSkeleton className="absolute inset-0" />}
       {poster ? (
-        <img src={poster} alt="" onLoad={() => setReady(true)}
-          className={cn("absolute inset-0 w-full h-full block transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")} />
+        <img src={poster} alt="" decoding={seen ? "sync" : "async"} onLoad={() => { setReady(true); markMediaSeen(seenKey); }}
+          className={cn("absolute inset-0 w-full h-full block", seen ? "" : "transition-opacity duration-200", fit, ready ? "opacity-100" : "opacity-0")} />
       ) : src && (
         <video
           ref={ref}
@@ -396,13 +402,14 @@ const VideoThumb = ({ src, poster, cover }: { src: string | null; poster?: strin
 
 export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { w: number; h: number } | null; poster?: string | null }) => {
   const [nearRef, near] = useNearView();
-  const src = useMediaUrl(near ? raw : null);
-  const posterSrc = useMediaUrl(near ? poster || null : null);
+  const seen = mediaSeen(poster);
+  const src = useMediaUrl(near || seen ? raw : null);
+  const posterSrc = useMediaUrl(near || seen ? poster || null : null);
   // Бокс под видео по размерам с сервера, чтобы лента не прыгала, когда плеер
   // узнает размер кадра; по ширине — весь пузырь. Без размеров — как раньше.
   return (
     <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={fillBox(dims, 280, 256, { width: 176, height: 112 })}>
-      <VideoThumb src={src} poster={posterSrc} cover={!!dims} />
+      <VideoThumb src={src} poster={posterSrc} cover={!!dims} seenKey={poster} />
     </div>
   );
 };
@@ -666,18 +673,19 @@ export interface AlbumItem {
 const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void }) => {
   const localBlob = item.raw.startsWith("blob:") ? item.raw : localMap?.get(item.raw);
   const [nearRef, near] = useNearView();
-  const signed = useMediaUrl(localBlob || !near ? null : item.raw);
-  const src = localBlob || signed;
-  const posterSrc = useMediaUrl(near ? item.poster || null : null);
-  const [loaded, setLoaded] = useState(!!localBlob);
   const video = isVideoFile(item.name, item.raw);
+  const seen = mediaSeen(video ? item.poster : item.raw);
+  const signed = useMediaUrl(localBlob || !(near || seen) ? null : item.raw);
+  const src = localBlob || signed;
+  const posterSrc = useMediaUrl(near || seen ? item.poster || null : null);
+  const [loaded, setLoaded] = useState(!!localBlob || seen);
   return (
     <div ref={nearRef} className="relative aspect-square overflow-hidden bg-black/20">
       {!loaded && !video && <MediaSkeleton className="absolute inset-0" />}
       {src && (video ? (
-        <VideoThumb src={src} poster={posterSrc} cover />
+        <VideoThumb src={src} poster={posterSrc} cover seenKey={item.poster} />
       ) : (
-        <img src={src} alt={item.name || ""} loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen(src, item.name || "image", item.id)}
+        <img src={src} alt={item.name || ""} loading={seen ? "eager" : "lazy"} decoding={seen ? "sync" : "async"} onLoad={() => { setLoaded(true); markMediaSeen(item.raw); }} onClick={() => onOpen(src, item.name || "image", item.id)}
           className={cn("w-full h-full object-cover cursor-pointer transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
       ))}
       {item.pending && item.progress != null && (

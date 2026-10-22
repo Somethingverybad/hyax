@@ -13,6 +13,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
 import { useMediaUrl, useMediaUrlState, resolveMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
+import { markMediaSeen, mediaSeen } from "@/lib/mediaSeen";
 import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import { cn } from "@/lib/utils";
 import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
@@ -113,8 +114,10 @@ const fmtTime = (iso: string) =>
 const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: number } | null; onOpen?: (url: string) => void }) => {
   // Подпись и загрузка — когда пост рядом с видимой частью ленты (use-near-view).
   const [nearRef, near] = useNearView();
-  const { url, failed } = useMediaUrlState(near ? raw : null);
-  const [loaded, setLoaded] = useState(false);
+  // Уже показывали (lib/mediaSeen) — рисуем сразу, без скелетона и без ожидания зоны видимости.
+  const seen = mediaSeen(raw);
+  const { url, failed } = useMediaUrlState(near || seen ? raw : null);
+  const [loaded, setLoaded] = useState(seen);
   // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
   // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
   // На широкой карточке (планшет, компьютер) высота упирается в предел, и
@@ -127,8 +130,9 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
       {/* Подпись не дали (пост удалён, доступа нет) — тихий серый бокс, а не вечно пульсирующий скелет. */}
       {!loaded && !failed && <MediaSkeleton className="absolute inset-0" />}
       {url && (
-        <img src={url} alt="" loading="lazy" onLoad={() => setLoaded(true)} onClick={() => onOpen?.(url)}
-          className={cn("w-full h-full object-contain cursor-zoom-in transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
+        <img src={url} alt="" loading={seen ? "eager" : "lazy"} decoding={seen ? "sync" : "async"}
+          onLoad={() => { setLoaded(true); markMediaSeen(raw); }} onClick={() => onOpen?.(url)}
+          className={cn("w-full h-full object-contain cursor-zoom-in", seen ? "" : "transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
       )}
     </div>
   );
@@ -803,6 +807,29 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // Ушли из ленты (другая вкладка, другой канал) — место запоминаем. Layout-
   // эффект: его уборка идёт, пока лента ещё в документе (у обычного ref уже пуст).
   useLayoutEffect(() => () => { window.clearTimeout(saveTimer.current); savePos(); }, [posKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Лента из памяти (вернулись на вкладку) встаёт на место до первого кадра:
+  // через таймер она на миг рисовалась с другой прокруткой — «верх Стены,
+  // потом низ, потом нужное место» (баг-репорт 08f7f108). Высоты карточек
+  // известны и без картинок (бокс по соотношению сторон), поэтому ждать нечего.
+  const restoredSyncRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const el = feedRef.current;
+    // Только когда в DOM уже эта лента (первый рендер взял её из памяти); при
+    // смене канала без перемонтирования посты подставит эффект ниже.
+    const memo = postsMemo.get(channelId);
+    if (!el || !memo || memo.posts !== postsRef.current || !memo.posts.length) return;
+    const pos = readFeedPos(posKey);
+    if (pos && !pos.bottom && restoreFeedPos(el, POST_ITEMS, pos)) {
+      seenRef.current = pos.seen || pos.id || null;
+      atBottomRef.current = false;
+      setAtBottom(false);
+      setMissed(countMissed(postsRef.current, seenRef.current));
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+    restoredSyncRef.current = channelId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
 
   /** Вход в канал: встаём чуть выше низа и плавно доезжаем — как в чате. */
   const scrollFeedOnOpen = () => {
@@ -859,7 +886,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       // Запись в кэше есть — рисуем сразу, даже пустую ленту: иначе при каждом
       // переходе на вкладку мелькала «Загрузка…», пока сервер не ответит.
       const fromCache = !!memo || !!cached;
-      if (memo) openFeed();
+      if (memo) { if (restoredSyncRef.current !== channelId) openFeed(); }
       else if (cached) {
         syncedAtRef.current = cached!.syncedAt;
         setHasMore(cached!.hasMore);
