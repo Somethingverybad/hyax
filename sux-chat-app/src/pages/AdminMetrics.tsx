@@ -8,6 +8,7 @@ import {
 import { Activity, Cpu, Database, HardDrive, MemoryStick, MessageSquare, Phone, RefreshCw, Users, UserPlus, Radio } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type AdminMetrics } from "@/api/client";
+import { useVibeLevels, vibeState } from "@/lib/vibeLevels";
 import { t as tr, tn, getLang } from "@/lib/i18n";
 
 /**
@@ -224,6 +225,49 @@ function OnlineList({ users, pal }: { users: OnlineUser[]; pal: ReturnType<typeo
   );
 }
 
+/** Рейтинг вайбометра: баллы и уровень (lib/vibeLevels), тап — в профиль. */
+function VibeTop({ users }: { users: NonNullable<AdminMetrics["vibe_top"]> }) {
+  const navigate = useNavigate();
+  const cfg = useVibeLevels();
+  const [all, setAll] = useState(false);
+  const LIMIT = 15;
+  if (!users.length) return <p className="text-small text-subtle">{tr("Пока ни у кого нет баллов.")}</p>;
+  const shown = all ? users : users.slice(0, LIMIT);
+  return (
+    <>
+      <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-4">
+        {shown.map((u, i) => {
+          const st = vibeState(u.vibe, cfg);
+          return (
+            <li key={u.id}>
+              <button type="button" onClick={() => navigate(`/u/${encodeURIComponent(u.username)}`)}
+                className="w-full flex items-center gap-3 py-2 text-left rounded-md active:bg-surface-3 hover:bg-surface-3/60 -mx-1 px-1">
+                <span className="w-6 shrink-0 text-small text-subtle tabular-nums text-right">{i + 1}</span>
+                <Identicon id={u.id} avatarUrl={u.avatar_url} className="w-9 h-9 shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-body text-foreground truncate">{u.username}</span>
+                    {u.role === "admin" && <span className="shrink-0 text-[10px] uppercase tracking-wide rounded px-1 py-px bg-surface-3 text-subtle">{tr("админ")}</span>}
+                  </span>
+                  {st.level && (
+                    <span className="block text-caption leading-snug" style={{ color: st.level.color }}>{tr(st.level.name)}</span>
+                  )}
+                </span>
+                <span className="shrink-0 text-body font-semibold tabular-nums" style={st.level ? { color: st.level.color } : undefined}>{u.vibe}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {users.length > LIMIT && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-small text-primary active:opacity-60">
+          {all ? tr("Свернуть") : tr("Показать всех ({n})", { n: users.length })}
+        </button>
+      )}
+    </>
+  );
+}
+
 /** Регистрации за выбранный период: даты — в часовом поясе админа. */
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const monthFmt = (t: number) => new Date(t).toLocaleDateString(getLang(), { month: "short", year: "2-digit" });
@@ -404,6 +448,9 @@ export default function AdminMetrics() {
               <Card title={tr("Сейчас в сети · {n}", { n: fmt(live.users_online?.length ?? 0) })}
                 sub={tr("Зелёная точка — приложение открыто на экране, серая — свёрнуто, но соединение живо")}>
                 <OnlineList users={live.users_online || []} pal={pal} />
+              </Card>
+              <Card title={tr("Рейтинг вайбометра")} sub={tr("У кого сколько баллов; уровни — из настроек вайбометра")}>
+                <VibeTop users={data.vibe_top || []} />
               </Card>
 
               {/* ---- сервер ---- */}

@@ -206,6 +206,18 @@ RANGES = {
 
 
 def _bucket_counts(sql, params):
+    # Запросы написаны под Postgres; на локальном стенде (sqlite) переводим на
+    # лету: extract(epoch) → strftime, приведения типов — долой, floor/mod — свои.
+    if connection.vendor == "sqlite":
+        import re
+        sql = re.sub(r"extract\(epoch from ([\w.]+)\)", r"strftime('%%s', \1)", sql)
+        sql = sql.replace("::bigint", "").replace("::numeric", "")
+        raw = connection.connection
+        try:
+            raw.create_function("floor", 1, lambda x: None if x is None else int(x // 1))
+            raw.create_function("mod", 2, lambda a, b: None if a is None else a % b)
+        except Exception:
+            pass
     with connection.cursor() as c:
         c.execute(sql, params)
         return {int(b): int(n) for b, n in c.fetchall()}
@@ -338,6 +350,11 @@ def summary(range_key="24h", tz_offset_min=0):
         "timeline": timeline,
         "daily": daily,
         "hours": hours,
+        # Рейтинг вайбометра: у кого сколько (люди, без ботов), сверху больше.
+        "vibe_top": [
+            {"id": str(p.id), "username": p.username, "avatar_url": p.avatar_url, "vibe": p.vibe, "role": p.role}
+            for p in humans.filter(vibe__gt=0).order_by("-vibe", "username")[:100]
+        ],
     }
 
 

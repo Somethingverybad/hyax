@@ -195,6 +195,8 @@ export interface AdminMetrics {
   timeline: { t: number; online_avg: number | null; online_max: number | null; cpu: number | null; mem: number | null; messages: number }[];
   daily: { t: number; registrations: number; writers: number; messages: number; peak_online: number | null }[];
   hours: { hour: number; messages: number }[];
+  /** Рейтинг вайбометра: люди с баллами, сверху больше (до 100). */
+  vibe_top?: { id: string; username: string; avatar_url: string | null; vibe: number; role: string }[];
 }
 
 export interface ChatTranslate { translate_in: boolean; translate_out: boolean; explicit_in?: boolean; explicit_out?: boolean; my_language: string; peer_language: string | null; available: boolean; is_group?: boolean; peer_languages?: string[] }

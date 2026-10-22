@@ -11,7 +11,7 @@ import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "luci
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
-import { Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon } from "lucide-react";
+import { X as XIcon, Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -949,6 +949,11 @@ const ChatSidebar = ({
               placeholder={mint ? t("Поиск чатов, людей и сообщений") : t("Поиск чатов, людей и сообщений")}
               className={mint ? "flex-1 min-w-0 bg-transparent outline-none text-[14.3px] text-foreground placeholder:text-[var(--mint-muted)]" : "flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"}
             />
+            {listFilter && (
+              <button type="button" onClick={() => setListFilter("")} className="p-1 -mr-1 text-subtle active:text-foreground" aria-label={t("Очистить")}>
+                <XIcon className="w-4 h-4" />
+              </button>
+            )}
           </label>
         )}
         {(

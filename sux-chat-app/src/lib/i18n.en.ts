@@ -2126,5 +2126,10 @@ const en: Record<string, string> = {
   "Про себя, без адресата": "About yourself, no addressee",
   "Действие про себя: «Вы запомнили это», остальным — «{who} запомнил это»; в группе кому — не спрашиваем": "A self action: “You remembered this”, others see “{who} remembered this”; in groups no addressee is asked",
   "Ещё паков: {n}. Чтобы ставить их звуки себе, добавьте пак в «Паках звуков».": "{n} more packs. To use their sounds, add the pack in “Sound packs”.",
+  "Рейтинг вайбометра": "Vibe meter leaderboard",
+  "У кого сколько баллов; уровни — из настроек вайбометра": "Who has how many points; levels come from the vibe meter settings",
+  "Пока ни у кого нет баллов.": "Nobody has points yet.",
+  "Показать пароль": "Show password",
+  "Скрыть пароль": "Hide password",
 };
 export default en;

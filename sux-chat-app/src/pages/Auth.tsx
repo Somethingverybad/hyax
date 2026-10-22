@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, User as UserIcon, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, User as UserIcon, X } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { api } from "@/api/client";
 import { LegalView, type LegalKind } from "./Legal";
@@ -19,6 +19,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   // Согласие с правилами и политикой — обязательное условие регистрации
   // (App Store, гайдлайн 1.2: пользовательский контент).
@@ -227,17 +228,25 @@ const Auth = () => {
                 </button>
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-small font-normal text-subtle">{t("Пароль")}</Label>
+                  <div className="relative">
                   <Input
                     id="password"
                     ref={passwordRef}
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete={isLogin ? "current-password" : "new-password"}
                     tabIndex={step === 1 ? 0 : -1}
-                    className="h-12 bg-surface-2 border-transparent rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
+                    className="h-12 pr-11 bg-surface-2 border-transparent rounded-md text-body placeholder:text-subtle focus:border-amber focus-visible:ring-0 transition-colors"
                   />
+                  {/* Показать пароль: глаз справа в поле — опечатку видно сразу. */}
+                  <button type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={step === 1 ? 0 : -1}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-subtle active:text-foreground"
+                    aria-label={showPassword ? t("Скрыть пароль") : t("Показать пароль")}>
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                  </div>
                 </div>
                 {!isLogin && (
                   <label className="flex items-start gap-2.5 text-small text-subtle">
