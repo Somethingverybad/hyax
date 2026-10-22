@@ -828,10 +828,15 @@ def _notify_new_message(message, profile, request):
     # ответ; падение отправки не должно ронять создание сообщения.
     try:
         from .fcm import notify_profiles
-        from .presence import viewers
+        from .presence import viewing_devices
         # У кого этот чат открыт — пуш не нужен: сообщение он и так видит, а
-        # звук аудио-стикера проиграет само приложение (см. ChatWindow).
-        watching = viewers(message.chat.id)
+        # звук аудио-стикера проиграет само приложение (см. ChatWindow). Но
+        # только тому устройству, где чат открыт: сидит в группе на компьютере —
+        # телефон пуш получает (баг-репорт 2238307d). Клиент без device_id
+        # (старая сборка) — отметка на весь профиль.
+        devices = viewing_devices(message.chat.id)
+        watching = {pid for pid, devs in devices.items() if "" in devs}
+        skip_devices = {(pid, d) for pid, devs in devices.items() for d in devs if d}
         recipients = message.chat.participants.exclude(id=profile.id)
         # Кто заблокировал отправителя — пуш о его сообщении не получает.
         recipients = recipients.exclude(blocks__blocked_id=profile.id)
@@ -842,6 +847,8 @@ def _notify_new_message(message, profile, request):
         if watching:
             recipients = recipients.exclude(id__in=watching)
             logger.info("push: чат открыт у %d — пуш им не шлю", len(watching))
+        if skip_devices:
+            logger.info("push: чат открыт на %d устройствах — им не шлю, остальным устройствам тех же людей — да", len(skip_devices))
         from .formatting import mask_preview
         from .i18n import L, clip, render
         # Подписи вместо текста — L(...): каждому получателю на его языке
@@ -901,6 +908,7 @@ def _notify_new_message(message, profile, request):
         note_pushed(list(recipients.values_list("id", flat=True)), message.chat.id)
         notify_profiles(
             recipients,
+            skip_devices=skip_devices,
             title=push_title,
             body=clip(preview, 150),
             # message_id — удалят сообщение, телефон уберёт именно его уведомление.

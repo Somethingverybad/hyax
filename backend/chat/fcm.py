@@ -200,7 +200,7 @@ def _fcm_tokens(profiles, platforms=None, exclude_device=None):
 
 def notify_profiles(profiles, title, body, extra: dict | None = None,
                     sound: str | None = None, platforms=None, hide_body_for=None,
-                    keep_sound: bool = False):
+                    keep_sound: bool = False, skip_devices=None):
     """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне.
     platforms — ограничить платформы (например, только android, если iOS
     уже получил VoIP-пуш о звонке). hide_body_for — id профилей, которым
@@ -212,14 +212,19 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
     сообщение» тоже на его языке.
 
     Кто выключил звук уведомлений (Profile.notify_silent), получает пуш без
-    звука — если только keep_sound: звук сообщению приложили специально."""
+    звука — если только keep_sound: звук сообщению приложили специально.
+    skip_devices — пары (id профиля, device_id), которым пуш не нужен: у них
+    этот чат открыт (chat/presence.py); остальные устройства тех же людей получают."""
     from .models import PushToken
     from .i18n import norm, render, tr
 
     qs = PushToken.objects.filter(user__in=profiles).exclude(platform="ios_voip")
     if platforms:
         qs = qs.filter(platform__in=platforms)
-    rows = list(qs.values_list("token", "secret", "platform", "user_id", "user__language", "user__notify_silent"))
+    rows = list(qs.values_list("token", "secret", "platform", "user_id", "user__language", "user__notify_silent", "device_id"))
+    if skip_devices:
+        skip = {(str(p), str(d)) for p, d in skip_devices}
+        rows = [r for r in rows if (str(r[3]), str(r[6] or "")) not in skip]
     if not rows:
         return
     hide = set(hide_body_for or ())

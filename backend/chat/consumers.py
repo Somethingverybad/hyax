@@ -601,7 +601,8 @@ class UserConsumer(AsyncWebsocketConsumer):
             profile = await self.get_user_profile(self.user)
             if profile:
                 from .presence import clear as clear_viewing, drop_connection
-                clear_viewing(profile.id)
+                # Только отметка этого устройства: другие его устройства могут смотреть дальше.
+                clear_viewing(profile.id, getattr(self, "device_id", None))
                 drop_connection(profile.id)
                 from .presence import touch_last_seen
                 await database_sync_to_async(touch_last_seen)(profile.id)
@@ -642,7 +643,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                     # Свернули — чат больше не «открыт», даже если отдельное
                     # «viewing: null» не дошло: пуши нужны сразу.
                     if not active:
-                        clear_viewing(profile.id)
+                        dev = text_data_json.get('device') or getattr(self, "device_id", None)
+                        clear_viewing(profile.id, dev)
                     if conn_active(self.channel_name, profile.id, active):
                         await self.broadcast_presence(profile)
                 return
@@ -654,7 +656,10 @@ class UserConsumer(AsyncWebsocketConsumer):
                 if profile:
                     from .presence import set_viewing
                     chat = text_data_json.get('chat')
-                    set_viewing(profile.id, chat, text_data_json.get('ttl'))
+                    dev = text_data_json.get('device') or None
+                    if dev:
+                        self.device_id = str(dev)[:255]
+                    set_viewing(profile.id, chat, text_data_json.get('ttl'), dev)
                     logger.info("presence: %s смотрит %s", str(profile.id)[:8], str(chat)[:8] if chat else "—")
                 return
 

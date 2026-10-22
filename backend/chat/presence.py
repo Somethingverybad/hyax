@@ -22,11 +22,18 @@ TTL = 90  # секунд без подтверждения — считаем, �
 TTL_MIN, TTL_MAX = 10, 90
 
 _lock = threading.Lock()
+# Ключ — «профиль|устройство»: у человека может быть открыт чат на компьютере,
+# а телефон лежит в кармане — ему пуш нужен. Старый клиент устройства не
+# называет (device_id пусто) — тогда отметка на весь профиль, как раньше.
 _viewing: dict[str, tuple[str, float]] = {}
 
 
-def set_viewing(profile_id, chat_id, ttl=None) -> None:
-    key = str(profile_id)
+def _key(profile_id, device_id) -> str:
+    return f"{profile_id}|{device_id or ''}"
+
+
+def set_viewing(profile_id, chat_id, ttl=None, device_id=None) -> None:
+    key = _key(profile_id, device_id)
     try:
         life = min(TTL_MAX, max(TTL_MIN, int(ttl))) if ttl else TTL
     except (TypeError, ValueError):
@@ -34,38 +41,42 @@ def set_viewing(profile_id, chat_id, ttl=None) -> None:
     with _lock:
         if chat_id:
             _viewing[key] = (str(chat_id), time.monotonic() + life)
-        else:
+        elif device_id:
             _viewing.pop(key, None)
+        else:
+            # Без устройства — снимаем все отметки профиля (старый клиент, разрыв сокета).
+            prefix = f"{profile_id}|"
+            for k in [k for k in _viewing if k.startswith(prefix)]:
+                _viewing.pop(k, None)
 
 
-def clear(profile_id) -> None:
-    set_viewing(profile_id, None)
+def clear(profile_id, device_id=None) -> None:
+    set_viewing(profile_id, None, device_id=device_id)
 
 
 def is_viewing(profile_id, chat_id) -> bool:
-    key = str(profile_id)
-    with _lock:
-        rec = _viewing.get(key)
-        if not rec:
-            return False
-        chat, until = rec
-        if until < time.monotonic():
-            _viewing.pop(key, None)
-            return False
-        return chat == str(chat_id)
+    """Смотрит ли этот чат хотя бы одно устройство человека."""
+    return str(profile_id) in viewers(chat_id)
 
 
-def viewers(chat_id) -> set[str]:
-    """Кто прямо сейчас смотрит этот чат — им пуш не нужен."""
-    now = time.monotonic()
-    out = set()
+def viewing_devices(chat_id) -> dict[str, set[str]]:
+    """Кто смотрит чат: id профиля → устройства ('' — клиент без устройства,
+    считаем за весь профиль). Протухшие отметки по пути выкидываем."""
+    now, cid = time.monotonic(), str(chat_id)
+    out: dict[str, set[str]] = {}
     with _lock:
         for key, (chat, until) in list(_viewing.items()):
             if until < now:
                 _viewing.pop(key, None)
-            elif chat == str(chat_id):
-                out.add(key)
+            elif chat == cid:
+                pid, _, dev = key.partition("|")
+                out.setdefault(pid, set()).add(dev)
     return out
+
+
+def viewers(chat_id) -> set[str]:
+    """Кто прямо сейчас смотрит этот чат (любым устройством) — id профилей."""
+    return set(viewing_devices(chat_id))
 
 
 # ── Кто сейчас на связи ──────────────────────────────────────────────────────

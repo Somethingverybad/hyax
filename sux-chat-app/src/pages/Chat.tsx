@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ESC_BACK } from "@/lib/escape";
-import { startUserSocket, onUserMessage, userSocket } from "@/lib/userSocket";
+import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { startCall as startCallGlobal } from "@/lib/calls";
 import { dismissChatNotifications, sweepReadNotifications } from "@/lib/chatNotifications";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
@@ -153,7 +153,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useEffect(() => {
     // ttl 15 и подтверждение каждые 10 с: свернули приложение — пуши пойдут
     // через ~15 с, даже если «больше не смотрю» потерялось (chat/presence.py).
-    const tell = (chat: string | null) => userSocket()?.send({ type: "viewing", chat, ttl: 15 });
+    const tell = (chat: string | null) => sendViewing(chat);
     tell(selectedChatId);
     if (viewingTimerRef.current) clearInterval(viewingTimerRef.current);
     if (selectedChatId) {
@@ -170,7 +170,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useEffect(() => {
     const onVisible = () => {
       const visible = document.visibilityState === "visible";
-      userSocket()?.send({ type: "viewing", chat: visible ? selectedChatIdRef.current : null, ttl: 15 });
+      sendViewing(visible ? selectedChatIdRef.current : null);
       // «В сети» по сворачиванию сообщает сам сокет (lib/userSocket) — на любом экране.
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -540,7 +540,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return () => {
       off();
       // Экран чатов закрыт — никакой чат не «открыт», пуши снова нужны.
-      userSocket()?.send({ type: "viewing", chat: null });
+      sendViewing(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);

@@ -2465,3 +2465,56 @@ class HiddenForMeSyncTests(TestCase):
         # И первая страница без since его мне не отдаёт.
         r = client_for(self.me).get(f"/api/messages/sync/?chat={self.chat.id}")
         self.assertNotIn(str(self.msg.id), [m["id"] for m in r.data["messages"]])
+
+
+class ViewingPerDeviceTests(TestCase):
+    """Открытый чат помечается на устройство, а не на весь профиль: сидишь в
+    группе на компьютере — телефону пуш о ней всё равно приходит (баг-репорт 2238307d)."""
+
+    def setUp(self):
+        from chat import presence
+        presence._viewing.clear()
+        self.a = make_user("view_a")
+        self.b = make_user("view_b")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.a, self.b):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        from .models import PushToken
+        PushToken.objects.create(user=self.b, token="tok-desktop", platform="android", device_id="desk")
+        PushToken.objects.create(user=self.b, token="tok-phone", platform="ios", device_id="phone")
+
+    def test_presence_per_device(self):
+        from chat.presence import set_viewing, viewing_devices, viewers, is_viewing, clear
+        set_viewing(self.b.id, self.chat.id, 15, "desk")
+        self.assertEqual(viewing_devices(self.chat.id), {str(self.b.id): {"desk"}})
+        self.assertTrue(is_viewing(self.b.id, self.chat.id))
+        self.assertEqual(viewers(self.chat.id), {str(self.b.id)})
+        clear(self.b.id, "desk")
+        self.assertEqual(viewing_devices(self.chat.id), {})
+        # Старый клиент без устройства — отметка на весь профиль; снятие без устройства убирает всё.
+        set_viewing(self.b.id, self.chat.id, 15)
+        set_viewing(self.b.id, self.chat.id, 15, "phone")
+        self.assertEqual(viewing_devices(self.chat.id), {str(self.b.id): {"", "phone"}})
+        clear(self.b.id)
+        self.assertEqual(viewing_devices(self.chat.id), {})
+
+    def test_push_skips_only_viewing_device(self):
+        from unittest import mock
+        from chat.presence import set_viewing
+        set_viewing(self.b.id, self.chat.id, 15, "desk")
+        with mock.patch("chat.fcm.notify_profiles") as push:
+            r = client_for(self.a).post("/api/messages/", {"chat": str(self.chat.id), "content": "привет"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(push.called)
+        args, kwargs = push.call_args
+        self.assertEqual(set(args[0].values_list("username", flat=True)), {"view_b"})
+        self.assertEqual(kwargs["skip_devices"], {(str(self.b.id), "desk")})
+
+    def test_notify_profiles_filters_device_tokens(self):
+        from unittest import mock
+        from chat import fcm
+        with mock.patch("chat.fcm._deliver") as deliver, mock.patch("chat.fcm.threading.Thread") as thread:
+            thread.side_effect = lambda target, daemon: mock.Mock(start=target)
+            fcm.notify_profiles(Profile.objects.filter(pk=self.b.pk), "t", "b", skip_devices={(str(self.b.id), "desk")})
+        tokens = [t for call in deliver.call_args_list for t in call.args[0]]
+        self.assertEqual(tokens, ["tok-phone"])

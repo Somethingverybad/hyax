@@ -38,7 +38,7 @@ export function startUserSocket(userId: string): WebSocketService {
     maxReconnectAttempts: 20,
     // Сервер считает новое соединение «на экране»; если переподключились
     // в фоне — сразу поправляем, чтобы у собеседников не горело «в сети».
-    onOpen: () => sock.send({ type: "active", active: visible() }),
+    onOpen: () => sock.send({ type: "active", active: visible(), device: deviceIdNow() }),
     onMessage: (msg: any) => {
       // Сеанс завершили из «Устройств» на другом устройстве — выходим на
       // любом экране, а не только когда открыт список чатов.
@@ -93,5 +93,19 @@ if (typeof window !== "undefined") {
   window.addEventListener("hyax:session-cleared", stopUserSocket);
   window.addEventListener("hyax:force-logout", stopUserSocket);
   // Свернули приложение или вкладку — «не в сети» на любом экране.
-  document.addEventListener("visibilitychange", () => ws?.send({ type: "active", active: visible() }));
+  document.addEventListener("visibilitychange", () => ws?.send({ type: "active", active: visible(), device: deviceIdNow() }));
+}
+
+// Устройство, с которого открыт чат: сервер не шлёт пуш только ему, а не
+// всем устройствам человека (chat/presence.py). deviceId из lib/secret — тот
+// же, что в регистрации пуш-токена; модуль подгружаем лениво, один раз.
+let _deviceId: string | undefined;
+void import("@/lib/secret").then(({ deviceId }) => { _deviceId = deviceId(); }).catch(() => {});
+export const deviceIdNow = () => _deviceId;
+
+/** Какой чат открыт на этом устройстве (null — ни один); ttl 15 с, см. pages/Chat. */
+export function sendViewing(chat: string | null) {
+  const send = () => userSocket()?.send({ type: "viewing", chat, ttl: 15, device: _deviceId });
+  if (_deviceId) send();
+  else void import("@/lib/secret").then(({ deviceId }) => { _deviceId = deviceId(); send(); }).catch(send);
 }
