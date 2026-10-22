@@ -383,6 +383,12 @@ const ChatSidebar = ({
     }
   };
   const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
+  // После свайпа по строке тап не считается ещё ~0.4 с: click приходит следом за
+  // touchend, когда состояние уже «закрыто», и открывал диалог вместо того,
+  // чтобы просто вернуть плитку на место (баг-репорт da0707c0, iPhone). Та же
+  // пауза — на время анимации возврата плитки.
+  const swipeLockRef = useRef(0);
+  const SWIPE_LOCK_MS = 400;
 
   // Свой профиль — при входе, а не на каждое обновление списка: раньше это
   // был запрос раз в 5 секунд (в баг-репорте — 436 за 54 минуты).
@@ -1209,6 +1215,8 @@ const ChatSidebar = ({
                       if (!s || s.id !== chat.id) return;
                       const t = e.changedTouches[0];
                       const dx = t.clientX - s.x, dy = t.clientY - s.y;
+                      // Палец заметно сдвинулся — это жест, не тап: click после него не в счёт.
+                      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) swipeLockRef.current = Date.now() + SWIPE_LOCK_MS;
                       if (Math.abs(dx) > Math.abs(dy) * 1.5) {
                         // Влево — удаление, вправо — закрепление. Свайп в
                         // обратную сторону сначала закрывает открытую кнопку.
@@ -1221,8 +1229,13 @@ const ChatSidebar = ({
                   >
                   <button
                     onClick={() => {
-                      if (swipedChatId === chat.id) { setSwipedChatId(null); return; }
-                      if (pinSwipedId === chat.id) { setPinSwipedId(null); return; }
+                      if (Date.now() < swipeLockRef.current) return; // хвост свайпа или плитка ещё едет
+                      if (swipedChatId === chat.id || pinSwipedId === chat.id) {
+                        // Тап по сдвинутой плитке — вернуть на место; пока едет, тапы не считаем.
+                        setSwipedChatId(null); setPinSwipedId(null);
+                        swipeLockRef.current = Date.now() + SWIPE_LOCK_MS;
+                        return;
+                      }
                       handleSelectChat(chat.id, chatTitle, (chat as any).kind);
                     }}
                     // min-w-0: без него кнопка (flex-элемент) не ужимается ниже
