@@ -2,6 +2,7 @@
 import "./lib/polyfills";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
+import RootBoundary from "./components/RootBoundary";
 import "./index.css";
 import { initTheme } from "./lib/theme";
 import { installAppLog, applog } from "./lib/applog";
@@ -26,7 +27,7 @@ let rendered = false;
 const render = () => {
   if (rendered) return;
   rendered = true;
-  createRoot(document.getElementById("root")!).render(<App />);
+  createRoot(document.getElementById("root")!).render(<RootBoundary><App /></RootBoundary>);
   startOtaChecks();
   startOtaAutoApply();
 };

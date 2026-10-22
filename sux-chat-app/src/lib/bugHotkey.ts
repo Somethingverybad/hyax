@@ -45,6 +45,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, style: string, text?:
   return e;
 }
 
+/** Показать окошко отправки лога (хоткей, экран ошибки RootBoundary). */
+export function showBugReportDialog() { show(); }
+
 function show() {
   if (open) return;
   open = true;

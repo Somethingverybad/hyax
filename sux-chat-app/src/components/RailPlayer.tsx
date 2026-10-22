@@ -32,6 +32,10 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
   const box = mint ? "mint-rail rail-player" : "rail-player flex flex-col items-center gap-1 py-2 border-t border-border w-full";
   const btn = "w-[46px] h-[30px] shrink-0 flex items-center justify-center rounded-[14px] transition-opacity active:opacity-60 disabled:opacity-40";
   const [adding, setAdding] = useState(false);
+  // Перемотка ведением: палец показывает место, плеер встаёт туда при отпускании.
+  // Хук — до раннего return: иначе при появлении трека хуков становилось больше,
+  // и React падал (#310), унося весь интерфейс (баг-репорт b3df29d5, Linux).
+  const [drag, setDrag] = useState<number | null>(null);
 
   if (!tk) {
     return (
@@ -43,8 +47,6 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
   }
 
   const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
-  // Перемотка ведением: палец показывает место, плеер встаёт туда при отпускании.
-  const [drag, setDrag] = useState<number | null>(null);
   const seekFrac = (e: React.PointerEvent) => {
     const r = e.currentTarget.getBoundingClientRect();
     return Math.min(1, Math.max(0, (r.bottom - e.clientY) / r.height));

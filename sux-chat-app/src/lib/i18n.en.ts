@@ -2086,5 +2086,9 @@ const en: Record<string, string> = {
   "Уйдёт журнал приложения за эту сессию. Опишите, что случилось (можно пропустить).": "The app log for this session will be sent. Describe what happened (optional).",
   "Что случилось?": "What happened?",
   "На компьютере: Ctrl/⌘+Shift+B отправит лог откуда угодно — даже если интерфейс сломался.": "On a computer, Ctrl/⌘+Shift+B sends the log from anywhere — even if the interface has broken.",
+  "Что-то сломалось": "Something broke",
+  "Ошибка уже в журнале. Перезагрузите экран, а если повторяется — отправьте лог, разберёмся.": "The error is already in the log. Reload the screen; if it keeps happening, send the log and we'll sort it out.",
+  "Перезагрузить": "Reload",
+  "Отправить лог": "Send log",
 };
 export default en;
