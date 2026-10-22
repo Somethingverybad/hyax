@@ -77,6 +77,7 @@ import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { ChatSearchPanel } from "@/components/chat/MessageHits";
 import VideoNoteBar from "@/components/chat/VideoNoteBar";
+import { useVideoNoteSlice } from "@/lib/videoNote";
 import { takePendingJump } from "@/lib/jumpTo";
 import { Search as SearchIcon } from "lucide-react";
 import { saveFileToDevice } from "@/lib/saveFile";
@@ -346,6 +347,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   // Поиск по сообщениям этого чата (ChatSearchPanel) — из меню шапки.
   const [searchOpen, setSearchOpen] = useState(false);
+  // Увеличенный треугольник: рядом с ним кнопку «Аа» не показываем — управление в плашке.
+  const bigNoteId = useVideoNoteSlice((st) => (st.mode === "big" ? st.note?.id ?? null : null));
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
   // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
   // отправителя, и у получателя — по событию из сокета, см. Chat.tsx).
@@ -4487,7 +4490,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               sender={message.sender ? { id: message.sender.id, username: message.sender.username, avatar_url: message.sender.avatar_url } : null}
                               at={message.created_at}
                             />
-                            {aaButton}
+                            {bigNoteId !== message.id && aaButton}
                           </div>
                           {/* Треугольник без пузыря — расшифровке даём свой пузырёк, иначе текст
                               лежал бы прямо на фоне чата. Край — по стороне сообщения. */}

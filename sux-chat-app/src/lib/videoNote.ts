@@ -182,6 +182,9 @@ export function closeNoteBig() {
   if (state.note && state.mode === "big") set({ mode: "inline" });
 }
 
+/** Текущая секунда прямо из <video> — для плавного кольца (кадр за кадром, а не по timeupdate). */
+export const noteCurrentTime = () => video?.currentTime ?? 0;
+
 export const fmtNoteTime = (sec: number) => {
   const s = Math.max(0, Math.floor(sec || 0));
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;

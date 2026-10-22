@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
-import { fmtNoteTime, inlineNote, openNoteBig, seekNote, startNote, toggleNote, useNoteHost, useVideoNoteSlice } from "@/lib/videoNote";
+import { fmtNoteTime, inlineNote, noteCurrentTime, openNoteBig, seekNote, startNote, toggleNote, useNoteHost, useVideoNoteSlice } from "@/lib/videoNote";
 import { t as tr } from "@/lib/i18n";
 
 /**
@@ -503,11 +503,10 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, send
   // дорожка, пройденная часть и ручка. За ручку (или по контуру) можно тянуть —
   // перемотка; тап по середине — пауза/играть.
   const ringRef = useRef<SVGPathElement | null>(null);
+  const handleRef = useRef<SVGCircleElement | null>(null);
   const samplesRef = useRef<{ x: number; y: number }[]>([]);
-  const [handle, setHandle] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const dragRef = useRef<number | null>(null);
-  const frac = drag ?? (active && duration > 0 && time >= 0 ? Math.min(1, time / duration) : 0);
   const outline = triClip(size, size, !!flip).replace(/^path\('/, "").replace(/'\)$/, "");
   useEffect(() => {
     const path = ringRef.current;
@@ -516,12 +515,26 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, send
     const n = 240;
     samplesRef.current = Array.from({ length: n }, (_, i) => { const q = path.getPointAtLength((i / n) * total); return { x: q.x, y: q.y }; });
   }, [big, size, flip]);
+  // Кольцо и ручка рисуются каждый кадр прямо из <video> (requestAnimationFrame),
+  // а не по timeupdate четыре раза в секунду — иначе ручка шла скачками.
   useEffect(() => {
-    const path = ringRef.current;
-    if (!path || !big) { setHandle(null); return; }
-    const q = path.getPointAtLength(frac * path.getTotalLength());
-    setHandle({ x: q.x, y: q.y });
-  }, [frac, big, size]);
+    if (!big) return;
+    let raf = 0;
+    const paint = () => {
+      const path = ringRef.current, dot = handleRef.current;
+      if (path && dot) {
+        const d = duration > 0 ? duration : seconds || 1;
+        const f = dragRef.current ?? Math.min(1, Math.max(0, noteCurrentTime() / d));
+        path.setAttribute("stroke-dasharray", `${Math.max(0.001, f)} 1`);
+        const q = path.getPointAtLength(f * path.getTotalLength());
+        dot.setAttribute("cx", String(q.x));
+        dot.setAttribute("cy", String(q.y));
+      }
+      raf = requestAnimationFrame(paint);
+    };
+    raf = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(raf);
+  }, [big, size, duration, seconds]);
   const fracAt = (clientX: number, clientY: number) => {
     const r = boxRef.current?.getBoundingClientRect();
     const pts = samplesRef.current;
@@ -613,8 +626,8 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, send
     {big && (
       <svg className="absolute inset-0 pointer-events-none overflow-visible" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         <path d={outline} fill="none" stroke="rgba(255,255,255,.35)" strokeWidth={3} />
-        <path ref={ringRef} d={outline} fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" pathLength={1} strokeDasharray={`${Math.max(0.001, frac)} 1`} />
-        {handle && <circle cx={handle.x} cy={handle.y} r={drag !== null ? 9 : 7} fill="#fff" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,.4))" }} />}
+        <path ref={ringRef} d={outline} fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" pathLength={1} strokeDasharray="0.001 1" />
+        <circle ref={handleRef} r={drag !== null ? 9 : 7} fill="#fff" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,.4))", transition: "r .15s" }} />
       </svg>
     )}
     </div>
