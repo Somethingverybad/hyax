@@ -1305,6 +1305,28 @@ class VibeConfig(models.Model):
         return cls.objects.get_or_create(pk=1)[0]
 
 
+class VibeReason(models.Model):
+    """Шаблон начисления вайба админом: «За приведённого тестировщика» +100.
+    Админ выбирает из списка в карточке профиля (VibeAdjustView)."""
+    name = models.CharField(max_length=80)
+    points = models.IntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-points", "name"]
+
+
+class VibeAdjustment(models.Model):
+    """Начисление или снятие вайба админом — с причиной, в истории вайбометра
+    (VibeHistoryView, kind=admin). По этой истории потом раздаются подарки и значки."""
+    admin = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    target = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="vibe_adjustments")
+    points = models.IntegerField()
+    reason = models.CharField(max_length=160)
+    template = models.ForeignKey(VibeReason, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+
 class WallMute(models.Model):
     """Стена: «скрыть автора» — его постов этот человек больше не видит."""
     user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="wall_mutes")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sparkles, Check, ChevronRight } from "lucide-react";
+import { Sparkles, Check, ChevronRight, ShieldCheck } from "lucide-react";
+import VibeAdjustSheet from "@/components/VibeAdjustSheet";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/api/client";
@@ -26,16 +27,19 @@ export function VibeBar({ vibe }: { vibe: number | null }) {
  * лайки своих идей (+10) и плейлистов (+5, chat/playlist_stats.py).
  * Сервер: chat/ideabox.py (VibeView).
  */
-export default function Vibometer({ profileId, own, initial }: { profileId: string; own?: boolean; initial?: number | null }) {
+export default function Vibometer({ profileId, username, own, initial }: { profileId: string; username?: string; own?: boolean; initial?: number | null }) {
   const [vibe, setVibe] = useState<number | null>(initial ?? null);
   const [voted, setVoted] = useState(false);
   const [canVote, setCanVote] = useState(false);
+  // Админ: начислить или снять баллы с причиной (VibeAdjustSheet).
+  const [canAdjust, setCanAdjust] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Анонимно: человеку придёт «Кто-то поднял ваш вайб» без имени.
   const [anon, setAnon] = useState(false);
   useEffect(() => {
     let off = false;
-    api.getVibe(profileId).then((s) => { if (!off) { setVibe(s.vibe); setVoted(s.voted); setCanVote(s.can_vote); } }).catch(() => {});
+    api.getVibe(profileId).then((s) => { if (!off) { setVibe(s.vibe); setVoted(s.voted); setCanVote(s.can_vote); setCanAdjust(!!s.can_adjust); } }).catch(() => {});
     return () => { off = true; };
   }, [profileId]);
   const raise = async () => {
@@ -90,6 +94,15 @@ export default function Vibometer({ profileId, own, initial }: { profileId: stri
           </label>
         </>
       ) : null}
+      {canAdjust && !own && (
+        <button type="button" onClick={() => setAdjustOpen(true)}
+          className="mt-2 w-full h-10 rounded-md bg-surface-2 text-small text-foreground flex items-center justify-center gap-2 active:opacity-80">
+          <ShieldCheck className="w-4 h-4 text-primary" />{t("Начислить или снять вайб")}
+        </button>
+      )}
+      {adjustOpen && (
+        <VibeAdjustSheet profileId={profileId} username={username || ""} onClose={() => setAdjustOpen(false)} onDone={(v) => setVibe(v)} />
+      )}
     </div>
   );
 }

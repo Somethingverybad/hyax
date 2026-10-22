@@ -302,9 +302,11 @@ export interface SoundPackInfo {
 /** Стикерпак — карточка по ссылке /stp/<id>. author — сериализованный профиль. */
 /** Событие вайбометра (chat/ideabox.py, VibeHistoryView). who нет — анонимно. */
 export interface VibeEvent {
-  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report" | "playlist_like";
+  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report" | "playlist_like" | "admin";
   points: number;
   at: string;
+  /** admin: за что админ начислил или снял баллы. */
+  reason?: string;
   who?: { id: string; username: string; avatar_url?: string | null } | null;
   image?: string;
   idea?: string;
@@ -529,7 +531,9 @@ export interface NotificationSoundInfo {
   updated_at: string;
 }
 
-export interface VibeState { vibe: number; voted: boolean; can_vote: boolean }
+export interface VibeState { vibe: number; voted: boolean; can_vote: boolean; can_adjust?: boolean }
+/** Шаблон причины начисления вайба админом (chat/ideabox.py, VibeReasonsView). */
+export interface VibeReason { id: number; name: string; points: number }
 export interface VibeLevel { min_vibe: number; name: string; color: string; glow: boolean }
 export interface VibeLevelsConfig { bar_length: number; levels: VibeLevel[] }
 export interface IdeaItem {
@@ -1676,6 +1680,29 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ anonymous }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { const e: any = new LError(body?.error || "Не получилось"); if ("vibe" in body) e.state = body; throw e; }
+    return body;
+  },
+  /** Админ: шаблоны причин начисления и само начисление (или снятие) с причиной. */
+  getVibeReasons: async (): Promise<{ items: VibeReason[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe-reasons/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError("Не удалось загрузить шаблоны");
+    return res.json();
+  },
+  saveVibeReason: async (r: { id?: number; name: string; points: number }): Promise<{ item: VibeReason; items: VibeReason[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe-reasons/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(r) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось сохранить шаблон");
+    return body;
+  },
+  deleteVibeReason: async (id: number): Promise<{ items: VibeReason[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe-reasons/`, { method: "DELETE", headers: authHeaders(), body: JSON.stringify({ id }) });
+    if (!res.ok) throw new LError("Не удалось удалить шаблон");
+    return res.json();
+  },
+  adjustVibe: async (profileId: string, data: { points?: number; reason?: string; template_id?: number }): Promise<{ vibe: number; item: VibeEvent }> => {
+    const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/adjust/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(data) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
     return body;
   },
   createIdea: async (text: string): Promise<{ idea: IdeaItem }> => {

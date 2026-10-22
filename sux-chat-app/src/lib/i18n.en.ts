@@ -2090,5 +2090,17 @@ const en: Record<string, string> = {
   "Ошибка уже в журнале. Перезагрузите экран, а если повторяется — отправьте лог, разберёмся.": "The error is already in the log. Reload the screen; if it keeps happening, send the log and we'll sort it out.",
   "Перезагрузить": "Reload",
   "Отправить лог": "Send log",
+  "Вайб: начислить или снять": "Vibe: add or deduct",
+  "Запишется в историю вайбометра {name} с причиной; человек получит уведомление.": "Goes into {name}'s vibe history with the reason; they get a notification.",
+  "Убрать шаблон": "Remove template",
+  "Баллы, ±": "Points, ±",
+  "За что": "Reason",
+  "Сохранить как шаблон": "Save as a template",
+  "Снять {n}": "Deduct {n}",
+  "Начислить {n}": "Add {n}",
+  "{name}: вайб {delta} — уже {n}": "{name}: vibe {delta} — now {n}",
+  "Начислить или снять вайб": "Add or deduct vibe",
+  "Начисление от команды WYX": "Bonus from the WYX team",
+  "Снятие баллов командой WYX": "Points deducted by the WYX team",
 };
 export default en;

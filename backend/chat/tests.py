@@ -2518,3 +2518,48 @@ class ViewingPerDeviceTests(TestCase):
             fcm.notify_profiles(Profile.objects.filter(pk=self.b.pk), "t", "b", skip_devices={(str(self.b.id), "desk")})
         tokens = [t for call in deliver.call_args_list for t in call.args[0]]
         self.assertEqual(tokens, ["tok-phone"])
+
+
+class VibeAdjustTests(TestCase):
+    """Админ начисляет и снимает вайб с причиной; шаблоны причин; всё в истории (kind=admin)."""
+
+    def setUp(self):
+        self.admin = make_user("vibe_admin", role="admin")
+        self.user = make_user("vibe_user")
+        self.other = make_user("vibe_other")
+
+    def test_templates_crud_admin_only(self):
+        c = client_for(self.admin)
+        self.assertEqual(client_for(self.other).get("/api/vibe-reasons/").status_code, 403)
+        r = c.post("/api/vibe-reasons/", {"name": "За приведённого тестировщика", "points": 100}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        rid = r.data["item"]["id"]
+        r = c.post("/api/vibe-reasons/", {"id": rid, "name": "За тестировщика", "points": 120}, format="json")
+        self.assertEqual((r.status_code, r.data["item"]["points"]), (200, 120))
+        self.assertEqual(c.post("/api/vibe-reasons/", {"name": "ноль", "points": 0}, format="json").status_code, 400)
+        r = c.delete("/api/vibe-reasons/", {"id": rid}, format="json")
+        self.assertEqual((r.status_code, r.data["items"]), (200, []))
+
+    def test_adjust_and_history(self):
+        from unittest import mock
+        c = client_for(self.admin)
+        tpl = c.post("/api/vibe-reasons/", {"name": "За приведённого тестировщика", "points": 100}, format="json").data["item"]
+        self.assertEqual(client_for(self.other).post(f"/api/vibe/{self.user.id}/adjust/", {"points": 5, "reason": "x"}, format="json").status_code, 403)
+        with mock.patch("chat.fcm.notify_profiles") as push:
+            r = c.post(f"/api/vibe/{self.user.id}/adjust/", {"template_id": tpl["id"]}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["vibe"], 100)
+        self.assertTrue(push.called)
+        # Своя причина и минус; ниже нуля не уходим.
+        with mock.patch("chat.fcm.notify_profiles"):
+            r = c.post(f"/api/vibe/{self.user.id}/adjust/", {"points": -130, "reason": "Спам в стене"}, format="json")
+        self.assertEqual((r.status_code, r.data["vibe"]), (200, 0))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.vibe, 0)
+        self.assertEqual(c.post(f"/api/vibe/{self.user.id}/adjust/", {"points": 5}, format="json").status_code, 400)
+        h = client_for(self.user).get("/api/vibe/history/").data
+        admin_rows = [i for i in h["items"] if i["kind"] == "admin"]
+        self.assertEqual([(i["points"], i["reason"]) for i in admin_rows], [(-130, "Спам в стене"), (100, "За приведённого тестировщика")])
+        # В карточке у админа — can_adjust, у обычного — нет.
+        self.assertTrue(c.get(f"/api/vibe/{self.user.id}/").data["can_adjust"])
+        self.assertFalse(client_for(self.other).get(f"/api/vibe/{self.user.id}/").data["can_adjust"])

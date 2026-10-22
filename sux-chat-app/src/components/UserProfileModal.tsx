@@ -212,7 +212,7 @@ const UserProfileModal = ({
 
             <div className="border-t border-border" />
 
-            {!(profile as { is_bot?: boolean }).is_bot && <Vibometer profileId={profile.id} initial={(profile as { vibe?: number }).vibe} />}
+            {!(profile as { is_bot?: boolean }).is_bot && <Vibometer profileId={profile.id} username={profile.username} initial={(profile as { vibe?: number }).vibe} />}
 
             {profile.bio && (
               <div className="rounded-lg bg-surface-4 p-4">

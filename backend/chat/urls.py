@@ -10,7 +10,7 @@ from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
 from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransferBlobView
 from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
-from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView
+from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView, VibeAdjustView, VibeReasonsView
 from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
 from .graffiti import GraffitiView
@@ -39,6 +39,8 @@ urlpatterns = [
     path('ideas/<uuid:idea_id>/<str:act>/', IdeaActionView.as_view(), name='idea-action'),
     path('vibe/history/', VibeHistoryView.as_view(), name='vibe-history'),
     path('vibe/<uuid:profile_id>/', VibeView.as_view(), name='vibe'),
+    path('vibe/<uuid:profile_id>/adjust/', VibeAdjustView.as_view(), name='vibe-adjust'),
+    path('vibe-reasons/', VibeReasonsView.as_view(), name='vibe-reasons'),
     path('vibe-levels/', VibeLevelsView.as_view(), name='vibe-levels'),
     # Стена (chat/wall.py)
     path('wall/', WallView.as_view(), name='wall'),

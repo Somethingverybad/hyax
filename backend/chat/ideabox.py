@@ -518,7 +518,9 @@ class VibeView(APIView):
         from .models import VibeVote
         voted = VibeVote.objects.filter(voter=me, target=target).exists()
         return {"vibe": target.vibe, "voted": voted,
-                "can_vote": not voted and target.id != me.id and not target.is_bot}
+                "can_vote": not voted and target.id != me.id and not target.is_bot,
+                # Админ может начислить или снять баллы с причиной (VibeAdjustView).
+                "can_adjust": _is_admin(me) and not target.is_bot}
 
     def get(self, request, profile_id):
         me = _me(request)
@@ -550,6 +552,123 @@ class VibeView(APIView):
         return Response(self._state(me, target))
 
 
+def _reason_payload(r):
+    return {"id": r.id, "name": r.name, "points": r.points}
+
+
+class VibeReasonsView(APIView):
+    """GET /api/vibe-reasons/ — шаблоны причин начисления (админ).
+    POST {name, points} — новый; {id, name, points} — поправить. DELETE {id} — убрать."""
+    permission_classes = [IsAuthenticated]
+
+    def _admin(self, request):
+        me = _me(request)
+        return me if me and _is_admin(me) else None
+
+    def get(self, request):
+        from .models import VibeReason
+        if not self._admin(request):
+            return Response({"error": "Только для админа"}, status=403)
+        return Response({"items": [_reason_payload(r) for r in VibeReason.objects.all()]})
+
+    def post(self, request):
+        from .models import VibeReason
+        if not self._admin(request):
+            return Response({"error": "Только для админа"}, status=403)
+        name = " ".join(str(request.data.get("name") or "").split())[:80]
+        try:
+            points = int(request.data.get("points"))
+        except (TypeError, ValueError):
+            return Response({"error": "Баллы — целое число"}, status=400)
+        if not name:
+            return Response({"error": "Нужна причина"}, status=400)
+        if points == 0 or abs(points) > 100_000:
+            return Response({"error": "Баллы — не ноль и не больше 100 000"}, status=400)
+        rid = request.data.get("id")
+        if rid:
+            r = VibeReason.objects.filter(id=rid).first()
+            if not r:
+                return Response({"error": "Шаблон не найден"}, status=404)
+            r.name, r.points = name, points
+            r.save(update_fields=["name", "points"])
+        else:
+            if VibeReason.objects.count() >= 100:
+                return Response({"error": "Не больше 100 шаблонов"}, status=400)
+            r = VibeReason.objects.create(name=name, points=points)
+        return Response({"item": _reason_payload(r), "items": [_reason_payload(x) for x in VibeReason.objects.all()]})
+
+    def delete(self, request):
+        from .models import VibeReason
+        if not self._admin(request):
+            return Response({"error": "Только для админа"}, status=403)
+        VibeReason.objects.filter(id=request.data.get("id")).delete()
+        return Response({"items": [_reason_payload(x) for x in VibeReason.objects.all()]})
+
+
+class VibeAdjustView(APIView):
+    """POST /api/vibe/<profile>/adjust/ {points, reason, template_id?} — админ
+    начисляет (или снимает) вайб с причиной. Пишется в историю (kind=admin),
+    человеку — уведомление. Ниже нуля вайб не опускаем."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, profile_id):
+        from .models import VibeAdjustment, VibeReason
+        me = _me(request)
+        if not me or not _is_admin(me):
+            return Response({"error": "Только для админа"}, status=403)
+        target = Profile.objects.filter(id=profile_id).first()
+        if not target:
+            return Response({"error": "Профиль не найден"}, status=404)
+        if target.is_bot:
+            return Response({"error": "У ботов вайбометра нет"}, status=400)
+        template = None
+        tid = request.data.get("template_id")
+        if tid:
+            template = VibeReason.objects.filter(id=tid).first()
+            if not template:
+                return Response({"error": "Шаблон не найден"}, status=404)
+        raw_points = request.data.get("points")
+        try:
+            points = int(raw_points) if raw_points not in (None, "") else (template.points if template else 0)
+        except (TypeError, ValueError):
+            return Response({"error": "Баллы — целое число"}, status=400)
+        reason = " ".join(str(request.data.get("reason") or (template.name if template else "")).split())[:160]
+        if points == 0 or abs(points) > 100_000:
+            return Response({"error": "Баллы — не ноль и не больше 100 000"}, status=400)
+        if not reason:
+            return Response({"error": "Нужна причина"}, status=400)
+        with transaction.atomic():
+            adj = VibeAdjustment.objects.create(admin=me, target=target, points=points, reason=reason, template=template)
+            Profile.objects.filter(id=target.id).update(vibe=F("vibe") + points)
+            Profile.objects.filter(id=target.id, vibe__lt=0).update(vibe=0)
+        target.refresh_from_db(fields=["vibe"])
+        _notify_vibe_adjust(target, points, reason)
+        return Response({"vibe": target.vibe, "item": {"kind": "admin", "points": points, "reason": reason, "at": adj.created_at.isoformat()}})
+
+
+def _notify_vibe_adjust(target, points, reason):
+    """Человеку: сокет (вайбометр обновится) и пуш с причиной."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(f"user_{target.id}", {
+                "type": "notification",
+                "data": {"type": "vibe", "vibe": target.vibe, "from": None, "reason": reason, "points": points},
+            })
+    except Exception:
+        logger.exception("vibe: сокет не ответил")
+    try:
+        from .fcm import notify_profiles
+        signed = f"+{points}" if points > 0 else str(points)
+        body = L("Вайбометр {delta}: {reason} — уже {n}", delta=signed, reason=reason, n=target.vibe)
+        notify_profiles(Profile.objects.filter(id=target.id), title=L("Вайбометр"), body=body,
+                        extra={"kind": "vibe", "profile_id": str(target.id)})
+    except Exception:
+        logger.exception("vibe: пуш не поставлен")
+
+
 class VibeHistoryView(APIView):
     """GET /api/vibe/history/ — кто и за что поднимал мой вайб и что его снимало.
     Только свой вайбометр. Без имени: анонимные голоса в профиле и лайки идей
@@ -577,6 +696,9 @@ class VibeHistoryView(APIView):
             rows.append((v.created_at, {"kind": "idea_vote", "points": VOTE_POINTS, "idea": _clip(v.idea.text, 120)}))
         for r in Report.objects.filter(target_profile=me).order_by("-created_at")[:n]:
             rows.append((r.created_at, {"kind": "report", "points": -VIBE_REPORT_PENALTY}))
+        from .models import VibeAdjustment
+        for a in VibeAdjustment.objects.filter(target=me).order_by("-created_at")[:n]:
+            rows.append((a.created_at, {"kind": "admin", "points": a.points, "reason": a.reason}))
         rows.sort(key=lambda x: x[0], reverse=True)
         # Звук входящих выключен — на вайбометре VIBE_SILENT, настоящий вайб считаем.
         silent = me.vibe_saved is not None
