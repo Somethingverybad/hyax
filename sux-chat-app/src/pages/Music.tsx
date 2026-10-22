@@ -17,6 +17,7 @@ import { playQueue, usePlayer, currentTrack, fmtTime, next, prev, seek, stop, to
          toggleShuffle, cycleRepeat, setVolume, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
 import { Capacitor } from "@capacitor/core";
+import { useLocation } from "react-router-dom";
 import { clearFinished, enqueueTracks, nativeTrackUploads, pickNativeTracks, retryFailed, useTrackUploads } from "@/lib/trackUploads";
 import { PlaylistStatsBar } from "@/components/music/PlaylistStats";
 import ResumeButton from "@/components/music/ResumeButton";
@@ -154,6 +155,20 @@ const Music = () => {
   const [stations, setStations] = useState<StationInfo[] | null>(() => readCache<StationInfo[]>("stations"));
   const [airChannels, setAirChannels] = useState<{ id: string; name: string; avatar_url?: string | null }[]>([]);
   const [openStation, setOpenStation] = useState<StationInfo | null>(null);
+  // Пришли по ссылке на эфир (/air/<id> → StationLinkCard, AirLink): открыть его
+  // и подключиться; станции уже нет — скажем, что эфир закончен.
+  const location = useLocation();
+  const linkStationId = (location.state as { stationId?: string } | null)?.stationId;
+  useEffect(() => {
+    if (!linkStationId) return;
+    let alive = true;
+    api.getStation(linkStationId).then((st) => {
+      if (!alive) return;
+      setOpenStation(st.station);
+      void joinStation(st.station.id, st);
+    }).catch(() => { if (alive) toast(tr("Эфир закончен")); });
+    return () => { alive = false; };
+  }, [linkStationId]);
   // Выбор «от себя / от канала» при запуске эфира.
   const [airPick, setAirPick] = useState<Playlist | null>(null);
   const radio = useRadio();

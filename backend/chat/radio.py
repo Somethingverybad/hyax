@@ -274,9 +274,10 @@ def visible_stations(me):
     ).values_list("user_id", flat=True))
     owners = _music_contacts(me) | dj | {me.id}
     channels = list(ChatParticipant.objects.filter(user=me, chat__kind="channel").values_list("chat_id", flat=True))
+    # Плюс эфиры, которые я уже слушаю (пришёл по ссылке): их треки мне можно подписывать и забирать.
     return Station.objects.filter(
-        Q(channel__isnull=True, owner_id__in=owners) | Q(channel_id__in=channels)
-    ).select_related("owner", "channel", "playlist")
+        Q(channel__isnull=True, owner_id__in=owners) | Q(channel_id__in=channels) | Q(listeners__profile=me)
+    ).distinct().select_related("owner", "channel", "playlist")
 
 
 def next_position(playlist) -> int:
@@ -296,7 +297,11 @@ def next_position(playlist) -> int:
 
 
 def _visible(me, pk):
-    return visible_stations(me).filter(id=pk).first()
+    """Эфир по id: из видимых мне — или любой существующий, если id знаю (ссылка
+    «Поделиться эфиром»: id не угадать, а поделившийся сам решил открыть эфир).
+    Нет такого — эфир закончился (станцию удалили)."""
+    return (visible_stations(me).filter(id=pk).first()
+            or Station.objects.filter(id=pk).select_related("owner", "channel", "playlist").first())
 
 
 def _can_control(st, me) -> bool:

@@ -46,7 +46,7 @@ import { GraffitiSheet } from "@/components/chat/Graffiti";
 import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
-import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken } from "@/lib/linkify";
+import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken, stationLinkId } from "@/lib/linkify";
 import { FormattedText, type Mention, carryCustomEmoji, customEmojiAt, parseMarkup, parseMarkupWithEmoji, toMarkupWithEmoji, maskPreview, toggleMarker, type EntityType, type TextEntity, type CustomEmojiRange } from "@/lib/format";
 import { cachedCipherFile, chatKey, decryptFile, decryptPayload, deviceId, encryptFile, encryptPayload, fingerprintEmoji, hasLocalHalf, imageThumb, newKeyPair, rememberPending, secretSupported, storeCipherFile, type SecretInfo, type SecretMedia, type SecretPayload, videoThumb } from "@/lib/secret";
 import SecretChatIntro from "./SecretChatIntro";
@@ -56,6 +56,7 @@ import ComposeMirror from "./ComposeMirror";
 import { readCache } from "@/lib/session-cache";
 import { MESSAGE_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import PlaylistLinkCard from "./PlaylistLinkCard";
+import StationLinkCard from "./StationLinkCard";
 import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
@@ -760,6 +761,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           // быть пропуск, и склеивать их нельзя. Вернуться к последним
           // сообщениям — кнопкой «вниз» (она перезагрузит хвост).
           windowedRef.current = !!r.has_newer;
+          setWindowed(!!r.has_newer);
           setHasMore(r.has_more);
           hasMoreRef.current = r.has_more;
           setMessages(r.messages);
@@ -817,10 +819,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   /** Подсветить найденное и снять подсветку при первом касании ленты
    *  (прокрутка, тап, клавиши). Предыдущую подсветку убираем сразу. */
   const highlightFound = (el: HTMLElement) => {
-    document.querySelectorAll(".msg-found").forEach((x) => x.classList.remove("msg-found"));
-    el.classList.add("msg-found");
+    setFoundId(el.id.replace(/^msg-/, ""));
     const off = () => {
-      el.classList.remove("msg-found");
+      setFoundId(null);
       for (const ev of ["wheel", "touchstart", "pointerdown", "keydown"] as const) window.removeEventListener(ev, off, true);
     };
     // Чуть позже: касание, которым открыли закреп/результат поиска, не в счёт.
@@ -1368,6 +1369,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Лента показывает окно вокруг старого сообщения, а не хвост переписки:
   // кнопка «вниз» должна не прокручивать, а перезагрузить последние сообщения.
   const windowedRef = useRef(false);
+  // То же для разметки: пока показано окно вокруг найденного (не хвост ленты),
+  // кнопка «вниз» видна всегда — иначе, дочитав окно до низа, вернуться к
+  // последним сообщениям было нечем (баг-репорт 7ebfd696).
+  const [windowed, setWindowed] = useState(false);
+  // Найденное (закреп, поиск): подсветка — состоянием, а не классом на DOM:
+  // React при перерисовке строки (пришло новое, реакция) переписывал className
+  // и класс пропадал.
+  const [foundId, setFoundId] = useState<string | null>(null);
   // Окно отрисовки: из кэша приходит до 600 сообщений, и рисовать их все при
   // входе — это полсекунды на десктопе в большой группе (баг-репорт: 369
   // пузырей при каждом открытии). Рисуем хвост, остальное — порциями при
@@ -1706,6 +1715,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     primedRef.current = false;
     pinnedRef.current = true;
     windowedRef.current = false;
+    setWindowed(false);
     setRenderLimit(RENDER_STEP);
     unreadOpenRef.current = unreadAtOpen || 0;
     setUnreadMarkId(null);
@@ -2002,6 +2012,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const r = await api.syncMessages(id, syncedAtRef.current ? { since: syncedAtRef.current } : { limit: 50 });
       if (id !== chatIdRef.current) return; // чат успели переключить
       syncedAtRef.current = r.now;
+      if (windowedRef.current) {
+        // Показано окно вокруг найденного: новое к нему не клеим (между окном и
+        // хвостом пропуск), только считаем для кнопки «вниз»; хвост перечитает backToLatest.
+        const known = new Set(messagesListRef.current.map((m) => m.id));
+        const fresh = r.messages.filter((m) => !known.has(m.id)).length;
+        if (fresh) setNewBelow((n) => n + fresh);
+        return;
+      }
       if (r.messages.length || r.deleted.length) applyBatch(r.messages.map(prefillSecret), r.deleted);
       // У кого-то сменились ник или аватар — подписи у старых сообщений тоже.
       if (r.authors?.length) {
@@ -2070,7 +2088,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       logFeed("repin-webkit");
       return;
     }
-    if (dist < 80 && !jumping) {
+    if (dist < 80 && !jumping && !windowedRef.current) {
       if (!pinnedRef.current) logFeed("repin");
       pinnedRef.current = true;
       if (newBelow) setNewBelow(0);
@@ -2088,6 +2106,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const posId = chatIdRef.current;
     window.clearTimeout(posSaveTimer.current);
     posSaveTimer.current = window.setTimeout(() => { if (chatIdRef.current === posId) saveChatPos(posId); }, 250);
+    // Окно вокруг найденного: за полтора экрана до его низа — страница новее.
+    if (windowedRef.current && byUser && dist < Math.max(600, el.clientHeight * 1.5)) void loadNewer();
     // Старые страницы тянем заранее, за полтора экрана до верха: пока человек
     // долистает, они уже в ленте, и вставка не приходится на край под пальцем.
     if (el.scrollTop < Math.max(600, el.clientHeight * 1.5)) {
@@ -2101,6 +2121,32 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  /** Окно вокруг найденного: листаем вниз — тянем страницу новее (sync?after=),
+   *  как сверху тянем старые. Дошли до хвоста — окно кончилось, лента обычная.
+   *  Вставка снизу область под пальцем не двигает, поэтому без рывков. */
+  const loadingNewerRef = useRef(false);
+  const loadNewer = async () => {
+    if (loadingNewerRef.current || !windowedRef.current || !chatId) return;
+    const last = messagesListRef.current[messagesListRef.current.length - 1];
+    if (!last) return;
+    loadingNewerRef.current = true;
+    try {
+      const r = await api.syncMessages(chatId, { after: last.created_at, limit: 50 });
+      if (chatId !== chatIdRef.current) return;
+      if (r.messages.length) {
+        const fresh = r.messages.map(prefillSecret);
+        setMessages((prev) => { const ids = new Set(prev.map((m) => m.id)); return [...prev, ...fresh.filter((m) => !ids.has(m.id))]; });
+      }
+      if (!r.has_newer) {
+        windowedRef.current = false;
+        setWindowed(false);
+        setNewBelow(0);
+        syncedAtRef.current = r.now;
+      }
+    } catch { /* сеть — попробуем на следующей прокрутке */ }
+    finally { loadingNewerRef.current = false; }
+  };
+
   /** Вернуться к последним сообщениям из окна вокруг старого. */
   const backToLatest = async () => {
     if (!chatId) return;
@@ -2111,6 +2157,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const cached = await readMessages(chatId);
       if (cached?.messages?.length) {
         windowedRef.current = false;
+        setWindowed(false);
         setHasMore(cached.hasMore);
         hasMoreRef.current = cached.hasMore;
         setMessages(cached.messages);
@@ -2121,6 +2168,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const r = await api.syncMessages(chatId, { limit: 50 });
       if (chatId !== chatIdRef.current) return; // чат успели переключить — не подменяем ленту чужой
       windowedRef.current = false;
+      setWindowed(false);
+      setNewBelow(0);
       syncedAtRef.current = r.now;
       setHasMore(r.has_more);
       hasMoreRef.current = r.has_more;
@@ -4044,7 +4093,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             }
             // Ссылка на пак, тему или профиль разворачивается карточкой
             // (PackLinkCard / ProfileLinkCard), и в тексте её уже не показываем.
-            const packLink = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u) || channelLinkRef(u) || playlistLinkToken(u)) || null;
+            const packLink = (message.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u) || channelLinkRef(u) || playlistLinkToken(u) || stationLinkId(u)) || null;
             const shownText = packLink
               // Схлопываем пробелы, оставшиеся от вырезанной ссылки, но переносы строк храним.
               ? (message.content || "").replace(packLink, "").replace(/[ \t]{2,}/g, " ").trim()
@@ -4152,7 +4201,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
-                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in", foundId === message.id && "msg-found", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (
@@ -4455,6 +4504,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         ? <ProfileLinkCard url={packLink} own={isOwn && !bareBubble} />
                         : channelLinkRef(packLink)
                         ? <ChannelLinkCard url={packLink} own={isOwn && !bareBubble} />
+                        : stationLinkId(packLink)
+                        ? <StationLinkCard url={packLink} text={message.content} own={isOwn && !bareBubble} />
                         : playlistLinkToken(packLink)
                         ? <PlaylistLinkCard url={packLink} own={isOwn && !bareBubble} />
                         : <PackLinkCard url={packLink} own={isOwn && !bareBubble} />)}
@@ -4696,7 +4747,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       {/* Кнопка «вниз»: появляется, когда лента отлистана вверх; со счётчиком,
           если за это время пришли новые. Сама лента при этом не двигается. */}
-      {(awayFromBottom || newBelow > 0) && (
+      {(awayFromBottom || newBelow > 0 || windowed) && (
         <div className="relative h-0 z-10 kb-lift">
           <button
             type="button"
@@ -4704,7 +4755,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             className="ui-btn absolute right-3 md:right-6 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80"
             // Над панелью ввода; в «Мяте» панель — остров поверх ленты, учитываем её высоту.
             style={{ top: "calc(-1 * (var(--compose-h, 0px) + 56px))" }}
-            aria-label={newBelow > 0 ? tr("Новых сообщений: {n}. Вниз", { n: newBelow }) : tr("Вниз")}
+            aria-label={newBelow > 0 ? tr("Новых сообщений: {n}. Вниз", { n: newBelow }) : windowed ? tr("К последним сообщениям") : tr("Вниз")}
           >
             <ArrowDown className="w-5 h-5" />
             {newBelow > 0 && (

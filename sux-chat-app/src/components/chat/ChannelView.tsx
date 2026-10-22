@@ -23,10 +23,11 @@ import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Tra
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
-import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken } from "@/lib/linkify";
+import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken, stationLinkId } from "@/lib/linkify";
 import { FormattedText, carryCustomEmoji, type TextEntity } from "@/lib/format";
 import PackLinkCard from "./PackLinkCard";
 import PlaylistLinkCard from "./PlaylistLinkCard";
+import StationLinkCard from "./StationLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import PhotoEditor from "@/components/PhotoEditor";
 import { saveFileToDevice } from "@/lib/saveFile";
@@ -1261,9 +1262,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 {(() => {
                   // Пак или тема по ссылке в посте — плиткой с «Добавить себе»,
                   // профиль — карточкой с «Написать». Текст поста не трогаем.
-                  const link = (post.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u) || channelLinkRef(u) || playlistLinkToken(u));
+                  const link = (post.content || "").match(/https?:\/\/\S+/g)?.find((u) => packLinkKind(u) || profileLinkName(u) || channelLinkRef(u) || playlistLinkToken(u) || stationLinkId(u));
                   if (!link) return null;
                   return profileLinkName(link) ? <ProfileLinkCard url={link} /> : channelLinkRef(link) ? <ChannelLinkCard url={link} />
+                    : stationLinkId(link) ? <StationLinkCard url={link} text={post.content} />
                     : playlistLinkToken(link) ? <PlaylistLinkCard url={link} /> : <PackLinkCard url={link} />;
                 })()}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}

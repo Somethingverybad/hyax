@@ -10,6 +10,7 @@ import ProfilePrivacy from "./pages/ProfilePrivacy";
 import ProfileSavedAccess from "@/pages/ProfileSavedAccess";
 import Music from "@/pages/Music";
 import SharedPlaylist from "@/pages/SharedPlaylist";
+import AirLink from "@/pages/AirLink";
 import { syncThemeFromProfile } from "@/lib/theme";
 import { readCache } from "@/lib/session-cache";
 import CallHost from "./components/call/CallHost";
@@ -344,6 +345,8 @@ const App = () => {
               <Route path="/music" element={<Music />} />
               {/* Плейлист по ссылке «Поделиться». */}
               <Route path="/pl/:token" element={<SharedPlaylist />} />
+              {/* Эфир по ссылке «Поделиться эфиром». */}
+              <Route path="/air/:id" element={<AirLink />} />
               {/* Настройки и их подэкраны: на широком окне — колонкой по центру. */}
               <Route element={<SettingsFrame />}>
                 <Route path="/profile" element={<ProfilePage />} />

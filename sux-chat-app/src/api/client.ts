@@ -1812,11 +1812,13 @@ export const api = {
    *  что менялось после (плюс id удалённых у всех); before — страница старее. */
   syncMessages: async (
     chatId: string,
-    opts: { since?: string; before?: string; limit?: number; around?: string } = {},
+    opts: { since?: string; before?: string; after?: string; limit?: number; around?: string } = {},
   ): Promise<{ messages: any[]; deleted: string[]; has_more: boolean; has_newer?: boolean; now: string; authors?: { id: string; username: string; avatar_url?: string | null }[] }> => {
     const q = new URLSearchParams({ chat: chatId });
     if (opts.since) q.set("since", opts.since);
     if (opts.before) q.set("before", opts.before);
+    // after — страница новее (листаем вниз из окна вокруг найденного).
+    if (opts.after) q.set("after", opts.after);
     // around — окно вокруг сообщения: переход к закреплённому одним запросом.
     if (opts.around) q.set("around", opts.around);
     if (opts.limit) q.set("limit", String(opts.limit));

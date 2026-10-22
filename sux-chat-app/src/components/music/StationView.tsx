@@ -1,7 +1,9 @@
 import { t as tr, tn } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Ban, Check, ChevronLeft, Flag, Heart, Pause, Play, Plus, Radio, Shuffle, SkipForward, Square } from "lucide-react";
+import { Ban, Check, ChevronLeft, Flag, Heart, Pause, Play, Plus, Radio, Share2, Shuffle, SkipForward, Square } from "lucide-react";
+import ShareToChat from "@/components/ShareToChat";
+import { shareStationLink, stationLink } from "@/lib/share";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
 import ReportSheet from "@/components/ReportSheet";
@@ -30,6 +32,8 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
   const [taken, setTaken] = useState<Set<string>>(new Set());
   const [reportFor, setReportFor] = useState<PlaylistTrack | null>(null);
   const [busy, setBusy] = useState(false);
+  // «Поделиться эфиром»: ссылка wyx.su/air/<id> в чат или системным окном.
+  const [shareOpen, setShareOpen] = useState(false);
   const isAdmin = !!readCache<{ is_admin?: boolean }>("user")?.is_admin;
 
   useEffect(() => { if (radio.stationId !== item.id) void joinStation(item.id); }, [item.id]);
@@ -105,6 +109,9 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
           <ChevronLeft className="w-5 h-5" />
         </button>
         <span className="text-h2 flex-1 truncate">{stationName(info)}</span>
+        <button type="button" onClick={() => setShareOpen(true)} className="ui-icon-btn p-2 text-subtle active:text-primary" aria-label={tr("Поделиться эфиром")}>
+          <Share2 className="w-5 h-5" />
+        </button>
         <span className={cn("shrink-0 px-2 h-6 rounded-full text-caption font-semibold flex items-center gap-1",
           info.paused ? "bg-surface-4 text-subtle" : "bg-destructive text-destructive-foreground")}>
           <Radio className="w-3.5 h-3.5" /> {info.paused ? tr("Пауза") : tr("Эфир")}
@@ -224,6 +231,11 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
 
       {reportFor && (
         <ReportSheet target={{ type: "track", id: reportFor.id }} title={reportFor.title} onClose={() => setReportFor(null)} />
+      )}
+      {shareOpen && (
+        <ShareToChat open title={tr("Поделиться эфиром")} onClose={() => setShareOpen(false)}
+          text={`${tr("Эфир «{name}»", { name: stationName(info) })} ${stationLink(item.id)}`}
+          onShareOutside={() => { setShareOpen(false); void shareStationLink(stationName(info), item.id).then((r) => { if (r === "copied") toast.success(tr("Ссылка скопирована")); }); }} />
       )}
     </>
   );

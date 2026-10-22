@@ -2603,3 +2603,50 @@ class MessageSearchTests(TestCase):
         self.assertIn("иголка", hit)
         self.assertTrue(hit.startswith("…") and hit.endswith("…"))
         self.assertLess(len(hit), 160)
+
+
+class StationShareTests(TestCase):
+    """Эфир по ссылке: чужой (не собеседник) открывает его по id и слушает; после
+    остановки — 404 «закончился»; слушателю по ссылке треки эфира доступны."""
+
+    def setUp(self):
+        from .models import Playlist, PlaylistTrack, Station
+        self.host = make_user("air_host")
+        self.guest = make_user("air_guest")
+        pl = Playlist.objects.create(owner=self.host, name="Эфирный")
+        self.track = PlaylistTrack.objects.create(playlist=pl, file_url="s3://music/a.mp3", title="A", position=0)
+        self.st = Station.objects.create(owner=self.host, playlist=pl, anchor_track=self.track)
+
+    def test_guest_by_link(self):
+        from chat.radio import track_on_air_for
+        c = client_for(self.guest)
+        self.assertEqual(c.get("/api/radio/").data.get("stations"), [])  # в списке чужого эфира нет
+        r = c.get(f"/api/radio/{self.st.id}/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["station"]["id"], str(self.st.id))
+        self.assertFalse(track_on_air_for(self.guest, file_url="s3://music/a.mp3"))
+        self.assertEqual(c.post(f"/api/radio/{self.st.id}/listen/").status_code, 200)
+        self.assertTrue(track_on_air_for(self.guest, file_url="s3://music/a.mp3"))
+        # Управлять — нет.
+        self.assertEqual(c.post(f"/api/radio/{self.st.id}/control/", {"action": "skip"}, format="json").status_code, 404)
+        self.assertEqual(client_for(self.host).delete(f"/api/radio/{self.st.id}/").status_code, 204)
+        r = c.get(f"/api/radio/{self.st.id}/")
+        self.assertEqual((r.status_code, r.data["error"]), (404, "Эфир закончился"))
+
+
+class SyncAfterTests(TestCase):
+    """sync?after=<момент>: страница новее — листаем вниз от окна вокруг найденного."""
+
+    def test_after_pages_forward(self):
+        from urllib.parse import quote
+        me = make_user("after_me")
+        ch = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=ch, user=me)
+        msgs = [Message.objects.create(chat=ch, sender=me, content=f"m{i}") for i in range(7)]
+        r = client_for(me).get(f"/api/messages/sync/?chat={ch.id}&after={quote(msgs[1].created_at.isoformat())}&limit=3")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([m["content"] for m in r.data["messages"]], ["m2", "m3", "m4"])
+        self.assertTrue(r.data["has_newer"])
+        r = client_for(me).get(f"/api/messages/sync/?chat={ch.id}&after={quote(msgs[4].created_at.isoformat())}&limit=3")
+        self.assertEqual([m["content"] for m in r.data["messages"]], ["m5", "m6"])
+        self.assertFalse(r.data["has_newer"])

@@ -34,6 +34,8 @@ export const stickerPackLink = (id: string) => `${LINK_ORIGIN}/stp/${id}`;
 
 /** Плейлист по ссылке: ключ, а не id — доступ можно отозвать. */
 export const playlistLink = (token: string) => `${LINK_ORIGIN}/pl/${token}`;
+/** Эфир: https://wyx.su/air/<id> — открывает эфир в «Музыке»; закончился — карточка так и скажет. */
+export const stationLink = (id: string) => `${LINK_ORIGIN}/air/${id}`;
 
 /** Ссылка на канал: по @username, а без него — по id (канал без хэндла тоже можно передать). */
 export const channelLink = (ch: { id: string; username?: string | null }) =>
@@ -87,6 +89,10 @@ export const shareStickerPack = (name: string, id: string) =>
 /** Набор своих эмодзи — та же страница набора, другая подпись. */
 export const shareEmojiPack = (name: string, id: string) =>
   shareUrl("WYX", t("Эмодзи «{name}» в WYX", { name }), stickerPackLink(id));
+
+/** Поделиться эфиром: системное окно «Поделиться», иначе — буфер. */
+export const shareStationLink = (name: string, id: string) =>
+  shareUrl("WYX", t("Эфир «{name}» в WYX", { name }), stationLink(id));
 
 /** Поделиться плейлистом: системное окно «Поделиться», иначе — буфер. */
 export const sharePlaylistLink = (name: string, token: string) =>

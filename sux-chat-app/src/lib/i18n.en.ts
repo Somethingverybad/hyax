@@ -2118,5 +2118,10 @@ const en: Record<string, string> = {
   "Изумрудный": "Emerald",
   "Александритовый": "Alexandrite",
   "Бриллиантовый": "Diamond",
+  "Эфир «{name}» в WYX": "Live «{name}» in WYX",
+  "Эфир «{name}»": "Live «{name}»",
+  "Эфир закончен": "The live has ended",
+  "Поделиться эфиром": "Share the live",
+  "К последним сообщениям": "To the latest messages",
 };
 export default en;

@@ -1595,6 +1595,20 @@ class MessageViewSet(viewsets.ModelViewSet):
                 "now": now.isoformat(),
             })
 
+        # after — страница новее этого момента (листаем вниз от окна вокруг
+        # найденного, см. around): по порядку, has_newer — есть ли ещё дальше.
+        after = parse_datetime(request.query_params.get('after') or '')
+        if after:
+            page = list(live.filter(created_at__gt=after).order_by('created_at')[:limit + 1])
+            has_newer = len(page) > limit
+            return Response({
+                "messages": ser(page[:limit]),
+                "deleted": [],
+                "has_more": False,
+                "has_newer": has_newer,
+                "now": now.isoformat(),
+            })
+
         before = parse_datetime(request.query_params.get('before') or '')
         if before:
             live = live.filter(created_at__lt=before)

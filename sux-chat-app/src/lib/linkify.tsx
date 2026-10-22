@@ -40,7 +40,7 @@ export function internalPath(raw: string): string | null {
     // Нейтральный wyx.su (так делятся сейчас) и основной домен (старые ссылки).
     const link = new URL(LINK_ORIGIN).host;
     if (u.host !== new URL(PUBLIC_ORIGIN).host && u.host !== link && u.host !== `www.${link}`) return null;
-    return /^\/(u|c|sp|stp|t|pl)\/[^/]+\/?$/.test(u.pathname) ? u.pathname + u.search : null;
+    return /^\/(u|c|sp|stp|t|pl|air)\/[^/]+\/?$/.test(u.pathname) ? u.pathname + u.search : null;
   } catch {
     return null;
   }
@@ -58,6 +58,12 @@ export function packLinkKind(raw: string): { kind: "sound" | "sticker" | "theme"
 export function playlistLinkToken(raw: string): string | null {
   const m = /^\/pl\/([^/?#]+)/.exec(internalPath(raw) || "");
   return m ? m[1] : null;
+}
+
+/** Эфир из ссылки /air/<id> — для карточки эфира в сообщении и посте. */
+export function stationLinkId(raw: string): string | null {
+  const m = /^\/air\/([0-9a-f-]{36})/i.exec(internalPath(raw) || "");
+  return m ? m[1].toLowerCase() : null;
 }
 
 /** Ник из ссылки на профиль /u/<ник> — для карточки профиля в сообщении. */
