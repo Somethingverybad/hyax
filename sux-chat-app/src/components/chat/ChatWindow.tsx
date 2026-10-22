@@ -542,6 +542,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   const [undoBar, setUndoBar] = useState<{ id: string; scope: "me" | "all"; message: Message } | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Отложенное удаление (5 с на «Отменить»): что именно, — чтобы при уходе из
+   *  чата раньше срока удалить сразу, а не потерять (баг-репорты 4c10b648, b2c04526:
+   *  «не удаляется из избранного» — удалили и сразу вышли, таймер снимался). */
+  const pendingDeleteRef = useRef<{ id: string; scope: "me" | "all" } | null>(null);
   // Настройки группы (клик по названию группы). Заголовок держим локально,
   // чтобы переименование отражалось сразу.
   const [groupOpen, setGroupOpen] = useState(false);
@@ -2390,6 +2394,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
 
   const commitDelete = (id: string, scope: "me" | "all") => {
+    if (pendingDeleteRef.current?.id === id) pendingDeleteRef.current = null;
     api.removeMessage(id, scope).catch(() => {});
     setMessages((prev) => prev.filter((m) => m.id !== id));
     setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
@@ -2401,6 +2406,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (undoBar) commitDelete(undoBar.id, undoBar.scope);
     eatThenHide([message.id]);
     setUndoBar({ id: message.id, scope, message });
+    pendingDeleteRef.current = { id: message.id, scope };
     deleteTimerRef.current = setTimeout(() => {
       commitDelete(message.id, scope);
       setUndoBar(null);
@@ -2409,6 +2415,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   const undoDelete = () => {
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
+    pendingDeleteRef.current = null;
     if (undoBar) {
       setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
       // Отменили, пока пузырь ещё «съедают», — вернуть его как был.
@@ -3393,7 +3400,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       map.forEach((url) => URL.revokeObjectURL(url));
       map.clear();
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      // Ушли из чата, пока шли 5 секунд на «Отменить», — удаляем сразу, иначе
+      // сообщение возвращалось при следующем входе.
+      if (deleteTimerRef.current) {
+        clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
+        const pd = pendingDeleteRef.current;
+        pendingDeleteRef.current = null;
+        if (pd) {
+          api.removeMessage(pd.id, pd.scope).catch(() => {});
+          // И из кэша ленты — иначе при следующем входе оно показалось бы снова.
+          const cid = chatIdRef.current;
+          if (cid) void readMessages(cid).then((c) => c && writeMessages(cid, c.messages.filter((m: { id: string }) => m.id !== pd.id), c.syncedAt, c.hasMore));
+        }
+      }
       soundStopRef.current?.();
     };
   }, []);

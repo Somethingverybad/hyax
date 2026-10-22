@@ -1210,6 +1210,10 @@ class MessageViewSet(viewsets.ModelViewSet):
             _push_message_deleted(msg)
         else:
             msg.deleted_for.add(profile)
+            # Двигаем updated_at: так «спрятанное у себя» доедет до моих других
+            # устройств через sync (поле deleted) и уйдёт из их кэша. Остальным
+            # участникам сообщение просто придёт в sync без изменений.
+            Message.objects.filter(pk=msg.pk).update(updated_at=timezone.now())
             _push_message_deleted(msg, only_profile=profile)
         return Response({"ok": True})
 
@@ -1551,9 +1555,12 @@ class MessageViewSet(viewsets.ModelViewSet):
         since = parse_datetime(request.query_params.get('since') or '')
         if since:
             changed = list(base.filter(updated_at__gt=since).order_by('created_at'))
+            # Спрятанные у себя (remove scope=me, в т. ч. с другого устройства): base
+            # их не отдаёт, но клиенту надо убрать их из кэша — отдаём как удалённые.
+            hidden = list(Message.objects.filter(chat=chat, deleted_for=profile, updated_at__gt=since).values_list('id', flat=True))
             return Response({
                 "messages": ser([m for m in changed if not m.deleted_for_all]),
-                "deleted": [str(m.id) for m in changed if m.deleted_for_all],
+                "deleted": [str(m.id) for m in changed if m.deleted_for_all] + [str(i) for i in hidden],
                 "authors": _changed_authors(chat, since),
                 "has_more": False,
                 "now": now.isoformat(),

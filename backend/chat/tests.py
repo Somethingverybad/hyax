@@ -2434,3 +2434,34 @@ class IdeaVoiceTests(TestCase):
         t.assert_not_called()
         self.assertFalse(Idea.objects.filter(message=msg).exists())
         self.assertTrue(Message.objects.filter(chat=self.chat, sender=ideabox_bot(), content=VOICE_TOO_LONG).exists())
+
+
+class HiddenForMeSyncTests(TestCase):
+    """«Удалить у себя» доезжает до моих других устройств: sync отдаёт id спрятанного
+    в deleted, у собеседника сообщение остаётся (баг-репорты 4c10b648, b2c04526)."""
+
+    def setUp(self):
+        self.me = make_user("hide_me")
+        self.peer = make_user("hide_peer")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.msg = Message.objects.create(chat=self.chat, sender=self.peer, content="спрячь меня")
+
+    def test_hidden_reported_as_deleted_in_sync(self):
+        from urllib.parse import quote
+        from django.utils import timezone
+        since = quote(timezone.now().isoformat())  # «+00:00» в URL иначе стал бы пробелом
+        r = client_for(self.me).post(f"/api/messages/{self.msg.id}/remove/", {"scope": "me"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        r = client_for(self.me).get(f"/api/messages/sync/?chat={self.chat.id}&since={since}")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(str(self.msg.id), r.data["deleted"])
+        self.assertEqual(r.data["messages"], [])
+        # Собеседнику — не удалено.
+        r = client_for(self.peer).get(f"/api/messages/sync/?chat={self.chat.id}&since={since}")
+        self.assertNotIn(str(self.msg.id), r.data["deleted"])
+        self.assertEqual([m["id"] for m in r.data["messages"]], [str(self.msg.id)])
+        # И первая страница без since его мне не отдаёт.
+        r = client_for(self.me).get(f"/api/messages/sync/?chat={self.chat.id}")
+        self.assertNotIn(str(self.msg.id), [m["id"] for m in r.data["messages"]])

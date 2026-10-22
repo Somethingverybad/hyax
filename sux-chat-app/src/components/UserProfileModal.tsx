@@ -1,6 +1,7 @@
 import { t, getLang } from "@/lib/i18n";
 import { writeClipboard } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare, LayoutGrid } from "lucide-react";
 import { openMiniApp } from "@/lib/miniapp";
@@ -176,59 +177,37 @@ const UserProfileModal = ({
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={write}
-                disabled={writing}
-                className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60"
-              >
-                <MessageSquare className="w-4 h-4" />
-                {writing ? t("Открываю…") : isBot ? t("Начать") : t("Написать")}
-              </button>
-              {/* Мини-приложение бота — прямо из карточки. */}
-              {isBot && (profile as { webapp_url?: string } | null)?.webapp_url && (
+            {/* Действия одним рядом: на телефоне только иконки (подписи не влезали —
+                пять кнопок шли в два ряда, баг-репорт fde2b313), на компьютере — с подписями. */}
+            <div className="flex gap-2">
+              {([
+                { key: "write", onClick: write, disabled: writing, primary: true, icon: <MessageSquare className="w-5 h-5 md:w-4 md:h-4" />,
+                  label: writing ? t("Открываю…") : isBot ? t("Начать") : t("Написать") },
+                ...(isBot && (profile as { webapp_url?: string } | null)?.webapp_url ? [{
+                  key: "app", onClick: () => { const pr = profile!; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }, primary: false,
+                  icon: <LayoutGrid className="w-5 h-5 md:w-4 md:h-4" />, label: (profile as { webapp_title?: string }).webapp_title || t("Приложение") }] : []),
+                ...(onCall ? [{ key: "call", onClick: () => { onCall(); onClose(); }, primary: true, icon: <Phone className="w-5 h-5 md:w-4 md:h-4" />, label: t("Позвонить") }] : []),
+                { key: "share", onClick: () => setShareOpen(true), primary: false, icon: <Share2 className="w-5 h-5 md:w-4 md:h-4" />, label: t("Поделиться") },
+                { key: "report", onClick: () => setReportOpen(true), primary: false, icon: <Flag className="w-5 h-5 md:w-4 md:h-4" />, label: t("Пожаловаться") },
+                { key: "block", onClick: toggleBlock, disabled: blocked === null, primary: false, accent: true, icon: <Ban className="w-5 h-5 md:w-4 md:h-4" />,
+                  label: blocked ? t("Разблокировать") : t("Заблокировать") },
+              ] as { key: string; onClick: () => void; disabled?: boolean; primary: boolean; accent?: boolean; icon: React.ReactNode; label: string }[]).map((b) => (
                 <button
+                  key={b.key}
                   type="button"
-                  onClick={() => { const pr = profile!; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }}
-                  className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90"
+                  onClick={b.onClick}
+                  disabled={b.disabled}
+                  aria-label={b.label}
+                  title={b.label}
+                  className={cn(
+                    "flex-1 min-w-0 h-11 md:h-9 rounded-md font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110 disabled:opacity-60",
+                    b.primary ? "bg-primary text-primary-foreground" : b.accent ? "bg-surface-4 text-primary" : "bg-surface-4 text-foreground",
+                  )}
                 >
-                  <LayoutGrid className="w-4 h-4" />{(profile as { webapp_title?: string }).webapp_title || t("Приложение")}
+                  {b.icon}
+                  <span className="hidden md:inline truncate">{b.label}</span>
                 </button>
-              )}
-              {onCall && (
-                <button
-                  type="button"
-                  onClick={() => { onCall(); onClose(); }}
-                  className="flex-1 h-10 md:h-9 rounded-md bg-primary text-primary-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
-                >
-                  <Phone className="w-4 h-4" />{t("Позвонить")}</button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShareOpen(true)}
-                className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 hover:brightness-110"
-              >
-                <Share2 className="w-4 h-4" />{t("Поделиться")}</button>
-            </div>
-
-            {/* Жалоба и блокировка — вторичные, серые, ниже основных действий. */}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-foreground font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90"
-              >
-                <Flag className="w-4 h-4" />{t("Пожаловаться")}</button>
-              <button
-                type="button"
-                onClick={toggleBlock}
-                disabled={blocked === null}
-                className="flex-1 h-10 md:h-9 rounded-md bg-surface-4 text-primary font-medium md:text-small flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50"
-              >
-                <Ban className="w-4 h-4" />
-                {blocked ? t("Разблокировать") : t("Заблокировать")}
-              </button>
+              ))}
             </div>
 
             <div className="border-t border-border" />
