@@ -97,7 +97,7 @@ const page = ({ kind, docs, other, path }) => `<!doctype html>
     function apply(l) {
       document.querySelectorAll(".lang-block").forEach(function (b) { b.hidden = b.dataset.lang !== l; });
       document.querySelectorAll("[data-nav]").forEach(function (a) { if (a.dataset[l]) a.textContent = a.dataset[l]; });
-      document.querySelectorAll('a[href="/"], a[href^="/#"]').forEach(function (a) { var base = l === "ru" ? "/" : "/" + l + "/"; a.setAttribute("href", a.getAttribute("href").replace(/^\/(?:(?:en|ko)\/)?/, base)); });
+      document.querySelectorAll('a[href="/"], a[href^="/#"]').forEach(function (a) { var base = l === "ru" ? "/" : "/" + l + "/"; a.setAttribute("href", a.getAttribute("href").replace(/^\\/(?:(?:en|ko)\\/)?/, base)); });
       document.documentElement.lang = l;
       var u = new URL(location.href); u.searchParams.set("lang", l); history.replaceState(null, "", u);
     }
