@@ -2082,5 +2082,9 @@ const en: Record<string, string> = {
   "Голосовая идея": "Voice idea",
   "Видео-идея": "Video idea",
   "Расшифровываю видео…": "Transcribing the video…",
+  "Отправить лог разработчику": "Send the log to the developer",
+  "Уйдёт журнал приложения за эту сессию. Опишите, что случилось (можно пропустить).": "The app log for this session will be sent. Describe what happened (optional).",
+  "Что случилось?": "What happened?",
+  "На компьютере: Ctrl/⌘+Shift+B отправит лог откуда угодно — даже если интерфейс сломался.": "On a computer, Ctrl/⌘+Shift+B sends the log from anywhere — even if the interface has broken.",
 };
 export default en;

@@ -173,6 +173,9 @@ const ProfileBugReport = () => {
           <Bug className="w-4 h-4 shrink-0" />
           {t("Репорт увидят только разработчики. Вместе с ним уходят версия {version} (сборка {build}), платформа и модель устройства.", { version: APP_VERSION, build: APP_BUILD + (nativeBuild && nativeBuild !== APP_BUILD ? `, ${nativeBuild}` : "") })}
         </p>
+        {(Capacitor.getPlatform() === "web" || !!window.electronAPI) && (
+          <p className="px-1 text-caption text-subtle">{t("На компьютере: Ctrl/⌘+Shift+B отправит лог откуда угодно — даже если интерфейс сломался.")}</p>
+        )}
       </div>
     </div>
   );
