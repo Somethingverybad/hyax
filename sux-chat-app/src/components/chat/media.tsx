@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { currentTrack, fmtTime, usePlayer } from "@/lib/player";
-import { fmtNoteTime, inlineNote, openNoteFull, startNote, useNoteHost, useVideoNoteSlice } from "@/lib/videoNote";
+import { fmtNoteTime, inlineNote, openNoteBig, seekNote, startNote, toggleNote, useNoteHost, useVideoNoteSlice } from "@/lib/videoNote";
 import { t as tr } from "@/lib/i18n";
 
 /**
@@ -182,7 +182,7 @@ export const GlassTriangle = ({ size, rim = 3, flip = false, className, innerCla
   }, [flip]);
   return (
     <div className={cn("relative shrink-0", turning && "tri-turn", className)} data-flip={shown ? "1" : undefined}
-      style={{ width: size, height: size }} onClick={onClick}>
+      style={{ width: size, height: size, transition: "width .3s cubic-bezier(.2,.8,.2,1), height .3s cubic-bezier(.2,.8,.2,1)" }} onClick={onClick}>
       {/* Тень — отдельный размытый треугольник позади, а не filter: drop-shadow
           на всей рамке: тот перерисовывался с каждым кадром видео и скелетона,
           и в WebKit лента при прокрутке дёргалась. */}
@@ -196,6 +196,8 @@ export const GlassTriangle = ({ size, rim = 3, flip = false, className, innerCla
           WebkitMaskImage: triMask(h, h, shown), maskImage: triMask(h, h, shown),
           WebkitMaskSize: "100% 100%", maskSize: "100% 100%", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
           isolation: "isolate", willChange: "transform",
+          // Увеличение треугольника на месте (VideoNote big): геометрия едет плавно.
+          transition: "top .3s cubic-bezier(.2,.8,.2,1), left .3s cubic-bezier(.2,.8,.2,1), width .3s cubic-bezier(.2,.8,.2,1), height .3s cubic-bezier(.2,.8,.2,1)",
         }}>
         {children}
         <div className="tri-sheen absolute inset-0 pointer-events-none" />
@@ -427,7 +429,14 @@ export const MessageFile = ({ raw, name, onSave }: {
   );
 };
 
-export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: string; url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null }) => {
+/** Размер увеличенного треугольника: почти во всю ширину телефона, на компьютере — до 420. */
+const bigSize = () => Math.round(Math.min(typeof window !== "undefined" ? window.innerWidth - 32 : 420, 420));
+const NOTE_SIZE = 176;
+
+export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, sender, at }: {
+  id?: string; url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null;
+  chatId?: string; sender?: { id: string; username: string; avatar_url?: string | null } | null; at?: string;
+}) => {
   const noteId = id || url;
   const [nearRef, near] = useNearView<HTMLVideoElement>();
   const src = useMediaUrl(near ? url : null);
@@ -435,16 +444,27 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: str
   const setVideo = useCallback((el: HTMLVideoElement | null) => { ref.current = el; nearRef(el); }, [nearRef]);
   // С постером кадр есть сразу — скелетон не нужен.
   const [ready, setReady] = useState(!!poster);
-  // Размер внутреннего треугольника — как в GlassTriangle(size=176, rim=3).
-  const innerH = 176 - 3 - 3 * Math.sqrt(5);
-  // Играет ли это сообщение в общем проигрывателе (lib/videoNote) и где
-  // оно сейчас: в этом треугольнике, на весь экран или виджетом.
+  // Играет ли это сообщение в общем проигрывателе (lib/videoNote) и где оно
+  // сейчас: здесь (обычное или увеличенное на месте) или виджетом.
   const mode = useVideoNoteSlice((st) => (st.note?.id === noteId ? st.mode : null));
   const active = mode !== null;
+  const big = mode === "big";
   const playing = useVideoNoteSlice((st) => st.note?.id === noteId && st.playing);
-  const time = useVideoNoteSlice((st) => (st.note?.id === noteId ? Math.floor(st.time) : -1));
+  const time = useVideoNoteSlice((st) => (st.note?.id === noteId ? st.time : -1));
+  const duration = useVideoNoteSlice((st) => (st.note?.id === noteId ? st.duration : 0)) || seconds || 0;
+  // Размер: увеличенный — как в Telegram, почти во всю ширину; внутренний
+  // треугольник — как в GlassTriangle(rim=3).
+  const [wide, setWide] = useState(bigSize);
+  useEffect(() => {
+    if (!big) return;
+    const on = () => setWide(bigSize());
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, [big]);
+  const size = big ? wide : NOTE_SIZE;
+  const innerH = size - 3 - 3 * Math.sqrt(5);
   const clip = triClip(innerH, innerH, !!flip);
-  const hostRef = useNoteHost(mode === "inline", { fit: "cover", clip });
+  const hostRef = useNoteHost(mode === "inline" || mode === "big", { fit: "cover", clip });
   // Треугольник на экране? Уехал за край ленты — ролик продолжает виджетом,
   // вернулся — снова здесь. Следим только пока играет это сообщение.
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -459,9 +479,6 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: str
     io.observe(el);
     return () => { io.disconnect(); inlineNote(noteId, false); };
   }, [active, noteId]);
-  // iOS не грузит данные видео до тапа, и loadeddata может не прийти вовсе —
-  // тогда скелетон висел бы вечно. Готово по первому же признаку жизни,
-  // а не дождались — всё равно показываем рамку с видео.
   useEffect(() => {
     if (ready) return;
     const t = window.setTimeout(() => setReady(true), 2500);
@@ -473,19 +490,73 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: str
   const showFirstFrame = () => {
     const el = ref.current;
     if (!el || el.currentTime > 0) return;
-    try {
-      el.currentTime = 0.05;
-    } catch {
-      /* браузер ещё не готов — покажем кадр при воспроизведении */
-    }
+    try { el.currentTime = 0.05; } catch { /* браузер ещё не готов */ }
   };
 
-  // Тап: не играет — запустить со звуком (общий проигрыватель; при уходе
-  // из чата или прокрутке ролик продолжится виджетом); играет — во весь экран.
+  // Кольцо прогресса по контуру треугольника (как кольцо у кружка в Telegram):
+  // дорожка, пройденная часть и ручка. За ручку (или по контуру) можно тянуть —
+  // перемотка; тап по середине — пауза/играть.
+  const ringRef = useRef<SVGPathElement | null>(null);
+  const samplesRef = useRef<{ x: number; y: number }[]>([]);
+  const [handle, setHandle] = useState<{ x: number; y: number } | null>(null);
+  const [drag, setDrag] = useState<number | null>(null);
+  const dragRef = useRef<number | null>(null);
+  const frac = drag ?? (active && duration > 0 && time >= 0 ? Math.min(1, time / duration) : 0);
+  const outline = triClip(size, size, !!flip).replace(/^path\('/, "").replace(/'\)$/, "");
+  useEffect(() => {
+    const path = ringRef.current;
+    if (!path || !big) { samplesRef.current = []; return; }
+    const total = path.getTotalLength();
+    const n = 240;
+    samplesRef.current = Array.from({ length: n }, (_, i) => { const q = path.getPointAtLength((i / n) * total); return { x: q.x, y: q.y }; });
+  }, [big, size, flip]);
+  useEffect(() => {
+    const path = ringRef.current;
+    if (!path || !big) { setHandle(null); return; }
+    const q = path.getPointAtLength(frac * path.getTotalLength());
+    setHandle({ x: q.x, y: q.y });
+  }, [frac, big, size]);
+  const fracAt = (clientX: number, clientY: number) => {
+    const r = boxRef.current?.getBoundingClientRect();
+    const pts = samplesRef.current;
+    if (!r || !pts.length) return null;
+    const x = clientX - r.left, y = clientY - r.top;
+    let best = -1, bd = Infinity;
+    pts.forEach((q, i) => { const d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd) { bd = d; best = i; } });
+    return Math.sqrt(bd) <= 36 ? { f: best / pts.length } : null;
+  };
+  const setDragBoth = (v: number | null) => { dragRef.current = v; setDrag(v); };
+  const onDown = (e: React.PointerEvent) => {
+    if (!big) return;
+    const hit = fracAt(e.clientX, e.clientY);
+    if (!hit) return;
+    e.stopPropagation();
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* не везде */ }
+    setDragBoth(hit.f);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (dragRef.current === null) return;
+    e.stopPropagation();
+    const hit = fracAt(e.clientX, e.clientY);
+    if (hit) setDragBoth(hit.f);
+  };
+  const onUp = (e: React.PointerEvent) => {
+    if (dragRef.current === null) return;
+    e.stopPropagation();
+    const f = dragRef.current;
+    setDragBoth(null);
+    seekNote(f * duration);
+    suppressTap.current = true;
+  };
+  const suppressTap = useRef(false);
+
+  // Тап: не играет — запустить (сразу увеличенным); играет маленьким — увеличить;
+  // увеличенный — пауза/играть (крестик в плашке сверху — остановить).
   const tap = () => {
-    if (active) { openNoteFull(); return; }
-    if (!src) return;
-    startNote({ id: noteId, src, poster, mirror, flip, seconds });
+    if (suppressTap.current) { suppressTap.current = false; return; }
+    if (!active) { if (src) startNote({ id: noteId, src, poster, mirror, flip, seconds, chatId, sender, at }); return; }
+    if (mode === "inline") { openNoteBig(); return; }
+    toggleNote();
   };
 
   const label = active && time >= 0
@@ -493,8 +564,9 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: str
     : `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <div ref={boxRef} className="shrink-0" style={{ width: 176, height: 176 }}>
-    <GlassTriangle size={176} flip={flip} onClick={tap} innerClassName={ready ? "bg-black" : "bg-transparent"}>
+    <div ref={boxRef} className="relative shrink-0" style={{ width: size, height: size, transition: "width .3s cubic-bezier(.2,.8,.2,1), height .3s cubic-bezier(.2,.8,.2,1)", touchAction: big ? "none" : undefined }}
+      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => setDragBoth(null)}>
+    <GlassTriangle size={size} flip={flip} onClick={tap} innerClassName={ready ? "bg-black" : "bg-transparent"}>
       {!ready && <LoadingSkeleton className="absolute inset-0" />}
       {/* Превью (первый кадр, без звука); пока играет — его место занимает общий <video>. */}
       <video
@@ -509,19 +581,15 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: str
         onSeeked={() => setReady(true)}
         onError={() => setReady(true)}
         className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", ready && !active ? "opacity-100" : "opacity-0")}
-        // Фронтальная запись зеркалится в превью (селфи-вид); отражаем и
-        // воспроизведение, чтобы в чате оно совпадало со съёмкой. Файл не трогаем.
-        // clip-path и на самом видео: слой видео в Android WebView обёртку не слушает.
         style={{ transform: mirror ? "scaleX(-1)" : undefined, clipPath: clip }}
       />
-      <div ref={hostRef} className={cn("absolute inset-0", mode !== "inline" && "hidden")} />
-      {/* Ушёл во весь экран или виджетом — здесь остаётся кадр-подложка и подпись. */}
-      {active && mode !== "inline" && (
+      <div ref={hostRef} className={cn("absolute inset-0", mode === "float" && "hidden")} />
+      {mode === "float" && (
         <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-white/90 text-[11px] font-medium">
-          {mode === "full" ? tr("На весь экран") : tr("Играет в виджете")}
+          {tr("Играет в виджете")}
         </span>
       )}
-      {!playing && ready && mode !== "full" && mode !== "float" && (
+      {!playing && ready && mode !== "float" && (
         <span className="tri-play-pos">
           <span className="tri-glass w-11 h-11 rounded-full flex items-center justify-center">
             <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
@@ -532,6 +600,14 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster }: { id?: str
         {label}
       </span>
     </GlassTriangle>
+    {/* Кольцо прогресса по контуру — только у увеличенного. */}
+    {big && (
+      <svg className="absolute inset-0 pointer-events-none overflow-visible" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <path d={outline} fill="none" stroke="rgba(255,255,255,.35)" strokeWidth={3} />
+        <path ref={ringRef} d={outline} fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" pathLength={1} strokeDasharray={`${Math.max(0.001, frac)} 1`} />
+        {handle && <circle cx={handle.x} cy={handle.y} r={drag !== null ? 9 : 7} fill="#fff" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,.4))" }} />}
+      </svg>
+    )}
     </div>
   );
 };

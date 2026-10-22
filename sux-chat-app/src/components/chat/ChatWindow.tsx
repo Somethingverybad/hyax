@@ -76,6 +76,7 @@ import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { ChatSearchPanel } from "@/components/chat/MessageHits";
+import VideoNoteBar from "@/components/chat/VideoNoteBar";
 import { takePendingJump } from "@/lib/jumpTo";
 import { Search as SearchIcon } from "lucide-react";
 import { saveFileToDevice } from "@/lib/saveFile";
@@ -3985,6 +3986,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <Loader2 className="w-4 h-4 animate-spin text-primary" />{tr("Ищем сообщение…")}
         </div>
       )}
+      {/* Играющий треугольник: плашка управления под шапкой (ниже закрепа, если он есть). */}
+      <VideoNoteBar chatId={chatId} mint={mintM} offset={pinned ? 48 : 0} />
             {/* Закреплённое: тап — к сообщению, крестик — открепить. */}
       {pinned && (
         <div
@@ -4465,6 +4468,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               mirror={message.video_mirror}
                               flip={message.video_flip}
                               poster={(message as { video_poster?: string | null }).video_poster}
+                              chatId={chatId}
+                              sender={message.sender ? { id: message.sender.id, username: message.sender.username, avatar_url: message.sender.avatar_url } : null}
+                              at={message.created_at}
                             />
                             {aaButton}
                           </div>

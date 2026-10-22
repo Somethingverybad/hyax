@@ -17,6 +17,11 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 export interface NoteInfo {
   /** id сообщения или поста. */
   id: string;
+  /** Чат, где лежит сообщение: плашка управления (VideoNoteBar) показывается в нём. */
+  chatId?: string;
+  sender?: { id: string; username: string; avatar_url?: string | null } | null;
+  /** Когда отправлено — подпись в плашке. */
+  at?: string;
   /** Готовая (подписанная) ссылка на файл. */
   src: string;
   poster?: string | null;
@@ -27,7 +32,9 @@ export interface NoteInfo {
   seconds: number;
 }
 
-export type NoteMode = "inline" | "full" | "float";
+/** inline — обычный треугольник в ленте; big — он же, увеличенный на месте (как в
+ *  Telegram); float — виджет, когда уехал из виду или вышли из чата. */
+export type NoteMode = "inline" | "big" | "float";
 
 interface State {
   note: NoteInfo | null;
@@ -35,9 +42,11 @@ interface State {
   playing: boolean;
   time: number;
   duration: number;
+  /** Скорость 0.5…2, общая для всех треугольников. */
+  rate: number;
 }
 
-let state: State = { note: null, mode: "inline", playing: false, time: 0, duration: 0 };
+let state: State = { note: null, mode: "inline", playing: false, time: 0, duration: 0, rate: 1 };
 let video: HTMLVideoElement | null = null;
 let parking: HTMLDivElement | null = null;
 /** Треугольник в ленте сейчас на экране и может принять видео. */
@@ -107,17 +116,24 @@ export function parkNote(host: HTMLElement) {
   if (video && video.parentElement === host) ensureParking().appendChild(video);
 }
 
-/** Тап по треугольнику в ленте: играть с начала, со звуком. */
+/** Тап по треугольнику в ленте: играть с начала, со звуком, сразу увеличенным. */
 export function startNote(info: NoteInfo) {
   const v = ensureVideo();
   wantPlaying = true;
   inlineAvailable = true;
-  set({ note: info, mode: "inline", playing: false, time: 0, duration: info.seconds });
+  set({ note: info, mode: "big", playing: false, time: 0, duration: info.seconds });
   if (v.src !== info.src) v.src = info.src;
   if (info.poster) v.poster = info.poster; else v.removeAttribute("poster");
   v.muted = false;
+  v.defaultPlaybackRate = state.rate;
+  v.playbackRate = state.rate;
   try { v.currentTime = 0; } catch { /* ещё не открыт */ }
   v.play().catch(() => {});
+}
+
+export function setNoteRate(rate: number) {
+  set({ rate });
+  if (video) { video.defaultPlaybackRate = rate; video.playbackRate = rate; }
 }
 
 export function stopNote() {
@@ -155,17 +171,15 @@ export function inlineNote(id: string, visible: boolean) {
   if (state.note?.id !== id) return;
   inlineAvailable = visible;
   if (visible && state.mode === "float") set({ mode: "inline" });
-  else if (!visible && state.mode === "inline") set({ mode: "float" });
+  else if (!visible && state.mode !== "float") set({ mode: "float" });
 }
 
-export function openNoteFull() {
-  if (state.note) set({ mode: "full" });
+/** Увеличить треугольник на месте (тап по играющему) и вернуть к обычному размеру. */
+export function openNoteBig() {
+  if (state.note && inlineAvailable) set({ mode: "big" });
 }
-
-/** Закрыть экран целиком: назад в ленту, если треугольник на экране, иначе — виджетом. */
-export function closeNoteFull() {
-  if (!state.note || state.mode !== "full") return;
-  set({ mode: inlineAvailable ? "inline" : "float" });
+export function closeNoteBig() {
+  if (state.note && state.mode === "big") set({ mode: "inline" });
 }
 
 export const fmtNoteTime = (sec: number) => {
