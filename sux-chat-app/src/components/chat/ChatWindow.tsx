@@ -817,6 +817,21 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     requestAnimationFrame(step);
   });
 
+  // Элемент ленты просит показать себя целиком (увеличенный треугольник,
+  // chat/media.tsx): ведём в центр, как найденное, без подсветки.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const el = (e as CustomEvent<HTMLElement>).detail;
+      if (!el || !scrollRef.current?.contains(el)) return;
+      pinnedRef.current = false;
+      jumpingRef.current = Date.now() + 1500;
+      void centerMessage(el);
+    };
+    window.addEventListener("hyax:reveal", on);
+    return () => window.removeEventListener("hyax:reveal", on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Подсветить найденное и снять подсветку при первом касании ленты
    *  (прокрутка, тап, клавиши). Предыдущую подсветку убираем сразу. */
   const highlightFound = (el: HTMLElement) => {

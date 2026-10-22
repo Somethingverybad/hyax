@@ -32,7 +32,7 @@ export default function VideoNoteBar({ chatId, mint, offset = 0 }: { chatId: str
       </button>
       <div className="min-w-0 flex-1">
         <p className="text-small font-medium truncate">{n.sender?.username || t("Видео-сообщение")}</p>
-        <p className="text-caption text-subtle tabular-nums truncate">{fmtNoteTime(s.time)} / {fmtNoteTime(s.duration || n.seconds)}{when ? ` · ${when}` : ""}</p>
+        <p className="text-caption text-subtle tabular-nums truncate">{fmtNoteTime(s.time)}{when ? ` · ${when}` : ` / ${fmtNoteTime(s.duration || n.seconds)}`}</p>
       </div>
       <button type="button" onClick={cycle} className={cn("h-7 min-w-[2.4rem] px-1.5 rounded-md text-[11px] font-semibold tabular-nums border", s.rate === 1 ? "border-border text-subtle" : "border-primary text-primary")} aria-label={t("Скорость {n}×", { n: s.rate })}>
         {s.rate}×

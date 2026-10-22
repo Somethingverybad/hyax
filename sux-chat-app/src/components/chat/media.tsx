@@ -462,6 +462,12 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, send
     return () => window.removeEventListener("resize", on);
   }, [big]);
   const size = big ? wide : NOTE_SIZE;
+  // Увеличились — просим ленту показать треугольник целиком (ChatWindow ведёт
+  // его в центр, следя за ростом; иначе вершина пряталась под шапкой и плашкой).
+  useEffect(() => {
+    if (!big || !boxRef.current) return;
+    window.dispatchEvent(new CustomEvent("hyax:reveal", { detail: boxRef.current }));
+  }, [big]);
   const innerH = size - 3 - 3 * Math.sqrt(5);
   const clip = triClip(innerH, innerH, !!flip);
   const hostRef = useNoteHost(mode === "inline" || mode === "big", { fit: "cover", clip });
@@ -546,14 +552,17 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, send
     const f = dragRef.current;
     setDragBoth(null);
     seekNote(f * duration);
+    // Клик, идущий хвостом за ведением (мышь), не считаем тапом; у касания клика
+    // не бывает — снимаем флаг по таймеру, иначе он глотал следующий тап.
     suppressTap.current = true;
+    window.setTimeout(() => { suppressTap.current = false; }, 400);
   };
   const suppressTap = useRef(false);
 
   // Тап: не играет — запустить (сразу увеличенным); играет маленьким — увеличить;
   // увеличенный — пауза/играть (крестик в плашке сверху — остановить).
   const tap = () => {
-    if (suppressTap.current) { suppressTap.current = false; return; }
+    if (suppressTap.current) return;
     if (!active) { if (src) startNote({ id: noteId, src, poster, mirror, flip, seconds, chatId, sender, at }); return; }
     if (mode === "inline") { openNoteBig(); return; }
     toggleNote();
