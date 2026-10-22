@@ -429,9 +429,22 @@ export const MessageFile = ({ raw, name, onSave }: {
   );
 };
 
-/** Размер увеличенного треугольника: почти во всю ширину телефона, на компьютере — до 420. */
-const bigSize = () => Math.round(Math.min(typeof window !== "undefined" ? window.innerWidth - 32 : 420, 420));
 const NOTE_SIZE = 176;
+
+/** Размер увеличенного треугольника: по ширине колонки сообщения (не экрана —
+ *  иначе он вылезал за край ленты, и iOS рисовала обрезанный слой видео с маской
+ *  фиолетовой полосой у края, баг-репорты 21426e73 и 0593a8f4), не больше 420. */
+const bigSize = (box: HTMLElement | null) => {
+  let avail = typeof window !== "undefined" ? window.innerWidth - 32 : 420;
+  if (box) {
+    // Треугольник стоит у внутреннего края своей колонки (слева у входящих,
+    // справа у своих); места — до противоположного края ленты минус отступ.
+    const sc = (box.closest(".overflow-y-auto") as HTMLElement | null) || document.documentElement;
+    const r = box.getBoundingClientRect(), c = sc.getBoundingClientRect();
+    avail = Math.max(r.right - c.left, c.right - r.left) - 16;
+  }
+  return Math.round(Math.max(NOTE_SIZE, Math.min(avail, 420)));
+};
 
 export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, sender, at }: {
   id?: string; url: string; seconds: number; own?: boolean; mirror?: boolean; flip?: boolean; poster?: string | null;
@@ -454,10 +467,11 @@ export const VideoNote = ({ id, url, seconds, mirror, flip, poster, chatId, send
   const duration = useVideoNoteSlice((st) => (st.note?.id === noteId ? st.duration : 0)) || seconds || 0;
   // Размер: увеличенный — как в Telegram, почти во всю ширину; внутренний
   // треугольник — как в GlassTriangle(rim=3).
-  const [wide, setWide] = useState(bigSize);
+  const [wide, setWide] = useState(() => bigSize(null));
   useEffect(() => {
     if (!big) return;
-    const on = () => setWide(bigSize());
+    const on = () => setWide(bigSize(boxRef.current));
+    on();
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, [big]);
