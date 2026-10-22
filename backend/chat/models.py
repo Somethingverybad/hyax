@@ -1373,6 +1373,9 @@ class ChatAction(models.Model):
     premium = models.BooleanField(default=False)
     # 18+: видно только тем, кто подтвердил возраст (Profile.allow_adult).
     adult = models.BooleanField(default=False)
+    # «Про себя» — без адресата: «Вы запомнили это» / «{who} запомнил это».
+    # В группе кому адресовано не спрашиваем, фразы для «вам» нет.
+    solo = models.BooleanField(default=False)
     # Переводы: кнопка и фраза-шаблон с {who} и {whom} (порядок слов в языках
     # разный, поэтому не глагол, а вся фраза). Пусто — показываем по-русски.
     name_en = models.CharField(max_length=40, blank=True, default="")
@@ -1399,10 +1402,12 @@ class ChatAction(models.Model):
         подмигивает Вася»), "third" — остальным («Вася подмигивает Пете»)."""
         from .action_text import ru_self, ru_you
         lang = lang if lang in ("en", "ko") else "ru"
+        if self.solo and view == "you":
+            view = "third"  # адресата нет — остальным
         suffix = {"self": "_self", "you": "_you"}.get(view, "")
         tpl = getattr(self, f"phrase_{lang}{suffix}", "") if (lang != "ru" or suffix) else ""
         if not tpl and lang == "ru":
-            tpl = ru_self(self.verb) if view == "self" else ru_you(self.verb) if view == "you" else ""
+            tpl = ru_self(self.verb, self.solo) if view == "self" else ru_you(self.verb) if view == "you" else (f"{{who}} {self.verb}" if self.solo else "")
         if not tpl:
             # Нет перевода для этого лица — фраза «со стороны» на том же языке или по-русски.
             tpl = getattr(self, f"phrase_{lang}", "") if lang != "ru" else ""

@@ -40,7 +40,8 @@ export const trailingPrep = (verb: string) => {
   return PREP[last] ? last : "";
 };
 
-export const ruSelf = (verb: string) => `Вы ${verbYou(verb)} {whom}`;
+/** Отправителю: «Вы подмигиваете {whom}»; без адресата (solo) — «Вы запомнили это». */
+export const ruSelf = (verb: string, solo = false) => (solo ? `Вы ${verbYou(verb)}` : `Вы ${verbYou(verb)} {whom}`);
 
 export function ruYou(verb: string, acc = false): string {
   const v = verb.trim();
@@ -51,10 +52,11 @@ export function ruYou(verb: string, acc = false): string {
 /** Шаблон с {who}/{whom} для языка и того, кто читает. */
 export function actionTemplate(a: ChatActionInfo, lang: string, view: ActionView): string {
   const l = lang === "en" || lang === "ko" ? lang : "ru";
+  if (a.solo && view === "you") view = "third"; // адресата нет — читаем как остальные
   const suffix = view === "self" ? "_self" : view === "you" ? "_you" : "";
   const get = (k: string) => ((a as unknown as Record<string, string | undefined>)[k] || "").trim();
   let tpl = l === "ru" && !suffix ? "" : get(`phrase_${l}${suffix}`);
-  if (!tpl && l === "ru") tpl = view === "self" ? ruSelf(a.verb) : view === "you" ? ruYou(a.verb) : "";
+  if (!tpl && l === "ru") tpl = view === "self" ? ruSelf(a.verb, !!a.solo) : view === "you" ? ruYou(a.verb) : "";
   if (!tpl && l !== "ru") tpl = get(`phrase_${l}`);
-  return tpl || `{who} ${a.verb} {whom}`;
+  return tpl || (a.solo ? `{who} ${a.verb}` : `{who} ${a.verb} {whom}`);
 }

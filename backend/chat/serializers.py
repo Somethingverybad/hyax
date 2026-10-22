@@ -609,8 +609,13 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_action(self, obj):
         """Действие («подмигивает»): клиент рисует сообщение-жест по центру."""
         a = obj.action
-        return {"id": a.id, "slug": a.slug, "name": a.name, "verb": a.verb, "emoji": a.emoji,
-                "phrase_en": a.phrase_en, "phrase_ko": a.phrase_ko} if a else None
+        # solo — «про себя», без адресата; фразы для отправителя/адресата — те,
+        # что админ поправил руками (иначе клиент собирает их сам, lib/actionText).
+        return {"id": a.id, "slug": a.slug, "name": a.name, "verb": a.verb, "emoji": a.emoji, "solo": a.solo,
+                "phrase_en": a.phrase_en, "phrase_ko": a.phrase_ko,
+                "phrase_ru_self": a.phrase_ru_self, "phrase_ru_you": a.phrase_ru_you,
+                "phrase_en_self": a.phrase_en_self, "phrase_en_you": a.phrase_en_you,
+                "phrase_ko_self": a.phrase_ko_self, "phrase_ko_you": a.phrase_ko_you} if a else None
 
     def get_action_target(self, obj):
         t = obj.action_target
@@ -854,7 +859,7 @@ class MusicTrackSerializer(serializers.ModelSerializer):
 class ChatActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatAction
-        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'adult', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'adult', 'solo', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
                   'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you']
 
 
@@ -862,7 +867,7 @@ class ChatActionAdminSerializer(serializers.ModelSerializer):
     """Правка каталога действий админом (ActionsView ?all=1, POST, PATCH)."""
     class Meta:
         model = ChatAction
-        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'order', 'is_active', 'premium', 'adult',
+        fields = ['id', 'slug', 'name', 'verb', 'emoji', 'order', 'is_active', 'premium', 'adult', 'solo',
                   'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
                   'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you']
         read_only_fields = ['id', 'slug']

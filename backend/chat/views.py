@@ -902,6 +902,10 @@ def _notify_new_message(message, profile, request):
             # Остальным в группе — «Вася подмигивает Пете» на их языке.
             _who, _whom = profile.username, message.action_target.username
             preview = lambda lang: f"{_act.emoji} {_act.phrase(lang, _who, _whom)}"
+        elif message.action_id and message.action.solo:
+            # «Про себя»: всем — «Вася запомнил это» на их языке.
+            _act, _who = message.action, profile.username
+            preview = lambda lang: f"{_act.emoji} {_act.phrase(lang, _who, '')}"
         # Запомнить, кому ушёл пуш по этому чату: прочитают — уберём его
         # с экрана тихим пушем chat_read (см. mark_chat_as_read).
         from .presence import note_pushed
@@ -1867,7 +1871,9 @@ class MessageViewSet(viewsets.ModelViewSet):
             if not _chat_for_action:
                 return Response({"error": "Чат не найден"}, status=404)
             target_id = request.data.get('target_id')
-            if target_id:
+            if action_obj.solo:
+                action_target = None  # «про себя» — адресата нет
+            elif target_id:
                 action_target = Profile.objects.filter(id=target_id).first()
                 if not action_target or not ChatParticipant.objects.filter(chat=_chat_for_action, user=action_target).exists():
                     return Response({"error": "Адресат не в этом чате"}, status=400)
@@ -1910,7 +1916,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         save_kwargs = {'sender': profile}
         if action_obj:
             save_kwargs.update({'action': action_obj, 'action_target': action_target,
-                                'content': f"{action_obj.emoji} {action_obj.verb} {action_target.username}"})
+                                'content': f"{action_obj.emoji} {action_obj.verb}" + (f" {action_target.username}" if action_target else "")})
         if geo:
             save_kwargs.update({
                 'geo_lat': geo[0], 'geo_lng': geo[1], 'entities': [],
@@ -4113,14 +4119,22 @@ def _fill_action_translations(action):
     from .action_text import ru_self, ru_you
     # Русские формы для отправителя и адресата — по правилам; из них же переводы.
     if not action.phrase_ru_self:
-        action.phrase_ru_self = ru_self(action.verb)[:120]
-    if not action.phrase_ru_you:
-        action.phrase_ru_you = ru_you(action.verb)[:120]
-    sources = {
-        "": (f"{{who}} {action.verb} {{whom}}", ("{who}", "{whom}")),
-        "_self": (action.phrase_ru_self, ("{whom}",)),
-        "_you": (action.phrase_ru_you, ("{who}",)),
-    }
+        action.phrase_ru_self = ru_self(action.verb, action.solo)[:120]
+    if action.solo:
+        # Адресата нет: фраза «вам» не нужна, {whom} ни в одном шаблоне.
+        action.phrase_ru_you = ""
+        sources = {
+            "": (f"{{who}} {action.verb}", ("{who}",)),
+            "_self": (action.phrase_ru_self, ()),
+        }
+    else:
+        if not action.phrase_ru_you:
+            action.phrase_ru_you = ru_you(action.verb)[:120]
+        sources = {
+            "": (f"{{who}} {action.verb} {{whom}}", ("{who}", "{whom}")),
+            "_self": (action.phrase_ru_self, ("{whom}",)),
+            "_you": (action.phrase_ru_you, ("{who}",)),
+        }
     for lang in ("en", "ko"):
         if not getattr(action, f"name_{lang}"):
             setattr(action, f"name_{lang}", tr(action.name, lang)[:40])

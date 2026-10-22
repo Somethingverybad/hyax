@@ -2123,5 +2123,7 @@ const en: Record<string, string> = {
   "Эфир закончен": "The live has ended",
   "Поделиться эфиром": "Share the live",
   "К последним сообщениям": "To the latest messages",
+  "Про себя, без адресата": "About yourself, no addressee",
+  "Действие про себя: «Вы запомнили это», остальным — «{who} запомнил это»; в группе кому — не спрашиваем": "A self action: “You remembered this”, others see “{who} remembered this”; in groups no addressee is asked",
 };
 export default en;

@@ -16,7 +16,7 @@ import { useKeyboardHeight } from "@/lib/useKeyboardHeight";
  * 18+ — действие видят только те, кто включил «Показывать 18+».
  */
 const EMPTY: ChatActionDraft = {
-  emoji: "✨", name: "", verb: "", is_active: true, premium: false, adult: false,
+  emoji: "✨", name: "", verb: "", is_active: true, premium: false, adult: false, solo: false,
   name_en: "", name_ko: "", phrase_en: "", phrase_ko: "",
   phrase_ru_self: "", phrase_ru_you: "", phrase_en_self: "", phrase_en_you: "", phrase_ko_self: "", phrase_ko_you: "",
 };
@@ -24,10 +24,12 @@ const EMPTY: ChatActionDraft = {
 /** Подставить «вы»-формы по глаголу, пока админ их не правил руками. */
 const autoForms = (d: ChatActionDraft, acc: boolean, prev?: ChatActionDraft): ChatActionDraft => {
   const verb = (d.verb || "").trim();
-  const was = prev?.verb ? { self: ruSelf(prev.verb), you: [ruYou(prev.verb, false), ruYou(prev.verb, true)] } : null;
+  const was = prev?.verb ? { self: [ruSelf(prev.verb), ruSelf(prev.verb, true)], you: [ruYou(prev.verb, false), ruYou(prev.verb, true)] } : null;
   const out = { ...d };
-  if (!out.phrase_ru_self || (was && out.phrase_ru_self === was.self)) out.phrase_ru_self = verb ? ruSelf(verb) : "";
-  if (!out.phrase_ru_you || (was && was.you.includes(out.phrase_ru_you))) out.phrase_ru_you = verb ? ruYou(verb, acc) : "";
+  if (!out.phrase_ru_self || (was && was.self.includes(out.phrase_ru_self))) out.phrase_ru_self = verb ? ruSelf(verb, !!out.solo) : "";
+  // «Про себя»: адресата нет, фраза «вам» не нужна.
+  if (out.solo) out.phrase_ru_you = "";
+  else if (!out.phrase_ru_you || (was && was.you.includes(out.phrase_ru_you))) out.phrase_ru_you = verb ? ruYou(verb, acc) : "";
   return out;
 };
 
@@ -52,7 +54,7 @@ export default function ProfileActions() {
   const set = (p: ChatActionDraft) => setEdit((e) => {
     if (!e) return e;
     const next = { ...e.data, ...p };
-    return { ...e, data: "verb" in p ? autoForms(next, acc, e.data) : next };
+    return { ...e, data: "verb" in p || "solo" in p ? autoForms(next, acc, e.data) : next };
   });
   const setAccForm = (v: boolean) => {
     setAcc(v);
@@ -151,7 +153,7 @@ export default function ProfileActions() {
                     <span className="block text-caption text-subtle mb-0.5">{t("Отправителю")}</span>
                     <input value={d.phrase_ru_self || ""} maxLength={120} onChange={(e) => set({ phrase_ru_self: e.target.value })} className={field} />
                   </label>
-                  <div>
+                  {!d.solo && <div>
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="flex-1 text-caption text-subtle">{t("Адресату")}</span>
                       {!trailingPrep(d.verb) && (
@@ -166,16 +168,18 @@ export default function ProfileActions() {
                       )}
                     </div>
                     <input value={d.phrase_ru_you || ""} maxLength={120} onChange={(e) => set({ phrase_ru_you: e.target.value })} className={field} />
-                  </div>
-                  <p className="text-caption text-subtle">{t("Остальным")}: «{"{who}"} {d.verb} {"{whom}"}»</p>
+                  </div>}
+                  <p className="text-caption text-subtle">{t("Остальным")}: «{"{who}"} {d.verb}{d.solo ? "" : ` {whom}`}»</p>
                 </div>
               ) : null}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                 <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4 accent-primary" checked={d.is_active !== false} onChange={(e) => set({ is_active: e.target.checked })} />{t("Показывать")}</label>
+                <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4 accent-primary" checked={!!d.solo} onChange={(e) => set({ solo: e.target.checked })} />{t("Про себя, без адресата")}</label>
                 <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4 accent-primary" checked={!!d.adult} onChange={(e) => set({ adult: e.target.checked })} />{t("18+")}</label>
                 <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4 accent-primary" checked={!!d.premium} onChange={(e) => set({ premium: e.target.checked })} />{t("Премиум")}</label>
               </div>
               {d.adult && <p className="text-caption text-subtle">{t("Действие 18+ видят только те, кто включил «Показывать 18+»")}</p>}
+              {d.solo && <p className="text-caption text-subtle">{t("Действие про себя: «Вы запомнили это», остальным — «{who} запомнил это»; в группе кому — не спрашиваем")}</p>}
 
               <div className="border-t border-border pt-3 space-y-2">
                 <p className="font-semibold">{t("Переводы")}</p>

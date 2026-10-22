@@ -41,8 +41,9 @@ def trailing_prep(verb):
     return last if last in _PREP else ""
 
 
-def ru_self(verb):
-    return f"Вы {verb_you(verb)} {{whom}}"
+def ru_self(verb, solo=False):
+    """Отправителю: «Вы подмигиваете {whom}»; без адресата (solo) — «Вы запомнили это»."""
+    return f"Вы {verb_you(verb)}" if solo else f"Вы {verb_you(verb)} {{whom}}"
 
 
 def ru_you(verb, acc=False):

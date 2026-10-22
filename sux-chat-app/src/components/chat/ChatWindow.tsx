@@ -136,7 +136,8 @@ interface Message {
   /** Приходит с бэкенда, если сообщение — стикер. */
   sticker?: { id: string; file_url: string; emoji?: string } | null;
   /** Сообщение-жест: «😉 Вася подмигивает Пете» (chat/ChatAction). */
-  action?: { id: number; slug: string; name: string; verb: string; emoji: string; phrase_en?: string; phrase_ko?: string } | null;
+  action?: { id: number; slug: string; name: string; verb: string; emoji: string; solo?: boolean; phrase_en?: string; phrase_ko?: string;
+    phrase_ru_self?: string; phrase_ru_you?: string; phrase_en_self?: string; phrase_en_you?: string; phrase_ko_self?: string; phrase_ko_you?: string } | null;
   action_target?: { id: string; username: string } | null;
   /** Аудио-стикер: звук, который слышит получатель. */
   sound?: { id: string; slug: string; name: string; url: string } | null;
@@ -2651,10 +2652,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const sendAction = async (action: ChatActionInfo, targetId?: string) => {
     if (!chatId) return;
-    const target = targetId ? (group?.participants || []).find((p) => p.id === targetId) || (peer && peer.id === targetId ? peer : null) : peer;
+    // «Про себя» (solo) — адресата нет и в личке.
+    const target = action.solo ? null : targetId ? (group?.participants || []).find((p) => p.id === targetId) || (peer && peer.id === targetId ? peer : null) : peer;
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: Message = {
-      id: tempId, content: `${action.emoji} ${action.verb} ${target?.username || ""}`, file_url: null, file_name: null,
+      id: tempId, content: `${action.emoji} ${action.verb}${target ? ` ${target.username}` : ""}`, file_url: null, file_name: null,
       sender_id: userId, sender: { id: userId } as Profile, created_at: new Date().toISOString(),
       action, action_target: target ? { id: target.id, username: target.username } : null, pending: true, _key: tempId,
     };
@@ -2673,7 +2675,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   /** Из панели стикеров: в личке — собеседнику, в группе — спросим кому. */
   const pickAction = (action: ChatActionInfo) => {
     setStickersOpen(false);
-    if (isGroup) { setActionTargetPick(action); return; }
+    if (isGroup && !action.solo) { setActionTargetPick(action); return; }
     void sendAction(action);
   };
 

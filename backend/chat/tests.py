@@ -2650,3 +2650,45 @@ class SyncAfterTests(TestCase):
         r = client_for(me).get(f"/api/messages/sync/?chat={ch.id}&after={quote(msgs[4].created_at.isoformat())}&limit=3")
         self.assertEqual([m["content"] for m in r.data["messages"]], ["m5", "m6"])
         self.assertFalse(r.data["has_newer"])
+
+
+class SoloActionTests(TestCase):
+    """Действие «про себя» (solo): без адресата, в группе кому — не спрашиваем,
+    отправителю «Вы запомнили это», остальным «Вася запомнил это»."""
+
+    def setUp(self):
+        from .models import ChatAction
+        self.me = make_user("solo_me")
+        self.b = make_user("solo_b")
+        self.c = make_user("solo_c")
+        self.group = Chat.objects.create(kind="group", is_group=True, name="Группа")
+        for p in (self.me, self.b, self.c):
+            ChatParticipant.objects.create(chat=self.group, user=p)
+        self.act = ChatAction.objects.create(slug="zz-remember", name="Запомнить", verb="запомнил это", emoji="🧠", solo=True)
+        self.wink = ChatAction.objects.create(slug="zz-wink", name="Подмигнуть", verb="подмигивает", emoji="😉")
+
+    def test_send_without_target(self):
+        from unittest import mock
+        with mock.patch("chat.fcm.notify_profiles") as push:
+            r = client_for(self.me).post("/api/messages/", {"chat": str(self.group.id), "content": "", "action_id": self.act.id}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["content"], "🧠 запомнил это")
+        self.assertIsNone(r.data.get("action_target"))
+        self.assertTrue(r.data["action"]["solo"])
+        self.assertTrue(push.called)
+        # Обычное действие в группе без адресата — как раньше, ошибка.
+        r = client_for(self.me).post("/api/messages/", {"chat": str(self.group.id), "content": "", "action_id": self.wink.id}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_phrases(self):
+        self.assertEqual(self.act.phrase("ru", "Вася", "", view="self"), "Вы запомнили это")
+        self.assertEqual(self.act.phrase("ru", "Вася", "", view="third"), "Вася запомнил это")
+        self.assertEqual(self.act.phrase("ru", "Вася", "", view="you"), "Вася запомнил это")
+        from chat.views import _fill_action_translations
+        from unittest import mock
+        with mock.patch("chat.translate.translate_text", side_effect=lambda t, to, src="": t.replace("Вы", "You").replace("запомнил", "remembered")):
+            _fill_action_translations(self.act)
+        self.assertEqual(self.act.phrase_ru_self, "Вы запомнили это")
+        self.assertEqual(self.act.phrase_ru_you, "")
+        self.assertIn("{who}", self.act.phrase_en)
+        self.assertNotIn("{whom}", self.act.phrase_en)
