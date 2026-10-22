@@ -2102,5 +2102,11 @@ const en: Record<string, string> = {
   "Начислить или снять вайб": "Add or deduct vibe",
   "Начисление от команды WYX": "Bonus from the WYX team",
   "Снятие баллов командой WYX": "Points deducted by the WYX team",
+  "Поиск чатов, людей и сообщений": "Search chats, people and messages",
+  "Показать ещё": "Show more",
+  "Расшифровка голосового": "Voice transcript",
+  "Искать в чате…": "Search in chat…",
+  "Введите хотя бы две буквы": "Type at least two characters",
+  "Поиск по сообщениям": "Search messages",
 };
 export default en;

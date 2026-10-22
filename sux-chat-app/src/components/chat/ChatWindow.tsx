@@ -74,6 +74,9 @@ import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
 import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
+import { ChatSearchPanel } from "@/components/chat/MessageHits";
+import { takePendingJump } from "@/lib/jumpTo";
+import { Search as SearchIcon } from "lucide-react";
 import { saveFileToDevice } from "@/lib/saveFile";
 import { takePendingShare } from "@/lib/shareInbox";
 import ActionSheet from "@/components/chat/ActionSheet";
@@ -339,6 +342,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Кеш чатов между входами: обои видны сразу, без пустого кадра на перечитывании.
   const [chatInfo, setChatInfo] = useState<ChatFull | null>(() => (chatId && chatInfoCache.get(chatId)) || null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  // Поиск по сообщениям этого чата (ChatSearchPanel) — из меню шапки.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
   // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
   // отправителя, и у получателя — по событию из сокета, см. Chat.tsx).
@@ -849,6 +854,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Открыли чат из поиска по сообщениям (ChatSidebar → lib/jumpTo): лента
+  // загрузилась — подкручиваем к найденному.
+  const loaded = messages.length > 0;
+  useEffect(() => {
+    if (!loaded) return;
+    const id = takePendingJump(chatId);
+    if (!id) return;
+    // Чуть позже: сразу после загрузки лента ещё встаёт вниз (scrollToBottomOnOpen,
+    // openPosition) и перебивала бы наш переезд.
+    const t = window.setTimeout(() => { void jumpToMessage(id); }, 500);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, loaded]);
   // Список чатов узнаёт о последнем сообщении отсюда же, без ожидания своего
   // опроса. Шлём только при смене (id, текст, прочитанность).
   const onLatestRef = useRef(onLatest);
@@ -3644,6 +3662,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); peer ? setProfileOpen(true) : setGroupOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       {peer ? <Users className="w-5 h-5 text-foreground/80" /> : <Users className="w-5 h-5 text-foreground/80" />}{peer ? tr("Профиль") : tr("Настройки группы")}
                     </button>
+                    {!isSecret && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setSearchOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <SearchIcon className="w-5 h-5 text-foreground/80" />{tr("Поиск по сообщениям")}</button>
+                    )}
                     {mintM && onCall && !saved && !reqPending && (peer || isGroup) && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); onCall(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <Phone className="w-5 h-5 text-foreground/80" />{tr("Позвонить")}</button>
@@ -5412,6 +5434,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         />
       )}
 
+      {searchOpen && (
+        <ChatSearchPanel chatId={chatId} onClose={() => setSearchOpen(false)} onPick={(id) => { setSearchOpen(false); void jumpToMessage(id); }} />
+      )}
       {profileOpen && peer && (
         <UserProfileModal
           userId={peer.id}

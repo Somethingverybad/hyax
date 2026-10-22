@@ -32,6 +32,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api, mediaUrl } from "@/api/client";
+import { MessageHits, useMessageSearch } from "@/components/chat/MessageHits";
+import { setPendingJump } from "@/lib/jumpTo";
 import { preloadImage } from "@/lib/imageCache";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
@@ -200,6 +202,8 @@ const ChatSidebar = ({
     return () => { off = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listFilter, userId]);
+  // Сообщения по тексту во всех моих чатах (api.searchMessages) — ниже людей.
+  const msgSearch = useMessageSearch(listFilter.replace(/^@/, ""));
   // Фильтр-чипы под поиском: все чаты, только с непрочитанным, только каналы.
   const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
   // Черновики (lib/drafts): в строке чата вместо последнего сообщения.
@@ -936,7 +940,7 @@ const ChatSidebar = ({
             <input
               value={listFilter}
               onChange={(e) => setListFilter(e.target.value)}
-              placeholder={mint ? t("Поиск чатов и людей") : t("Поиск чатов и людей по нику")}
+              placeholder={mint ? t("Поиск чатов, людей и сообщений") : t("Поиск чатов, людей и сообщений")}
               className={mint ? "flex-1 min-w-0 bg-transparent outline-none text-[14.3px] text-foreground placeholder:text-[var(--mint-muted)]" : "flex-1 min-w-0 bg-transparent outline-none text-body md:text-small text-foreground placeholder:text-subtle"}
             />
           </label>
@@ -1090,6 +1094,15 @@ const ChatSidebar = ({
                   {t("Ещё люди: {n}", { n: peopleHits.length - 5 })}
                 </button>
               )}
+            </div>
+          )}
+          {msgSearch.active && (msgSearch.hits.length > 0 || msgSearch.loading) && (
+            <div className="px-4 pt-2 pb-1">
+              <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Сообщения")}</p>
+              {msgSearch.loading && !msgSearch.hits.length && <p className="py-2 text-small text-subtle">{t("Ищу…")}</p>}
+              <MessageHits hits={msgSearch.hits} q={listFilter} showChat
+                onPick={(h) => { setPendingJump(h.chat.id, h.id); setListFilter(""); handleSelectChat(h.chat.id, h.chat.title, h.chat.kind); }}
+                hasMore={msgSearch.hasMore} onMore={msgSearch.more} loading={msgSearch.loading} />
             </div>
           )}
           {chats.length > 0 ? (

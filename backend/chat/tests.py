@@ -2563,3 +2563,43 @@ class VibeAdjustTests(TestCase):
         # В карточке у админа — can_adjust, у обычного — нет.
         self.assertTrue(c.get(f"/api/vibe/{self.user.id}/").data["can_adjust"])
         self.assertFalse(client_for(self.other).get(f"/api/vibe/{self.user.id}/").data["can_adjust"])
+
+
+class MessageSearchTests(TestCase):
+    """Поиск по сообщениям: только мои чаты, текст и расшифровки, без удалённых и секретных."""
+
+    def setUp(self):
+        self.me = make_user("srch_me")
+        self.peer = make_user("srch_peer")
+        self.stranger = make_user("srch_stranger")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.other = Chat.objects.create(kind="direct")
+        for p in (self.peer, self.stranger):
+            ChatParticipant.objects.create(chat=self.other, user=p)
+        # Строчными: у SQLite в тестах LIKE без учёта регистра только для латиницы (в бою Postgres).
+        Message.objects.create(chat=self.chat, sender=self.peer, content="созвон завтра в 10 — договорились?")
+        Message.objects.create(chat=self.chat, sender=self.me, content="удалённый созвон", deleted_for_all=True)
+        Message.objects.create(chat=self.chat, sender=self.peer, voice_url="/media/v.ogg", voice_transcript="про созвон голосом", transcript_status="done")
+        Message.objects.create(chat=self.other, sender=self.stranger, content="чужой созвон")
+
+    def test_search(self):
+        r = client_for(self.me).get("/api/messages/search/?q=созвон")
+        self.assertEqual(r.status_code, 200)
+        texts = [(i["text"], i["transcript"], i["chat"]["title"]) for i in r.data["items"]]
+        self.assertEqual(texts, [("про созвон голосом", True, "srch_peer"), ("созвон завтра в 10 — договорились?", False, "srch_peer")])
+        self.assertFalse(r.data["has_more"])
+        # Короткий запрос — пусто; в чужом чате — ничего; фильтр по чату.
+        self.assertEqual(client_for(self.me).get("/api/messages/search/?q=с").data["items"], [])
+        self.assertEqual(client_for(self.me).get(f"/api/messages/search/?q=созвон&chat={self.other.id}").status_code, 404)
+        r = client_for(self.me).get(f"/api/messages/search/?q=завтра&chat={self.chat.id}")
+        self.assertEqual(len(r.data["items"]), 1)
+
+    def test_snippet_is_clipped_around_match(self):
+        Message.objects.create(chat=self.chat, sender=self.peer, content="а" * 200 + " иголка " + "б" * 200)
+        r = client_for(self.me).get("/api/messages/search/?q=иголка")
+        hit = r.data["items"][0]["text"]
+        self.assertIn("иголка", hit)
+        self.assertTrue(hit.startswith("…") and hit.endswith("…"))
+        self.assertLess(len(hit), 160)

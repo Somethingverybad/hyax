@@ -3713,6 +3713,95 @@ class PeopleSearchView(APIView):
         } for p in qs])
 
 
+class MessageSearchView(APIView):
+    """GET /api/messages/search/?q=<текст>&chat=<id>&before=<iso>&limit=30 — поиск по
+    сообщениям (текст и расшифровки голосовых) в чатах, которые мне видны: где я
+    участник, Стена, публичные каналы. Секретные чаты — шифротекст, их не ищем.
+    Без chat — по всем, с chat — только в нём. before — курсор «старее этого».
+    Не чаще 60 запросов в минуту."""
+    permission_classes = [permissions.IsAuthenticated]
+    LIMIT, PER_MINUTE, SNIPPET = 30, 60, 70
+
+    def get(self, request):
+        from django.core.cache import cache
+        from django.utils.dateparse import parse_datetime
+        from .moderation import blocked_ids
+        me = getattr(request.user, "profile", None)
+        if me is None or me.is_bot:
+            return Response({"error": "Profile not found"}, status=400)
+        q = " ".join((request.query_params.get("q") or "").split())
+        if len(q) < 2:
+            return Response({"items": [], "has_more": False})
+        key = f"msg-search:{me.id}"
+        cache.add(key, 0, 60)
+        try:
+            n = cache.incr(key)
+        except ValueError:
+            cache.set(key, 1, 60); n = 1
+        if n > self.PER_MINUTE:
+            return Response({"error": "Слишком часто — подождите минуту"}, status=429)
+        try:
+            limit = max(1, min(int(request.query_params.get("limit") or self.LIMIT), 50))
+        except ValueError:
+            limit = self.LIMIT
+        mine = ChatParticipant.objects.filter(user=me).values("chat_id")
+        qs = (Message.objects
+              .filter(Q(chat_id__in=mine) | Q(chat__kind="wall") | Q(chat__kind="channel", chat__is_public=True))
+              .exclude(chat__kind="secret").exclude(deleted_for_all=True).exclude(deleted_for=me)
+              .filter(Q(content__icontains=q) | Q(voice_transcript__icontains=q)))
+        chat_id = request.query_params.get("chat")
+        if chat_id:
+            chat = Chat.objects.filter(id=chat_id).first()
+            if not chat or not _can_see_chat(chat, me):
+                return Response({"error": "Чат не найден"}, status=404)
+            qs = qs.filter(chat=chat)
+        blocked = blocked_ids(me)
+        if blocked:
+            qs = qs.exclude(sender_id__in=blocked)
+        before = parse_datetime(request.query_params.get("before") or "")
+        if before:
+            qs = qs.filter(created_at__lt=before)
+        rows = list(qs.select_related("chat", "sender").order_by("-created_at")[: limit + 1])
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        # Заголовки чатов: личка — ник собеседника, остальное — имя чата.
+        direct_ids = {m.chat_id for m in rows if m.chat.kind in ("direct", "") and not m.chat.is_group}
+        peers = {}
+        if direct_ids:
+            for cp in ChatParticipant.objects.filter(chat_id__in=direct_ids).exclude(user=me).select_related("user"):
+                peers.setdefault(cp.chat_id, cp.user)
+        ql = q.lower()
+
+        def snippet(text):
+            text = " ".join((text or "").split())
+            i = text.lower().find(ql)
+            if i < 0:
+                return text[: self.SNIPPET * 2]
+            start = max(0, i - self.SNIPPET)
+            end = min(len(text), i + len(q) + self.SNIPPET)
+            return ("…" if start > 0 else "") + text[start:end] + ("…" if end < len(text) else "")
+
+        def chat_payload(c):
+            peer = peers.get(c.id)
+            title = (peer.username if peer else None) or c.name or ""
+            avatar = peer.avatar_url if peer else getattr(c, "avatar_url", None)
+            return {"id": str(c.id), "kind": c.kind or "direct", "is_group": bool(c.is_group), "title": title, "avatar_url": avatar,
+                    "peer_id": str(peer.id) if peer else None}
+
+        items = []
+        for m in rows:
+            in_text = bool(m.content) and ql in m.content.lower()
+            items.append({
+                "id": str(m.id),
+                "chat": chat_payload(m.chat),
+                "sender": {"id": str(m.sender_id), "username": m.sender.username, "avatar_url": m.sender.avatar_url} if m.sender_id else None,
+                "text": snippet(m.content if in_text else m.voice_transcript),
+                "transcript": not in_text,
+                "created_at": m.created_at.isoformat(),
+            })
+        return Response({"items": items, "has_more": has_more})
+
+
 class PushRegisterView(APIView):
     """Регистрация APNs-токена устройства. Профиль берётся из сессии — чужое
     устройство привязать нельзя. Токен уникален: при переустановке приложения

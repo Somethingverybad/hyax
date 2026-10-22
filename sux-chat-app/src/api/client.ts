@@ -315,6 +315,17 @@ export interface VibeEvent {
 }
 export interface VibeHistory { vibe: number; silent: boolean; items: VibeEvent[] }
 
+/** Результат поиска по сообщениям (chat/views.py, MessageSearchView): text — кусок
+ *  вокруг совпадения, transcript — нашлось в расшифровке голосового. */
+export interface MessageHit {
+  id: string;
+  chat: { id: string; kind: string; is_group: boolean; title: string; avatar_url?: string | null; peer_id?: string | null };
+  sender: { id: string; username: string; avatar_url?: string | null } | null;
+  text: string;
+  transcript: boolean;
+  created_at: string;
+}
+
 export interface StickerPackInfo {
   id: string;
   name: string;
@@ -1680,6 +1691,17 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/vibe/${profileId}/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ anonymous }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { const e: any = new LError(body?.error || "Не получилось"); if ("vibe" in body) e.state = body; throw e; }
+    return body;
+  },
+  /** Поиск по сообщениям: по всем моим чатам или в одном (chat); before — курсор «старее». */
+  searchMessages: async (q: string, opts?: { chat?: string; before?: string; limit?: number }): Promise<{ items: MessageHit[]; has_more: boolean }> => {
+    const p = new URLSearchParams({ q });
+    if (opts?.chat) p.set("chat", opts.chat);
+    if (opts?.before) p.set("before", opts.before);
+    if (opts?.limit) p.set("limit", String(opts.limit));
+    const res = await fetchWithAuth(`${API_URL}/messages/search/?${p}`, { method: "GET", headers: authHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось найти");
     return body;
   },
   /** Админ: шаблоны причин начисления и само начисление (или снятие) с причиной. */
