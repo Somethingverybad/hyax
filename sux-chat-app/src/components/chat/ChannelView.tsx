@@ -219,6 +219,10 @@ interface ChannelViewProps {
 /** Низ экрана на вкладке Стены: под плавающим островом «Мяты» (см. .wall-tab-bottom). */
 const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString(getLang(), { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : tr("навсегда");
 
+/** Последняя лента каждого канала и Стены в памяти приложения: при возврате
+ *  на вкладку рисуется сразу, сеть потом досинхронизирует (см. эффект загрузки). */
+const postsMemo = new Map<string, { posts: Post[]; syncedAt: string | null; hasMore: boolean }>();
+
 const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged }: ChannelViewProps) => {
   // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
   // Состояние Стены — сразу из кэша сессии, сервер потом уточнит.
@@ -266,7 +270,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     if (items.length) setViewer({ items, index });
   };
   const [channel, setChannel] = useState<Channel | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<Post[]>(() => postsMemo.get(channelId)?.posts ?? []);
   const postsRef = useRef<Post[]>(posts);
   postsRef.current = posts;
   // Обои канала: полные данные чата (общие и мои), перечитываем по событию
@@ -366,7 +370,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     if (deleteTimerRef.current && undoBar) { clearTimeout(deleteTimerRef.current); api.removeMessage(undoBar.id, "all").catch(() => {}); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!postsMemo.has(channelId));
+  useEffect(() => {
+    if (!loading) postsMemo.set(channelId, { posts, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, loading, channelId]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [soundOpen, setSoundOpen] = useState(false);
@@ -823,10 +831,14 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setPosts([]);
-    setHasMore(false);
-    syncedAtRef.current = null;
+    // Лента из памяти приложения — в первом же кадре (без паузы на IndexedDB и
+    // «Загрузка…» при каждом переходе на вкладку, баг-репорт a95e3fb5).
+    const memo = postsMemo.get(channelId);
+    setLoading(!memo);
+    setPosts(memo?.posts ?? []);
+    setHasMore(memo?.hasMore ?? false);
+    hasMoreRef.current = memo?.hasMore ?? false;
+    syncedAtRef.current = memo?.syncedAt ?? null;
     viewedRef.current = new Set();
     // «Поделиться → WYX»: в канал — в строку композера, на Стену — в шторку поста.
     const shared = takePendingShare();
@@ -838,12 +850,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       }, 0);
     }
     (async () => {
-      const cached = await readPosts(channelId);
+      const cached = memo ? null : await readPosts(channelId);
       if (!alive) return;
       // Запись в кэше есть — рисуем сразу, даже пустую ленту: иначе при каждом
       // переходе на вкладку мелькала «Загрузка…», пока сервер не ответит.
-      const fromCache = !!cached;
-      if (fromCache) {
+      const fromCache = !!memo || !!cached;
+      if (memo) openFeed();
+      else if (cached) {
         syncedAtRef.current = cached!.syncedAt;
         setHasMore(cached!.hasMore);
         hasMoreRef.current = cached!.hasMore;

@@ -916,7 +916,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // метки реакция ставилась и тут же снималась двумя запросами подряд.
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => (chatId && chatMemo.get(chatId)?.messages) || []);
+  useEffect(() => {
+    if (chatId && messages.length && !windowedRef.current) chatMemo.set(chatId, { messages, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, chatId]);
   // Открыли чат из поиска по сообщениям (ChatSidebar → lib/jumpTo): лента
   // загрузилась — подкручиваем к найденному.
   const loaded = messages.length > 0;
@@ -1743,8 +1747,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setNewBelow(0);
     setAwayFromBottom(false);
     setFreshIds(new Set());
-    setHasMore(false);
-    setMessages([]);
+    // Лента из памяти — сразу, без пустого кадра; дальше только досинхронизация.
+    const memo = secretSession.has(chatId) ? undefined : chatMemo.get(chatId);
+    setHasMore(memo?.hasMore ?? false);
+    setMessages(memo?.messages ?? []);
     setSelected(null);
     // «Поделиться → WYX» из другого приложения: выбранный чат открыт —
     // подставляем присланные файлы и текст в поле ввода, отправка за человеком.
@@ -1758,6 +1764,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
     (async () => {
       // Секретный чат уже открывали в этой сессии — лента готова в памяти.
+      if (memo && memo.messages.length) {
+        syncedAtRef.current = memo.syncedAt;
+        hasMoreRef.current = memo.hasMore;
+        scrollToBottomOnOpen(true);
+        await syncSince(chatId);
+        primedRef.current = true;
+        if (alive) void openPosition(chatId);
+        return;
+      }
       const sess = secretSession.get(chatId);
       const sessMsgs = sess ? sess.messages.filter((m) => belongsTo(m, chatId)) : [];
       if (sess && sessMsgs.length) {
@@ -5758,6 +5773,11 @@ const chatInfoCache = new Map<string, ChatFull>();
 const secretPlain = new Map<string, { cipher: string; p: SecretPayload | null }>();
 const secretBlobs = new Map<string, Partial<Message>>();
 const secretSession = new Map<string, { messages: Message[]; syncedAt: string | null; hasMore: boolean }>();
+/** Последняя лента каждого чата в памяти приложения: при возврате в чат она
+ *  рисуется в первом же кадре, без паузы на чтение кэша из IndexedDB и пустого
+ *  экрана (баг-репорт a95e3fb5: «загрузка при каждом переходе»). Сеть потом
+ *  только досинхронизирует. Окно вокруг найденного сюда не кладём. */
+const chatMemo = new Map<string, { messages: Message[]; syncedAt: string | null; hasMore: boolean }>();
 /** Сообщение из этого чата? Поле chat приходит с сервера; у временных его нет — свои. */
 function belongsTo(m: Message, chatId: string): boolean {
   const c = (m as { chat?: string | null }).chat;
