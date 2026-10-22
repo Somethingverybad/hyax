@@ -94,6 +94,26 @@ class AdultPacksTests(TestCase):
         self.assertEqual(self.slugs(self.adult), {"clean", "dirty"})
         self.assertEqual(self.slugs(self.author), {"clean", "dirty"})
 
+    def test_sound_list_marks_pickable_packs(self):
+        """pack_mine — можно ставить себе: вне пака, стандартный, свой или добавленный.
+        Чужой публичный пак в каталоге есть (чтобы играть входящие), но pack_mine=False."""
+        pub = SoundPack.objects.create(name="Чужой", creator=self.author)
+        # bulk_create — без сигнала конверсии в .caf (ffmpeg в тестах не нужен).
+        NotificationSound.objects.bulk_create([
+            NotificationSound(slug="foreign", name="f", pack=pub, file="sounds/f.mp3"),
+            NotificationSound(slug="loose", name="l", file="sounds/l.mp3"),
+        ])
+        rows = {s["slug"]: s for s in client_for(self.kid).get("/api/sounds/").data}
+        self.assertFalse(rows["foreign"]["pack_mine"])
+        self.assertTrue(rows["loose"]["pack_mine"])
+        self.assertTrue(rows["foreign"]["pack_adult"] is False)
+        UserSoundPack.objects.create(user=self.kid, pack=pub)
+        rows = {s["slug"]: s for s in client_for(self.kid).get("/api/sounds/").data}
+        self.assertTrue(rows["foreign"]["pack_mine"])
+        rows = {s["slug"]: s for s in client_for(self.author).get("/api/sounds/").data}
+        self.assertTrue(rows["foreign"]["pack_mine"])
+        self.assertTrue(rows["dirty"]["pack_adult"])
+
     def test_sound_list_has_public_packs_of_others(self):
         """Звук друга из его публичного пака должен быть у всех: пуш с ним
         iPhone сыграет, только если файл уже скачан. Приватный — нет."""

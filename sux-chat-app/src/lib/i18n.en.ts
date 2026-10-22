@@ -2125,5 +2125,6 @@ const en: Record<string, string> = {
   "К последним сообщениям": "To the latest messages",
   "Про себя, без адресата": "About yourself, no addressee",
   "Действие про себя: «Вы запомнили это», остальным — «{who} запомнил это»; в группе кому — не спрашиваем": "A self action: “You remembered this”, others see “{who} remembered this”; in groups no addressee is asked",
+  "Ещё паков: {n}. Чтобы ставить их звуки себе, добавьте пак в «Паках звуков».": "{n} more packs. To use their sounds, add the pack in “Sound packs”.",
 };
 export default en;

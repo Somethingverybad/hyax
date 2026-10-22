@@ -3678,8 +3678,13 @@ class NotificationSoundListView(APIView):
             if me:
                 hidden &= ~models.Q(pack__creator=me)
             sounds = sounds.exclude(hidden)
-        sounds = sounds.distinct()
-        return Response(NotificationSoundSerializer(sounds, many=True).data)
+        sounds = sounds.distinct().select_related("pack")
+        # Какие паки «мои» (свои и добавленные) — для pack_mine в ответе: ставить
+        # себе можно только их, остальные публичные нужны лишь для входящих.
+        my_packs = set()
+        if me:
+            my_packs = set(SoundPack.objects.filter(models.Q(creator=me) | models.Q(added_by_users__user=me)).values_list("id", flat=True))
+        return Response(NotificationSoundSerializer(sounds, many=True, context={"my_packs": my_packs}).data)
 
 
 class IceServersView(APIView):

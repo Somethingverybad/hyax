@@ -429,10 +429,24 @@ class NotificationSoundSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
     pack = serializers.SerializerMethodField()
     pack_name = serializers.SerializerMethodField()
+    # Можно ли поставить этот звук себе: вне пака, стандартный пак, свой или
+    # добавленный. Остальные публичные паки в каталоге — только чтобы сыграть
+    # входящее от того, у кого такой звук стоит (NotificationSoundListView).
+    pack_mine = serializers.SerializerMethodField()
+    pack_adult = serializers.SerializerMethodField()
 
     class Meta:
         model = NotificationSound
-        fields = ['id', 'slug', 'name', 'url', 'caf_url', 'pack', 'pack_name', 'updated_at']
+        fields = ['id', 'slug', 'name', 'url', 'caf_url', 'pack', 'pack_name', 'pack_mine', 'pack_adult', 'updated_at']
+
+    def get_pack_mine(self, obj):
+        if not obj.pack_id or obj.pack.is_default:
+            return True
+        mine = self.context.get("my_packs")
+        return bool(mine is not None and obj.pack_id in mine)
+
+    def get_pack_adult(self, obj):
+        return bool(obj.pack_id and obj.pack.is_adult)
 
     def get_url(self, obj):
         return obj.file.url if obj.file else ""

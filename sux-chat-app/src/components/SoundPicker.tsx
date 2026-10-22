@@ -6,6 +6,7 @@ import { playSfx } from "@/lib/sfx";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { shareSoundPack } from "@/lib/share";
+import { readCache } from "@/lib/session-cache";
 
 /**
  * Выбор звука уведомлений из общего каталога — один компонент на все места:
@@ -81,8 +82,16 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
   }, [sounds, current]);
 
   const q = query.trim().toLowerCase();
+  // Ставить себе можно только звуки вне паков, из стандартного и из своих или
+  // добавленных паков; 18+ — только с включённым «Показывать 18+». Остальной
+  // каталог нужен, чтобы играть входящие от друзей. Уже выбранный звук оставляем,
+  // даже если пак не добавлен (баг-репорт: раньше предлагались все паки подряд).
+  const allowAdult = !!readCache<{ allow_adult?: boolean }>("user")?.allow_adult;
+  const pickable = (s: NotificationSoundInfo) =>
+    s.id === current || ((s.pack_mine ?? true) && (!s.pack_adult || allowAdult));
+  const hiddenPacks = useMemo(() => new Set((sounds || []).filter((s) => !pickable(s)).map((s) => s.pack_name || NO_PACK)).size, [sounds, current, allowAdult]);
   const groups = useMemo(() => {
-    const list = (sounds || []).filter((s) =>
+    const list = (sounds || []).filter(pickable).filter((s) =>
       !q || s.name.toLowerCase().includes(q) || (s.pack_name || "").toLowerCase().includes(q));
     const by = new Map<string, NotificationSoundInfo[]>();
     for (const s of list) {
@@ -132,6 +141,11 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
             </p>
           )}
 
+          {!q && hiddenPacks > 0 && (
+            <p className="px-4 py-2 text-caption text-subtle">
+              {t("Ещё паков: {n}. Чтобы ставить их звуки себе, добавьте пак в «Паках звуков».", { n: hiddenPacks })}
+            </p>
+          )}
           {groups.map(([pack, list]) => {
             // При поиске секции раскрыты: иначе найденное пришлось бы ещё разворачивать.
             const expanded = !!q || open.has(pack);

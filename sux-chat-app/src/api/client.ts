@@ -539,6 +539,10 @@ export interface NotificationSoundInfo {
   caf_url: string;  // вариант для APNs, докачивается в Library/Sounds на iOS
   pack?: string | null;
   pack_name?: string;
+  /** Можно поставить себе: вне пака, стандартный, свой или добавленный пак. Чужие
+   *  публичные паки в каталоге — только чтобы сыграть входящее (SoundPicker их не показывает). */
+  pack_mine?: boolean;
+  pack_adult?: boolean;
   updated_at: string;
 }
 
