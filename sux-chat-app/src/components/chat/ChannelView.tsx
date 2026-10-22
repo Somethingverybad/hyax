@@ -371,8 +371,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
   const [loading, setLoading] = useState(!postsMemo.has(channelId));
+  // Для какого канала сейчас posts: при смене канала этот эффект идёт раньше
+  // эффекта загрузки и без проверки запомнил бы чужие посты под новым id.
+  const postsForRef = useRef<string | null>(channelId);
   useEffect(() => {
-    if (!loading) postsMemo.set(channelId, { posts, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
+    if (!loading && postsForRef.current === channelId) postsMemo.set(channelId, { posts, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, loading, channelId]);
   const [text, setText] = useState("");
@@ -834,6 +837,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     // Лента из памяти приложения — в первом же кадре (без паузы на IndexedDB и
     // «Загрузка…» при каждом переходе на вкладку, баг-репорт a95e3fb5).
     const memo = postsMemo.get(channelId);
+    postsForRef.current = channelId;
     setLoading(!memo);
     setPosts(memo?.posts ?? []);
     setHasMore(memo?.hasMore ?? false);

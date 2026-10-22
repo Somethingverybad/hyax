@@ -916,9 +916,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // метки реакция ставилась и тут же снималась двумя запросами подряд.
   const touchInputRef = useRef(false);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [messages, setMessages] = useState<Message[]>(() => (chatId && chatMemo.get(chatId)?.messages) || []);
+  const [messages, setMessages] = useState<Message[]>(() => (chatId && chatMemo.get(chatId)?.messages.filter((m) => belongsTo(m, chatId))) || []);
+  // Для какого чата сейчас состояние messages: при смене чата этот эффект
+  // срабатывает раньше эффекта загрузки, и без проверки клал бы сообщения
+  // старого чата под id нового (баг-репорты 790dd6da, bfc1e8db — «сообщения
+  // висят между чатами»). Плюс сверка каждого сообщения с чатом.
+  const messagesForRef = useRef<string | null>(chatId || null);
   useEffect(() => {
-    if (chatId && messages.length && !windowedRef.current) chatMemo.set(chatId, { messages, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
+    if (!chatId || messagesForRef.current !== chatId || !messages.length || windowedRef.current) return;
+    if (!messages.every((m) => belongsTo(m, chatId))) return;
+    chatMemo.set(chatId, { messages, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, chatId]);
   // Открыли чат из поиска по сообщениям (ChatSidebar → lib/jumpTo): лента
@@ -1748,7 +1755,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setAwayFromBottom(false);
     setFreshIds(new Set());
     // Лента из памяти — сразу, без пустого кадра; дальше только досинхронизация.
-    const memo = secretSession.has(chatId) ? undefined : chatMemo.get(chatId);
+    // Берём только то, что точно из этого чата.
+    const memoRaw = secretSession.has(chatId) ? undefined : chatMemo.get(chatId);
+    const memo = memoRaw ? { ...memoRaw, messages: memoRaw.messages.filter((m) => belongsTo(m, chatId)) } : undefined;
+    messagesForRef.current = chatId;
     setHasMore(memo?.hasMore ?? false);
     setMessages(memo?.messages ?? []);
     setSelected(null);
