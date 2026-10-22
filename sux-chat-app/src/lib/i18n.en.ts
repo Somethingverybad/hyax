@@ -2108,5 +2108,6 @@ const en: Record<string, string> = {
   "Искать в чате…": "Search in chat…",
   "Введите хотя бы две буквы": "Type at least two characters",
   "Поиск по сообщениям": "Search messages",
+  "Ищем сообщение…": "Looking for the message…",
 };
 export default en;

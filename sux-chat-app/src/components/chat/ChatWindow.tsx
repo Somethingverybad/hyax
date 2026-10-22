@@ -779,10 +779,52 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Пока едем, обработчик прокрутки не должен решить, что лента «у низа», и
     // вернуть её обратно (так закреп на десктопе не доезжал: плавная прокрутка
     // начинается у самого низа, dist < 80 — и лента тут же прижималась снова).
-    jumpingRef.current = Date.now() + 1500;
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.classList.add("msg-flash");
-    setTimeout(() => el!.classList.remove("msg-flash"), 1200);
+    jumpingRef.current = Date.now() + 2500;
+    // Даём ленте улечься (картинки, догрузка), затем плавно ведём сообщение в
+    // центр, каждый кадр пересчитывая цель: scrollIntoView(smooth) бросало
+    // прокрутку на полпути, когда лента сдвигалась под ним, — отсюда «странный»
+    // переход по закрепу.
+    await new Promise((res) => setTimeout(res, 120));
+    await centerMessage(el);
+    // Подсветка держится, пока человек сам не тронет ленту.
+    highlightFound(el);
+  };
+
+  /** Плавно подвести сообщение к центру ленты (~0.5 с, ease-out), следя за
+   *  его положением: цель считается заново на каждом кадре. */
+  const centerMessage = (el: HTMLElement) => new Promise<void>((done) => {
+    const sc = scrollRef.current;
+    if (!sc) { el.scrollIntoView({ block: "center" }); done(); return; }
+    const target = () => {
+      const r = el.getBoundingClientRect(), c = sc.getBoundingClientRect();
+      const want = sc.scrollTop + (r.top - c.top) - (c.height - r.height) / 2;
+      return Math.max(0, Math.min(want, sc.scrollHeight - sc.clientHeight));
+    };
+    const from = sc.scrollTop;
+    const far = Math.abs(target() - from);
+    // Через всю ленту не летим: сначала прыжок к соседству, оттуда плавно.
+    if (far > sc.clientHeight * 4) sc.scrollTop = target() + (target() > from ? -sc.clientHeight : sc.clientHeight);
+    const start = performance.now(), dur = 480, begin = sc.scrollTop;
+    const ease = (x: number) => 1 - Math.pow(1 - x, 3);
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / dur);
+      sc.scrollTop = begin + (target() - begin) * ease(k);
+      if (k < 1) requestAnimationFrame(step); else { jumpingRef.current = Date.now() + 300; done(); }
+    };
+    requestAnimationFrame(step);
+  });
+
+  /** Подсветить найденное и снять подсветку при первом касании ленты
+   *  (прокрутка, тап, клавиши). Предыдущую подсветку убираем сразу. */
+  const highlightFound = (el: HTMLElement) => {
+    document.querySelectorAll(".msg-found").forEach((x) => x.classList.remove("msg-found"));
+    el.classList.add("msg-found");
+    const off = () => {
+      el.classList.remove("msg-found");
+      for (const ev of ["wheel", "touchstart", "pointerdown", "keydown"] as const) window.removeEventListener(ev, off, true);
+    };
+    // Чуть позже: касание, которым открыли закреп/результат поиска, не в счёт.
+    setTimeout(() => { for (const ev of ["wheel", "touchstart", "pointerdown", "keydown"] as const) window.addEventListener(ev, off, true); }, 400);
   };
 
   const forwardTo = async (list: Message[], targetId: string, label: string) => {
@@ -3889,8 +3931,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         </div>
       )}
       {jumping && (
-        <div className="absolute top-[var(--glass-h,0px)] left-0 right-0 z-30 h-0.5 bg-primary/30 overflow-hidden" aria-hidden>
-          <div className="h-full w-1/3 bg-primary animate-[msg-in_0.9s_ease-in-out_infinite_alternate]" />
+        <div className="absolute left-1/2 -translate-x-1/2 z-30 h-8 px-3 rounded-full bg-surface-1 border border-border shadow-lg flex items-center gap-2 text-small text-foreground pointer-events-none"
+          style={{ top: "calc(var(--glass-h, 0px) + var(--player-h, 0px) + 8px)" }} role="status">
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />{tr("Ищем сообщение…")}
         </div>
       )}
             {/* Закреплённое: тап — к сообщению, крестик — открепить. */}

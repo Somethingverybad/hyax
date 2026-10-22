@@ -917,6 +917,8 @@ html.theme-switch, html.theme-switch * {
 .msg-flash {
   animation: msg-flash 1.2s ease-out;
 }
+/* Найденное (закреп, поиск): подсветка держится, пока человек не тронет ленту. */
+.msg-found { background: hsl(var(--primary) / 0.14); border-radius: 12px; transition: background 0.4s ease; }
 /* Десктоп: колонка переписки чуть темнее сайдбара и шапки, как в референсе. */
 @media (min-width: 768px) and (min-height: 500px) {
   .chat-scroll, .chat-compose { background: hsl(var(--chat-canvas)); }
