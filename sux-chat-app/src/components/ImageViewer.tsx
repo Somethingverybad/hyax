@@ -280,16 +280,23 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
         onWheel={onWheel}
       >
         {/* Лента кадров: соседи по бокам, текущий — в центре с зумом. */}
+        {/* Свои композитные слои для ленты и зумируемого кадра (will-change,
+            backface-visibility): без них WebKit на iOS перерастеризует картинку
+            прямо во время жеста и показывает швы тайлов старого масштаба —
+            «шлейф» полосками под фото (баг-репорт 055c9396). Соседи — с
+            синхронным декодированием, чтобы после перелистывания кадр не мерцал. */}
         <div
           className="absolute inset-0"
           style={{
-            transform: `translateX(${shift}px)`,
+            transform: `translateX(${shift}px) translateZ(0)`,
             transition: snap || (pointers.current.size && !sliding.current) ? "none" : `transform ${SLIDE_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`,
+            willChange: "transform",
+            backfaceVisibility: "hidden",
           }}
         >
           {prevUrl && (
             <div className="absolute top-0 bottom-0 w-full flex items-center justify-center" style={{ left: "-100%" }} aria-hidden>
-              <img src={prevUrl} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} />
+              <img src={prevUrl} alt="" decoding="sync" className="max-h-full max-w-full object-contain select-none" draggable={false} style={{ backfaceVisibility: "hidden" }} />
             </div>
           )}
           <div className="absolute inset-0 flex items-center justify-center">
@@ -300,9 +307,12 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
                 alt=""
                 className="max-h-full max-w-full object-contain select-none"
                 draggable={false}
+                decoding="sync"
                 style={{
-                  transform: `translate(${t.x}px, ${t.y + drag}px) scale(${t.s * (1 - Math.min(drag / 1600, 0.15))})`,
+                  transform: `translate(${t.x}px, ${t.y + drag}px) scale(${t.s * (1 - Math.min(drag / 1600, 0.15))}) translateZ(0)`,
                   transition: pointers.current.size ? "none" : "transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+                  willChange: "transform",
+                  backfaceVisibility: "hidden",
                 }}
               />
             ) : (
@@ -311,7 +321,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
           </div>
           {nextUrl && (
             <div className="absolute top-0 bottom-0 w-full flex items-center justify-center" style={{ left: "100%" }} aria-hidden>
-              <img src={nextUrl} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} />
+              <img src={nextUrl} alt="" decoding="sync" className="max-h-full max-w-full object-contain select-none" draggable={false} style={{ backfaceVisibility: "hidden" }} />
             </div>
           )}
         </div>
