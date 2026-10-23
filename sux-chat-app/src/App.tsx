@@ -3,44 +3,11 @@ import MiniAppHost from "@/components/miniapp/MiniAppHost";
 import { t as tr, tn } from "@/lib/i18n";
 import { toast as sonnerToast } from "sonner";
 import { Toaster } from "@/components/ui/toaster";
-import ProfilePage from "./pages/Profile";
-import ProfileEdit from "./pages/ProfileEdit";
-import ProfileNotifications from "./pages/ProfileNotifications";
-import ProfilePrivacy from "./pages/ProfilePrivacy";
-import ProfileSavedAccess from "@/pages/ProfileSavedAccess";
-import Music from "@/pages/Music";
-import SharedPlaylist from "@/pages/SharedPlaylist";
-import AirLink from "@/pages/AirLink";
 import { syncThemeFromProfile } from "@/lib/theme";
 import { readCache } from "@/lib/session-cache";
 import CallHost from "./components/call/CallHost";
 import EscapeKey from "./components/EscapeKey";
 import SettingsFrame from "./components/SettingsFrame";
-import ProfileAppearance from "./pages/ProfileAppearance";
-import ProfileBugReport from "./pages/ProfileBugReport";
-import AdminMetrics from "./pages/AdminMetrics";
-import ProfileIdeas from "./pages/ProfileIdeas";
-import ProfileVibeLevels from "./pages/ProfileVibeLevels";
-import ProfileActions from "./pages/ProfileActions";
-import ProfileQuickReaction from "./pages/ProfileQuickReaction";
-import MiniApps from "./pages/MiniApps";
-import ProfileAura from "./pages/ProfileAura";
-import ProfileSoundPacks from "./pages/ProfileSoundPacks";
-import ProfileDeleteAccount from "./pages/ProfileDeleteAccount";
-import ProfileEmail from "./pages/ProfileEmail";
-import ProfileSecretTransfer from "./pages/ProfileSecretTransfer";
-import ProfileDevices from "./pages/ProfileDevices";
-import Onboarding from "./pages/Onboarding";
-import ProfileLanguage from "./pages/ProfileLanguage";
-import ProfileMicrophone from "./pages/ProfileMicrophone";
-import ProfileVibeHistory from "./pages/ProfileVibeHistory";
-import Legal from "./pages/Legal";
-import ThemeEditor from "./pages/ThemeEditor";
-import SoundPackNew from "./pages/SoundPackNew";
-import ProfileStickerPacks from "./pages/ProfileStickerPacks";
-import ThemePage from "./pages/ThemePage";
-import SoundPackPage from "./pages/SoundPackPage";
-import StickerPackPage from "./pages/StickerPackPage";
 import { applog } from "@/lib/applog";
 import { Capacitor } from "@capacitor/core";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -48,8 +15,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { App as CapApp } from "@capacitor/app";
-import PublicProfile from "./pages/PublicProfile";
-import PublicChannel from "./pages/PublicChannel";
 import MiniPlayer from "./components/MiniPlayer";
 import VideoNoteHost from "./components/VideoNoteHost";
 import Index from "./pages/Index";
@@ -57,12 +22,51 @@ import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 import { Minus, X } from "lucide-react";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, lazy, Suspense } from "react";
 import ShareToChat from "@/components/ShareToChat";
 import { takeSharedItems, setPendingShare, type SharedPayload } from "@/lib/shareInbox";
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { getTheme } from "@/lib/theme";
+
+// Экраны, кроме входа, списка чатов и переписки, грузятся по требованию: основной
+// файл был 2,3 МБ, и слабый Android разбирал его при каждом холодном старте
+// (PERF_PLAN.md, п. 1). Частые экраны подгружаются в простое — prefetchScreens.
+const ProfilePage = lazy(() => import("./pages/Profile"));
+const ProfileEdit = lazy(() => import("./pages/ProfileEdit"));
+const ProfileNotifications = lazy(() => import("./pages/ProfileNotifications"));
+const ProfilePrivacy = lazy(() => import("./pages/ProfilePrivacy"));
+const ProfileSavedAccess = lazy(() => import("@/pages/ProfileSavedAccess"));
+const Music = lazy(() => import("@/pages/Music"));
+const SharedPlaylist = lazy(() => import("@/pages/SharedPlaylist"));
+const AirLink = lazy(() => import("@/pages/AirLink"));
+const ProfileAppearance = lazy(() => import("./pages/ProfileAppearance"));
+const ProfileBugReport = lazy(() => import("./pages/ProfileBugReport"));
+const AdminMetrics = lazy(() => import("./pages/AdminMetrics"));
+const ProfileIdeas = lazy(() => import("./pages/ProfileIdeas"));
+const ProfileVibeLevels = lazy(() => import("./pages/ProfileVibeLevels"));
+const ProfileActions = lazy(() => import("./pages/ProfileActions"));
+const ProfileQuickReaction = lazy(() => import("./pages/ProfileQuickReaction"));
+const MiniApps = lazy(() => import("./pages/MiniApps"));
+const ProfileAura = lazy(() => import("./pages/ProfileAura"));
+const ProfileSoundPacks = lazy(() => import("./pages/ProfileSoundPacks"));
+const ProfileDeleteAccount = lazy(() => import("./pages/ProfileDeleteAccount"));
+const ProfileEmail = lazy(() => import("./pages/ProfileEmail"));
+const ProfileSecretTransfer = lazy(() => import("./pages/ProfileSecretTransfer"));
+const ProfileDevices = lazy(() => import("./pages/ProfileDevices"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const ProfileLanguage = lazy(() => import("./pages/ProfileLanguage"));
+const ProfileMicrophone = lazy(() => import("./pages/ProfileMicrophone"));
+const ProfileVibeHistory = lazy(() => import("./pages/ProfileVibeHistory"));
+const Legal = lazy(() => import("./pages/Legal"));
+const ThemeEditor = lazy(() => import("./pages/ThemeEditor"));
+const SoundPackNew = lazy(() => import("./pages/SoundPackNew"));
+const ProfileStickerPacks = lazy(() => import("./pages/ProfileStickerPacks"));
+const ThemePage = lazy(() => import("./pages/ThemePage"));
+const SoundPackPage = lazy(() => import("./pages/SoundPackPage"));
+const StickerPackPage = lazy(() => import("./pages/StickerPackPage"));
+const PublicProfile = lazy(() => import("./pages/PublicProfile"));
+const PublicChannel = lazy(() => import("./pages/PublicChannel"));
 
 
 const queryClient = new QueryClient();
@@ -136,6 +140,15 @@ const ThemeFromProfile = () => {
 
 const TAB_ROOTS = ["/chat", "/wall", "/saved", "/music", "/profile"];
 
+/** Частые экраны — подгрузить заранее, когда главный экран уже нарисован и
+ *  приложение простаивает: переход в «Музыку» или профиль тогда мгновенный. */
+const prefetchScreens = () => {
+  const run = () => { void import("@/pages/Music"); void import("./pages/Profile"); void import("./pages/ProfileAppearance"); void import("./pages/ProfileNotifications"); };
+  const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => void };
+  if (w.requestIdleCallback) w.requestIdleCallback(run, { timeout: 15000 }); else window.setTimeout(run, 6000);
+};
+const PrefetchScreens = () => { useEffect(() => { prefetchScreens(); }, []); return null; };
+
 const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navType = useNavigationType();
@@ -151,7 +164,10 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => { prevPath.current = location.pathname; }, [location.pathname]);
   return (
     <div key={location.pathname} className={`route-transition h-full ${dir}`}>
-      <Routes location={location}>{children}</Routes>
+      {/* Экран ещё грузится (первый раз) — фон без мигания, не спиннер. */}
+      <Suspense fallback={null}>
+        <Routes location={location}>{children}</Routes>
+      </Suspense>
     </div>
   );
 };
@@ -324,6 +340,7 @@ const App = () => {
             <MiniAppHost />
             <ThemeFromProfile />
             <PushOpen />
+            <PrefetchScreens />
             <AnimatedRoutes>
               {/* Лендинг в приложении не нужен — сразу решаем, куда вести.
                   Токен есть → в чат, нет → на вход. */}
