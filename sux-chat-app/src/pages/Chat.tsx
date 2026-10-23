@@ -949,7 +949,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             </div>
           ))}
         </div>
-        <BottomNav />
+        {/* Панель вкладок — только над списком и вкладками: при открытой переписке
+            или канале она закрывала поле ввода (баг-репорт 94e2ce74). */}
+        {!(tab === "chat" && selectedChatId) && <BottomNav />}
       </div>
     );
   }
