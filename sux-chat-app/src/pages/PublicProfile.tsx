@@ -196,7 +196,10 @@ const PublicProfile = () => {
               ))}
             </div>
 
-            {!Capacitor.isNativePlatform() && (
+            {/* Подсказка про приложение — только в браузере: в Electron это и есть
+                приложение, а ссылка на сайт уводила окно на wyx.su без возврата
+                (баг-репорт 85dfb855). */}
+            {!Capacitor.isNativePlatform() && !(window as unknown as { electronAPI?: unknown }).electronAPI && (
               <p className="text-caption text-subtle text-center">
                 {t("Удобнее в приложении —")}{" "}
                 <a href={`${LINK_ORIGIN}/#download`} className="underline text-foreground">{t("скачать WYX")}</a>

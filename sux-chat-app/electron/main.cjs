@@ -110,6 +110,14 @@ function createWindow() {
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+  // То же для перехода в самом окне: обычная <a href> на сайт (wyx.su и
+  // любой другой) уводила приложение на чужую страницу без кнопки «назад»
+  // (баг-репорт 85dfb855). Своё — app:// и dev-сервер — пропускаем.
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('app://') || (isDev && url.startsWith(DEV_URL))) return;
+    e.preventDefault();
+    if (/^https?:/.test(url)) shell.openExternal(url);
+  });
 
   attachContextMenu(mainWindow);
 

@@ -38,8 +38,10 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
     try {
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
       const { Share } = await import("@capacitor/share");
-      // recursive: папки share/ в кэше может не быть (система чистит кэш) —
-      // без неё запись падала с ENOENT (баг-репорт 553367b8).
+      // Папки share/ в кэше может не быть (система чистит кэш) — без неё
+      // запись падала с ENOENT (баг-репорты 553367b8, 2064575c). recursive у
+      // downloadFile на Android папку не создаёт — делаем сами; «уже есть» — не ошибка.
+      await Filesystem.mkdir({ path: "share", directory: Directory.Cache, recursive: true }).catch(() => {});
       const res = await Filesystem.downloadFile({ url, path, directory: Directory.Cache, recursive: true });
       toast.dismiss(id);
       const uri = res.path ? (await Filesystem.getUri({ path, directory: Directory.Cache })).uri : null;
