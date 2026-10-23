@@ -181,6 +181,32 @@ class ChatViewSet(viewsets.ModelViewSet):
     queryset = Chat.objects.all()
     permission_classes = [permissions.IsAuthenticated]  # ← ИЗМЕНИТЬ НА ЭТО
 
+    def list(self, request, *args, **kwargs):
+        """Список чатов с ETag: клиент опрашивает его как страховку к сокету и
+        присылает If-None-Match — если ничего не изменилось, отвечаем 304 без
+        тела (до 100 КБ на запрос у активных аккаунтов)."""
+        import hashlib
+        import json
+        response = super().list(request, *args, **kwargs)
+        if response.status_code != 200:
+            return response
+        # «Был в сети» участников меняется от каждого запроса (в том числе
+        # свой), и без этого ETag никогда бы не совпадал. Присутствие клиент
+        # получает по сокету (presence) — в подпись списка его не берём.
+        volatile = {"last_seen", "online", "is_online", "last_seen_at", "last_active"}
+        def strip(v):
+            if isinstance(v, dict):
+                return {k: strip(x) for k, x in v.items() if k not in volatile}
+            if isinstance(v, list):
+                return [strip(x) for x in v]
+            return v
+        body = json.dumps(strip(response.data), sort_keys=True, ensure_ascii=False, default=str)
+        etag = '"' + hashlib.md5(body.encode("utf-8")).hexdigest() + '"'
+        if request.headers.get("If-None-Match") == etag:
+            return Response(status=304, headers={"ETag": etag})
+        response["ETag"] = etag
+        return response
+
     def get_queryset(self):
         """Возвращаем только чаты текущего пользователя"""
         try:
@@ -650,6 +676,14 @@ def _user_event(profile_ids, data):
             async_to_sync(layer.group_send)(f'user_{pid}', {'type': 'notification', 'data': data})
     except Exception:
         logger.exception("событие пользователю не ушло")
+
+
+def _chat_changed(chat):
+    """Строка чата в списке изменилась не новым сообщением (правка или
+    удаление последнего, …) — участникам в личный сокет, чтобы список
+    перечитался сразу, а не на следующем редком опросе."""
+    ids = list(ChatParticipant.objects.filter(chat=chat).values_list('user_id', flat=True))
+    _user_event(ids, {'type': 'chat_changed', 'chat_id': str(chat.id)})
 
 
 def _leave_group(chat, me):
@@ -1220,6 +1254,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             from .ideabox import relay_delete
             relay_delete(msg)
             _push_message_deleted(msg)
+            _chat_changed(msg.chat)
         else:
             msg.deleted_for.add(profile)
             # Двигаем updated_at: так «спрятанное у себя» доедет до моих других
@@ -1276,6 +1311,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         _schedule_translation(msg, profile, request)
         from .mentions import store_mentions
         store_mentions(msg)
+        _chat_changed(msg.chat)
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])

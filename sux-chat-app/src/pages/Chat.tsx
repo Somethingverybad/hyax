@@ -358,16 +358,26 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     // Сразу загружаем чаты при загрузке компонента
     refreshChats();
 
-    // Устанавливаем интервал для автообновления чатов
-    const intervalId = setInterval(() => {
-      refreshChats();
-    }, 5000); // Обновляем каждые 5 секунд
+    // Список чатов обновляют события личного сокета (new_message, read,
+    // chat_changed, …). Опрос — страховка: раз в минуту при живом сокете,
+    // раз в 10 с без него. Раньше опрос шёл каждые 5 с с каждого устройства,
+    // и один список чатов давал около 5 ГБ трафика в сутки.
+    let pollTimer = 0;
+    const schedule = () => {
+      window.clearTimeout(pollTimer);
+      pollTimer = window.setTimeout(() => { refreshChats(); schedule(); }, userSocket()?.isConnected() ? 60000 : 10000);
+    };
+    schedule();
+    // Сокет (пере)подключился — пропущенные события наверстать сразу.
+    const onSocketOpen = () => { refreshChats(); schedule(); };
+    window.addEventListener("hyax:socket-open", onSocketOpen);
     // Стена: счётчик новых постов — реже, он не срочный.
     void refreshWall();
-    const wallTimer = setInterval(() => { void refreshWall(); }, 30000);
+    const wallTimer = setInterval(() => { void refreshWall(); }, 60000);
 
     return () => {
-      clearInterval(intervalId);
+      window.clearTimeout(pollTimer);
+      window.removeEventListener("hyax:socket-open", onSocketOpen);
       clearInterval(wallTimer);
     };
   }, [user]);
@@ -488,6 +498,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         // Сигнал живёт, только пока приложение открыто: в истории его нет.
         if (msg.data.on) rovOn(msg.data.from_username);
         else rovOff();
+      } else if (msg?.data?.type === "chat_changed") {
+        // Правка или удаление последнего сообщения — превью в списке.
+        refreshChats();
       } else if (msg?.type === "new_message" || msg?.data?.type === "new_message") {
         refreshChats();
         // Системный баннер для веб/десктопа. На мобильных — нативный пуш.
@@ -670,7 +683,17 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     });
   };
 
+  // Залп событий (несколько сообщений подряд, read + new_message) — один
+  // запрос: пока идёт загрузка, следующий вызов лишь просит повторить после.
+  const refreshingRef = useRef<{ busy: boolean; again: boolean }>({ busy: false, again: false });
   const refreshChats = async () => {
+    const st = refreshingRef.current;
+    if (st.busy) { st.again = true; return; }
+    st.busy = true;
+    try { await refreshChatsNow(); }
+    finally { st.busy = false; if (st.again) { st.again = false; void refreshChats(); } }
+  };
+  const refreshChatsNow = async () => {
     if (!user) return;
     try {
       const userChats = withLatest(await mergeUnread(await api.getChats()));

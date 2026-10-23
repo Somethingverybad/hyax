@@ -167,7 +167,11 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    # Условный запрос списка чатов (ETag → 304), см. ChatViewSet.list.
+    'if-none-match',
 ]
+# ETag списка чатов должен быть виден скрипту приложения (capacitor://, app://).
+CORS_EXPOSE_HEADERS = ['ETag']
 
 CSRF_TRUSTED_ORIGINS = [
     "https://huyax.e-tree.su",

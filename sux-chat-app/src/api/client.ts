@@ -575,6 +575,9 @@ interface UnreadCountResponse {
   mention_by_chat?: Record<string, boolean>;
 }
 
+/** Последний ответ /chats/ и его ETag — для условного запроса (If-None-Match). */
+let chatsEtag: { tag: string | null; list: Chat[] | null } = { tag: null, list: null };
+
 async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const token = localStorage.getItem("access_token");
   const authInit = {
@@ -1085,11 +1088,15 @@ export const api = {
 
   // ===== CHATS =====
   getChats: async (): Promise<Chat[]> => {
+    // ETag: список не изменился — сервер отвечает 304 без тела, отдаём прежний.
     const res = await fetchWithAuth(`${API_URL}/chats/`, {
       method: "GET",
-      headers: authHeaders(),
+      headers: { ...authHeaders(), ...(chatsEtag.tag ? { "If-None-Match": chatsEtag.tag } : {}) },
     });
-    return res.json();
+    if (res.status === 304 && chatsEtag.list) return chatsEtag.list;
+    const list = await res.json();
+    if (res.ok && Array.isArray(list)) chatsEtag = { tag: res.headers.get("ETag"), list };
+    return list;
   },
 
   getChatParticipants: async (chatId: string): Promise<Profile[]> => {

@@ -40,6 +40,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
+import { userSocket } from "@/lib/userSocket";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import { GraffitiSheet } from "@/components/chat/Graffiti";
@@ -1822,10 +1823,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (alive) void openPosition(chatId);
     })();
 
-    // Опрос раз в три секунды — страховка на случай оборванного сокета;
-    // с since=… он почти ничего не стоит.
-    const intervalId = setInterval(() => { syncSince(chatId); }, 3000);
-    return () => { alive = false; clearInterval(intervalId); };
+    // Новые сообщения приносит личный сокет (new_message → messagePing).
+    // Опрос — страховка: раз в 30 с при живом сокете, раз в 3 с без него;
+    // с since=… он почти ничего не стоит, но 3 с с каждого устройства — это
+    // лишняя нагрузка на сервер. Сокет переподключился — догоняем сразу.
+    let pollTimer = 0;
+    const schedule = () => {
+      window.clearTimeout(pollTimer);
+      pollTimer = window.setTimeout(() => { syncSince(chatId); schedule(); }, userSocket()?.isConnected() ? 30000 : 3000);
+    };
+    schedule();
+    const onSocketOpen = () => { syncSince(chatId); schedule(); };
+    window.addEventListener("hyax:socket-open", onSocketOpen);
+    return () => { alive = false; window.clearTimeout(pollTimer); window.removeEventListener("hyax:socket-open", onSocketOpen); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 

@@ -38,7 +38,12 @@ export function startUserSocket(userId: string): WebSocketService {
     maxReconnectAttempts: 20,
     // Сервер считает новое соединение «на экране»; если переподключились
     // в фоне — сразу поправляем, чтобы у собеседников не горело «в сети».
-    onOpen: () => sock.send({ type: "active", active: visible(), device: deviceIdNow() }),
+    onOpen: () => {
+      sock.send({ type: "active", active: visible(), device: deviceIdNow() });
+      // Пока сокета не было, события могли пропасть — экраны перечитывают
+      // список чатов и открытую переписку (Chat.tsx, ChatWindow).
+      window.dispatchEvent(new CustomEvent("hyax:socket-open"));
+    },
     onMessage: (msg: any) => {
       // Сеанс завершили из «Устройств» на другом устройстве — выходим на
       // любом экране, а не только когда открыт список чатов.

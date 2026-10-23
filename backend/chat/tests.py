@@ -1264,6 +1264,28 @@ class ReadReceiptTests(TestCase):
 
 
 
+class ChatListEtagTests(TestCase):
+    """Список чатов: тот же список — 304 без тела; изменился — 200 с новым ETag."""
+
+    def test_etag_304_until_something_changes(self):
+        me, other = make_user("etag_me"), make_user("etag_other")
+        chat = Chat.objects.create(kind="direct")
+        for p in (me, other):
+            ChatParticipant.objects.create(chat=chat, user=p, role="member")
+        Message.objects.create(chat=chat, sender=other, content="привет")
+        c = client_for(me)
+        r1 = c.get("/api/chats/")
+        self.assertEqual(r1.status_code, 200)
+        etag = r1["ETag"]
+        self.assertTrue(etag)
+        r2 = c.get("/api/chats/", HTTP_IF_NONE_MATCH=etag)
+        self.assertEqual((r2.status_code, r2.content), (304, b""))
+        Message.objects.create(chat=chat, sender=other, content="ещё")
+        r3 = c.get("/api/chats/", HTTP_IF_NONE_MATCH=etag)
+        self.assertEqual(r3.status_code, 200)
+        self.assertNotEqual(r3["ETag"], etag)
+
+
 class ChannelPostDeleteTests(TestCase):
     """Удаление постов в канале: владелец и админ — у всех, подписчик — нет."""
 
