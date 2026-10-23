@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode, memo } from "react";
 import { writeClipboard } from "@/lib/clipboard";
 import { getDraftText, saveDraftText } from "@/lib/drafts";
 import CachedImg from "@/components/CachedImg";
@@ -1876,6 +1876,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (activeRef.current) loadPinned();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messagePing]);
+  // То же событием (pages/Chat.tsx шлёт hyax:ping с chat_id): реагирует только
+  // окно этого чата, остальные смонтированные (пул, Избранное) не перерисовываются.
+  useEffect(() => {
+    if (!chatId) return;
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ chat_id?: string }>).detail;
+      if (d?.chat_id && d.chat_id !== chatId) return;
+      syncSince(chatId);
+      if (activeRef.current) loadPinned();
+    };
+    window.addEventListener("hyax:ping", on);
+    return () => window.removeEventListener("hyax:ping", on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   // Новые входящие: звук и прокрутка вниз. Сравниваем по времени самого
   // свежего сообщения на прошлом рендере, а не по длине списка — страницы
@@ -3201,12 +3215,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // Реакция от собеседника: своё «mine» считаем сами — в событии приходят
   // те, кто поставил, а не персональная сводка на каждого.
-  useEffect(() => {
-    if (!reactionEvent || reactionEvent.chat_id !== chatId) return;
-    setMessages((prev) => prev.map((m) => (m.id === reactionEvent.message_id
-      ? { ...m, reactions: reactionEvent.reactions.map((r) => ({ emoji: r.emoji, key: r.key, custom: r.custom, count: r.count, mine: (r.users || []).includes(userId) })) }
+  type ReactionEvt = NonNullable<ChatWindowProps["reactionEvent"]>;
+  const applyReactionEvent = (ev: ReactionEvt) => {
+    if (ev.chat_id !== chatId) return;
+    setMessages((prev) => prev.map((m) => (m.id === ev.message_id
+      ? { ...m, reactions: ev.reactions.map((r) => ({ emoji: r.emoji, key: r.key, custom: r.custom, count: r.count, mine: (r.users || []).includes(userId) })) }
       : m)));
+  };
+  useEffect(() => {
+    if (reactionEvent) applyReactionEvent(reactionEvent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reactionEvent?.at, chatId, userId]);
+  // И событием hyax:reaction из pages/Chat.tsx — только окну этого чата.
+  useEffect(() => {
+    const on = (e: Event) => applyReactionEvent((e as CustomEvent<ReactionEvt>).detail);
+    window.addEventListener("hyax:reaction", on);
+    return () => window.removeEventListener("hyax:reaction", on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, userId]);
 
   /** Нажатие на кнопку бота: сигнал уходит ему, в историю ничего не пишем. */
   const pressButton = async (message: Message, data: string) => {
@@ -6091,4 +6117,8 @@ const VoiceBubble = ({ id, url, seconds, play }: { id: string; url: string; seco
   );
 };
 
-export default ChatWindow;
+/** Под memo: экран чатов держит несколько окон (пул, Избранное) и
+ *  перерисовывается при каждой смене выбора — без memo каждое окно отрабатывало
+ *  рендер заново. Колбэки из pages/Chat.tsx стабильны (lib/useStable), пинг и
+ *  реакции приходят событиями. */
+export default memo(ChatWindow);

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { setOtaRestoreState } from "@/lib/ota";
 import { signedIn } from "@/lib/signedIn";
+import { useStable } from "@/lib/useStable";
 import { startCall as startCallGlobal } from "@/lib/calls";
 import { dismissChatNotifications, sweepReadNotifications } from "@/lib/chatNotifications";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
@@ -69,6 +70,11 @@ interface ProfileType {
 /** Пушей через Google на этом телефоне нет (Huawei без сервисов Google) —
  *  не пробуем заново при каждом открытии экрана чатов до перезапуска. */
 let pushUnavailable = false;
+
+// Список и Стена под memo здесь, у места использования: их файлы правит
+// другая работа, а перерисовка при каждой смене выбранного чата не нужна.
+const MemoSidebar = memo(ChatSidebar);
+const MemoChannelView = memo(ChannelView);
 
 const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wallMode?: boolean } = {}) => {
   const isMobile = useIsMobile();
@@ -139,6 +145,15 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // CHAT_TABS): переключение их не пересоздаёт. Какие уже открывали — те и
   // смонтированы; уход со вкладки чатов закрывает открытую переписку, как и
   // раньше (скрытый чат не должен отмечать входящие прочитанными).
+  const closeChat = useStable(() => setSelectedChatId(null));
+  const selectChat = useStable((id: string, title?: string, kind?: string) => {
+    setSelectedChatId(id);
+    if (title) setSelectedChatTitle(title);
+    setSelectedKind(kind);
+  });
+  const refreshWallStable = useStable(() => { void refreshWall(); });
+  const openChannelFromWallNav = useStable((id: string, title?: string) => navigate("/chat", { state: { chatId: id, kind: "channel", title } }));
+  const openProfile = useStable(() => navigate("/profile"));
   const tab: "wall" | "saved" | "chat" = wallMode ? "wall" : savedMode ? "saved" : "chat";
   // Пул недавних переписок (телефон): последние POOL_SIZE личных и групповых
   // чатов остаются смонтированными скрытыми слоями — повторное открытие не
@@ -176,13 +191,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   selectedKindRef.current = selectedKind;
   // Растёт на каждое входящее по сокету в открытом чате — ChatWindow по нему
   // перечитывает ленту сразу, а не через опрос.
-  const [messagePing, setMessagePing] = useState(0);
-  const pingChatRef = useRef<string | null>(null);
+
   // Последнее событие о реакциях — ChatWindow применяет его к своей ленте.
-  const [reactionEvent, setReactionEvent] = useState<{
-    chat_id: string; message_id: string;
-    reactions: { emoji: string; key?: string; custom?: { url: string; repaint?: boolean }; count: number; users: string[] }[]; at: number;
-  } | null>(null);
   chatsRef.current = chats;
   // Непрочитанные в момент открытия: эффект ниже обнулит бейдж, а лента должна
   // встать к первому непрочитанному (ChatWindow.unreadAtOpen).
@@ -225,7 +235,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   }, []);
 
   const rovTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sendRov = (on: boolean) => {
+  const sendRov = useStable((on: boolean) => {
     const chatId = selectedChatIdRef.current;
     if (!chatId) return;
     if (rovTimerRef.current) { clearInterval(rovTimerRef.current); rovTimerRef.current = null; }
@@ -237,7 +247,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         userSocket()?.send({ type: "rov", chat: chatId, on: true });
       }, 400);
     }
-  };
+  });
   useEffect(() => () => { if (rovTimerRef.current) clearInterval(rovTimerRef.current); rovOff(); }, []);
 
   // Показываем, кто нас ревёт: вибрация вибрацией, но на десктопе её нет.
@@ -474,7 +484,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       if (msg?.data?.type === "reaction") {
         // Реакции приходят событием: обычная синхронизация их не приносит —
         // само сообщение при этом не меняется.
-        setReactionEvent({ ...msg.data, at: Date.now() });
+        window.dispatchEvent(new CustomEvent("hyax:reaction", { detail: { ...msg.data, at: Date.now() } }));
       } else if (msg?.data?.type === "chat_request") {
         // Запрос на переписку пришёл или принят — список и открытый чат перечитываются.
         refreshChats();
@@ -558,10 +568,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           chatId && String(chatId) === selectedChatIdRef.current;
         // Пинг — всем смонтированным окнам (открытое, пул недавних, Избранное):
         // каждое синхронизируется, только если пинг про его чат (pingChatId).
-        if (chatId) {
-          pingChatRef.current = String(chatId);
-          setMessagePing((n) => n + 1);
-        }
+        if (chatId) window.dispatchEvent(new CustomEvent("hyax:ping", { detail: { chat_id: String(chatId) } }));
         if (m && senderId && senderId !== user.id && !active) {
           const preview =
             (m.content || "").trim() ||
@@ -614,15 +621,15 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const selectedChat = chats.find((c) => c.id === selectedChatId) || (savedChat?.id === selectedChatId ? savedChat : undefined);
   const isChannelOpen = selectedKind === "channel" || (selectedChat as any)?.kind === "channel";
   const isWallOpen = selectedKind === "wall";
-  const openChannelFromWall = (id: string, title?: string) => {
+  const openChannelFromWall = useStable((id: string, title?: string) => {
     setSelectedChatId(id);
     setSelectedKind("channel");
     if (title) setSelectedChatTitle(title);
-  };
+  });
   const isSavedOpen = !!selectedChatId && (selectedKind === "saved" || (selectedChat as any)?.kind === "saved");
   // «Избранное» живёт на своей вкладке — из общего списка его убираем.
   // «Долгий ящик» — своя строка наверху списка (ChatSidebar), в общем списке его нет.
-  const listChats = chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox");
+  const listChats = useMemo(() => chats.filter((c) => (c as any).kind !== "saved" && (c as any).kind !== "ideabox"), [chats]);
   // Стена — своя вкладка (/wall) и строка над списком на десктопе; в самом списке её нет.
   const openWall = () => {
     if (isMobile) { navigate("/wall"); return; }
@@ -674,7 +681,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
 
   // Позвонить из открытого чата: звонок ведёт CallHost (lib/calls), он и
   // переживает уход с экрана чатов.
-  const startCall = async () => {
+  const startCall = useStable(async () => {
     if (!selectedChatId) return;
     await startCallGlobal({
       chatId: selectedChatId,
@@ -682,7 +689,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       chatName: selectedChat?.name,
       peer: peer ? { id: peer.id, name: peer.username, avatarUrl: peer.avatar_url } : undefined,
     });
-  };
+  });
 
   // 🔔 Функция обновления списка чатов
   // getChats счётчик непрочитанного не отдаёт — берём его из отдельного
@@ -726,26 +733,26 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return ts(y.last_message_at || y.created_at) - ts(x.last_message_at || x.created_at);
   });
 
-  const handleLatest = (chatId: string, latest: LatestMessage) => {
+  const handleLatest = useStable((chatId: string, latest: LatestMessage) => {
     latestRef.current[chatId] = latest;
     setChats((prev) => {
       const next = sortChats(withLatest(prev).map((c) => (c.id === chatId ? { ...c, unread_count: 0, unread_mention: false } : c)));
       writeCache("chats", next);
       return next;
     });
-  };
+  });
 
   // Залп событий (несколько сообщений подряд, read + new_message) — один
   // запрос: пока идёт загрузка, следующий вызов лишь просит повторить после.
   const refreshingRef = useRef<{ busy: boolean; again: boolean }>({ busy: false, again: false });
   const lastRefreshRef = useRef(0);
-  const refreshChats = async () => {
+  const refreshChats = useStable(async () => {
     const st = refreshingRef.current;
     if (st.busy) { st.again = true; return; }
     st.busy = true;
     try { await refreshChatsNow(); lastRefreshRef.current = Date.now(); }
     finally { st.busy = false; if (st.again) { st.again = false; void refreshChats(); } }
-  };
+  });
   const refreshChatsNow = async () => {
     if (!user) return;
     try {
@@ -844,13 +851,13 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           {visitedTabs.has("wall") && layer("wall", tab === "wall", (
             <div className="flex-1 min-h-0 flex">
               {wall ? (
-                <ChannelView
+                <MemoChannelView
                   key="wall-tab"
                   channelId={wall.id}
                   userId={user.id}
                   wall
-                  onOpenChannel={(id, title) => navigate("/chat", { state: { chatId: id, kind: "channel", title } })}
-                  onWallChanged={() => { void refreshWall(); }}
+                  onOpenChannel={openChannelFromWallNav}
+                  onWallChanged={refreshWallStable}
                 />
               ) : (
                 <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
@@ -868,10 +875,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                   saved
                   chats={listChats}
                   savedChatId={savedChat?.id}
-                  messagePing={messagePing}
             onLatest={handleLatest}
             unreadAtOpen={unreadAtOpen}
-                  reactionEvent={reactionEvent}
                   title={tr("Избранное")}
                 />
               ) : (
@@ -884,21 +889,17 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               {/* Список — всегда смонтирован; виден, когда переписка не открыта. */}
               <div className={`absolute inset-0 flex min-h-0 ${selectedChatId ? "invisible pointer-events-none" : hadChatOpenRef.current ? "screen-pop" : ""}`}
                 aria-hidden={!!selectedChatId} {...(selectedChatId ? { inert: "" as unknown as boolean } : {})}>
-          <ChatSidebar
+          <MemoSidebar
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
             userId={user.id}
             username={user.username}
             chats={listChats}
-            onSelectChat={(id, title, kind) => {
-              setSelectedChatId(id);
-              if (title) setSelectedChatTitle(title);
-              setSelectedKind(kind);
-            }}
+            onSelectChat={selectChat}
             onRefresh={refreshChats}
             selectedChatId={selectedChatId}
             onLogout={handleLogout}
-            onOpenProfile={() => navigate("/profile")}
+            onOpenProfile={openProfile}
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
@@ -906,7 +907,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               {/* Канал (не в пуле) — поверх списка, как раньше. */}
               {selectedChatId && (isChannelOpen || isWallOpen) && (
                 <div key={`ch-${selectedChatId}`} className="absolute inset-0 flex min-h-0 screen-push">
-            <ChannelView
+            <MemoChannelView
               key={isWallOpen ? "wall" : selectedChatId}
               channelId={selectedChatId}
               userId={user.id}
@@ -937,12 +938,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                       savedChatId={savedChat?.id}
                       onGroupUpdated={refreshChats}
                       onCall={startCall}
-                      messagePing={messagePing}
-                      pingChatId={pingChatRef.current}
                       onLatest={handleLatest}
                       unreadAtOpen={activeChat ? unreadAtOpen : 0}
-                      reactionEvent={reactionEvent}
-                      onBack={() => setSelectedChatId(null)}
+                      onBack={closeChat}
                       title={activeChat ? chatHeaderTitle : (c?.is_group ? c.name || tr("Группа") : p?.username || tr("Чат"))}
                     />
                   </div>
@@ -961,7 +959,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       <UpdateBanner />
       {termsGate}
       <div className="flex-1 flex min-h-0">
-      <ChatSidebar
+      <MemoSidebar
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
         userId={user.id}
@@ -985,7 +983,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
 
       {selectedChatId ? (
         isChannelOpen || isWallOpen ? (
-          <ChannelView
+          <MemoChannelView
             key={isWallOpen ? "wall" : selectedChatId}
             channelId={selectedChatId}
             userId={user.id}
@@ -1006,10 +1004,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           savedChatId={savedChat?.id}
           onGroupUpdated={refreshChats}
           onCall={startCall}
-          messagePing={messagePing}
             onLatest={handleLatest}
             unreadAtOpen={unreadAtOpen}
-          reactionEvent={reactionEvent}
           title={chatHeaderTitle}
         />
         )
