@@ -39,7 +39,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
-import { DEFAULT_REACTION, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
+import { quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import { GraffitiSheet } from "@/components/chat/Graffiti";
@@ -2492,7 +2492,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         return;
       }
       lastTapRef.current = { id: message.id, at: now, n: prev.n + 1 };
-      if (!message.pending) toggleReaction(message, DEFAULT_REACTION);
+      if (!message.pending) { const q = quickReaction(); toggleReaction(message, q.key, q); }
       return;
     }
     lastTapRef.current = { id: message.id, at: now, n: 1 };
@@ -4382,13 +4382,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                         if (justSwipedRef.current) return;
                         if (message.sound?.url) toggleSticker(message.id, message.sound.url);
                       }}
-                      // Двойной тап ставит сердце — как в мессенджерах;
-                      // остальные реакции в меню сообщения.
+                      // Двойной тап ставит быструю реакцию (по умолчанию сердце,
+                      // выбирается в настройках); остальные — в меню сообщения.
                       // Мышью двойной щелчок ловим системным событием; на
                       // касании его игнорируем — там считаем тапы сами.
                       onDoubleClick={() => {
                         if (touchInputRef.current || message.pending) return;
-                        toggleReaction(message, DEFAULT_REACTION);
+                        const q = quickReaction();
+                        toggleReaction(message, q.key, q);
                       }}
                       className={cn(
                       "relative",
@@ -4918,6 +4919,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   {icon}
                 </button>
               ))}
+            </div>
+          )}
+          {/* Сообщение уйдёт со своим звуком (выбран на вкладке звуков в панели
+              стикеров): показываем какой, даём послушать и убрать. Раньше выбор
+              был виден только по изменившейся кнопке отправки. */}
+          {selectedSound && !editing && (
+            <div className="mb-2 flex items-center gap-2 rounded-lg bg-secondary/50 border-l-2 border-primary pl-3 pr-1 py-2">
+              <button
+                type="button"
+                onClick={() => void toggleSticker("compose-sound", selectedSound.url)}
+                className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                aria-label={playingSoundId === "compose-sound" ? tr("Остановить") : tr("Послушать")}
+              >
+                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                  {playingSoundId === "compose-sound" ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-medium text-primary">{tr("Со звуком")}</span>
+                  <span className="block text-sm text-muted-foreground truncate">{selectedSound.name}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { if (playingSoundId === "compose-sound") stopSticker(); setSelectedSound(null); }}
+                className="px-2 text-muted-foreground hover:text-foreground"
+                aria-label={tr("Убрать звук")}
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           )}
           {editing && (

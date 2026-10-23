@@ -2131,5 +2131,14 @@ const en: Record<string, string> = {
   "Пока ни у кого нет баллов.": "Nobody has points yet.",
   "Показать пароль": "Show password",
   "Скрыть пароль": "Hide password",
+  "Быстрая реакция": "Quick reaction",
+  "Ставится двойным тапом по сообщению": "Set with a double tap on a message",
+  "Двойной тап по сообщению": "Double tap on a message",
+  "Выберите реакцию": "Choose a reaction",
+  "Второй тап по тому же сообщению ставит её, повторный двойной тап — снимает. Остальные реакции — в меню сообщения.": "A double tap on a message adds it; another double tap removes it. Other reactions are in the message menu.",
+  "Двойной тап ставит": "Double tap adds",
+  "Со звуком": "With sound",
+  "Убрать звук": "Remove sound",
+  "Послушать": "Listen",
 };
 export default en;

@@ -12,6 +12,7 @@ import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
 import { Globe, Wand2, LayoutGrid, Cloud, CloudDownload } from "lucide-react";
+import { ReactionGlyph, useQuickReaction } from "@/components/chat/Reactions";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
 import { shareProfile, profileLink } from "@/lib/share";
@@ -30,7 +31,7 @@ const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "изб�
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
   RefreshCw, Bug, Eraser,
-  Sticker, Activity, Flame, Lightbulb, Sparkles, Mic,
+  Sticker, Activity, Flame, Lightbulb, Sparkles, Mic, Heart,
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
 import { useMint, MintIcon } from "@/themes/mint";
@@ -75,6 +76,7 @@ export interface Profile {
 const ProfilePage = () => {
   const t = useT();
   const navigate = useNavigate();
+  const quick = useQuickReaction();
   const theme = useTheme();
   // Стартуем из кеша сессии — экран рисуется сразу, сеть обновит фоном.
   const cached = readCache<Profile>("user");
@@ -455,6 +457,13 @@ const ProfilePage = () => {
               label={t("Уведомления")}
               value={profile?.notify_sound ? profile.notify_sound.name : t("Обычный звук")}
               onClick={() => navigate("/profile/notifications")}
+            />
+            <SettingsRow
+              icon={Heart}
+              label={t("Быстрая реакция")}
+              hint={t("Ставится двойным тапом по сообщению")}
+              value={<ReactionGlyph pick={quick} size={22} />}
+              onClick={() => navigate("/profile/reactions")}
             />
             <SettingsRow
               icon={Mic}

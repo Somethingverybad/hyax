@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils";
-import { MAIN_REACTIONS, EXTRA_REACTIONS, customReactionKey, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
+import { useNavigate } from "react-router-dom";
+import { MAIN_REACTIONS, EXTRA_REACTIONS, customReactionKey, quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { Smile, Plus } from "lucide-react";
 import { t } from "@/lib/i18n";
 import NotoEmoji from "@/components/NotoEmoji";
@@ -20,6 +21,17 @@ import { cachedCustomPacks, refreshCustomPacks } from "@/components/chat/EmojiPa
  * эмодзи из набора (custom). Реакцию везде узнаём по reactionKey: у своего
  * эмодзи emoji — лишь обычный двойник для старых клиентов.
  */
+/** Быстрая реакция (lib/reactions quickReaction) с перерисовкой при смене в настройках. */
+export function useQuickReaction(): ReactionPick {
+  const [pick, setPick] = useState(quickReaction);
+  useEffect(() => {
+    const on = () => setPick(quickReaction());
+    window.addEventListener("hyax:quick-reaction", on);
+    return () => window.removeEventListener("hyax:quick-reaction", on);
+  }, []);
+  return pick;
+}
+
 export type ReactionSize = "s" | "m" | "l";
 
 const SIZE: Record<ReactionSize, string> = {
@@ -83,21 +95,97 @@ export const ReactionBar = ({ reactions, onToggle, size = "m", className }: {
 
 /** Выбор реакции: основной набор в ряд, остальные — по кнопке «ещё»; ниже —
  *  мои наборы своих эмодзи (свои и сохранённые), как в панели эмодзи. */
+/** Сетка реакций: основные, «ещё», свои наборы. selectedKey — отметить
+ *  текущую (настройка быстрой реакции). Общая для шторки и настроек. */
+export const ReactionGrid = ({ onPick, selectedKey, active = true }: {
+  onPick: (key: string, pick?: ReactionPick) => void;
+  selectedKey?: string | null;
+  /** Пока false, наборы не перечитываются (шторка закрыта). */
+  active?: boolean;
+}) => {
+  const [all, setAll] = useState(() => !!selectedKey && EXTRA_REACTIONS.some((r) => r.emoji === selectedKey));
+  const [packs, setPacks] = useState(cachedCustomPacks);
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    refreshCustomPacks().then((p) => { if (alive) setPacks(p); }).catch(() => {});
+    return () => { alive = false; };
+  }, [active]);
+  const list = all ? [...MAIN_REACTIONS, ...EXTRA_REACTIONS] : MAIN_REACTIONS;
+  const cell = (sel: boolean) => cn(
+    "w-12 h-12 rounded-full flex items-center justify-center active:opacity-70",
+    sel ? "bg-primary/20 ring-2 ring-primary" : "bg-surface-4",
+  );
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {list.map((r, i) => (
+          <button
+            key={r.emoji}
+            type="button"
+            title={t(r.label)}
+            aria-label={t(r.label)}
+            aria-pressed={selectedKey === r.emoji}
+            onClick={() => onPick(r.emoji, { key: r.emoji, emoji: r.emoji })}
+            className={cn(cell(selectedKey === r.emoji), "text-[26px] leading-none")}
+          >
+            <NotoEmoji emoji={r.emoji} size={30} autoPlay delay={i * 45} />
+          </button>
+        ))}
+        {!all && (
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            aria-label={t("Ещё реакции")}
+            className="w-12 h-12 rounded-full bg-surface-4 flex items-center justify-center text-muted-foreground active:opacity-70"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+      {(packs || []).filter((p) => p.items.length).map((p) => (
+        <section key={p.id} className="mt-4">
+          <p className="mb-2 text-caption text-subtle truncate">{p.name}</p>
+          <div className="flex flex-wrap gap-2">
+            {p.items.map((e) => {
+              const custom = { url: e.file_url, ...(e.repaint ? { repaint: true } : {}) };
+              const glyph = e.emoji || "🙂";
+              const key = customReactionKey(e.id);
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  title={glyph}
+                  aria-label={glyph}
+                  aria-pressed={selectedKey === key}
+                  onClick={() => onPick(key, { key, emoji: glyph, custom })}
+                  className={cn(cell(selectedKey === key), "text-foreground")}
+                >
+                  <CustomEmoji url={e.file_url} alt={glyph} repaint={e.repaint} className="w-[30px] h-[30px] object-contain" />
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+};
+
+/** Одна реакция картинкой — для подсказок и настроек. */
+export const ReactionGlyph = ({ pick, size = 22, className }: { pick: ReactionPick; size?: number; className?: string }) =>
+  pick.custom
+    ? <CustomEmoji url={pick.custom.url} alt={pick.emoji || ""} repaint={pick.custom.repaint} className={cn("object-contain", className)} style={{ width: size, height: size }} />
+    : <NotoEmoji emoji={pick.emoji || pick.key} size={size} className={className} />;
+
 export const ReactionPicker = ({ open, onPick, onClose }: {
   open: boolean;
   onPick: (key: string, pick?: ReactionPick) => void;
   onClose: () => void;
 }) => {
-  const [all, setAll] = useState(false);
-  const [packs, setPacks] = useState(cachedCustomPacks);
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    refreshCustomPacks().then((p) => { if (alive) setPacks(p); }).catch(() => {});
-    return () => { alive = false; };
-  }, [open]);
+  const navigate = useNavigate();
+  const quick = useQuickReaction();
   if (!open) return null;
-  const list = all ? [...MAIN_REACTIONS, ...EXTRA_REACTIONS] : MAIN_REACTIONS;
   return (
     <div className="fixed inset-0 z-[75] flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
@@ -106,59 +194,22 @@ export const ReactionPicker = ({ open, onPick, onClose }: {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
-        <div className="flex flex-wrap gap-2">
-          {list.map((r, i) => (
-            <button
-              key={r.emoji}
-              type="button"
-              title={t(r.label)}
-              aria-label={t(r.label)}
-              onClick={() => onPick(r.emoji)}
-              className="w-12 h-12 rounded-full bg-surface-4 text-[26px] leading-none flex items-center justify-center active:opacity-70"
-            >
-              <NotoEmoji emoji={r.emoji} size={30} autoPlay delay={i * 45} />
-            </button>
-          ))}
-          {!all && (
-            <button
-              type="button"
-              onClick={() => setAll(true)}
-              aria-label={t("Ещё реакции")}
-              className="w-12 h-12 rounded-full bg-surface-4 flex items-center justify-center text-muted-foreground active:opacity-70"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-        {(packs || []).filter((p) => p.items.length).map((p) => (
-          <section key={p.id} className="mt-4">
-            <p className="mb-2 text-caption text-subtle truncate">{p.name}</p>
-            <div className="flex flex-wrap gap-2">
-              {p.items.map((e) => {
-                const custom = { url: e.file_url, ...(e.repaint ? { repaint: true } : {}) };
-                const glyph = e.emoji || "🙂";
-                return (
-                  <button
-                    key={e.id}
-                    type="button"
-                    title={glyph}
-                    aria-label={glyph}
-                    onClick={() => onPick(customReactionKey(e.id), { key: customReactionKey(e.id), emoji: glyph, custom })}
-                    className="w-12 h-12 rounded-full bg-surface-4 flex items-center justify-center text-foreground active:opacity-70"
-                  >
-                    <CustomEmoji url={e.file_url} alt={glyph} repaint={e.repaint} className="w-[30px] h-[30px] object-contain" />
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+        <ReactionGrid onPick={onPick} active={open} />
+        {/* Какая реакция ставится двойным тапом — и где её поменять. */}
+        <button
+          type="button"
+          onClick={() => { onClose(); navigate("/profile/reactions"); }}
+          className="mt-4 w-full flex items-center gap-2 rounded-lg bg-surface-3 px-3 py-2 text-small text-subtle active:opacity-70"
+        >
+          <span className="flex-1 min-w-0 text-left truncate">{t("Двойной тап ставит")}</span>
+          <ReactionGlyph pick={quick} size={20} />
+          <span className="text-primary shrink-0">{t("Изменить")}</span>
+        </button>
       </div>
     </div>
   );
 };
 
-/** Кнопка «добавить реакцию» рядом с сообщением — как в макете. */
 export const AddReactionButton = ({ onClick, className }: { onClick: () => void; className?: string }) => (
   <button
     type="button"

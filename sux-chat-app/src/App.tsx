@@ -22,6 +22,7 @@ import AdminMetrics from "./pages/AdminMetrics";
 import ProfileIdeas from "./pages/ProfileIdeas";
 import ProfileVibeLevels from "./pages/ProfileVibeLevels";
 import ProfileActions from "./pages/ProfileActions";
+import ProfileQuickReaction from "./pages/ProfileQuickReaction";
 import MiniApps from "./pages/MiniApps";
 import ProfileAura from "./pages/ProfileAura";
 import ProfileSoundPacks from "./pages/ProfileSoundPacks";
@@ -362,6 +363,7 @@ const App = () => {
                 <Route path="/profile/ideas" element={<ProfileIdeas />} />
                 <Route path="/profile/vibe-levels" element={<ProfileVibeLevels />} />
                 <Route path="/profile/actions" element={<ProfileActions />} />
+                <Route path="/profile/reactions" element={<ProfileQuickReaction />} />
                 <Route path="/profile/apps" element={<MiniApps />} />
                 <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
                 {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}

@@ -38,7 +38,7 @@ export const EXTRA_REACTIONS: ReactionDef[] = [
 
 export const ALL_REACTIONS = [...MAIN_REACTIONS, ...EXTRA_REACTIONS];
 
-/** Двойной тап по сообщению ставит именно её. */
+/** Двойной тап по сообщению ставит именно её — пока человек не выбрал свою (quickReaction). */
 export const DEFAULT_REACTION = MAIN_REACTIONS[0].emoji;
 
 /** Свой эмодзи реакцией (набор эмодзи): картинка; repaint — одноцветный,
@@ -59,3 +59,35 @@ export const customReactionKey = (emojiId: string) => `ce:${emojiId}`;
 /** Что выбрали в списке реакций: обычный эмодзи — только key; свой — ещё
  *  картинка и двойник, чтобы таблетка нарисовалась сразу, до ответа сервера. */
 export type ReactionPick = { key: string; emoji?: string; custom?: ReactionPic };
+
+/**
+ * Быстрая реакция — та, что ставится двойным тапом по сообщению. Выбирается в
+ * настройках (Профиль → Быстрая реакция) или из списка реакций; по умолчанию
+ * сердце. Настройка устройства: живёт в localStorage, как остальные в
+ * lib/settings (на другой телефон не переезжает).
+ */
+const QUICK_KEY = "hyax:setting:quick_reaction";
+let quickCache: ReactionPick | null | undefined;
+
+export function quickReaction(): ReactionPick {
+  if (quickCache === undefined) {
+    try {
+      const raw = localStorage.getItem(QUICK_KEY);
+      const v = raw ? (JSON.parse(raw) as ReactionPick) : null;
+      quickCache = v && typeof v.key === "string" && v.key ? v : null;
+    } catch { quickCache = null; }
+  }
+  return quickCache || { key: DEFAULT_REACTION, emoji: DEFAULT_REACTION };
+}
+
+export function setQuickReaction(pick: ReactionPick | null) {
+  quickCache = pick;
+  try {
+    if (pick) localStorage.setItem(QUICK_KEY, JSON.stringify(pick)); else localStorage.removeItem(QUICK_KEY);
+  } catch { /* приватный режим */ }
+  window.dispatchEvent(new CustomEvent("hyax:quick-reaction"));
+}
+
+/** Подпись реакции для настроек: обычная — по словарю, своя — её двойник. */
+export const reactionLabel = (pick: ReactionPick): string =>
+  ALL_REACTIONS.find((r) => r.emoji === pick.key)?.label || pick.emoji || "";
