@@ -1,3 +1,4 @@
+import { useMediaUrl } from "@/hooks/use-media-url";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Flag, Image as ImageIcon, Lightbulb, ShieldCheck, Sparkles, UserRound } from "lucide-react";
@@ -13,6 +14,16 @@ import { cn } from "@/lib/utils";
  * вайб и что его снимало. Анонимные голоса и лайки идей — без имени (сервер
  * имя не отдаёт), жалобы — без автора.
  */
+/** Превью сохранёнки в истории: ссылка приватная (s3://…) — её надо подписать,
+ *  как в галерее (SavedTile); mediaUrl отдавал маркер как есть, и картинка
+ *  не грузилась (баг-репорт b10e87ef). */
+const SavedThumb = ({ raw }: { raw: string }) => {
+  const url = useMediaUrl(raw);
+  return url
+    ? <img src={url} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" loading="lazy" />
+    : <span className="w-10 h-10 rounded-md bg-surface-3 shrink-0" aria-hidden />;
+};
+
 const ProfileVibeHistory = () => {
   const t = useT();
   const navigate = useNavigate();
@@ -81,7 +92,7 @@ const ProfileVibeHistory = () => {
                     {e.playlist && <p className="text-caption text-subtle line-clamp-1 break-words">«{e.playlist}»</p>}
                     <p className="text-caption text-subtle">{when(e.at)}</p>
                   </div>
-                  {e.image && <img src={mediaUrl(e.image)} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" loading="lazy" />}
+                  {e.image && <SavedThumb raw={e.image} />}
                   <span className={cn("text-body font-semibold tabular-nums shrink-0", e.points < 0 ? "text-destructive" : "text-primary")}>
                     {e.points > 0 ? `+${e.points}` : `−${Math.abs(e.points)}`}
                   </span>
