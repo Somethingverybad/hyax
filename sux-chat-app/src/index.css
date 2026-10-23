@@ -1674,26 +1674,16 @@ html.native-video .call-layer {
    ещё ниже — колонка прокручивается, а не обрезается (safe center в «Мяте»). */
 @media (max-height: 760px) { .rail-player-title { display: none; } }
 /* Положение вкладок в колонке (lib/railPos): сверху / по центру / снизу.
-   Плеер и свёрнутый звонок (.nav-rail-extra) стоят у нижнего края и на
-   положение вкладок не влияют: раньше колонка центрировалась целиком, и при
-   включении музыки вкладки уезжали вверх. Низкое окно — обычный поток. */
+   Сверху и снизу плеер и свёрнутый звонок (.nav-rail-extra) стоят с другой
+   стороны от вкладок и на их место не влияют. */
 .nav-rail-wrap[data-pos="top"] { justify-content: flex-start; }
 .nav-rail-wrap[data-pos="middle"] { justify-content: center; justify-content: safe center; }
 .nav-rail-wrap[data-pos="bottom"] { justify-content: flex-end; }
 .nav-rail-wrap[data-pos="bottom"] .nav-rail-extra { order: -1; }
 .nav-rail-wrap .nav-rail-extra { display: flex; flex-direction: column; align-items: center; width: 100%; }
 .nav-rail-wrap:not(.mint-rail-wrap) .nav-rail-tabs { padding-top: 12px; }
-/* «По центру»: вкладки — в центре свободного места над нижней зоной, а зона
-   всегда резервирует высоту играющего плеера (~430px; без названия ~330px) —
-   поэтому вкладки стоят на месте и когда музыка включается. На очень высоком
-   окне плеер помещается под центром целиком — тогда зона абсолютная, а
-   вкладки в настоящем центре. */
-.nav-rail-wrap[data-pos="middle"] .nav-rail-tabs { margin: auto 0; }
-.nav-rail-wrap[data-pos="middle"] .nav-rail-extra { min-height: 440px; justify-content: flex-end; }
-@media (max-height: 760px) { .nav-rail-wrap[data-pos="middle"] .nav-rail-extra { min-height: 330px; } }
-@media (min-height: 1150px) {
-  .nav-rail-wrap[data-pos="middle"] .nav-rail-extra { position: absolute; left: 0; right: 0; bottom: 8px; min-height: 0; }
-}
+/* «По центру» — как было изначально: островок вкладок и плеер под ним
+   центрируются вместе одной колонкой. */
 .rail-call .rail-vertical { max-height: 90px; }
 .nav-rail-wrap { overflow-y: auto; scrollbar-width: none; }
 .nav-rail-wrap::-webkit-scrollbar { display: none; }
