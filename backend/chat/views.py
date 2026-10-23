@@ -1237,7 +1237,9 @@ class MessageViewSet(viewsets.ModelViewSet):
             profile = request.user.profile
         except Profile.DoesNotExist:
             return Response({"error": "Profile not found"}, status=400)
-        if msg.sender_id != profile.id:
+        # Автор; в канале ещё владелец и админы (как при удалении): пост
+        # чужого или уволенного админа иначе было бы не поправить.
+        if msg.sender_id != profile.id and not (msg.chat.kind == "channel" and _can_post_to(msg.chat, profile)):
             return Response({"error": "Редактировать может только автор"}, status=403)
         # Секретный чат: новый шифротекст вместо текста.
         if msg.chat.kind == 'secret':

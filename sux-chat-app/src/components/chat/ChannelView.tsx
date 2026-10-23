@@ -342,7 +342,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       deleteTimerRef.current = null;
     }, 5000);
   };
-  // Правка своего поста на Стене (первые сутки — WALL_EDIT_MS, как на сервере).
+  // Правка поста: на Стене — своего в первые сутки (WALL_EDIT_MS, как на сервере),
+  // в канале — владелец и админы, без срока.
   const [editPost, setEditPost] = useState<Post | null>(null);
   const [editText, setEditText] = useState("");
   const [editSaving, setEditSaving] = useState(false);
@@ -1371,6 +1372,18 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     <Share2 className="w-4 h-4" />
                   </button>
                 )}
+                {/* Канал: владелец и админы правят любой пост (сервер проверяет
+                    роль); на Стене правка — в меню «⋯» поста. */}
+                {!wall && isAdmin && !post._pending && !post.poll && !!post.content?.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => { setEditPost(post); setEditText(post.content || ""); }}
+                    aria-label={tr("Изменить пост")}
+                    className="h-8 w-8 rounded-full bg-surface-4 inline-flex items-center justify-center text-muted-foreground"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
                 {(wall ? (wallAdmin || post.sender?.id === userId) : isAdmin) && !post._pending && (
                   <button
                     type="button"
@@ -1844,7 +1857,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             <p className="font-semibold flex items-center gap-2"><Pencil className="w-5 h-5 text-primary" /> {tr("Изменить пост")}</p>
             <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={5} autoFocus disabled={editSaving}
               className="w-full resize-none bg-surface-2 border border-border rounded-md px-3.5 py-3 text-body outline-none focus:border-amber max-h-64" />
-            <p className="text-caption text-subtle">{tr("Пост можно изменить в течение суток после публикации.")}</p>
+            {wall && <p className="text-caption text-subtle">{tr("Пост можно изменить в течение суток после публикации.")}</p>}
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setEditPost(null)} disabled={editSaving} className="h-10 px-4 rounded-full text-small text-muted-foreground">{tr("Отмена")}</button>
               <button type="button" onClick={() => void saveEdit()} disabled={editSaving || !editText.trim()}

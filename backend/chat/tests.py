@@ -1286,6 +1286,27 @@ class ChannelPostDeleteTests(TestCase):
         after = client_for(self.sub).get(f"/api/channels/{self.ch.id}/posts/", {"since": now})
         self.assertIn(str(self.post.id), after.data["deleted"])
 
+    def edit(self, who, text="правка"):
+        return client_for(who).post(f"/api/messages/{self.post.id}/edit/", {"content": text}, format="json")
+
+    def test_owner_edits_admins_post(self):
+        r = self.edit(self.owner)
+        self.assertEqual((r.status_code, r.data["content"], r.data["is_edited"]), (200, "правка", True))
+
+    def test_admin_edits_own_post_subscriber_cannot(self):
+        self.assertEqual(self.edit(self.admin, "своя правка").status_code, 200)
+        self.assertEqual(self.edit(self.sub).status_code, 403)
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.content, "своя правка")
+
+    def test_group_message_not_editable_by_others(self):
+        g = Chat.objects.create(kind="group", is_group=True, name="Группа")
+        for p, r in ((self.owner, "owner"), (self.admin, "member")):
+            ChatParticipant.objects.create(chat=g, user=p, role=r)
+        m = Message.objects.create(chat=g, sender=self.admin, content="x")
+        r = client_for(self.owner).post(f"/api/messages/{m.id}/edit/", {"content": "y"}, format="json")
+        self.assertEqual(r.status_code, 403)
+
     def test_group_message_not_deletable_by_others(self):
         # В обычной группе правило прежнее: у всех удаляет только автор.
         g = Chat.objects.create(kind="group", is_group=True, name="Группа")
