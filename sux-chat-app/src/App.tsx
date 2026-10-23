@@ -139,6 +139,10 @@ const ThemeFromProfile = () => {
 };
 
 const TAB_ROOTS = ["/chat", "/wall", "/saved", "/music", "/profile"];
+/** Список, Избранное и Стена — один экран (pages/Chat) с тремя слоями: при
+ *  переключении он не пересоздаётся (PERF_PLAN.md, п. 4), меняются только
+ *  savedMode/wallMode. Один ключ обёртки — иначе React монтировал бы заново. */
+const CHAT_TABS = new Set(["/chat", "/saved", "/wall"]);
 
 /** Частые экраны — подгрузить заранее, когда главный экран уже нарисован и
  *  приложение простаивает: переход в «Музыку» или профиль тогда мгновенный. */
@@ -163,7 +167,7 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => { applog.info(`route ${location.pathname}`); }, [location.pathname]);
   useEffect(() => { prevPath.current = location.pathname; }, [location.pathname]);
   return (
-    <div key={location.pathname} className={`route-transition h-full ${dir}`}>
+    <div key={CHAT_TABS.has(location.pathname) ? "chat-tabs" : location.pathname} className={`route-transition h-full ${dir}`}>
       {/* Экран ещё грузится (первый раз) — фон без мигания, не спиннер. */}
       <Suspense fallback={null}>
         <Routes location={location}>{children}</Routes>

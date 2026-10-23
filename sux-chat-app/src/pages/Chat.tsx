@@ -89,7 +89,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // каждый переход на вкладку мелькал «Загрузка…» / «Выберите чат»
   // (баг-репорт 08f7f108). Сервер потом только подтверждает id.
   const initialOpen = (): { id: string; kind: string; title?: string } | null => {
-    if (savedMode) { const c = readCache<ChatType>("saved"); return c?.id ? { id: c.id, kind: "saved" } : null; }
+    if (savedMode && !isMobile) { const c = readCache<ChatType>("saved"); return c?.id ? { id: c.id, kind: "saved" } : null; }
     if (wallMode && !isMobile) { const w = readCache<WallState>("wall"); return w?.id ? { id: w.id, kind: "wall", title: tr("Стена") } : null; }
     return null;
   };
@@ -119,17 +119,35 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useEffect(() => {
     let alive = true;
     const cached = readCache<ChatType>("saved");
-    if (savedMode && cached?.id) { setSelectedChatId(cached.id); setSelectedKind("saved"); }
+    // На телефоне Избранное — отдельный слой со своим chatId (savedChat), выбор
+    // чата ему не нужен; на широком окне оно открывается в правой колонке.
+    const pick = savedMode && !isMobile;
+    if (pick && cached?.id) { setSelectedChatId(cached.id); setSelectedKind("saved"); }
     api.getSavedChat()
       .then((c) => {
         if (!alive) return;
         setSavedChat(c as any);
         writeCache("saved", c);
-        if (savedMode) { setSelectedChatId(c.id); setSelectedKind("saved"); }
+        if (pick) { setSelectedChatId(c.id); setSelectedKind("saved"); }
       })
       .catch(() => { if (savedMode && !cached?.id) toast.error(tr("Не удалось открыть Избранное")); });
     return () => { alive = false; };
-  }, [savedMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedMode, isMobile]);
+
+  // Вкладки списка, Избранного и Стены — слои одного экрана (см. App.tsx
+  // CHAT_TABS): переключение их не пересоздаёт. Какие уже открывали — те и
+  // смонтированы; уход со вкладки чатов закрывает открытую переписку, как и
+  // раньше (скрытый чат не должен отмечать входящие прочитанными).
+  const tab: "wall" | "saved" | "chat" = wallMode ? "wall" : savedMode ? "saved" : "chat";
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([tab]));
+  useEffect(() => {
+    setVisitedTabs((v) => (v.has(tab) ? v : new Set([...v, tab])));
+    if (tab !== "chat" && isMobile && selectedChatIdRef.current) { setSelectedChatId(null); setSelectedKind(undefined); }
+    // Широкое окно: вкладка «Чаты» после Стены или Избранного — «Выберите чат», как раньше.
+    if (tab === "chat" && !isMobile && (selectedKindRef.current === "wall" || selectedKindRef.current === "saved")) { setSelectedChatId(null); setSelectedKind(undefined); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // Звонки ведёт components/call/CallHost над всеми экранами (lib/calls),
   // события сокета — общий lib/userSocket: экран чатов на них только подписан.
@@ -139,6 +157,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // [user?.id] и иначе видел бы устаревший selectedChatId.
   const selectedChatIdRef = useRef<string | null>(null);
   selectedChatIdRef.current = selectedChatId;
+  const selectedKindRef = useRef<string | undefined>(undefined);
+  selectedKindRef.current = selectedKind;
   // Растёт на каждое входящее по сокету в открытом чате — ChatWindow по нему
   // перечитывает ленту сразу, а не через опрос.
   const [messagePing, setMessagePing] = useState(0);
@@ -784,12 +804,27 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
 
   // На телефоне два экрана вместо двух колонок: список чатов и переписка.
   // Показываем что-то одно — так же, как в привычных мессенджерах.
+  // На телефоне два экрана вместо двух колонок: список чатов и переписка.
+  // Показываем что-то одно — так же, как в привычных мессенджерах. Вкладки
+  // (список, Избранное, Стена) — слои поверх друг друга: неактивные скрыты
+  // visibility (прокрутка и состояние сохраняются), но остаются смонтированы,
+  // и переключение не строит экран заново (PERF_PLAN.md, п. 4).
   if (isMobile) {
+    const layer = (key: string, active: boolean, children: React.ReactNode) => (
+      <div
+        key={key}
+        className={`absolute inset-0 flex min-h-0 ${active ? "" : "invisible pointer-events-none"}`}
+        aria-hidden={!active}
+        {...(active ? {} : { inert: "" as unknown as boolean })}
+      >
+        {children}
+      </div>
+    );
     return (
       <div className="h-screen flex flex-col bg-background nav-rail-pad">
         {termsGate}
-        {wallMode ? (
-          <>
+        <div className="flex-1 min-h-0 relative">
+          {visitedTabs.has("wall") && layer("wall", tab === "wall", (
             <div className="flex-1 min-h-0 flex">
               {wall ? (
                 <ChannelView
@@ -804,14 +839,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                 <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
               )}
             </div>
-            <BottomNav />
-          </>
-        ) : savedMode ? (
-          <>
+          ))}
+          {visitedTabs.has("saved") && layer("saved", tab === "saved", (
             <div className="flex-1 min-h-0 flex">
-              {selectedChatId ? (
+              {savedChat?.id ? (
                 <ChatWindow
-                  chatId={selectedChatId}
+                  chatId={savedChat.id}
                   userId={user.id}
                   peer={null}
                   group={null}
@@ -828,9 +861,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                 <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
               )}
             </div>
-            <BottomNav />
-          </>
-        ) : selectedChatId ? (
+          ))}
+          {layer("chat", tab === "chat", (
+            selectedChatId ? (
           // Смены маршрута тут нет — список и переписка живут на одном экране,
           // поэтому движение задаём сами: переписка въезжает справа, список
           // возвращается слева. Ключ по чату перезапускает анимацию при
@@ -892,12 +925,11 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onChatCreated={handleChatCreated}
           />
           </div>
-          {/* Плашка обновления на телефоне живёт в списке чатов под фильтрами
-              (ChatSidebar): внизу её накрывал плавающий остров навигации
-              «Мяты» (баг-репорт 8ade5c86), сверху — вырез под камеру. */}
-          <BottomNav />
           </>
-        )}
+        )
+          ))}
+        </div>
+        <BottomNav />
       </div>
     );
   }
