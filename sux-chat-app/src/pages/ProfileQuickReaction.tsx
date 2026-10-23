@@ -1,18 +1,25 @@
+import { useLocation, useNavigate } from "react-router-dom";
 import ScreenHeader from "@/components/ScreenHeader";
-import { ReactionGlyph, ReactionGrid, useQuickReaction } from "@/components/chat/Reactions";
+import { ReactionGlyph, ReactionGrid, useQuickReaction, type ReturnTo } from "@/components/chat/Reactions";
 import { reactionLabel, setQuickReaction, type ReactionPick } from "@/lib/reactions";
 import { useT } from "@/lib/i18n";
 
 /** Профиль → Быстрая реакция: какая реакция ставится двойным тапом по
  *  сообщению. Сетка та же, что в шторке реакций (обычные и свои наборы);
- *  выбор применяется сразу и хранится на устройстве (lib/reactions). */
+ *  выбор применяется сразу и хранится в профиле — общий для всех устройств (lib/reactions). */
 const ProfileQuickReaction = () => {
   const t = useT();
   const quick = useQuickReaction();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Пришли из шторки реакций в чате — «назад» возвращает в тот же чат, а не в
+  // список (открытый чат на телефоне не маршрут, см. ReactionPicker.returnTo).
+  const returnTo = (location.state as { returnTo?: ReturnTo } | null)?.returnTo;
+  const back = () => { if (returnTo) navigate(returnTo.path, { state: returnTo.state, replace: true }); else navigate(-1); };
   const pick = (_key: string, p?: ReactionPick) => { if (p) setQuickReaction(p); };
   return (
     <div className="h-screen flex flex-col bg-background">
-      <ScreenHeader title={t("Быстрая реакция")} />
+      <ScreenHeader title={t("Быстрая реакция")} onBack={back} />
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="ui-card rounded-lg bg-surface-2 border border-border px-4 py-3 flex items-center gap-3">
           <span className="w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center shrink-0">

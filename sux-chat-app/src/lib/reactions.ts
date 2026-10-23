@@ -1,3 +1,6 @@
+import { api } from "@/api/client";
+import { readCache, writeCache } from "@/lib/session-cache";
+
 /**
  * Набор реакций — по тайллисту (design/image copy 2.png).
  *
@@ -62,30 +65,52 @@ export type ReactionPick = { key: string; emoji?: string; custom?: ReactionPic }
 
 /**
  * Быстрая реакция — та, что ставится двойным тапом по сообщению. Выбирается в
- * настройках (Профиль → Быстрая реакция) или из списка реакций; по умолчанию
- * сердце. Настройка устройства: живёт в localStorage, как остальные в
- * lib/settings (на другой телефон не переезжает).
+ * настройках (Профиль → Быстрая реакция) или из шторки реакций; по умолчанию
+ * сердце. Настройка аккаунта: хранится в профиле (Profile.quick_reaction) и
+ * подтягивается на все устройства; локальная копия в localStorage — чтобы
+ * читать синхронно и работать без сети (applyServerQuickReaction при каждой
+ * загрузке профиля сверяет её с сервером).
  */
 const QUICK_KEY = "hyax:setting:quick_reaction";
 let quickCache: ReactionPick | null | undefined;
 
+const readQuick = (): ReactionPick | null => {
+  try {
+    const raw = localStorage.getItem(QUICK_KEY);
+    const v = raw ? (JSON.parse(raw) as ReactionPick) : null;
+    return v && typeof v.key === "string" && v.key ? v : null;
+  } catch { return null; }
+};
+
 export function quickReaction(): ReactionPick {
-  if (quickCache === undefined) {
-    try {
-      const raw = localStorage.getItem(QUICK_KEY);
-      const v = raw ? (JSON.parse(raw) as ReactionPick) : null;
-      quickCache = v && typeof v.key === "string" && v.key ? v : null;
-    } catch { quickCache = null; }
-  }
+  if (quickCache === undefined) quickCache = readQuick();
   return quickCache || { key: DEFAULT_REACTION, emoji: DEFAULT_REACTION };
 }
 
-export function setQuickReaction(pick: ReactionPick | null) {
+const sameQuick = (a: ReactionPick | null, b: ReactionPick | null) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** Выбор человека: локально сразу, на сервер — в профиль (sync, по умолчанию). */
+export function setQuickReaction(pick: ReactionPick | null, opts: { sync?: boolean } = {}) {
+  const prev = quickCache === undefined ? readQuick() : quickCache;
   quickCache = pick;
   try {
     if (pick) localStorage.setItem(QUICK_KEY, JSON.stringify(pick)); else localStorage.removeItem(QUICK_KEY);
   } catch { /* приватный режим */ }
-  window.dispatchEvent(new CustomEvent("hyax:quick-reaction"));
+  if (!sameQuick(prev, pick)) window.dispatchEvent(new CustomEvent("hyax:quick-reaction"));
+  if (opts.sync === false) return;
+  const me = readCache<{ id?: string }>("user");
+  if (me?.id) writeCache("user", { ...me, quick_reaction: pick });
+  // Кэша профиля ещё нет (первый экран после входа) — узнаём id у сервера.
+  const id = me?.id ? Promise.resolve(me.id) : api.getCurrentUser().then((p: { id: string }) => p.id);
+  id.then((pid) => api.updateProfile(pid, { quick_reaction: pick }))
+    .catch(() => { /* без сети — останется локально, подтянется позже */ });
+}
+
+/** Профиль пришёл с сервера — его выбор главнее локальной копии. */
+export function applyServerQuickReaction(p: { quick_reaction?: ReactionPick | null } | null | undefined) {
+  if (!p || !("quick_reaction" in p)) return;
+  const server = p.quick_reaction && typeof p.quick_reaction.key === "string" ? p.quick_reaction : null;
+  if (!sameQuick(server, quickCache === undefined ? readQuick() : quickCache)) setQuickReaction(server, { sync: false });
 }
 
 /** Подпись реакции для настроек: обычная — по словарю, своя — её двойник. */

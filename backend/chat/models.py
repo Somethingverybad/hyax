@@ -40,6 +40,10 @@ class Profile(models.Model):
     # Анимация ауры (пламя / статичный ореол) — настройка аккаунта, а не
     # устройства: выключил на телефоне — на компьютере тоже выключено.
     aura_anim = models.BooleanField(default=True)
+    # Быстрая реакция (двойной тап по сообщению) — тоже настройка аккаунта:
+    # {"key": "🔥"} или свой эмодзи {"key": "ce:<id>", "emoji": "…", "custom": {"url": …}}.
+    # None — сердце по умолчанию (клиент: lib/reactions).
+    quick_reaction = models.JSONField(null=True, blank=True)
     # Вайбометр: +1 от каждого, кто «поднял вайб» в профиле (раз на человека),
     # +5 за голос за идею, +10 автору за каждый лайк его идеи (chat/ideabox.py).
     vibe = models.IntegerField(default=0)

@@ -5490,6 +5490,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         open={!!reactFor}
         onClose={() => setReactFor(null)}
         onPick={(key, pick) => { if (reactFor) toggleReaction(reactFor, key, pick); }}
+        returnTo={saved ? { path: "/saved" } : { path: "/chat", state: { chatId, kind: chatInfo?.kind, title } }}
       />
 
       {addOpen && (

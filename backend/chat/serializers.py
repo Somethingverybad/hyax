@@ -106,11 +106,28 @@ class OwnProfileSerializer(ProfileSerializer):
             out.append({"color": color, "text": " ".join(str(p.get("text") or "").split())[:60]})
         return out
 
+    def validate_quick_reaction(self, value):
+        """Быстрая реакция: null — умолчание; иначе ключ реакции и, у своего
+        эмодзи, двойник с картинкой — ровно то, что клиент хранит локально."""
+        if value in (None, "", {}):
+            return None
+        if not isinstance(value, dict) or not isinstance(value.get("key"), str) or not value["key"].strip():
+            raise serializers.ValidationError("Нужен ключ реакции")
+        out = {"key": value["key"].strip()[:80]}
+        if isinstance(value.get("emoji"), str) and value["emoji"].strip():
+            out["emoji"] = value["emoji"].strip()[:16]
+        custom = value.get("custom")
+        if isinstance(custom, dict) and isinstance(custom.get("url"), str) and custom["url"].strip():
+            out["custom"] = {"url": custom["url"].strip()[:500]}
+            if custom.get("repaint"):
+                out["custom"]["repaint"] = True
+        return out
+
     def get_is_admin(self, obj):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'quick_reaction', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at', 'email', 'email_verified']
 

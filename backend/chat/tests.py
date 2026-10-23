@@ -67,6 +67,21 @@ class OwnProfileFieldsTests(TestCase):
         client_for(me).patch(f"/api/profiles/{me.id}/", {"terms_accepted_at": "2020-01-01T00:00:00Z"}, format="json")
         self.assertIsNone(Profile.objects.get(pk=me.pk).terms_accepted_at)
 
+    def test_quick_reaction_is_account_setting(self):
+        me = make_user("me")
+        c = client_for(me)
+        self.assertIsNone(c.get("/api/profiles/current/").data["quick_reaction"])
+        r = c.patch(f"/api/profiles/{me.id}/", {"quick_reaction": {"key": "🔥", "emoji": "🔥", "junk": 1}}, format="json")
+        self.assertEqual((r.status_code, r.data["quick_reaction"]), (200, {"key": "🔥", "emoji": "🔥"}))
+        # Свой эмодзи — с картинкой-двойником; другое устройство читает то же.
+        custom = {"key": "ce:abc", "emoji": "🐱", "custom": {"url": "s3://e/1.png", "repaint": True}}
+        self.assertEqual(c.patch(f"/api/profiles/{me.id}/", {"quick_reaction": custom}, format="json").data["quick_reaction"], custom)
+        # Другое устройство (свежая сессия: в тестовом клиенте user.profile кэшируется) читает то же.
+        self.assertEqual(client_for(Profile.objects.get(pk=me.pk)).get("/api/profiles/current/").data["quick_reaction"], custom)
+        self.assertEqual(c.patch(f"/api/profiles/{me.id}/", {"quick_reaction": {"emoji": "x"}}, format="json").status_code, 400)
+        self.assertIsNone(c.patch(f"/api/profiles/{me.id}/", {"quick_reaction": None}, format="json").data["quick_reaction"])
+        self.assertNotIn("quick_reaction", client_for(make_user("other")).get(f"/api/profiles/{me.id}/").data)
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class AdultPacksTests(TestCase):

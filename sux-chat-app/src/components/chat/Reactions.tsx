@@ -197,10 +197,16 @@ export const ReactionGlyph = ({ pick, size = 22, className }: { pick: ReactionPi
     ? <CustomEmoji url={pick.custom.url} alt={pick.emoji || ""} repaint={pick.custom.repaint} className={cn("object-contain", className)} style={{ width: size, height: size }} />
     : <NotoEmoji emoji={pick.emoji || pick.key} size={size} className={className} />;
 
-export const ReactionPicker = ({ open, onPick, onClose }: {
+/** Куда вернуть кнопкой «назад» со страницы настройки быстрой реакции:
+ *  открытый чат на телефоне — не маршрут, а состояние экрана чатов, и
+ *  navigate(-1) вернул бы в список. */
+export type ReturnTo = { path: string; state?: unknown };
+
+export const ReactionPicker = ({ open, onPick, onClose, returnTo }: {
   open: boolean;
   onPick: (key: string, pick?: ReactionPick) => void;
   onClose: () => void;
+  returnTo?: ReturnTo;
 }) => {
   const navigate = useNavigate();
   const quick = useQuickReaction();
@@ -217,7 +223,7 @@ export const ReactionPicker = ({ open, onPick, onClose }: {
             с несколькими наборами эмодзи до низа шторки долго листать. */}
         <button
           type="button"
-          onClick={() => { onClose(); navigate("/profile/reactions"); }}
+          onClick={() => { onClose(); navigate("/profile/reactions", { state: returnTo ? { returnTo } : undefined }); }}
           className="mb-3 w-full flex items-center gap-2 rounded-lg bg-surface-3 px-3 py-2 text-small text-subtle active:opacity-70"
         >
           <span className="flex-1 min-w-0 text-left truncate">{t("Двойной тап ставит")}</span>

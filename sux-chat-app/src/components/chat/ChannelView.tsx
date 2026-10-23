@@ -1772,6 +1772,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         open={!!reactPickFor}
         onClose={() => setReactPickFor(null)}
         onPick={(key, pick) => { const post = posts.find((p) => p.id === reactPickFor); if (post) react(post, key, pick); }}
+        returnTo={wall ? { path: "/wall" } : { path: "/chat", state: { chatId: channelId, kind: "channel", title: channel?.name } }}
       />
 
       {menuFor && (
