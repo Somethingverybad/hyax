@@ -1,3 +1,4 @@
+import { signedIn } from "@/lib/signedIn";
 import { t } from "@/lib/i18n";
 import { Capacitor } from "@capacitor/core";
 import { useEffect, useRef, useState } from "react";
@@ -64,10 +65,12 @@ const ProfileNotifications = () => {
         setProfile(p);
         writeCache("user", p);
       } catch {
-        navigate("/auth", { replace: true });
+        // Сеть подвела — остаёмся с кэшем; на вход только без токена (lib/signedIn).
+        if (!signedIn()) navigate("/auth", { replace: true });
       }
     })();
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Оптимистично меняем локально, при ошибке откатываем.
    *  Возвращает, удалось ли сохранить: иначе поверх сообщения об ошибке

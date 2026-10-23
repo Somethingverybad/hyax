@@ -1,3 +1,4 @@
+import { signedIn } from "@/lib/signedIn";
 import { Capacitor } from "@capacitor/core";
 import { writeClipboard } from "@/lib/clipboard";
 import { App } from "@capacitor/app";
@@ -97,10 +98,12 @@ const ProfilePage = () => {
         applyServerSettings(p);
         applyProfileLang(p);
       } catch {
-        navigate("/auth", { replace: true });
+        // Сеть подвела — остаёмся с кэшем; на вход только без токена (lib/signedIn).
+        if (!signedIn()) navigate("/auth", { replace: true });
       }
     })();
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pickImage = (kind: "avatar" | "cover", file: File | null) => {
     const input = kind === "avatar" ? avatarRef.current : coverRef.current;

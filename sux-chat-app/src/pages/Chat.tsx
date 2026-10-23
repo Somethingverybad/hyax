@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { setOtaRestoreState } from "@/lib/ota";
+import { signedIn } from "@/lib/signedIn";
 import { startCall as startCallGlobal } from "@/lib/calls";
 import { dismissChatNotifications, sweepReadNotifications } from "@/lib/chatNotifications";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
@@ -293,12 +294,16 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           applog.warn(`push init failed: ${(e as Error)?.message || e}`);
         }
       } catch (error) {
-        navigate("/auth");
+        // Сеть подвела — остаёмся на кэше; без токена — на вход.
+        if (!signedIn()) navigate("/auth");
+        else applog.warn(`init: ${(error as Error)?.message || error}`);
       }
     };
     
     initializeApp();
-  }, [navigate]);
+  // Один раз на экран: navigate меняется при каждом переходе, и эффект шёл заново.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 🔔 Функция инициализации push-уведомлений
   // Firebase, а не @capacitor/push-notifications: тот на iOS отдаёт сырой
