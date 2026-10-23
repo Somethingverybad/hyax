@@ -264,16 +264,56 @@ export function otaSafeNow(): boolean {
 export async function otaApplyNow(why: string): Promise<boolean> {
   if (!(await otaPending())) return false;
   applog.info(`ota: применяю на лету (${why})`);
+  rememberRoute();
   const d = desktopOta();
   if (d?.otaApply) return d.otaApply().catch(() => false);
   const p = read<Pending>(PENDING_KEY);
   return p ? switchTo(p) : false;
 }
 
+/**
+ * Перезагрузка «на лету» возвращает на тот же экран. Без этого приложение
+ * после обновления в фоне открывалось списком чатов, и в день с несколькими
+ * сборками подряд это выглядело как «постоянно выкидывает в список из любого
+ * меню» (баг-репорт a561358d). Путь — в localStorage перед переключением,
+ * при старте (main.tsx, до монтирования роутера) — history.replaceState на
+ * него; открытый чат экран чатов кладёт в состояние маршрута сам
+ * (setOtaRestoreState → location.state.chatId, как при переходе по ссылке).
+ */
+const RESTORE_KEY = "hyax:ota-restore";
+type Restore = { path: string; state: unknown; at: number };
+let restoreProvider: (() => unknown) | null = null;
+export const setOtaRestoreState = (fn: (() => unknown) | null) => { restoreProvider = fn; };
+function rememberRoute() {
+  try {
+    const state = restoreProvider?.() ?? null;
+    write(RESTORE_KEY, { path: location.pathname + location.search, state, at: Date.now() } satisfies Restore);
+  } catch { /* не страшно — откроется список */ }
+}
+export function otaRestoreRoute() {
+  const r = read<Restore>(RESTORE_KEY);
+  if (!r) return;
+  write(RESTORE_KEY, null);
+  // Старая запись (перезагрузка не состоялась) или уже открыта глубокая ссылка — не трогаем.
+  if (Date.now() - r.at > 2 * 60 * 1000) return;
+  if (location.pathname !== "/" && location.pathname !== "/chat") return;
+  if (!r.path || r.path === "/" || r.path.startsWith("/auth")) return;
+  try {
+    // react-router держит состояние маршрута в history.state.usr.
+    history.replaceState({ usr: r.state ?? null, key: "ota-restore", idx: 0 }, "", r.path);
+    applog.info(`ota: вернулись на ${r.path}`);
+  } catch { /* останемся на списке */ }
+}
+
 /** Через сколько в фоне применять при возвращении (если в фоне не успели). */
 const AWAY_MS = 3 * 60 * 1000;
 /** Компьютер: сколько окно должно простоять без касаний. */
 const IDLE_MS = 10 * 60 * 1000;
+/** Сколько быть в фоне, прежде чем применять там. */
+const HIDDEN_APPLY_MS = 20 * 1000;
+/** Минимальный промежуток между применениями «на лету». */
+const APPLY_GAP_MS = 12 * 60 * 60 * 1000;
+const LAST_APPLY_KEY = "hyax:ota-last-apply";
 
 /**
  * Применять на лету в безопасный момент: приложение ушло в фон (через пару
@@ -288,11 +328,21 @@ export function startOtaAutoApply() {
   let hiddenAt = 0;
   const touch = () => { lastTouch = Date.now(); };
   for (const ev of ["pointerdown", "keydown", "wheel", "touchstart"]) window.addEventListener(ev, touch, { passive: true, capture: true });
-  const tryApply = async (why: string) => { if (otaSafeNow() && await otaPending()) await otaApplyNow(why); };
+  // «На лету» — не чаще раза в 12 часов: несколько сборок за день применяются
+  // не каждая по очереди, а последняя (каждая — полный бандл), остальное
+  // дождётся холодного старта. Иначе экран перезагружался при каждом
+  // переключении приложений (баг-репорт a561358d).
+  const tryApply = async (why: string) => {
+    if (!otaSafeNow() || !(await otaPending())) return;
+    const last = read<number>(LAST_APPLY_KEY) || 0;
+    if (Date.now() - last < APPLY_GAP_MS) { applog.info(`ota: есть обновление, но на лету применяли недавно — дождётся запуска (${why})`); return; }
+    if (await otaApplyNow(why)) write(LAST_APPLY_KEY, Date.now());
+  };
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       hiddenAt = Date.now();
-      window.setTimeout(() => { if (document.visibilityState === "hidden") void tryApply("в фоне"); }, 1500);
+      // 20 с, а не полторы: быстрое переключение между приложениями не повод перезагружаться.
+      window.setTimeout(() => { if (document.visibilityState === "hidden") void tryApply("в фоне"); }, HIDDEN_APPLY_MS);
     } else {
       const away = hiddenAt ? Date.now() - hiddenAt : 0;
       hiddenAt = 0;

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
+import { setOtaRestoreState } from "@/lib/ota";
 import { startCall as startCallGlobal } from "@/lib/calls";
 import { dismissChatNotifications, sweepReadNotifications } from "@/lib/chatNotifications";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
@@ -619,6 +620,14 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       ? selectedChat.name || tr("Группа")
       : peer?.username || selectedChatTitle
     : selectedChatTitle;
+
+  // Перезагрузка ради обновления по воздуху (lib/ota) возвращает в этот же чат.
+  const restoreRef = useRef<unknown>(null);
+  restoreRef.current = selectedChatId && !savedMode && !wallMode ? { chatId: selectedChatId, kind: selectedKind, title: chatHeaderTitle } : null;
+  useEffect(() => {
+    setOtaRestoreState(() => restoreRef.current);
+    return () => setOtaRestoreState(null);
+  }, []);
 
   // Позвонить из открытого чата: звонок ведёт CallHost (lib/calls), он и
   // переживает уход с экрана чатов.

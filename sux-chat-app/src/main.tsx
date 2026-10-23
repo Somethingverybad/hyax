@@ -7,7 +7,7 @@ import "./index.css";
 import { initTheme } from "./lib/theme";
 import { installAppLog, applog } from "./lib/applog";
 import { installBugHotkey } from "./lib/bugHotkey";
-import { otaBoot, startOtaAutoApply, startOtaChecks } from "./lib/ota";
+import { otaBoot, otaRestoreRoute, startOtaAutoApply, startOtaChecks } from "./lib/ota";
 // Мини-плеер и кнопки плеера в оболочке компьютера (electron/playerWidget.cjs).
 import "./lib/desktopPlayer";
 // Android: музыка и эфир при заблокированном экране (MediaPlaybackService.java).
@@ -27,6 +27,7 @@ let rendered = false;
 const render = () => {
   if (rendered) return;
   rendered = true;
+  otaRestoreRoute(); // перезагрузились ради обновления — на тот же экран
   createRoot(document.getElementById("root")!).render(<RootBoundary><App /></RootBoundary>);
   startOtaChecks();
   startOtaAutoApply();
