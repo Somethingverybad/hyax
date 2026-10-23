@@ -40,6 +40,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
+import { dateOf, dayKey, timeOf } from "@/lib/timeFormat";
 import { userSocket } from "@/lib/userSocket";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
@@ -3652,22 +3653,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   }, []);
 
   // Функция для форматирования времени
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString(dateLocale(), { 
-      hour: "2-digit", 
-      minute: "2-digit" 
-    });
-  };
+  // Через кэш форматтеров (lib/timeFormat): toLocaleTimeString на каждую строку
+  // был самой дорогой функцией приложения в профиле открытия чата.
+  const formatTime = (dateString: string) => timeOf(dateString, dateLocale());
 
   // Функция для проверки, нужно ли показывать дату между сообщениями
   const shouldShowDate = (currentMsg: Message, previousMsg: Message | null) => {
     if (!previousMsg) return true;
-    
-    const currentDate = new Date(currentMsg.created_at).toDateString();
-    const previousDate = new Date(previousMsg.created_at).toDateString();
-    
-    return currentDate !== previousDate;
+    return dayKey(currentMsg.created_at) !== dayKey(previousMsg.created_at);
   };
 
 
@@ -3707,7 +3700,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     } else if (date.toDateString() === yesterday.toDateString()) {
       return tr("Вчера");
     } else {
-      return date.toLocaleDateString(dateLocale(), {
+      return dateOf(dateString, dateLocale(), {
         day: "numeric",
         month: "long",
         year: "numeric"

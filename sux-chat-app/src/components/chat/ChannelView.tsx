@@ -15,6 +15,7 @@ import Identicon from "@/components/Identicon";
 import { useMediaUrl, useMediaUrlState, resolveMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { markMediaSeen, mediaSeen } from "@/lib/mediaSeen";
+import { timeOf } from "@/lib/timeFormat";
 import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import { cn } from "@/lib/utils";
 import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
@@ -107,8 +108,7 @@ function useAutoGrow(ref: RefObject<HTMLTextAreaElement>, value: string, max: nu
   }, [ref, value, max, feed]);
 }
 
-const fmtTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString(getLang(), { hour: "2-digit", minute: "2-digit" });
+const fmtTime = (iso: string) => timeOf(iso, getLang());
 
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
