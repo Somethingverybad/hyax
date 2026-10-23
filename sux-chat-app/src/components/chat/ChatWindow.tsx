@@ -264,6 +264,12 @@ interface ChatWindowProps {
   /** Счётчик входящих по сокету для этого чата: растёт — перечитываем ленту
    *  сразу, не дожидаясь очередного опроса (см. эффект ниже). */
   messagePing?: number;
+  /** Чей это пинг: окно другого чата по нему не синхронизируется (пул окон). */
+  pingChatId?: string | null;
+  /** false — окно живёт скрытым в пуле недавних переписок (pages/Chat.tsx):
+   *  лента синхронизируется, но не отмечает прочитанное, не играет звуки
+   *  входящих и не считается открытым чатом для плеера. */
+  active?: boolean;
   /** Событие о реакциях из личного сокета (см. pages/Chat.tsx). */
   reactionEvent?: { chat_id: string; message_id: string; reactions: (ReactionSummary & { users: string[] })[]; at: number } | null;
   /** Р.Ё.В: панель сообщает «держу/отпустил», сокетом заведует страница чатов. */
@@ -308,7 +314,9 @@ const serverPreview = (s: string | null | undefined) => (s && SERVER_PREVIEWS.ha
 /** Вторая галочка: сообщение прочитал кто-то кроме автора (в группе — хоть один). */
 const readByOthers = (m: Message) => (m.read_by || []).some((r) => r.id !== (m.sender?.id || m.sender_id));
 
-const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, reactionEvent, onRov, saved, chats, savedChatId, onLatest, unreadAtOpen }: ChatWindowProps) => {
+const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGroupUpdated, messagePing, pingChatId, active = true, reactionEvent, onRov, saved, chats, savedChatId, onLatest, unreadAtOpen }: ChatWindowProps) => {
+  const activeRef = useRef(active);
+  activeRef.current = active;
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях.
   useSwipeBack(onBack);
@@ -574,9 +582,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Очередь — это голосовое и следующие за ним по ленте (цепочка, как в
   // мессенджерах); перешло к следующему — подкручиваем ленту к нему.
   useEffect(() => {
+    if (!active) return;
     setOpenChat(chatId);
     return () => setOpenChat(null);
-  }, [chatId]);
+  }, [chatId, active]);
   useEffect(() => {
     let last = currentTrack()?.id;
     return subscribePlayer(() => {
@@ -1862,7 +1871,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // не нужно: именно из-за него сообщение собеседника появлялось в открытой
   // переписке через пару секунд после отправки.
   useEffect(() => {
-    if (messagePing) { syncSince(chatId); loadPinned(); }
+    if (!messagePing || (pingChatId && chatId && pingChatId !== chatId)) return;
+    syncSince(chatId);
+    if (activeRef.current) loadPinned();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messagePing]);
 
@@ -1896,7 +1907,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const withSound = primedRef.current
       ? newMessages.find(m => m.sender?.id !== userId && m.sound?.url)
       : null;
-    if (withSound?.sound?.url) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
+    if (withSound?.sound?.url && activeRef.current) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
 
     const incoming = newMessages.filter(m => m.sender?.id !== userId);
     if (primedRef.current && incoming.length) setFreshIds(new Set(incoming.map(m => m.id)));
@@ -2101,7 +2112,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       }
       // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
       // Иначе бейдж в списке чатов оставался, хотя человек всё видел и ответил.
-      if (r.messages.some((m) => m.sender?.id !== userId) && (typeof document === "undefined" || document.visibilityState === "visible")) {
+      if (activeRef.current && r.messages.some((m) => m.sender?.id !== userId) && (typeof document === "undefined" || document.visibilityState === "visible")) {
         clearTimeout(markReadTimerRef.current);
         markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 400);
       }
@@ -3146,11 +3157,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
+  // Окно из пула снова на экране — догоняем ленту и отмечаем прочитанным то,
+  // что пришло, пока оно было скрыто.
+  const wasActiveRef = useRef(active);
+  useEffect(() => {
+    const became = active && !wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (!became || !chatId) return;
+    const id = chatId;
+    void syncSince(id).then(() => { if (pinnedRef.current) goBottom(false); });
+    const t = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
   // Вернулись в приложение с открытой перепиской — то, что на экране,
   // прочитано: пока приложение было в фоне, syncSince отметку не ставил.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState !== "visible" || !chatId) return;
+      if (document.visibilityState !== "visible" || !chatId || !activeRef.current) return;
       const id = chatId;
       clearTimeout(markReadTimerRef.current);
       markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);

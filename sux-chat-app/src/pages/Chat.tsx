@@ -140,6 +140,21 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // смонтированы; уход со вкладки чатов закрывает открытую переписку, как и
   // раньше (скрытый чат не должен отмечать входящие прочитанными).
   const tab: "wall" | "saved" | "chat" = wallMode ? "wall" : savedMode ? "saved" : "chat";
+  // Пул недавних переписок (телефон): последние POOL_SIZE личных и групповых
+  // чатов остаются смонтированными скрытыми слоями — повторное открытие не
+  // строит окно заново (PERF_PLAN.md, п. 4). Каналы и Стена — не в пуле.
+  const POOL_SIZE = 3;
+  const [recentChats, setRecentChats] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isMobile || !selectedChatId) return;
+    const kind = selectedKind || (chatsRef.current.find((c) => c.id === selectedChatId) as { kind?: string } | undefined)?.kind;
+    if (kind === "channel" || kind === "wall" || kind === "saved") return;
+    setRecentChats((prev) => [...prev.filter((id) => id !== selectedChatId), selectedChatId].slice(-POOL_SIZE));
+  }, [selectedChatId, selectedKind, isMobile]);
+  // Чат удалили или его нет в списке — из пула долой.
+  useEffect(() => {
+    setRecentChats((prev) => prev.filter((id) => chats.some((c) => c.id === id) || id === selectedChatId));
+  }, [chats, selectedChatId]);
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([tab]));
   useEffect(() => {
     setVisitedTabs((v) => (v.has(tab) ? v : new Set([...v, tab])));
@@ -162,6 +177,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Растёт на каждое входящее по сокету в открытом чате — ChatWindow по нему
   // перечитывает ленту сразу, а не через опрос.
   const [messagePing, setMessagePing] = useState(0);
+  const pingChatRef = useRef<string | null>(null);
   // Последнее событие о реакциях — ChatWindow применяет его к своей ленте.
   const [reactionEvent, setReactionEvent] = useState<{
     chat_id: string; message_id: string;
@@ -540,9 +556,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         }
         const active = document.visibilityState === "visible" &&
           chatId && String(chatId) === selectedChatIdRef.current;
-        // Открытая переписка обновляется сразу, даже если вкладка в фоне:
-        // вернувшись, пользователь увидит сообщение уже на месте.
-        if (chatId && String(chatId) === selectedChatIdRef.current) {
+        // Пинг — всем смонтированным окнам (открытое, пул недавних, Избранное):
+        // каждое синхронизируется, только если пинг про его чат (pingChatId).
+        if (chatId) {
+          pingChatRef.current = String(chatId);
           setMessagePing((n) => n + 1);
         }
         if (m && senderId && senderId !== user.id && !active) {
@@ -863,49 +880,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             </div>
           ))}
           {layer("chat", tab === "chat", (
-            selectedChatId ? (
-          // Смены маршрута тут нет — список и переписка живут на одном экране,
-          // поэтому движение задаём сами: переписка въезжает справа, список
-          // возвращается слева. Ключ по чату перезапускает анимацию при
-          // переходе из чата в чат.
-          <div key={selectedChatId} className="flex-1 min-w-0 min-h-0 flex screen-push">
-          {isChannelOpen || isWallOpen ? (
-            <ChannelView
-              key={isWallOpen ? "wall" : selectedChatId}
-              channelId={selectedChatId}
-              userId={user.id}
-              wall={isWallOpen}
-              onOpenChannel={openChannelFromWall}
-              onWallChanged={() => { void refreshWall(); }}
-              onBack={() => { setSelectedChatId(null); if (isWallOpen) void refreshWall(); }}
-              onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
-            />
-          ) : (
-          <ChatWindow
-            chatId={selectedChatId}
-            userId={user.id}
-            onRov={sendRov}
-            peer={peer}
-            group={selectedChat?.is_group ? selectedChat : null}
-            saved={isSavedOpen}
-            chats={listChats}
-            savedChatId={savedChat?.id}
-            onGroupUpdated={refreshChats}
-            onCall={startCall}
-            messagePing={messagePing}
-            onLatest={handleLatest}
-            unreadAtOpen={unreadAtOpen}
-            reactionEvent={reactionEvent}
-            onBack={() => setSelectedChatId(null)}
-            title={chatHeaderTitle}
-          />
-          )}
-          </div>
-        ) : (
-          <>
-          {/* Обёртка растягивает список на всю высоту — иначе бар прилипал
-              к последней строке, а под ним оставалась пустота. */}
-          <div className={`flex-1 min-h-0 flex${hadChatOpenRef.current ? " screen-pop" : ""}`}>
+            <div className="flex-1 min-w-0 min-h-0 relative">
+              {/* Список — всегда смонтирован; виден, когда переписка не открыта. */}
+              <div className={`absolute inset-0 flex min-h-0 ${selectedChatId ? "invisible pointer-events-none" : hadChatOpenRef.current ? "screen-pop" : ""}`}
+                aria-hidden={!!selectedChatId} {...(selectedChatId ? { inert: "" as unknown as boolean } : {})}>
           <ChatSidebar
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
             onOpenIdeabox={openIdeabox}
@@ -924,9 +902,53 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onChatDeleted={handleChatDeleted}
             onChatCreated={handleChatCreated}
           />
-          </div>
-          </>
-        )
+              </div>
+              {/* Канал (не в пуле) — поверх списка, как раньше. */}
+              {selectedChatId && (isChannelOpen || isWallOpen) && (
+                <div key={`ch-${selectedChatId}`} className="absolute inset-0 flex min-h-0 screen-push">
+            <ChannelView
+              key={isWallOpen ? "wall" : selectedChatId}
+              channelId={selectedChatId}
+              userId={user.id}
+              wall={isWallOpen}
+              onOpenChannel={openChannelFromWall}
+              onWallChanged={() => { void refreshWall(); }}
+              onBack={() => { setSelectedChatId(null); if (isWallOpen) void refreshWall(); }}
+              onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
+            />
+                </div>
+              )}
+              {/* Пул недавних переписок: активная — видна с въездом справа, остальные скрыты. */}
+              {recentChats.map((id) => {
+                const activeChat = id === selectedChatId && !isChannelOpen && !isWallOpen;
+                const c = chats.find((x) => x.id === id);
+                const p = c?.is_group ? null : c?.participants?.find((x) => x.id !== user.id) || null;
+                return (
+                  <div key={id} className={`absolute inset-0 flex min-h-0 ${activeChat ? "screen-push" : "invisible pointer-events-none"}`}
+                    aria-hidden={!activeChat} {...(activeChat ? {} : { inert: "" as unknown as boolean })}>
+                    <ChatWindow
+                      chatId={id}
+                      active={activeChat}
+                      userId={user.id}
+                      onRov={sendRov}
+                      peer={p}
+                      group={c?.is_group ? c : null}
+                      chats={listChats}
+                      savedChatId={savedChat?.id}
+                      onGroupUpdated={refreshChats}
+                      onCall={startCall}
+                      messagePing={messagePing}
+                      pingChatId={pingChatRef.current}
+                      onLatest={handleLatest}
+                      unreadAtOpen={activeChat ? unreadAtOpen : 0}
+                      reactionEvent={reactionEvent}
+                      onBack={() => setSelectedChatId(null)}
+                      title={activeChat ? chatHeaderTitle : (c?.is_group ? c.name || tr("Группа") : p?.username || tr("Чат"))}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           ))}
         </div>
         <BottomNav />
