@@ -116,9 +116,28 @@ export const ReactionGrid = ({ onPick, selectedKey, active = true }: {
     "w-12 h-12 rounded-full flex items-center justify-center active:opacity-70",
     sel ? "bg-primary/20 ring-2 ring-primary" : "bg-surface-4",
   );
+  // Паки — чипами: с несколькими наборами список длинный, нужный эмодзи
+  // искать прокруткой долго. "" — всё, "std" — обычные, иначе id пака.
+  const filled = (packs || []).filter((p) => p.items.length);
+  const [tab, setTab] = useState<string>("");
+  const showStd = tab === "" || tab === "std";
+  const shownPacks = tab === "" ? filled : filled.filter((p) => p.id === tab);
+  const chip = (sel: boolean) => cn(
+    "h-8 px-3 rounded-full text-small whitespace-nowrap shrink-0 active:opacity-70",
+    sel ? "bg-primary text-primary-foreground" : "bg-surface-4 text-foreground/80",
+  );
   return (
     <>
-      <div className="flex flex-wrap gap-2">
+      {filled.length > 0 && (
+        <div className="-mx-4 px-4 mb-3 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }} role="tablist">
+          <button type="button" role="tab" aria-selected={tab === ""} onClick={() => setTab("")} className={chip(tab === "")}>{t("Все")}</button>
+          <button type="button" role="tab" aria-selected={tab === "std"} onClick={() => setTab("std")} className={chip(tab === "std")}>{t("Обычные")}</button>
+          {filled.map((p) => (
+            <button key={p.id} type="button" role="tab" aria-selected={tab === p.id} onClick={() => setTab(p.id)} className={chip(tab === p.id)}>{p.name}</button>
+          ))}
+        </div>
+      )}
+      {showStd && <div className="flex flex-wrap gap-2">
         {list.map((r, i) => (
           <button
             key={r.emoji}
@@ -142,10 +161,10 @@ export const ReactionGrid = ({ onPick, selectedKey, active = true }: {
             <Plus className="w-5 h-5" />
           </button>
         )}
-      </div>
-      {(packs || []).filter((p) => p.items.length).map((p) => (
-        <section key={p.id} className="mt-4">
-          <p className="mb-2 text-caption text-subtle truncate">{p.name}</p>
+      </div>}
+      {shownPacks.map((p) => (
+        <section key={p.id} className={showStd ? "mt-4" : ""}>
+          {tab === "" && <p className="mb-2 text-caption text-subtle truncate">{p.name}</p>}
           <div className="flex flex-wrap gap-2">
             {p.items.map((e) => {
               const custom = { url: e.file_url, ...(e.repaint ? { repaint: true } : {}) };
@@ -194,17 +213,18 @@ export const ReactionPicker = ({ open, onPick, onClose }: {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
-        <ReactionGrid onPick={onPick} active={open} />
-        {/* Какая реакция ставится двойным тапом — и где её поменять. */}
+        {/* Какая реакция ставится двойным тапом — и где её поменять. Сверху:
+            с несколькими наборами эмодзи до низа шторки долго листать. */}
         <button
           type="button"
           onClick={() => { onClose(); navigate("/profile/reactions"); }}
-          className="mt-4 w-full flex items-center gap-2 rounded-lg bg-surface-3 px-3 py-2 text-small text-subtle active:opacity-70"
+          className="mb-3 w-full flex items-center gap-2 rounded-lg bg-surface-3 px-3 py-2 text-small text-subtle active:opacity-70"
         >
           <span className="flex-1 min-w-0 text-left truncate">{t("Двойной тап ставит")}</span>
           <ReactionGlyph pick={quick} size={20} />
           <span className="text-primary shrink-0">{t("Изменить")}</span>
         </button>
+        <ReactionGrid onPick={onPick} active={open} />
       </div>
     </div>
   );

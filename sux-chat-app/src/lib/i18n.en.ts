@@ -2140,5 +2140,6 @@ const en: Record<string, string> = {
   "Со звуком": "With sound",
   "Убрать звук": "Remove sound",
   "Послушать": "Listen",
+  "Обычные": "Standard",
 };
 export default en;
