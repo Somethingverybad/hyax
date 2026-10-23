@@ -163,6 +163,11 @@ html, body, #root {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--foreground) / 0.18) transparent;
   }
+  /* Пост на Стене: долгое нажатие пальцем открывает меню (копировать текст и
+     прочее) — системное выделение текста ему мешает. Мышью выделять можно. */
+  @media (pointer: coarse) {
+    .post-card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  }
   /* На тачскринах полосы прокрутки не рисуем вовсе. */
   @media (pointer: coarse) {
     * { scrollbar-width: none; }

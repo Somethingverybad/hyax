@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { createPortal } from "react-dom";
 import { t as tr, tn, getLang } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
@@ -20,7 +21,8 @@ import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2 } from "lucide-react";
+import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy } from "lucide-react";
+import { writeClipboard } from "@/lib/clipboard";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
@@ -398,6 +400,38 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // «Поделиться постом»: шторка с чатами (пересылка — весь альбом одним
   // пузырём, как в переписке) и большая кнопка наружу — ссылкой на пост.
   const [shareFor, setShareFor] = useState<Post | null>(null);
+
+  /** Скопировать текст поста (меню «⋯» и долгое нажатие). */
+  const copyPostText = async (post: Post) => {
+    const text = (post.content || "").trim();
+    if (!text) return;
+    try { await writeClipboard(text); toast.success(tr("Скопировано")); }
+    catch { toast.error(tr("Не удалось скопировать")); }
+  };
+  // Долгое нажатие пальцем по посту: на Стене — меню поста (там «Копировать
+  // текст» и остальное), в канале — сразу копируем. Мышью — как и раньше,
+  // выделение текста; движение пальца (прокрутка) отменяет.
+  const pressRef = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const menuOpenedAtRef = useRef(0);
+  const cancelPress = () => { if (pressRef.current) { window.clearTimeout(pressRef.current.timer); pressRef.current = null; } };
+  const postPressDown = (e: React.PointerEvent, post: Post) => {
+    if (e.pointerType === "mouse" || post._pending) return;
+    cancelPress();
+    const timer = window.setTimeout(() => {
+      pressRef.current = null;
+      if (Capacitor.isNativePlatform()) void import("@capacitor/haptics").then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Light })).catch(() => {});
+      // Палец ещё на экране: отпускание даст click по подложке меню и сразу
+      // закроет его — первые полсекунды подложка такие клики пропускает.
+      menuOpenedAtRef.current = Date.now();
+      if (wall && post.sender) setMenuFor(post);
+      else void copyPostText(post);
+    }, 450);
+    pressRef.current = { timer, x: e.clientX, y: e.clientY };
+  };
+  const postPressMove = (e: React.PointerEvent) => {
+    const p = pressRef.current;
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) cancelPress();
+  };
   const forwardPost = async (post: Post, chatId: string, title: string) => {
     const list = post.album_id ? posts.filter((p) => p.album_id === post.album_id) : [post];
     const ids = list.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map((p) => p.id);
@@ -1247,7 +1281,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           </p>
         ) : (
           feedPosts.map((post) => (
-            <div key={post._key ?? post.id} data-post-id={post.id} className="bg-surface-2 rounded-lg overflow-hidden">
+            <div key={post._key ?? post.id} data-post-id={post.id} className="bg-surface-2 rounded-lg overflow-hidden post-card"
+              onPointerDown={(e) => postPressDown(e, post)} onPointerMove={postPressMove} onPointerUp={cancelPress} onPointerCancel={cancelPress} onPointerLeave={cancelPress}>
               <div className="px-4 py-3">
                 {wall && post.sender ? (
                   <div className="flex items-center gap-2 mb-2">
@@ -1777,8 +1812,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
       {menuFor && (
         <SheetPortal>
-        <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => setMenuFor(null)}>
+        <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => { if (Date.now() - menuOpenedAtRef.current > 500) setMenuFor(null); }}>
           <div className="bg-card border-t-2 border-border pad-safe-bottom py-1" onClick={(e) => e.stopPropagation()}>
+            {!!menuFor.content?.trim() && (
+              <button type="button" onClick={() => { const p = menuFor; setMenuFor(null); void copyPostText(p); }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                <Copy className="w-5 h-5 text-muted-foreground" /> {tr("Копировать текст")}
+              </button>
+            )}
             {(menuFor.video_url || (menuFor.file_url && isVideoFile(menuFor.file_name, menuFor.file_url))) && (
               <button type="button" onClick={() => {
                 const p = menuFor;

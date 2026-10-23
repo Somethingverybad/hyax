@@ -2142,5 +2142,6 @@ const en: Record<string, string> = {
   "Послушать": "Listen",
   "Обычные": "Standard",
   "Сохранено: Документы/{name}": "Saved: Documents/{name}",
+  "Копировать текст": "Copy text",
 };
 export default en;
