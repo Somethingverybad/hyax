@@ -1264,6 +1264,25 @@ class ReadReceiptTests(TestCase):
 
 
 
+class OwnDevicesNewMessageEventTests(TestCase):
+    """Событие new_message уходит и в личный сокет отправителя: его другие
+    устройства (компьютер при отправке с телефона) видят сообщение сразу.
+    У Избранного участник один — раньше событие не получал никто."""
+
+    def test_saved_chat_message_pings_own_socket(self):
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        me = make_user("ownsock")
+        saved = client_for(me).get("/api/chats/saved/").data
+        layer = get_channel_layer()
+        async_to_sync(layer.group_add)(f"user_{me.id}", "test-own-device")
+        r = client_for(me).post("/api/messages/", {"chat": saved["id"], "content": "себе"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        got = async_to_sync(layer.receive)("test-own-device")
+        self.assertEqual(got["data"]["type"], "new_message")
+        self.assertEqual(got["data"]["chat_id"], saved["id"])
+
+
 class ChatListEtagTests(TestCase):
     """Список чатов: тот же список — 304 без тела; изменился — 200 с новым ETag."""
 

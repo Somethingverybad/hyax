@@ -970,7 +970,12 @@ def _notify_new_message(message, profile, request):
     # обновляют список чатов и показывают системный баннер. Шлём всегда,
     # а не только при сбое пуша — иначе десктоп «молчит».
     if channel_layer:
-        for participant in ChatParticipant.objects.filter(chat=message.chat).exclude(user=profile):
+        # Отправителю тоже — ради его других устройств: написал с телефона в
+        # Избранное или в чат — на компьютере сообщение появляется сразу, а не
+        # на следующем опросе (у Избранного участник один, и без этого событие
+        # не получал никто). Клиент баннер по своим сообщениям не показывает,
+        # а окно отправившего устройства лишь сверяет ленту.
+        for participant in ChatParticipant.objects.filter(chat=message.chat):
             async_to_sync(channel_layer.group_send)(
                 f'user_{participant.user.id}',
                 {
