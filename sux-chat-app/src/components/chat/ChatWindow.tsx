@@ -1414,7 +1414,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // пузырей при каждом открытии). Рисуем хвост, остальное — порциями при
   // прокрутке вверх, с удержанием позиции (как подгрузка старых с сервера).
   const RENDER_STEP = 60;
-  const [renderLimit, setRenderLimit] = useState(RENDER_STEP);
+  // Первый кадр — из минимума строк: монтирование переписки на телефоне шло
+  // одной задачей 250–420 мс (PERF_PLAN.md, точка отсчёта), и половина её —
+  // разметка 60 сообщений с медиа. Рисуем последние FIRST_ROWS, остальные
+  // загруженные добавляем следующим кадром, когда экран уже виден. Пути с
+  // запомненным местом и непрочитанными поднимают предел сами (restoreChatPos,
+  // anchorUnread), прижатый низ при добавлении строк сверху держит ResizeObserver.
+  const FIRST_ROWS = 24;
+  const [renderLimit, setRenderLimit] = useState(FIRST_ROWS);
+  useEffect(() => {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setRenderLimit((l) => Math.max(l, RENDER_STEP))); });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+  }, [chatId]);
   const hiddenRowsRef = useRef(0);
   const expandingRef = useRef(false);
   const [jumping, setJumping] = useState(false);
@@ -1753,7 +1765,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     pinnedRef.current = true;
     windowedRef.current = false;
     setWindowed(false);
-    setRenderLimit(RENDER_STEP);
+    setRenderLimit(FIRST_ROWS);
     unreadOpenRef.current = unreadAtOpen || 0;
     setUnreadMarkId(null);
     setAnchoring(unreadOpenRef.current > 0 || hasSavedPos(chatId));
