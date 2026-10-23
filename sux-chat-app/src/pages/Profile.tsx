@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { writeClipboard } from "@/lib/clipboard";
 import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
-import { otaApplyNow, otaInfo, otaPending } from "@/lib/ota";
+import { otaApplyNow, otaCheck, otaInfo, otaPending } from "@/lib/ota";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
@@ -195,6 +195,10 @@ const ProfilePage = () => {
   useEffect(() => {
     const check = () => void otaPending().then(setOtaReady);
     check();
+    // Зашли в настройки — проверяем обновление сразу, не дожидаясь планового
+    // окна: иначе за новой сборкой приходилось перезапускать приложение, а
+    // «Обновить сейчас» внизу появлялось только после этого.
+    void otaCheck(true).then(check).catch(() => {});
     window.addEventListener("hyax:ota-pending", check);
     // Компьютер скачивает в main-процессе — спрашиваем время от времени.
     const t = window.setInterval(check, 60 * 1000);
