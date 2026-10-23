@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -101,7 +102,11 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   // Шторка обычно открывается поверх другой (карточка профиля), а React
   // всплывает клики по дереву компонентов, а не по DOM: без stopPropagation
   // тап мимо закрыл бы заодно и то, что под ней.
-  return (
+  // Порталом на body: шторку рисует экран с анимацией перехода и подъёмом под
+  // клавиатуру (transform), и fixed внутри него считается от экрана, а не от
+  // окна — плавающая панель вкладок «Мяты» ложилась поверх низа шторки с
+  // кнопкой «вне приложения» (баг-репорт 1eb29912).
+  return createPortal(
     <div
       className="fixed inset-0 z-[80] bg-black/40 flex items-end md:items-center md:justify-center"
       onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -188,7 +193,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
         {!onShareOutside && !onShareToWall && <div className="shrink-0 h-[calc(var(--sab)+16px)] md:h-4" aria-hidden />}
       </div>
     </div>
-  );
+  , document.body);
 };
 
 export default ShareToChat;
