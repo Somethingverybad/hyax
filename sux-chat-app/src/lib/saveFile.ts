@@ -35,6 +35,30 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
     // файловую систему; расширение сохраняем, по нему Файлы поймут тип.
     const safeName = (fileName || "file").replace(/[/\\:*?"<>|]+/g, "_").slice(0, 120);
     const path = `share/${Date.now()}-${safeName}`;
+    // Android: окно «Поделиться» там без пункта «Сохранить» — только приложения
+    // и облака, и люди не понимали, как сохранить (баг-репорт bd323172).
+    // Кладём файл в общую папку Документы/WYX; не вышло (старый Android без
+    // разрешения) — прежний путь через «Поделиться».
+    if (Capacitor.getPlatform() === "android") {
+      try {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        try { await Filesystem.requestPermissions(); } catch { /* на Android 11+ разрешение не нужно */ }
+        await Filesystem.mkdir({ path: "WYX", directory: Directory.Documents, recursive: true }).catch(() => {});
+        // Такой файл уже есть — не затираем: «имя (2).ext».
+        let target = `WYX/${safeName}`;
+        for (let n = 2; n < 100; n++) {
+          try { await Filesystem.stat({ path: target, directory: Directory.Documents }); }
+          catch { break; }
+          target = `WYX/${safeName.replace(/(\.[^.]{1,8})?$/, ` (${n})$1`)}`;
+        }
+        await Filesystem.downloadFile({ url, path: target, directory: Directory.Documents, recursive: true });
+        toast.dismiss(id);
+        toast.success(t("Сохранено: Документы/{name}", { name: target }), { duration: 6000 });
+        return;
+      } catch (e) {
+        applog.warn(`file save documents failed: ${String((e as { message?: string })?.message || e)}`);
+      }
+    }
     try {
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
       const { Share } = await import("@capacitor/share");
@@ -51,7 +75,8 @@ export async function saveFileToDevice(url: string, fileName: string): Promise<v
       } catch (e: unknown) {
         // Закрыли окно, ничего не выбрав — это не ошибка.
         const msg = String((e as { message?: string })?.message || e);
-        if (!/cancel/i.test(msg)) throw e;
+        // «Sharing is in progress» — второй тап, пока открыто первое окно.
+        if (!/cancel|in progress/i.test(msg)) throw e;
       } finally {
         Filesystem.deleteFile({ path, directory: Directory.Cache }).catch(() => {});
       }

@@ -133,6 +133,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Сохранение файлов в общие «Документы» на Android 10 и старше (lib/saveFile.ts); с Android 11 не нужно. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Видео-сообщения снимаются фронтальной камерой -->
     <uses-permission android:name="android.permission.CAMERA" />

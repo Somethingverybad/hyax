@@ -2141,5 +2141,6 @@ const en: Record<string, string> = {
   "Убрать звук": "Remove sound",
   "Послушать": "Listen",
   "Обычные": "Standard",
+  "Сохранено: Документы/{name}": "Saved: Documents/{name}",
 };
 export default en;
