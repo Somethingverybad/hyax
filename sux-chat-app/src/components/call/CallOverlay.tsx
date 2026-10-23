@@ -8,6 +8,7 @@ import { Capacitor } from "@capacitor/core";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
+import { RailCallPortal } from "@/components/call/RailCall";
 import VideoView from "./VideoView";
 import GroupStage, { StageMask, type StageMode, type StageTile } from "./GroupStage";
 
@@ -257,9 +258,12 @@ const CallOverlay = ({
     return (
       <>
         {audio}
-        <CallWidget peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
-          remoteVideo={video?.remote || null}
-          muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />
+        {/* Широкое окно: столбиком в панели разделов на месте плеера (RailCall); телефон — плашка. */}
+        <RailCallPortal peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
+          muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand}
+          fallback={<CallWidget peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
+            remoteVideo={video?.remote || null}
+            muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />} />
       </>
     );
   }

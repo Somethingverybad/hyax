@@ -16,6 +16,8 @@ import { themeLink } from "@/lib/share";
 import type { ThemeDef } from "@/themes/types";
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { DELETE_VARIANT_LABELS, getDeleteAnimChoice, setDeleteAnimChoice, type DeleteVariant } from "@/lib/deleteAnim";
+import { RAIL_POS, RAIL_POS_LABELS, setRailPos, useRailPos, type RailPos } from "@/lib/railPos";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
 export const Swatch = ({ theme }: { theme: ThemeDef }) => {
@@ -158,6 +160,7 @@ const ProfileAppearance = () => {
 
         <ThemeSyncCard />
         <SectionsCard />
+        <RailPosCard />
         <DeleteAnimCard />
       </div>
     </div>
@@ -218,6 +221,35 @@ const SectionsCard = () => {
       <SettingsCard>
         {row("wall", "Стена", "Общая лента: вкладка внизу и строка в списке чатов")}
         {row("ideabox", "Долгий ящик", "Идеи и предложения разработчику — строка в списке чатов")}
+      </SettingsCard>
+    </>
+  );
+};
+
+/** Широкое окно: где стоит панель разделов — сверху, по центру или снизу
+ *  (lib/railPos). На телефоне панель внизу, и строка не показывается. */
+const RailPosCard = () => {
+  const isMobile = useIsMobile();
+  const pos = useRailPos();
+  if (isMobile) return null;
+  return (
+    <>
+      <p className="px-1 pt-2 text-small text-subtle">{tr("Компьютер")}</p>
+      <SettingsCard>
+        <SettingsRow
+          label={tr("Положение меню")}
+          hint={tr("Панель разделов у левого края: сверху, по центру или снизу")}
+          trailing={
+            <select
+              value={pos}
+              onChange={(e) => setRailPos(e.target.value as RailPos)}
+              aria-label={tr("Положение меню")}
+              className="h-9 max-w-[52%] rounded-md border border-border bg-surface-3 px-2 text-small text-foreground"
+            >
+              {RAIL_POS.map((k) => <option key={k} value={k}>{tr(RAIL_POS_LABELS[k])}</option>)}
+            </select>
+          }
+        />
       </SettingsCard>
     </>
   );

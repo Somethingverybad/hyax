@@ -11,6 +11,8 @@ import type { WallState } from "@/api/client";
 import { useSections } from "@/lib/sections";
 import { useIsMobile } from "@/hooks/use-mobile";
 import RailPlayer from "@/components/RailPlayer";
+import { useRailPos } from "@/lib/railPos";
+import { setRailCallSlot } from "@/lib/railSlot";
 
 /** Новые посты на Стене — бейдж на вкладке. Состояние кладёт Chat.tsx в кеш
  *  сессии и сообщает событием hyax:wall; при открытии Стены счётчик обнуляется. */
@@ -105,6 +107,7 @@ const MintIsland = () => {
 /** Широкое окно: те же вкладки столбиком у левого края, сверху вниз. */
 const NavRail = ({ mint }: { mint: boolean }) => {
   const { pathname } = useLocation();
+  const railPos = useRailPos();
   const wallNew = useWallNew();
   const sections = useSections();
   const items = ITEMS.filter((i) => i.to !== "/wall" || sections.wall);
@@ -118,8 +121,8 @@ const NavRail = ({ mint }: { mint: boolean }) => {
     return () => cancelAnimationFrame(raf);
   }, [idx]);
   return (
-    <div className={cn("nav-rail-wrap", mint ? "mint-rail-wrap" : "ui-nav-rail border-r border-border bg-background")}>
-      <nav className={mint ? "mint-rail" : "flex flex-col gap-1 pt-3"} aria-label={t("Разделы")}>
+    <div className={cn("nav-rail-wrap", mint ? "mint-rail-wrap" : "ui-nav-rail border-r border-border bg-background")} data-pos={railPos}>
+      <nav className={cn("nav-rail-tabs", mint ? "mint-rail" : "flex flex-col gap-1")} aria-label={t("Разделы")}>
         {mint && pos >= 0 && pos < items.length && <span className="mint-rail-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} aria-label={t(label)} title={t(label)}
@@ -132,7 +135,11 @@ const NavRail = ({ mint }: { mint: boolean }) => {
           </NavLink>
         ))}
       </nav>
-      <RailPlayer mint={mint} />
+      {/* Низ колонки: плеер, а во время свёрнутого звонка — он (lib/railSlot). */}
+      <div className="nav-rail-extra">
+        <div ref={setRailCallSlot} className={cn(mint && "mint-rail rail-player", "empty:hidden")} />
+        <RailPlayer mint={mint} />
+      </div>
     </div>
   );
 };

@@ -9,6 +9,7 @@ import { resolveMediaUrl } from "@/hooks/use-media-url";
 import { saveFileToDevice } from "@/lib/saveFile";
 import ShareTrackButton from "@/components/music/ShareTrackButton";
 import { hasPlayerWidget } from "@/lib/desktopPlayer";
+import { useRailCallActive } from "@/lib/railSlot";
 import { currentTrack, fmtTime, next, prev, seek, setVolume, stop, toggle, usePlayer, type Track } from "@/lib/player";
 
 /**
@@ -36,7 +37,10 @@ const RailPlayer = ({ mint }: { mint: boolean }) => {
   // Хук — до раннего return: иначе при появлении трека хуков становилось больше,
   // и React падал (#310), унося весь интерфейс (баг-репорт b3df29d5, Linux).
   const [drag, setDrag] = useState<number | null>(null);
+  // Свёрнутый звонок занял это место (lib/railSlot) — плеером управляют в «Музыке».
+  const callHere = useRailCallActive();
 
+  if (callHere) return null;
   if (!tk) {
     return (
       <button type="button" onClick={() => navigate("/music")} className={cn(box, "text-subtle")} title={tr("Открыть «Музыку»")}>

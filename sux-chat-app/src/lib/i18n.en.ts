@@ -2143,5 +2143,10 @@ const en: Record<string, string> = {
   "Обычные": "Standard",
   "Сохранено: Документы/{name}": "Saved: Documents/{name}",
   "Копировать текст": "Copy text",
+  "Положение меню": "Menu position",
+  "Сверху": "Top",
+  "По центру": "Center",
+  "Снизу": "Bottom",
+  "Панель разделов у левого края: сверху, по центру или снизу": "The section rail on the left edge: top, center or bottom",
 };
 export default en;
