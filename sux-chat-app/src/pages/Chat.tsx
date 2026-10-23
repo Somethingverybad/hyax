@@ -369,8 +369,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       pollTimer = window.setTimeout(() => { refreshChats(); schedule(); }, userSocket()?.isConnected() ? 60000 : 10000);
     };
     schedule();
-    // Сокет (пере)подключился — пропущенные события наверстать сразу.
-    const onSocketOpen = () => { refreshChats(); schedule(); };
+    // Сокет (пере)подключился — пропущенные события наверстать сразу. Кроме
+    // первого подключения при старте: список только что загружен.
+    const onSocketOpen = () => { if (Date.now() - lastRefreshRef.current > 5000) refreshChats(); schedule(); };
     window.addEventListener("hyax:socket-open", onSocketOpen);
     // Стена: счётчик новых постов — реже, он не срочный.
     void refreshWall();
@@ -695,11 +696,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Залп событий (несколько сообщений подряд, read + new_message) — один
   // запрос: пока идёт загрузка, следующий вызов лишь просит повторить после.
   const refreshingRef = useRef<{ busy: boolean; again: boolean }>({ busy: false, again: false });
+  const lastRefreshRef = useRef(0);
   const refreshChats = async () => {
     const st = refreshingRef.current;
     if (st.busy) { st.again = true; return; }
     st.busy = true;
-    try { await refreshChatsNow(); }
+    try { await refreshChatsNow(); lastRefreshRef.current = Date.now(); }
     finally { st.busy = false; if (st.again) { st.again = false; void refreshChats(); } }
   };
   const refreshChatsNow = async () => {

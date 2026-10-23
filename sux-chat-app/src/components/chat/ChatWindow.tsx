@@ -1433,9 +1433,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
 
-  // Каталог аудио-стикеров: один запрос на окно чата.
+  // Каталог аудио-стикеров: один запрос на окно чата, и не в залпе открытия —
+  // он нужен только панели стикеров, пусть подождёт простоя.
   useEffect(() => {
-    api.getNotificationSounds().then(setSounds).catch(() => {});
+    let cancelled = false;
+    const load = () => { if (!cancelled) api.getNotificationSounds().then((l) => { if (!cancelled) setSounds(l); }).catch(() => {}); };
+    const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(load, { timeout: 8000 }); else window.setTimeout(load, 3000);
+    return () => { cancelled = true; };
   }, []);
 
   // Меню прикрепления закрывается тапом вне области ввода.
@@ -1833,7 +1838,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       pollTimer = window.setTimeout(() => { syncSince(chatId); schedule(); }, userSocket()?.isConnected() ? 30000 : 3000);
     };
     schedule();
-    const onSocketOpen = () => { syncSince(chatId); schedule(); };
+    const openedAt = Date.now();
+    const onSocketOpen = () => { if (Date.now() - openedAt > 5000) syncSince(chatId); schedule(); };
     window.addEventListener("hyax:socket-open", onSocketOpen);
     return () => { alive = false; window.clearTimeout(pollTimer); window.removeEventListener("hyax:socket-open", onSocketOpen); };
     // eslint-disable-next-line react-hooks/exhaustive-deps

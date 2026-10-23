@@ -76,7 +76,31 @@ function bustCache(url: string, method: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}_=${Date.now().toString(36)}`;
 }
 
+/** Одинаковые GET к API в полёте — один запрос на всех: при старте профиль,
+ *  список чатов и Стену просили по два-три раза с разных экранов, и на
+ *  сервере с одним процессом это удваивало время первого кадра
+ *  (PERF_PLAN.md, п. 2). Ключ — адрес и заголовки (If-None-Match различается);
+ *  каждому ждущему — своя копия ответа, тело читается один раз. */
+const inflightGets = new Map<string, Promise<Response>>();
 async function fetchWithFallback(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const rawUrl = typeof input === "string" ? input : (input as Request).url;
+  const method = (init?.method || "GET").toUpperCase();
+  if (method !== "GET" || !rawUrl.includes("/api/")) return fetchWithFallbackRaw(input, init);
+  let key = rawUrl;
+  try { key += "|" + JSON.stringify(init?.headers || {}); } catch { /* ключ без заголовков */ }
+  let p = inflightGets.get(key);
+  if (!p) {
+    // Готовый ответ живёт ещё полторы секунды: экраны монтируются друг за
+    // другом и просят то же самое не одновременно, а с разницей в сотни мс.
+    p = fetchWithFallbackRaw(input, init);
+    inflightGets.set(key, p);
+    p.then(() => { window.setTimeout(() => { if (inflightGets.get(key) === p) inflightGets.delete(key); }, 1500); },
+      () => { inflightGets.delete(key); });
+  }
+  return (await p).clone();
+}
+
+async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const rawUrl = typeof input === "string" ? input : (input as Request).url;
   const url = bustCache(rawUrl, (init?.method || "GET").toUpperCase());
   if (url !== rawUrl) { input = url; init = { ...init, cache: "no-store" }; }
