@@ -4327,7 +4327,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
-                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", (message._key || freshIds.has(message.id)) && "msg-in", foundId === message.id && "msg-found", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", message._key ? "msg-in-own" : freshIds.has(message.id) && "msg-in", foundId === message.id && "msg-found", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (
