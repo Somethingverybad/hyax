@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode, memo } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, type ReactNode, memo, lazy, Suspense } from "react";
 import { writeClipboard } from "@/lib/clipboard";
 import { getDraftText, saveDraftText } from "@/lib/drafts";
 import CachedImg from "@/components/CachedImg";
@@ -23,7 +23,7 @@ import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
-import StickerPicker from "@/components/chat/StickerPicker";
+const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
 import NotoEmoji from "@/components/NotoEmoji";
@@ -44,7 +44,7 @@ import { dateOf, dayKey, timeOf } from "@/lib/timeFormat";
 import { userSocket } from "@/lib/userSocket";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
-import { GraffitiSheet } from "@/components/chat/Graffiti";
+const GraffitiSheet = lazy(() => import("@/components/chat/Graffiti").then((m) => ({ default: m.GraffitiSheet })));
 import PlaylistPicker from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
@@ -63,7 +63,7 @@ import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import ShareToChat from "@/components/ShareToChat";
-import PhotoEditor from "@/components/PhotoEditor";
+const PhotoEditor = lazy(() => import("@/components/PhotoEditor"));
 import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
 import ChatMediaSheet from "./ChatMediaSheet";
@@ -91,7 +91,8 @@ import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
-import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
+import type { ViewerItem } from "@/components/ImageViewer";
+const ImageViewer = lazy(() => import("@/components/ImageViewer"));
 import StickerView from "@/components/chat/StickerView";
 
 /** Сторона крупного эмодзи-сообщения: одно — 96 px, два — 72, три — 60. */
@@ -5280,7 +5281,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
           {stickersOpen && !mintM && (
             <div ref={panelRef} className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
-              <StickerPicker
+              <Suspense fallback={null}><StickerPicker
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
@@ -5289,7 +5290,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onInsertEmoji={(emoji, custom) => insertEmoji(emoji, custom, { focus: !isTouchDevice() })}
                 standardEmoji={!isMobile}
                 onDraw={!isSecret ? () => { setStickersOpen(false); setGraffiti("draw"); } : undefined}
-              />
+              /></Suspense>
             </div>
           )}
 
@@ -5531,7 +5532,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {/* «Мята»: панель стикеров — шторкой под полем ввода, как в макете. */}
           {stickersOpen && mintM && (
             <div ref={panelRef} className="mint-sticker-sheet">
-              <StickerPicker
+              <Suspense fallback={null}><StickerPicker
                 onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
@@ -5540,7 +5541,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onInsertEmoji={(emoji, custom) => insertEmoji(emoji, custom, { focus: !isTouchDevice() })}
                 standardEmoji={!isMobile}
                 onDraw={!isSecret ? () => { setStickersOpen(false); setGraffiti("draw"); } : undefined}
-              />
+              /></Suspense>
             </div>
           )}
         </div>
@@ -5553,8 +5554,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       />
 
       {graffiti && (
-        <GraffitiSheet draw={graffiti === "draw"} onClose={() => setGraffiti(null)}
-          onPick={(sticker) => { setGraffiti(null); void sendSticker(sticker); }} />
+        <Suspense fallback={null}><GraffitiSheet draw={graffiti === "draw"} onClose={() => setGraffiti(null)}
+          onPick={(sticker) => { setGraffiti(null); void sendSticker(sticker); }} /></Suspense>
       )}
 
       <ReactionPicker
@@ -5797,7 +5798,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <ReportSheet target={{ type: "message", id: reportFor.id }} title={tr("Жалоба на сообщение")} onClose={() => setReportFor(null)} />
       )}
       {editFor && (
-        <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => void applyEdit(editFor, f)} />
+        <Suspense fallback={null}><PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => void applyEdit(editFor, f)} /></Suspense>
       )}
       {trackPickerOpen && <TrackPicker onPick={(t) => void sendTrack(t)} onClose={() => setTrackPickerOpen(false)} />}
       {selectFor && (
@@ -5839,7 +5840,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
 
       {viewer && (
-        <ImageViewer
+        <Suspense fallback={null}><ImageViewer
           items={viewer.items}
           index={viewer.index}
           onIndex={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
@@ -5867,7 +5868,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               handleSaveFile(url, cur.name);
             } },
           ].filter((a) => !isSecret || a.label === tr("Скачать"))}
-        />
+        /></Suspense>
       )}
     </div>
   );

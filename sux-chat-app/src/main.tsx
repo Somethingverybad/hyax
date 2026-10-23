@@ -1,4 +1,5 @@
 // Первым — недостающее в старых WebView (Huawei, iOS 15): см. lib/polyfills.ts.
+import { getLang, loadLang } from "./lib/i18n";
 import "./lib/polyfills";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
@@ -32,7 +33,9 @@ const render = () => {
   startOtaChecks();
   startOtaAutoApply();
 };
-otaBoot().then((switching) => { if (switching) window.setTimeout(render, 5000); else render(); }, render);
+// Словарь выбранного языка — параллельно с проверкой OTA, до первого кадра.
+const langReady = loadLang(getLang()).catch(() => {});
+otaBoot().then((switching) => { if (switching) window.setTimeout(render, 5000); else void langReady.then(render); }, () => void langReady.then(render));
 
 // Высота приложения. CSS-переменную читают .h-screen/.min-h-screen (см.
 // index.css). Берём её из visualViewport, а не из dvh: при открытии клавиатуры

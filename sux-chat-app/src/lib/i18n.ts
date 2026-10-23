@@ -5,15 +5,29 @@
  * экран входа и первый кадр были на нужном языке до загрузки профиля.
  */
 import { syncNativeLang } from "./nativeLang";
-import en from "./i18n.en";
-import ko from "./i18n.ko";
 
 export type Lang = "ru" | "en" | "ko";
 export const LANGS: Lang[] = ["ru", "en", "ko"];
 export const LANG_NAMES: Record<Lang, string> = { ru: "Русский", en: "English", ko: "한국어" };
 
 const KEY = "hyax:lang";
-const DICT: Record<Lang, Record<string, string>> = { ru: {}, en, ko };
+// Словари английского и корейского — по 180 КБ каждый — грузятся только для
+// выбранного языка (PERF_PLAN.md, холодный старт): раньше оба лежали в
+// основном файле у всех. loadLang ждёт main.tsx до первого кадра.
+const DICT: Record<Lang, Record<string, string>> = { ru: {}, en: {}, ko: {} };
+const loaded = new Set<Lang>(["ru"]);
+const loading = new Map<Lang, Promise<void>>();
+export function loadLang(l: Lang): Promise<void> {
+  if (loaded.has(l)) return Promise.resolve();
+  let p = loading.get(l);
+  if (!p) {
+    p = (l === "en" ? import("./i18n.en") : import("./i18n.ko"))
+      .then((m) => { DICT[l] = m.default as Record<string, string>; loaded.add(l); })
+      .catch(() => { /* без сети на первом старте — останутся русские строки, подтянется при следующей попытке */ loading.delete(l); });
+    loading.set(l, p);
+  }
+  return p;
+}
 
 function detect(): Lang {
   try {
@@ -36,6 +50,8 @@ export function setLang(l: Lang) {
   try { document.documentElement.lang = l; } catch { /* ок */ }
   notifyShell(l);
   window.dispatchEvent(new CustomEvent("hyax:lang", { detail: l }));
+  // Словарь ещё не загружен — экраны перерисуются ещё раз, когда он приедет.
+  if (!loaded.has(l)) void loadLang(l).then(() => { if (current === l) window.dispatchEvent(new CustomEvent("hyax:lang", { detail: l })); });
 }
 
 /** Оболочке десктопа (трей, тосты, диалоги main-процесса) и нативу — тот же язык. */

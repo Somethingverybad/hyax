@@ -4,12 +4,13 @@ import { t as tr, tn, getLang } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type RefObject, lazy, Suspense } from "react";
 import { api, mediaUrl, type Chat, type NotificationSoundInfo, type PollInfo, type WallState } from "@/api/client";
 import PollCard from "@/components/chat/PollCard";
 import AnchoredMenu from "@/components/AnchoredMenu";
 import StickerView from "@/components/chat/StickerView";
-import { GraffitiSheet, type GraffitiSticker } from "@/components/chat/Graffiti";
+import type { GraffitiSticker } from "@/components/chat/Graffiti";
+const GraffitiSheet = lazy(() => import("@/components/chat/Graffiti").then((m) => ({ default: m.GraffitiSheet })));
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
 import { useMediaUrl, useMediaUrlState, resolveMediaUrl } from "@/hooks/use-media-url";
@@ -20,7 +21,8 @@ import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos,
 import { cn } from "@/lib/utils";
 import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
-import ImageViewer, { type ViewerItem } from "@/components/ImageViewer";
+import type { ViewerItem } from "@/components/ImageViewer";
+const ImageViewer = lazy(() => import("@/components/ImageViewer"));
 import { toast } from "sonner";
 import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy } from "lucide-react";
 import { writeClipboard } from "@/lib/clipboard";
@@ -33,7 +35,7 @@ import PackLinkCard from "./PackLinkCard";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import StationLinkCard from "./StationLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
-import PhotoEditor from "@/components/PhotoEditor";
+const PhotoEditor = lazy(() => import("@/components/PhotoEditor"));
 import { saveFileToDevice } from "@/lib/saveFile";
 import ProfileLinkCard from "./ProfileLinkCard";
 import { currentTrack, playQueue, toggle as togglePlay, usePlayer, type Track } from "@/lib/player";
@@ -1767,7 +1769,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           onClose={() => setWallpaperOpen(false)} onChanged={loadWallpaper} />
       )}
       {editFor && (
-        <PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => applyEdit(editFor, f)} />
+        <Suspense fallback={null}><PhotoEditor file={editFor.file} onCancel={() => setEditFor(null)} onDone={(f) => applyEdit(editFor, f)} /></Suspense>
       )}
       {shareFor && (
         <ShareToChat
@@ -1782,7 +1784,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       )}
 
       {viewer && (
-        <ImageViewer
+        <Suspense fallback={null}><ImageViewer
           items={viewer.items}
           index={viewer.index}
           onIndex={(i) => setViewer((v) => (v ? { ...v, index: i } : v))}
@@ -1801,7 +1803,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               window.open(url, "_blank");
             } },
           ]}
-        />
+        /></Suspense>
       )}
       <ReactionPicker
         open={!!reactPickFor}
@@ -1890,7 +1892,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         </div>
         </SheetPortal>
       )}
-      {graffitiOpen && <GraffitiSheet onClose={() => setGraffitiOpen(false)} onPick={(g) => void attachGraffiti(g)} />}
+      {graffitiOpen && <Suspense fallback={null}><GraffitiSheet onClose={() => setGraffitiOpen(false)} onPick={(g) => void attachGraffiti(g)} /></Suspense>}
       {editPost && (
         <SheetPortal>
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => !editSaving && setEditPost(null)}>
