@@ -141,7 +141,8 @@ if (Cap.isNativePlatform()) {
     // панорама визуального viewport (на vivo уносила интерфейс). Пишем только
     // при изменении, чтобы не засорять лог.
     const vvTop = Math.round(window.visualViewport?.offsetTop ?? 0);
-    const trace = `kb vv=${Math.round(visible)} vvTop=${vvTop} inner=${window.innerHeight} webH=${webH > 0 ? Math.round(webH) : "n/a"} ime=${measured >= 0 ? Math.round(measured) : "n/a"} kbH=${Math.round(keyboardHeight)} below=${Math.round(screenBelowWebView())} → ${Math.round(offset)}`;
+    const appH = root.style.getPropertyValue("--app-height") || "css";
+    const trace = `kb vv=${Math.round(visible)} vvTop=${vvTop} inner=${window.innerHeight} webH=${webH > 0 ? Math.round(webH) : "n/a"} ime=${measured >= 0 ? Math.round(measured) : "n/a"} kbH=${Math.round(keyboardHeight)} below=${Math.round(screenBelowWebView())} app=${appH} → ${Math.round(offset)}`;
     if (trace !== lastTrace) { lastTrace = trace; applog.info(trace); }
     return offset;
   };
@@ -216,6 +217,13 @@ if (Cap.isNativePlatform()) {
     if (settleTimer) clearInterval(settleTimer);
     let prev = -1, ticks = 0;
     settleTimer = setInterval(() => {
+      // Высоту приложения перемеряем здесь же: при открытии клавиатуры Chrome
+      // на миг ужимает viewport дважды (895 → 256 при клавиатуре 319: системный
+      // ресайз плюс свой), syncAppHeight ловил это значение по событию resize,
+      // а обратного события до 575 не приходило — экран оставался в треть
+      // высоты: панель ввода под шапкой, под ней пустота до клавиатуры
+      // (баг-репорты 94e2ce74 и 48cbe2cd, Android 15, Chrome 155).
+      syncAppHeight();
       const cur = Math.round(keyboardOffset());
       ticks += 1;
       const timedOut = ticks >= MAX_TICKS;
