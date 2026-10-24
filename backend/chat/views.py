@@ -228,7 +228,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             # prefetch обязателен: сериализатор теперь отдаёт участников, и без
             # него на каждый чат уходил бы отдельный запрос к базе — ровно та
             # проблема, которую мы убираем с клиента.
-            from django.db.models import OuterRef, Subquery
+            from django.db.models import OuterRef, Prefetch, Subquery
             # Превью последнего сообщения не должно показывать удалённые:
             # ни удалённые у всех, ни спрятанные текущим пользователем «у себя».
             last = (
@@ -242,7 +242,9 @@ class ChatViewSet(viewsets.ModelViewSet):
             return (
                 Chat.objects
                 .filter(participants=profile)
-                .prefetch_related('participants')
+                # Звук уведомлений участника и его пак — сразу: иначе запрос
+                # на каждого участника со своим звуком (см. notify_sound_payload).
+                .prefetch_related(Prefetch('participants', queryset=Profile.objects.select_related('notify_sound__pack')))
                 .annotate(
                     last_at_a=Subquery(last.values('created_at')[:1]),
                     last_id_a=Subquery(last.values('id')[:1]),
@@ -254,7 +256,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     my_wp_poster=Subquery(mine.values('wallpaper_poster')[:1]),
                     my_wp_anim=Subquery(mine.values('wallpaper_anim')[:1]),
                 )
-                .select_related('pinned_message__sender', 'secret')
+                .select_related('pinned_message__sender', 'secret', 'notify_sound__pack')
                 # Закреплённые сверху (позже закреплённый выше), остальные — по
                 # времени последнего сообщения. Пустой чат опускается на время
                 # создания: иначе он висел бы наверху вечно.

@@ -2851,9 +2851,14 @@ class ChatListQueryCountTests(TestCase):
     объекта участника)."""
 
     def _chats(self, me, n, tag):
+        pack = SoundPack.objects.create(name="Пак")
+        # bulk_create: обычный save конвертирует звук в caf через ffmpeg.
+        snd = NotificationSound.objects.bulk_create([NotificationSound(slug=f"qc_{tag}", name="Динь", pack=pack, file="sounds/q.mp3")])[0]
         for i in range(n):
-            other = make_user(f"{tag}_o{i}", saved_visibility="none" if i % 2 else "all")
-            chat = Chat.objects.create(kind="direct")
+            # Свой звук у половины людей и у части чатов: раньше — запрос на каждого.
+            other = make_user(f"{tag}_o{i}", saved_visibility="none" if i % 2 else "all",
+                              notify_sound=snd if i % 2 else None)
+            chat = Chat.objects.create(kind="direct", notify_sound=snd if i % 3 == 0 else None)
             for p in (me, other):
                 ChatParticipant.objects.create(chat=chat, user=p, role="member")
             Message.objects.create(chat=chat, sender=other, content=f"привет {i}")
@@ -2872,7 +2877,9 @@ class ChatListQueryCountTests(TestCase):
         with CaptureQueriesContext(connection) as big:
             r2 = c.get("/api/chats/")
         self.assertEqual((r1.status_code, r2.status_code, len(r2.data)), (200, 200, 14))
-        self.assertEqual(len(small.captured_queries), len(big.captured_queries))
+        import re
+        extra = [re.sub(r"\s+", " ", q["sql"])[:120] for q in big.captured_queries[len(small.captured_queries):]]
+        self.assertEqual(len(small.captured_queries), len(big.captured_queries), extra)
         # Превью и видимость сохранёнок на месте.
         by_text = {ch["last_message"]["text"]: ch for ch in r2.data}
         self.assertIn("ответ 3", by_text)
@@ -2880,6 +2887,9 @@ class ChatListQueryCountTests(TestCase):
         self.assertFalse(by_text["ответ 3"]["last_message"]["read"])
         vis = {p["username"]: p["saved_visible"] for ch in r2.data for p in ch["participants"] if p["id"] != str(me.id)}
         self.assertEqual((vis["b_o0"], vis["b_o1"]), (True, False))
+        snd = {p["username"]: (p["notify_sound"] or {}).get("slug") for ch in r2.data for p in ch["participants"] if p["id"] != str(me.id)}
+        self.assertEqual((snd["b_o0"], snd["b_o1"]), (None, "qc_b"))
+        self.assertEqual({(c["notify_sound"] or {}).get("pack_name") for c in r2.data if c["notify_sound"]}, {"Пак"})
 
     def test_last_message_read_and_detail(self):
         me, other = make_user("qc2_me"), make_user("qc2_other")

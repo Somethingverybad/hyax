@@ -10,6 +10,22 @@ def is_admin_profile(profile):
         return False
     return getattr(profile, 'role', '') == 'admin' or bool(getattr(getattr(profile, 'user', None), 'is_superuser', False))
 
+def notify_sound_payload(context, obj):
+    """Звук уведомлений объекта (профиля или чата) в виде для клиента — один
+    раз на запрос для каждого звука. В списке чатов звук у сотен участников
+    повторяется, а сериализатор звука ходит в базу за паком."""
+    sid = getattr(obj, 'notify_sound_id', None)
+    if not sid:
+        return None
+    cache = context.setdefault('_sounds', {}) if isinstance(context, dict) else None
+    if cache is not None and sid in cache:
+        return cache[sid]
+    data = NotificationSoundSerializer(obj.notify_sound).data
+    if cache is not None:
+        cache[sid] = data
+    return data
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     # Владелец бота (id) — только у ботов: бот узнаёт, чьи команды слушать.
     bot_owner = serializers.SerializerMethodField()
@@ -50,7 +66,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         return can_see_saved(obj.id, me_profile.id)
 
     def get_notify_sound(self, obj):
-        return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
+        return notify_sound_payload(self.context, obj)
 
     def get_is_online(self, obj):
         # Список чатов кладёт в контекст заранее собранный набор «на экране»
@@ -222,7 +238,7 @@ class ChatSerializer(serializers.ModelSerializer):
     notify_sound = serializers.SerializerMethodField()
 
     def get_notify_sound(self, obj):
-        return NotificationSoundSerializer(obj.notify_sound).data if getattr(obj, 'notify_sound_id', None) else None
+        return notify_sound_payload(self.context, obj)
 
     # Участники отдаются вместе со списком чатов. Раньше клиент запрашивал их
     # отдельно на каждый чат: на экран из десяти чатов уходило одиннадцать
@@ -852,7 +868,7 @@ class ChannelSerializer(serializers.ModelSerializer):
     muted = serializers.SerializerMethodField()
 
     def get_notify_sound(self, obj):
-        return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
+        return notify_sound_payload(self.context, obj)
 
     class Meta:
         model = Chat
