@@ -187,9 +187,8 @@ class ChatViewSet(viewsets.ModelViewSet):
         тела (до 100 КБ на запрос у активных аккаунтов)."""
         import hashlib
         import json
-        response = super().list(request, *args, **kwargs)
-        if response.status_code != 200:
-            return response
+        chats = self._attach_last(list(self.filter_queryset(self.get_queryset())))
+        response = Response(self.get_serializer(chats, many=True).data)
         # «Был в сети» участников меняется от каждого запроса (в том числе
         # свой), и без этого ETag никогда бы не совпадал. Присутствие клиент
         # получает по сокету (presence) — в подпись списка его не берём.
@@ -207,6 +206,17 @@ class ChatViewSet(viewsets.ModelViewSet):
         response["ETag"] = etag
         return response
 
+    # Поля последнего сообщения для превью: раньше каждое шло отдельным
+    # коррелированным подзапросом (12 штук на чат, и каждый ищет последнее
+    # сообщение чата заново). Теперь из базы — только id и время, а сами
+    # сообщения добираем одним запросом по списку id (_attach_last).
+    LAST_FIELDS = {
+        'last_text_a': 'content', 'last_entities_a': 'entities', 'last_cipher_a': 'cipher',
+        'last_geo_a': 'geo_lat', 'last_sender_id_a': 'sender_id', 'last_sticker_a': 'sticker_id',
+        'last_sticker_file_a': 'sticker_file', 'last_voice_a': 'voice_url', 'last_video_a': 'video_url',
+        'last_file_a': 'file_url',
+    }
+
     def get_queryset(self):
         """Возвращаем только чаты текущего пользователя"""
         try:
@@ -214,7 +224,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             # prefetch обязателен: сериализатор теперь отдаёт участников, и без
             # него на каждый чат уходил бы отдельный запрос к базе — ровно та
             # проблема, которую мы убираем с клиента.
-            from django.db.models import Exists, OuterRef, Subquery
+            from django.db.models import OuterRef, Subquery
             # Превью последнего сообщения не должно показывать удалённые:
             # ни удалённые у всех, ни спрятанные текущим пользователем «у себя».
             last = (
@@ -224,42 +234,22 @@ class ChatViewSet(viewsets.ModelViewSet):
                 .exclude(deleted_for=profile)
                 .order_by('-created_at')
             )
+            mine = ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile)
             return (
                 Chat.objects
                 .filter(participants=profile)
                 .prefetch_related('participants')
                 .annotate(
-                    last_text_a=Subquery(last.values('content')[:1]),
-                    last_entities_a=Subquery(last.values('entities')[:1]),
-                    last_cipher_a=Subquery(last.values('cipher')[:1]),
-                    last_geo_a=Subquery(last.values('geo_lat')[:1]),
-                    last_sender_id_a=Subquery(last.values('sender_id')[:1]),
-                    last_sticker_a=Subquery(last.values('sticker_id')[:1]),
-                    last_sticker_file_a=Subquery(last.values('sticker_file')[:1]),
-                    last_voice_a=Subquery(last.values('voice_url')[:1]),
-                    last_video_a=Subquery(last.values('video_url')[:1]),
-                    last_file_a=Subquery(last.values('file_url')[:1]),
                     last_at_a=Subquery(last.values('created_at')[:1]),
                     last_id_a=Subquery(last.values('id')[:1]),
                     # Моё закрепление: у каждого участника своё.
-                    my_pinned_at=Subquery(
-                        ChatParticipant.objects
-                        .filter(chat=OuterRef('pk'), user=profile)
-                        .values('pinned_at')[:1]
-                    ),
+                    my_pinned_at=Subquery(mine.values('pinned_at')[:1]),
                     # Мои личные обои (см. ChatSerializer.get_my_wallpaper).
-                    my_wp_kind=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_kind')[:1]),
-                    my_wp_url=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_url')[:1]),
-                    my_wp_poster=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_poster')[:1]),
-                    my_wp_anim=Subquery(ChatParticipant.objects.filter(chat=OuterRef('pk'), user=profile).values('wallpaper_anim')[:1]),
+                    my_wp_kind=Subquery(mine.values('wallpaper_kind')[:1]),
+                    my_wp_url=Subquery(mine.values('wallpaper_url')[:1]),
+                    my_wp_poster=Subquery(mine.values('wallpaper_poster')[:1]),
+                    my_wp_anim=Subquery(mine.values('wallpaper_anim')[:1]),
                 )
-                # Прочитал ли последнее сообщение кто-то кроме автора — для
-                # второй галки в списке чатов.
-                .annotate(last_read_a=Exists(
-                    MessageReadStatus.objects
-                    .filter(message_id=OuterRef('last_id_a'))
-                    .exclude(user_id=OuterRef('last_sender_id_a'))
-                ))
                 .select_related('pinned_message__sender', 'secret')
                 # Закреплённые сверху (позже закреплённый выше), остальные — по
                 # времени последнего сообщения. Пустой чат опускается на время
@@ -272,6 +262,31 @@ class ChatViewSet(viewsets.ModelViewSet):
             )
         except Profile.DoesNotExist:
             return Chat.objects.none()
+
+    @classmethod
+    def _attach_last(cls, chats):
+        """Дописать чатам поля последнего сообщения (last_*_a) и прочитал ли его
+        кто-то кроме автора (last_read_a) — двумя запросами на весь список."""
+        ids = [c.last_id_a for c in chats if getattr(c, 'last_id_a', None)]
+        rows = {}
+        if ids:
+            rows = {r['id']: r for r in Message.objects.filter(id__in=ids).values('id', *cls.LAST_FIELDS.values())}
+            # Прочитал ли последнее сообщение кто-то кроме автора — вторая галка.
+            read = set()
+            for mid, uid in MessageReadStatus.objects.filter(message_id__in=ids).values_list('message_id', 'user_id'):
+                if uid != rows.get(mid, {}).get('sender_id'):
+                    read.add(mid)
+        for c in chats:
+            r = rows.get(getattr(c, 'last_id_a', None))
+            for attr, field in cls.LAST_FIELDS.items():
+                setattr(c, attr, r[field] if r else None)
+            c.last_read_a = bool(r) and c.last_id_a in read
+        return chats
+
+    def get_object(self):
+        obj = super().get_object()
+        self._attach_last([obj])
+        return obj
 
     @action(detail=False, methods=['get'])
     def saved(self, request):
@@ -5185,7 +5200,19 @@ class SavedImagesView(APIView):
 # Ссылка t.me/addstickers/<name> → Bot API getStickerSet (нужен TG_BOT
 # или TELEGRAM_BOT_TOKEN в .env) → файлы качаются в фоне в media/stickers: .webp (статика), .tgs
 # (анимация Lottie, gzip) и .webm (видео). Прогресс — в памяти процесса.
-IMPORT_PROGRESS = {}
+# Ход импорта набора стикеров: в кэше Django (с REDIS_URL — общий для всех
+# процессов api: импорт идёт в одном процессе, а опрос хода — в любой).
+IMPORT_PROGRESS_TTL = 3600
+
+
+def _import_prog_get(pack_id):
+    from django.core.cache import cache
+    return cache.get(f"stickers:import:{pack_id}")
+
+
+def _import_prog_set(pack_id, prog) -> None:
+    from django.core.cache import cache
+    cache.set(f"stickers:import:{pack_id}", prog, IMPORT_PROGRESS_TTL)
 
 
 def _tg_session():
@@ -5278,7 +5305,7 @@ def _tg_emoji_file(data, ext):
 def _tg_import_worker(pack_id, token, stickers, profile_id, kind='sticker'):
     import os as _os
     from django.conf import settings as _settings
-    prog = IMPORT_PROGRESS[pack_id]
+    prog = _import_prog_get(str(pack_id)) or {'total': len(stickers), 'done': 0, 'failed': 0, 'finished': False}
     http = _tg_session()
     stickers_dir = _os.path.join(_settings.MEDIA_ROOT, 'stickers')
     _os.makedirs(stickers_dir, exist_ok=True)
@@ -5288,18 +5315,18 @@ def _tg_import_worker(pack_id, token, stickers, profile_id, kind='sticker'):
             f = http.get(f'https://api.telegram.org/bot{token}/getFile', params={'file_id': st['file_id']}, timeout=TG_TIMEOUT).json()
             path = f.get('result', {}).get('file_path')
             if not path:
-                prog['failed'] += 1; continue
+                prog['failed'] += 1; _import_prog_set(pack_id, prog); continue
             data = http.get(f'https://api.telegram.org/file/bot{token}/{path}', timeout=TG_TIMEOUT).content
             ext = _os.path.splitext(path)[1].lower() or ('.tgs' if st.get('is_animated') else '.webm' if st.get('is_video') else '.webp')
             if kind == 'emoji':
                 url = _tg_emoji_file(data, ext)
                 if not url:
-                    prog['failed'] += 1; continue
+                    prog['failed'] += 1; _import_prog_set(pack_id, prog); continue
                 Sticker.objects.create(pack_id=pack_id, file_url=url, file_name=url.rsplit('/', 1)[-1],
                                        emoji=(st.get('emoji') or '')[:10], order=order,
                                        repaint=bool(st.get('needs_repainting')))
                 order += 1
-                prog['done'] += 1
+                prog['done'] += 1; _import_prog_set(pack_id, prog)
                 continue
             name = f'{uuid.uuid4()}{ext}'
             with open(_os.path.join(stickers_dir, name), 'wb') as out:
@@ -5313,11 +5340,11 @@ def _tg_import_worker(pack_id, token, stickers, profile_id, kind='sticker'):
             Sticker.objects.create(pack_id=pack_id, file_url=f'/media/stickers/{name}', file_name=name,
                                    emoji=(st.get('emoji') or '')[:10], order=order)
             order += 1
-            prog['done'] += 1
+            prog['done'] += 1; _import_prog_set(pack_id, prog)
         except Exception:
             logger.exception('telegram sticker import failed')
-            prog['failed'] += 1
-    prog['finished'] = True
+            prog['failed'] += 1; _import_prog_set(pack_id, prog)
+    prog['finished'] = True; _import_prog_set(pack_id, prog)
 
 
 class TelegramStickerImportView(APIView):
@@ -5347,14 +5374,15 @@ class TelegramStickerImportView(APIView):
         pack = StickerPack.objects.create(name=(s.get('title') or name)[:100], description=f'Импорт по ссылке: {name}',
                                           author=profile, is_public=True, kind=kind)
         UserStickerPack.objects.get_or_create(user=profile, pack=pack)
-        IMPORT_PROGRESS[str(pack.id)] = {'total': len(stickers), 'done': 0, 'failed': 0, 'finished': not stickers,
-                                         'animated': sum(1 for x in stickers if x.get('is_animated')),
-                                         'video': sum(1 for x in stickers if x.get('is_video')), 'kind': kind}
+        prog = {'total': len(stickers), 'done': 0, 'failed': 0, 'finished': not stickers,
+                'animated': sum(1 for x in stickers if x.get('is_animated')),
+                'video': sum(1 for x in stickers if x.get('is_video')), 'kind': kind}
+        _import_prog_set(str(pack.id), prog)
         threading.Thread(target=_tg_import_worker, args=(str(pack.id), token, stickers, str(profile.id), kind), daemon=True).start()
-        return Response({"pack_id": str(pack.id), "name": pack.name, **IMPORT_PROGRESS[str(pack.id)]}, status=202)
+        return Response({"pack_id": str(pack.id), "name": pack.name, **prog}, status=202)
 
     def get(self, request, pk=None):
-        prog = IMPORT_PROGRESS.get(str(pk))
+        prog = _import_prog_get(str(pk))
         if not prog:
             pack = StickerPack.objects.filter(id=pk).first()
             if not pack:

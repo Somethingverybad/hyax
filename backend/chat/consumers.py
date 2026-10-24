@@ -3,6 +3,13 @@ import logging
 import uuid
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from asgiref.sync import sync_to_async
+
+# Присутствие (chat/presence.py) с Redis ходит по сети — из цикла событий
+# зовём его в потоке, не блокируя остальные сокеты процесса. Поток не «тот же,
+# что у базы»: иначе отметки встали бы в очередь за запросами к ней.
+def _ps(fn):
+    return sync_to_async(fn, thread_sensitive=False)
 from django.contrib.auth.models import AnonymousUser
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import UntypedToken
@@ -584,10 +591,10 @@ class UserConsumer(AsyncWebsocketConsumer):
             )
 
             from .presence import add_connection, conn_open, touch_last_seen
-            add_connection(profile.id)
+            await _ps(add_connection)(profile.id)
             await database_sync_to_async(touch_last_seen)(profile.id)
             await self.accept()
-            if conn_open(self.channel_name, profile.id):
+            if await _ps(conn_open)(self.channel_name, profile.id):
                 await self.broadcast_presence(profile)
             print(f"✅ [UserConsumer] Подключен user_id={self.user_id}")
         except Exception as e:
@@ -602,12 +609,12 @@ class UserConsumer(AsyncWebsocketConsumer):
             if profile:
                 from .presence import clear as clear_viewing, drop_connection
                 # Только отметка этого устройства: другие его устройства могут смотреть дальше.
-                clear_viewing(profile.id, getattr(self, "device_id", None))
-                drop_connection(profile.id)
+                await _ps(clear_viewing)(profile.id, getattr(self, "device_id", None))
+                await _ps(drop_connection)(profile.id)
                 from .presence import touch_last_seen
                 await database_sync_to_async(touch_last_seen)(profile.id)
                 from .presence import conn_close
-                if conn_close(self.channel_name, profile.id):
+                if await _ps(conn_close)(self.channel_name, profile.id):
                     await self.broadcast_presence(profile)
         except Exception:
             pass
@@ -629,7 +636,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                 if profile:
                     from .presence import conn_ping, touch_last_seen
                     await database_sync_to_async(touch_last_seen)(profile.id)
-                    if conn_ping(self.channel_name, profile.id):
+                    if await _ps(conn_ping)(self.channel_name, profile.id):
                         await self.broadcast_presence(profile)
                 return
 
@@ -644,8 +651,8 @@ class UserConsumer(AsyncWebsocketConsumer):
                     # «viewing: null» не дошло: пуши нужны сразу.
                     if not active:
                         dev = text_data_json.get('device') or getattr(self, "device_id", None)
-                        clear_viewing(profile.id, dev)
-                    if conn_active(self.channel_name, profile.id, active):
+                        await _ps(clear_viewing)(profile.id, dev)
+                    if await _ps(conn_active)(self.channel_name, profile.id, active):
                         await self.broadcast_presence(profile)
                 return
             
@@ -659,7 +666,7 @@ class UserConsumer(AsyncWebsocketConsumer):
                     dev = text_data_json.get('device') or None
                     if dev:
                         self.device_id = str(dev)[:255]
-                    set_viewing(profile.id, chat, text_data_json.get('ttl'), dev)
+                    await _ps(set_viewing)(profile.id, chat, text_data_json.get('ttl'), dev)
                     logger.info("presence: %s смотрит %s", str(profile.id)[:8], str(chat)[:8] if chat else "—")
                 return
 

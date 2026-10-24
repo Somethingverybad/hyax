@@ -1,8 +1,10 @@
 """Мониторинг: снимки онлайна и нагрузки раз в минуту + сводка для панели.
 
-Онлайн живёт в памяти процесса daphne (presence.py: открытые сокеты), поэтому
-сэмплер — поток в этом же процессе, его запускает sux_chat/asgi.py. В другом
-процессе (manage.py shell, migrate) он не стартует и онлайн там всегда ноль.
+Онлайн — открытые сокеты из presence.py (память процесса или Redis, когда api
+работает несколькими процессами). Сэмплер — поток в процессе api, его
+запускает sux_chat/asgi.py; при нескольких процессах снимок за минуту пишет
+тот, кто первым занял отметку в кэше (Django cache, в Redis общий). В другом
+процессе (manage.py shell, migrate) сэмплер не стартует.
 
 Нагрузку читаем из /proc: loadavg, stat и meminfo в контейнере показывают
 хост целиком (они не изолированы), а диск — корень, это тот же раздел хоста.
@@ -106,10 +108,7 @@ def presence_counts():
     """(на экране, на связи, сокетов) без ботов."""
     from . import presence
     from .models import Profile
-    now = time.monotonic()
-    with presence._lock:
-        conns = list(presence._conns.values())
-    fresh = [(p, act) for p, act, ts in conns if now - ts < presence.STALE]
+    fresh = [(p, act) for _, p, act, _, _ in presence.conn_snapshot()]
     bots = {str(x) for x in Profile.objects.filter(is_bot=True).values_list("id", flat=True)}
     active = {p for p, act in fresh if act and p not in bots}
     connected = {p for p, _ in fresh if p not in bots}
@@ -123,18 +122,13 @@ def online_users(limit=300):
     это панель админа, — но с пометкой. Боты не считаются."""
     from . import presence
     from .models import Profile
-    now = time.monotonic()
-    with presence._lock:
-        conns = [(ch, p, act, ts, presence._opened.get(ch)) for ch, (p, act, ts) in presence._conns.items()]
     per = {}
-    for ch, p, act, ts, opened in conns:
-        if now - ts >= presence.STALE:
-            continue
+    for _, p, act, _, since in presence.conn_snapshot():
         u = per.setdefault(p, {"active": False, "devices": 0, "since": None})
         u["active"] = u["active"] or act
         u["devices"] += 1
-        if opened is not None:
-            u["since"] = opened if u["since"] is None else min(u["since"], opened)
+        if since is not None:
+            u["since"] = since if u["since"] is None else max(u["since"], since)
     if not per:
         return []
     rows = Profile.objects.filter(id__in=list(per), is_bot=False).values("id", "username", "avatar_url", "hide_online", "role")
@@ -145,7 +139,7 @@ def online_users(limit=300):
             "id": str(r["id"]), "username": r["username"], "avatar_url": r["avatar_url"],
             "hidden": r["hide_online"], "role": r["role"],
             "active": u["active"], "devices": u["devices"],
-            "online_s": int(now - u["since"]) if u["since"] is not None else None,
+            "online_s": int(u["since"]) if u["since"] is not None else None,
         })
     # На экране — выше, внутри — кто дольше в сети.
     out.sort(key=lambda x: (not x["active"], -(x["online_s"] or 0), x["username"].lower()))
@@ -166,6 +160,13 @@ def _loop():
             cur = _cpu_times()
             cpu = _cpu_pct(prev, cur)
             prev = cur
+            # Несколько процессов api — снимок пишет один: кто первым занял
+            # отметку этой минуты в общем кэше (без Redis кэш локальный, и
+            # процесс один).
+            from django.core.cache import cache
+            minute = int(time.time() // SAMPLE_EVERY)
+            if not cache.add(f"metrics:sample:{minute}", 1, SAMPLE_EVERY * 2):
+                continue
             active, connected, sockets = presence_counts()
             mem = meminfo()
             la = loadavg()

@@ -67,12 +67,41 @@ TEMPLATES = [
 WSGI_APPLICATION = "sux_chat.wsgi.application"
 ASGI_APPLICATION = "sux_chat.asgi.application"
 
-# Channels configuration
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
+# === Redis: несколько процессов api ===
+# С REDIS_URL слой каналов, кэш Django и присутствие (chat/presence.py) живут
+# в Redis — так api можно запускать несколькими процессами (gunicorn с
+# воркерами uvicorn в docker-compose): сокет человека в одном процессе, а
+# HTTP-запрос, который шлёт ему событие или решает, нужен ли пуш, — в другом.
+# Без REDIS_URL (тесты, локальный стенд) всё в памяти одного процесса.
+REDIS_URL = os.getenv("REDIS_URL", "")
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+                "prefix": "hyax",
+                # Очередь на сокет: клиент, который не читает (свёрнутое
+                # приложение), не должен копить сотни событий.
+                "capacity": 500,
+                "expiry": 30,
+            },
+        },
+    }
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "hyax",
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
+    }
 
 # === База данных (PostgreSQL в Docker) ===
 DATABASES = {
@@ -83,6 +112,11 @@ DATABASES = {
         "PASSWORD": os.getenv("POSTGRES_PASSWORD"),
         "HOST": "db",  # имя контейнера PostgreSQL из docker-compose.yml
         "PORT": "5432",
+        # Соединение живёт между запросами: открывать новое на каждый —
+        # лишние миллисекунды и нагрузка на Postgres. Проверка перед
+        # использованием — чтобы не упасть на соединении, которое база закрыла.
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 

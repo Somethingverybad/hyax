@@ -7,12 +7,45 @@
 повторяет это, пока чат открыт; запись живёт TTL секунд и протухает сама,
 если приложение свернули или связь оборвалась.
 
-Хранение — в памяти процесса, и это осознанно: у api один процесс daphne
-(см. docker-compose) и InMemoryChannelLayer, так что сокеты и HTTP-запросы
-живут в нём же. Появится второй процесс — переносить в Redis.
+Хранение: по умолчанию память процесса — для одного процесса daphne и
+InMemoryChannelLayer (тесты, локальный стенд). На сервере api работает
+несколькими процессами, и тогда всё это лежит в Redis (REDIS_URL в
+настройках, реализация — chat/presence_redis.py): сокет человека в одном
+процессе, а HTTP-запрос «слать ли пуш» — в другом, и видеть они должны одно.
+Публичные функции ниже одни для обоих хранилищ.
 """
 import threading
 import time
+
+# ── Хранилище: Redis или память процесса ─────────────────────────────────────
+_redis_backend = None
+_redis_checked = False
+
+
+def configure(client=None) -> None:
+    """Переключить хранилище: client — redis.Redis (в тестах — fakeredis),
+    None — память процесса."""
+    global _redis_backend, _redis_checked
+    _redis_checked = True
+    if client is None:
+        _redis_backend = None
+        return
+    from .presence_redis import RedisPresence
+    _redis_backend = RedisPresence(client, TTL, TTL_MIN, TTL_MAX, STALE, ROV_PUSH_INTERVAL, PUSHED_TTL)
+
+
+def _rb():
+    """Redis-хранилище, если настроено, иначе None (память процесса)."""
+    global _redis_checked
+    if not _redis_checked:
+        _redis_checked = True
+        from django.conf import settings
+        url = getattr(settings, "REDIS_URL", "")
+        if url:
+            import redis
+            configure(redis.Redis.from_url(url, decode_responses=True, socket_timeout=1.0,
+                                           socket_connect_timeout=1.0, health_check_interval=30))
+    return _redis_backend
 
 TTL = 90  # секунд без подтверждения — считаем, что чат уже не смотрят
 # Клиент может сам сказать, как часто подтверждает (поле ttl в «viewing»):
@@ -33,6 +66,9 @@ def _key(profile_id, device_id) -> str:
 
 
 def set_viewing(profile_id, chat_id, ttl=None, device_id=None) -> None:
+    b = _rb()
+    if b:
+        return b.set_viewing(profile_id, chat_id, ttl, device_id)
     key = _key(profile_id, device_id)
     try:
         life = min(TTL_MAX, max(TTL_MIN, int(ttl))) if ttl else TTL
@@ -62,6 +98,9 @@ def is_viewing(profile_id, chat_id) -> bool:
 def viewing_devices(chat_id) -> dict[str, set[str]]:
     """Кто смотрит чат: id профиля → устройства ('' — клиент без устройства,
     считаем за весь профиль). Протухшие отметки по пути выкидываем."""
+    b = _rb()
+    if b:
+        return b.viewing_devices(chat_id)
     now, cid = time.monotonic(), str(chat_id)
     out: dict[str, set[str]] = {}
     with _lock:
@@ -76,6 +115,9 @@ def viewing_devices(chat_id) -> dict[str, set[str]]:
 
 def viewers(chat_id) -> set[str]:
     """Кто прямо сейчас смотрит этот чат (любым устройством) — id профилей."""
+    b = _rb()
+    if b:
+        return b.viewers(chat_id)
     return set(viewing_devices(chat_id))
 
 
@@ -88,12 +130,16 @@ _online: dict[str, int] = {}
 
 
 def add_connection(profile_id) -> None:
+    if _rb():
+        return  # в Redis соединения учитывает conn_open
     key = str(profile_id)
     with _lock:
         _online[key] = _online.get(key, 0) + 1
 
 
 def drop_connection(profile_id) -> None:
+    if _rb():
+        return
     key = str(profile_id)
     with _lock:
         left = _online.get(key, 0) - 1
@@ -104,6 +150,9 @@ def drop_connection(profile_id) -> None:
 
 
 def is_online(profile_id) -> bool:
+    b = _rb()
+    if b:
+        return b.is_online(profile_id)
     with _lock:
         return _online.get(str(profile_id), 0) > 0
 
@@ -142,34 +191,62 @@ def _update_conn(channel, profile_id, active) -> bool:
 
 
 def conn_open(channel, profile_id) -> bool:
+    b = _rb()
+    if b:
+        return b.conn_open(channel, profile_id)
     with _lock:
         _opened[channel] = time.monotonic()
     return _update_conn(channel, profile_id, True)
 
 
 def conn_active(channel, profile_id, active: bool) -> bool:
+    b = _rb()
+    if b:
+        return b.conn_active(channel, profile_id, active)
     return _update_conn(channel, profile_id, bool(active))
 
 
 def conn_ping(channel, profile_id) -> bool:
+    b = _rb()
+    if b:
+        return b.conn_ping(channel, profile_id)
     with _lock:
         rec = _conns.get(channel)
     return _update_conn(channel, profile_id, rec[1] if rec else True)
 
 
 def conn_close(channel, profile_id) -> bool:
+    b = _rb()
+    if b:
+        return b.conn_close(channel, profile_id)
     with _lock:
         _opened.pop(channel, None)
     return _update_conn(channel, profile_id, None)
 
 
 def is_active(profile_id) -> bool:
+    b = _rb()
+    if b:
+        return b.is_active(profile_id)
     now = time.monotonic()
     with _lock:
         for ch, (p, act, ts) in list(_conns.items()):
             if now - ts > STALE * 20:  # забытые соединения — выметаем
                 _conns.pop(ch, None)
         return _active_locked(str(profile_id), now)
+
+
+def conn_snapshot() -> list[tuple[str, str, bool, float, float]]:
+    """(канал, профиль, на экране, секунд с пинга, секунд с открытия) по всем
+    живым соединениям — для мониторинга (chat/metrics.py)."""
+    b = _rb()
+    if b:
+        return b.conn_snapshot()
+    now = time.monotonic()
+    with _lock:
+        rows = [(ch, p, act, now - ts, now - _opened[ch] if ch in _opened else None)
+                for ch, (p, act, ts) in _conns.items()]
+    return [(ch, p, act, age, since) for ch, p, act, age, since in rows if age < STALE]
 
 
 def shown_online(profile) -> bool:
@@ -194,11 +271,16 @@ def touch_last_seen(profile_id) -> None:
     from django.utils import timezone
     from .models import Profile
     key = str(profile_id)
-    now = time.monotonic()
-    with _lock:
-        if now - _last_seen_write.get(key, 0) < 60:
+    b = _rb()
+    if b:
+        if not b.should_write_last_seen(key):
             return
-        _last_seen_write[key] = now
+    else:
+        now = time.monotonic()
+        with _lock:
+            if now - _last_seen_write.get(key, 0) < 60:
+                return
+            _last_seen_write[key] = now
     Profile.objects.filter(id=profile_id).update(last_seen=timezone.now())
 
 
@@ -234,6 +316,9 @@ _rov_push: dict[tuple[str, str], float] = {}
 
 
 def rov_push_allowed(sender_id, target_id) -> bool:
+    b = _rb()
+    if b:
+        return b.rov_push_allowed(sender_id, target_id)
     key = (str(sender_id), str(target_id))
     now = time.monotonic()
     with _lock:
@@ -255,6 +340,9 @@ PUSHED_TTL = 7 * 24 * 3600  # дольше уведомления на теле�
 
 
 def note_pushed(profile_ids, chat_id) -> None:
+    b = _rb()
+    if b:
+        return b.note_pushed(profile_ids, chat_id)
     now = time.monotonic()
     with _lock:
         for pid in profile_ids:
@@ -264,6 +352,9 @@ def note_pushed(profile_ids, chat_id) -> None:
 def was_pushed(profile_id, chat_id) -> bool:
     """Висит ли пуш по этому чату (с прошлого прочтения) — не забывая о нём:
     удалили сообщение — убрать его уведомление, но сам чат ещё не прочитан."""
+    b = _rb()
+    if b:
+        return b.was_pushed(profile_id, chat_id)
     with _lock:
         until = _pushed.get((str(profile_id), str(chat_id)))
     return bool(until and until > time.monotonic())
@@ -271,6 +362,9 @@ def was_pushed(profile_id, chat_id) -> bool:
 
 def pushed_for(chat_id) -> list:
     """Кому по этому чату висит пуш — id профилей (для message_deleted)."""
+    b = _rb()
+    if b:
+        return b.pushed_for(chat_id)
     now, cid = time.monotonic(), str(chat_id)
     with _lock:
         return [pid for (pid, c), until in _pushed.items() if c == cid and until > now]
@@ -278,6 +372,9 @@ def pushed_for(chat_id) -> list:
 
 def take_pushed(profile_id, chat_id) -> bool:
     """Был ли пуш по этому чату с прошлого прочтения (и забыть о нём)."""
+    b = _rb()
+    if b:
+        return b.take_pushed(profile_id, chat_id)
     with _lock:
         until = _pushed.pop((str(profile_id), str(chat_id)), None)
     return bool(until and until > time.monotonic())

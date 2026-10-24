@@ -27,15 +27,25 @@ from .serializers import MessageSerializer
 
 logger = logging.getLogger(__name__)
 
-QUERIES: dict[str, dict] = {}
+# Открытые inline-запросы: в кэше Django (с REDIS_URL — общий для всех
+# процессов api: вопрос боту уходит из одного процесса, ответ бота приходит в
+# другой). Протухают сами по TTL.
 TTL = 600
 MAX_RESULTS = 20
 
 
-def _prune():
-    now = time.time()
-    for k in [k for k, q in QUERIES.items() if now - q["at"] > TTL]:
-        QUERIES.pop(k, None)
+def _qkey(qid) -> str:
+    return f"inline:q:{qid}"
+
+
+def _q_get(qid):
+    from django.core.cache import cache
+    return cache.get(_qkey(qid))
+
+
+def _q_set(qid, q) -> None:
+    from django.core.cache import cache
+    cache.set(_qkey(qid), q, TTL)
 
 
 def _notify(profile_id, data):
@@ -90,9 +100,8 @@ class InlineQueryView(APIView):
                .distinct().first())
         if not bot:
             return Response({"error": "Бот не найден"}, status=404)
-        _prune()
         qid = secrets.token_urlsafe(12)
-        QUERIES[qid] = {"bot_id": str(bot.id), "user_id": str(me.id), "chat_id": str(chat.id), "query": query, "results": {}, "at": time.time()}
+        _q_set(qid, {"bot_id": str(bot.id), "user_id": str(me.id), "chat_id": str(chat.id), "query": query, "results": {}, "at": time.time()})
         _notify(bot.id, {
             "type": "inline_query", "query_id": qid, "query": query, "chat_id": str(chat.id),
             "from_id": str(me.id), "from_username": me.username,
@@ -106,7 +115,7 @@ class InlineAnswerView(APIView):
 
     def post(self, request, query_id):
         bot = _me(request)
-        q = QUERIES.get(query_id)
+        q = _q_get(query_id)
         if not bot or not bot.is_bot or not q or q["bot_id"] != str(bot.id):
             return Response({"error": "Запрос не найден или не ваш"}, status=404)
         raw = request.data.get("results")
@@ -114,6 +123,7 @@ class InlineAnswerView(APIView):
             return Response({"error": "results — список"}, status=400)
         results = [r for r in (_clean_result(x) for x in raw[:MAX_RESULTS]) if r]
         q["results"] = {r["id"]: r for r in results}
+        _q_set(query_id, q)
         _notify(q["user_id"], {"type": "inline_results", "query_id": query_id, "bot": bot.username, "results": results})
         return Response({"ok": True, "count": len(results)})
 
@@ -124,7 +134,7 @@ class InlineChooseView(APIView):
 
     def post(self, request, query_id):
         me = _me(request)
-        q = QUERIES.get(query_id)
+        q = _q_get(query_id)
         if not me or not q or q["user_id"] != str(me.id):
             return Response({"error": "Запрос не найден"}, status=404)
         rid = str(request.data.get("result_id") or "")

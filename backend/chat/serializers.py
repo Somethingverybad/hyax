@@ -32,10 +32,22 @@ class ProfileSerializer(serializers.ModelSerializer):
     saved_visible = serializers.SerializerMethodField()
 
     def get_saved_visible(self, obj):
-        from .moderation import can_see_saved
         me = getattr(self.context.get('request'), 'user', None)
         me_profile = getattr(me, 'profile', None) if me else None
-        return bool(me_profile) and can_see_saved(obj.id, me_profile.id)
+        if not me_profile:
+            return False
+        # Режим уже в объекте (участники приходят prefetch'ем): без этого в
+        # списке чатов на каждого участника шёл отдельный запрос за ним.
+        # Правило то же, что в moderation.can_see_saved.
+        if str(obj.id) == str(me_profile.id):
+            return True
+        mode = getattr(obj, 'saved_visibility', None)
+        if mode is None or mode == 'all':
+            return True
+        if mode == 'none':
+            return False
+        from .moderation import can_see_saved
+        return can_see_saved(obj.id, me_profile.id)
 
     def get_notify_sound(self, obj):
         return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None

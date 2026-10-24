@@ -3,6 +3,12 @@ channels>=4.0.0
 channels-redis>=4.1.0
 daphne>=4.0.0
 gunicorn
+# Несколько процессов api: gunicorn управляет воркерами uvicorn (HTTP и
+# WebSocket по ASGI, как у daphne). daphne остаётся для runserver и стенда.
+uvicorn[standard]
+uvicorn-worker
+# Слой каналов, кэш и присутствие в Redis (REDIS_URL, sux_chat/settings.py).
+redis>=5
 psycopg2-binary
 djangorestframework
 django-cors-headers

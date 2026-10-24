@@ -1,8 +1,9 @@
 import tempfile
+import time
 from datetime import timedelta
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -2842,3 +2843,215 @@ class SoloActionTests(TestCase):
         self.assertEqual(self.act.phrase_ru_you, "")
         self.assertIn("{who}", self.act.phrase_en)
         self.assertNotIn("{whom}", self.act.phrase_en)
+
+
+class ChatListQueryCountTests(TestCase):
+    """Список чатов: число запросов к базе не растёт с числом чатов и участников
+    (последние сообщения и «прочитано» — пачкой, видимость сохранёнок — из
+    объекта участника)."""
+
+    def _chats(self, me, n, tag):
+        for i in range(n):
+            other = make_user(f"{tag}_o{i}", saved_visibility="none" if i % 2 else "all")
+            chat = Chat.objects.create(kind="direct")
+            for p in (me, other):
+                ChatParticipant.objects.create(chat=chat, user=p, role="member")
+            Message.objects.create(chat=chat, sender=other, content=f"привет {i}")
+            Message.objects.create(chat=chat, sender=me, content=f"ответ {i}")
+
+    def test_constant_queries(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        me = make_user("qc_me")
+        self._chats(me, 2, "a")
+        c = client_for(me)
+        c.get("/api/chats/")  # прогрев: профиль пользователя кэшируется на объекте запроса
+        with CaptureQueriesContext(connection) as small:
+            r1 = c.get("/api/chats/")
+        self._chats(me, 12, "b")
+        with CaptureQueriesContext(connection) as big:
+            r2 = c.get("/api/chats/")
+        self.assertEqual((r1.status_code, r2.status_code, len(r2.data)), (200, 200, 14))
+        self.assertEqual(len(small.captured_queries), len(big.captured_queries))
+        # Превью и видимость сохранёнок на месте.
+        by_text = {ch["last_message"]["text"]: ch for ch in r2.data}
+        self.assertIn("ответ 3", by_text)
+        self.assertEqual(by_text["ответ 3"]["last_message"]["sender_id"], str(me.id))
+        self.assertFalse(by_text["ответ 3"]["last_message"]["read"])
+        vis = {p["username"]: p["saved_visible"] for ch in r2.data for p in ch["participants"] if p["id"] != str(me.id)}
+        self.assertEqual((vis["b_o0"], vis["b_o1"]), (True, False))
+
+    def test_last_message_read_and_detail(self):
+        me, other = make_user("qc2_me"), make_user("qc2_other")
+        chat = Chat.objects.create(kind="direct")
+        for p in (me, other):
+            ChatParticipant.objects.create(chat=chat, user=p, role="member")
+        m = Message.objects.create(chat=chat, sender=me, content="прочитай")
+        MessageReadStatus.objects.create(message=m, user=other)
+        c = client_for(me)
+        lst = c.get("/api/chats/").data[0]["last_message"]
+        self.assertEqual((lst["text"], lst["read"]), ("прочитай", True))
+        one = c.get(f"/api/chats/{chat.id}/").data["last_message"]
+        self.assertEqual((one["text"], one["read"], one["sender_id"]), ("прочитай", True, str(me.id)))
+
+
+class RedisPresenceTests(TestCase):
+    """Присутствие в Redis (chat/presence_redis.py) через публичные функции
+    chat/presence.py — на подделке Redis (fakeredis)."""
+
+    def setUp(self):
+        try:
+            import fakeredis
+        except ImportError:
+            self.skipTest("нет fakeredis")
+        from . import presence
+        self.presence = presence
+        self.r = fakeredis.FakeRedis(decode_responses=True)
+        presence.configure(self.r)
+        self.me = make_user("rp_me")
+        self.friend = make_user("rp_friend")
+
+    def tearDown(self):
+        self.presence.configure(None)
+
+    def test_viewing_per_device(self):
+        p = self.presence
+        a, b = "11111111-aaaa", "22222222-bbbb"
+        p.set_viewing(self.me.id, a, 15, "d1")
+        p.set_viewing(self.me.id, a, 15, "d2")
+        self.assertEqual(p.viewing_devices(a), {str(self.me.id): {"d1", "d2"}})
+        self.assertTrue(p.is_viewing(self.me.id, a))
+        # Устройство переключилось на другой чат — с прошлого отметка снята.
+        p.set_viewing(self.me.id, b, 15, "d1")
+        self.assertEqual((p.viewers(a), p.viewers(b)), ({str(self.me.id)}, {str(self.me.id)}))
+        self.assertEqual(p.viewing_devices(a), {str(self.me.id): {"d2"}})
+        p.clear(self.me.id, "d2")
+        self.assertEqual(p.viewers(a), set())
+        # Без устройства — снимаются все отметки профиля.
+        p.set_viewing(self.me.id, a, 15, "d2")
+        p.clear(self.me.id)
+        self.assertEqual((p.viewers(a), p.viewers(b)), (set(), set()))
+
+    def test_viewing_expires(self):
+        from unittest import mock
+        p = self.presence
+        p.set_viewing(self.me.id, "chat-x", 15, "d1")
+        with mock.patch("chat.presence_redis.time.time", return_value=time.time() + 20):
+            self.assertEqual(p.viewers("chat-x"), set())
+
+    def test_connections_online_active(self):
+        from unittest import mock
+        p = self.presence
+        p.add_connection(self.me.id)
+        self.assertTrue(p.conn_open("ch1", self.me.id))  # стал «в сети»
+        self.assertTrue(p.is_active(self.me.id))
+        self.assertTrue(p.is_online(self.me.id))
+        self.assertFalse(p.conn_open("ch2", self.me.id))  # второе устройство статус не меняет
+        self.assertTrue(p.conn_active("ch1", self.me.id, False) is False)
+        self.assertTrue(p.conn_active("ch2", self.me.id, False))  # оба свернули — «не в сети»
+        self.assertFalse(p.is_active(self.me.id))
+        self.assertTrue(p.is_online(self.me.id))  # сокеты ещё открыты
+        self.assertTrue(p.conn_ping("ch1", self.me.id) is False)
+        self.assertTrue(p.conn_active("ch1", self.me.id, True))
+        rows = p.conn_snapshot()
+        self.assertEqual(sorted((ch, prof, act) for ch, prof, act, _, _ in rows),
+                         [("ch1", str(self.me.id), True), ("ch2", str(self.me.id), False)])
+        # Пинга нет дольше STALE — соединение считаем мёртвым.
+        with mock.patch("chat.presence_redis.time.time", return_value=time.time() + p.STALE + 1):
+            self.assertFalse(p.is_active(self.me.id))
+            self.assertFalse(p.is_online(self.me.id))
+            self.assertEqual(p.conn_snapshot(), [])
+        self.assertTrue(p.conn_close("ch1", self.me.id))
+        p.conn_close("ch2", self.me.id)
+        p.drop_connection(self.me.id)
+        self.assertFalse(p.is_online(self.me.id))
+
+    def test_metrics_counts_from_redis(self):
+        from . import metrics
+        bot = make_user("rp_bot", is_bot=True)
+        self.presence.conn_open("c1", self.me.id)
+        self.presence.conn_open("c2", self.me.id)
+        self.presence.conn_active("c3", self.friend.id, False)
+        self.presence.conn_open("c4", bot.id)
+        self.assertEqual(metrics.presence_counts(), (1, 2, 3))
+        users = {u["username"]: u for u in metrics.online_users()}
+        self.assertEqual(set(users), {"rp_me", "rp_friend"})
+        self.assertEqual((users["rp_me"]["devices"], users["rp_me"]["active"], users["rp_friend"]["active"]), (2, True, False))
+
+    def test_last_seen_written_once_a_minute(self):
+        before = Profile.objects.get(id=self.me.id).last_seen
+        self.presence.touch_last_seen(self.me.id)
+        first = Profile.objects.get(id=self.me.id).last_seen
+        self.assertNotEqual(first, before)
+        Profile.objects.filter(id=self.me.id).update(last_seen=before)
+        self.presence.touch_last_seen(self.me.id)
+        self.assertEqual(Profile.objects.get(id=self.me.id).last_seen, before)
+
+    def test_rov_and_pushed(self):
+        p = self.presence
+        self.assertTrue(p.rov_push_allowed(self.me.id, self.friend.id))
+        self.assertFalse(p.rov_push_allowed(self.me.id, self.friend.id))
+        self.assertTrue(p.rov_push_allowed(self.friend.id, self.me.id))
+        chat = "chat-p"
+        p.note_pushed([self.me.id, self.friend.id], chat)
+        self.assertTrue(p.was_pushed(self.me.id, chat))
+        self.assertEqual(set(p.pushed_for(chat)), {str(self.me.id), str(self.friend.id)})
+        self.assertTrue(p.take_pushed(self.me.id, chat))
+        self.assertFalse(p.take_pushed(self.me.id, chat))
+        self.assertEqual(p.pushed_for(chat), [str(self.friend.id)])
+        self.assertFalse(p.was_pushed(self.me.id, "other"))
+
+    def test_redis_down_degrades_safely(self):
+        class Broken:
+            def __getattr__(self, name):
+                raise ConnectionError("redis down")
+        p = self.presence
+        p.configure(Broken())
+        p.set_viewing(self.me.id, "c", 15, "d")
+        self.assertEqual(p.viewers("c"), set())
+        self.assertFalse(p.is_active(self.me.id))
+        self.assertFalse(p.conn_open("ch", self.me.id))
+        self.assertTrue(p.rov_push_allowed(self.me.id, self.friend.id))
+        self.assertEqual(p.conn_snapshot(), [])
+        self.assertFalse(p.take_pushed(self.me.id, "c"))
+
+
+
+class RedisPresenceSocketTests(TransactionTestCase):
+    """Сокет с присутствием в Redis: подключение → «в сети», viewing → «смотрит
+    чат», отключение — снято. TransactionTestCase: консьюмер ходит в базу из
+    другого потока."""
+
+    def setUp(self):
+        try:
+            import fakeredis
+        except ImportError:
+            self.skipTest("нет fakeredis")
+        from . import presence
+        self.presence = presence
+        presence.configure(fakeredis.FakeRedis(decode_responses=True))
+        self.me = make_user("rps_me")
+
+    def tearDown(self):
+        self.presence.configure(None)
+
+    def test_socket_marks_presence_through_redis(self):
+        import asyncio
+        from channels.testing import WebsocketCommunicator
+        from rest_framework_simplejwt.tokens import AccessToken
+        from sux_chat.asgi import application
+        token = str(AccessToken.for_user(self.me.user))
+
+        async def run():
+            comm = WebsocketCommunicator(application, f"/ws/user/{self.me.id}/?token={token}")
+            ok, _ = await comm.connect()
+            self.assertTrue(ok)
+            await comm.send_json_to({"type": "viewing", "chat": "chat-ws", "ttl": 15, "device": "dev1"})
+            await comm.send_json_to({"type": "ping"})
+            self.assertEqual((await comm.receive_json_from())["type"], "pong")
+            self.assertTrue(self.presence.is_active(self.me.id))
+            self.assertEqual(self.presence.viewing_devices("chat-ws"), {str(self.me.id): {"dev1"}})
+            await comm.disconnect()
+            self.assertFalse(self.presence.is_online(self.me.id))
+            self.assertEqual(self.presence.viewers("chat-ws"), set())
+        asyncio.run(run())

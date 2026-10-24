@@ -42,16 +42,26 @@ services:
     build: ./backend
     container_name: sux_chat_api
     restart: unless-stopped
+    # Несколько процессов: один daphne упирался в одно ядро, и при утреннем
+    # наплыве запросы со всех устройств вставали в очередь (p90 списка чатов
+    # 0,8 с при 4 свободных ядрах). gunicorn держит API_WORKERS воркеров
+    # uvicorn; состояние между ними — в Redis (сервис redis ниже, REDIS_URL).
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             daphne -b 0.0.0.0 -p 8000 sux_chat.asgi:application"
+             gunicorn sux_chat.asgi:application
+               -k uvicorn_worker.UvicornWorker
+               -w ${API_WORKERS:-3}
+               -b 0.0.0.0:8000
+               --timeout 120 --graceful-timeout 30
+               --access-logfile - --access-logformat '%(h)s \"%(r)s\" %(s)s %(b)s %(M)sms'"
     volumes:
       - ./backend:/app
       - ./certbot/certs:/etc/letsencrypt:ro
     env_file:
       - .env
     environment:
+      REDIS_URL: redis://redis:6379/0
       # Свой LibreTranslate (сервис translate ниже) — запасной бесплатный
       # переводчик; GEMINI_API_KEY или DEEPL_API_KEY в .env имеют приоритет.
       LIBRETRANSLATE_URL: http://translate:5000
@@ -59,6 +69,7 @@ services:
       - "8000"
     depends_on:
       - db
+      - redis
       - coturn
     networks:
       - sux_chat_network
@@ -85,8 +96,13 @@ services:
       - ./backend:/app
     env_file:
       - .env
+    environment:
+      # Тот же Redis, что у api: события зеркала доходят до сокетов, а «кто
+      # смотрит чат» (пуш не нужен) читается общее, не своя пустая память.
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       - db
+      - redis
       - api
     networks:
       - sux_chat_network
@@ -168,6 +184,17 @@ services:
       - "3478:3478/tcp"
       - "3478:3478/udp"
       - "49160-49200:49160-49200/udp"
+    networks:
+      - sux_chat_network
+
+  # Общее состояние процессов api: слой каналов (события в сокеты), кэш
+  # Django, присутствие (chat/presence.py). Всё с TTL — на диск не пишем,
+  # после перезапуска состояние наберётся заново за минуту.
+  redis:
+    image: redis:7-alpine
+    container_name: sux_chat_redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy volatile-lru
     networks:
       - sux_chat_network
 
