@@ -8,15 +8,20 @@
  * бросаем, а вызывающий рисует запасную «дорожку».
  */
 
-let actx: AudioContext | null = null;
 const cache = new Map<string, number[]>();
 
-function ctx(): AudioContext {
-  if (!actx) {
-    const Ctor = window.AudioContext || (window as any).webkitAudioContext;
-    actx = new Ctor();
-  }
-  return actx;
+/** Декодируем в OfflineAudioContext: обычный AudioContext на iOS занимает
+ *  аудиосессию, и музыка другого приложения останавливалась просто от того,
+ *  что лента построила форму волны (баг-репорт e439fccb). Офлайн-контекст
+ *  сессию не трогает. */
+function decode(arr: ArrayBuffer): Promise<AudioBuffer> {
+  const Off = (window as any).OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+  const c: OfflineAudioContext = new Off(1, 1, 44100);
+  // Safari: decodeAudioData у офлайн-контекста — только с колбэками.
+  return new Promise((res, rej) => {
+    const r = c.decodeAudioData(arr, res, rej);
+    if (r && typeof (r as Promise<AudioBuffer>).then === "function") (r as Promise<AudioBuffer>).then(res, rej);
+  });
 }
 
 export async function loadWaveform(url: string, buckets = 40): Promise<number[]> {
@@ -26,7 +31,7 @@ export async function loadWaveform(url: string, buckets = 40): Promise<number[]>
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`waveform fetch ${resp.status}`);
   const arr = await resp.arrayBuffer();
-  const audio = await ctx().decodeAudioData(arr);
+  const audio = await decode(arr);
 
   const data = audio.getChannelData(0);
   const block = Math.floor(data.length / buckets) || 1;

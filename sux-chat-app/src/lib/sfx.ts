@@ -12,6 +12,17 @@ import { getSetting } from "./settings";
 
 let ctx: AudioContext | null = null;
 const cache = new Map<string, Promise<AudioBuffer>>();
+// Сколько звуков идёт сейчас: после последнего контекст приостанавливаем —
+// работающий, пусть и тихий, контекст держит аудиосессию iOS, и музыка
+// другого приложения не возвращалась после одного звука отправки.
+let playingNow = 0;
+let suspendTimer = 0;
+function soundEnded() {
+  playingNow = Math.max(0, playingNow - 1);
+  if (playingNow) return;
+  window.clearTimeout(suspendTimer);
+  suspendTimer = window.setTimeout(() => { if (!playingNow && ctx && ctx.state === "running") void ctx.suspend().catch(() => {}); }, 800);
+}
 
 function context(): AudioContext | null {
   try {
@@ -76,10 +87,12 @@ export async function playSfx(
   const c = context();
   if (!c) return () => {};
   let tapActive = false;
-  const release = () => { if (tapActive) { tapActive = false; tapSoundEnded(); } };
+  let released = false;
+  const release = () => { if (released) return; released = true; soundEnded(); if (tapActive) { tapActive = false; tapSoundEnded(); } };
   try {
     if (opts.tap) { tapActive = true; tapSoundStarted(); }
     if (c.state === "suspended") await c.resume();
+    playingNow += 1;
     const buf = await load(url, c);
     const src = c.createBufferSource();
     src.buffer = buf;

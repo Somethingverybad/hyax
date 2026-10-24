@@ -869,6 +869,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               {savedChat?.id ? (
                 <ChatWindow
                   chatId={savedChat.id}
+                  active={tab === "saved"}
                   userId={user.id}
                   peer={null}
                   group={null}
