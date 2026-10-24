@@ -92,6 +92,7 @@ LOGGING = {
 REDIS_URL = os.getenv("REDIS_URL", "")
 
 if REDIS_URL:
+    import sux_chat.channel_serializer  # noqa: F401 — регистрирует формат hyax-json
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -102,6 +103,9 @@ if REDIS_URL:
                 # сокеты рвались и переподключались без конца.
                 "hosts": [{"address": REDIS_URL, "socket_timeout": 30}],
                 "prefix": "hyax",
+                # JSON с UUID и датами (sux_chat/channel_serializer.py): в
+                # событиях для сокетов остались UUID, msgpack на них падал.
+                "serializer_format": "hyax-json",
                 # Очередь на сокет: клиент, который не читает (свёрнутое
                 # приложение), не должен копить сотни событий.
                 "capacity": 500,
