@@ -35,7 +35,9 @@ export function startUserSocket(userId: string): WebSocketService {
   stopUserSocket();
   uid = userId;
   const sock = new WebSocketService(`${WS_URL}/user/${userId}/`, {
-    maxReconnectAttempts: 20,
+    // Без предела: сервер перезапускается или сеть пропадает дольше минуты —
+    // сокет всё равно должен вернуться сам (пауза растёт до 30 с).
+    maxReconnectAttempts: Infinity,
     // Сервер считает новое соединение «на экране»; если переподключились
     // в фоне — сразу поправляем, чтобы у собеседников не горело «в сети».
     onOpen: () => {

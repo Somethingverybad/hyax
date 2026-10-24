@@ -30,6 +30,29 @@ export class WebSocketService {
       maxReconnectAttempts: 5,
       ...options,
     };
+    // Сеть вернулась или приложение снова на экране — не ждём таймер.
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.wake);
+      document.addEventListener("visibilitychange", this.wake);
+    }
+  }
+
+  private wake = () => {
+    if (this.isManuallyClosed || this.isConnected()) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    void this.connect();
+  };
+
+  /** Пауза перед следующей попыткой: 3 с, 6, 12, 24, дальше по 30 с (± разброс,
+   *  чтобы после перезапуска сервера все не ломились одновременно). */
+  private reconnectDelay(): number {
+    const base = this.options.reconnectInterval || 3000;
+    const delay = Math.min(30000, base * 2 ** Math.min(this.reconnectAttempts - 1, 4));
+    return Math.round(delay * (0.8 + Math.random() * 0.4));
   }
 
   /**
@@ -93,14 +116,18 @@ export class WebSocketService {
         this.stopPing();
         this.options.onClose?.();
 
-        // Пытаемся переподключиться, если не было ручного закрытия
+        // Пытаемся переподключиться, если не было ручного закрытия.
+        // maxReconnectAttempts: Infinity — без предела (сокет пользователя):
+        // иначе за минуту недоступности сервера попытки кончались, и до
+        // перезапуска приложения оставался только опрос.
         if (!this.isManuallyClosed && this.reconnectAttempts < (this.options.maxReconnectAttempts || 5)) {
           this.reconnectAttempts++;
-          console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.options.maxReconnectAttempts})...`);
-          
+          const delay = this.reconnectDelay();
+          console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.options.maxReconnectAttempts}) in ${delay}ms...`);
+
           this.reconnectTimer = setTimeout(() => {
             void this.connect();
-          }, this.options.reconnectInterval || 3000);
+          }, delay);
         }
       };
     } catch (error) {
@@ -111,6 +138,10 @@ export class WebSocketService {
   disconnect(): void {
     this.isManuallyClosed = true;
     this.stopPing();
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.wake);
+      document.removeEventListener("visibilitychange", this.wake);
+    }
     
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
