@@ -128,6 +128,14 @@ export const dimsOf = (w?: number | null, h?: number | null) => (w && h ? { w, h
 
 /** Заглушка на время загрузки медиа: место уже зарезервировано по размерам,
  *  а внутри — скелетон «Мяты» (палочки «X» играют в пинг-понг). */
+/** Микропревью из сообщения (24 px, data-URI): размытое и чуть увеличенное,
+ *  чтобы края размытия не просвечивали. Decoding sync — рисуется в том же кадре. */
+export const Micro = ({ src }: { src: string }) => (
+  <img src={src} alt="" aria-hidden decoding="sync" draggable={false}
+    className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+    style={{ filter: "blur(10px)", transform: "scale(1.12)" }} />
+);
+
 export const MediaSkeleton = ({ className }: { className?: string }) => (
   <LoadingSkeleton className={cn("block w-full h-full", className)} />
 );
@@ -232,7 +240,9 @@ export const LivePreview = ({ stream, dimmed, facing, flip, onToggleFlip }: { st
 /** Видео-сообщение в переписке: тап — воспроизведение со звуком. */
 // Картинка сообщения: своя показывается из локального blob мгновенно, чужая —
 // по временной подписанной ссылке (S3) или локально (/media).
-export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
+export const MessageImage = ({ raw, name, dims, preview, localMap, onOpen, onError }: {
+  /** Микропревью (data-URI) — размытое под картинкой вместо скелетона. */
+  preview?: string | null;
   raw: string; name: string | null; dims?: { w: number; h: number } | null;
   localMap: Map<string, string>; onOpen: (url: string, name: string) => void; onError: () => void;
 }) => {
@@ -247,7 +257,7 @@ export const MessageImage = ({ raw, name, dims, localMap, onOpen, onError }: {
   const [loaded, setLoaded] = useState(!!localBlob || seen);
   return (
     <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden max-w-full" style={fillBox(dims, 240, 192, { width: 160, height: 112 })}>
-      {!loaded && <MediaSkeleton className="absolute inset-0" />}
+      {!loaded && (preview ? <Micro src={preview} /> : <MediaSkeleton className="absolute inset-0" />)}
       {src && (
         <img
           src={src}
@@ -665,6 +675,8 @@ export interface AlbumItem {
   dims?: { w: number; h: number } | null;
   /** Кадр-превью видео с сервера. */
   poster?: string | null;
+  /** Микропревью (data-URI) — размытое, пока грузится картинка. */
+  preview?: string | null;
   pending?: boolean;
   progress?: number | null;
   failed?: boolean;
@@ -681,7 +693,7 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
   const [loaded, setLoaded] = useState(!!localBlob || seen);
   return (
     <div ref={nearRef} className="relative aspect-square overflow-hidden bg-black/20">
-      {!loaded && !video && <MediaSkeleton className="absolute inset-0" />}
+      {!loaded && !video && (item.preview ? <Micro src={item.preview} /> : <MediaSkeleton className="absolute inset-0" />)}
       {src && (video ? (
         <VideoThumb src={src} poster={posterSrc} cover seenKey={item.poster} />
       ) : (

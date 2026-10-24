@@ -585,6 +585,16 @@ class MessageSerializer(serializers.ModelSerializer):
             attrs['entities'] = resolve_custom_emoji(clean_entities(attrs.get('entities'), text or ''))
         return super().validate(attrs)
 
+    def validate_file_preview(self, value):
+        """Только маленькая картинка данными: иначе в ленту можно было бы
+        подсунуть что угодно под видом превью."""
+        v = (value or "").strip()
+        if not v:
+            return ""
+        if len(v) > 4000 or not v.startswith("data:image/"):
+            raise serializers.ValidationError("Превью слишком большое или не картинка")
+        return v
+
     def validate_buttons(self, value):
         """Кнопки ставит только бот и только в допустимом виде.
 
@@ -651,7 +661,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'file_size', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'effect_seen', 'wall_safe', 'wall_hidden', 'action', 'action_target', 'poll', 'signed']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'file_size', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'effect_seen', 'wall_safe', 'wall_hidden', 'action', 'action_target', 'poll', 'signed', 'file_preview']
         read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden', 'action', 'action_target']
 
     def get_action(self, obj):

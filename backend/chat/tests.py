@@ -1264,6 +1264,22 @@ class ReadReceiptTests(TestCase):
 
 
 
+class FilePreviewTests(TestCase):
+    """Микропревью: сохраняется с сообщением, но только маленькая картинка данными."""
+
+    def test_preview_saved_and_validated(self):
+        me = make_user("prev_me")
+        saved = client_for(me).get("/api/chats/saved/").data
+        tiny = "data:image/jpeg;base64," + "A" * 200
+        r = client_for(me).post("/api/messages/", {"chat": saved["id"], "content": None, "file_url": "/media/messages/x.jpg", "file_name": "x.jpg", "file_size": 10, "file_preview": tiny}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["file_preview"], tiny)
+        bad = client_for(me).post("/api/messages/", {"chat": saved["id"], "content": None, "file_url": "/media/messages/y.jpg", "file_name": "y.jpg", "file_size": 10, "file_preview": "javascript:alert(1)"}, format="json")
+        self.assertEqual(bad.status_code, 400)
+        big = client_for(me).post("/api/messages/", {"chat": saved["id"], "content": None, "file_url": "/media/messages/z.jpg", "file_name": "z.jpg", "file_size": 10, "file_preview": "data:image/jpeg;base64," + "A" * 5000}, format="json")
+        self.assertEqual(big.status_code, 400)
+
+
 class SignedLinksInMessagesTests(TestCase):
     """Вложения в S3: сообщение приносит подписанные ссылки (signed), и одна и
     та же ссылка живёт весь день (кэш), а не выписывается заново на каждый запрос."""

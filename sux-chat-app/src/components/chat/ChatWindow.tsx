@@ -166,6 +166,8 @@ interface Message {
   /** Размеры картинки/видео с сервера — место под медиа резервируется заранее. */
   /** Кадр-превью видео с сервера. */
   poster_url?: string | null;
+  /** Микропревью картинки (data-URI) — размытая заглушка, пока грузится. */
+  file_preview?: string | null;
   file_width?: number | null;
   file_height?: number | null;
   /** Общий id фото/видео, отправленных одним альбомом. */
@@ -3042,6 +3044,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         width: uploadResult.width ?? att.dims?.w,
         height: uploadResult.height ?? att.dims?.h,
         poster_url: uploadResult.poster_url ?? null,
+        file_preview: uploadResult.preview ?? null,
         album_id: opts.albumId ?? null,
         entities: opts.entities,
       }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file", opts.replyQuote ? { reply_quote: opts.replyQuote } : undefined);
@@ -4736,6 +4739,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               name: m.file_name ?? null,
                               dims: m._dims || dimsOf(m.file_width, m.file_height),
                               poster: m.poster_url ?? null,
+                              preview: m.file_preview ?? null,
                               pending: m.pending,
                               progress: m._progress ?? null,
                               failed: m._failed,
@@ -4760,6 +4764,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               raw={message.file_url}
                               name={message.file_name}
                               dims={message._dims || dimsOf(message.file_width, message.file_height)}
+                              preview={message.file_preview}
                               localMap={localImagesRef.current}
                               onOpen={() => openViewer(message.id)}
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}

@@ -2028,7 +2028,7 @@ export const api = {
     compress?: string,
     onProgress?: (percent: number) => void,
     local?: boolean,
-  ): Promise<{ file_url: string; file_name: string; file_size: number; width?: number | null; height?: number | null; poster_url?: string | null }> => {
+  ): Promise<{ file_url: string; file_name: string; file_size: number; width?: number | null; height?: number | null; poster_url?: string | null; preview?: string | null }> => {
     // Большой файл — кусками: одним запросом его обрывает шлюз CDN.
     if (file.size > CHUNK_MIN) {
       const extra: Record<string, string> = {};
@@ -2067,6 +2067,8 @@ export const api = {
     height?: number | null;
     /** Кадр-превью видео с сервера (ответ upload). */
     poster_url?: string | null;
+    /** Микропревью картинки (data-URI из ответа upload) — размытая заглушка в ленте. */
+    file_preview?: string | null;
     /** Трек из своего плейлиста: сервер возьмёт файл у него, без загрузки. */
     playlist_track_id?: string;
     /** Общий id для фото/видео, отправленных одним альбомом. */
@@ -2087,6 +2089,7 @@ export const api = {
         file_width: fileData.width || undefined,
         file_height: fileData.height || undefined,
         poster_url: fileData.poster_url || undefined,
+        file_preview: fileData.file_preview || undefined,
         playlist_track_id: fileData.playlist_track_id || undefined,
         album_id: fileData.album_id || undefined,
         entities: content && fileData.entities?.length ? fileData.entities : undefined,

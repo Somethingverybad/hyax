@@ -780,6 +780,7 @@ def _forward_copy(src, target, profile, album_id=None):
         file_size=src.file_size,
         file_width=getattr(src, 'file_width', None),
         file_height=getattr(src, 'file_height', None),
+        file_preview=getattr(src, 'file_preview', "") or "",
         poster_url=getattr(src, 'poster_url', None),
         sticker=src.sticker,
         sticker_file=getattr(src, 'sticker_file', "") or (src.sticker.file_url if src.sticker_id else ""),
@@ -2203,6 +2204,24 @@ def _probe_dims(path):
     return None
 
 
+def _make_preview(path):
+    """Микропревью картинки для ленты: 24 px по ширине, JPEG, data-URI (обычно
+    0,5–1,5 КБ). Через ffmpeg (Pillow в образе нет). Нет ffmpeg или не вышло —
+    пусто, лента покажет скелетон, как раньше."""
+    import subprocess, base64
+    try:
+        out = subprocess.run(
+            ["ffmpeg", "-v", "quiet", "-i", path, "-frames:v", "1",
+             "-vf", "scale='min(24,iw)':-2", "-q:v", "12", "-f", "mjpeg", "pipe:1"],
+            capture_output=True, timeout=15,
+        ).stdout
+        if not out or len(out) > 3000:
+            return ""
+        return "data:image/jpeg;base64," + base64.b64encode(out).decode("ascii")
+    except Exception:
+        return ""
+
+
 def _make_poster(video_path, rel_base, local_only=False):
     """Кадр-превью видео: jpg до 640 px по ширине, рядом с файлом (<имя>.jpg).
     Без него лента показывала заглушку, пока WebKit не декодирует первый кадр —
@@ -2357,9 +2376,16 @@ def _finalize_file(file_path, original_name, out_size, file_extension, compress,
     # его публичный URL, локальную копию удаляем. Иначе раздаём локально через
     # nginx (/media/...). Размеры — пока файл ещё на диске.
     dims = None
-    if is_video or file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif'):
+    preview = ""
+    is_image = file_extension.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif')
+    if is_video or is_image:
         dims = _probe_dims(full_path)
     poster_url = _make_poster(full_path, file_path, local_only) if is_video else None
+    # Микропревью — для картинок и для кадра видео (пока файл ещё на диске).
+    if is_image:
+        preview = _make_preview(full_path)
+    elif poster_url and poster_url.startswith('/media/'):
+        preview = _make_preview(os.path.join(settings.MEDIA_ROOT, poster_url[len('/media/'):]))
     if s3_enabled() and not local_only:
         try:
             url = s3_upload(full_path, file_path)
@@ -2381,6 +2407,7 @@ def _finalize_file(file_path, original_name, out_size, file_extension, compress,
         "width": dims[0] if dims else None,
         "height": dims[1] if dims else None,
         "poster_url": poster_url,
+        "preview": preview or None,
     }
 
 

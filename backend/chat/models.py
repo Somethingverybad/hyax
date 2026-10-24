@@ -338,6 +338,10 @@ class Message(models.Model):
     poster_url = models.TextField(blank=True, null=True)
     file_width = models.IntegerField(blank=True, null=True)
     file_height = models.IntegerField(blank=True, null=True)
+    # Микропревью картинки (data:image/jpeg;base64, ~24 px по ширине, до 2 КБ):
+    # лента показывает размытую копию, пока грузится сама картинка, а не серый
+    # скелетон. Считает выгрузка (views.FileUploadView → _make_preview).
+    file_preview = models.TextField(blank=True, default="")
     # Альбом: несколько фото/видео, отправленных разом, — отдельные сообщения
     # с общим album_id; клиент склеивает соседние в одну сетку (как в Telegram).
     album_id = models.UUIDField(blank=True, null=True, db_index=True)

@@ -46,7 +46,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
@@ -69,7 +69,7 @@ interface Channel {
 }
 
 interface Post {
-  id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null; poster_url?: string | null;
+  id: string; content?: string; created_at: string; file_url?: string; file_name?: string | null; poster_url?: string | null; file_preview?: string | null;
   file_width?: number | null; file_height?: number | null; album_id?: string | null;
   video_url?: string; video_duration?: number | null; video_mirror?: boolean; video_flip?: boolean;
   download_only?: boolean; sender?: { id: string; username: string; avatar_url?: string | null };
@@ -115,7 +115,7 @@ const fmtTime = (iso: string) => timeOf(iso, getLang());
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
  *  (download_only — всегда строкой, даже если это картинка). */
-const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: number } | null; onOpen?: (url: string) => void }) => {
+const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: number; h: number } | null; preview?: string | null; onOpen?: (url: string) => void }) => {
   // Подпись и загрузка — когда пост рядом с видимой частью ленты (use-near-view).
   const [nearRef, near] = useNearView();
   // Уже показывали (lib/mediaSeen) — рисуем сразу, без скелетона и без ожидания зоны видимости.
@@ -132,7 +132,7 @@ const PostImage = ({ raw, dims, onOpen }: { raw: string; dims?: { w: number; h: 
   return (
     <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
       {/* Подпись не дали (пост удалён, доступа нет) — тихий серый бокс, а не вечно пульсирующий скелет. */}
-      {!loaded && !failed && <MediaSkeleton className="absolute inset-0" />}
+      {!loaded && !failed && (preview ? <Micro src={preview} /> : <MediaSkeleton className="absolute inset-0" />)}
       {url && (
         <img src={url} alt="" loading={seen ? "eager" : "lazy"} decoding={seen ? "sync" : "async"}
           onLoad={() => { setLoaded(true); markMediaSeen(raw); }} onClick={() => onOpen?.(url)}
@@ -197,7 +197,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
       </button>
     );
   }
-  if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} onOpen={(url) => onOpenImage?.(url, post)} />;
+  if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} preview={post.file_preview} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (isAudioFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
   }
@@ -1061,7 +1061,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             temp.progress(100);
             temp.confirm(await api.sendMessageWithFile(
               channelId,
-              { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height, poster_url: uploaded.poster_url ?? null, album_id: album },
+              { file_url: uploaded.file_url, file_name: uploaded.file_name, file_size: uploaded.file_size, width: uploaded.width, height: uploaded.height, poster_url: uploaded.poster_url ?? null, file_preview: (uploaded as { preview?: string | null }).preview ?? null, album_id: album },
               i === 0 ? body || undefined : undefined,
               i === 0 ? snd?.id : undefined,
               undefined,
