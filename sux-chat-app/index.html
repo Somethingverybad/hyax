@@ -71,11 +71,19 @@
         // Виброотклик по меткам анимации (markers: «haptic:light|medium»).
         var H = cap && cap.Plugins && cap.Plugins.Haptics;
         function buzz(kind) { try { if (H && H.impact) H.impact({ style: kind === "medium" ? "MEDIUM" : "LIGHT" }); } catch (e) {} }
-        var ended = false, ready = false, gone = false;
+        // Заставка уходит, как только приложение готово (hyax:ready), но не
+        // раньше MIN_MS — чтобы ролик успел показаться, а не мигнуть. Ждать его
+        // конца не нужно: ролик 5 с, а на слабом Android он ещё и играет
+        // медленнее, и люди ждали 8 с при готовом списке чатов за 2,3 с
+        // (замер на Redmi, PERF_PLAN.md). Ролик дорисовывается под затуханием.
+        var MIN_MS = 900;
+        var ended = false, ready = false, gone = false, shownAt = Date.now();
         var animOff = false;
         try { animOff = localStorage.getItem("hyax:boot-anim") === "0"; } catch (e) {}
         function done() {
-          if (gone || !ended || !ready) return;
+          if (gone || !ready) return;
+          var wait = Math.max(0, MIN_MS - (Date.now() - shownAt));
+          if (wait && !ended) { setTimeout(done, wait); return; }
           gone = true; el.style.opacity = "0";
           setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
         }
