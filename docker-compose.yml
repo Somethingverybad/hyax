@@ -46,15 +46,13 @@ services:
     # наплыве запросы со всех устройств вставали в очередь (p90 списка чатов
     # 0,8 с при 4 свободных ядрах). gunicorn держит API_WORKERS воркеров
     # uvicorn; состояние между ними — в Redis (сервис redis ниже, REDIS_URL).
+    # Команда gunicorn — одной строкой: в свёрнутом блоке YAML (>) строки с
+    # большим отступом сохраняют переносы, и sh получал опции отдельными
+    # командами (gunicorn стартовал без них, на 127.0.0.1 одним sync-воркером).
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             gunicorn sux_chat.asgi:application
-               -k uvicorn_worker.UvicornWorker
-               -w ${API_WORKERS:-3}
-               -b 0.0.0.0:8000
-               --timeout 120 --graceful-timeout 30
-               --access-logfile - --access-logformat '%(h)s \"%(r)s\" %(s)s %(b)s %(M)sms'"
+             gunicorn sux_chat.asgi:application -k uvicorn_worker.UvicornWorker -w ${API_WORKERS:-3} -b 0.0.0.0:8000 --timeout 120 --graceful-timeout 30 --access-logfile - --access-logformat '%(h)s \"%(r)s\" %(s)s %(b)s %(M)sms'"
     volumes:
       - ./backend:/app
       - ./certbot/certs:/etc/letsencrypt:ro
