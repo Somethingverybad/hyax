@@ -2978,6 +2978,18 @@ class RedisPresenceTests(TestCase):
         self.assertEqual(set(users), {"rp_me", "rp_friend"})
         self.assertEqual((users["rp_me"]["devices"], users["rp_me"]["active"], users["rp_friend"]["active"]), (2, True, False))
 
+    def test_active_set_and_chat_list_online(self):
+        p = self.presence
+        p.conn_open("c1", self.me.id)
+        p.conn_active("c2", self.friend.id, False)
+        self.assertEqual(p.active_set([self.me.id, self.friend.id, "nobody"]), {str(self.me.id)})
+        chat = Chat.objects.create(kind="direct")
+        for x in (self.me, self.friend):
+            ChatParticipant.objects.create(chat=chat, user=x, role="member")
+        rows = client_for(self.friend).get("/api/chats/").data
+        online = {x["username"]: x["is_online"] for x in rows[0]["participants"]}
+        self.assertEqual(online, {"rp_me": True, "rp_friend": False})
+
     def test_last_seen_written_once_a_minute(self):
         before = Profile.objects.get(id=self.me.id).last_seen
         self.presence.touch_last_seen(self.me.id)

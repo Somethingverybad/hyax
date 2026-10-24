@@ -236,6 +236,19 @@ def is_active(profile_id) -> bool:
         return _active_locked(str(profile_id), now)
 
 
+def active_set(profile_ids) -> set[str]:
+    """Кто из этих людей сейчас на экране — одним обращением на весь список.
+    Для сериализации списка чатов: участников там сотни, и по одному запросу
+    в Redis на каждого выходило дороже самой выборки из базы."""
+    ids = [str(x) for x in profile_ids]
+    b = _rb()
+    if b:
+        return b.active_set(ids)
+    now = time.monotonic()
+    with _lock:
+        return {p for p in ids if _active_locked(p, now)}
+
+
 def conn_snapshot() -> list[tuple[str, str, bool, float, float]]:
     """(канал, профиль, на экране, секунд с пинга, секунд с открытия) по всем
     живым соединениям — для мониторинга (chat/metrics.py)."""

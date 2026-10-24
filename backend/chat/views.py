@@ -188,7 +188,11 @@ class ChatViewSet(viewsets.ModelViewSet):
         import hashlib
         import json
         chats = self._attach_last(list(self.filter_queryset(self.get_queryset())))
-        response = Response(self.get_serializer(chats, many=True).data)
+        # «В сети» участников — одним обращением к присутствию на весь список.
+        from .presence import active_set
+        people = {p.id for c in chats for p in c.participants.all()}
+        ctx = {**self.get_serializer_context(), 'presence_active': active_set(people)}
+        response = Response(ChatSerializer(chats, many=True, context=ctx).data)
         # «Был в сети» участников меняется от каждого запроса (в том числе
         # свой), и без этого ETag никогда бы не совпадал. Присутствие клиент
         # получает по сокету (presence) — в подпись списка его не берём.

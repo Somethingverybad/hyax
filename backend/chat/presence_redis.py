@@ -175,6 +175,27 @@ class RedisPresence:
     def is_active(self, profile_id) -> bool:
         return self._active_in(self._conns(str(profile_id)), time.time())
 
+    @_safe(set)
+    def active_set(self, profile_ids) -> set[str]:
+        ids = list(dict.fromkeys(str(x) for x in profile_ids))
+        if not ids:
+            return set()
+        pipe = self.r.pipeline(transaction=False)
+        for p in ids:
+            pipe.hgetall(f"pres:prof:{p}")
+        now = time.time()
+        out = set()
+        for p, conns in zip(ids, pipe.execute()):
+            for v in conns.values():
+                try:
+                    act, ts, _ = v.split("|")
+                except ValueError:
+                    continue
+                if act == "1" and now - float(ts) < self.STALE:
+                    out.add(p)
+                    break
+        return out
+
     @_safe(list)
     def conn_snapshot(self) -> list[tuple[str, str, bool, float, float]]:
         """(канал, профиль, на экране, секунд с пинга, секунд с открытия) по

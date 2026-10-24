@@ -53,6 +53,11 @@ class ProfileSerializer(serializers.ModelSerializer):
         return NotificationSoundSerializer(obj.notify_sound).data if obj.notify_sound_id else None
 
     def get_is_online(self, obj):
+        # Список чатов кладёт в контекст заранее собранный набор «на экране»
+        # (presence.active_set) — иначе по обращению в Redis на участника.
+        active = self.context.get('presence_active')
+        if active is not None:
+            return not getattr(obj, 'hide_online', False) and str(obj.id) in active
         from .presence import shown_online
         return shown_online(obj)
 
