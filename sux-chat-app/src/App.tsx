@@ -5,7 +5,7 @@ import { toast as sonnerToast } from "sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { syncThemeFromProfile } from "@/lib/theme";
 import { readCache } from "@/lib/session-cache";
-import CallHost from "./components/call/CallHost";
+
 import EscapeKey from "./components/EscapeKey";
 import SettingsFrame from "./components/SettingsFrame";
 import { applog } from "@/lib/applog";
@@ -28,6 +28,18 @@ import { takeSharedItems, setPendingShare, type SharedPayload } from "@/lib/shar
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { getTheme } from "@/lib/theme";
+
+// Звонки — не в стартовом наборе (~100 КБ): хост монтируется сразу после
+// первого кадра (DeferredCallHost), до этого lib/calls ждёт его регистрации.
+const CallHost = lazy(() => import("./components/call/CallHost"));
+const DeferredCallHost = () => {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(() => setReady(true), { timeout: 1200 }); else window.setTimeout(() => setReady(true), 800);
+  }, []);
+  return ready ? <Suspense fallback={null}><CallHost /></Suspense> : null;
+};
 
 // Экраны, кроме входа, списка чатов и переписки, грузятся по требованию: основной
 // файл был 2,3 МБ, и слабый Android разбирал его при каждом холодном старте
@@ -67,7 +79,6 @@ const SoundPackPage = lazy(() => import("./pages/SoundPackPage"));
 const StickerPackPage = lazy(() => import("./pages/StickerPackPage"));
 const PublicProfile = lazy(() => import("./pages/PublicProfile"));
 const PublicChannel = lazy(() => import("./pages/PublicChannel"));
-
 
 const queryClient = new QueryClient();
 
@@ -313,7 +324,6 @@ const App = () => {
     }
   }, []);
 
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -339,7 +349,7 @@ const App = () => {
             <VideoNoteHost />
             {/* Звонки — тоже выше экранов: разговор идёт, куда бы ни перешли;
                 свёрнутый — виджетом, как плеер (components/call/CallHost). */}
-            <CallHost />
+            <DeferredCallHost />
             {/* Мини-приложения ботов — окно поверх всего (lib/miniapp.ts). */}
             <MiniAppHost />
             <ThemeFromProfile />

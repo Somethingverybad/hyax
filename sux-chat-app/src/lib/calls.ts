@@ -13,9 +13,19 @@ export type StartCallOptions = {
 };
 
 let starter: ((o: StartCallOptions) => Promise<void>) | null = null;
+const waiters: Array<() => void> = [];
 
-export const setCallStarter = (f: typeof starter) => { starter = f; };
+export const setCallStarter = (f: typeof starter) => {
+  starter = f;
+  if (f) { waiters.splice(0).forEach((w) => w()); }
+};
 
+/** Хост звонков грузится после первого кадра (App.tsx DeferredCallHost):
+ *  нажали «позвонить» раньше — ждём его регистрации (до 8 с), а не теряем звонок. */
 export function startCall(o: StartCallOptions): Promise<void> {
-  return starter ? starter(o) : Promise.resolve();
+  if (starter) return starter(o);
+  return new Promise<void>((res) => {
+    const timer = window.setTimeout(() => res(), 8000);
+    waiters.push(() => { window.clearTimeout(timer); res(starter ? starter(o) : undefined); });
+  });
 }
