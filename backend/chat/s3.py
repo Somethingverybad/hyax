@@ -84,3 +84,23 @@ def presigned_get(key: str, expires: int = 3600) -> str:
         Params={"Bucket": c["bucket"], "Key": key},
         ExpiresIn=expires,
     )
+
+
+# Ссылки для ленты: подпись на сутки, одна и та же весь день (кэш процесса):
+# клиент получает их прямо в сообщениях (MessageSerializer.signed), не ходит за
+# подписью отдельно, а одинаковый адрес даёт кэшу WebView снова попасть в
+# картинку при следующем запуске (PERF_PLAN.md, п. 5). Новая подпись при каждом
+# запросе ломала бы кэш: адрес менялся, картинка качалась заново.
+SIGNED_TTL = 24 * 3600
+_SIGN_CACHE_TTL = 23 * 3600
+
+
+def presigned_get_cached(key: str) -> str:
+    from django.core.cache import cache
+    ck = f"s3sign:{key}"
+    url = cache.get(ck)
+    if url:
+        return url
+    url = presigned_get(key, SIGNED_TTL)
+    cache.set(ck, url, _SIGN_CACHE_TTL)
+    return url

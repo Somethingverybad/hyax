@@ -1264,6 +1264,43 @@ class ReadReceiptTests(TestCase):
 
 
 
+class SignedLinksInMessagesTests(TestCase):
+    """Вложения в S3: сообщение приносит подписанные ссылки (signed), и одна и
+    та же ссылка живёт весь день (кэш), а не выписывается заново на каждый запрос."""
+
+    def test_signed_map_and_cache(self):
+        from unittest import mock
+        from django.core.cache import cache
+        me, other = make_user("sig_me"), make_user("sig_other")
+        chat = Chat.objects.create(kind="direct")
+        for p in (me, other):
+            ChatParticipant.objects.create(chat=chat, user=p, role="member")
+        m = Message.objects.create(chat=chat, sender=other, content="фото", file_url="s3://messages/a.jpg", poster_url=None)
+        cache.clear()
+        calls = []
+        def fake_presign(key, expires=3600):
+            calls.append(key)
+            return f"https://s3.example/{key}?sig={len(calls)}"
+        with mock.patch("chat.s3.s3_enabled", return_value=True), mock.patch("chat.s3.presigned_get", side_effect=fake_presign):
+            r1 = client_for(me).get(f"/api/messages/?chat={chat.id}")
+            r2 = client_for(me).get(f"/api/messages/?chat={chat.id}")
+        rows1 = r1.data if isinstance(r1.data, list) else r1.data.get("results") or r1.data.get("messages")
+        rows2 = r2.data if isinstance(r2.data, list) else r2.data.get("results") or r2.data.get("messages")
+        s1 = next(x for x in rows1 if x["id"] == str(m.id))["signed"]
+        s2 = next(x for x in rows2 if x["id"] == str(m.id))["signed"]
+        self.assertEqual(s1, {"s3://messages/a.jpg": "https://s3.example/messages/a.jpg?sig=1"})
+        self.assertEqual(s1, s2)           # та же ссылка — из кэша
+        self.assertEqual(calls, ["messages/a.jpg"])  # подпись выписана один раз
+
+    def test_no_s3_no_signed(self):
+        me = make_user("sig_off")
+        saved = client_for(me).get("/api/chats/saved/").data
+        client_for(me).post("/api/messages/", {"chat": saved["id"], "content": "текст"}, format="json")
+        r = client_for(me).get(f"/api/messages/?chat={saved['id']}")
+        rows = r.data if isinstance(r.data, list) else r.data.get("results") or r.data.get("messages")
+        self.assertIsNone(rows[0]["signed"])
+
+
 class OwnDevicesNewMessageEventTests(TestCase):
     """Событие new_message уходит и в личный сокет отправителя: его другие
     устройства (компьютер при отправке с телефона) видят сообщение сразу.

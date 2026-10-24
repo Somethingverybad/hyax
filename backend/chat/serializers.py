@@ -548,6 +548,23 @@ def reactions_payload(message, me_id=None):
 class MessageSerializer(serializers.ModelSerializer):
     sender = MessageSenderSerializer(read_only=True)
     reactions = serializers.SerializerMethodField()
+    # Подписанные ссылки на вложения (s3://… → https://…), чтобы клиент не ходил
+    # за подписью отдельно (chat/s3.py presigned_get_cached). Только для своих
+    # полей сообщения: читать его может лишь участник чата, лишней проверки нет.
+    signed = serializers.SerializerMethodField()
+
+    def get_signed(self, obj):
+        from .s3 import s3_enabled, presigned_get_cached
+        if not s3_enabled():
+            return None
+        out = {}
+        for raw in (obj.file_url, obj.poster_url, obj.voice_url, obj.video_url):
+            if raw and isinstance(raw, str) and raw.startswith("s3://") and raw not in out:
+                try:
+                    out[raw] = presigned_get_cached(raw[5:])
+                except Exception:
+                    continue
+        return out or None
     # Опрос (chat/polls.py) — только чтение: создаётся вместе с постом.
     poll = serializers.SerializerMethodField()
 
@@ -634,7 +651,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'file_size', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'effect_seen', 'wall_safe', 'wall_hidden', 'action', 'action_target', 'poll']
+        fields = ['id', 'chat', 'sender', 'content', 'entities', 'translations', 'mentions', 'geo_lat', 'geo_lng', 'cipher', 'file_url', 'file_name', 'file_size', 'poster_url', 'file_width', 'file_height', 'album_id', 'created_at', 'is_read', 'read_by', 'sticker', 'voice_url', 'voice_duration', 'voice_transcript', 'transcript_status', 'transcript_translations', 'video_url', 'video_duration', 'sound', 'reply_to', 'download_only', 'video_mirror', 'video_flip', 'is_edited', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'reactions', 'buttons', 'effect', 'effect_seen', 'wall_safe', 'wall_hidden', 'action', 'action_target', 'poll', 'signed']
         read_only_fields = ['sender', 'created_at', 'file_size', 'mentions', 'geo_lat', 'geo_lng', 'forwarded_from', 'forwarded_title', 'forwarded_chat', 'via_bot', 'wall_safe', 'wall_hidden', 'action', 'action_target']
 
     def get_action(self, obj):

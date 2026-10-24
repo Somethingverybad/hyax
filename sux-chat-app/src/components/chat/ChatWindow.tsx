@@ -75,7 +75,7 @@ import type { PlaylistTrack } from "@/api/client";
 import { currentTrack, isCurrent, playQueue, playerState, seek as playerSeek, setOpenChat, setRate as playerSetRate, subscribePlayer, toggle as playerToggle, usePlayerSlice, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
 import { compressImage } from "@/lib/compressImage";
-import { useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
+import { primeSigned, useMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import UserProfileModal from "@/components/UserProfileModal";
 import { ChatSearchPanel } from "@/components/chat/MessageHits";
 import VideoNoteBar from "@/components/chat/VideoNoteBar";
@@ -4186,6 +4186,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </div>
           )}
           {shownRows.map((message, index) => {
+            // Подписи вложений из сообщения — в кэш ссылок до рендера пузыря.
+            primeSigned((message as { signed?: Record<string, string> | null }).signed);
             const isOwn = message.sender?.id === userId;
             // Служебное сообщение без отправителя («собеседник добавил устройство»)
             // — строкой по центру, как действие; раньше рисовалось пузырём от «Неизвестного».

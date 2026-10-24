@@ -10,6 +10,40 @@ import { api, mediaUrl } from "@/api/client";
 const cache = new Map<string, { url: string; exp: number }>();
 const inflight = new Map<string, Promise<string>>();
 
+// Подписи, пришедшие вместе с сообщениями (поле signed, chat/s3.py: срок сутки,
+// одна и та же ссылка весь день). Кладём в тот же кэш — картинка берётся сразу,
+// без запроса подписи; кэш переживает перезапуск (localStorage), и при
+// следующем старте тот же адрес попадает в HTTP-кэш WebView (PERF_PLAN.md, п. 5).
+const SEEDED_TTL = 20 * 60 * 60 * 1000;
+const STORE_KEY = "hyax:signed";
+let storeTimer = 0;
+try {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (raw) { const now = Date.now(); for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, { url: string; exp: number }>)) if (v && v.exp > now) cache.set(k, v); }
+} catch { /* приватный режим */ }
+function persist() {
+  window.clearTimeout(storeTimer);
+  storeTimer = window.setTimeout(() => {
+    try {
+      const now = Date.now();
+      const rows = [...cache.entries()].filter(([, v]) => v.exp > now).slice(-600);
+      localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(rows)));
+    } catch { /* ок */ }
+  }, 1500);
+}
+export function primeSigned(map?: Record<string, string> | null) {
+  if (!map) return;
+  const exp = Date.now() + SEEDED_TTL;
+  let changed = false;
+  for (const [raw, url] of Object.entries(map)) {
+    if (!raw.startsWith("s3://") || !url) continue;
+    const cur = cache.get(raw);
+    if (cur && cur.url === url) continue;
+    cache.set(raw, { url, exp }); changed = true;
+  }
+  if (changed) persist();
+}
+
 /** Готовая ссылка без запроса к серверу или "" (подпись S3 ещё не получена).
  *  Просмотр картинок берёт ту же ссылку, что и пузырь сообщения: картинка с
  *  тем же адресом уже в памяти страницы и показывается сразу, без сети. */

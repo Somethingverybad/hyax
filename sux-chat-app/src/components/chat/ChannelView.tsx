@@ -13,7 +13,7 @@ import type { GraffitiSticker } from "@/components/chat/Graffiti";
 const GraffitiSheet = lazy(() => import("@/components/chat/Graffiti").then((m) => ({ default: m.GraffitiSheet })));
 import UserProfileModal from "@/components/UserProfileModal";
 import Identicon from "@/components/Identicon";
-import { useMediaUrl, useMediaUrlState, resolveMediaUrl } from "@/hooks/use-media-url";
+import { primeSigned, useMediaUrl, useMediaUrlState, resolveMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
 import { markMediaSeen, mediaSeen } from "@/lib/mediaSeen";
 import { timeOf } from "@/lib/timeFormat";
@@ -1283,6 +1283,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           </p>
         ) : (
           feedPosts.map((post) => (
+            primeSigned((post as { signed?: Record<string, string> | null }).signed),
             <div key={post._key ?? post.id} data-post-id={post.id} className="bg-surface-2 rounded-lg overflow-hidden post-card"
               onPointerDown={(e) => postPressDown(e, post)} onPointerMove={postPressMove} onPointerUp={cancelPress} onPointerCancel={cancelPress} onPointerLeave={cancelPress}>
               <div className="px-4 py-3">
