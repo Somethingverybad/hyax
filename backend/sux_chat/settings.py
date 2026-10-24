@@ -80,7 +80,11 @@ if REDIS_URL:
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [REDIS_URL],
+                # socket_timeout: у redis-py 8 по умолчанию 5 с — ровно столько
+                # же ждёт BZPOPMIN в приёме сообщений канала (brpop_timeout), и
+                # каждое соединение падало с TimeoutError через 5 с простоя —
+                # сокеты рвались и переподключались без конца.
+                "hosts": [{"address": REDIS_URL, "socket_timeout": 30}],
                 "prefix": "hyax",
                 # Очередь на сокет: клиент, который не читает (свёрнутое
                 # приложение), не должен копить сотни событий.
