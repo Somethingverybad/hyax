@@ -40,9 +40,23 @@ otaBoot().then((switching) => { if (switching) window.setTimeout(render, 5000); 
 // Высота приложения. CSS-переменную читают .h-screen/.min-h-screen (см.
 // index.css). Берём её из visualViewport, а не из dvh: при открытии клавиатуры
 // dvh обновляется с задержкой, и поле ввода заметно отставало от клавиатуры.
+// Chromium ≥ 108 понимает interactive-widget=resizes-content (index.html): под
+// клавиатуру ужимается сама раскладка (innerHeight), и визуальный viewport не
+// может быть законно меньше неё. А Chrome 155 в кадре открытия клавиатуры
+// отдаёт visualViewport ужатым дважды (820 → 216 при клавиатуре 302, окно при
+// этом 518): раскладка на кадр схлопывалась до 216, панель ввода прыгала к
+// шапке и возвращалась (баг-репорты 94e2ce74, 48cbe2cd, b14f37af). Поэтому на
+// таких Chromium берём не меньше innerHeight. Старый Chromium (Huawei, 92)
+// раскладку не ужимает — там по-прежнему visualViewport.
+const RESIZES_CONTENT = (() => {
+  const m = /Chrome\/(\d+)/.exec(navigator.userAgent);
+  return !!m && parseInt(m[1], 10) >= 108;
+})();
+
 function syncAppHeight() {
   const vv = window.visualViewport;
-  const visible = vv ? vv.height : window.innerHeight;
+  let visible = vv ? vv.height : window.innerHeight;
+  if (RESIZES_CONTENT) visible = Math.max(visible, window.innerHeight);
   // Вырезы теперь отводят сами экраны (см. .pad-safe-* в index.css), поэтому
   // приложению достаётся вся видимая область без вычитаний.
   const h = Math.max(visible, 200);
