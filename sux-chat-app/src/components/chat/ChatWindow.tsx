@@ -687,6 +687,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // полоса закрепления. Высота шапки разная на телефоне и на десктопе.
   const headerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    // Переменная общая: пишет только окно на экране. Скрытые окна пула и
+    // Избранного раньше переписывали её своей шапкой, и в списке чатов полоска
+    // плеера уходила под фильтры (баг-репорт c66f4428).
+    if (!active) return;
     const set = () => {
       const h = headerRef.current?.offsetHeight;
       if (h) document.documentElement.style.setProperty("--player-top", `${h}px`);
@@ -696,8 +700,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => {
       window.removeEventListener("resize", set);
       document.documentElement.style.removeProperty("--player-top");
+      // Список чатов (ChatSidebar) мерит свою шапку заново.
+      window.dispatchEvent(new CustomEvent("hyax:player-top"));
     };
-  }, [chatId, peer?.id]);
+  }, [chatId, peer?.id, active]);
   // Сообщение с музыкой, для которого выбирают плейлист.
   const [playlistFor, setPlaylistFor] = useState<Message | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null);

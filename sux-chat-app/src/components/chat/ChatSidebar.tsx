@@ -247,9 +247,14 @@ const ChatSidebar = ({
       const v = `${Math.round(h)}px`;
       // Одно и то же значение не переписываем: setProperty на <html> заставляет
       // пересчитать стили всего дерева.
-      if (v !== last) { last = v; document.documentElement.style.setProperty("--player-top", v); }
+      // Сравниваем с тем, что стоит на <html> сейчас, а не с last: переменная
+      // общая, и окно переписки (пул окон, Избранное) её переписывает; после
+      // возврата к списку надо вернуть свою (баг-репорт c66f4428).
+      if (document.documentElement.style.getPropertyValue("--player-top") !== v) { last = v; document.documentElement.style.setProperty("--player-top", v); }
     };
     set();
+    // Окно переписки ушло со сцены — говорит об этом событием: мерим заново.
+    window.addEventListener("hyax:player-top", set);
     // Раньше тут был таймер раз в секунду (фильтры появляются не сразу) — и
     // каждую секунду принудительный пересчёт раскладки. ResizeObserver
     // срабатывает ровно тогда, когда верхний блок меняет высоту.
@@ -259,6 +264,7 @@ const ChatSidebar = ({
     return () => {
       ro?.disconnect();
       window.removeEventListener("resize", set);
+      window.removeEventListener("hyax:player-top", set);
       document.documentElement.style.removeProperty("--player-top");
     };
   }, []);
