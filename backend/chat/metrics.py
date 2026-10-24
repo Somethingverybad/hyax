@@ -181,6 +181,10 @@ def _loop():
                 MetricSample.objects.filter(ts__lt=timezone.now() - timedelta(days=KEEP_DAYS)).delete()
         except Exception:
             logger.exception("metrics: снимок не записан")
+        finally:
+            # Соединение — обратно в пул сразу, а не держать минуту до
+            # следующего снимка (с пулом оно иначе занято всё время).
+            close_old_connections()
 
 
 def start_sampler():

@@ -11,6 +11,7 @@ updated_at, как и расшифровка голосовых (см. chat/tran
 169.254.169.254 с метаданными облака) и определяем тип по сигнатуре самого
 файла, а не по расширению в ссылке.
 """
+from .bgthread import spawn
 import ipaddress
 import logging
 import os
@@ -246,4 +247,4 @@ def fetch_image(message_id, url):
 
 
 def fetch_async(message_id, url):
-    threading.Thread(target=fetch_image, args=(str(message_id), url), daemon=True).start()
+    spawn(fetch_image, str(message_id), url)

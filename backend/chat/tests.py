@@ -2664,8 +2664,9 @@ class ViewingPerDeviceTests(TestCase):
     def test_notify_profiles_filters_device_tokens(self):
         from unittest import mock
         from chat import fcm
-        with mock.patch("chat.fcm._deliver") as deliver, mock.patch("chat.fcm.threading.Thread") as thread:
-            thread.side_effect = lambda target, daemon: mock.Mock(start=target)
+        # Фоновый поток (bgthread.spawn) выполняем на месте.
+        with mock.patch("chat.fcm._deliver") as deliver, mock.patch("chat.bgthread.threading.Thread") as thread:
+            thread.side_effect = lambda target, **kw: mock.Mock(start=target)
             fcm.notify_profiles(Profile.objects.filter(pk=self.b.pk), "t", "b", skip_devices={(str(self.b.id), "desk")})
         tokens = [t for call in deliver.call_args_list for t in call.args[0]]
         self.assertEqual(tokens, ["tok-phone"])
@@ -3077,3 +3078,35 @@ class RedisPresenceSocketTests(TransactionTestCase):
             self.assertFalse(self.presence.is_online(self.me.id))
             self.assertEqual(self.presence.viewers("chat-ws"), set())
         asyncio.run(run())
+
+
+class BgThreadTests(TestCase):
+    """Фоновые потоки через bgthread.spawn: цель выполняется, соединения
+    потока с базой закрываются, ошибка цели не роняет поток молча."""
+
+    def test_spawn_runs_and_closes_connections(self):
+        import threading
+        from unittest import mock
+        from chat.bgthread import spawn
+        done = threading.Event()
+        seen = {}
+
+        def work(a, b=None):
+            seen["args"] = (a, b)
+            done.set()
+        with mock.patch("django.db.connections.close_all") as close_all:
+            t = spawn(work, 1, b=2)
+            t.join(5)
+        self.assertTrue(done.is_set())
+        self.assertEqual(seen["args"], (1, 2))
+        close_all.assert_called_once()
+
+    def test_spawn_swallows_and_logs_exception(self):
+        from unittest import mock
+        from chat.bgthread import spawn
+
+        def boom():
+            raise RuntimeError("x")
+        with mock.patch("django.db.connections.close_all") as close_all, self.assertLogs("chat.bgthread", level="ERROR"):
+            spawn(boom).join(5)
+        close_all.assert_called_once()

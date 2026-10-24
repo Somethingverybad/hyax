@@ -9,6 +9,7 @@
 Модель: WHISPER_MODEL в env (по умолчанию small — ~470 МБ, 5–8 с на минуту
 речи на этом сервере; medium заметно точнее, но в 3–4 раза медленнее).
 """
+from .bgthread import spawn
 import logging
 import os
 import threading
@@ -104,4 +105,4 @@ def transcribe_message(message_id: str):
 
 
 def transcribe_async(message_id: str):
-    threading.Thread(target=transcribe_message, args=(str(message_id),), daemon=True).start()
+    spawn(transcribe_message, str(message_id))

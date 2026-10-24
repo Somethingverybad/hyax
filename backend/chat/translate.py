@@ -29,6 +29,7 @@ TRANSLATE_PROVIDER=openrouter|gemini|deepl|libre задаёт провайдер
 Message.translations[язык]. Оригинал не трогаем: клиент показывает перевод
 с пометкой и даёт посмотреть исходник. Один язык у обоих — ничего не делаем.
 """
+from .bgthread import spawn
 import functools
 import logging
 import os
@@ -443,7 +444,7 @@ def translate_transcript_to(message_id, to):
 
 
 def schedule_transcript(message_id):
-    threading.Thread(target=translate_transcript, args=(message_id,), daemon=True).start()
+    spawn(translate_transcript, message_id)
 
 
 def effective(part, flag):
@@ -493,4 +494,4 @@ def schedule(message, sender, request=None):
         except Exception:
             logger.exception("translate: message %s", mid)
 
-    threading.Thread(target=run, daemon=True).start()
+    spawn(run)

@@ -12,6 +12,7 @@ FCM отправить не может).
 Если переменная не задана, отправка молча выключена — сервер работает как
 раньше, удобно для локальной разработки.
 """
+from .bgthread import spawn
 import base64
 import json
 import logging
@@ -251,7 +252,7 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
             if enc and _firebase_app() is not None:
                 _deliver_encrypted(enc, title_text, body_text, extra, None if silent else sound, placeholder, silent=silent)
 
-    threading.Thread(target=run, daemon=True).start()
+    spawn(run)
 
 
 def _deliver_data(tokens, data: dict, ttl: int | None = None):
@@ -289,4 +290,4 @@ def notify_data(profiles, data: dict, platforms=None, ttl: int | None = None, ex
     logger.info("FCM data %s: устройств %d", data.get("type", "?"), len(tokens))
     if not tokens:
         return
-    threading.Thread(target=_deliver_data, args=(tokens, data, ttl), daemon=True).start()
+    spawn(_deliver_data, tokens, data, ttl)

@@ -1,3 +1,4 @@
+from .bgthread import spawn
 import re
 import shutil
 import uuid
@@ -2615,12 +2616,7 @@ class ChunkUploadView(APIView):
             self._finish(upload_id, file_path, original_name, size, file_extension, compress, local_only)
             return self._status(upload_id)
 
-        import threading
-        threading.Thread(
-            target=self._finish,
-            args=(upload_id, file_path, original_name, size, file_extension, compress, local_only),
-            daemon=True,
-        ).start()
+        spawn(self._finish, upload_id, file_path, original_name, size, file_extension, compress, local_only)
         return Response({"processing": True, "upload_id": upload_id}, status=202)
 
     def _finish(self, upload_id, file_path, original_name, size, file_extension, compress, local_only):
@@ -4518,7 +4514,7 @@ def _translate_voice(request, msg, me, to):
     if update:
         msg.save(update_fields=[*update, "updated_at"])
     import threading
-    threading.Thread(target=_transcribe_then_translate, args=(str(msg.id), to, start), daemon=True).start()
+    spawn(_transcribe_then_translate, str(msg.id), to, start)
     return Response(MessageSerializer(msg, context={'request': request}).data)
 
 
@@ -5384,7 +5380,7 @@ class TelegramStickerImportView(APIView):
                 'animated': sum(1 for x in stickers if x.get('is_animated')),
                 'video': sum(1 for x in stickers if x.get('is_video')), 'kind': kind}
         _import_prog_set(str(pack.id), prog)
-        threading.Thread(target=_tg_import_worker, args=(str(pack.id), token, stickers, str(profile.id), kind), daemon=True).start()
+        spawn(_tg_import_worker, str(pack.id), token, stickers, str(profile.id), kind)
         return Response({"pack_id": str(pack.id), "name": pack.name, **prog}, status=202)
 
     def get(self, request, pk=None):

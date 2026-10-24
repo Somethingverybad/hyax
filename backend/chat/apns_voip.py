@@ -16,6 +16,7 @@
 production. Среда токена заранее неизвестна, поэтому шлём в production и при
 BadDeviceToken повторяем в sandbox.
 """
+from .bgthread import spawn
 import base64
 import logging
 import os
@@ -130,5 +131,5 @@ def notify_voip(profiles, payload: dict, exclude_device=None) -> int:
     tokens = list(qs.values_list("token", flat=True))
     logger.info("APNs VoIP %s: устройств %d", payload.get("type", "?"), len(tokens))
     if tokens:
-        threading.Thread(target=_deliver, args=(tokens, payload), daemon=True).start()
+        spawn(_deliver, tokens, payload)
     return len(tokens)
