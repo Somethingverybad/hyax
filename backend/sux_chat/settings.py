@@ -67,6 +67,22 @@ TEMPLATES = [
 WSGI_APPLICATION = "sux_chat.wsgi.application"
 ASGI_APPLICATION = "sux_chat.asgi.application"
 
+# === Журнал ===
+# daphne сам включал вывод INFO в stdout (logging.basicConfig); gunicorn этого
+# не делает, и строки chat.* (presence, push, metrics) пропадали из docker logs.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(levelname)-8s %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        # Свои обработчики и формат у gunicorn/uvicorn — не дублируем.
+        "gunicorn": {"propagate": False},
+        "uvicorn": {"propagate": False},
+    },
+}
+
 # === Redis: несколько процессов api ===
 # С REDIS_URL слой каналов, кэш Django и присутствие (chat/presence.py) живут
 # в Redis — так api можно запускать несколькими процессами (gunicorn с
