@@ -9,7 +9,10 @@ uvicorn[standard]
 uvicorn-worker
 # Слой каналов, кэш и присутствие в Redis (REDIS_URL, sux_chat/settings.py).
 redis>=5
-psycopg2-binary
+# psycopg 3 с пулом: под ASGI каждый запрос шёл в своём потоке и открывал
+# новое соединение с Postgres (12–35 мс на запрос); пул Django держит их
+# открытыми (DATABASES OPTIONS pool в sux_chat/settings.py).
+psycopg[binary,pool]>=3.2
 djangorestframework
 django-cors-headers
 djangorestframework-simplejwt
