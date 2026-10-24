@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, memo } from "react";
+import { useEffect, useMemo, useRef, useState, memo, lazy, Suspense } from "react";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { setOtaRestoreState } from "@/lib/ota";
@@ -15,8 +15,7 @@ import { getPushSecret } from "@/lib/pushSecret";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate, useLocation } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import ChatWindow, { type LatestMessage } from "@/components/chat/ChatWindow";
-import ChannelView from "@/components/chat/ChannelView";
+import type { LatestMessage } from "@/components/chat/ChatWindow";
 import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
 import TermsGate from "@/components/TermsGate";
@@ -74,11 +73,18 @@ let pushUnavailable = false;
 // Список и Стена под memo здесь, у места использования: их файлы правит
 // другая работа, а перерисовка при каждой смене выбранного чата не нужна.
 const MemoSidebar = memo(ChatSidebar);
+// Окно переписки и лента каналов — не в стартовом наборе: первый экран на
+// телефоне — список, их чанки подгружаются сразу после его отрисовки
+// (prefetchChatChunks) и к первому тапу уже на месте (PERF_PLAN.md, п. 1).
+const ChatWindow = lazy(() => import("@/components/chat/ChatWindow"));
+const ChannelView = lazy(() => import("@/components/chat/ChannelView"));
 const MemoChannelView = memo(ChannelView);
+const prefetchChatChunks = () => { void import("@/components/chat/ChatWindow"); void import("@/components/chat/ChannelView"); };
 
 const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wallMode?: boolean } = {}) => {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<ProfileType | null>(() => readCache<ProfileType>("user"));
+  useEffect(() => { prefetchChatChunks(); }, []);
   // Разделы скрыли/вернули (lib/sections) — держим свою копию профиля в
   // актуальном виде, иначе она записала бы в кеш старое значение.
   useEffect(() => {
@@ -851,14 +857,14 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           {visitedTabs.has("wall") && layer("wall", tab === "wall", (
             <div className="flex-1 min-h-0 flex">
               {wall ? (
-                <MemoChannelView
+                <Suspense fallback={null}><MemoChannelView
                   key="wall-tab"
                   channelId={wall.id}
                   userId={user.id}
                   wall
                   onOpenChannel={openChannelFromWallNav}
                   onWallChanged={refreshWallStable}
-                />
+                /></Suspense>
               ) : (
                 <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
               )}
@@ -867,7 +873,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           {visitedTabs.has("saved") && layer("saved", tab === "saved", (
             <div className="flex-1 min-h-0 flex">
               {savedChat?.id ? (
-                <ChatWindow
+                <Suspense fallback={null}><ChatWindow
                   chatId={savedChat.id}
                   active={tab === "saved"}
                   userId={user.id}
@@ -879,7 +885,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onLatest={handleLatest}
             unreadAtOpen={unreadAtOpen}
                   title={tr("Избранное")}
-                />
+                /></Suspense>
               ) : (
                 <p className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tr("Загрузка…")}</p>
               )}
@@ -908,7 +914,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               {/* Канал (не в пуле) — поверх списка, как раньше. */}
               {selectedChatId && (isChannelOpen || isWallOpen) && (
                 <div key={`ch-${selectedChatId}`} className="absolute inset-0 flex min-h-0 screen-push">
-            <MemoChannelView
+            <Suspense fallback={null}><MemoChannelView
               key={isWallOpen ? "wall" : selectedChatId}
               channelId={selectedChatId}
               userId={user.id}
@@ -917,7 +923,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               onWallChanged={() => { void refreshWall(); }}
               onBack={() => { setSelectedChatId(null); if (isWallOpen) void refreshWall(); }}
               onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
-            />
+            /></Suspense>
                 </div>
               )}
               {/* Пул недавних переписок: активная — видна с въездом справа, остальные скрыты. */}
@@ -928,7 +934,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                 return (
                   <div key={id} className={`absolute inset-0 flex min-h-0 ${activeChat ? "screen-push" : "invisible pointer-events-none"}`}
                     aria-hidden={!activeChat} {...(activeChat ? {} : { inert: "" as unknown as boolean })}>
-                    <ChatWindow
+                    <Suspense fallback={null}><ChatWindow
                       chatId={id}
                       active={activeChat}
                       userId={user.id}
@@ -943,7 +949,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                       unreadAtOpen={activeChat ? unreadAtOpen : 0}
                       onBack={closeChat}
                       title={activeChat ? chatHeaderTitle : (c?.is_group ? c.name || tr("Группа") : p?.username || tr("Чат"))}
-                    />
+                    /></Suspense>
                   </div>
                 );
               })}
@@ -986,7 +992,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
 
       {selectedChatId ? (
         isChannelOpen || isWallOpen ? (
-          <MemoChannelView
+          <Suspense fallback={null}><MemoChannelView
             key={isWallOpen ? "wall" : selectedChatId}
             channelId={selectedChatId}
             userId={user.id}
@@ -994,9 +1000,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onOpenChannel={openChannelFromWall}
             onWallChanged={() => { void refreshWall(); }}
             onDeleted={() => { setSelectedChatId(null); refreshChats(); }}
-          />
+          /></Suspense>
         ) : (
-        <ChatWindow
+        <Suspense fallback={null}><ChatWindow
           chatId={selectedChatId}
           userId={user.id}
           onRov={sendRov}
@@ -1010,7 +1016,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onLatest={handleLatest}
             unreadAtOpen={unreadAtOpen}
           title={chatHeaderTitle}
-        />
+        /></Suspense>
         )
       ) : (
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
