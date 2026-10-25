@@ -252,3 +252,21 @@
   -webkit-backdrop-filter: none; backdrop-filter: none;
   background: linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.9) 50%, hsl(var(--background) / 0) 100%);
 }
+
+/* Пост Стены и канала (макет «Стена», 3× → px): белая карточка со
+   скруглением 20 и отступами 32 → 10.7; под автором — волосяная черта;
+   имя и текст — 45 → 15 px цветом заголовков; действия под постом —
+   белые таблетки 85 → 28 px с тенью, у нажатой реакции — зелёная подложка. */
+[data-shape="soft"] .post-card { background: var(--mint-surface); border-radius: 20px; box-shadow: var(--mint-card-shadow); }
+[data-shape="soft"] .post-card > .px-4 { padding: 11px; }
+[data-shape="soft"] .post-card .post-author { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--mint-divider); }
+[data-shape="soft"] .post-card .post-author .text-body { font-size: 15px; color: var(--mint-title); }
+[data-shape="soft"] .post-card .post-author .w-8 { width: 32px; height: 32px; border-radius: 13px; }
+[data-shape="soft"] .post-card > .px-4 > p.text-body { font-size: 15px; line-height: 20.7px; color: var(--mint-title); }
+[data-shape="soft"] .post-card .post-actions { margin: 0 11px; padding: 10px 0 11px; gap: 8px; border-color: var(--mint-divider); }
+[data-shape="soft"] .post-card .post-actions button {
+  height: 28px; min-width: 28px; border: 0; border-radius: 13.4px;
+  background: var(--mint-surface); color: var(--mint-ink); font-size: 14.3px;
+  box-shadow: 0 2.9px 11.1px rgb(0 0 0 / 0.2);
+}
+[data-shape="soft"] .post-card .post-actions .ui-reaction[aria-pressed="true"] { background: hsl(var(--primary) / 0.3); }

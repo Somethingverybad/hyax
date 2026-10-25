@@ -18,6 +18,7 @@ import navProfile from "./icons/nav-profile.svg";
 import navSettings from "./icons/nav-settings.svg";
 import navSaved from "./icons/nav-saved.svg";
 import navWall from "./icons/nav-wall.svg";
+import wallHead from "./icons/wall-head.svg";
 import gallery from "./icons/gallery.svg";
 import pencil from "./icons/pencil.svg";
 import pinnedRight from "./icons/pinned-right.svg";
@@ -57,7 +58,7 @@ export function useMint(): boolean {
 export const MINT_ICONS = {
   back, checks, chevron, close, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
   gallery, pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowLog, rowSaved,
-  rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent,
+  rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent, wallHead,
 } as const;
 export type MintIconName = keyof typeof MINT_ICONS;
 
