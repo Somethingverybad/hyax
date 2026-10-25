@@ -1,10 +1,12 @@
 package com.huyax.app;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
+import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.animation.Interpolator;
 import android.webkit.WebView;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -14,6 +16,7 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -32,9 +35,14 @@ import java.util.Locale;
  * Как здесь:
  *  - WebView клавиатуру не видит (инсет IME вырезан): иначе Chrome сам
  *    ужимает визуальный viewport и панорамирует его к полю ввода;
- *  - в начале анимации странице уходит итоговое перекрытие, настоящая
- *    длительность и кривая системы (снятая с интерполятора) — страница
- *    поднимает поле ввода и ленту transform-ом с теми же временем и кривой;
+ *  - в начале анимации странице уходит итоговое перекрытие, длительность и
+ *    кривая — страница поднимает поле ввода и ленту transform-ом с ними.
+ *    Кривую и длительность, которые объявляет система (285 мс,
+ *    PathInterpolator), клавиатура не соблюдает: Gboard ведёт анимацию сам —
+ *    ~400 мс с длинным хвостом (замер на Redmi, 25.10). Поэтому настоящий ход
+ *    каждой анимации записываем по onProgress и запоминаем для этой
+ *    клавиатуры (открытие и закрытие отдельно): следующая анимация идёт по
+ *    нему. Первая — по замеренной кривой Gboard;
  *  - поле вне поднимаемых панелей (формы, поиск, мини-приложения) — режим
  *    «cut»: в конце анимации открытия WebView ужимается (место под
  *    клавиатурой — разрыв не виден), при закрытии растёт сразу в начале.
@@ -59,6 +67,16 @@ final class KeyboardSync {
     private boolean animating = false;
     private boolean userDriven = false;
     private int lastSent = -1;
+    // Запись хода текущей анимации: мс от onStart и доля пути 0..1.
+    private long animStart;
+    private int animFrom;
+    private int animTarget;
+    private final List<long[]> track = new ArrayList<>();
+
+    /** Замер Gboard на Redmi 2409BRN2CG (25.10): открытие и закрытие. */
+    private static final float[] DEFAULT_SHOW = {0f, .09f, .26f, .42f, .55f, .66f, .76f, .83f, .88f, .92f, .945f, .963f, .975f, .984f, .99f, .995f, 1f};
+    private static final float[] DEFAULT_HIDE = {0f, .035f, .153f, .352f, .527f, .648f, .761f, .834f, .884f, .921f, .946f, .963f, .974f, .983f, .989f, .995f, 1f};
+    private static final long DEFAULT_SHOW_MS = 400, DEFAULT_HIDE_MS = 360, DEFAULT_OFFSET_MS = 20;
 
     KeyboardSync(BridgeActivity activity) {
         this.activity = activity;
@@ -87,7 +105,7 @@ final class KeyboardSync {
         ViewCompat.setOnApplyWindowInsetsListener(web, (v, insets) -> {
             if (!animating) {
                 int o = overlap(insets);
-                if (o != lastSent) send(o, CHANGE_MS, null);
+                if (o != lastSent) send(o, CHANGE_MS, null, 0);
                 setPad(cut ? o : 0);
             }
             WindowInsetsCompat stripped = new WindowInsetsCompat.Builder(insets)
@@ -139,7 +157,14 @@ final class KeyboardSync {
                 userDriven = duration <= 0;
                 // Закрытие: WebView растёт сразу — открывшаяся полоса ещё под клавиатурой.
                 if (target == 0) setPad(0);
-                if (!userDriven) send(target, duration, sample(animation.getInterpolator()));
+                animStart = System.currentTimeMillis();
+                animFrom = Math.max(0, lastSent);
+                animTarget = target;
+                track.clear();
+                if (!userDriven) {
+                    Curve c = learned(target > 0);
+                    send(target, c.duration, c.ease, c.offset);
+                }
                 return bounds;
             }
 
@@ -153,7 +178,12 @@ final class KeyboardSync {
                 // длительности нет, отдаём кадры по ходу.
                 if (enabled && userDriven) {
                     int o = overlap(insets);
-                    if (o != lastSent) send(o, 0, null);
+                    if (o != lastSent) send(o, 0, null, 0);
+                }
+                int span = Math.abs(animTarget - animFrom);
+                if (enabled && span > 0 && track.size() < 200) {
+                    int o = overlap(insets);
+                    track.add(new long[] {System.currentTimeMillis() - animStart, Math.round(1000f * Math.abs(o - animFrom) / span)});
                 }
                 return insets;
             }
@@ -164,9 +194,10 @@ final class KeyboardSync {
                 animating = false;
                 userDriven = false;
                 if (!enabled) return;
+                learn(animTarget > 0);
                 WindowInsetsCompat root = ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
                 int now = root != null ? overlap(root) : 0;
-                if (now != lastSent) send(now, 0, null);
+                if (now != lastSent) send(now, 0, null, 0);
                 // Открылась: в режиме «cut» WebView ужимается сейчас — под клавиатурой.
                 setPad(cut ? now : 0);
             }
@@ -209,15 +240,97 @@ final class KeyboardSync {
         }
     }
 
-    private static float[] sample(Interpolator ip) {
-        if (ip == null) return null;
-        float[] out = new float[EASE_POINTS];
-        for (int i = 0; i < EASE_POINTS; i++) out[i] = ip.getInterpolation(i / (float) (EASE_POINTS - 1));
-        return out;
+    private static final class Curve {
+        final long duration;
+        final long offset;
+        final float[] ease;
+
+        Curve(long duration, long offset, float[] ease) {
+            this.duration = duration;
+            this.offset = offset;
+            this.ease = ease;
+        }
     }
 
-    /** Кадр клавиатуры — событием окна прямо из evaluateJavascript, как на iOS. */
-    private void send(int px, long duration, float[] ease) {
+    private SharedPreferences prefs() {
+        return activity.getSharedPreferences("keyboard_sync", Context.MODE_PRIVATE);
+    }
+
+    /** Ключ — клавиатура (у каждой своя анимация) и направление. */
+    private String key(boolean show) {
+        String ime = null;
+        try {
+            ime = Settings.Secure.getString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+        } catch (Exception ignored) {}
+        return (ime == null ? "ime" : ime) + (show ? ":show" : ":hide");
+    }
+
+    private Curve learned(boolean show) {
+        String v = prefs().getString(key(show), null);
+        if (v != null) {
+            try {
+                String[] p = v.split(",");
+                if (p.length == EASE_POINTS + 2) {
+                    float[] e = new float[EASE_POINTS];
+                    for (int i = 0; i < EASE_POINTS; i++) e[i] = Float.parseFloat(p[i + 2]);
+                    return new Curve(Long.parseLong(p[0]), Long.parseLong(p[1]), e);
+                }
+            } catch (Exception ignored) {}
+        }
+        return show
+            ? new Curve(DEFAULT_SHOW_MS, DEFAULT_OFFSET_MS, DEFAULT_SHOW)
+            : new Curve(DEFAULT_HIDE_MS, DEFAULT_OFFSET_MS, DEFAULT_HIDE);
+    }
+
+    /**
+     * Ход прошедшей анимации → кривая для следующей: момент, когда клавиатура
+     * тронулась, время до 99,5% пути и 17 точек доли пути через равные
+     * промежутки. С прошлым замером усредняем — один неровный не испортит.
+     * Анимацию с провалом кадров (>60 мс) не учим: кривая вышла бы ломаной.
+     */
+    private void learn(boolean show) {
+        List<long[]> t = new ArrayList<>(track);
+        track.clear();
+        if (t.size() < 8) return;
+        long start = -1, end = -1;
+        for (int i = 0; i < t.size(); i++) {
+            if (i > 0 && t.get(i)[0] - t.get(i - 1)[0] > 60) return;
+            if (t.get(i)[1] == 0) start = t.get(i)[0];
+            if (end < 0 && t.get(i)[1] >= 995) end = t.get(i)[0];
+        }
+        if (start < 0 || end <= start) return;
+        long duration = end - start;
+        if (duration < 80 || duration > 1500) return;
+        float[] e = new float[EASE_POINTS];
+        for (int k = 0; k < EASE_POINTS; k++) {
+            double x = start + duration * (k / (double) (EASE_POINTS - 1));
+            double y = 1;
+            for (int i = 1; i < t.size(); i++) {
+                long[] a = t.get(i - 1), b = t.get(i);
+                if (a[0] <= x && x <= b[0]) {
+                    double f = b[0] > a[0] ? (x - a[0]) / (double) (b[0] - a[0]) : 0;
+                    y = (a[1] + (b[1] - a[1]) * f) / 1000.0;
+                    break;
+                }
+            }
+            e[k] = (float) Math.max(0, Math.min(1, y));
+        }
+        e[0] = 0f;
+        e[EASE_POINTS - 1] = 1f;
+        Curve prev = learned(show);
+        long dur = (prev.duration + duration) / 2;
+        long off = (prev.offset + start) / 2;
+        StringBuilder sb = new StringBuilder().append(dur).append(',').append(off);
+        for (int k = 0; k < EASE_POINTS; k++) sb.append(',').append(String.format(Locale.US, "%.3f", (prev.ease[k] + e[k]) / 2));
+        prefs().edit().putString(key(show), sb.toString()).apply();
+    }
+
+    /**
+     * Кадр клавиатуры — событием окна прямо из evaluateJavascript, как на iOS.
+     * offset — через сколько мс после отправки клавиатура трогается: страница
+     * начинает переход с этой задержкой минус время доставки события.
+     */
+    private void send(int px, long duration, float[] ease, long offset) {
         lastSent = px;
         WebView web = web();
         if (web == null) return;
@@ -233,7 +346,8 @@ final class KeyboardSync {
             e.append(']');
         }
         String js = "window.dispatchEvent(new CustomEvent('hyax:kbframe',{detail:{px:" + px
-            + ",duration:" + Math.max(0, duration) + ",ease:" + e + ",ts:" + System.currentTimeMillis() + "}}))";
+            + ",duration:" + Math.max(0, duration) + ",ease:" + e + ",offset:" + offset
+            + ",ts:" + System.currentTimeMillis() + "}}))";
         web.evaluateJavascript(js, null);
     }
 }
