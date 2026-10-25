@@ -7,6 +7,11 @@ import { myDeviceId } from "./deviceId";
 type CallType = "audio" | "video";
 export type CallState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
 type CallEndReason = "rejected" | "ended" | "missed" | "failed";
+// Потеря пути в звонке: сколько ждать восстановления, через сколько инициатор
+// перезапускает ICE после «disconnected», сколько рестартов на одну потерю.
+const LINK_LOST_MS = 15000;
+const ICE_RESTART_DELAY_MS = 3000;
+const ICE_RESTARTS_MAX = 2;
 
 export type IncomingCall = {
   callId: string;
@@ -135,6 +140,14 @@ export class OneToOneCallService {
   /** Собеседник текущего звонка (входящего или исходящего). */
   getPeerId(): string | null { return this.targetUserId; }
   private isCaller = false;
+  // Потеря пути: «disconnected» — переходное (сменилась сеть, провал на
+  // мобильном), «failed» — ICE сдался. Раньше вешали трубку сразу, и любой
+  // секундный провал связи заканчивал звонок. Теперь инициатор делает
+  // ICE-рестарт (новые кандидаты, в том числе через TURN), отвечающий ждёт его
+  // предложение; не восстановилось за LINK_LOST_MS — завершаем.
+  private linkLostTimer: ReturnType<typeof setTimeout> | null = null;
+  private iceRestartTimer: ReturnType<typeof setTimeout> | null = null;
+  private iceRestarts = 0;
   private state: CallState = "idle";
 
   constructor(options: CallServiceOptions) {
@@ -607,15 +620,18 @@ export class OneToOneCallService {
       const state = this.peerConnection?.connectionState;
       console.log(`🔌 [CallService] Connection state: ${state}`);
       if (state === "connected") {
+        this.clearLinkLost();
+        this.iceRestarts = 0;
         this.setState("active");
         // Камеру могли включить, пока звонок ещё звонил, — тот сигнал
         // собеседник пропустил (до ответа медиасигналы не принимаются).
         if (this.localVideoTrack) this.sendMedia();
       }
-      if (state === "failed" || state === "disconnected" || state === "closed") {
-        console.error(`❌ [CallService] Соединение ${state}`);
+      if (state === "closed") {
+        console.error("❌ [CallService] Соединение закрыто");
         this.finishCall("failed");
       }
+      if (state === "failed" || state === "disconnected") this.onLinkLost(state);
     };
 
     if (this.localStream) {
@@ -635,6 +651,51 @@ export class OneToOneCallService {
       const cam = this.localVideoTrack?.getVideoTracks()[0];
       this.videoTransceiver = this.peerConnection.addTransceiver(cam ?? "video", { direction: "sendrecv", streams: [this.localStream] });
     }
+  }
+
+  private onLinkLost(state: "failed" | "disconnected"): void {
+    console.warn(`⚠️ [CallService] Соединение ${state} — ждём восстановления`);
+    if (!this.linkLostTimer) {
+      this.linkLostTimer = setTimeout(() => {
+        this.linkLostTimer = null;
+        if (this.peerConnection && this.peerConnection.connectionState !== "connected") {
+          console.error("❌ [CallService] Связь не восстановилась");
+          this.finishCall("failed");
+        }
+      }, LINK_LOST_MS);
+    }
+    // Предложения в этой схеме делает только инициатор — он и перезапускает
+    // ICE: при «failed» сразу, при «disconnected» — дав пару секунд
+    // восстановиться самому.
+    if (!this.isCaller || this.iceRestartTimer) return;
+    this.iceRestartTimer = setTimeout(() => {
+      this.iceRestartTimer = null;
+      const st = this.peerConnection?.connectionState;
+      if (st && st !== "connected" && st !== "closed") void this.restartIce();
+    }, state === "failed" ? 0 : ICE_RESTART_DELAY_MS);
+  }
+
+  private async restartIce(): Promise<void> {
+    const pc = this.peerConnection;
+    if (!pc || !this.currentCallId || this.iceRestarts >= ICE_RESTARTS_MAX) return;
+    this.iceRestarts += 1;
+    console.log(`🔁 [CallService] ICE-рестарт ${this.iceRestarts}`);
+    try {
+      pc.restartIce?.();
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      this.wsService.send({
+        type: "webrtc_offer",
+        data: { chat_id: this.chatId, call_id: this.currentCallId, to_user_id: this.targetUserId, offer },
+      });
+    } catch (e) {
+      console.error("❌ [CallService] ICE-рестарт не удался:", e);
+    }
+  }
+
+  private clearLinkLost(): void {
+    if (this.linkLostTimer) { clearTimeout(this.linkLostTimer); this.linkLostTimer = null; }
+    if (this.iceRestartTimer) { clearTimeout(this.iceRestartTimer); this.iceRestartTimer = null; }
   }
 
   private async createAndSendOffer(): Promise<void> {
@@ -793,6 +854,8 @@ export class OneToOneCallService {
   }
 
   private finishCall(reason: CallEndReason): void {
+    this.clearLinkLost();
+    this.iceRestarts = 0;
     this.cleanupPeerConnection();
     this.cleanupLocalStream();
     this.resetMedia();
