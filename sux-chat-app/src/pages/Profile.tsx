@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
 import { useMint, MintIcon } from "@/themes/mint";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useGlassHeight } from "@/themes/mint/glass";
 import SavedGallery, { pluralPhotos } from "@/components/SavedGallery";
 
@@ -276,6 +277,9 @@ const ProfilePage = () => {
   // Своя точка: зелёная — «В сети», серая — выбран статус «Скрыт».
   const online = !profile?.hide_online;
   const mint = useMint();
+  // На телефоне экран — «Профиль» (вкладка с человечком, мобильный макет),
+  // на широком окне — колонка «Настройки» (вкладка с шестерёнкой).
+  const screenTitle = useIsMobile() ? t("Профиль") : t("Настройки");
   const glassRef = useRef<HTMLDivElement>(null);
   useGlassHeight(glassRef, mint);
   const bio = profile?.bio ? profile.bio.split("\n")[0] : "";
@@ -286,7 +290,7 @@ const ProfilePage = () => {
         <div ref={glassRef} className="mint-glass shrink-0 pad-safe-top">
           <div className="mint-head !pt-[19px] !pb-[12px]">
             <span />
-            <span className="mint-title">{t("Настройки")}</span>
+            <span className="mint-title">{screenTitle}</span>
             <button type="button" onClick={() => navigate("/profile/edit")} aria-label={t("Редактировать профиль")}
               className="mint-lime w-[56px] h-[33px] inline-flex items-center justify-center">
               <MintIcon name="pencil" size={[17, 18]} />
@@ -295,7 +299,7 @@ const ProfilePage = () => {
         </div>
       ) : (
       <div className="shrink-0 px-4 py-3 pad-safe-top bg-background min-h-14 flex items-center gap-2">
-        <span className="text-h1 flex-1">{t("Настройки")}</span>
+        <span className="text-h1 flex-1">{screenTitle}</span>
         <button
           type="button"
           onClick={() => navigate("/profile/edit")}

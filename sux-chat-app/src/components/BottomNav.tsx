@@ -53,6 +53,11 @@ const MINT_ITEMS: { to: string; label: string; icon: MintIconName; size: [number
   { to: "/profile", label: "Настройки", icon: "navSettings", size: [23, 23] },
 ];
 
+/** На телефоне последняя вкладка — «Профиль» с человечком, как в мобильном
+ *  макете; на широком окне (NavRail) — «Настройки» с шестерёнкой: там экран
+ *  открывается колонкой настроек. */
+const MINT_PROFILE: (typeof MINT_ITEMS)[number] = { to: "/profile", label: "Профиль", icon: "navProfile", size: [21, 22] };
+
 /** Лёгкий отклик при переключении вкладок (на телефоне). */
 const tap = () => {
   if (Capacitor.isNativePlatform()) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
@@ -67,7 +72,7 @@ const MintIsland = () => {
   const wallNew = useWallNew();
   // Стену можно скрыть (lib/sections) — тогда вкладок четыре.
   const sections = useSections();
-  const items = MINT_ITEMS.filter((i) => i.to !== "/wall" || sections.wall);
+  const items = MINT_ITEMS.filter((i) => i.to !== "/wall" || sections.wall).map((i) => i.to === "/profile" ? MINT_PROFILE : i);
   const idx = items.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
   const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
   // Остров висит поверх контента: экраны отступают снизу на его высоту
