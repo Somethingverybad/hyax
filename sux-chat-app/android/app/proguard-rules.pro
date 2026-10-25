@@ -1,21 +1,39 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
+# Правила R8 для релизной сборки (minifyEnabled в app/build.gradle).
 #
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Плагины Capacitor (наследники Plugin, методы @PluginMethod) сохраняет
+# consumer-правило самого Capacitor, Firebase и androidx приносят свои.
+# Здесь — то, что R8 не видит: вызовы по имени и рефлексия.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Номера строк в стектрейсах краша; имена файлов скрыты.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Наш код: плагины, сервисы пушей и звонков, приёмники. Его мало, а часть
+# вызывается по имени из манифеста и JS — проще не обфусцировать вовсе.
+-keep class com.huyax.app.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Методы, которые страница зовёт через мост WebView.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# Обновление по воздуху (@capgo/capacitor-updater): его proguard-rules.pro
+# подключён только к сборке самой библиотеки, не как consumer — переносим.
+-keepattributes *Annotation*, Signature
+-keep class ee.forgr.capacitor_updater.** { *; }
+-keep class com.getcapacitor.Bridge {
+    com.getcapacitor.MessageHandler msgHandler;
+}
+-keep class com.getcapacitor.MessageHandler { *; }
+-keep class com.getcapacitor.PluginCall {
+    <init>(com.getcapacitor.MessageHandler, java.lang.String, java.lang.String, java.lang.String, com.getcapacitor.JSObject);
+}
+-keep class * implements com.getcapacitor.PluginHandle {
+    public void invoke(java.lang.String, com.getcapacitor.PluginCall);
+}
+# Он же достаёт androidx.webkit через Class.forName.
+-keep class androidx.webkit.WebViewFeature { *; }
+-keep class androidx.webkit.WebViewCompat { *; }
+
+# Геолокация: библиотека Ionic разбирает настройки через Gson.
+-keep class io.ionic.libs.** { *; }

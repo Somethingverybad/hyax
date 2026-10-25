@@ -53,7 +53,12 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
+            // R8: Google Play считает долю обфусцированного DEX (была 2 %, ниже
+            // порога 25 % — приложение реже показывают в выдаче). Ресурсы не
+            // ужимаем (shrinkResources): звуки и иконки ищутся по имени.
+            // Правила для плагинов и моста — в proguard-rules.pro. Карта имён
+            // для стектрейсов лежит в AAB, Play берёт её сам.
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig ksProps["storeFile"] ? signingConfigs.release : signingConfigs.debug
         }
