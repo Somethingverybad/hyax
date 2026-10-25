@@ -2,6 +2,7 @@ package com.huyax.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.os.Build;
 import android.provider.Settings;
 import android.view.View;
@@ -69,7 +70,6 @@ final class KeyboardSync {
     private int lastSent = -1;
     // Запись хода текущей анимации: мс от onStart и доля пути 0..1.
     private long animStart;
-    private int animFrom;
     private int animTarget;
     private final List<long[]> track = new ArrayList<>();
 
@@ -106,6 +106,7 @@ final class KeyboardSync {
             if (!animating) {
                 int o = overlap(insets);
                 if (o != lastSent) send(o, CHANGE_MS, null, 0);
+                if (o > 0) saveSettled(o);
                 setPad(cut ? o : 0);
             }
             WindowInsetsCompat stripped = new WindowInsetsCompat.Builder(insets)
@@ -152,13 +153,13 @@ final class KeyboardSync {
             ) {
                 if (!isIme(animation) || !enabled) return bounds;
                 WindowInsetsCompat root = ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
-                int target = root != null ? overlap(root) : 0;
+                int target = snap(root != null ? overlap(root) : 0);
+                checkGen++; // отложенная сверка прошлой анимации больше не нужна
                 long duration = animation.getDurationMillis();
                 userDriven = duration <= 0;
                 // Закрытие: WebView растёт сразу — открывшаяся полоса ещё под клавиатурой.
                 if (target == 0) setPad(0);
                 animStart = System.currentTimeMillis();
-                animFrom = Math.max(0, lastSent);
                 animTarget = target;
                 track.clear();
                 if (!userDriven) {
@@ -180,11 +181,9 @@ final class KeyboardSync {
                     int o = overlap(insets);
                     if (o != lastSent) send(o, 0, null, 0);
                 }
-                int span = Math.abs(animTarget - animFrom);
-                if (enabled && span > 0 && track.size() < 200) {
-                    int o = overlap(insets);
-                    track.add(new long[] {System.currentTimeMillis() - animStart, Math.round(1000f * Math.abs(o - animFrom) / span)});
-                }
+                // Сырое перекрытие: нормируем потом по тому, куда клавиатура
+                // реально пришла, — не по цели из onStart (её поправляет snap).
+                if (enabled && track.size() < 200) track.add(new long[] {System.currentTimeMillis() - animStart, overlap(insets)});
                 return insets;
             }
 
@@ -197,9 +196,25 @@ final class KeyboardSync {
                 learn(animTarget > 0);
                 WindowInsetsCompat root = ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
                 int now = root != null ? overlap(root) : 0;
-                if (now != lastSent) send(now, 0, null, 0);
+                if (now != lastSent && !close(now, lastSent)) {
+                    send(now, 0, null, 0);
+                } else if (now != lastSent) {
+                    // Чуть другая высота в конце — скорее всего тот же фантом:
+                    // система поправит её сама. Сверяем через 300 мс, и если
+                    // разница настоящая — едем к ней плавно.
+                    final int gen = ++checkGen;
+                    activity.getWindow().getDecorView().postDelayed(() -> {
+                        if (gen != checkGen || animating) return;
+                        WindowInsetsCompat r = ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
+                        int o = r != null ? overlap(r) : 0;
+                        if (o != lastSent) send(o, CHANGE_MS, null, 0);
+                        if (o > 0) saveSettled(o);
+                        setPad(cut ? o : 0);
+                    }, 300);
+                }
+                if (now > 0 && now == lastSent) saveSettled(now);
                 // Открылась: в режиме «cut» WebView ужимается сейчас — под клавиатурой.
-                setPad(cut ? now : 0);
+                setPad(cut ? lastSent : 0);
             }
         };
 
@@ -252,6 +267,35 @@ final class KeyboardSync {
         }
     }
 
+    private int checkGen = 0;
+
+    /**
+     * Устоявшаяся высота клавиатуры. Со второго открытия Gboard в начале
+     * анимации отдаёт перекрытие на ~58 px больше настоящего (662 вместо 604
+     * на Redmi, 25.10) и через полсекунды сам поправляет — поле ввода
+     * подскакивало выше клавиатуры и опускалось. Близкая к запомненной
+     * высота — это она; заметно другая (эмодзи, другая раскладка) — новая.
+     */
+    private String heightKey() {
+        int o = activity.getResources().getConfiguration().orientation;
+        return key(true) + (o == Configuration.ORIENTATION_LANDSCAPE ? ":land" : ":port") + ":h";
+    }
+
+    private void saveSettled(int px) {
+        if (prefs().getInt(heightKey(), -1) != px) prefs().edit().putInt(heightKey(), px).apply();
+    }
+
+    private boolean close(int a, int b) {
+        if (a <= 0 || b <= 0) return false;
+        return Math.abs(a - b) <= Math.max(80, Math.max(a, b) * 0.12f);
+    }
+
+    private int snap(int target) {
+        if (target <= 0) return target;
+        int settled = prefs().getInt(heightKey(), -1);
+        return close(target, settled) ? settled : target;
+    }
+
     private SharedPreferences prefs() {
         return activity.getSharedPreferences("keyboard_sync", Context.MODE_PRIVATE);
     }
@@ -262,7 +306,8 @@ final class KeyboardSync {
         try {
             ime = Settings.Secure.getString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
         } catch (Exception ignored) {}
-        return (ime == null ? "ime" : ime) + (show ? ":show" : ":hide");
+        // v2: до 25.10 кривые учились по цели из onStart и укорачивались.
+        return (ime == null ? "ime" : ime) + (show ? ":show" : ":hide") + ":v2";
     }
 
     private Curve learned(boolean show) {
@@ -289,9 +334,14 @@ final class KeyboardSync {
      * Анимацию с провалом кадров (>60 мс) не учим: кривая вышла бы ломаной.
      */
     private void learn(boolean show) {
-        List<long[]> t = new ArrayList<>(track);
+        List<long[]> raw = new ArrayList<>(track);
         track.clear();
-        if (t.size() < 8) return;
+        if (raw.size() < 8) return;
+        long from = raw.get(0)[1], to = raw.get(raw.size() - 1)[1];
+        long span = Math.abs(to - from);
+        if (span < 40) return;
+        List<long[]> t = new ArrayList<>(raw.size());
+        for (long[] r : raw) t.add(new long[] {r[0], Math.min(1000, Math.round(1000.0 * Math.abs(r[1] - from) / span))});
         long start = -1, end = -1;
         for (int i = 0; i < t.size(); i++) {
             if (i > 0 && t.get(i)[0] - t.get(i - 1)[0] > 60) return;
@@ -318,11 +368,39 @@ final class KeyboardSync {
         e[0] = 0f;
         e[EASE_POINTS - 1] = 1f;
         Curve prev = learned(show);
-        long dur = (prev.duration + duration) / 2;
         long off = (prev.offset + start) / 2;
+        long dur;
+        float[] out = new float[EASE_POINTS];
+        if (show) {
+            // Открытия однородные — среднее с прошлым.
+            dur = (prev.duration + duration) / 2;
+            for (int k = 0; k < EASE_POINTS; k++) out[k] = (prev.ease[k] + e[k]) / 2;
+        } else {
+            // Закрытия бывают двух видов: по кривой клавиатуры (~360 мс с
+            // хвостом) и быстрые системные (~200 мс, когда клавиатуру только
+            // что открывали) — замер на Redmi, 25.10; объявленная длительность
+            // у обоих 285. Учим самую медленную: при быстром закрытии поле в
+            // конце чуть отстанет (полоска фона), но под клавиатуру не уйдёт.
+            Curve now = new Curve(duration, start, e);
+            dur = Math.max(prev.duration, duration);
+            for (int k = 0; k < EASE_POINTS; k++) {
+                double tk = dur * (k / (double) (EASE_POINTS - 1));
+                out[k] = (float) Math.min(at(prev, tk), at(now, tk));
+            }
+            out[EASE_POINTS - 1] = 1f;
+        }
         StringBuilder sb = new StringBuilder().append(dur).append(',').append(off);
-        for (int k = 0; k < EASE_POINTS; k++) sb.append(',').append(String.format(Locale.US, "%.3f", (prev.ease[k] + e[k]) / 2));
+        for (int k = 0; k < EASE_POINTS; k++) sb.append(',').append(String.format(Locale.US, "%.3f", out[k]));
         prefs().edit().putString(key(show), sb.toString()).apply();
+    }
+
+    /** Доля пути кривой c через t мс после старта (за концом — 1). */
+    private static double at(Curve c, double t) {
+        if (t >= c.duration) return 1;
+        double x = t / c.duration * (EASE_POINTS - 1);
+        int i = (int) Math.floor(x);
+        if (i >= EASE_POINTS - 1) return 1;
+        return c.ease[i] + (c.ease[i + 1] - c.ease[i]) * (x - i);
     }
 
     /**
