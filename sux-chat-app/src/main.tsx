@@ -129,9 +129,9 @@ if (Cap.isNativePlatform()) {
   // страница ужалась сама — разность нулевая и двигать нечего; когда не
   // ужалась — разность равна высоте клавиатуры. Одна формула на все случаи.
   let keyboardHeight = 0;
-  // iOS: кадр клавиатуры приходит из своего плагина KeyboardSync — тогда
-  // штатный путь ниже только пишет лог.
-  let iosSync = false;
+  // Кадр клавиатуры приходит из своего плагина KeyboardSync (iOS, Android 11+)
+  // — тогда штатный путь ниже только пишет лог.
+  let nativeSync = false;
   let lastOffset = -1;
   let lastTrace = "";
 
@@ -181,7 +181,7 @@ if (Cap.isNativePlatform()) {
     // Отступ под полосу навигации, пока клавиатура открыта, не нужен: полоса за
     // ней. Иначе внутри панели ввода оставалась пустая полка в её высоту.
     const keyboardUp = keyboardHeight > 0 || offset > 0 || (window.visualViewport?.height ?? window.innerHeight) < window.innerHeight - 40;
-    if (iosSync) return; // на iOS кадр клавиатуры ведёт KeyboardSync (ниже)
+    if (nativeSync) return; // кадр клавиатуры ведёт KeyboardSync (ниже)
     root.style.setProperty("--kb-sab", keyboardUp ? "0px" : "var(--sab)");
     syncPan();
     if (offset === lastOffset) return;
@@ -314,12 +314,141 @@ if (Cap.isNativePlatform()) {
     // Подписка на слушатель нужна лишь как проверка, что плагин в сборке есть.
     window.addEventListener("hyax:kbframe", (e) => iosKeyboard((e as CustomEvent<{ height: number; ts: number }>).detail));
     KeyboardSync.addListener("change", () => {})
-      .then(() => { iosSync = true; root.style.setProperty("--kb-sab", "var(--sab)"); })
+      .then(() => { nativeSync = true; root.style.setProperty("--kb-sab", "var(--sab)"); })
       .catch(() => { /* старая нативная сборка без плагина — остаётся штатный путь */ });
   }
 
+  // ── Android 11+: панель ввода едет вместе с клавиатурой, как на iPhone ──
+  // Раньше WebView ужимался под клавиатуру одним шагом: Android сразу отдаёт
+  // итоговую высоту, и чат прыгал вверх за кадр, пока клавиатура выезжала
+  // ещё ~285 мс. Теперь кадр приходит из KeyboardSync.java событием
+  // hyax:kbframe: итоговое перекрытие WebView (px устройства), длительность и
+  // кривая системной анимации (17 точек её интерполятора → CSS linear()).
+  // WebView клавиатуру не видит и не ужимается — поле ввода, нижние шторки и
+  // ленту поднимаем transform-ом, тем же набором, что на iOS. Поле вне них
+  // (формы, поиск, мини-приложения) — режим «cut»: WebView ужимает натив в
+  // конце анимации, когда место под клавиатурой и разрыв не виден.
+  if (Cap.getPlatform() === "android") {
+    const KeyboardSync = registerPlugin<{
+      enable(): Promise<void>;
+      setMode(o: { cut: boolean }): Promise<void>;
+    }>("KeyboardSync");
+    const LIFTED = ".pad-safe-bottom, .kb-lift";
+    const LIFT_TARGETS = ".pad-safe-bottom, .kb-lift, .chat-scroll";
+    // Кривая системы по умолчанию — SYNC_IME_INTERPOLATOR из InsetsController.
+    const ANDROID_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+    const linearOk = typeof CSS !== "undefined" && !!CSS.supports?.("transition-timing-function", "linear(0, 1)");
+    const easeOf = (pts?: number[] | null) =>
+      linearOk && Array.isArray(pts) && pts.length >= 2
+        ? `linear(${pts.map((v) => Math.round(v * 10000) / 10000).join(", ")})`
+        : ANDROID_EASE;
+    const cssPx = (px: number) => Math.round(px / (window.devicePixelRatio || 1));
+    /** Сфокусированное поле — в поднимаемой панели (поле ввода чата, нижняя шторка)? */
+    const fieldLifts = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el || el === document.body) return true;
+      if (el.tagName === "IFRAME") return false;
+      return !!el.closest(LIFTED);
+    };
+    let cutSent: boolean | null = null;
+    /** Режим для натива: «cut» — WebView ужимается под открытую клавиатуру. */
+    const syncMode = () => {
+      const cut = !fieldLifts();
+      if (cut !== cutSent) { cutSent = cut; void KeyboardSync.setMode({ cut }).catch(() => {}); }
+      return cut;
+    };
+    let kbPx = 0;
+    let lastLift = -1;
+    const applyLift = (h: number, ms: number, ease: string, late: number) => {
+      if (h === lastLift) return;
+      lastLift = h;
+      lastOffset = h;
+      const lift = `max(0px, calc(${h}px - var(--sab)))`;
+      const tr = ms > 0 ? `transform ${ms}ms ${ease} ${-Math.round(late)}ms` : "none";
+      window.dispatchEvent(new CustomEvent("hyax:keyboard", { detail: { height: h, duration: ms, ease, ts: Date.now() - late, translate: true } }));
+      // Скрытые экраны (слои вкладок, пул переписок — inert) не трогаем: их
+      // слои незачем создавать и перерисовывать. Сдвиг с них снимаем.
+      document.querySelectorAll<HTMLElement>(LIFT_TARGETS).forEach((el) => {
+        const hidden = !!el.closest("[inert]");
+        el.style.transition = hidden ? "none" : tr;
+        el.style.transform = h && !hidden ? `translateY(calc(-1 * ${lift}))` : "translateY(0)";
+      });
+    };
+    // Свои слои поднимаемым панелям — заранее, при фокусе на поле: иначе в
+    // первом кадре подъёма браузер создавал слой и панель вкладок на кадр
+    // пропадала (запись экрана Redmi, 25.10). Только видимым и небольшим:
+    // слой ленты (тысячи строк) растеризуется ~150 мс, и всё это время
+    // отрисовка стоит — подъём начинался с опозданием и рывком.
+    // Один раз на открытие и только при фокусе: замер размеров при кадре
+    // клавиатуры заставлял браузер пересчитать раскладку посреди старта
+    // анимации — первая после запуска задача шла 72 мс, подъём опаздывал.
+    let primed: HTMLElement[] | null = null;
+    let unprimeTimer = 0;
+    const prime = (on: boolean) => {
+      window.clearTimeout(unprimeTimer);
+      if (on && primed) return;
+      if (!on) {
+        primed?.forEach((el) => { el.style.willChange = ""; });
+        primed = null;
+        return;
+      }
+      primed = [];
+      // Ленту не трогаем: её большой слой задерживал старт анимации на
+      // композиторе на 3–5 кадров (запись экрана Redmi, 25.10). Нулевой
+      // сдвиг сразу — первый переход transform из «нет» в значение дорог.
+      document.querySelectorAll<HTMLElement>(LIFTED).forEach((el) => {
+        if (el.closest("[inert]") || el.getBoundingClientRect().height === 0) return;
+        el.style.willChange = "transform";
+        if (!el.style.transform) el.style.transform = "translateY(0)";
+        primed!.push(el);
+      });
+    };
+    const androidKeyboard = (d: { px: number; duration: number; ease?: number[] | null; offset?: number; ts: number }) => {
+      kbPx = Math.max(0, Math.round(d.px || 0));
+      let h = cssPx(kbPx);
+      if (h >= window.innerHeight - 1) { applog.warn(`kbsync bogus h=${h} inner=${window.innerHeight}`); h = 0; }
+      const cut = h > 0 && syncMode();
+      const reduce = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const ms = reduce ? 0 : Math.max(0, d.duration || 0);
+      // Клавиатура трогается через offset мс после отправки кадра (замер
+      // натива по прошлым анимациям); доставка события уже съела часть этого.
+      // Положительное — ждём, отрицательное — начинаем с середины.
+      // PIPELINE — от записи стиля до кадра на экране (кадр страницы и кадр
+      // композитора): без поправки поле ввода отставало на ~2 кадра.
+      const PIPELINE = 32;
+      const late = Math.min(Math.max(0, Date.now() - d.ts) - (d.offset || 0) + PIPELINE, Math.max(0, ms - 16));
+      keyboardHeight = h;
+      applog.info(`kbsync h=${h} ms=${ms} late=${Math.round(late)}ms${cut ? " cut" : ""}`);
+      applyLift(cut ? 0 : h, ms, easeOf(d.ease), late);
+      if (h === 0) unprimeTimer = window.setTimeout(() => prime(false), ms + 200);
+    };
+    window.addEventListener("hyax:kbframe", (e) => {
+      if (nativeSync) androidKeyboard((e as CustomEvent<{ px: number; duration: number; ease?: number[] | null; offset?: number; ts: number }>).detail);
+    });
+    // Фокус перешёл между полем чата и формой при открытой клавиатуре — меняем
+    // режим без анимации (клавиатура стоит на месте).
+    const onFocusMove = () => window.setTimeout(() => {
+      if (!nativeSync) return;
+      const cut = syncMode();
+      const el = document.activeElement as HTMLElement | null;
+      if (!cut && el && el !== document.body) prime(true);
+      if (kbPx > 0) applyLift(cut ? 0 : cssPx(kbPx), 0, ANDROID_EASE, 0);
+    }, 0);
+    document.addEventListener("focusin", onFocusMove, true);
+    document.addEventListener("focusout", onFocusMove, true);
+    KeyboardSync.enable()
+      .then(() => {
+        nativeSync = true;
+        syncMode();
+        root.style.setProperty("--kb-sab", "var(--sab)");
+        root.style.setProperty("--kb-height", "0px");
+        applog.info("kbsync android: on");
+      })
+      .catch(() => { /* Android до 11 или сборка без плагина — прежний путь */ });
+  }
+
   Keyboard.addListener("keyboardWillShow", (info) => {
-    if (iosSync) { applog.info(`kb show h=${Math.round(info.keyboardHeight)}`); return; }
+    if (nativeSync) { applog.info(`kb show h=${Math.round(info.keyboardHeight)}`); return; }
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = info.keyboardHeight;
     vvAtShow = Math.round(window.visualViewport?.height ?? window.innerHeight);
@@ -333,7 +462,7 @@ if (Cap.isNativePlatform()) {
   });
 
   Keyboard.addListener("keyboardWillHide", () => {
-    if (iosSync) { applog.info("kb hide"); return; }
+    if (nativeSync) { applog.info("kb hide"); return; }
     root.style.setProperty("--kb-duration", "250ms");
     keyboardHeight = 0;
     vvAtShow = -1; vvTopAtShow = -1;
