@@ -29,16 +29,19 @@ const quickUrl = (raw: string, localMap?: Map<string, string>) =>
 /** Ссылка на картинку: сразу из кэша, иначе подписываем. Соседние кадры
  *  готовим так же — при листании они уже на месте. */
 const useItemUrl = (item: ViewerItem | undefined, localMap?: Map<string, string>) => {
-  const [url, setUrl] = useState("");
+  const raw = item?.raw || "";
+  // Из кэша — прямо при отрисовке, а не эффектом: эффект срабатывал уже после
+  // смены кадра, и на кадр в центре мог остаться прежний снимок.
+  const quick = raw ? quickUrl(raw, localMap) : "";
+  const [resolved, setResolved] = useState<{ raw: string; url: string }>({ raw: "", url: "" });
   useEffect(() => {
+    if (!raw || quick) return;
     let alive = true;
-    const quick = item ? quickUrl(item.raw, localMap) : "";
-    setUrl(quick);
-    if (item && !quick) resolveMediaUrl(item.raw).then((u) => { if (alive) setUrl(u); }).catch(() => {});
+    resolveMediaUrl(raw).then((u) => { if (alive) setResolved({ raw, url: u }); }).catch(() => {});
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.raw]);
-  return url;
+  }, [raw]);
+  return quick || (resolved.raw === raw ? resolved.url : "");
 };
 
 /** Листание: кадр едет за пальцем, отпустили — доезжает до соседнего. */
@@ -127,10 +130,15 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
   const resetZoom = () => setT({ s: 1, x: 0, y: 0 });
   useEffect(() => { resetZoom(); setDrag(0); }, [index]);
 
-  const go = (step: number) => {
+  /** Соседний кадр. slide — после свайпа: лента доезжает за пальцем. Со
+   *  стрелок и кнопок — сразу, без ленты: она проезжала экран за 4 кадра, и
+   *  чёрный зазор между фото пролетал по центру вспышкой (баг-репорт f45e9910,
+   *  десктоп). Соседи уже загружены, поэтому смена мгновенная. */
+  const go = (step: number, slide = false) => {
     const next = index + step;
     if (next < 0 || next >= items.length || sliding.current) return;
     setMenuOpen(false);
+    if (!slide) { onIndex(next); return; }
     const w = stageRef.current?.clientWidth || window.innerWidth;
     setShift(-step * w);
     sliding.current = setTimeout(() => {
@@ -216,7 +224,7 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
       const speed = Math.abs(dx) / Math.max(1, performance.now() - p.at);
       const step = dx < 0 ? 1 : -1;
       const can = step > 0 ? index + 1 < items.length : index > 0;
-      if (can && (Math.abs(dx) >= 60 || (Math.abs(dx) > 35 && speed > 0.5))) { go(step); return; }
+      if (can && (Math.abs(dx) >= 60 || (Math.abs(dx) > 35 && speed > 0.5))) { go(step, true); return; }
       setShift(0);
       return;
     }
