@@ -4,4 +4,9 @@ export const APP_NAME = "WYX";
 /** Почта для обращений по правилам, жалобам и персональным данным. */
 export const SUPPORT_EMAIL = "Ancher001@yandex.ru";
 /** Дата последней правки правил и политики. */
-export const LEGAL_UPDATED = "2026-10-15";
+export const LEGAL_UPDATED = "2026-10-25";
+/** Оператор персональных данных в политике — как в аккаунте разработчика
+ *  в сторах (RuStore требует указать ответственного за обработку). Латиницей —
+ *  для английской и корейской редакций. */
+export const LEGAL_OPERATOR = "Черенев Андрей Анатольевич";
+export const LEGAL_OPERATOR_LATIN = "Andrey Anatolyevich Cherenev";
