@@ -179,6 +179,9 @@ def _loop():
             if time.time() - last_cleanup > 6 * 3600:
                 last_cleanup = time.time()
                 MetricSample.objects.filter(ts__lt=timezone.now() - timedelta(days=KEEP_DAYS)).delete()
+                # Заодно — срок хранения жалоб и баг-репортов из политики.
+                from .moderation import purge_old_reports
+                purge_old_reports()
         except Exception:
             logger.exception("metrics: снимок не записан")
         finally:

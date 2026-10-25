@@ -151,6 +151,37 @@ def deliver(report: Report):
         return None
 
 
+# Политика конфиденциальности обещает: жалобы и баг-репорты — до 12 месяцев,
+# в том числе после удаления аккаунта. Вместе с ними уходят их сообщения в
+# системных чатах (там логин отправителя и описание) и файлы баг-репорта.
+KEEP_REPORTS_DAYS = 365
+
+
+def purge_old_reports(days=KEEP_REPORTS_DAYS):
+    """Удаляет жалобы, баг-репорты и сообщения системных чатов старше days.
+    Зовёт сэмплер метрик (chat/metrics.py) раз в несколько часов."""
+    import os
+    import shutil
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.utils import timezone
+
+    from .models import BugReport
+
+    cutoff = timezone.now() - timedelta(days=days)
+    bugs = list(BugReport.objects.filter(created_at__lt=cutoff).values_list("id", flat=True))
+    for bug_id in bugs:
+        shutil.rmtree(os.path.join(settings.MEDIA_ROOT, "bugreports", str(bug_id)), ignore_errors=True)
+    if bugs:
+        BugReport.objects.filter(id__in=bugs).delete()
+    n_reports = Report.objects.filter(created_at__lt=cutoff).delete()[0]
+    n_msgs = Message.objects.filter(chat__kind=SYSTEM_KIND, created_at__lt=cutoff).delete()[0]
+    if bugs or n_reports or n_msgs:
+        logger.info("moderation: старше %s дн. удалено — баг-репорты %s, жалобы %s, сообщения %s", days, len(bugs), n_reports, n_msgs)
+    return len(bugs), n_reports, n_msgs
+
+
 # ---- Блокировка ----
 
 def blocked_ids(profile):

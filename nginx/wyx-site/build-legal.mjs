@@ -15,6 +15,8 @@ const constant = (name) => brand.match(new RegExp(`export const ${name} = "([^"]
 const APP_NAME = constant("APP_NAME");
 const SUPPORT_EMAIL = constant("SUPPORT_EMAIL");
 const LEGAL_UPDATED = constant("LEGAL_UPDATED");
+const LEGAL_OPERATOR = constant("LEGAL_OPERATOR");
+const LEGAL_OPERATOR_LATIN = constant("LEGAL_OPERATOR_LATIN");
 
 // Вырезаем объекты TERMS и PRIVACY и исполняем их как обычный JS.
 const cut = (name) => {
@@ -23,7 +25,7 @@ const cut = (name) => {
   if (start < 0 || end < 0) throw new Error(`${name} не найден в Legal.tsx`);
   return legal.slice(legal.indexOf("= {", start) + 2, end + 2);
 };
-const evalDoc = (src) => new Function("APP_NAME", "LEGAL_UPDATED", "mail", `return (${src});`)(APP_NAME, LEGAL_UPDATED, SUPPORT_EMAIL);
+const evalDoc = (src) => new Function("APP_NAME", "LEGAL_UPDATED", "mail", "operator", "operatorLatin", `return (${src});`)(APP_NAME, LEGAL_UPDATED, SUPPORT_EMAIL, LEGAL_OPERATOR, LEGAL_OPERATOR_LATIN);
 const TERMS = evalDoc(cut("TERMS"));
 const PRIVACY = evalDoc(cut("PRIVACY"));
 

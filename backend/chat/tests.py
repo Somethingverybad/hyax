@@ -3110,3 +3110,41 @@ class BgThreadTests(TestCase):
         with mock.patch("django.db.connections.close_all") as close_all, self.assertLogs("chat.bgthread", level="ERROR"):
             spawn(boom).join(5)
         close_all.assert_called_once()
+
+
+class PurgeOldReportsTests(TestCase):
+    """Срок из политики конфиденциальности: жалобы, баг-репорты и сообщения
+    системных чатов старше 12 месяцев удаляются вместе с файлами репорта,
+    свежие и обычная переписка остаются."""
+
+    def test_purge_removes_only_old_reports(self):
+        import os
+        import tempfile as tf
+        from django.conf import settings
+        from .models import BugReport, Report
+        from .moderation import system_chat, system_bot, purge_old_reports, BUGS_CHAT_NAME
+
+        me = make_user("zz_purge_a")
+        other = make_user("zz_purge_b")
+        old = timezone.now() - timedelta(days=400)
+        with tf.TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
+            old_bug = BugReport.objects.create(reporter=me, description="old", created_at=old)
+            new_bug = BugReport.objects.create(reporter=me, description="new")
+            for b in (old_bug, new_bug):
+                os.makedirs(os.path.join(settings.MEDIA_ROOT, "bugreports", str(b.id)))
+            Report.objects.create(reporter=me, target_type="user", target_id=str(other.id), reason="spam", created_at=old)
+            fresh = Report.objects.create(reporter=me, target_type="user", target_id=str(other.id), reason="spam")
+            sys_chat = system_chat(BUGS_CHAT_NAME)
+            Message.objects.create(chat=sys_chat, sender=system_bot(), content="old", created_at=old)
+            keep_sys = Message.objects.create(chat=sys_chat, sender=system_bot(), content="new")
+            dm = Chat.objects.create()
+            keep_dm = Message.objects.create(chat=dm, sender=me, content="личное", created_at=old)
+
+            self.assertEqual(purge_old_reports(), (1, 1, 1))
+
+            self.assertEqual(list(BugReport.objects.values_list("id", flat=True)), [new_bug.id])
+            self.assertFalse(os.path.exists(os.path.join(settings.MEDIA_ROOT, "bugreports", str(old_bug.id))))
+            self.assertTrue(os.path.exists(os.path.join(settings.MEDIA_ROOT, "bugreports", str(new_bug.id))))
+            self.assertEqual(list(Report.objects.values_list("id", flat=True)), [fresh.id])
+            self.assertTrue(Message.objects.filter(id=keep_sys.id).exists())
+            self.assertTrue(Message.objects.filter(id=keep_dm.id).exists())
