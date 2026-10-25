@@ -3,6 +3,14 @@ services:
     image: nginx:latest
     container_name: sux_chat_nginx
     restart: unless-stopped
+    # Журналы — не дольше 30 дней, как обещает политика конфиденциальности
+    # (IP, время и адрес запроса). Без лимита docker копил их с момента
+    # создания контейнера; при ~28 МБ в сутки 5 × 100 МБ — около 18 дней.
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
     depends_on:
       - api
     volumes:
@@ -42,6 +50,12 @@ services:
     build: ./backend
     container_name: sux_chat_api
     restart: unless-stopped
+    # Журналы — не дольше 30 дней (см. nginx): ~1,3 МБ в сутки, 3 × 10 МБ.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Несколько процессов: один daphne упирался в одно ядро, и при утреннем
     # наплыве запросы со всех устройств вставали в очередь (p90 списка чатов
     # 0,8 с при 4 свободных ядрах). gunicorn держит API_WORKERS воркеров
@@ -89,6 +103,12 @@ services:
     build: ./backend
     container_name: sux_chat_tg
     restart: unless-stopped
+    # Журналы — с лимитом, как у api.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     command: python manage.py tg_mirror
     volumes:
       - ./backend:/app
