@@ -77,7 +77,7 @@ const en: Record<string, string> = {
   "Сообщение": "Message",
   "Отменить": "Cancel",
   "Скачать": "Download",
-  "Повторить": "Retry",
+  "Повторить": "Retry", "Не удалось загрузить чаты": "Could not load chats",
   "Поделиться": "Share",
   "Звук звонка": "Ringtone",
   "Звуки": "Sounds",

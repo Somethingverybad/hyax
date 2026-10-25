@@ -59,27 +59,42 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  // Свежий список не загрузился и кэша нет — показываем «Повторить», а не
+  // «нет переписок»: на плохой сети getChats падает регулярно, и человек
+  // думал, что чаты пропали (баг-репорт 220531bc).
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!open || rows) return;
+    const me = readCache<{ id: string }>("user")?.id;
+    const withWall = (list: Row[]) => (includeWall ? [{ id: "wall", title: t("Стена"), kind: "wall" as const }, ...list] : list);
+    // Сразу — чаты из кэша экрана (без каналов: кто из них мой, знает только
+    // сервер), свежий список подтянется поверх. Пока кэша нет — «Загрузка…».
+    const cached = readCache<any[]>("chats");
+    if (cached?.length) setRows(withWall(toRows(cached, me, false, excludeChatId)));
     (async () => {
       try {
         const chats = await api.getChats();
-        let list = toRows(chats, readCache<{ id: string }>("user")?.id, includeChannels, excludeChatId);
+        let list = toRows(chats, me, includeChannels, excludeChatId);
         if (includeChannels) {
           // Публиковать в канал может только владелец или админ — чужие убираем.
           const mine = new Set((await api.getMyChannels().catch(() => [] as any[]))
             .filter((c: any) => c.my_role === "owner" || c.my_role === "admin").map((c: any) => c.id));
           list = list.filter((r) => r.kind !== "channel" || mine.has(r.id));
         }
-        if (includeWall) list = [{ id: "wall", title: t("Стена"), kind: "wall" }, ...list];
-        setRows(list);
-      } catch { setRows([]); }
+        setFailed(false);
+        setRows(withWall(list));
+      } catch {
+        // Кэш уже на экране — оставляем его; иначе предлагаем повторить.
+        if (!cached?.length) { setRows(null); setFailed(true); }
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rows]);
 
-  useEffect(() => { if (!open) setQuery(""); }, [open]);
+  // Закрыли — следующее открытие грузит список заново (мог прийти новый чат,
+  // могла появиться сеть).
+  useEffect(() => { if (!open) { setQuery(""); setRows(null); setFailed(false); } }, [open]);
 
   if (!open) return null;
 
@@ -130,7 +145,12 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 space-y-2">
-          {rows === null ? (
+          {rows === null && failed ? (
+            <div className="space-y-2">
+              <p className="text-small text-subtle">{t("Не удалось загрузить чаты")}</p>
+              <button type="button" className="text-small text-accent" onClick={() => { setFailed(false); setRows(null); }}>{t("Повторить")}</button>
+            </div>
+          ) : rows === null ? (
             <p className="text-small text-subtle">{t("Загрузка…")}</p>
           ) : rows.length === 0 ? (
             <p className="text-small text-subtle">{t("Пока некуда отправлять — нет переписок.")}</p>
