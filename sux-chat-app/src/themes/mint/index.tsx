@@ -18,6 +18,7 @@ import navProfile from "./icons/nav-profile.svg";
 import navSettings from "./icons/nav-settings.svg";
 import navSaved from "./icons/nav-saved.svg";
 import navWall from "./icons/nav-wall.svg";
+import gallery from "./icons/gallery.svg";
 import pencil from "./icons/pencil.svg";
 import pinnedRight from "./icons/pinned-right.svg";
 import rowAbout from "./icons/row-about.svg";
@@ -26,6 +27,7 @@ import rowAt from "./icons/row-at.svg";
 import rowBell from "./icons/row-bell.svg";
 import rowCopy from "./icons/row-copy.svg";
 import rowLock from "./icons/row-lock.svg";
+import rowLog from "./icons/row-log.svg";
 import rowSaved from "./icons/row-saved.svg";
 import rowSticker from "./icons/row-sticker.svg";
 import rowTag from "./icons/row-tag.svg";
@@ -54,7 +56,7 @@ export function useMint(): boolean {
  *  и светлой «Мяте», и тёмной. */
 export const MINT_ICONS = {
   back, checks, chevron, close, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
-  pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowSaved,
+  gallery, pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowLog, rowSaved,
   rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent,
 } as const;
 export type MintIconName = keyof typeof MINT_ICONS;

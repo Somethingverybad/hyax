@@ -46,6 +46,11 @@
 .mint-muted { color: var(--mint-muted); }
 .mint-ink { color: var(--mint-ink); }
 .mint-divider { height: 1px; background: var(--mint-divider); }
+/* Подпись раздела над карточкой (макет «Сообщить о проблеме»): Inter Medium
+   43 → 14.3 px, цвет заголовков, отступ до карточки 32 → 10.7 px. */
+.mint-label { display: block; margin: 0 0 11px 1px; font-size: 14.3px; font-weight: 500; line-height: 18px; color: var(--mint-title); }
+/* Сноска под карточками: 35 → 11.7 px, приглушённый зелёный #9CB2AB. */
+.mint-faint { color: #9cb2ab; }
 
 /* Шапка экрана: три зоны, заголовок строго по центру. */
 .mint-head {
@@ -198,8 +203,10 @@
    список чатов). */
 [data-shape="soft"] .mint-glass { position: relative; z-index: 20; }
 [data-shape="soft"] .mint-glass:has(+ .overflow-y-auto) { margin-bottom: calc(-1 * var(--glass-h, 0px)); }
+/* Между низом кнопок шапки и первым элементом — 21 px, как в макете
+   (у шапки свой нижний отступ 12 px, поэтому здесь 9). */
 [data-shape="soft"] .mint-glass + .overflow-y-auto {
-  padding-top: calc(var(--glass-h, 0px) + 16px) !important;
+  padding-top: calc(var(--glass-h, 0px) + 9px) !important;
   scroll-padding-top: var(--glass-h, 0px);
 }
 /* Подложка стекла. Экраны с классом mint-glass-over (чат, список чатов) —

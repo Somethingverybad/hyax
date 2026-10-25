@@ -7,7 +7,7 @@ import { shareEmojiPack, shareStickerPack } from "@/lib/share";
 import { readCache } from "@/lib/session-cache";
 import { ChevronRight, Link2, Sticker as StickerIcon, Share2, Trash2 } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard, SettingsRow } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsTitle } from "@/components/settings";
 import { api, mediaUrl } from "@/api/client";
 
 type Pack = { id: string; name: string; stickers_count: number; author?: { id?: string; username?: string } | null; cover?: string | null; kind?: string };
@@ -88,7 +88,7 @@ const ProfileStickerPacks = () => {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title={t("Стикерпаки")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle flex items-center gap-2"><Link2 className="w-4 h-4" /> {t("Набор по ссылке")}</p>
+        <SettingsTitle><Link2 className="w-4 h-4 shrink-0" />{t("Набор по ссылке")}</SettingsTitle>
         <SettingsCard>
           <div className="px-4 py-3 space-y-2.5">
             <input
@@ -128,7 +128,7 @@ const ProfileStickerPacks = () => {
           </div>
         </SettingsCard>
 
-        <p className="px-1 pt-2 text-small text-subtle">{t("Мои наборы")}</p>
+        <SettingsTitle>{t("Мои наборы")}</SettingsTitle>
         <SettingsCard>
           {packs === null ? (
             <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>

@@ -5,7 +5,7 @@ import { Link2, ChevronRight, Plus, Share2 } from "lucide-react";
 import { packCover } from "@/lib/packCover";
 import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard, SettingsRow } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsTitle } from "@/components/settings";
 import { api, type SoundPackInfo } from "@/api/client";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { LINK_ORIGIN, shareSoundPack } from "@/lib/share";
@@ -78,7 +78,7 @@ const ProfileSoundPacks = () => {
 
         {mine && mine.length > 0 && (
           <>
-            <p className="px-1 text-small text-subtle">{t("Мои паки")}</p>
+            <SettingsTitle>{t("Мои паки")}</SettingsTitle>
             <SettingsCard>
               {mine.map((p) => (
                 <SettingsRow
@@ -94,7 +94,7 @@ const ProfileSoundPacks = () => {
           </>
         )}
 
-        <p className="px-1 text-small text-subtle">{t("Добавленные")}</p>
+        <SettingsTitle>{t("Добавленные")}</SettingsTitle>
         <SettingsCard>
           {packs === null ? (
             <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>

@@ -1259,6 +1259,7 @@ const en: Record<string, string> = {
   "Спасибо, репорт ушёл": "Thanks, the report is sent",
   "Что случилось": "What happened",
   "Что делал, что ожидал, что произошло. Скриншот можно вставить через Ctrl+V": "What you did, what you expected, what happened. You can paste a screenshot with Ctrl+V",
+  "Что делал, что ожидал, что произошло": "What you did, what you expected, what happened",
   "Скриншот": "Screenshot",
   "Убрать скриншот": "Remove screenshot",
   "Выбрать из галереи": "Choose from gallery",

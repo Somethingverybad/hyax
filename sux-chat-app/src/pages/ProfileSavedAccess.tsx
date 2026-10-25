@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Aura } from "@/components/Aura";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard, SettingsRow } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsTitle } from "@/components/settings";
 import Identicon from "@/components/Identicon";
 import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
@@ -127,7 +127,7 @@ const ProfileSavedAccess = () => {
 
         {mode === "selected" && (
           <>
-            <p className="px-1 pt-2 text-small text-subtle">{tr("Кому открыто")}</p>
+            <SettingsTitle>{tr("Кому открыто")}</SettingsTitle>
             <SettingsCard>
               {viewers === null ? (
                 <div className="px-4 py-4 text-small text-subtle">{tr("Загрузка…")}</div>
