@@ -59,10 +59,10 @@ const UserProfileModal = ({
   onSearch?: () => void;
   onJump?: (messageId: string) => void;
 }) => {
-  // «Мята» на телефоне — полноэкранный профиль по мобильному макету; на
-  // широком окне и в других темах — прежняя шторка (боковая панель).
+  // «Мята» — профиль по макету: на телефоне во весь экран, на широком окне —
+  // та же вёрстка в боковой панели справа. Другие темы — прежняя шторка.
   const isMobile = useIsMobile();
-  const mint = useMint() && isMobile;
+  const mint = useMint();
   const [mediaTab, setMediaTab] = useState<MediaKind | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const navigate = useNavigate();
@@ -183,8 +183,8 @@ const UserProfileModal = ({
       ...(profile.created_at ? [[t("дата регистрации"), new Date(profile.created_at).toLocaleDateString(LOCALE[getLang()] || "ru-RU"), false] as [string, string, boolean]] : []),
       [t("ID"), profile.id, true],
     ] : [];
-    return (
-      <div className="fixed inset-0 z-50 bg-background overflow-y-auto overscroll-contain" role="dialog" aria-label={profile?.username || t("Профиль")}>
+    const page = (
+      <>
         <button type="button" onClick={onClose} aria-label={t("Назад")}
           className="absolute z-10 left-[17px] mint-pill w-[44px] h-[33px] inline-flex items-center justify-center mint-muted"
           style={{ top: "calc(var(--sat) + 19px)" }}>
@@ -285,8 +285,23 @@ const UserProfileModal = ({
             </div>
           </div>
         )}
-        {extras}
-      </div>
+      </>
+    );
+    return (
+      isMobile ? (
+        <div className="fixed inset-0 z-50 bg-background overflow-y-auto overscroll-contain" role="dialog" aria-label={profile?.username || t("Профиль")}>
+          {page}
+          {extras}
+        </div>
+      ) : (
+        <div className="fixed inset-0 z-50 bg-black/30 flex justify-end p-4" onClick={onClose}>
+          <div className="relative w-[400px] max-h-full overflow-y-auto overscroll-contain rounded-[20px] bg-background shadow-2xl"
+            role="dialog" aria-label={profile?.username || t("Профиль")} onClick={(e) => e.stopPropagation()}>
+            {page}
+          </div>
+          {extras}
+        </div>
+      )
     );
   }
 
