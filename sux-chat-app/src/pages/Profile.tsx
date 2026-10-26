@@ -569,7 +569,8 @@ const ProfilePage = () => {
           )}
 
           <SettingsCard>
-            <SettingsRow icon={LogOut} label={t("Выйти")} danger onClick={logout} trailing={<span />} />
+            {/* «Мята»: «Выйти» — обычная зелёная строка, как в макете; в остальных темах — красная. */}
+            <SettingsRow icon={LogOut} label={t("Выйти")} danger={!mint} onClick={logout} trailing={<span />} />
           </SettingsCard>
 
           {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на
