@@ -74,6 +74,9 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      # Картинки с серверов YouTube из Москвы не открываются — chat/linkimage.py
+      # качает их через тот же прокси, что и медиа-бот (сервис ytproxy).
+      LINK_PROXY: http://ytproxy:8888
       # Свой LibreTranslate (сервис translate ниже) — запасной бесплатный
       # переводчик; GEMINI_API_KEY или DEEPL_API_KEY в .env имеют приоритет.
       LIBRETRANSLATE_URL: http://translate:5000
