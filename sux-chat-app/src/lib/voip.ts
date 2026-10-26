@@ -31,7 +31,9 @@ interface VoipPlugin {
   reportIncomingCall(o: VoipCallPayload): Promise<void>;
   reportOutgoingCall(o: { callId: string; name: string }): Promise<void>;
   /** Маршрут звука: громкая связь или разговорный динамик. */
-  setSpeaker(o: { enabled: boolean }): Promise<void>;
+  /** auto — включение ради видео: при наушниках и Bluetooth сборки с этим
+   *  параметром громкую не включают. В ответе — что вышло на самом деле. */
+  setSpeaker(o: { enabled: boolean; auto?: boolean }): Promise<{ enabled?: boolean }>;
   /** Android: скачать звуки каталога и завести под них каналы уведомлений. */
   syncSounds(o: { sounds: { slug: string; name: string; url: string }[] }): Promise<void>;
   reportConnected(o: { callId: string }): Promise<void>;
@@ -56,6 +58,11 @@ interface VoipPlugin {
   addListener(
     event: "callMuted",
     cb: (d: { callId: string; muted: boolean }) => void
+  ): Promise<PluginListenerHandle>;
+  /** iPhone: динамик переключили на системном экране звонка (CallKit). */
+  addListener(
+    event: "callSpeaker",
+    cb: (d: { enabled: boolean }) => void
   ): Promise<PluginListenerHandle>;
 }
 
@@ -85,17 +92,11 @@ export const voip = {
   reportOutgoingCall: (callId: string, name: string) =>
     quiet(() => plugin.reportOutgoingCall({ callId, name })),
   reportConnected: (callId: string) => quiet(() => plugin.reportConnected({ callId })),
-  setSpeaker: (enabled: boolean) => quiet(() => plugin.setSpeaker({ enabled })),
-  /** Громкая связь, когда звонок соединился. Android — не трогаем: громкую
-   *  уже включил NativeCall.start, а setSpeaker в прежних сборках переводил
-   *  телефон в MODE_NORMAL и выключал громкую — голос уходил в разговорный
-   *  динамик, у человека с Android «тишина». */
-  speakerOnConnect: () =>
-    Capacitor.getPlatform() === "android" ? Promise.resolve(undefined) : quiet(() => plugin.setSpeaker({ enabled: true })),
+  setSpeaker: (enabled: boolean, auto = false) => quiet(() => plugin.setSpeaker({ enabled, auto })),
   syncSounds: (sounds: { slug: string; name: string; url: string }[]) =>
     quiet(() => plugin.syncSounds({ sounds })),
   endCall: (callId: string) => quiet(() => plugin.endCall({ callId })),
-  on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted">(
+  on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted" | "callSpeaker">(
     event: E,
     cb: Parameters<VoipPlugin["addListener"]>[1]
   ) => (hasNative() ? plugin.addListener(event as any, cb as any) : null),

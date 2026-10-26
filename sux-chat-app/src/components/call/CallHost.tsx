@@ -75,7 +75,9 @@ const CallHost = () => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [muted, setMuted] = useState(false);
   // Громкая связь по умолчанию: телефон обычно лежит на столе, а не у уха.
-  const [speaker, setSpeaker] = useState(true);
+  const [speaker, setSpeaker] = useState(false);
+  // Звонок, для которого уже выставлен динамик по умолчанию (см. initSpeaker).
+  const speakerCallRef = useRef<string | null>(null);
   // Свёрнут: вместо экрана звонка — виджет, можно ходить по приложению.
   const [minimized, setMinimized] = useState(false);
   // Чат текущего звонка: для «добавить участника» и заголовка группового.
@@ -256,6 +258,9 @@ const CallHost = () => {
         } else if (svc && svc.isMuted() !== m) svc.toggleMute();
         setMuted(m);
       }),
+      // iPhone: динамик переключили на системном экране звонка — кнопка
+      // в приложении показывает то же самое.
+      voip.on("callSpeaker", ({ enabled }: any) => setSpeaker(!!enabled)),
     );
 
     (async () => {
@@ -274,11 +279,8 @@ const CallHost = () => {
           setCallState(state);
           const id = svc.getCurrentCallId();
           if (id) lastCallIdRef.current = id;
-          if (state === "active" && id) {
-            voip.reportConnected(id);
-            voip.speakerOnConnect();
-            setSpeaker(true);
-          }
+          if (state === "outgoing" || state === "connecting" || state === "active") initSpeaker(id);
+          if (state === "active" && id) voip.reportConnected(id);
         },
         onIncomingCall: (c) => {
           setIncomingCall(c);
@@ -311,7 +313,7 @@ const CallHost = () => {
           if (st !== "idle" && gid) groupCallIdRef.current = gid;
           // Камеру можно включить, ещё пока звонок звонит.
           if (st !== "idle" && groupCallRef.current) setGroupMedia(groupCallRef.current.getMedia());
-          if (st === "active") voip.speakerOnConnect();
+          if (st !== "idle" && st !== "incoming") initSpeaker(gid);
           if (st === "idle") {
             // Звонок, который начинался личным, CallKit знает по тому же id.
             if (groupCallIdRef.current) voip.endCall(groupCallIdRef.current);
@@ -483,7 +485,14 @@ const CallHost = () => {
     if (!svc || videoBusy) return;
     setVideoBusy(true);
     try {
-      await svc.setVideo(!svc.getMedia().localOn);
+      const on = !svc.getMedia().localOn;
+      await svc.setVideo(on);
+      // С видео телефон держат перед собой — переходим на громкую
+      // (при наушниках и Bluetooth нативная часть её не включит).
+      if (on && !speaker) {
+        const r = await voip.setSpeaker(true, true);
+        setSpeaker(r?.enabled ?? true);
+      }
     } catch (e) {
       const name = (e as { name?: string })?.name || "";
       if (name === "NotAllowedError" && hasNativeCalls()) {
@@ -544,6 +553,17 @@ const CallHost = () => {
     remoteStream?.addEventListener("addtrack", h);
     return () => { window.removeEventListener(MIC_TRACK_EVENT, h); remoteStream?.removeEventListener("addtrack", h); };
   }, [remoteStream]);
+  /** Динамик звонка: по умолчанию разговорный, дальше — как выбрал человек
+   *  (кнопка здесь или на системном экране звонка). Раньше на соединении
+   *  громкая включалась принудительно — выключенная во время дозвона,
+   *  она возвращалась. Ставим один раз на звонок и уже после NativeCall.start:
+   *  в прежних сборках Android он сам включал громкую. */
+  function initSpeaker(callId: string | null | undefined) {
+    if (!callId || speakerCallRef.current === callId) return;
+    speakerCallRef.current = callId;
+    setSpeaker(false);
+    void voip.setSpeaker(false);
+  }
   const toggleMute = () => setMuted(!!callRef.current?.toggleMute());
   const toggleSpeaker = () => {
     const next = !speaker;

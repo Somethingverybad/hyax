@@ -115,7 +115,9 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             self.queue.async {
+                CallDiag.log("start \(CallDiag.session())")
                 NativeCallAudio.shared.beginCall()
+                self.startDiag()
                 if self.audioTrack == nil {
                     let constraints = RTCMediaConstraints(mandatoryConstraints: micConstraints, optionalConstraints: nil)
                     let source = NativeCallPlugin.factory.audioSource(with: constraints)
@@ -244,6 +246,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             self.stopCamera()
             self.videoPeers.removeAll()
             self.remoteVideoTracks.removeAll()
+            self.stopDiag()
             NativeCallAudio.shared.endCall()
             DispatchQueue.main.async { self.applyLayout(remotes: [], local: nil, localRadius: 0, tracks: [:]) }
             call.resolve()
@@ -310,6 +313,48 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// Кто говорит: уровень входящего звука по каждому соединению и свой
     /// микрофон (0…1) — из статистики WebRTC.
+    // MARK: - Отладка звука (только Debug, см. CallDiag)
+
+    private var diagTimer: DispatchSourceTimer?
+
+    /// Каждые 3 с: уровень и энергия микрофона, отправленные и принятые
+    /// пакеты по каждому участнику, состояние аудио-сессии. По ним видно,
+    /// какая сторона молчит: микрофон пишет тишину или пакеты не уходят.
+    private func startDiag() {
+        #if DEBUG
+        guard diagTimer == nil else { return }
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 2, repeating: 3)
+        t.setEventHandler { [weak self] in self?.logDiag() }
+        diagTimer = t
+        t.resume()
+        #endif
+    }
+
+    private func stopDiag() {
+        diagTimer?.cancel()
+        diagTimer = nil
+    }
+
+    private func logDiag() {
+        CallDiag.log("diag track=\(audioTrack.map { $0.isEnabled ? "on" : "off" } ?? "nil") peers=\(peers.count) \(CallDiag.session())")
+        for (id, pc) in peers {
+            pc.statistics { report in
+                var parts: [String] = []
+                for st in report.statistics.values where (st.values["kind"] as? String) == "audio" {
+                    let v = { (k: String) in st.values[k].map { "\($0)" } ?? "-" }
+                    switch st.type {
+                    case "media-source": parts.append("mic level=\(v("audioLevel")) energy=\(v("totalAudioEnergy"))")
+                    case "outbound-rtp": parts.append("out pkts=\(v("packetsSent")) bytes=\(v("bytesSent"))")
+                    case "inbound-rtp": parts.append("in pkts=\(v("packetsReceived")) level=\(v("audioLevel"))")
+                    default: break
+                    }
+                }
+                CallDiag.log("diag \(id.prefix(8)) ice=\(pc.iceConnectionState.rawValue) \(parts.sorted().joined(separator: " | "))")
+            }
+        }
+    }
+
     @objc func getAudioLevels(_ call: CAPPluginCall) {
         queue.async {
             let group = DispatchGroup()
@@ -491,6 +536,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func setMuted(_ call: CAPPluginCall) {
         let muted = call.getBool("muted") ?? false
         queue.async {
+            CallDiag.log("setMuted \(muted) track=\(self.audioTrack != nil)")
             self.audioTrack?.isEnabled = !muted
             call.resolve()
         }

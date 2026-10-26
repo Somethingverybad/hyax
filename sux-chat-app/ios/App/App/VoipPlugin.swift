@@ -228,6 +228,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         }
         calls[callId]?.answered = true
         ringTimers[callId]?.invalidate()
+        CallDiag.log("answer app=\(UIApplication.shared.applicationState.rawValue) \(CallDiag.session())")
         NativeCallAudio.shared.beginCall()
         var js = jsPayload(info.payload)
         js["callId"] = callId
@@ -252,6 +253,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+        CallDiag.log("CallKit muted=\(action.isMuted)")
         if let (callId, _) = calls.first(where: { $0.value.uuid == action.callUUID }) {
             plugin?.notifyListeners("callMuted", data: ["callId": callId, "muted": action.isMuted])
         }
@@ -274,8 +276,8 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         // звонок соединялся, но был беззвучным. Настройку оставляем ему.
     }
 
-    func setSpeaker(_ enabled: Bool) {
-        NativeCallAudio.shared.setSpeaker(enabled)
+    func setSpeaker(_ enabled: Bool, auto: Bool) -> Bool {
+        return NativeCallAudio.shared.setSpeaker(enabled, auto: auto)
     }
 
     private func jsPayload(_ p: [String: Any]) -> [String: Any] {
@@ -307,6 +309,9 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
 
     public override func load() {
         VoipManager.shared.plugin = self
+        NativeCallAudio.shared.onSpeakerChange = { [weak self] on in
+            self?.notifyListeners("callSpeaker", data: ["enabled": on])
+        }
     }
 
     @objc func register(_ call: CAPPluginCall) {
@@ -355,8 +360,8 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func setSpeaker(_ call: CAPPluginCall) {
-        VoipManager.shared.setSpeaker(call.getBool("enabled") ?? true)
-        call.resolve()
+        let on = VoipManager.shared.setSpeaker(call.getBool("enabled") ?? true, auto: call.getBool("auto") ?? false)
+        call.resolve(["enabled": on])
     }
 
     @objc func endCall(_ call: CAPPluginCall) {
