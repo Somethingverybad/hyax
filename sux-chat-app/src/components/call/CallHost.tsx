@@ -276,7 +276,7 @@ const CallHost = () => {
           if (id) lastCallIdRef.current = id;
           if (state === "active" && id) {
             voip.reportConnected(id);
-            voip.setSpeaker(true);
+            voip.speakerOnConnect();
             setSpeaker(true);
           }
         },
@@ -311,7 +311,7 @@ const CallHost = () => {
           if (st !== "idle" && gid) groupCallIdRef.current = gid;
           // Камеру можно включить, ещё пока звонок звонит.
           if (st !== "idle" && groupCallRef.current) setGroupMedia(groupCallRef.current.getMedia());
-          if (st === "active") voip.setSpeaker(true);
+          if (st === "active") voip.speakerOnConnect();
           if (st === "idle") {
             // Звонок, который начинался личным, CallKit знает по тому же id.
             if (groupCallIdRef.current) voip.endCall(groupCallIdRef.current);

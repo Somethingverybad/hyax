@@ -76,7 +76,9 @@ public class NativeSocketPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionWebSocke
             return
         }
         q.async {
-            guard let c = self.conns[id], c.open else { call.reject("сокет не открыт"); return }
+            // Не открыт — молча: событие close уже ушло или придёт следом,
+            // а отказ попадал бы в журнал ошибкой на каждом переподключении.
+            guard let c = self.conns[id], c.open else { call.resolve(); return }
             c.task.send(.string(data)) { [weak self] err in
                 guard err != nil, let self else { return }
                 self.q.async { self.drop(id, c, code: 1006, notify: true) }

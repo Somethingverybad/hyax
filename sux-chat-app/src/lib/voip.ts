@@ -86,6 +86,12 @@ export const voip = {
     quiet(() => plugin.reportOutgoingCall({ callId, name })),
   reportConnected: (callId: string) => quiet(() => plugin.reportConnected({ callId })),
   setSpeaker: (enabled: boolean) => quiet(() => plugin.setSpeaker({ enabled })),
+  /** Громкая связь, когда звонок соединился. Android — не трогаем: громкую
+   *  уже включил NativeCall.start, а setSpeaker в прежних сборках переводил
+   *  телефон в MODE_NORMAL и выключал громкую — голос уходил в разговорный
+   *  динамик, у человека с Android «тишина». */
+  speakerOnConnect: () =>
+    Capacitor.getPlatform() === "android" ? Promise.resolve(undefined) : quiet(() => plugin.setSpeaker({ enabled: true })),
   syncSounds: (sounds: { slug: string; name: string; url: string }[]) =>
     quiet(() => plugin.syncSounds({ sounds })),
   endCall: (callId: string) => quiet(() => plugin.endCall({ callId })),
