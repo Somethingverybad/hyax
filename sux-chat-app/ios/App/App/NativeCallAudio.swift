@@ -15,6 +15,8 @@ final class NativeCallAudio {
     private var speakerOn = true
     private var inCall = false
     private var routeObserver: NSObjectProtocol?
+    /// Динамик сменили не мы (VoipPlugin передаёт странице событие callSpeaker).
+    var onSpeakerChange: ((Bool) -> Void)?
 
     private init() {}
 
@@ -30,19 +32,24 @@ final class NativeCallAudio {
         }
     }
 
-    /// Смена категории сессии сбрасывает выбор динамика, а категорию меняют и
-    /// после нашего setSpeaker — движок WebRTC перенастраивает сессию, когда
-    /// запускает звук. Голос уходил в разговорный динамик, хотя на экране
-    /// включена громкая. Возвращаем громкую, если её сбросила система, а не
-    /// человек (выбор в CallKit или наушники приходят с другой причиной).
+    /// Динамик переключили кнопкой на системном экране звонка (CallKit) или
+    /// его сбросила перенастройка сессии. Запоминаем фактический — чтобы
+    /// applyRoute не вернул прежний — и сообщаем странице: кнопка в приложении
+    /// показывает то же, что CallKit. Наушники и Bluetooth не трогаем.
+    ///
+    /// Громкую на соединении включает страница (setSpeaker), уже после того
+    /// как движок WebRTC перенастроил сессию под звук. Возвращать громкую
+    /// здесь нельзя: нажатие «Динамик» в CallKit приходит с той же причиной
+    /// (categoryChange), и выключить громкую было бы невозможно.
     private func routeChanged(_ n: Notification) {
-        guard inCall, speakerOn,
-              let raw = n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              AVAudioSession.RouteChangeReason(rawValue: raw) == .categoryChange,
-              AVAudioSession.sharedInstance().currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver })
-        else { return }
-        CallDiag.log("speaker reset by category change — restoring")
-        applyRoute()
+        guard inCall else { return }
+        let outs = AVAudioSession.sharedInstance().currentRoute.outputs
+        let speaker = outs.contains { $0.portType == .builtInSpeaker }
+        let receiver = outs.contains { $0.portType == .builtInReceiver }
+        guard speaker || receiver, speaker != speakerOn else { return }
+        CallDiag.log("speaker changed outside: \(speaker)")
+        speakerOn = speaker
+        onSpeakerChange?(speaker)
     }
 
     func beginCall() {

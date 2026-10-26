@@ -256,6 +256,9 @@ const CallHost = () => {
         } else if (svc && svc.isMuted() !== m) svc.toggleMute();
         setMuted(m);
       }),
+      // iPhone: динамик переключили на системном экране звонка — кнопка
+      // в приложении показывает то же самое.
+      voip.on("callSpeaker", ({ enabled }: any) => setSpeaker(!!enabled)),
     );
 
     (async () => {

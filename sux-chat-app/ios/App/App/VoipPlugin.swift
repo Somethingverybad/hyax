@@ -309,6 +309,9 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
 
     public override func load() {
         VoipManager.shared.plugin = self
+        NativeCallAudio.shared.onSpeakerChange = { [weak self] on in
+            self?.notifyListeners("callSpeaker", data: ["enabled": on])
+        }
     }
 
     @objc func register(_ call: CAPPluginCall) {

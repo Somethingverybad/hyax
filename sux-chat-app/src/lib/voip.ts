@@ -57,6 +57,11 @@ interface VoipPlugin {
     event: "callMuted",
     cb: (d: { callId: string; muted: boolean }) => void
   ): Promise<PluginListenerHandle>;
+  /** iPhone: динамик переключили на системном экране звонка (CallKit). */
+  addListener(
+    event: "callSpeaker",
+    cb: (d: { enabled: boolean }) => void
+  ): Promise<PluginListenerHandle>;
 }
 
 const plugin = registerPlugin<VoipPlugin>("Voip");
@@ -95,7 +100,7 @@ export const voip = {
   syncSounds: (sounds: { slug: string; name: string; url: string }[]) =>
     quiet(() => plugin.syncSounds({ sounds })),
   endCall: (callId: string) => quiet(() => plugin.endCall({ callId })),
-  on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted">(
+  on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted" | "callSpeaker">(
     event: E,
     cb: Parameters<VoipPlugin["addListener"]>[1]
   ) => (hasNative() ? plugin.addListener(event as any, cb as any) : null),
