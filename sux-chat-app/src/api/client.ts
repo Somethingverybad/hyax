@@ -559,6 +559,14 @@ export interface ChatInfo {
   participants?: Profile[];
 }
 
+/** Живой перевод текста (chat/live.py LiveTextView): исходный язык, язык перевода и сам перевод. */
+export interface LiveTextResult {
+  text: string;
+  from: string;
+  to: string;
+  translation: string;
+}
+
 export interface NotificationSoundInfo {
   id: string;
   slug: string;
@@ -1960,6 +1968,18 @@ export const api = {
     if (res.status === 403) throw new LError("403");
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
+  },
+
+  /** Живой перевод текста (расширение «WYX Переводчик», TranslatorHost): в
+   *  нужную сторону между моим языком `to` и языком собеседника `other`;
+   *  from — исходный язык, если закреплён (chat/live.py LiveTextView). */
+  liveText: async (opts: { text: string; to: string; other?: string; from?: string }): Promise<LiveTextResult> => {
+    const res = await fetchWithAuth(`${API_URL}/live/text/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify(opts),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось перевести");
+    return data;
   },
 
   getUnreadCount: async (): Promise<UnreadCountResponse> => {

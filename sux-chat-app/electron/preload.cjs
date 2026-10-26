@@ -37,4 +37,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPlayerCmd: (cb) => { const h = (_e, c) => cb(c); ipcRenderer.on('player-cmd', h); return () => ipcRenderer.removeListener('player-cmd', h); },
   setPlayerWidget: (on) => ipcRenderer.send('player-widget', !!on),
   playerWidgetEnabled: () => ipcRenderer.invoke('player-widget-enabled'),
+  // ⌘/Ctrl+Shift+Y или пункт трея — перевести текст из буфера обмена.
+  onTranslateClipboard: (cb) => { const h = (_e, text) => cb(text); ipcRenderer.on('translate-clipboard', h); return () => ipcRenderer.removeListener('translate-clipboard', h); },
 });

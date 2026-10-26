@@ -1,7 +1,7 @@
 // Десктопная обёртка hyax. Та же веб-сборка (dist/), что и в мобильном
 // приложении, в окне Electron. API и WebSocket ходят на боевой сервер по
 // абсолютным URL, поэтому никакого локального бэкенда здесь нет.
-const { app, BrowserWindow, Menu, Tray, nativeImage, screen, clipboard, ipcMain, dialog, protocol, net, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, screen, clipboard, ipcMain, dialog, protocol, net, session, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -398,6 +398,14 @@ function focusMainWindow() {
   mainWindow.focus();
 }
 
+// Переводчик вставленного текста (src/components/TranslatorHost.tsx): из любой
+// программы — скопировать текст и нажать сочетание, WYX откроется с переводом.
+const TRANSLATE_SHORTCUT = 'CommandOrControl+Shift+Y';
+function translateClipboard() {
+  focusMainWindow();
+  try { mainWindow?.webContents.send('translate-clipboard', clipboard.readText()); } catch {}
+}
+
 // ---------------------------------------------------------------------------
 // Трей: крестик окна прячет приложение в трей (как Telegram), оно продолжает
 // получать сообщения и показывать уведомления. Выход — из меню трея или
@@ -442,6 +450,7 @@ const SHELL_DICT = {
     'Играть': 'Play',
     'Пауза': 'Pause',
     'Стоп': 'Stop',
+    'Перевести скопированное': 'Translate copied text',
   },
   ko: {
     'Вид': '보기',
@@ -465,6 +474,7 @@ const SHELL_DICT = {
     'Играть': '재생',
     'Пауза': '일시정지',
     'Стоп': '정지',
+    'Перевести скопированное': '복사한 텍스트 번역',
   },
 };
 // app.getLocale() работает только после ready; раньше — без кэша и по-русски.
@@ -512,6 +522,7 @@ function buildTrayMenu() {
     { label: tr('Открыть WYX'), click: focusMainWindow },
     // Мини-плеер поверх окон (electron/playerWidget.cjs).
     playerWidget.menuItem(),
+    { label: tr('Перевести скопированное'), accelerator: TRANSLATE_SHORTCUT, click: translateClipboard },
     { type: 'separator' },
     { label: tr('Сворачивать в трей при закрытии'), type: 'checkbox', checked: trayEnabled(), click: (item) => writeSettings({ minimizeToTray: item.checked }) },
     { type: 'separator' },
@@ -621,6 +632,10 @@ if (!gotLock) {
       onMenuChange: () => { if (tray) tray.setContextMenu(buildTrayMenu()); },
     });
     createTray();
+    // Сочетание может быть занято другой программой — тогда остаётся пункт трея.
+    try {
+      if (!globalShortcut.register(TRANSLATE_SHORTCUT, translateClipboard)) logLine('shortcut busy', TRANSLATE_SHORTCUT);
+    } catch (e) { logLine('shortcut failed', String(e)); }
     // Крестик — в трей, а не выход (если не выключено в меню трея).
     mainWindow?.on('close', (e) => {
       if (app.isQuitting || !trayEnabled()) return;
@@ -636,7 +651,7 @@ if (!gotLock) {
   });
 }
 
-app.on('will-quit', () => logLine('will-quit'));
+app.on('will-quit', () => { logLine('will-quit'); globalShortcut.unregisterAll(); });
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

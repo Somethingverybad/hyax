@@ -1,5 +1,6 @@
 import { ConfirmHost } from "@/lib/confirm";
 import MiniAppHost from "@/components/miniapp/MiniAppHost";
+import TranslatorHost from "@/components/TranslatorHost";
 import { t as tr, tn } from "@/lib/i18n";
 import { toast as sonnerToast } from "sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -352,6 +353,8 @@ const App = () => {
             <DeferredCallHost />
             {/* Мини-приложения ботов — окно поверх всего (lib/miniapp.ts). */}
             <MiniAppHost />
+            {/* Переводчик вставленного текста — кнопкой в шапке чатов и ⌘/Ctrl+Shift+Y. */}
+            <TranslatorHost />
             <ThemeFromProfile />
             <PushOpen />
             <PrefetchScreens />
