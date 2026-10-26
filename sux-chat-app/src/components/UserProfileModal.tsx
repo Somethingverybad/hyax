@@ -216,7 +216,11 @@ const UserProfileModal = ({
               {acts.map((a) => (
                 <button key={a.key} type="button" onClick={a.onClick} disabled={a.disabled} aria-label={a.label}
                   className="mint-act flex-1 max-w-[65px] h-[55px] rounded-[20px] flex flex-col items-center justify-center gap-[4px] text-white disabled:opacity-60">
-                  {a.icon ? <MintIcon name={a.icon} size={a.icon === "actMore" ? [28, 6] : [20, 20]} /> : <MessageSquare className="w-[20px] h-[20px]" />}
+                  {/* Значок — в рамке 20 px: точки «ещё» тоньше остальных значков, и без
+                      рамки подпись под ними вставала выше, чем у соседей. */}
+                  <span className="h-[20px] flex items-center justify-center">
+                    {a.icon ? <MintIcon name={a.icon} size={a.icon === "actMore" ? [28, 6] : [20, 20]} /> : <MessageSquare className="w-[20px] h-[20px]" />}
+                  </span>
                   <span className="text-[11px] leading-[13px] max-w-full truncate px-1">{a.label}</span>
                 </button>
               ))}
