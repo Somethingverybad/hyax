@@ -270,3 +270,6 @@
   box-shadow: 0 2.9px 11.1px rgb(0 0 0 / 0.2);
 }
 [data-shape="soft"] .post-card .post-actions .ui-reaction[aria-pressed="true"] { background: hsl(var(--primary) / 0.3); }
+
+/* Шторка «Отправить …» (макет «Отправить профиль»): белый лист с полями 7 px. */
+.mint-sheet { background: var(--mint-surface); box-shadow: var(--mint-card-shadow); }
