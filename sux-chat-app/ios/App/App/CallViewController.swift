@@ -26,6 +26,7 @@ class CallViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(NativeLangPlugin())
         bridge?.registerPluginInstance(MusicUploadPlugin())
         bridge?.registerPluginInstance(ScreenAwakePlugin())
+        bridge?.registerPluginInstance(NativeSocketPlugin())
         webView?.configuration.userContentController.add(ComposeSelectionHandler(owner: self), name: "hyaxComposeSel")
     }
 

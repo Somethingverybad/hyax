@@ -1,3 +1,5 @@
+import { NativeSocket, hasNativeSocket } from "@/lib/nativeSocket";
+
 type WebSocketMessage = {
   type: string;
   message?: any;
@@ -13,8 +15,18 @@ type WebSocketOptions = {
   maxReconnectAttempts?: number;
 };
 
+/** Не копим: это состояние, свежее значение уходит само при открытии. */
+const EPHEMERAL = new Set(["ping", "active", "viewing", "activity", "rov"]);
+/** Сколько ждёт неотправленное сообщение (сигналы звонка устаревают быстро). */
+const QUEUE_TTL = 20000;
+const QUEUE_MAX = 200;
+
 export class WebSocketService {
-  private ws: WebSocket | null = null;
+  private ws: WebSocket | NativeSocket | null = null;
+  private startedAt = 0;
+  private connecting = false;
+  private queue: { data: string; at: number }[] = [];
+  private openWaiters = new Set<() => void>();
   private url: string;
   private options: WebSocketOptions;
   private reconnectAttempts = 0;
@@ -38,14 +50,31 @@ export class WebSocketService {
   }
 
   private wake = () => {
-    if (this.isManuallyClosed || this.isConnected()) return;
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    this.reconnectNow();
+  };
+
+  /** Переподключиться сразу, без паузы и даже в фоне: входящий звонок,
+   *  ответ с экрана CallKit — сигналы должны уйти сейчас, а не через 30 с. */
+  reconnectNow = () => {
+    if (this.isManuallyClosed || this.isConnected()) return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     void this.connect();
   };
+
+  /** Дождаться открытия (не дольше ms). Без таймерного опроса: в фоне таймеры
+   *  страницы стоят, а событие открытия будит её. */
+  waitOpen(ms = 5000): Promise<void> {
+    if (this.isConnected()) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => { this.openWaiters.delete(done); clearTimeout(timer); resolve(); };
+      const timer = setTimeout(done, ms);
+      this.openWaiters.add(done);
+    });
+  }
 
   /** Пауза перед следующей попыткой: 3 с, 6, 12, 24, дальше по 30 с (± разброс,
    *  чтобы после перезапуска сервера все не ломились одновременно). */
@@ -67,12 +96,24 @@ export class WebSocketService {
 
     this.isManuallyClosed = false;
     this.tokenSource = token ?? this.tokenSource;
+    // Подключение уже идёт — второе не начинаем. Раньше сеть, экран, таймер и
+    // appStateChange открывали по сокету каждый, и сервер слал каждое событие
+    // по нескольку раз (в звонке — тройной ответ на предложение). Зависшее
+    // дольше 15 с подключение не ждём.
+    if (this.connecting) return;
+    if (this.ws?.readyState === WebSocket.CONNECTING && Date.now() - this.startedAt < 15000) return;
+    this.connecting = true;
     let wsUrl = this.url;
 
-    const current = typeof this.tokenSource === "function"
-      ? await this.tokenSource()
-      : this.tokenSource;
-    if (this.isManuallyClosed) return;
+    let current: string | undefined;
+    try {
+      current = typeof this.tokenSource === "function"
+        ? await this.tokenSource()
+        : this.tokenSource;
+    } finally {
+      this.connecting = false;
+    }
+    if (this.isManuallyClosed || this.isConnected()) return;
 
     if (current) {
       const separator = wsUrl.includes('?') ? '&' : '?';
@@ -80,18 +121,24 @@ export class WebSocketService {
     }
 
     try {
-      this.ws = new WebSocket(wsUrl);
+      this.detach();
+      this.startedAt = Date.now();
+      // iPhone: сокет в процессе приложения — он не засыпает в фоне со звонком.
+      const ws = hasNativeSocket() ? new NativeSocket(wsUrl) : new WebSocket(wsUrl);
+      this.ws = ws;
 
-      this.ws.onopen = () => {
+      ws.onopen = () => {
         console.log('WebSocket connected:', this.url);
         this.reconnectAttempts = 0;
+        this.flush();
         this.options.onOpen?.();
+        this.openWaiters.forEach((w) => w());
         
         // Начинаем отправку ping сообщений для поддержания соединения
         this.startPing();
       };
 
-      this.ws.onmessage = (event) => {
+      ws.onmessage = (event: { data: string }) => {
         try {
           const data: WebSocketMessage = JSON.parse(event.data);
           
@@ -106,12 +153,12 @@ export class WebSocketService {
         }
       };
 
-      this.ws.onerror = (error) => {
+      ws.onerror = (error: Event) => {
         console.error('WebSocket error:', error);
         this.options.onError?.(error);
       };
 
-      this.ws.onclose = () => {
+      ws.onclose = () => {
         console.log('WebSocket closed');
         this.stopPing();
         this.options.onClose?.();
@@ -148,18 +195,42 @@ export class WebSocketService {
       this.reconnectTimer = null;
     }
 
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    this.queue = [];
+    this.openWaiters.forEach((w) => w());
+    this.detach();
   }
 
+  /** Старый сокет больше не наш: без обработчиков он не переподключится сам
+   *  и не продублирует события нового. */
+  private detach(): void {
+    const old = this.ws;
+    this.ws = null;
+    this.stopPing();
+    if (!old) return;
+    old.onopen = old.onmessage = old.onerror = old.onclose = null;
+    try { old.close(); } catch { /* уже закрыт */ }
+  }
+
+  /** Не открыт — сигналы ждут в очереди (до 20 с) и уходят при открытии:
+   *  иначе ответ на звонок, пока сокет переподключался, терялся молча. */
   send(data: any): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
-    } else {
-      console.warn('WebSocket is not open. Cannot send message.');
+      return;
     }
+    if (EPHEMERAL.has(data?.type)) return;
+    this.queue.push({ data: JSON.stringify(data), at: Date.now() });
+    if (this.queue.length > QUEUE_MAX) this.queue.shift();
+    console.warn(`WebSocket is not open — queued ${data?.type ?? "message"}`);
+    // Нужен сейчас — не ждём паузу между попытками (но не чаще раза в 3 с).
+    if (Date.now() - this.startedAt > 3000) this.reconnectNow();
+  }
+
+  private flush(): void {
+    const now = Date.now();
+    const pending = this.queue.filter((m) => now - m.at < QUEUE_TTL);
+    this.queue = [];
+    for (const m of pending) this.ws?.send(m.data);
   }
 
   private startPing(): void {
