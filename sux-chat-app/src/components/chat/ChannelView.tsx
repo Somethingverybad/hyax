@@ -52,6 +52,8 @@ import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
 import { WallpaperLayer } from "./ChatWallpaper";
 import { canEnableAdult } from "@/lib/device";
+import { useMint, MintIcon } from "@/themes/mint";
+import { useGlassHeight } from "@/themes/mint/glass";
 
 interface Channel {
   id: string; name: string; username?: string | null; description?: string;
@@ -232,6 +234,10 @@ const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString(getL
 const postsMemo = new Map<string, { posts: Post[]; syncedAt: string | null; hasMore: boolean }>();
 
 const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged }: ChannelViewProps) => {
+  // «Мята»: стеклянная шапка с островком по центру (макет «Стена»), лента уходит под неё.
+  const mint = useMint();
+  const headRef = useRef<HTMLDivElement>(null);
+  useGlassHeight(headRef, mint);
   // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
   // Состояние Стены — сразу из кэша сессии, сервер потом уточнит.
   const [wallState, setWallState] = useState<WallState | null>(() => (wall ? readCache<WallState>("wall") : null));
@@ -1226,6 +1232,37 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         </div>
       )}
       {/* Шапка */}
+      {mint ? (
+        <div ref={headRef} className="mint-glass shrink-0 pad-safe-top">
+          <div className="mint-head mint-head-between !pt-[19px] !pb-[11px]">
+            {onBack ? (
+              <button type="button" onClick={onBack} aria-label={tr("Назад")} className="mint-pill w-[43px] h-[43px] inline-flex items-center justify-center mint-muted">
+                <MintIcon name="back" size={[7, 13]} />
+              </button>
+            ) : <span className="w-[43px]" />}
+            {/* Островок макета: 235×43, слева квадратик со значком 49×35, справа название и подпись. */}
+            <button type="button" onClick={() => setInfoOpen(true)} className="mint-pill h-[43px] min-w-0 max-w-[calc(100vw-140px)] pl-[4px] pr-[18px] inline-flex items-center gap-[12px] text-left">
+              <span className="mint-pill w-[49px] h-[35px] shrink-0 inline-flex items-center justify-center overflow-hidden mint-ink">
+                {wall ? <MintIcon name="wallHead" size={[19, 20]} />
+                  : avatarUrl ? <CachedImg src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                  : <Radio className="w-[18px] h-[18px]" />}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[16.3px] font-semibold leading-[18px]" style={{ color: "var(--mint-title)" }}>{wall ? tr("Стена") : channel?.name || tr("Канал")}</span>
+                <span className="block truncate text-[11.7px] leading-[15px] mint-muted">
+                  {wall ? (wallAdmin ? tr("Общая лента · вы админ") : tr("Общая лента — пишут все"))
+                    : `${tn(channel?.subscribers_count ?? 0, "{n} подписчик", "{n} подписчика", "{n} подписчиков")}${channel?.username ? ` · @${channel.username}` : ""}`}
+                </span>
+              </span>
+            </button>
+            {channel?.my_role === "owner" ? (
+              <button type="button" onClick={() => setInfoOpen(true)} aria-label={tr("Настройки")} className="mint-pill w-[43px] h-[43px] inline-flex items-center justify-center mint-ink">
+                <Settings className="w-[18px] h-[18px]" />
+              </button>
+            ) : <span className="w-[43px]" />}
+          </div>
+        </div>
+      ) : (
       <div className="flex items-center gap-3 px-3 pad-safe-top py-2 border-b border-border shrink-0">
         {onBack && (
           <button type="button" onClick={onBack} className="p-2 -ml-2" aria-label={tr("Назад")}>
@@ -1258,6 +1295,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           </button>
         )}
       </div>
+      )}
 
       {/* Лента */}
       <div ref={feedRef} onScroll={onFeedScroll} className="flex-1 overflow-y-auto px-3 pt-3 pb-8 space-y-3 md:px-6 [&>*]:md:max-w-[720px]"
@@ -1288,7 +1326,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
               onPointerDown={(e) => postPressDown(e, post)} onPointerMove={postPressMove} onPointerUp={cancelPress} onPointerCancel={cancelPress} onPointerLeave={cancelPress}>
               <div className="px-4 py-3">
                 {wall && post.sender ? (
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="post-author flex items-center gap-2 mb-2">
                     <button type="button" onClick={() => openAuthor(post)} className="flex items-center gap-2 min-w-0 text-left active:opacity-70">
                       {post.forwarded_chat ? (
                         post.forwarded_chat.avatar_url ? <img src={mediaUrl(post.forwarded_chat.avatar_url)} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />
@@ -1376,7 +1414,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 </div>
               </div>
               {/* Реакции + комментарии */}
-              <div className="flex items-center gap-2 px-3 py-2 border-t border-border flex-wrap">
+              <div className="post-actions flex items-center gap-2 px-3 py-2 border-t border-border flex-wrap">
                 <ReactionBar
                   reactions={post.reactions}
                   onToggle={(emoji) => subscribed ? react(post, emoji) : toast.error(tr("Подпишитесь, чтобы реагировать"))}

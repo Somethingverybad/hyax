@@ -25,6 +25,17 @@ export const SettingsCard = ({ children, className }: { children: React.ReactNod
 };
 
 /**
+ * Подпись раздела над карточками («Статус», «Контент»). В «Мяте» — по макету:
+ * Inter Medium 14.3 px цветом заголовков, отступ сверху ~19 px от прошлой
+ * карточки (в контейнере space-y-3 добирается паддингом).
+ */
+export const SettingsTitle = ({ children }: { children: React.ReactNode }) => {
+  const mint = useMint();
+  if (mint) return <p className="mint-label !mb-0 pt-[7px] first:pt-0 flex items-center gap-[8px]">{children}</p>;
+  return <p className="px-1 pt-2 first:pt-0 text-small text-subtle flex items-center gap-2">{children}</p>;
+};
+
+/**
  * Строка настроек. С onClick — кнопка с шевроном (ведёт на подэкран), без
  * него — просто строка со значением. trailing перебивает и то и другое:
  * туда кладут переключатель или кнопку «скопировать».

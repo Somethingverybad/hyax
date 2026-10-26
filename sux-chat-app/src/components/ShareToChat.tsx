@@ -6,6 +6,8 @@ import { Bookmark, Share2, Users, Radio, Newspaper } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { readCache } from "@/lib/session-cache";
+import { cn } from "@/lib/utils";
+import { useMint, MintIcon } from "@/themes/mint";
 
 /**
  * «Отправить в чат» — шторка со списком переписок.
@@ -58,28 +60,46 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
 }) => {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
+  // «Мята» — шторка по макету «Отправить профиль»: поля 7 px, скругление 20,
+  // строки с волосяными разделителями, внизу лаймовая кнопка.
+  const mint = useMint();
   const [busy, setBusy] = useState(false);
+  // Свежий список не загрузился и кэша нет — показываем «Повторить», а не
+  // «нет переписок»: на плохой сети getChats падает регулярно, и человек
+  // думал, что чаты пропали (баг-репорт 220531bc).
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!open || rows) return;
+    const me = readCache<{ id: string }>("user")?.id;
+    const withWall = (list: Row[]) => (includeWall ? [{ id: "wall", title: t("Стена"), kind: "wall" as const }, ...list] : list);
+    // Сразу — чаты из кэша экрана (без каналов: кто из них мой, знает только
+    // сервер), свежий список подтянется поверх. Пока кэша нет — «Загрузка…».
+    const cached = readCache<any[]>("chats");
+    if (cached?.length) setRows(withWall(toRows(cached, me, false, excludeChatId)));
     (async () => {
       try {
         const chats = await api.getChats();
-        let list = toRows(chats, readCache<{ id: string }>("user")?.id, includeChannels, excludeChatId);
+        let list = toRows(chats, me, includeChannels, excludeChatId);
         if (includeChannels) {
           // Публиковать в канал может только владелец или админ — чужие убираем.
           const mine = new Set((await api.getMyChannels().catch(() => [] as any[]))
             .filter((c: any) => c.my_role === "owner" || c.my_role === "admin").map((c: any) => c.id));
           list = list.filter((r) => r.kind !== "channel" || mine.has(r.id));
         }
-        if (includeWall) list = [{ id: "wall", title: t("Стена"), kind: "wall" }, ...list];
-        setRows(list);
-      } catch { setRows([]); }
+        setFailed(false);
+        setRows(withWall(list));
+      } catch {
+        // Кэш уже на экране — оставляем его; иначе предлагаем повторить.
+        if (!cached?.length) { setRows(null); setFailed(true); }
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rows]);
 
-  useEffect(() => { if (!open) setQuery(""); }, [open]);
+  // Закрыли — следующее открытие грузит список заново (мог прийти новый чат,
+  // могла появиться сеть).
+  useEffect(() => { if (!open) { setQuery(""); setRows(null); setFailed(false); } }, [open]);
 
   if (!open) return null;
 
@@ -108,16 +128,16 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   // кнопкой «вне приложения» (баг-репорт 1eb29912).
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] bg-black/40 flex items-end md:items-center md:justify-center"
+      className={cn("fixed inset-0 z-[80] flex items-end md:items-center md:justify-center", mint ? "bg-black/45" : "bg-black/40")}
       onClick={(e) => { e.stopPropagation(); onClose(); }}
     >
       <div
-        className="ui-card relative w-full md:w-[420px] rounded-t-[16px] md:rounded-lg bg-surface-2 max-h-[75vh] flex flex-col"
+        className={cn("relative md:w-[420px] max-h-[75vh] flex flex-col", mint ? "mint-sheet mx-[7px] w-[calc(100%-14px)] rounded-t-[20px] md:rounded-[20px]" : "ui-card w-full rounded-t-[16px] md:rounded-lg bg-surface-2")}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 px-4 pt-4 pb-2 space-y-2">
-          <div className="md:hidden mx-auto h-1 w-9 rounded-full bg-foreground/20" aria-hidden />
-          <p className="text-h2">{title}</p>
+        <div className={cn("shrink-0 space-y-2", mint ? "px-[24px] pt-[16px] pb-[6px]" : "px-4 pt-4 pb-2")}>
+          <div className={cn("md:hidden mx-auto rounded-full", mint ? "h-[4px] w-[33px] bg-[#9cb2ab] mb-[14px]" : "h-1 w-9 bg-foreground/20")} aria-hidden />
+          <p className={mint ? "text-[15px] font-semibold leading-[18px]" : "text-h2"} style={mint ? { color: "var(--mint-title)" } : undefined}>{title}</p>
 
           {rows && rows.length > 6 && (
             <input
@@ -129,8 +149,13 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
           )}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 space-y-2">
-          {rows === null ? (
+        <div className={cn("flex-1 min-h-0 overflow-y-auto", mint ? "px-[11px] pb-2 mint-rows" : "px-4 pb-2 space-y-2")}>
+          {rows === null && failed ? (
+            <div className="space-y-2">
+              <p className="text-small text-subtle">{t("Не удалось загрузить чаты")}</p>
+              <button type="button" className="text-small text-accent" onClick={() => { setFailed(false); setRows(null); }}>{t("Повторить")}</button>
+            </div>
+          ) : rows === null ? (
             <p className="text-small text-subtle">{t("Загрузка…")}</p>
           ) : rows.length === 0 ? (
             <p className="text-small text-subtle">{t("Пока некуда отправлять — нет переписок.")}</p>
@@ -142,15 +167,15 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
               type="button"
               disabled={busy}
               onClick={() => void send(r)}
-              className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50"
+              className={cn("w-full flex items-center text-left active:opacity-70 disabled:opacity-50", mint ? "min-h-[54px] px-[13px] gap-[11px]" : "min-h-12 px-3 rounded-md gap-3 bg-surface-4")}
             >
               {r.kind === "wall" ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">
                   <Newspaper className="w-4 h-4 text-primary" />
                 </span>
               ) : r.kind === "saved" ? (
-                <span className="w-8 h-8 rounded-md shrink-0 bg-primary flex items-center justify-center">
-                  <Bookmark className="w-4 h-4 text-primary-foreground" />
+                <span className={cn("w-8 h-8 shrink-0 flex items-center justify-center", mint ? "rounded-[13px] bg-[#2f5b53]" : "rounded-md bg-primary")}>
+                  <Bookmark className={cn("w-4 h-4", mint ? "text-white" : "text-primary-foreground")} />
                 </span>
               ) : r.kind === "channel" && !r.avatar ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">
@@ -161,20 +186,20 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                   <Users className="w-4 h-4 text-primary" />
                 </span>
               ) : (
-                <Identicon id={r.peerId || r.id} avatarUrl={r.avatar} className="w-8 h-8" />
+                <Identicon id={r.peerId || r.id} avatarUrl={r.avatar} className={mint ? "w-8 h-8 !rounded-[13px]" : "w-8 h-8"} />
               )}
-              <span className="flex-1 text-body truncate">{r.title}</span>
+              <span className={cn("flex-1 truncate", mint ? "text-[14.3px] font-medium" : "text-body")} style={mint ? { color: "var(--mint-title)" } : undefined}>{r.title}</span>
             </button>
           ))}
         </div>
 
         {(onShareOutside || onShareToWall) && (
-          <div className="shrink-0 px-4 pt-2 pb-[calc(var(--sab)+16px)] md:pb-4 space-y-2">
+          <div className={cn("shrink-0 pt-2 pb-[calc(var(--sab)+16px)] md:pb-4 space-y-2", mint ? "px-[24px]" : "px-4")}>
             {onShareToWall && (
               <button
                 type="button"
                 onClick={() => { onClose(); onShareToWall(); }}
-                className="w-full h-12 rounded-md bg-surface-4 text-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
+                className={cn("w-full flex items-center justify-center gap-2 active:opacity-90", mint ? "mint-pill h-[33px] text-[12.7px] font-medium mint-ink" : "h-12 rounded-md bg-surface-4 text-foreground text-body font-semibold")}
               >
                 <Newspaper className="w-5 h-5 text-primary" />{t("Опубликовать на Стене")}</button>
             )}
@@ -182,9 +207,9 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
               <button
                 type="button"
                 onClick={() => { onClose(); onShareOutside(); }}
-                className="w-full h-12 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center justify-center gap-2 active:opacity-90"
+                className={cn("w-full flex items-center justify-center gap-2 active:opacity-90", mint ? "mint-lime h-[33px] text-[12.7px] font-medium" : "h-12 rounded-md bg-primary text-primary-foreground text-body font-semibold")}
               >
-                <Share2 className="w-5 h-5" />
+                {mint ? <MintIcon name="share" size={[11, 12]} /> : <Share2 className="w-5 h-5" />}
                 {t("Поделиться за пределами WYX")}
               </button>
             )}

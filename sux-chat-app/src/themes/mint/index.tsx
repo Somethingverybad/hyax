@@ -2,6 +2,11 @@ import type { CSSProperties } from "react";
 import "@fontsource-variable/inter";
 import "./mint.css";
 import { useTheme } from "@/lib/theme";
+import actBlock from "./icons/act-block.svg";
+import actCall from "./icons/act-call.svg";
+import actMore from "./icons/act-more.svg";
+import actReport from "./icons/act-report.svg";
+import actSearch from "./icons/act-search.svg";
 import back from "./icons/back.svg";
 import checks from "./icons/checks.svg";
 import chevron from "./icons/chevron.svg";
@@ -12,12 +17,24 @@ import mic from "./icons/mic.svg";
 import send from "./icons/send.svg";
 import rev from "./icons/rev.svg";
 import camera from "./icons/camera.svg";
+import callAccept from "./icons/call-accept.svg";
+import callCam from "./icons/call-cam.svg";
+import callCamOff from "./icons/call-cam-off.svg";
+import callDecline from "./icons/call-decline.svg";
+import callEnd from "./icons/call-end.svg";
+import callMic from "./icons/call-mic.svg";
+import callMicOff from "./icons/call-mic-off.svg";
+import callSpeaker from "./icons/call-speaker.svg";
+import callSpeakerOff from "./icons/call-speaker-off.svg";
+import callVideoMark from "./icons/call-video-mark.svg";
 import navChat from "./icons/nav-chat.svg";
 import navMusic from "./icons/nav-music.svg";
 import navProfile from "./icons/nav-profile.svg";
 import navSettings from "./icons/nav-settings.svg";
 import navSaved from "./icons/nav-saved.svg";
 import navWall from "./icons/nav-wall.svg";
+import wallHead from "./icons/wall-head.svg";
+import gallery from "./icons/gallery.svg";
 import pencil from "./icons/pencil.svg";
 import pinnedRight from "./icons/pinned-right.svg";
 import rowAbout from "./icons/row-about.svg";
@@ -26,6 +43,7 @@ import rowAt from "./icons/row-at.svg";
 import rowBell from "./icons/row-bell.svg";
 import rowCopy from "./icons/row-copy.svg";
 import rowLock from "./icons/row-lock.svg";
+import rowLog from "./icons/row-log.svg";
 import rowSaved from "./icons/row-saved.svg";
 import rowSticker from "./icons/row-sticker.svg";
 import rowTag from "./icons/row-tag.svg";
@@ -53,9 +71,9 @@ export function useMint(): boolean {
 /** Иконки макета. Красим маской в currentColor: одна и та же иконка годится
  *  и светлой «Мяте», и тёмной. */
 export const MINT_ICONS = {
-  back, checks, chevron, close, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
-  pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowSaved,
-  rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent,
+  actBlock, actCall, actMore, actReport, actSearch, back, checks, chevron, close, callAccept, callCam, callCamOff, callDecline, callEnd, callMic, callMicOff, callSpeaker, callSpeakerOff, callVideoMark, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
+  gallery, pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowLog, rowSaved,
+  rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent, wallHead,
 } as const;
 export type MintIconName = keyof typeof MINT_ICONS;
 

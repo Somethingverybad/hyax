@@ -265,10 +265,10 @@ export const MINT_DARK: ThemeDef = {
     ring: "#C7F964",
     ink: "#FFFFFF",
     accentSoft: "#34422F",
-    // В тёмной — наоборот: свои светлее, входящие темнее.
-    bubbleOwn: "#789184",
+    // Как в тёмном ряду макета: свой (с галочками) — #2F5B53, чужой — #789184.
+    bubbleOwn: "#2F5B53",
     bubbleOwnFg: "#FFFFFF",
-    bubbleIn: "#3B6B62",
+    bubbleIn: "#789184",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#1C2420",
   },

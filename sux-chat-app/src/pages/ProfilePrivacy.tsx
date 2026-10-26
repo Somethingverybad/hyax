@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Aura } from "@/components/Aura";
 import { useNavigate } from "react-router-dom";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard, SettingsRow } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsTitle } from "@/components/settings";
 import Identicon from "@/components/Identicon";
 import { api, type Profile } from "@/api/client";
 import { readCache, writeCache } from "@/lib/session-cache";
@@ -89,7 +89,7 @@ const ProfilePrivacy = () => {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title={t("Конфиденциальность")} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle flex items-center gap-2"><Ban className="w-4 h-4" />{t("Заблокированные")}</p>
+        <SettingsTitle><Ban className="w-4 h-4 shrink-0" />{t("Заблокированные")}</SettingsTitle>
         <SettingsCard>
           {list === null ? (
             <div className="px-4 py-4 text-small text-subtle">{t("Загрузка…")}</div>
@@ -104,7 +104,7 @@ const ProfilePrivacy = () => {
           ))}
         </SettingsCard>
 
-        <p className="px-1 pt-2 text-small text-subtle">{t("Статус")}</p>
+        <SettingsTitle>{t("Статус")}</SettingsTitle>
         <SettingsCard>
           <SettingsRow
             label={t("Скрыть, что я в сети")}
@@ -174,6 +174,8 @@ const ProfilePrivacy = () => {
               />
             }
           />
+        </SettingsCard>
+        <SettingsCard>
           <SettingsRow
             label={t("Не показывать меня в поиске")}
             hint={profile?.hide_from_search
@@ -193,7 +195,7 @@ const ProfilePrivacy = () => {
         </SettingsCard>
 
         {(canEnableAdult() || !!profile?.allow_adult) && <>
-        <p className="px-1 pt-2 text-small text-subtle">{t("Контент")}</p>
+        <SettingsTitle>{t("Контент")}</SettingsTitle>
         <SettingsCard>
           <SettingsRow
             label={t("Показывать 18+")}

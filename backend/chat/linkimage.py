@@ -38,6 +38,27 @@ TIMEOUT = (8, 25)  # соединение, чтение
 # метатегах Open Graph — ими же пользуются мессенджеры для предпросмотра.
 PAGE_HOSTS = ("pinterest.com", "pinterest.ru", "pin.it", "pinterest.co.uk", "pinterest.fr", "pinterest.de")
 
+# YouTube из Москвы закрыт (обрыв на TLS) — его картинки (превью i.ytimg.com
+# и т. п.) качаем через прокси в Нидерландах (LINK_PROXY = ytproxy, как у
+# медиа-бота). Страницы видео — не картинки: их не открываем вовсе, иначе
+# запрос висел до таймаута и падал в журнал ошибкой.
+YT_HOSTS = ("youtube.com", "youtu.be", "ytimg.com", "ggpht.com", "googlevideo.com")
+YT_PAGE_HOSTS = ("youtube.com", "youtu.be")
+
+
+def _host_in(url, hosts) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in hosts)
+
+
+def _proxies(url):
+    """Прокси для адресов YouTube (если задан LINK_PROXY), иначе напрямую."""
+    proxy = os.environ.get("LINK_PROXY")
+    if proxy and _host_in(url, YT_HOSTS):
+        return {"http": proxy, "https": proxy}
+    return None
+
+
 VIDEO_TYPES = {
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
@@ -168,6 +189,8 @@ def fetch_image(message_id, url):
     if not _public_host(url):
         logger.info("link-image: непубличный адрес, пропускаю")
         return
+    if _host_in(url, YT_PAGE_HOSTS):
+        return  # ссылка на видео — страница, не картинка
 
     # Ссылка на страницу (Pinterest) — сперва достаём из неё адрес файла.
     if _is_page(url):
@@ -181,7 +204,7 @@ def fetch_image(message_id, url):
     tmp_path = None
     try:
         r = requests.get(url, timeout=TIMEOUT, stream=True, allow_redirects=True,
-                         headers={"User-Agent": "hyax-link-image/1.0"})
+                         headers={"User-Agent": "hyax-link-image/1.0"}, proxies=_proxies(url))
         if r.status_code != 200:
             return
         header_ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()

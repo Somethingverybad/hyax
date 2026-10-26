@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, Link2, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard, SettingsRow } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsTitle } from "@/components/settings";
 import { getSetting, setSetting } from "@/lib/settings";
 import { api } from "@/api/client";
 import { BUILTIN_THEMES, setInstalledThemes, setTheme, useInstalledThemes, useTheme, setThemeSync, useThemeSync } from "@/lib/theme";
@@ -111,12 +111,12 @@ const ProfileAppearance = () => {
       <ScreenHeader title={tr("Внешний вид")} />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        <p className="px-1 text-small text-subtle">{tr("Встроенные")}</p>
+        <SettingsTitle>{tr("Встроенные")}</SettingsTitle>
         <SettingsCard>
           {BUILTIN_THEMES.map((t) => <Row key={t.id} theme={t} active={current.id === t.id} onPick={() => setTheme(t)} />)}
         </SettingsCard>
 
-        <p className="px-1 pt-2 text-small text-subtle">{tr("Мои и установленные")}</p>
+        <SettingsTitle>{tr("Мои и установленные")}</SettingsTitle>
         <SettingsCard>
           {installed.length === 0 && (
             <div className="px-4 py-4 text-small text-subtle">{tr("Пока пусто. Создайте свою тему или установите чужую по ссылке /t/…")}</div>
@@ -174,7 +174,7 @@ const ThemeSyncCard = () => {
   const [boot, setBoot] = useState(isBootAnimOn);
   return (
     <>
-      <p className="px-1 pt-2 text-small text-subtle">{tr("На этом устройстве")}</p>
+      <SettingsTitle>{tr("На этом устройстве")}</SettingsTitle>
       <SettingsCard>
         <SettingsRow
           label={tr("Одна тема на всех устройствах")}
@@ -217,7 +217,7 @@ const SectionsCard = () => {
   );
   return (
     <>
-      <p className="px-1 pt-2 text-small text-subtle">{tr("Разделы")}</p>
+      <SettingsTitle>{tr("Разделы")}</SettingsTitle>
       <SettingsCard>
         {row("wall", "Стена", "Общая лента: вкладка внизу и строка в списке чатов")}
         {row("ideabox", "Долгий ящик", "Идеи и предложения разработчику — строка в списке чатов")}
@@ -234,7 +234,7 @@ const RailPosCard = () => {
   if (isMobile) return null;
   return (
     <>
-      <p className="px-1 pt-2 text-small text-subtle">{tr("Компьютер")}</p>
+      <SettingsTitle>{tr("Компьютер")}</SettingsTitle>
       <SettingsCard>
         <SettingsRow
           label={tr("Положение меню")}
@@ -262,7 +262,7 @@ const DeleteAnimCard = () => {
   const pick = (next: DeleteVariant | "random") => { setDeleteAnimChoice(next); setV(next); };
   return (
     <>
-      <p className="px-1 pt-2 text-small text-subtle">{tr("Анимация удаления")}</p>
+      <SettingsTitle>{tr("Анимация удаления")}</SettingsTitle>
       <SettingsCard>
         <SettingsRow
           label={tr("Вариант")}

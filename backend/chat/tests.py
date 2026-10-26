@@ -3148,3 +3148,27 @@ class PurgeOldReportsTests(TestCase):
             self.assertEqual(list(Report.objects.values_list("id", flat=True)), [fresh.id])
             self.assertTrue(Message.objects.filter(id=keep_sys.id).exists())
             self.assertTrue(Message.objects.filter(id=keep_dm.id).exists())
+
+
+
+class LinkImageYoutubeTests(TestCase):
+    """Картинки YouTube — через LINK_PROXY, страницы видео не открываются."""
+
+    def test_proxy_only_for_youtube_hosts(self):
+        from unittest import mock
+        from .linkimage import _proxies
+        with mock.patch.dict("os.environ", {"LINK_PROXY": "http://ytproxy:8888"}):
+            self.assertEqual(_proxies("https://i.ytimg.com/vi/x/hqdefault.jpg"), {"http": "http://ytproxy:8888", "https": "http://ytproxy:8888"})
+            self.assertIsNone(_proxies("https://i.pinimg.com/originals/a.jpg"))
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertIsNone(_proxies("https://i.ytimg.com/vi/x/hqdefault.jpg"))
+
+    def test_video_page_is_skipped_without_request(self):
+        from unittest import mock
+        from .linkimage import fetch_image
+        me = make_user("zz_link_a")
+        chat = Chat.objects.create()
+        msg = Message.objects.create(chat=chat, sender=me, content="https://www.youtube.com/watch?v=abc")
+        with mock.patch("chat.linkimage._public_host", return_value=True), mock.patch("requests.get") as get:
+            fetch_image(str(msg.id), msg.content)
+        get.assert_not_called()

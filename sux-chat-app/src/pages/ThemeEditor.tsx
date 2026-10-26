@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AlertTriangle, Eye, EyeOff, Shuffle } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
-import { SettingsCard } from "@/components/settings";
+import { SettingsCard, SettingsTitle } from "@/components/settings";
 import ThemePreview from "@/components/ThemePreview";
 import { api } from "@/api/client";
 import { setInstalledThemes, setTheme, useInstalledThemes, useTheme } from "@/lib/theme";
@@ -183,7 +183,7 @@ const ThemeEditor = () => {
 
         {GROUPS.map((g) => (
           <div key={g.title} className="space-y-2">
-            <p className="px-1 pt-2 text-small text-subtle">{tr(g.title)}</p>
+            <SettingsTitle>{tr(g.title)}</SettingsTitle>
             <SettingsCard>
               {g.items.map(({ key, label }) => (
                 <label key={key} className="px-4 py-2.5 flex items-center gap-3">
@@ -202,7 +202,7 @@ const ThemeEditor = () => {
           </div>
         ))}
 
-        <p className="px-1 pt-2 text-small text-subtle">{tr("Форма")}</p>
+        <SettingsTitle>{tr("Форма")}</SettingsTitle>
         <SettingsCard>
 
           <Slider label={tr("Скругление карточек")} value={draft.shape.radius} min={SHAPE_LIMITS.radius[0]} max={SHAPE_LIMITS.radius[1]} onChange={(radius) => setShape({ radius })} />

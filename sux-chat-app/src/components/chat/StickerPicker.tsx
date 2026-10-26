@@ -537,12 +537,16 @@ const StickerPicker = ({
       {!inPack ? (
         // Меню выбора пака + глобальный поиск по звукам
         <>
-          <div className="px-2 py-1.5 shrink-0">
+          <div className={cn("shrink-0", mint ? "relative px-[11px] pt-[9px] pb-[6px]" : "px-2 py-1.5")}>
+            {/* «Мята»: белая таблетка 28 px с лупой, как поиск звука в макете. */}
+            {mint && <MintIcon name="search" size={[11, 13]} className="absolute left-[22px] top-[17px] mint-muted pointer-events-none" />}
             <input
               value={packMenuQuery}
               onChange={(e) => setPackMenuQuery(e.target.value)}
               placeholder={t("Поиск звука по всем пакам…")}
-              className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+              className={mint ? "mint-pill w-full h-[28px] pl-[30px] pr-3 text-[12px] outline-none placeholder:text-[var(--mint-muted)]" : "w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"}
+              // Отступ под лупу — инлайном: правило .mint-sticker-panel input задаёт padding 0 14px.
+              style={mint ? { paddingLeft: 30 } : undefined}
             />
           </div>
           <div ref={soundPacksScroll} className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -583,12 +587,16 @@ const StickerPicker = ({
             </button>
             <span className="text-sm font-semibold truncate flex-1">{packLabel(inPack)}</span>
           </div>
-          <div className="px-2 py-1.5 shrink-0">
+          <div className={cn("shrink-0", mint ? "relative px-[11px] pt-[9px] pb-[6px]" : "px-2 py-1.5")}>
+            {/* «Мята»: белая таблетка 28 px с лупой, как поиск звука в макете. */}
+            {mint && <MintIcon name="search" size={[11, 13]} className="absolute left-[22px] top-[17px] mint-muted pointer-events-none" />}
             <input
               value={soundQuery}
               onChange={(e) => setSoundQuery(e.target.value)}
               placeholder={t("Поиск звука…")}
-              className="w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+              className={mint ? "mint-pill w-full h-[28px] pl-[30px] pr-3 text-[12px] outline-none placeholder:text-[var(--mint-muted)]" : "w-full bg-secondary px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"}
+              // Отступ под лупу — инлайном: правило .mint-sticker-panel input задаёт padding 0 14px.
+              style={mint ? { paddingLeft: 30 } : undefined}
             />
           </div>
           <div ref={soundListScroll} className="flex-1 overflow-y-auto p-2 space-y-1">

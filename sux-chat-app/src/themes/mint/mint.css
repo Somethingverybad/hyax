@@ -20,7 +20,9 @@
   font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 [data-shape="soft"][data-base="dark"] {
-  --mint-surface: linear-gradient(105deg, hsl(var(--surface-1)) 25%, color-mix(in srgb, hsl(var(--surface-1)) 80%, hsl(var(--accent))));
+  /* Карточка тёмного макета: градиент от цвета фона к #2D392B, лайм — далеко
+     за краем (137.6°: 25 % / 82 % / 426 %), рамка — лайм 30 %. */
+  --mint-surface: linear-gradient(137.65deg, hsl(var(--background)) 25.06%, #2d392b 82.39%, #c7f964 425.81%);
   --mint-border: 1px solid hsl(var(--accent) / 0.3);
   --mint-shadow: 0 4.3px 16.7px rgb(0 0 0 / 0.35);
   --mint-card-shadow: 0 5px 11px rgb(0 0 0 / 0.35);
@@ -46,6 +48,11 @@
 .mint-muted { color: var(--mint-muted); }
 .mint-ink { color: var(--mint-ink); }
 .mint-divider { height: 1px; background: var(--mint-divider); }
+/* Подпись раздела над карточкой (макет «Сообщить о проблеме»): Inter Medium
+   43 → 14.3 px, цвет заголовков, отступ до карточки 32 → 10.7 px. */
+.mint-label { display: block; margin: 0 0 11px 1px; font-size: 14.3px; font-weight: 500; line-height: 18px; color: var(--mint-title); }
+/* Сноска под карточками: 35 → 11.7 px, приглушённый зелёный #9CB2AB. */
+.mint-faint { color: #9cb2ab; }
 
 /* Шапка экрана: три зоны, заголовок строго по центру. */
 .mint-head {
@@ -198,8 +205,10 @@
    список чатов). */
 [data-shape="soft"] .mint-glass { position: relative; z-index: 20; }
 [data-shape="soft"] .mint-glass:has(+ .overflow-y-auto) { margin-bottom: calc(-1 * var(--glass-h, 0px)); }
+/* Между низом кнопок шапки и первым элементом — 21 px, как в макете
+   (у шапки свой нижний отступ 12 px, поэтому здесь 9). */
 [data-shape="soft"] .mint-glass + .overflow-y-auto {
-  padding-top: calc(var(--glass-h, 0px) + 16px) !important;
+  padding-top: calc(var(--glass-h, 0px) + 9px) !important;
   scroll-padding-top: var(--glass-h, 0px);
 }
 /* Подложка стекла. Экраны с классом mint-glass-over (чат, список чатов) —
@@ -245,3 +254,79 @@
   -webkit-backdrop-filter: none; backdrop-filter: none;
   background: linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.9) 50%, hsl(var(--background) / 0) 100%);
 }
+
+/* Пост Стены и канала (макет «Стена», 3× → px): белая карточка со
+   скруглением 20 и отступами 32 → 10.7; под автором — волосяная черта;
+   имя и текст — 45 → 15 px цветом заголовков; действия под постом —
+   белые таблетки 85 → 28 px с тенью, у нажатой реакции — зелёная подложка. */
+[data-shape="soft"] .post-card { background: var(--mint-surface); border-radius: 20px; box-shadow: var(--mint-card-shadow); }
+[data-shape="soft"] .post-card > .px-4 { padding: 11px; }
+[data-shape="soft"] .post-card .post-author { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--mint-divider); }
+[data-shape="soft"] .post-card .post-author .text-body { font-size: 15px; color: var(--mint-title); }
+[data-shape="soft"] .post-card .post-author .w-8 { width: 32px; height: 32px; border-radius: 13px; }
+[data-shape="soft"] .post-card > .px-4 > p.text-body { font-size: 15px; line-height: 20.7px; color: var(--mint-title); }
+[data-shape="soft"] .post-card .post-actions { margin: 0 11px; padding: 10px 0 11px; gap: 8px; border-color: var(--mint-divider); }
+[data-shape="soft"] .post-card .post-actions button {
+  height: 28px; min-width: 28px; border: 0; border-radius: 13.4px;
+  background: var(--mint-surface); color: var(--mint-ink); font-size: 14.3px;
+  box-shadow: 0 2.9px 11.1px rgb(0 0 0 / 0.2);
+}
+[data-shape="soft"] .post-card .post-actions .ui-reaction[aria-pressed="true"] { background: hsl(var(--primary) / 0.3); }
+
+/* Шторка «Отправить …» (макет «Отправить профиль»): белый лист с полями 7 px. */
+.mint-sheet { background: var(--mint-surface); box-shadow: var(--mint-card-shadow); }
+
+/* Экран звонка 1:1 без видео (макет «Входящий звонок» / «Вызов…», 3× → px):
+   аватар 295 → 98 со скруглением 17 и белой рамкой 2; входящий — две
+   кнопки 219×189 → 73×63 в белой подложке; в разговоре — белый док
+   925×189 → 308×63 с клавишами 195×165 → 65×55. Включённая — зелёная,
+   отбой — #C65A52. */
+.mint-call-avatar { border-radius: 17px !important; border: 2px solid #fff; box-shadow: 0 4.3px 13.3px rgb(0 0 0 / 0.25); }
+.mint-call-name { color: var(--mint-title); }
+.mint-call-big { width: 73px; height: 63px; padding: 4px; border-radius: 20px; background: var(--mint-surface); box-shadow: var(--mint-shadow); }
+.mint-call-big > span.mint-call-accept { background: #2f5b53; }
+.mint-call-big > span.mint-call-decline { background: #c65a52; }
+.mint-call-big > span { width: 100%; height: 100%; border-radius: 17px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 3.9px 14.9px rgb(0 0 0 / 0.2); }
+.mint-call-big:active { filter: brightness(0.95); }
+.mint-call-dock { display: flex; gap: 13px; padding: 4px; max-width: calc(100vw - 16px); border-radius: 20px; background: var(--mint-surface); box-shadow: var(--mint-shadow); }
+.mint-call-key { width: 65px; min-width: 52px; flex: 0 1 65px; height: 55px; overflow: hidden; border-radius: 18px; display: flex; align-items: center; justify-content: center; background: var(--mint-surface); color: var(--mint-ink); box-shadow: 0 3.9px 14.9px rgb(0 0 0 / 0.2); }
+.mint-call-key-on { background: hsl(var(--primary)); color: #fff; }
+.mint-call-key-end { background: #c65a52; color: #fff; }
+.mint-call-key:active { filter: brightness(0.95); }
+
+/* Кнопки под именем в профиле собеседника (макет: 195×165 → 65×55, #345C54). */
+.mint-act { background: #345c54; box-shadow: var(--mint-shadow); }
+.mint-act:active { filter: brightness(1.1); }
+
+/* Чекбоксы (макет «Конфиденциальность»): квадрат 19 px со скруглением 5,
+   пустой — рамка #2F5B53 50 %, отмеченный — заливка #2F5B53 и белая галочка;
+   в тёмной — рамка и заливка лаймом, галочка тёмно-зелёная. */
+[data-shape="soft"] input[type="checkbox"].accent-primary {
+  appearance: none; -webkit-appearance: none; width: 19px; height: 19px; margin: 0; flex-shrink: 0;
+  border-radius: 5px; border: 1.3px solid rgb(47 91 83 / 0.5); background: transparent center / 12px 10px no-repeat;
+}
+[data-shape="soft"] input[type="checkbox"].accent-primary:checked { background-color: #2f5b53; border-color: #2f5b53; background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%2010%22%3E%3Cpath%20d%3D%22M1.5%205.2%204.6%208.2%2010.5%201.8%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E"); }
+[data-shape="soft"] input[type="checkbox"].accent-primary:disabled { opacity: 0.5; }
+[data-shape="soft"][data-base="dark"] input[type="checkbox"].accent-primary { border-color: hsl(var(--accent) / 0.5); }
+[data-shape="soft"][data-base="dark"] input[type="checkbox"].accent-primary:checked { background-color: hsl(var(--accent)); border-color: hsl(var(--accent)); background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%2010%22%3E%3Cpath%20d%3D%22M1.5%205.2%204.6%208.2%2010.5%201.8%22%20fill%3D%22none%22%20stroke%3D%22%232f5b53%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E"); }
+
+/* ── Тёмная «Мята» по нижнему ряду макета ── */
+/* Надписи на таблетках («Изм.», невыбранные вкладки списка) — белые; лайм —
+   у значков и акцентов. */
+[data-shape="soft"][data-base="dark"] .mint-head > .mint-btn.mint-ink,
+[data-shape="soft"][data-base="dark"] .mint-card > button.mint-pill.mint-ink { color: #fff; }
+/* «Поделиться профилем» и другие тёмные таблетки в тёмной теме — лаймовые. */
+[data-shape="soft"][data-base="dark"] .mint-dark-pill { background: hsl(var(--accent)); color: #2f5b53; }
+/* Пост: комментарии, «поделиться», корзина — лаймовые; реакции — лайм 15 % с белым. */
+[data-shape="soft"][data-base="dark"] .post-card .post-actions button { background: hsl(var(--accent)); color: #2f5b53; }
+[data-shape="soft"][data-base="dark"] .post-card .post-actions .ui-reaction { background: hsl(var(--accent) / 0.15); color: #fff; }
+[data-shape="soft"][data-base="dark"] .post-card .post-actions .ui-reaction[aria-pressed="true"] { background: hsl(var(--accent) / 0.35); }
+/* Кнопки профиля собеседника: стекло с лаймовой рамкой, значок лайм, подпись #BDBDBD. */
+[data-shape="soft"][data-base="dark"] .mint-act { background: var(--mint-surface); border: var(--mint-border); color: hsl(var(--accent)); }
+[data-shape="soft"][data-base="dark"] .mint-act > span:last-child { color: #bdbdbd; }
+/* Звонок: клавиши и док — стекло с рамкой, значки белые; включённая и «принять» — лайм с тёмно-зелёным. */
+[data-shape="soft"][data-base="dark"] .mint-call-key { border: var(--mint-border); color: #fff; }
+[data-shape="soft"][data-base="dark"] .mint-call-key-on { background: hsl(var(--accent)); color: #2f5b53; }
+[data-shape="soft"][data-base="dark"] .mint-call-dock,
+[data-shape="soft"][data-base="dark"] .mint-call-big { border: var(--mint-border); }
+[data-shape="soft"][data-base="dark"] .mint-call-big > span.mint-call-accept { background: hsl(var(--accent)); color: #2f5b53; }

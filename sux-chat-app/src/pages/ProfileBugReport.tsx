@@ -11,6 +11,8 @@ import { dumpLog } from "@/lib/applog";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
 import { PLAY_BUILD } from "@/lib/updateCheck";
 import { t, tn } from "@/lib/i18n";
+import { useMint, MintIcon } from "@/themes/mint";
+import { SettingsCard, SettingsRow } from "@/components/settings";
 
 /**
  * «Сообщить о проблеме»: описание, скриншот и лог текущей сессии одним
@@ -103,6 +105,14 @@ const ProfileBugReport = () => {
     }
   };
 
+  const mint = useMint();
+  // На телефоне Ctrl+V не при чём — подсказка короче, как в макете.
+  const touch = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+  const placeholder = touch ? t("Что делал, что ожидал, что произошло") : t("Что делал, что ожидал, что произошло. Скриншот можно вставить через Ctrl+V");
+  const logHint = withLog ? tn(logLines, "{n} строка за эту сессию · без текстов сообщений и паролей", "{n} строки за эту сессию · без текстов сообщений и паролей", "{n} строк за эту сессию · без текстов сообщений и паролей") : t("Без лога разобраться сложнее");
+  const footer = t("Репорт увидят только разработчики. Вместе с ним уходят версия {version} (сборка {build}), платформа и модель устройства.", { version: APP_VERSION, build: APP_BUILD + (nativeBuild && nativeBuild !== APP_BUILD ? `, ${nativeBuild}` : "") });
+  const desktopHint = (Capacitor.getPlatform() === "web" || !!window.electronAPI) && !touch;
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
@@ -114,6 +124,66 @@ const ProfileBugReport = () => {
         }
       />
 
+      {mint ? (
+      // «Мята» (макет «Сообщить о проблеме»): подписи разделов — на фоне,
+      // под ними белые карточки; галерея — лаймовая кнопка в карточке.
+      <div className="flex-1 overflow-y-auto px-[17px] pt-0 pb-6">
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0] || null)} />
+        <label className="mint-label" htmlFor="bug-text">{t("Что случилось")}</label>
+        <textarea
+          id="bug-text"
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value.slice(0, 4000));
+            // Растёт под текст, но не выше трети экрана.
+            const el = e.target; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
+          }}
+          rows={2}
+          placeholder={placeholder}
+          className="mint-card block w-full min-h-[68px] px-[19px] py-[12px] text-[14.3px] leading-[20px] outline-none resize-none placeholder:text-[var(--mint-muted)]"
+        />
+        <p className="mint-label mt-[19px]">{t("Скриншот")}</p>
+        <div className="mint-card p-[11px]">
+          {preview ? (
+            <div className="relative inline-block">
+              <img src={preview} alt="" className="max-h-64 rounded-[14px]" />
+              <button type="button" onClick={() => setShot(null)} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center" aria-label={t("Убрать скриншот")}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => fileRef.current?.click()} className="mint-lime w-full h-[33px] inline-flex items-center justify-center gap-[8px] text-[12.7px] font-medium">
+              <MintIcon name="gallery" size={[17, 13]} />
+              {t("Выбрать из галереи")}
+            </button>
+          )}
+        </div>
+        <SettingsCard className="mt-[11px]">
+          <label className="block">
+            <SettingsRow
+              leading={<span className="w-[22px] shrink-0 flex justify-center mint-ink"><MintIcon name="rowLog" size={[13, 18]} /></span>}
+              label={t("Приложить лог приложения")}
+              hint={<span className="block truncate">{logHint}</span>}
+              trailing={<input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={withLog} onChange={(e) => setWithLog(e.target.checked)} />}
+            />
+          </label>
+          {withLog && (
+            // Вторая строка в макете — мелкая серая ссылка с шевроном (35 → 11.7 px), ниже обычной строки.
+            <button type="button" onClick={() => setLogOpen((v) => !v)} className="w-full min-h-[37px] px-[19px] flex items-center justify-between text-[11.7px] mint-muted active:bg-black/5">
+              {logOpen ? t("Скрыть лог") : t("Посмотреть, что уйдёт")}
+              <MintIcon name="chevron" size={[5, 10]} />
+            </button>
+          )}
+          {withLog && logOpen && (
+            <pre className="px-[19px] py-3 text-[11px] leading-[14px] mint-muted whitespace-pre-wrap break-all max-h-72 overflow-y-auto select-text">
+              {log || t("(пока пусто)")}
+            </pre>
+          )}
+        </SettingsCard>
+        <p className="mt-[11px] px-1 text-[11.7px] leading-[15px] mint-faint">{footer}</p>
+        {desktopHint && <p className="mt-2 px-1 text-[11.7px] leading-[15px] mint-faint">{t("На компьютере: Ctrl/⌘+Shift+B отправит лог откуда угодно — даже если интерфейс сломался.")}</p>}
+      </div>
+      ) : (
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0] || null)} />
 
@@ -124,7 +194,7 @@ const ProfileBugReport = () => {
             value={text}
             onChange={(e) => setText(e.target.value.slice(0, 4000))}
             rows={5}
-            placeholder={t("Что делал, что ожидал, что произошло. Скриншот можно вставить через Ctrl+V")}
+            placeholder={placeholder}
             className="w-full rounded-md bg-surface-4 border border-transparent px-3 py-2 text-body outline-none resize-none focus:border-amber"
           />
         </div>
@@ -177,6 +247,7 @@ const ProfileBugReport = () => {
           <p className="px-1 text-caption text-subtle">{t("На компьютере: Ctrl/⌘+Shift+B отправит лог откуда угодно — даже если интерфейс сломался.")}</p>
         )}
       </div>
+      )}
     </div>
   );
 };

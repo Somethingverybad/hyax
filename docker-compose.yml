@@ -74,6 +74,9 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      # Картинки с серверов YouTube из Москвы не открываются — chat/linkimage.py
+      # качает их через тот же прокси, что и медиа-бот (сервис ytproxy).
+      LINK_PROXY: http://ytproxy:8888
       # Свой LibreTranslate (сервис translate ниже) — запасной бесплатный
       # переводчик; GEMINI_API_KEY или DEEPL_API_KEY в .env имеют приоритет.
       LIBRETRANSLATE_URL: http://translate:5000
@@ -183,6 +186,10 @@ services:
     networks:
       - sux_chat_network
 
+  # TURN. В bridge-сети Docker coturn без --external-ip отдаёт relay-адресом
+  # свой IP контейнера (172.x) — из интернета недостижимый, ретрансляция не
+  # работала, звонки держались только на прямом пути через STUN и рвались на
+  # мобильных сетях (2026-10-25). Публичный адрес сервера — TURN_EXTERNAL_IP.
   coturn:
     image: coturn/coturn:4.6.3
     container_name: sux_chat_coturn
@@ -196,6 +203,7 @@ services:
       --listening-port=3478
       --min-port=49160
       --max-port=49200
+      --external-ip=${TURN_EXTERNAL_IP:-194.164.245.144}
       --no-cli
       --log-file=stdout
     ports:

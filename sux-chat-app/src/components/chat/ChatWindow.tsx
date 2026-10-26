@@ -3710,10 +3710,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     } else if (date.toDateString() === yesterday.toDateString()) {
       return tr("Вчера");
     } else {
+      // Год — только у прошлых лет: «2 октября», но «2 октября 2025 г.» (макет).
       return dateOf(dateString, dateLocale(), {
         day: "numeric",
         month: "long",
-        year: "numeric"
+        ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" as const } : {}),
       });
     }
   };
@@ -5383,7 +5384,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                   длинное сообщение набиралось вслепую. */}
               <textarea
                 ref={textareaRef}
-                placeholder={tr("Сообщение...")}
+                placeholder={tr("Сообщение")}
                 defaultValue=""
                 rows={1}
                 // Явно: без этих атрибутов iOS не включал автоисправление и
@@ -5703,6 +5704,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           userId={peer.id}
           onClose={() => setProfileOpen(false)}
           onCall={onCall}
+          chatId={isSecret ? undefined : chatId || undefined}
+          onSearch={isSecret ? undefined : () => setSearchOpen(true)}
+          onJump={(id) => void jumpToMessage(id)}
         />
       )}
       {geoOpen && <LocationSheet onSend={(f) => void sendLocation(f)} onClose={() => setGeoOpen(false)} />}
