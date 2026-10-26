@@ -276,8 +276,8 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         // звонок соединялся, но был беззвучным. Настройку оставляем ему.
     }
 
-    func setSpeaker(_ enabled: Bool) {
-        NativeCallAudio.shared.setSpeaker(enabled)
+    func setSpeaker(_ enabled: Bool, auto: Bool) -> Bool {
+        return NativeCallAudio.shared.setSpeaker(enabled, auto: auto)
     }
 
     private func jsPayload(_ p: [String: Any]) -> [String: Any] {
@@ -360,8 +360,8 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func setSpeaker(_ call: CAPPluginCall) {
-        VoipManager.shared.setSpeaker(call.getBool("enabled") ?? true)
-        call.resolve()
+        let on = VoipManager.shared.setSpeaker(call.getBool("enabled") ?? true, auto: call.getBool("auto") ?? false)
+        call.resolve(["enabled": on])
     }
 
     @objc func endCall(_ call: CAPPluginCall) {

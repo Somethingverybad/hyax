@@ -12,7 +12,8 @@ import UIKit
 final class NativeCallAudio {
     static let shared = NativeCallAudio()
 
-    private var speakerOn = true
+    /// По умолчанию разговорный динамик, громкая — по кнопке или с видео.
+    private var speakerOn = false
     private var inCall = false
     private var routeObserver: NSObjectProtocol?
     /// Динамик сменили не мы (VoipPlugin передаёт странице событие callSpeaker).
@@ -61,6 +62,10 @@ final class NativeCallAudio {
         config.category = AVAudioSession.Category.playAndRecord.rawValue
         config.mode = AVAudioSession.Mode.voiceChat.rawValue
         config.categoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
+        // Та же настройка — движку: запуская звук на соединении, он
+        // перенастраивал сессию своей (другие опции категории), а смена
+        // категории сбрасывала выбранный динамик.
+        RTCAudioSessionConfiguration.setWebRTC(config)
         try? session.setConfiguration(config)
         session.unlockForConfiguration()
     }
@@ -81,16 +86,25 @@ final class NativeCallAudio {
         session.audioSessionDidDeactivate(audioSession)
     }
 
-    func setSpeaker(_ enabled: Bool) {
-        CallDiag.log("setSpeaker \(enabled)")
+    /// auto — громкая ради видео: при наушниках и Bluetooth не включаем.
+    /// Возвращает, что вышло.
+    @discardableResult
+    func setSpeaker(_ enabled: Bool, auto: Bool = false) -> Bool {
+        CallDiag.log("setSpeaker \(enabled) auto=\(auto)")
+        if auto && enabled {
+            let outs = AVAudioSession.sharedInstance().currentRoute.outputs
+            let builtIn = outs.contains { $0.portType == .builtInReceiver || $0.portType == .builtInSpeaker }
+            if !outs.isEmpty && !builtIn { return speakerOn }
+        }
         speakerOn = enabled
         applyRoute()
+        return speakerOn
     }
 
     func endCall() {
         CallDiag.log("endCall")
         inCall = false
-        speakerOn = true
+        speakerOn = false
         RTCAudioSession.sharedInstance().isAudioEnabled = false
     }
 
