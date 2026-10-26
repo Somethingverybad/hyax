@@ -5704,6 +5704,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           userId={peer.id}
           onClose={() => setProfileOpen(false)}
           onCall={onCall}
+          chatId={isSecret ? undefined : chatId || undefined}
+          onSearch={isSecret ? undefined : () => setSearchOpen(true)}
+          onJump={(id) => void jumpToMessage(id)}
         />
       )}
       {geoOpen && <LocationSheet onSend={(f) => void sendLocation(f)} onClose={() => setGeoOpen(false)} />}

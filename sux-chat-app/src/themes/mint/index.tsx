@@ -2,6 +2,11 @@ import type { CSSProperties } from "react";
 import "@fontsource-variable/inter";
 import "./mint.css";
 import { useTheme } from "@/lib/theme";
+import actBlock from "./icons/act-block.svg";
+import actCall from "./icons/act-call.svg";
+import actMore from "./icons/act-more.svg";
+import actReport from "./icons/act-report.svg";
+import actSearch from "./icons/act-search.svg";
 import back from "./icons/back.svg";
 import checks from "./icons/checks.svg";
 import chevron from "./icons/chevron.svg";
@@ -66,7 +71,7 @@ export function useMint(): boolean {
 /** Иконки макета. Красим маской в currentColor: одна и та же иконка годится
  *  и светлой «Мяте», и тёмной. */
 export const MINT_ICONS = {
-  back, checks, chevron, close, callAccept, callCam, callCamOff, callDecline, callEnd, callMic, callMicOff, callSpeaker, callSpeakerOff, callVideoMark, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
+  actBlock, actCall, actMore, actReport, actSearch, back, checks, chevron, close, callAccept, callCam, callCamOff, callDecline, callEnd, callMic, callMicOff, callSpeaker, callSpeakerOff, callVideoMark, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
   gallery, pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowLog, rowSaved,
   rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent, wallHead,
 } as const;

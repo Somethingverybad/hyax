@@ -9,6 +9,7 @@ import { playQueue, usePlayer, currentTrack, toggle as togglePlay, type Track } 
 import { saveFileToDevice } from "@/lib/saveFile";
 import { cn } from "@/lib/utils";
 import { t, getLang } from "@/lib/i18n";
+import { MintIcon } from "@/themes/mint";
 
 /** Сообщение с вложением — только поля, нужные этому экрану. */
 interface MediaMsg {
@@ -75,13 +76,15 @@ function byMonth(items: MediaMsg[]): { key: string; title: string; items: MediaM
  * общим плеером очередью, файлы сохраняются на устройство. «Показать в
  * чате» прокручивает переписку к сообщению.
  */
-const ChatMediaSheet = ({ chatId, title, onClose, onJump }: {
+const ChatMediaSheet = ({ chatId, title, onClose, onJump, initialTab }: {
   chatId: string;
   title?: string;
   onClose: () => void;
   onJump: (messageId: string) => void;
+  /** С какой вкладки открыть — из превью в профиле собеседника. */
+  initialTab?: MediaKind;
 }) => {
-  const [tab, setTab] = useState<MediaKind>("photo");
+  const [tab, setTab] = useState<MediaKind>(initialTab || "photo");
   const [counts, setCounts] = useState<Partial<Record<MediaKind, number>>>({});
   const [lists, setLists] = useState<Partial<Record<MediaKind, { items: MediaMsg[]; more: boolean }>>>({});
   const [loading, setLoading] = useState(false);
@@ -293,6 +296,66 @@ const VideoPlayer = ({ m, onClose, onJump }: { m: MediaMsg; onClose: () => void;
         {src && (
           <video src={src} poster={poster || undefined} controls autoPlay playsInline
             className={cn("max-w-full max-h-full", m.video_url && m.video_mirror && "-scale-x-100")} />
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Вложения переписки в профиле собеседника («Мята», макет профиля): та же
+ * выдача, что у ChatMediaSheet, — переключатель вкладок и первая порция;
+ * тап и «Все» открывают полный экран вложений на этой вкладке.
+ */
+export const ChatMediaPreview = ({ chatId, onOpenAll }: { chatId: string; onOpenAll: (kind: MediaKind) => void }) => {
+  const [tab, setTab] = useState<MediaKind>("photo");
+  const [data, setData] = useState<Partial<Record<MediaKind, MediaMsg[]>>>({});
+  const [counts, setCounts] = useState<Partial<Record<MediaKind, number>>>({});
+  useEffect(() => {
+    if (data[tab]) return;
+    let alive = true;
+    api.getChatMedia(chatId, tab)
+      .then((r) => {
+        if (!alive) return;
+        if (r.counts) setCounts(r.counts);
+        setData((prev) => ({ ...prev, [tab]: r.results as MediaMsg[] }));
+      })
+      .catch(() => alive && setData((prev) => ({ ...prev, [tab]: [] })));
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, chatId]);
+  const items = data[tab];
+  const visual = tab === "photo" || tab === "video";
+  const shown = (items || []).slice(0, visual ? 9 : 4);
+  return (
+    <div>
+      <div className="mint-pill mx-auto w-max max-w-full flex overflow-x-auto no-scrollbar" role="tablist">
+        {TABS.map(({ kind, label }) => (
+          <button key={kind} type="button" role="tab" aria-selected={tab === kind} onClick={() => setTab(kind)}
+            className={cn("h-[28px] px-[14px] shrink-0 rounded-full text-[12px] font-medium whitespace-nowrap mint-ink", tab === kind && "bg-[rgb(52_92_84/0.15)]")}>
+            {t(label)}
+          </button>
+        ))}
+      </div>
+      <div className="mint-card mt-[11px] overflow-hidden">
+        {!items ? (
+          <p className="text-center text-small text-subtle py-6">{t("Загрузка…")}</p>
+        ) : !items.length ? (
+          <p className="text-center text-small text-subtle py-6">{t(EMPTY[tab])}</p>
+        ) : visual ? (
+          <div className="grid grid-cols-3 gap-0.5 p-0.5">
+            {shown.map((m) => <Thumb key={m.id} m={m} video={tab === "video"} onOpen={() => onOpenAll(tab)} />)}
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {shown.map((m) => <Row key={m.id} m={m} kind={tab} onPlay={() => onOpenAll(tab)} onJump={() => onOpenAll(tab)} />)}
+          </div>
+        )}
+        {!!items?.length && (
+          <button type="button" onClick={() => onOpenAll(tab)} className="w-full h-[44px] px-[19px] flex items-center justify-between text-[13.3px] mint-muted active:bg-black/5" style={{ boxShadow: "inset 0 1px 0 var(--mint-divider)" }}>
+            <span>{t("Все")}{counts[tab] ? ` · ${counts[tab]}` : ""}</span>
+            <MintIcon name="chevron" size={[5, 10]} />
+          </button>
         )}
       </div>
     </div>

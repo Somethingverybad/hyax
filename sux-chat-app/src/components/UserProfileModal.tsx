@@ -18,6 +18,9 @@ import ShareToChat from "@/components/ShareToChat";
 import { toast } from "sonner";
 import { useSwipeDismiss } from "@/lib/useSwipeDismiss";
 import Vibometer from "@/components/Vibometer";
+import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
+import ChatMediaSheet, { ChatMediaPreview } from "@/components/chat/ChatMediaSheet";
+import type { MediaKind } from "@/api/client";
 
 const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
 
@@ -42,11 +45,23 @@ const UserProfileModal = ({
   userId,
   onClose,
   onCall,
+  chatId,
+  onSearch,
+  onJump,
 }: {
   userId: string;
   onClose: () => void;
   onCall?: () => void;
+  /** Личка с этим человеком — для вкладок вложений и «Показать в чате». */
+  chatId?: string;
+  /** Поиск по этой переписке (открыт из шапки чата). */
+  onSearch?: () => void;
+  onJump?: (messageId: string) => void;
 }) => {
+  // «Мята» на телефоне — полноэкранный профиль по макету; иначе шторка.
+  const mint = useMint();
+  const [mediaTab, setMediaTab] = useState<MediaKind | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const navigate = useNavigate();
   // Свайп вниз по шторке закрывает её — и мы снова там, откуда открыли профиль.
   const swipe = useSwipeDismiss(onClose);
@@ -117,6 +132,149 @@ const UserProfileModal = ({
     try { await writeClipboard(value); toast.success(t("Скопировано")); }
     catch { toast.error(t("Не удалось скопировать")); }
   };
+
+  const extras = (
+    <>
+      {profile && (
+        <ShareToChat
+          open={shareOpen}
+          title={t("Отправить профиль {name}", { name: profile.username })}
+          text={profileLink(profile.username)}
+          onClose={() => setShareOpen(false)}
+          onShareOutside={async () => {
+            const r = await shareProfile(profile.username);
+            if (r === "copied") toast.success(t("Ссылка скопирована"));
+            else if (r === "error") toast.error(t("Не удалось поделиться"));
+          }}
+        />
+      )}
+      {galleryOpen && profile && (
+        <SavedGallery profileId={profile.id} own={false} title={t("Сохранёнки {name}", { name: profile.username })} onClose={() => setGalleryOpen(false)} />
+      )}
+      {reportOpen && (
+        <ReportSheet target={{ type: "user", id: userId }} title={profile?.username ? t("Жалоба на {name}", { name: profile.username }) : t("Жалоба на пользователя")} onClose={() => setReportOpen(false)} />
+      )}
+      {mediaTab && chatId && profile && (
+        <ChatMediaSheet chatId={chatId} title={profile.username} initialTab={mediaTab}
+          onClose={() => setMediaTab(null)} onJump={(id) => { setMediaTab(null); onClose(); onJump?.(id); }} />
+      )}
+    </>
+  );
+
+  if (mint) {
+    // Кнопки под именем (макет: 65×55, тёмно-зелёные, значок и подпись).
+    // В шапке чата — «звонок» и «поиск» по переписке; вне чата первая — «написать».
+    const acts: { key: string; icon: MintIconName | null; label: string; onClick: () => void; disabled?: boolean }[] = [
+      ...(onCall ? [{ key: "call", icon: "actCall" as MintIconName, label: t("звонок"), onClick: () => { onCall(); onClose(); } }] : []),
+      onSearch
+        ? { key: "search", icon: "actSearch" as MintIconName, label: t("поиск"), onClick: () => { onClose(); onSearch(); } }
+        : { key: "write", icon: null, label: writing ? t("Открываю…") : isBot ? t("Начать") : t("написать"), onClick: () => void write(), disabled: writing },
+      { key: "block", icon: "actBlock" as MintIconName, label: blocked ? t("разблок") : t("блок"), onClick: () => void toggleBlock(), disabled: blocked === null },
+      { key: "report", icon: "actReport" as MintIconName, label: t("жалоба"), onClick: () => setReportOpen(true) },
+      { key: "more", icon: "actMore" as MintIconName, label: t("ещё"), onClick: () => setMoreOpen((v) => !v) },
+    ];
+    const webapp = isBot ? (profile as { webapp_url?: string; webapp_title?: string } | null) : null;
+    const infoRows: [string, string, boolean][] = profile ? [
+      [t("имя пользователя"), "@" + profile.username, true],
+      ...(profile.bio ? [[t("о себе"), profile.bio, false] as [string, string, boolean]] : []),
+      ...(profile.created_at ? [[t("дата регистрации"), new Date(profile.created_at).toLocaleDateString(LOCALE[getLang()] || "ru-RU"), false] as [string, string, boolean]] : []),
+      [t("ID"), profile.id, true],
+    ] : [];
+    return (
+      <div className="fixed inset-0 z-50 bg-background overflow-y-auto overscroll-contain" role="dialog" aria-label={profile?.username || t("Профиль")}>
+        <button type="button" onClick={onClose} aria-label={t("Назад")}
+          className="absolute z-10 left-[17px] mint-pill w-[44px] h-[33px] inline-flex items-center justify-center mint-muted"
+          style={{ top: "calc(var(--sat) + 19px)" }}>
+          <MintIcon name="back" size={[7, 13]} />
+        </button>
+        {loading ? (
+          <div className="pt-40 text-center text-small text-subtle">{t("Загрузка…")}</div>
+        ) : !profile ? (
+          <div className="pt-40 text-center text-small text-subtle">{t("Не удалось загрузить профиль")}</div>
+        ) : (
+          <div className="pb-[calc(var(--sab)+24px)]" style={{ paddingTop: "calc(var(--sat) + 73px)" }}>
+            {/* Обложка во всю ширину, аватар 98 свешивается с её низа на половину. */}
+            <div className="h-[139px] w-full bg-surface-3 overflow-hidden" style={{ boxShadow: "0 4.3px 13.3px rgb(0 0 0 / 0.25)" }}>
+              {profile.cover_url && <img src={mediaUrl(profile.cover_url)} alt="" className="w-full h-full object-cover" />}
+            </div>
+            <div className="flex justify-center -mt-[47px]">
+              <AvatarZoom url={profile.avatar_url} name={profile.username}>
+                <Aura active={!!profile.is_online} owner={profile} size={98}>
+                  <Identicon id={profile.id} avatarUrl={profile.avatar_url} className="w-[98px] h-[98px] mint-call-avatar" />
+                </Aura>
+              </AvatarZoom>
+            </div>
+            <h2 className="mt-[12px] px-4 text-center text-[26.7px] leading-[30px] font-semibold truncate" style={{ color: "var(--mint-title)" }}>{profile.username}</h2>
+            <p className={cn("mt-[4px] text-center text-[16px] truncate px-4", profile.is_online ? "text-online" : "text-[#9cb2ab]")}>
+              {profile.is_online ? t("в сети") : lastSeenText(profile.last_seen)}
+            </p>
+
+            <div className="relative mt-[27px] px-[18px] flex justify-center gap-[8px]">
+              {acts.map((a) => (
+                <button key={a.key} type="button" onClick={a.onClick} disabled={a.disabled} aria-label={a.label}
+                  className="mint-act flex-1 max-w-[65px] h-[55px] rounded-[20px] flex flex-col items-center justify-center gap-[4px] text-white disabled:opacity-60">
+                  {a.icon ? <MintIcon name={a.icon} size={a.icon === "actMore" ? [28, 6] : [20, 20]} /> : <MessageSquare className="w-[20px] h-[20px]" />}
+                  <span className="text-[11px] leading-[13px] max-w-full truncate px-1">{a.label}</span>
+                </button>
+              ))}
+              {moreOpen && (
+                <div className="absolute z-20 right-[18px] top-[calc(100%+8px)] mint-card mint-rows min-w-[220px] overflow-hidden" onClick={() => setMoreOpen(false)}>
+                  <button type="button" onClick={() => setShareOpen(true)} className="w-full h-[48px] px-[19px] text-left text-[14.3px] mint-ink active:bg-black/5">{t("Поделиться профилем")}</button>
+                  {onSearch && (
+                    <button type="button" onClick={() => void write()} className="w-full h-[48px] px-[19px] text-left text-[14.3px] mint-ink active:bg-black/5">{isBot ? t("Начать") : t("Написать")}</button>
+                  )}
+                  {webapp?.webapp_url && (
+                    <button type="button" onClick={() => { const pr = profile; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }} className="w-full h-[48px] px-[19px] text-left text-[14.3px] mint-ink active:bg-black/5">{webapp.webapp_title || t("Приложение")}</button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-[24px] px-[17px] space-y-[11px]">
+              {/* Сведения: подпись 13.3 px, значение 16 px, строки ~68 px с чертой между. */}
+              <div className="mint-card mint-rows overflow-hidden">
+                {infoRows.map(([label, value, copyable]) => (
+                  <button key={label} type="button" onClick={copyable ? () => void copy(value) : undefined}
+                    className={cn("w-full min-h-[68px] px-[19px] py-[12px] flex items-center gap-3 text-left", copyable && "active:bg-black/5")}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13.3px] leading-[17px] mint-ink opacity-80">{label}</span>
+                      <span className={cn("block text-[16px] leading-[21px] mint-ink break-words", copyable && "truncate")}>{value}</span>
+                    </span>
+                    {copyable && <MintIcon name="rowCopy" size={16} className="mint-muted" />}
+                  </button>
+                ))}
+              </div>
+
+              {!isBot && <Vibometer profileId={profile.id} username={profile.username} initial={(profile as { vibe?: number }).vibe} />}
+
+              {saved && saved.count > 0 && (
+                <div className="mint-card overflow-hidden">
+                  <div className="px-[19px] pt-[14px] flex items-center">
+                    <span className="flex-1 text-[13.3px] mint-ink">{t("сохранёнки")}</span>
+                    <span className="text-[13.3px] mint-muted">{pluralPhotos(saved.count)}</span>
+                  </div>
+                  <div className="px-[19px] pt-[15px] pb-[16px] grid grid-cols-3 gap-[11px]">
+                    {saved.items.slice(0, 3).map((it) => (
+                      <SavedTile key={it.id} item={it} className="aspect-square w-full rounded-[20px]" onClick={() => setGalleryOpen(true)} />
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setGalleryOpen(true)} className="w-full h-[44px] px-[19px] flex items-center justify-between text-[13.3px] mint-muted active:bg-black/5" style={{ boxShadow: "inset 0 1px 0 var(--mint-divider)" }}>
+                    {t("все сохранёнки")}
+                    <MintIcon name="chevron" size={[5, 10]} />
+                  </button>
+                </div>
+              )}
+
+              {chatId && !isBot && (
+                <div className="pt-[8px]"><ChatMediaPreview chatId={chatId} onOpenAll={(k) => setMediaTab(k)} /></div>
+              )}
+            </div>
+          </div>
+        )}
+        {extras}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -262,25 +420,7 @@ const UserProfileModal = ({
           <div className="py-10 text-center text-small text-subtle">{t("Не удалось загрузить профиль")}</div>
         )}
       </div>
-      {profile && (
-        <ShareToChat
-          open={shareOpen}
-          title={t("Отправить профиль {name}", { name: profile.username })}
-          text={profileLink(profile.username)}
-          onClose={() => setShareOpen(false)}
-          onShareOutside={async () => {
-            const r = await shareProfile(profile.username);
-            if (r === "copied") toast.success(t("Ссылка скопирована"));
-            else if (r === "error") toast.error(t("Не удалось поделиться"));
-          }}
-        />
-      )}
-      {galleryOpen && profile && (
-        <SavedGallery profileId={profile.id} own={false} title={t("Сохранёнки {name}", { name: profile.username })} onClose={() => setGalleryOpen(false)} />
-      )}
-      {reportOpen && (
-        <ReportSheet target={{ type: "user", id: userId }} title={profile?.username ? t("Жалоба на {name}", { name: profile.username }) : t("Жалоба на пользователя")} onClose={() => setReportOpen(false)} />
-      )}
+      {extras}
     </div>
   );
 };

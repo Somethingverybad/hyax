@@ -289,3 +289,7 @@
 .mint-call-key-on { background: hsl(var(--primary)); color: #fff; }
 .mint-call-key-end { background: #c65a52; color: #fff; }
 .mint-call-key:active { filter: brightness(0.95); }
+
+/* Кнопки под именем в профиле собеседника (макет: 195×165 → 65×55, #345C54). */
+.mint-act { background: #345c54; box-shadow: var(--mint-shadow); }
+.mint-act:active { filter: brightness(1.1); }
