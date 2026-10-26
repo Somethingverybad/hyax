@@ -658,6 +658,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // Кто может писать: в канал — админы, на Стену — все, кроме забаненных.
   const canPost = wall ? !!wallState && !banned : isAdmin;
   const subscribed = wall ? true : !!channel?.my_role;
+  // Чужой канал: поля ввода нет — лента до низа экрана под подложкой
+  // .channel-veil, как под стеклом шапки (раньше обрывалась резкой границей
+  // над полосой под home-индикатор). С кнопкой «Подписаться» — над ней.
+  const reader = !wall && !canPost;
+  const readerBar = reader && !!channel && !subscribed;
 
   // Лента канала живёт по тем же правилам, что и переписка (см. messageCache):
   // при входе рисуем из IndexedDB, сеть догоняет приращением по since, старые
@@ -1311,7 +1316,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // Стена-вкладка: лента до низа экрана, под остров навигации (как в чате под
         // поле ввода), — отступ, чтобы последний пост можно было докрутить из-под
         // острова и кнопки «+»; низ прикрывает вуаль .wall-veil.
-        style={wall && !onBack ? { paddingBottom: "calc(var(--mint-nav-space, 0px) + 88px)" } : undefined}>
+        style={wall && !onBack ? { paddingBottom: "calc(var(--mint-nav-space, 0px) + 88px)" }
+          : reader ? { paddingBottom: `calc(var(--sab, 0px) + ${readerBar ? 96 : 32}px)` } : undefined}>
         {hasMore && (
           <div className="flex justify-center">
             <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder}
@@ -1487,12 +1493,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
       {/* Низ ленты растворяется в фоне, как над полем ввода в чате (.mint-compose-island),
           а не обрывается резкой границей над композером канала и островом Стены. */}
-      {!(wall && !onBack) && <div aria-hidden className="feed-fade relative h-0 z-10 pointer-events-none" />}
+      {!(wall && !onBack) && !reader && <div aria-hidden className="feed-fade relative h-0 z-10 pointer-events-none" />}
 
       {/* Канал: кнопка «вниз» со счётчиком пропущенных, пока лента не внизу. */}
       {!wall && !atBottom && (
         <div className="relative h-0 z-20">
           <button type="button" onClick={jumpDown} aria-label={missed > 0 ? tr("Пропущено постов: {n}. Вниз", { n: missed }) : tr("Вниз")}
+            style={reader ? { bottom: `calc(var(--sab, 0px) + ${readerBar ? 84 : 16}px)` } : undefined}
             className="ui-btn absolute right-3 md:right-6 bottom-3 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80">
             <ArrowDown className="w-5 h-5" />
             {missed > 0 && (
@@ -1779,13 +1786,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // ещё не факт — кнопка мелькала на мгновение у подписчиков и админов.
         // Подписчику кнопка не нужна — она стояла и после подписки, потому что
         // ветка была просто «не админ». Отписка — в инфо-модалке канала.
-        <div className="pad-safe-bottom px-3 py-3 shrink-0">
-          <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
-            {tr("Подписаться")}
-          </button>
-        </div>
+        <>
+          <div aria-hidden className="channel-veil channel-veil-bar" />
+          <div className="absolute left-0 right-0 bottom-0 z-20 pad-safe-bottom px-3 pt-3">
+            <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
+              {tr("Подписаться")}
+            </button>
+          </div>
+        </>
       ) : (
-        <div className="pad-safe-bottom shrink-0" />
+        <div aria-hidden className="channel-veil" />
       )}
 
       {infoOpen && wall && wallState && (
