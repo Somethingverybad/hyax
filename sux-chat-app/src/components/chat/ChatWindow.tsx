@@ -2041,6 +2041,30 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const gap = last && cs ? Math.round(cs.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : -1;
     const dist = Math.round(n.scrollHeight - n.scrollTop - n.clientHeight);
     applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(n).transform} anims=${f.getAnimations().length}`);
+    if (gap > 40) logTail("kb");
+  };
+  /** Баг-репорт d4e36abf: после повторного входа в чат под последним
+   *  сообщением оставалась пустота ~130 px при прокрутке в самом низу. В лог —
+   *  зазор до поля ввода и хвост ленты: верх+высота, прозрачность, видимость,
+   *  анимации, своё ли (msg-in-own) и черновик ли (pending-) у последних строк. */
+  const logTail = (why: string) => {
+    const n = scrollRef.current, f = feedRef.current, cs = composeRef.current;
+    if (!n || !f) return;
+    const end = f.lastElementChild as HTMLElement | null;
+    const gap = end && cs ? Math.round(cs.getBoundingClientRect().top - end.getBoundingClientRect().bottom) : -1;
+    const rows = Array.from(f.querySelectorAll<HTMLElement>(':scope > [id^="msg-"]')).slice(-5);
+    const tail = rows.map((k) => {
+      const r = k.getBoundingClientRect();
+      const st = getComputedStyle(k);
+      const a = k.getAnimations({ subtree: true }).length;
+      return `${Math.round(r.top)}+${Math.round(r.height)}`
+        + (st.opacity !== "1" ? ` o${(+st.opacity).toFixed(2)}` : "")
+        + (st.visibility !== "visible" ? " hid" : "")
+        + (a ? ` a${a}` : "")
+        + (k.classList.contains("msg-in-own") ? " own" : "")
+        + (k.id.startsWith("msg-pending-") ? " pend" : "");
+    }).join(" | ");
+    applog.info(`feedtail ${why} gap=${gap} dist=${Math.round(n.scrollHeight - n.scrollTop - n.clientHeight)} ch=${n.clientHeight} cs=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} msgs=${messagesRef.current} [${tail}]`);
   };
   useEffect(() => {
     let cleanup: ReturnType<typeof setTimeout> | undefined;
@@ -2405,6 +2429,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   const openPosition = async (id: string) => {
     const r = await restoreChatPos(id);
+    setTimeout(() => logTail("position"), 1500);
     if (r === true) { unreadOpenRef.current = 0; setAnchoring(false); return; }
     // Запомненного места в ленте уже нет (история ушла дальше) — как раньше.
     if (r === false && unreadOpenRef.current === 0) { pinnedRef.current = true; goBottom(false); }
@@ -2429,6 +2454,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     pinnedRef.current = true;
     const snap = () => { const el = scrollRef.current; if (el && pinnedRef.current) el.scrollTop = el.scrollHeight; };
     requestAnimationFrame(() => { snap(); requestAnimationFrame(() => { snap(); logFeed("snap"); }); });
+    setTimeout(() => logTail("open"), 1500);
   };
 
   /** После отправки (текст, медиа, стикер) — вниз, плавно. */
@@ -3191,6 +3217,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!became || !chatId) return;
     const id = chatId;
     void syncSince(id).then(() => { if (pinnedRef.current) goBottom(false); });
+    setTimeout(() => logTail("reshow"), 1500);
     const t = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
