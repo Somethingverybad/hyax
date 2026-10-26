@@ -1262,6 +1262,7 @@ const en: Record<string, string> = {
   "Что делал, что ожидал, что произошло": "What you did, what you expected, what happened",
   // Профиль собеседника в «Мяте»: подписи кнопок и строк — строчными, как в макете.
   "звонок": "call",
+  "позвонить": "call",
   "поиск": "search",
   "разблок": "unblock",
   "блок": "block",

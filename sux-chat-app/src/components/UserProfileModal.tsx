@@ -167,12 +167,12 @@ const UserProfileModal = ({
   if (mint) {
     // Кнопки под именем (макет: 65×55, тёмно-зелёные, значок и подпись).
     // В шапке чата — «звонок» и «поиск» по переписке; вне чата первая — «написать».
-    const acts: { key: string; icon: MintIconName | null; label: string; onClick: () => void; disabled?: boolean }[] = [
-      ...(onCall ? [{ key: "call", icon: "actCall" as MintIconName, label: t("звонок"), onClick: () => { onCall(); onClose(); } }] : []),
-      onSearch
-        ? { key: "search", icon: "actSearch" as MintIconName, label: t("поиск"), onClick: () => { onClose(); onSearch(); } }
-        : { key: "write", icon: null, label: writing ? t("Открываю…") : isBot ? t("Начать") : t("написать"), onClick: () => void write(), disabled: writing },
-      { key: "block", icon: "actBlock" as MintIconName, label: blocked ? t("разблок") : t("блок"), onClick: () => void toggleBlock(), disabled: blocked === null },
+    const acts: { key: string; icon: MintIconName; label: string; onClick: () => void; disabled?: boolean }[] = [
+      // Открыт из этой же переписки — «написать» просто возвращает в неё.
+      { key: "write", icon: "navChat", label: writing ? t("Открываю…") : isBot ? t("Начать") : t("написать"),
+        onClick: onSearch ? onClose : () => void write(), disabled: writing },
+      ...(onCall ? [{ key: "call", icon: "actCall" as MintIconName, label: t("позвонить"), onClick: () => { onCall(); onClose(); } }] : []),
+      ...(onSearch ? [{ key: "search", icon: "actSearch" as MintIconName, label: t("поиск"), onClick: () => { onClose(); onSearch(); } }] : []),
       { key: "report", icon: "actReport" as MintIconName, label: t("жалоба"), onClick: () => setReportOpen(true) },
       { key: "more", icon: "actMore" as MintIconName, label: t("ещё"), onClick: () => setMoreOpen((v) => !v) },
     ];
@@ -190,6 +190,13 @@ const UserProfileModal = ({
           style={{ top: "calc(var(--sat) + 19px)" }}>
           <MintIcon name="back" size={[7, 13]} />
         </button>
+        {profile && (
+          <button type="button" onClick={() => setShareOpen(true)} aria-label={t("Поделиться профилем")} title={t("Поделиться профилем")}
+            className="absolute z-10 right-[17px] mint-pill w-[44px] h-[33px] inline-flex items-center justify-center mint-muted"
+            style={{ top: "calc(var(--sat) + 19px)" }}>
+            <MintIcon name="share" size={[13, 14]} />
+          </button>
+        )}
         {loading ? (
           <div className="pt-40 text-center text-small text-subtle">{t("Загрузка…")}</div>
         ) : !profile ? (
@@ -219,19 +226,19 @@ const UserProfileModal = ({
                   {/* Значок — в рамке 20 px: точки «ещё» тоньше остальных значков, и без
                       рамки подпись под ними вставала выше, чем у соседей. */}
                   <span className="h-[20px] flex items-center justify-center">
-                    {a.icon ? <MintIcon name={a.icon} size={a.icon === "actMore" ? [28, 6] : [20, 20]} /> : <MessageSquare className="w-[20px] h-[20px]" />}
+                    <MintIcon name={a.icon} size={a.icon === "actMore" ? [28, 6] : a.icon === "navChat" ? [25, 18] : [20, 20]} />
                   </span>
-                  <span className="text-[11px] leading-[13px] max-w-full truncate px-1">{a.label}</span>
+                  <span className="text-[11px] leading-[13px] max-w-full truncate">{a.label}</span>
                 </button>
               ))}
               {moreOpen && (
                 <div className="absolute z-20 right-[18px] top-[calc(100%+8px)] mint-card mint-rows min-w-[220px] overflow-hidden" onClick={() => setMoreOpen(false)}>
-                  <button type="button" onClick={() => setShareOpen(true)} className="w-full h-[48px] px-[19px] text-left text-[14.3px] mint-ink active:bg-black/5">{t("Поделиться профилем")}</button>
-                  {onSearch && (
-                    <button type="button" onClick={() => void write()} className="w-full h-[48px] px-[19px] text-left text-[14.3px] mint-ink active:bg-black/5">{isBot ? t("Начать") : t("Написать")}</button>
-                  )}
+                  <button type="button" onClick={() => void toggleBlock()} disabled={blocked === null}
+                    className="w-full h-[48px] px-[19px] text-left text-[14.3px] active:bg-black/5 disabled:opacity-60" style={{ color: "var(--mint-title)" }}>
+                    {blocked ? t("Разблокировать") : t("Заблокировать")}
+                  </button>
                   {webapp?.webapp_url && (
-                    <button type="button" onClick={() => { const pr = profile; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }} className="w-full h-[48px] px-[19px] text-left text-[14.3px] mint-ink active:bg-black/5">{webapp.webapp_title || t("Приложение")}</button>
+                    <button type="button" onClick={() => { const pr = profile; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }} className="w-full h-[48px] px-[19px] text-left text-[14.3px] active:bg-black/5" style={{ color: "var(--mint-title)" }}>{webapp.webapp_title || t("Приложение")}</button>
                   )}
                 </div>
               )}
