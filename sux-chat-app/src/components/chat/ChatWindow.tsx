@@ -3876,6 +3876,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // клавиатуре, когда панель поднята трансформом (баг-репорт d91c3437).
   // Высота панели плавает (ответ, стикеры, запись), поэтому меряем её;
   // рост поля ввода уже учтён в --compose-extra (fitTextarea) — вычитаем.
+  const composeMeasureRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     // Панель — та, что сейчас на экране: секретный чат открылся без ключа,
     // ключ перенесли — панель появилась, и наблюдатель должен начать мерить
@@ -3886,6 +3887,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!mintM || !cs || !sc || typeof ResizeObserver === "undefined") return;
     let last = -1;
     const set = () => {
+      // Окно в пуле недавних переписок скрыто, и его панель стоит над нижней
+      // навигацией списка (marginBottom ≈ 108 px). Закрылась клавиатура уже
+      // после выхода из чата — замер отсюда оставлял ленте лишние 108 px,
+      // и после возврата сообщения висели выше поля ввода (баг-репорт
+      // c1b55f41). Скрытое окно не меряем; вернулось — меряем заново.
+      if (!activeRef.current) return;
       const extra = parseFloat(sc.style.getPropertyValue("--compose-extra")) || 0;
       const nav = parseFloat(getComputedStyle(cs).marginBottom) || 0;
       // +20 — зона растворения над панелью (mint.css): прижатое последнее
@@ -3899,6 +3906,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (pinnedRef.current) { sc.scrollTop = sc.scrollHeight; requestAnimationFrame(() => { if (pinnedRef.current) sc.scrollTop = sc.scrollHeight; }); }
     };
     set();
+    composeMeasureRef.current = () => { last = -1; set(); };
     // border-box, а не content-box по умолчанию: при открытии и закрытии
     // клавиатуры у панели меняется только padding-bottom (отступ под полосу
     // навигации, --kb-sab: 12 ↔ 60 px на Samsung с кнопками), content-box
@@ -3913,11 +3921,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     window.addEventListener("hyax:keyboard", onKb);
     window.visualViewport?.addEventListener("resize", onKb);
     return () => {
+      composeMeasureRef.current = null;
       ro.disconnect(); sc.style.removeProperty("--compose-h");
       window.removeEventListener("hyax:keyboard", onKb);
       window.visualViewport?.removeEventListener("resize", onKb);
     };
   }, [mintM, chatId, composeEl]);
+  // Окно вернулось из пула — отступ под панель меряем до отрисовки кадра.
+  useLayoutEffect(() => { if (active) composeMeasureRef.current?.(); }, [active]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
                 <>
