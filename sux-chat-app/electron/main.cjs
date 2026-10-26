@@ -1,7 +1,7 @@
 // Десктопная обёртка hyax. Та же веб-сборка (dist/), что и в мобильном
 // приложении, в окне Electron. API и WebSocket ходят на боевой сервер по
 // абсолютным URL, поэтому никакого локального бэкенда здесь нет.
-const { app, BrowserWindow, Menu, Tray, nativeImage, screen, clipboard, ipcMain, dialog, protocol, net, session, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, screen, clipboard, ipcMain, dialog, protocol, net, session, shell, globalShortcut, desktopCapturer, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -196,6 +196,46 @@ function allowMediaPermissions() {
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 }
+
+// Демонстрация экрана в звонке (getDisplayMedia на странице). Своего окна
+// выбора у Electron нет: источники — экраны и окна с миниатюрами — уходят
+// странице (ScreenPicker), выбранный возвращается сюда. Отмена или ошибка —
+// пустой ответ, getDisplayMedia на странице отклоняется.
+let screenCallback = null;
+let screenSources = new Map();
+function answerScreen(source) {
+  const cb = screenCallback;
+  screenCallback = null;
+  screenSources = new Map();
+  if (!cb) return;
+  try { cb(source ? { video: source } : {}); } catch (e) { logLine('screen answer failed', String(e)); }
+}
+function setupScreenShare() {
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    answerScreen(null); // прежний запрос, если висел, — отменяем
+    screenCallback = callback;
+    desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 400, height: 250 }, fetchWindowIcons: true })
+      .then((sources) => {
+        screenSources = new Map(sources.map((s) => [s.id, s]));
+        const list = sources.map((s) => ({
+          id: s.id,
+          name: s.name,
+          screen: s.id.startsWith('screen:'),
+          thumb: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null,
+          icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+        }));
+        if (!mainWindow || mainWindow.isDestroyed()) { answerScreen(null); return; }
+        mainWindow.webContents.send('screen-pick', list);
+      })
+      .catch((e) => { logLine('screen sources failed', String(e)); answerScreen(null); });
+  });
+}
+ipcMain.on('screen-picked', (_event, id) => answerScreen(id ? screenSources.get(id) || null : null));
+// macOS: разрешение «Запись экрана» (granted | denied | not-determined | restricted).
+ipcMain.handle('screen-access', () => (process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted'));
+ipcMain.on('open-screen-settings', () => {
+  if (process.platform === 'darwin') void shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+});
 
 // Сохранение вложений через системный диалог (preload: electronAPI.saveFile).
 ipcMain.handle('save-file', async (_event, fileUrl, fileName) => {
@@ -625,6 +665,7 @@ if (!gotLock) {
     // бандла её отдавать; проверка нового — в фоне.
     if (!isDev) { ota.init({ dist: DIST, log: logLine }); serveDist(); }
     allowMediaPermissions();
+    setupScreenShare();
     createWindow();
     if (!isDev) { ota.watch(mainWindow); ota.startChecks(); }
     playerWidget.init({

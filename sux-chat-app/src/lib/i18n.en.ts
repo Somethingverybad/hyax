@@ -2173,5 +2173,19 @@ const en: Record<string, string> = {
   "По центру": "Center",
   "Снизу": "Bottom",
   "Панель разделов у левого края: сверху, по центру или снизу": "The section rail on the left edge: top, center or bottom",
+  // Демонстрация экрана в звонке (CallOverlay, ScreenPicker).
+  "Собеседник не увидит экран: у него приложение на телефоне или старая версия": "The other person won't see your screen: they're on the phone app or an older version",
+  "Перестать показывать экран": "Stop sharing screen",
+  "Показать экран": "Share screen",
+  "Вы показываете экран": "You're sharing your screen",
+  "Не удалось показать экран": "Couldn't share the screen",
+  "Разрешите WYX запись экрана: Системные настройки → Конфиденциальность и безопасность → Запись экрана": "Allow WYX to record the screen: System Settings → Privacy & Security → Screen Recording",
+  "Что показать": "Choose what to share",
+  "Весь экран": "Entire screen",
+  "macOS не даёт WYX записывать экран — собеседник увидит только обои. Разрешите в Системных настройках → Конфиденциальность и безопасность → Запись экрана и перезапустите WYX.": "macOS doesn't let WYX record the screen — the other person would see only the wallpaper. Allow it in System Settings → Privacy & Security → Screen Recording and restart WYX.",
+  "Экраны": "Screens",
+  "Окна": "Windows",
+  "Нечего показать: система не отдала ни экранов, ни окон": "Nothing to share: the system returned no screens or windows",
+  "Показать": "Share",
 };
 export default en;

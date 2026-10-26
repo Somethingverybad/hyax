@@ -39,4 +39,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playerWidgetEnabled: () => ipcRenderer.invoke('player-widget-enabled'),
   // ⌘/Ctrl+Shift+Y или пункт трея — перевести текст из буфера обмена.
   onTranslateClipboard: (cb) => { const h = (_e, text) => cb(text); ipcRenderer.on('translate-clipboard', h); return () => ipcRenderer.removeListener('translate-clipboard', h); },
+  // Демонстрация экрана в звонке: список экранов и окон для выбора
+  // (ScreenPicker), выбор обратно (null — отмена), разрешение macOS.
+  onScreenPick: (cb) => { const h = (_e, list) => cb(list); ipcRenderer.on('screen-pick', h); return () => ipcRenderer.removeListener('screen-pick', h); },
+  pickScreen: (id) => ipcRenderer.send('screen-picked', id || null),
+  screenAccess: () => ipcRenderer.invoke('screen-access'),
+  openScreenSettings: () => ipcRenderer.send('open-screen-settings'),
 });

@@ -15,6 +15,7 @@ import { NativeCallService, NativeGroupCallService } from "@/services/native-cal
 import { hasNativeCalls, nativeCall, type AudioLevels, type PeerRect, type VideoRect } from "@/lib/nativeCall";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
+import ScreenPicker from "@/components/call/ScreenPicker";
 import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
 import { ObsRelay, obsLink, type ObsSource } from "@/lib/obsRelay";
@@ -112,6 +113,7 @@ const CallHost = () => {
     camWasOn.current = !!media?.localOn;
   }, [media]);
   const [videoBusy, setVideoBusy] = useState(false);
+  const [screenBusy, setScreenBusy] = useState(false);
   // Шумодав — общая настройка микрофона (Настройки → Микрофон).
   const [noiseOn, setNoiseOn] = useState(() => getMicSettings().noiseSuppression);
   useEffect(() => onMicSettings((m) => setNoiseOn(m.noiseSuppression)), []);
@@ -480,6 +482,25 @@ const CallHost = () => {
   /** Камера: нет разрешения — подсказка, где его дать; следующее нажатие
    *  запрашивает снова (браузер или система спросят, если не запрещено навсегда).
    *  group — камера группового звонка. */
+  /** Демонстрация экрана (личный звонок в браузере и программе WYX). Отмена в
+   *  окне выбора — молча; на Mac без разрешения «Запись экрана» — подсказка. */
+  const toggleScreen = async () => {
+    const svc = webSvc();
+    if (!svc || screenBusy) return;
+    setScreenBusy(true);
+    try {
+      await svc.setScreen(!svc.getMedia().screenOn);
+    } catch (e) {
+      const name = (e as { name?: string })?.name || "";
+      if (name !== "NotAllowedError" && name !== "AbortError") toast.error(tr("Не удалось показать экран"));
+      else if (/Mac/.test(navigator.userAgent) && window.electronAPI) {
+        // Окно выбора закрыли без выбора — или macOS не дала «Запись экрана».
+        void window.electronAPI?.screenAccess?.().then((st) => {
+          if (st === "denied" || st === "restricted") toast(tr("Разрешите WYX запись экрана: Системные настройки → Конфиденциальность и безопасность → Запись экрана"));
+        }).catch(() => {});
+      }
+    } finally { setScreenBusy(false); }
+  };
   const toggleVideo = async (group = false) => {
     const svc = group ? groupCallRef.current : videoSvc();
     if (!svc || videoBusy) return;
@@ -763,6 +784,12 @@ const CallHost = () => {
             mirrored: media.front,
             onToggle: () => void toggleVideo(),
             onFlip: () => void flipCamera(),
+            screen: media.remoteScreen ?? null,
+            screenOn: media.screenOn,
+            canScreen: media.canScreen,
+            screenUnavailable: media.screenUnavailable,
+            screenBusy,
+            onScreen: webSvc() ? () => void toggleScreen() : undefined,
           } : undefined}
           onAccept={acceptCall}
           onReject={rejectCall}
@@ -771,6 +798,8 @@ const CallHost = () => {
         />
       ) : null}
       {addToCallOpen && <AddToCall candidates={callCandidates} onClose={() => setAddToCallOpen(false)} onConfirm={addToCall} />}
+      {/* Программа WYX: выбор экрана или окна для демонстрации (в браузере — свой). */}
+      <ScreenPicker />
     </>
   );
 };

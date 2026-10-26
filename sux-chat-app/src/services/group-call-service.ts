@@ -3,7 +3,7 @@ import { micConstraints, micKey, onMicSettings, swapMicTrack } from "@/lib/micSe
 import { t as tr } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
 import type { AudioLevels } from "@/lib/nativeCall";
-import { sdpCanVideo, type AdoptedVideo } from "./call-service";
+import { isScreenTransceiver, sdpCanVideo, type AdoptedVideo } from "./call-service";
 import { myDeviceId } from "./deviceId";
 
 export type GroupCallState = "idle" | "outgoing" | "incoming" | "active";
@@ -457,6 +457,8 @@ export class GroupCallService {
     // отдельными событиями. Новый объект каждый раз — иначе WebKit не
     // начинает играть добавленную дорожку.
     pc.ontrack = (event) => {
+      // Канал демонстрации из личного звонка, ставшего групповым, — не камера.
+      if (event.track.kind === "video" && isScreenTransceiver(pc, event.transceiver)) return;
       const incoming = event.streams?.[0]?.getTracks() ?? [event.track];
       const kinds = new Set(incoming.map((t) => t.kind));
       const keep = (this.streams.get(peerId)?.getTracks() || []).filter((t) => !kinds.has(t.kind));
