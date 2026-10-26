@@ -155,8 +155,12 @@ const CallHost = () => {
   function startSession(ws: WebSocketService, userId: string): () => void {
     let disposed = false;
     const listeners: Array<Promise<{ remove: () => Promise<void> } | null>> = [];
-    const waitForWs = async () => {
-      for (let i = 0; i < 50 && !ws.isConnected(); i++) await new Promise((r) => setTimeout(r, 100));
+    // Звонок пришёл или принят в фоне — сокет нужен сейчас: переподключаемся
+    // без паузы и ждём события открытия (опрос таймером в фоне стоит — ответ
+    // с экрана CallKit уходил, только когда человек открывал приложение).
+    const waitForWs = () => {
+      ws.reconnectNow();
+      return ws.waitOpen(5000);
     };
     // Сервисы готовы — обработчики CallKit ждут этого. Подписываемся на
     // события сразу, а не после запроса серверов связи: приложение мог
@@ -226,6 +230,7 @@ const CallHost = () => {
       // Android: звонок пришёл пушем (приложение на экране или открыто
       // из уведомления поверх блокировки) — показываем свой экран входящего.
       voip.on("callIncoming", async (c: any) => {
+        ws.reconnectNow();
         const svc = await svcReady();
         if (svc && svc.getState() === "idle") svc.notifyIncomingCall(toIncoming(c));
       }),
