@@ -14,6 +14,7 @@ final class NativeCallAudio {
 
     private var speakerOn = true
     private var inCall = false
+    private var routeObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -22,6 +23,26 @@ final class NativeCallAudio {
         session.useManualAudio = true
         session.isAudioEnabled = false
         CallDiag.observeSession()
+        if routeObserver == nil {
+            routeObserver = NotificationCenter.default.addObserver(
+                forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil
+            ) { [weak self] n in self?.routeChanged(n) }
+        }
+    }
+
+    /// Смена категории сессии сбрасывает выбор динамика, а категорию меняют и
+    /// после нашего setSpeaker — движок WebRTC перенастраивает сессию, когда
+    /// запускает звук. Голос уходил в разговорный динамик, хотя на экране
+    /// включена громкая. Возвращаем громкую, если её сбросила система, а не
+    /// человек (выбор в CallKit или наушники приходят с другой причиной).
+    private func routeChanged(_ n: Notification) {
+        guard inCall, speakerOn,
+              let raw = n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              AVAudioSession.RouteChangeReason(rawValue: raw) == .categoryChange,
+              AVAudioSession.sharedInstance().currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver })
+        else { return }
+        CallDiag.log("speaker reset by category change — restoring")
+        applyRoute()
     }
 
     func beginCall() {
