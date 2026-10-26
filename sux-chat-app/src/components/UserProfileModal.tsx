@@ -240,8 +240,8 @@ const UserProfileModal = ({
                   <button key={label} type="button" onClick={copyable ? () => void copy(value) : undefined}
                     className={cn("w-full min-h-[68px] px-[19px] py-[12px] flex items-center gap-3 text-left", copyable && "active:bg-black/5")}>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[13.3px] leading-[17px] mint-ink opacity-80">{label}</span>
-                      <span className={cn("block text-[16px] leading-[21px] mint-ink break-words", copyable && "truncate")}>{value}</span>
+                      <span className="block text-[13.3px] leading-[17px] opacity-80" style={{ color: "var(--mint-title)" }}>{label}</span>
+                      <span className={cn("block text-[16px] leading-[21px] break-words", copyable && "truncate")} style={{ color: "var(--mint-title)" }}>{value}</span>
                     </span>
                     {copyable && <MintIcon name="rowCopy" size={16} className="mint-muted" />}
                   </button>
@@ -253,7 +253,7 @@ const UserProfileModal = ({
               {saved && saved.count > 0 && (
                 <div className="mint-card overflow-hidden">
                   <div className="px-[19px] pt-[14px] flex items-center">
-                    <span className="flex-1 text-[13.3px] mint-ink">{t("сохранёнки")}</span>
+                    <span className="flex-1 text-[13.3px]" style={{ color: "var(--mint-title)" }}>{t("сохранёнки")}</span>
                     <span className="text-[13.3px] mint-muted">{pluralPhotos(saved.count)}</span>
                   </div>
                   <div className="px-[19px] pt-[15px] pb-[16px] grid grid-cols-3 gap-[11px]">

@@ -174,8 +174,8 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                   <Newspaper className="w-4 h-4 text-primary" />
                 </span>
               ) : r.kind === "saved" ? (
-                <span className={cn("w-8 h-8 shrink-0 bg-primary flex items-center justify-center", mint ? "rounded-[13px]" : "rounded-md")}>
-                  <Bookmark className="w-4 h-4 text-primary-foreground" />
+                <span className={cn("w-8 h-8 shrink-0 flex items-center justify-center", mint ? "rounded-[13px] bg-[#2f5b53]" : "rounded-md bg-primary")}>
+                  <Bookmark className={cn("w-4 h-4", mint ? "text-white" : "text-primary-foreground")} />
                 </span>
               ) : r.kind === "channel" && !r.avatar ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">
@@ -188,7 +188,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
               ) : (
                 <Identicon id={r.peerId || r.id} avatarUrl={r.avatar} className={mint ? "w-8 h-8 !rounded-[13px]" : "w-8 h-8"} />
               )}
-              <span className={cn("flex-1 truncate", mint ? "text-[14.3px] font-medium mint-ink" : "text-body")}>{r.title}</span>
+              <span className={cn("flex-1 truncate", mint ? "text-[14.3px] font-medium" : "text-body")} style={mint ? { color: "var(--mint-title)" } : undefined}>{r.title}</span>
             </button>
           ))}
         </div>

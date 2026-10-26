@@ -604,10 +604,10 @@ const CallOverlay = ({
           mintCall ? (
             <>
               <button type="button" onClick={onReject} className="mint-call-big" aria-label={t("Отклонить")}>
-                <span className="bg-[#c65a52]"><MintIcon name="callDecline" size={[65, 55]} /></span>
+                <span className="mint-call-decline"><MintIcon name="callDecline" size={[65, 55]} /></span>
               </button>
               <button type="button" onClick={onAccept} className="mint-call-big" aria-label={t("Принять")}>
-                <span className="bg-[#2f5b53]"><MintIcon name="callAccept" size={[65, 55]} /></span>
+                <span className="mint-call-accept"><MintIcon name="callAccept" size={[65, 55]} /></span>
               </button>
             </>
           ) : (
