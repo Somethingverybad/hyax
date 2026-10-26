@@ -90,6 +90,8 @@ const CallHost = () => {
   const [groupState, setGroupState] = useState<GroupCallState>("idle");
   const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
   const [groupStreams, setGroupStreams] = useState<PeerStream[]>([]);
+  // Демонстрации экрана участников группового звонка — отдельными плитками.
+  const [groupScreens, setGroupScreens] = useState<PeerStream[]>([]);
   const [groupPeers, setGroupPeers] = useState<string[]>([]);
   const [groupMedia, setGroupMedia] = useState<GroupMedia | null>(null);
   const groupCallIdRef = useRef<string | null>(null);
@@ -331,6 +333,7 @@ const CallHost = () => {
         },
         onIncoming: (invite) => { setGroupInvite(invite); setCallChat({ id: invite.chatId, name: invite.chatName }); },
         onStreams: setGroupStreams,
+        onScreens: setGroupScreens,
         onPeers: setGroupPeers,
         onMedia: setGroupMedia,
         onError: (m) => toast.error(m),
@@ -484,8 +487,8 @@ const CallHost = () => {
    *  group — камера группового звонка. */
   /** Демонстрация экрана (личный звонок в браузере и программе WYX). Отмена в
    *  окне выбора — молча; на Mac без разрешения «Запись экрана» — подсказка. */
-  const toggleScreen = async () => {
-    const svc = webSvc();
+  const toggleScreen = async (group = false) => {
+    const svc = group ? groupWeb() : webSvc();
     if (!svc || screenBusy) return;
     setScreenBusy(true);
     try {
@@ -657,6 +660,12 @@ const CallHost = () => {
   // Плитки группового звонка: участники и я (последним).
   const myInfo = readCache<{ id?: string; username?: string; avatar_url?: string | null }>("user");
   const groupTiles: StageTile[] = [
+    // Демонстрации — первыми: сами встают крупно (GroupStage).
+    ...groupScreens.flatMap((sc) => {
+      if (!groupMedia?.peers[sc.peerId]?.screen) return [];
+      const p = groupParticipants.find((x) => x.id === sc.peerId);
+      return [{ id: `${sc.peerId}#screen`, name: tr("{name} · экран", { name: p?.name || tr("Участник") }), avatarUrl: p?.avatarUrl, stream: sc.stream, video: true, screen: true }];
+    }),
     ...groupParticipants.map((p) => {
       const m = groupMedia?.peers[p.id];
       return {
@@ -756,6 +765,11 @@ const CallHost = () => {
             mirrored: groupMedia.front,
             onToggle: () => void toggleVideo(true),
             onFlip: () => void flipCamera(true),
+            screenOn: groupMedia.screenOn,
+            canScreen: groupMedia.canScreen,
+            screenUnavailable: groupMedia.screenUnavailable,
+            screenBusy,
+            onScreen: groupWeb() ? () => void toggleScreen(true) : undefined,
           } : undefined}
           onAccept={async () => {
             await groupCallRef.current?.accept();

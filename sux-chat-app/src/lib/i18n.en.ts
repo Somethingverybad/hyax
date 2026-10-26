@@ -2187,5 +2187,7 @@ const en: Record<string, string> = {
   "Окна": "Windows",
   "Нечего показать: система не отдала ни экранов, ни окон": "Nothing to share: the system returned no screens or windows",
   "Показать": "Share",
+  "{name} · экран": "{name} · screen",
+  "Участник": "Participant",
 };
 export default en;

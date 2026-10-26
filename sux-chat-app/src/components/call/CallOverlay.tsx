@@ -365,6 +365,15 @@ const CallOverlay = ({
     </>
   );
 
+  // Показываю экран — плашка с «Остановить» (личный и групповой экран).
+  const screenPill = video?.screenOn ? (
+    <button type="button" onClick={video.onScreen}
+      className="inline-flex items-center gap-1.5 max-w-full rounded-full px-3 py-1 text-caption font-medium bg-primary text-primary-foreground shadow active:opacity-80">
+      <ScreenShare className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{t("Вы показываете экран")} · <span className="underline">{t("Остановить")}</span></span>
+    </button>
+  ) : null;
+
   // Пометка «звонок транслируется» — видят все участники.
   const broadcastPill = (onDark: boolean) => (
     <span className={cn("inline-flex items-center gap-1.5 max-w-full rounded-full px-3 py-1 text-caption font-medium",
@@ -478,6 +487,7 @@ const CallOverlay = ({
           )}
         </div>
         {broadcast && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{broadcastPill(false)}</div>}
+        {video?.screenOn && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{screenPill}</div>}
         {settingsOpen && settingsPanel("calc(var(--sat) + 3.5rem)")}
         <GroupStage
           className="relative z-10 flex-1 min-h-0 mx-2 mt-1"
@@ -556,11 +566,7 @@ const CallOverlay = ({
       {/* Показываю экран — плашка с кнопкой «Остановить» (себе экран не дублируем). */}
       {video?.screenOn && state !== "incoming" && (
         <div className="absolute z-20 inset-x-0 flex justify-center px-16" style={{ top: broadcast ? "calc(var(--sat) + 2.85rem)" : "calc(var(--sat) + 0.85rem)" }}>
-          <button type="button" onClick={video.onScreen}
-            className="inline-flex items-center gap-1.5 max-w-full rounded-full px-3 py-1 text-caption font-medium bg-primary text-primary-foreground shadow active:opacity-80">
-            <ScreenShare className="w-3.5 h-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{t("Вы показываете экран")} · <span className="underline">{t("Остановить")}</span></span>
-          </button>
+          {screenPill}
         </div>
       )}
       {onMinimize && state !== "incoming" && (
