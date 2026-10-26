@@ -11,7 +11,8 @@ import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "luci
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
-import { X as XIcon, Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon } from "lucide-react";
+import { X as XIcon, Search as SearchIcon, Star as StarIcon, ArrowRight as ArrowRightIcon, Settings as SettingsIcon, Plus as PlusIcon, CheckCheck as CheckCheckIcon, Languages as LanguagesIcon } from "lucide-react";
+import { openTranslator } from "@/lib/translator";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -758,6 +759,15 @@ const ChatSidebar = ({
                     <span className="block text-small text-subtle truncate">{currentUser.aura_text}</span>
                   ) : null}
                 </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openTranslator()}
+                className="ui-icon-btn p-2 text-muted-foreground active:text-foreground"
+                aria-label={t("Переводчик")}
+                title={t("Переводчик")}
+              >
+                <LanguagesIcon className="w-6 h-6" />
               </button>
               <button
                 type="button"

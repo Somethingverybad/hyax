@@ -10,6 +10,8 @@ interface ElectronAPI {
   onPlayerCmd?: (cb: (cmd: string) => void) => () => void;
   setPlayerWidget?: (on: boolean) => void;
   playerWidgetEnabled?: () => Promise<boolean>;
+  /** ⌘/Ctrl+Shift+Y — перевести буфер обмена (TranslatorHost); нет в установщиках до 1.1.38. */
+  onTranslateClipboard?: (cb: (text: string) => void) => () => void;
 }
 
 declare global {
