@@ -116,27 +116,22 @@ public class VoipPlugin extends Plugin {
     }
 
     /**
-     * Маршрут звука разговора.
+     * Громкая связь в разговоре.
      *
-     * WebView играет голос как обычное медиа (usage=MEDIA), и по умолчанию
-     * это громкая связь — ровно так работали звонки в веб-версии. Режим
-     * MODE_IN_COMMUNICATION здесь вреден: система приглушает медиа-поток,
-     * и разговор становится беззвучным (в логах — «write muted data to hw»).
-     * Поэтому в режим связи переключаемся только ради разговорного динамика,
-     * когда громкую связь выключают вручную.
+     * Звонки в приложении ведёт нативный WebRTC (NativeCallPlugin): он пишет
+     * и играет через голосовой тракт (usage=VOICE_COMMUNICATION), поэтому
+     * режим связи держим весь звонок, а переключаем только динамик. Раньше
+     * здесь была логика звонков через WebView — «громкая» = MODE_NORMAL без
+     * громкой связи, — и с нативным движком голос при любом положении кнопки
+     * уходил в разговорный динамик: у человека с Android была «тишина».
      */
     @PluginMethod
     public void setSpeaker(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", true);
         AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
         if (am != null) {
-            if (enabled) {
-                am.setMode(AudioManager.MODE_NORMAL);
-                am.setSpeakerphoneOn(false);
-            } else {
-                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                am.setSpeakerphoneOn(false);
-            }
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            am.setSpeakerphoneOn(enabled);
         }
         call.resolve();
     }
