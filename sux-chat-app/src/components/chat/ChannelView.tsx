@@ -46,7 +46,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumMosaic, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumMosaic, postMediaBox, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
@@ -117,11 +117,6 @@ const fmtTime = (iso: string) => timeOf(iso, getLang());
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
  *  (download_only — всегда строкой, даже если это картинка). */
-/** Предел высоты фото в посте: портрет 3:4 ещё целиком во всю ширину
- *  карточки (≈ ширина экрана без полей), выше — по центру; на широком
- *  экране — не выше 560 px. */
-const POST_PHOTO_MAX_H = "min(560px, calc((100vw - 32px) * 4 / 3))";
-
 const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: number; h: number } | null; preview?: string | null; onOpen?: (url: string) => void }) => {
   // Подпись и загрузка — когда пост рядом с видимой частью ленты (use-near-view).
   const [nearRef, near] = useNearView();
@@ -135,9 +130,7 @@ const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: nu
   // вертикальных и квадратных фото справа оставалось пустое место.
   // Слишком высокая (выше 3:4) или маленькая картинка — по центру: высота
   // не больше предела и не больше самой картинки, мелкую не растягиваем.
-  const style = dims
-    ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: `min(${dims.h}px, ${POST_PHOTO_MAX_H})` }
-    : { height: 160 };
+  const style = postMediaBox(dims, 160);
   return (
     <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
       {/* Подпись не дали (пост удалён, доступа нет) — тихий серый бокс, а не вечно пульсирующий скелет. */}
@@ -213,7 +206,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
     return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} poster={post.poster_url} /></div>;
+    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} poster={post.poster_url} post /></div>;
   }
   return (
     <div className="mt-2">

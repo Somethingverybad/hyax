@@ -410,7 +410,19 @@ const VideoThumb = ({ src, poster, cover, seenKey }: { src: string | null; poste
   );
 };
 
-export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { w: number; h: number } | null; poster?: string | null }) => {
+/** Предел высоты фото и видео в посте (Стена, каналы): портрет 3:4 ещё целиком
+ *  во всю ширину карточки на телефоне (≈ ширина экрана без полей), выше —
+ *  по центру; на компьютере — не выше трёх четвертей окна. */
+export const POST_MEDIA_MAX_H = "min(calc((100vw - 32px) * 4 / 3), 75vh)";
+
+/** Бокс медиа в посте: во всю ширину, по пропорциям; не выше предела и не
+ *  выше самого файла — слишком высокое и маленькое встаёт по центру. */
+export const postMediaBox = (dims: { w: number; h: number } | null | undefined, fallbackH: number): React.CSSProperties =>
+  dims ? { width: "100%", aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: `min(${dims.h}px, ${POST_MEDIA_MAX_H})` } : { width: "100%", height: fallbackH };
+
+/** post — видео в посте: во всю ширину карточки (postMediaBox), кадр целиком
+ *  (по центру с полями), а не обрезан под бокс сообщения. */
+export const MessageVideoFile = ({ raw, dims, poster, post }: { raw: string; dims?: { w: number; h: number } | null; poster?: string | null; post?: boolean }) => {
   const [nearRef, near] = useNearView();
   const seen = mediaSeen(poster);
   const src = useMediaUrl(near || seen ? raw : null);
@@ -418,8 +430,9 @@ export const MessageVideoFile = ({ raw, dims, poster }: { raw: string; dims?: { 
   // Бокс под видео по размерам с сервера, чтобы лента не прыгала, когда плеер
   // узнает размер кадра; по ширине — весь пузырь. Без размеров — как раньше.
   return (
-    <div ref={nearRef} className="msg-media relative rounded-lg overflow-hidden bg-black max-w-full" style={fillBox(dims, 280, 256, { width: 176, height: 112 })}>
-      <VideoThumb src={src} poster={posterSrc} cover={!!dims} seenKey={poster} />
+    <div ref={nearRef} className={cn("msg-media relative overflow-hidden bg-black max-w-full", post ? "rounded-md" : "rounded-lg")}
+      style={post ? postMediaBox(dims, 200) : fillBox(dims, 280, 256, { width: 176, height: 112 })}>
+      <VideoThumb src={src} poster={posterSrc} cover={!post && !!dims} seenKey={poster} />
     </div>
   );
 };
