@@ -37,3 +37,10 @@
 
 # Геолокация: библиотека Ionic разбирает настройки через Gson.
 -keep class io.ionic.libs.** { *; }
+
+# WebRTC (io.github.webrtc-sdk, звонки NativeCall): libjingle_peerconnection_so
+# при загрузке (JNI_OnLoad) ищет классы org.webrtc по точным именам и падает
+# SIGABRT, если R8 их переименовал (сборка 884: приложение закрывалось на
+# первом звонке). Своих правил у библиотеки нет.
+-keep class org.webrtc.** { *; }
+-dontwarn org.webrtc.**
