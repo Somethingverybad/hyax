@@ -22,7 +22,7 @@ import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
-import { useSwipeBack } from "@/hooks/use-swipe-back";
+import { useSwipeBack, EDGE_PX as SWIPE_BACK_EDGE } from "@/hooks/use-swipe-back";
 const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
@@ -322,8 +322,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const activeRef = useRef(active);
   activeRef.current = active;
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
-  // на телефоне привычнее свайп, как в нативных приложениях.
-  useSwipeBack(onBack);
+  // на телефоне привычнее свайп, как в нативных приложениях. Только у окна
+  // на экране: окна из пула недавних переписок слушали жест тоже.
+  useSwipeBack(onBack, active);
   const mintTheme = useMint();
   const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
@@ -510,6 +511,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const replyToRef = useRef(replyTo);
+  replyToRef.current = replyTo;
   // Редактирование своего текстового сообщения.
   const [editing, setEditing] = useState<Message | null>(null);
   // Удаление с отменой (5с): прячем локально, коммитим по таймеру.
@@ -1622,10 +1625,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   /** Высота панели ввода с однострочным полем — от неё считаем «лишнее». */
   const composeBaseRef = useRef(0);
-  const fitTextarea = () => {
+  /** force — пересчитать отступы, даже если высота поля не менялась (панель
+   *  выросла или ужалась сама: ответ, стикеры; окно вернулось из пула). */
+  const fitTextarea = (force = false) => {
     const el = textareaRef.current;
     if (!el) return;
-    const before = el.offsetHeight;
+    const before = force ? -1 : el.offsetHeight;
     // Измерение через height:auto — это промежуточный лейаут, в котором
     // панель на миг ниже, а соседняя лента выше: Chrome на Android в этот
     // момент подрезал scrollTop ленты, после возврата высоты она оказывалась
@@ -1674,6 +1679,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
   /** Поставить текст в поле программно: редактирование, отмена, возврат после ошибки. */
+  // Панель ответа открылась или закрылась, окно вернулось из пула — отступы
+  // ленты пересчитываем от панели как она есть, не дожидаясь, пока поменяется
+  // высота поля: прежние значения могли остаться от другого состояния панели.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => fitTextarea(true));
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replyTo, active]);
   const setDraft = (text: string, opts?: { keepCustom?: boolean }) => {
     if (!opts?.keepCustom) trackCustomEdit(draftRef.current, text);
     draftRef.current = text;
@@ -2064,7 +2077,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         + (k.classList.contains("msg-in-own") ? " own" : "")
         + (k.id.startsWith("msg-pending-") ? " pend" : "");
     }).join(" | ");
-    applog.info(`feedtail ${why} gap=${gap} dist=${Math.round(n.scrollHeight - n.scrollTop - n.clientHeight)} ch=${n.clientHeight} cs=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} msgs=${messagesRef.current} [${tail}]`);
+    const ta = textareaRef.current;
+    const vars = `pb=${getComputedStyle(n).paddingBottom} h=${n.style.getPropertyValue("--compose-h") || "-"} extra=${n.style.getPropertyValue("--compose-extra") || "-"} csH=${cs?.offsetHeight ?? -1} mt=${cs?.style.marginTop || "0"} ta=${ta?.offsetHeight ?? -1} reply=${replyToRef.current ? 1 : 0}`;
+    applog.info(`feedtail ${why} gap=${gap} dist=${Math.round(n.scrollHeight - n.scrollTop - n.clientHeight)} ch=${n.clientHeight} cs=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} msgs=${messagesRef.current} ${vars} [${tail}]`);
   };
   useEffect(() => {
     let cleanup: ReturnType<typeof setTimeout> | undefined;
@@ -2564,7 +2579,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // нажатие» и подменяла меню у курсора нижней шторкой во весь экран.
     if (e.pointerType === "mouse") { touchInputRef.current = false; return; }
     touchInputRef.current = true;
-    swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
+    // От левого края — это жест «назад», а не свайп «ответить»: раньше по
+    // пузырю у края срабатывали оба — чат закрывался, а при возврате в него
+    // висела панель ответа и лента стояла выше (баг-репорт d4e36abf).
+    swipeStartRef.current = e.clientX <= SWIPE_BACK_EDGE + 4 ? null : { x: e.clientX, y: e.clientY, id: message.id };
     swipeActiveRef.current = false;
     swipeTimeRef.current = performance.now();
     // Второе касание того же сообщения в пределах 320 мс — двойной тап:
