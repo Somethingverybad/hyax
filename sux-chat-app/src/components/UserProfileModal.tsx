@@ -20,6 +20,7 @@ import { useSwipeDismiss } from "@/lib/useSwipeDismiss";
 import Vibometer from "@/components/Vibometer";
 import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import ChatMediaSheet, { ChatMediaPreview } from "@/components/chat/ChatMediaSheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { MediaKind } from "@/api/client";
 
 const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
@@ -58,8 +59,10 @@ const UserProfileModal = ({
   onSearch?: () => void;
   onJump?: (messageId: string) => void;
 }) => {
-  // «Мята» на телефоне — полноэкранный профиль по макету; иначе шторка.
-  const mint = useMint();
+  // «Мята» на телефоне — полноэкранный профиль по мобильному макету; на
+  // широком окне и в других темах — прежняя шторка (боковая панель).
+  const isMobile = useIsMobile();
+  const mint = useMint() && isMobile;
   const [mediaTab, setMediaTab] = useState<MediaKind | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const navigate = useNavigate();
