@@ -273,3 +273,19 @@
 
 /* Шторка «Отправить …» (макет «Отправить профиль»): белый лист с полями 7 px. */
 .mint-sheet { background: var(--mint-surface); box-shadow: var(--mint-card-shadow); }
+
+/* Экран звонка 1:1 без видео (макет «Входящий звонок» / «Вызов…», 3× → px):
+   аватар 295 → 98 со скруглением 17 и белой рамкой 2; входящий — две
+   кнопки 219×189 → 73×63 в белой подложке; в разговоре — белый док
+   925×189 → 308×63 с клавишами 195×165 → 65×55. Включённая — зелёная,
+   отбой — #C65A52. */
+.mint-call-avatar { border-radius: 17px !important; border: 2px solid #fff; box-shadow: 0 4.3px 13.3px rgb(0 0 0 / 0.25); }
+.mint-call-name { color: var(--mint-title); }
+.mint-call-big { width: 73px; height: 63px; padding: 4px; border-radius: 20px; background: var(--mint-surface); box-shadow: var(--mint-shadow); }
+.mint-call-big > span { width: 100%; height: 100%; border-radius: 17px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 3.9px 14.9px rgb(0 0 0 / 0.2); }
+.mint-call-big:active { filter: brightness(0.95); }
+.mint-call-dock { display: flex; gap: 13px; padding: 4px; max-width: calc(100vw - 16px); border-radius: 20px; background: var(--mint-surface); box-shadow: var(--mint-shadow); }
+.mint-call-key { width: 65px; min-width: 52px; flex: 0 1 65px; height: 55px; overflow: hidden; border-radius: 18px; display: flex; align-items: center; justify-content: center; background: var(--mint-surface); color: var(--mint-ink); box-shadow: 0 3.9px 14.9px rgb(0 0 0 / 0.2); }
+.mint-call-key-on { background: hsl(var(--primary)); color: #fff; }
+.mint-call-key-end { background: #c65a52; color: #fff; }
+.mint-call-key:active { filter: brightness(0.95); }

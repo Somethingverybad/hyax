@@ -18,6 +18,7 @@ const readStageMode = (): StageMode => {
 };
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { useMint, MintIcon } from "@/themes/mint";
 
 export type CallUiState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
 
@@ -145,6 +146,8 @@ const CallOverlay = ({
   stage,
 }: CallOverlayProps) => {
   const [seconds, setSeconds] = useState(0);
+  // «Мята»: экран звонка 1:1 без видео — по макету (аватар 98, крупные кнопки, док).
+  const mint = useMint();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stageMode, setStageModeState] = useState<StageMode>(readStageMode);
   const setStageMode = (m: StageMode) => {
@@ -269,7 +272,8 @@ const CallOverlay = ({
   }
 
   // Кнопки разговора — общие для личного и группового экрана.
-  const renderControls = (roundBtn: (active: boolean) => string) => (
+  // glyphs — значки клавиш из макета «Мяты» (экран 1:1 без видео).
+  const renderControls = (roundBtn: (active: boolean) => string, glyphs = false) => (
     <>
       <button
         type="button"
@@ -277,7 +281,7 @@ const CallOverlay = ({
         className={roundBtn(muted)}
         aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
       >
-        {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+        {glyphs ? <MintIcon name={muted ? "callMicOff" : "callMic"} size={[65, 55]} /> : muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
       </button>
       {video && (
         <button
@@ -294,7 +298,7 @@ const CallOverlay = ({
           aria-label={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
           title={video.localOn ? t("Выключить камеру") : t("Включить камеру")}
         >
-          {video.localOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+          {glyphs ? <MintIcon name={video.localOn ? "callCam" : "callCamOff"} size={video.localOn ? [30, 20] : [30, 23]} /> : video.localOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
         </button>
       )}
       {video?.localOn && video.canFlip && (
@@ -308,7 +312,7 @@ const CallOverlay = ({
         className={roundBtn(speaker)}
         aria-label={speaker ? t("Выключить громкую связь") : t("Включить громкую связь")}
       >
-        {speaker ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+        {glyphs ? <MintIcon name={speaker ? "callSpeaker" : "callSpeakerOff"} size={[28, 23]} /> : speaker ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
       </button>
       {onAdd && state === "active" && (
         <button
@@ -324,10 +328,10 @@ const CallOverlay = ({
       <button
         type="button"
         onClick={onHangup}
-        className="w-14 h-14 rounded-full bg-[#ff3b30] text-white flex items-center justify-center"
+        className={glyphs ? "mint-call-key mint-call-key-end" : "w-14 h-14 rounded-full bg-[#ff3b30] text-white flex items-center justify-center"}
         aria-label={t("Завершить")}
       >
-        <PhoneOff className="w-6 h-6" />
+        {glyphs ? <MintIcon name="callEnd" size={[27, 27]} /> : <PhoneOff className="w-6 h-6" />}
       </button>
     </>
   );
@@ -471,7 +475,8 @@ const CallOverlay = ({
   const chromeBtn = onVideo
     ? "text-white bg-black/30 active:bg-black/50 hover:bg-black/40"
     : "text-muted-foreground active:bg-surface-3 hover:bg-surface-2";
-  const roundBtn = (active: boolean) => cn(
+  const mintCall = mint && !onVideo;
+  const roundBtn = (active: boolean) => mintCall ? cn("mint-call-key", active && "mint-call-key-on") : cn(
     "w-14 h-14 rounded-full border-2 flex items-center justify-center",
     onVideo
       ? active ? "bg-white text-black border-white" : "border-white/50 text-white bg-black/20"
@@ -482,7 +487,10 @@ const CallOverlay = ({
     <div
       className={cn("call-layer fixed inset-0 z-[60] flex flex-col items-center justify-between",
         onVideo ? native ? "bg-transparent text-white" : "bg-black text-white" : "bg-background")}
-      style={{
+      style={mintCall ? {
+        paddingTop: "max(calc(var(--sat) + 2rem), 35vh)",
+        paddingBottom: state === "incoming" ? "max(calc(var(--sab) + 2.5rem), 27vh)" : "max(calc(var(--sab) + 2.5rem), 17vh)",
+      } : {
         paddingTop: "calc(var(--sat) + 2rem)",
         paddingBottom: "calc(var(--sab) + 2.5rem)",
       }}
@@ -547,10 +555,10 @@ const CallOverlay = ({
             <Users className="w-12 h-12 text-primary" />
           </div>
         ) : (
-          <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className="w-24 h-24" />
+          <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className={mintCall ? "w-[98px] h-[98px] mint-call-avatar" : "w-24 h-24"} />
         )}
-        <div className={cn("text-2xl font-bold truncate max-w-full", onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4")}>{peer.name}</div>
-        <div className={cn("text-sm", onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground")}>{statusText}</div>
+        <div className={cn("truncate max-w-full", mintCall ? "mt-[14px] text-[26.7px] leading-[30px] font-semibold text-center px-4 mint-call-name" : "text-2xl font-bold", !mintCall && (onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4"))}>{peer.name}</div>
+        <div className={cn(mintCall ? "text-[16px] text-[#9cb2ab]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>{statusText}</div>
 
         {showList && participants.length > 0 && !onVideo && (
           <div className="w-full max-w-md mt-2 space-y-2 overflow-y-auto max-h-[42vh]">
@@ -590,8 +598,19 @@ const CallOverlay = ({
         )}
       </div>
 
-      <div className={cn("relative z-10 flex items-center flex-wrap justify-center", video ? "gap-4" : "gap-5")}>
+      <div className={cn("relative z-10 flex items-center justify-center",
+        mintCall ? state === "incoming" ? "gap-[25px]" : "mint-call-dock" : cn("flex-wrap", video ? "gap-4" : "gap-5"))}>
         {state === "incoming" ? (
+          mintCall ? (
+            <>
+              <button type="button" onClick={onReject} className="mint-call-big" aria-label={t("Отклонить")}>
+                <span className="bg-[#c65a52]"><MintIcon name="callDecline" size={[65, 55]} /></span>
+              </button>
+              <button type="button" onClick={onAccept} className="mint-call-big" aria-label={t("Принять")}>
+                <span className="bg-[#2f5b53]"><MintIcon name="callAccept" size={[65, 55]} /></span>
+              </button>
+            </>
+          ) : (
           <>
             <button
               type="button"
@@ -610,8 +629,9 @@ const CallOverlay = ({
               <Phone className="w-7 h-7" />
             </button>
           </>
+          )
         ) : (
-          renderControls(roundBtn)
+          renderControls(roundBtn, mintCall)
         )}
       </div>
     </div>

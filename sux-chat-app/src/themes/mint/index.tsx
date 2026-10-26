@@ -12,6 +12,16 @@ import mic from "./icons/mic.svg";
 import send from "./icons/send.svg";
 import rev from "./icons/rev.svg";
 import camera from "./icons/camera.svg";
+import callAccept from "./icons/call-accept.svg";
+import callCam from "./icons/call-cam.svg";
+import callCamOff from "./icons/call-cam-off.svg";
+import callDecline from "./icons/call-decline.svg";
+import callEnd from "./icons/call-end.svg";
+import callMic from "./icons/call-mic.svg";
+import callMicOff from "./icons/call-mic-off.svg";
+import callSpeaker from "./icons/call-speaker.svg";
+import callSpeakerOff from "./icons/call-speaker-off.svg";
+import callVideoMark from "./icons/call-video-mark.svg";
 import navChat from "./icons/nav-chat.svg";
 import navMusic from "./icons/nav-music.svg";
 import navProfile from "./icons/nav-profile.svg";
@@ -56,7 +66,7 @@ export function useMint(): boolean {
 /** Иконки макета. Красим маской в currentColor: одна и та же иконка годится
  *  и светлой «Мяте», и тёмной. */
 export const MINT_ICONS = {
-  back, checks, chevron, close, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
+  back, checks, chevron, close, callAccept, callCam, callCamOff, callDecline, callEnd, callMic, callMicOff, callSpeaker, callSpeakerOff, callVideoMark, attach, sticker, mic, send, rev, camera, navChat, navMusic, navProfile, navSaved, navSettings, navWall,
   gallery, pencil, pinnedRight, rowAbout, rowAppearance, rowAt, rowBell, rowCopy, rowLock, rowLog, rowSaved,
   rowSticker, rowTag, rowBug, rowCache, rowUpdate, rowLogout, search, share, sort, soundPlay, stkAdd, stkBookmark, stkRecent, wallHead,
 } as const;
