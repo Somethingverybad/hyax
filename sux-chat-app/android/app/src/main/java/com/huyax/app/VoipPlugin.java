@@ -1,6 +1,7 @@
 package com.huyax.app;
 
 import android.content.Context;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -128,12 +129,38 @@ public class VoipPlugin extends Plugin {
     @PluginMethod
     public void setSpeaker(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", true);
+        // auto — громкая ради видео: в наушниках и по Bluetooth её не включаем.
+        boolean auto = call.getBoolean("auto", false);
         AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
         if (am != null) {
-            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            am.setSpeakerphoneOn(enabled);
+            if (auto && enabled && headsetConnected(am)) {
+                enabled = am.isSpeakerphoneOn();
+            } else {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                am.setSpeakerphoneOn(enabled);
+            }
         }
-        call.resolve();
+        JSObject ret = new JSObject();
+        ret.put("enabled", enabled);
+        call.resolve(ret);
+    }
+
+    /** Подключены проводные, USB или Bluetooth-наушники. */
+    private static boolean headsetConnected(AudioManager am) {
+        for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            switch (d.getType()) {
+                case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                case 22: // TYPE_USB_HEADSET (API 26)
+                case 26: // TYPE_BLE_HEADSET (API 31)
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return false;
     }
 
     @PluginMethod

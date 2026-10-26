@@ -122,9 +122,10 @@ public class NativeCallPlugin extends Plugin {
         if (am != null) {
             // Нативный движок пишет и играет через голосовой тракт, поэтому
             // режим связи здесь уместен: он же включает эхоподавление.
+            // Динамик по умолчанию разговорный, громкая — кнопкой (Voip.setSpeaker).
             previousAudioMode = am.getMode();
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            am.setSpeakerphoneOn(true);
+            am.setSpeakerphoneOn(false);
         }
         CallForegroundService.start(getContext());
         call.resolve();
