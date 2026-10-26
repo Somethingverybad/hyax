@@ -2065,6 +2065,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!n || !f) return;
     const end = f.lastElementChild as HTMLElement | null;
     const gap = end && cs ? Math.round(cs.getBoundingClientRect().top - end.getBoundingClientRect().bottom) : -1;
+    // Обычный зазор — 20 px; в лог только отклонения, чтобы не шуметь на каждом входе.
+    const dist = n.scrollHeight - n.scrollTop - n.clientHeight;
+    if (gap >= 0 && gap <= 40 || dist > 40) return;
     const rows = Array.from(f.querySelectorAll<HTMLElement>(':scope > [id^="msg-"]')).slice(-5);
     const tail = rows.map((k) => {
       const r = k.getBoundingClientRect();
