@@ -228,6 +228,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         }
         calls[callId]?.answered = true
         ringTimers[callId]?.invalidate()
+        CallDiag.log("answer app=\(UIApplication.shared.applicationState.rawValue) \(CallDiag.session())")
         NativeCallAudio.shared.beginCall()
         var js = jsPayload(info.payload)
         js["callId"] = callId
@@ -252,6 +253,7 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+        CallDiag.log("CallKit muted=\(action.isMuted)")
         if let (callId, _) = calls.first(where: { $0.value.uuid == action.callUUID }) {
             plugin?.notifyListeners("callMuted", data: ["callId": callId, "muted": action.isMuted])
         }
