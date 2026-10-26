@@ -3919,16 +3919,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // переходы отступов точно закончились.
     const onKb = () => { setTimeout(set, 50); setTimeout(set, 400); };
     window.addEventListener("hyax:keyboard", onKb);
+    // Остров навигации появился или ушёл — у панели меняется отступ снизу
+    // (--mint-nav-space), а её размер — нет, и наблюдатель молчит.
+    window.addEventListener("hyax:nav-space", set);
     window.visualViewport?.addEventListener("resize", onKb);
     return () => {
       composeMeasureRef.current = null;
       ro.disconnect(); sc.style.removeProperty("--compose-h");
       window.removeEventListener("hyax:keyboard", onKb);
+      window.removeEventListener("hyax:nav-space", set);
       window.visualViewport?.removeEventListener("resize", onKb);
     };
   }, [mintM, chatId, composeEl]);
   // Окно вернулось из пула — отступ под панель меряем до отрисовки кадра.
-  useLayoutEffect(() => { if (active) composeMeasureRef.current?.(); }, [active]);
+  // Остров навигации списка убирает свой отступ уже после этого кадра — ещё
+  // раз на следующих кадрах (и по событию hyax:nav-space выше).
+  useLayoutEffect(() => {
+    if (!active) return;
+    composeMeasureRef.current?.();
+    let raf2 = 0;
+    const raf = requestAnimationFrame(() => { composeMeasureRef.current?.(); raf2 = requestAnimationFrame(() => composeMeasureRef.current?.()); });
+    const t = setTimeout(() => composeMeasureRef.current?.(), 300);
+    return () => { cancelAnimationFrame(raf); cancelAnimationFrame(raf2); clearTimeout(t); };
+  }, [active]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
                 <>
