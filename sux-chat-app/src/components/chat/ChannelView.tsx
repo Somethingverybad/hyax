@@ -46,7 +46,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumMosaic, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
@@ -117,6 +117,11 @@ const fmtTime = (iso: string) => timeOf(iso, getLang());
 /** Медиа поста — теми же компонентами, что и в переписке: video_url — это
  *  видео-«треугольник», file_url — картинка, видеофайл или файл строкой
  *  (download_only — всегда строкой, даже если это картинка). */
+/** Предел высоты фото в посте: портрет 3:4 ещё целиком во всю ширину
+ *  карточки (≈ ширина экрана без полей), выше — по центру; на широком
+ *  экране — не выше 560 px. */
+const POST_PHOTO_MAX_H = "min(560px, calc((100vw - 32px) * 4 / 3))";
+
 const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: number; h: number } | null; preview?: string | null; onOpen?: (url: string) => void }) => {
   // Подпись и загрузка — когда пост рядом с видимой частью ленты (use-near-view).
   const [nearRef, near] = useNearView();
@@ -124,12 +129,14 @@ const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: nu
   const seen = mediaSeen(raw);
   const { url, failed } = useMediaUrlState(near || seen ? raw : null);
   const [loaded, setLoaded] = useState(seen);
-  // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
+  // Во всю ширину карточки, по соотношению сторон с сервера — пост не растёт
   // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
-  // На широкой карточке (планшет, компьютер) высота упирается в предел, и
-  // бокс сужается до ширины картинки — иначе по бокам серые поля.
+  // Раньше бокс был не выше 320 px и сужался до ширины картинки — у
+  // вертикальных и квадратных фото справа оставалось пустое место.
+  // Слишком высокая (выше 3:4) или маленькая картинка — по центру: высота
+  // не больше предела и не больше самой картинки, мелкую не растягиваем.
   const style = dims
-    ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 320, width: `min(100%, ${Math.round(320 * dims.w / dims.h)}px)` }
+    ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: `min(${dims.h}px, ${POST_PHOTO_MAX_H})` }
     : { height: 160 };
   return (
     <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
@@ -138,7 +145,8 @@ const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: nu
       {url && (
         <img src={url} alt="" loading={seen ? "eager" : "lazy"} decoding={seen ? "sync" : "async"}
           onLoad={() => { setLoaded(true); markMediaSeen(raw); }} onClick={() => onOpen?.(url)}
-          className={cn("w-full h-full object-contain cursor-zoom-in", seen ? "" : "transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
+          style={dims ? { width: dims.w, height: dims.h } : undefined}
+          className={cn("absolute inset-0 m-auto max-w-full max-h-full object-contain cursor-zoom-in", !dims && "w-full h-full", seen ? "" : "transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
       )}
     </div>
   );
@@ -154,13 +162,14 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
     return (
       <div className="mt-2 space-y-1.5">
         {media.length > 0 && (
-        <AlbumGrid
+        <AlbumMosaic
           items={media.map((p) => ({
             id: p.id,
             raw: p.file_url || "",
             name: p.file_name ?? null,
             dims: dimsOf(p.file_width, p.file_height),
             poster: p.poster_url ?? null,
+            preview: p.file_preview ?? null,
             pending: p._pending,
             progress: p._progress ?? null,
             failed: p._failed,

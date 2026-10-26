@@ -682,7 +682,8 @@ export interface AlbumItem {
   failed?: boolean;
 }
 
-const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void }) => {
+/** fill — ячейка занимает отведённое место (мозаика Стены), иначе квадрат. */
+const AlbumCell = ({ item, localMap, onOpen, fill }: { item: AlbumItem; localMap?: Map<string, string>; onOpen: (url: string, name: string, id: string) => void; fill?: boolean }) => {
   const localBlob = item.raw.startsWith("blob:") ? item.raw : localMap?.get(item.raw);
   const [nearRef, near] = useNearView();
   const video = isVideoFile(item.name, item.raw);
@@ -692,7 +693,7 @@ const AlbumCell = ({ item, localMap, onOpen }: { item: AlbumItem; localMap?: Map
   const posterSrc = useMediaUrl(near || seen ? item.poster || null : null);
   const [loaded, setLoaded] = useState(!!localBlob || seen);
   return (
-    <div ref={nearRef} className="relative aspect-square overflow-hidden bg-black/20">
+    <div ref={nearRef} className={cn("relative overflow-hidden bg-black/20", fill ? "w-full h-full" : "aspect-square")}>
       {!loaded && !video && (item.preview ? <Micro src={item.preview} /> : <MediaSkeleton className="absolute inset-0" />)}
       {src && (video ? (
         <VideoThumb src={src} poster={posterSrc} cover seenKey={item.poster} />
@@ -724,3 +725,47 @@ export const AlbumGrid = ({ items, localMap, onOpen, className }: {
     {items.map((it) => <AlbumCell key={it.id} item={it} localMap={localMap} onOpen={onOpen} />)}
   </div>
 );
+
+/** Ряды мозаики по 2 и 3 ячейки: 5 → 2+3, 6 → 3+3, 7 → 2+2+3, 8 → 2+3+3. */
+const mosaicRows = (n: number): number[] => {
+  if (n <= 3) return [n];
+  if (n === 4) return [2, 2];
+  const rows: number[] = [];
+  let left = n;
+  if (n % 3 === 1) { rows.push(2, 2); left -= 4; } else if (n % 3 === 2) { rows.push(2); left -= 2; }
+  while (left > 0) { rows.push(3); left -= 3; }
+  return rows;
+};
+
+/** Альбом в посте (Стена, каналы): мозаика во всю ширину карточки — в
+ *  сообщениях у альбома своя ширина (AlbumGrid), а в посте рядом с узкой
+ *  сеткой оставалось пустое место. Два — рядом (портретные — 4:5), три —
+ *  большое слева и два справа, четыре — 2×2, дальше ряды по 2 и 3. */
+export const AlbumMosaic = ({ items, onOpen, className }: {
+  items: AlbumItem[]; onOpen: (url: string, name: string, id: string) => void; className?: string;
+}) => {
+  const cell = (it: AlbumItem) => <AlbumCell key={it.id} item={it} onOpen={onOpen} fill />;
+  if (items.length === 3) {
+    return (
+      <div className={cn("msg-media grid grid-cols-[2fr_1fr] grid-rows-2 gap-0.5 rounded-md overflow-hidden w-full aspect-[3/2]", className)}>
+        <div className="row-span-2 min-h-0">{cell(items[0])}</div>
+        <div className="min-h-0">{cell(items[1])}</div>
+        <div className="min-h-0">{cell(items[2])}</div>
+      </div>
+    );
+  }
+  let at = 0;
+  return (
+    <div className={cn("msg-media flex flex-col gap-0.5 rounded-md overflow-hidden w-full", className)}>
+      {mosaicRows(items.length).map((k, r) => {
+        const row = items.slice(at, at += k);
+        const portrait = k === 2 && row.every((it) => it.dims && it.dims.h > it.dims.w);
+        return (
+          <div key={r} className={cn("grid gap-0.5", k === 1 ? "grid-cols-1" : k === 2 ? "grid-cols-2" : "grid-cols-3")}>
+            {row.map((it) => <div key={it.id} className={k === 1 ? "aspect-[4/3]" : portrait ? "aspect-[4/5]" : "aspect-square"}>{cell(it)}</div>)}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
