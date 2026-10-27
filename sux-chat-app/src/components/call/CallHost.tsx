@@ -663,9 +663,13 @@ const CallHost = () => {
   const micMissing = mic?.micMissing ? micMissingText(mic.micMissingReason, tr) : null;
   // Плитки группового звонка: участники и я (последним).
   const myInfo = readCache<{ id?: string; username?: string; avatar_url?: string | null }>("user");
+  // В приложении потоков нет — картинку демонстрации рисует движок в окне `${id}#screen`.
+  const screenFeeds: { peerId: string; stream: MediaStream | null }[] = groupMedia?.native
+    ? groupPeers.filter((id) => groupMedia.peers[id]?.screen).map((peerId) => ({ peerId, stream: null }))
+    : groupScreens;
   const groupTiles: StageTile[] = [
     // Демонстрации — первыми: сами встают крупно (GroupStage).
-    ...groupScreens.flatMap((sc) => {
+    ...screenFeeds.flatMap((sc) => {
       if (!groupMedia?.peers[sc.peerId]?.screen) return [];
       const p = groupParticipants.find((x) => x.id === sc.peerId);
       return [{ id: `${sc.peerId}#screen`, name: tr("{name} · экран", { name: p?.name || tr("Участник") }), avatarUrl: p?.avatarUrl, stream: sc.stream, video: true, screen: true }];
@@ -806,6 +810,7 @@ const CallHost = () => {
             onToggle: () => void toggleVideo(),
             onFlip: () => void flipCamera(),
             screen: media.remoteScreen ?? null,
+            nativeScreen: media.native && !!media.remoteScreenOn,
             screenOn: media.screenOn,
             canScreen: media.canScreen,
             screenUnavailable: media.screenUnavailable,

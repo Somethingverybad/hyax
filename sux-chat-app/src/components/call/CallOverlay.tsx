@@ -107,6 +107,8 @@ export interface CallVideo {
   onFlip: () => void;
   /** Демонстрация экрана собеседника — во весь экран, его камера окошком. */
   screen?: MediaStream | null;
+  /** То же в приложении: картинку рисует движок (окно `${peerId}#screen`). */
+  nativeScreen?: boolean;
   /** Я показываю экран. */
   screenOn?: boolean;
   /** Показать экран можно (компьютер, у собеседника новая версия). */
@@ -217,11 +219,13 @@ const CallOverlay = ({
   // Нативное видео: рамки-заглушки на странице, по ним движок ставит картинку.
   const fullRef = useRef<HTMLDivElement>(null);
   const cornerRef = useRef<HTMLDivElement>(null);
+  const peerCornerRef = useRef<HTMLDivElement>(null);
   // Только личный звонок: в групповом раскладкой занимается GroupStage.
   const nativeLayout = isGroup ? undefined : video?.nativeLayout;
   const remoteOn = !!video?.remoteOn;
   const localOn = !!video?.localOn;
-  const nativeShown = !!nativeLayout && state !== "idle" && !(minimized && state !== "incoming") && (remoteOn || localOn);
+  const nativeScreen = !!nativeLayout && !!video?.nativeScreen;
+  const nativeShown = !!nativeLayout && state !== "idle" && !(minimized && state !== "incoming") && (remoteOn || localOn || nativeScreen);
   const layoutRef = useRef(nativeLayout);
   layoutRef.current = nativeLayout;
   useLayoutEffect(() => {
@@ -237,9 +241,21 @@ const CallOverlay = ({
       return { x: r.left, y: r.top, w: r.width, h: r.height };
     };
     // Собеседник без камеры — своё видео во весь экран, иначе окошком в углу.
+    // Демонстрация собеседника — во весь экран целиком, камеры — окошками.
     const push = () => {
       const full = rect(fullRef.current);
       const corner = rect(cornerRef.current);
+      if (nativeScreen) {
+        const peerCam = rect(peerCornerRef.current);
+        nativeLayout(
+          [
+            ...(full ? [{ ...full, peerId: `${peer.id}#screen`, fit: true }] : []),
+            ...(remoteOn && peerCam ? [{ ...peerCam, peerId: peer.id, r: 12, over: true }] : []),
+          ],
+          localOn && corner ? { ...corner, r: 12 } : null,
+        );
+        return;
+      }
       nativeLayout(
         remoteOn && full ? [{ ...full, peerId: peer.id }] : [],
         localOn ? (remoteOn ? (corner && { ...corner, r: 12 }) : full) : null,
@@ -249,13 +265,14 @@ const CallOverlay = ({
     const ro = new ResizeObserver(push);
     if (fullRef.current) ro.observe(fullRef.current);
     if (cornerRef.current) ro.observe(cornerRef.current);
+    if (peerCornerRef.current) ro.observe(peerCornerRef.current);
     window.addEventListener("resize", push);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", push);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nativeLayout, nativeShown, remoteOn, localOn, peer.id]);
+  }, [nativeLayout, nativeShown, remoteOn, localOn, nativeScreen, peer.id]);
   // Экран звонка закрылся — страницу вернуть, видео из-под неё убрать.
   useLayoutEffect(() => () => {
     if (!layoutRef.current) return;
@@ -537,7 +554,7 @@ const CallOverlay = ({
   // Видео собеседника — во весь экран, поверх него имя, таймер и кнопки.
   // В приложении во весь экран и своё видео, пока собеседник без камеры.
   const native = !!nativeLayout;
-  const onVideo = native ? remoteOn || localOn : !!video?.remote || !!video?.screen;
+  const onVideo = native ? remoteOn || localOn || nativeScreen : !!video?.remote || !!video?.screen;
   // Окошки в углу: своя камера, а при демонстрации собеседника — и его камера.
   const cornerTile = "w-28 h-40 md:w-40 md:h-56 rounded-xl overflow-hidden shadow-xl border border-white/20 bg-black";
   const chromeBtn = onVideo
@@ -575,10 +592,13 @@ const CallOverlay = ({
           <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" aria-hidden />
         </>
       )}
-      {/* Своя камера — окошком в углу (в приложении — рамка, картинка под ней). */}
-      {native && remoteOn && localOn && (
-        <div ref={cornerRef} className="absolute right-3 z-10 w-28 h-40 md:w-40 md:h-56 rounded-xl border border-white/20 pointer-events-none"
-          style={{ top: "calc(var(--sat) + 3.75rem)" }} aria-hidden />
+      {/* Своя камера — окошком в углу (в приложении — рамка, картинка под ней);
+          при демонстрации собеседника над ней и его камера. */}
+      {native && (nativeScreen ? remoteOn || localOn : remoteOn && localOn) && (
+        <div className="absolute right-3 z-10 flex flex-col gap-2 pointer-events-none" style={{ top: "calc(var(--sat) + 3.75rem)" }} aria-hidden>
+          {nativeScreen && remoteOn && <div ref={peerCornerRef} className="w-28 h-40 md:w-40 md:h-56 rounded-xl border border-white/20" />}
+          {localOn && <div ref={cornerRef} className="w-28 h-40 md:w-40 md:h-56 rounded-xl border border-white/20" />}
+        </div>
       )}
       {!native && (video?.local || (video?.screen && video.remote)) && (
         <div className="absolute right-3 z-10 flex flex-col gap-2" style={{ top: "calc(var(--sat) + 3.75rem)" }}>

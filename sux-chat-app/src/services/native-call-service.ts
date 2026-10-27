@@ -25,6 +25,8 @@ export type NativeAdoptedVideo = {
   remoteVideo: boolean;
   canVideo: boolean;
   known: boolean;
+  /** Собеседник показывает экран. */
+  remoteScreen?: boolean;
 };
 
 /** Общая часть: подписки на события плагина и отправка сигналов. */
@@ -86,10 +88,16 @@ abstract class NativeBase {
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
-  protected async addPeer(peerId: string, offer: boolean): Promise<void> {
+  /** Смотреть демонстрацию экрана эта сборка умеет (см. nativeCall.features). */
+  protected async canRxScreen(): Promise<boolean> {
+    return !!(await nativeCall.features()).screen;
+  }
+
+  /** screen — сразу и канал демонстрации собеседника (только на приём). */
+  protected async addPeer(peerId: string, offer: boolean, screen = false): Promise<void> {
     if (this.peers.has(peerId)) return;
     this.peers.add(peerId);
-    await nativeCall.createPeer(peerId, this.videoCalls);
+    await nativeCall.createPeer(peerId, this.videoCalls, screen);
     if (offer) await nativeCall.createOffer(peerId);
   }
 
@@ -170,6 +178,9 @@ export class NativeCallService extends NativeBase {
   private remoteVideo = false;
   /** Собеседник транслирует звонок в OBS (со своего компьютера). */
   private peerObs = false;
+  /** Собеседник показывает экран (картинка — в окне `${peerId}#screen`). */
+  private remoteScreen = false;
+  private peerNoMic = false;
 
   constructor(options: {
     wsService: WebSocketService;
@@ -213,6 +224,8 @@ export class NativeCallService extends NativeBase {
       native: true,
       canNoise: false,
       peerObs: this.peerObs,
+      remoteScreenOn: this.remoteScreen,
+      peerNoMic: this.peerNoMic,
     };
   }
 
@@ -263,6 +276,8 @@ export class NativeCallService extends NativeBase {
     this.peerKnown = false;
     this.remoteVideo = false;
     this.peerObs = false;
+    this.remoteScreen = false;
+    this.peerNoMic = false;
     this.emitMedia();
   }
 
@@ -325,7 +340,9 @@ export class NativeCallService extends NativeBase {
     this.targetUserId = fromUserId;
     this.isCaller = false;
     this.setState("connecting");
-    this.send("call_accept", { to_user_id: fromUserId, device_id: myDeviceId() });
+    // Смотреть демонстрацию умеем — звонящий заведёт под неё второй видеоканал.
+    const screen = await this.canRxScreen();
+    this.send("call_accept", { to_user_id: fromUserId, device_id: myDeviceId(), ...(screen ? { screen: true } : {}) });
   }
 
   rejectIncomingCall(callId: string, fromUserId: string): void {
@@ -357,7 +374,8 @@ export class NativeCallService extends NativeBase {
       case "call_accept":
         if (this.isCaller) {
           this.setState("connecting");
-          await this.addPeer(from, true);
+          // Собеседник умеет показывать экран — канал под демонстрацию сразу.
+          await this.addPeer(from, true, !!data.screen && (await this.canRxScreen()));
         }
         break;
       case "call_reject":
@@ -367,9 +385,11 @@ export class NativeCallService extends NativeBase {
         this.finish((data.status as string) || "ended");
         break;
       case "webrtc_media":
-        // Собеседник включил или выключил камеру, начал трансляцию в OBS.
+        // Собеседник включил или выключил камеру, начал трансляцию в OBS, показывает экран.
         this.remoteVideo = !!data.video;
         this.peerObs = !!data.obs;
+        this.remoteScreen = !!data.screen;
+        this.peerNoMic = !!data.nomic;
         this.emitMedia();
         break;
       default:
@@ -398,6 +418,7 @@ export class NativeCallService extends NativeBase {
     const video: NativeAdoptedVideo = {
       on: this.videoOn, front: this.front, canFlip: this.canFlip,
       remoteVideo: this.remoteVideo, canVideo: this.peerCanVideo, known: this.peerKnown,
+      remoteScreen: this.remoteScreen,
     };
     this.resetMedia();
     const out = { callId: this.callId, chatId: this.chatId || "", peerId: this.targetUserId, video };
@@ -445,6 +466,8 @@ export class NativeGroupCallService extends NativeBase {
   private front = true;
   private canFlip = false;
   private peerMedia = new Map<string, GroupPeerMedia>();
+  /** Смотреть демонстрацию умеем — участникам об этом в webrtc_media. */
+  private rxScreen = false;
 
   constructor(options: {
     wsService: WebSocketService;
@@ -460,6 +483,7 @@ export class NativeGroupCallService extends NativeBase {
     super(options.wsService, options.userId, options.iceServers);
     this.videoCalls = true;
     this.cb = options;
+    void this.canRxScreen().then((v) => { this.rxScreen = v; });
   }
 
   // ===== Видео =====
@@ -520,7 +544,10 @@ export class NativeGroupCallService extends NativeBase {
 
   private sendMediaTo(peerId: string): void {
     if (!this.callId) return;
-    this.send("webrtc_media", { to_user_id: peerId, video: this.videoOn, audio: !this.muted });
+    // rx_screen + app: участник на компьютере заведёт канал демонстрации сам
+    // (мы повторных предложений не шлём — встречных не будет).
+    const screen = this.rxScreen ? { rx_screen: true, app: true } : {};
+    this.send("webrtc_media", { to_user_id: peerId, video: this.videoOn, audio: !this.muted, ...screen });
   }
 
   private broadcastMedia(): void {
@@ -565,7 +592,7 @@ export class NativeGroupCallService extends NativeBase {
       this.front = v.front;
       this.canFlip = v.canFlip;
     }
-    this.peerMedia.set(input.peerId, { ...emptyPeerMedia(), video: !!v?.remoteVideo, canVideo: !!v?.canVideo, known: v ? v.known : true, connected: true });
+    this.peerMedia.set(input.peerId, { ...emptyPeerMedia(), video: !!v?.remoteVideo, canVideo: !!v?.canVideo, known: v ? v.known : true, connected: true, screen: !!v?.remoteScreen });
     this.setState("active");
     this.cb.onPeers?.([input.peerId]);
     this.emitMedia();
@@ -579,6 +606,7 @@ export class NativeGroupCallService extends NativeBase {
       this.cb.onError?.(t("Не удалось получить доступ к микрофону"));
       return;
     }
+    this.rxScreen = await this.canRxScreen();
     this.callId = this.newCallId();
     this.chatId = chatId;
     this.setState("outgoing");
@@ -602,6 +630,7 @@ export class NativeGroupCallService extends NativeBase {
       this.leave();
       return;
     }
+    this.rxScreen = await this.canRxScreen();
     this.setState("active");
     this.send("call_accept", { device_id: myDeviceId() });
   }
@@ -651,8 +680,8 @@ export class NativeGroupCallService extends NativeBase {
       return;
     }
     if (signalType === "webrtc_media") {
-      // Участник включил или выключил камеру / микрофон.
-      const patch: Partial<GroupPeerMedia> = { video: !!data.video };
+      // Участник включил или выключил камеру / микрофон, показывает экран.
+      const patch: Partial<GroupPeerMedia> = { video: !!data.video, screen: !!data.screen };
       if (typeof data.audio === "boolean") patch.muted = !data.audio;
       if (typeof data.obs === "boolean") patch.obs = data.obs;
       this.patchPeer(from, patch);

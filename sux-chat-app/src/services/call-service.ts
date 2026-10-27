@@ -79,6 +79,9 @@ export type CallMedia = {
   screenUnavailable?: boolean;
   /** Демонстрация собеседника — отдельным потоком (камера остаётся своей). */
   remoteScreen?: MediaStream | null;
+  /** Приложение: собеседник показывает экран — картинку рисует нативный
+   *  движок (окно `${peerId}#screen`), потока в JS нет. */
+  remoteScreenOn?: boolean;
   /** Мой микрофон не открылся — меня не слышно (lib/callMic). */
   micMissing?: boolean;
   micMissingReason?: string;
