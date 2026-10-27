@@ -81,6 +81,8 @@ public class NativeCallPlugin extends Plugin {
     // на приём (первый — камера). Его дорожка и окно — под ключом "id#screen",
     // mid канала по участнику — из SDP собеседника (второй видеоканал).
     private final Map<String, String> screenMids = new java.util.concurrent.ConcurrentHashMap<>();
+    // …и mid второго аудиоканала — звук компьютера при демонстрации.
+    private final Map<String, String> screenAudioMids = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, VideoTrack> remoteVideoTracks = new HashMap<>();
     private VideoSource videoSource;
     private VideoTrack videoTrack;
@@ -113,6 +115,7 @@ public class NativeCallPlugin extends Plugin {
     public void getFeatures(PluginCall call) {
         JSObject r = new JSObject();
         r.put("screen", true);
+        r.put("screenAudio", true);
         call.resolve(r);
     }
 
@@ -169,6 +172,7 @@ public class NativeCallPlugin extends Plugin {
         }
         boolean video = Boolean.TRUE.equals(call.getBoolean("video", false));
         boolean screen = Boolean.TRUE.equals(call.getBoolean("screen", false));
+        boolean screenAudio = Boolean.TRUE.equals(call.getBoolean("screenAudio", false));
         synchronized (this) {
             if (video) videoPeers.add(peerId);
             boolean fresh = !peers.containsKey(peerId);
@@ -185,6 +189,11 @@ public class NativeCallPlugin extends Plugin {
                 if (screen) {
                     pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
                         new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY));
+                    // …и под звук его компьютера (второй аудиоканал, тоже на приём).
+                    if (screenAudio) {
+                        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
+                            new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY));
+                    }
                 }
             }
         }
@@ -232,8 +241,10 @@ public class NativeCallPlugin extends Plugin {
         SessionDescription.Type sdpType =
             "offer".equals(type) ? SessionDescription.Type.OFFER : SessionDescription.Type.ANSWER;
         // Канал демонстрации узнаём по mid (onTrack): mid второго видеоканала.
-        List<String> mids = videoMids(sdp);
+        List<String> mids = mediaMids(sdp, "video");
         if (mids.size() > 1) screenMids.put(peerId, mids.get(1));
+        List<String> amids = mediaMids(sdp, "audio");
+        if (amids.size() > 1) screenAudioMids.put(peerId, amids.get(1));
 
         pc.setRemoteDescription(new SimpleSdpObserver() {
             @Override
@@ -315,6 +326,7 @@ public class NativeCallPlugin extends Plugin {
         stopCamera();
         videoPeers.clear();
         screenMids.clear();
+        screenAudioMids.clear();
         synchronized (remoteVideoTracks) { remoteVideoTracks.clear(); }
         getActivity().runOnUiThread(() -> applyLayout(new ArrayList<>(), null));
         if (audioTrack != null) {
@@ -749,19 +761,20 @@ public class NativeCallPlugin extends Plugin {
         PeerConnection pc = peers.remove(peerId);
         if (pc != null) pc.close();
         screenMids.remove(peerId);
+        screenAudioMids.remove(peerId);
         synchronized (remoteVideoTracks) {
             remoteVideoTracks.remove(peerId);
             remoteVideoTracks.remove(peerId + "#screen");
         }
     }
 
-    /** mid видеоканалов по порядку в SDP. */
-    private static List<String> videoMids(String sdp) {
+    /** mid каналов одного вида (audio / video) по порядку в SDP. */
+    private static List<String> mediaMids(String sdp, String kind) {
         List<String> out = new ArrayList<>();
-        boolean video = false;
+        boolean match = false;
         for (String line : sdp.split("\r?\n")) {
-            if (line.startsWith("m=")) video = line.startsWith("m=video");
-            else if (video && line.startsWith("a=mid:")) out.add(line.substring(6).trim());
+            if (line.startsWith("m=")) match = line.startsWith("m=" + kind);
+            else if (match && line.startsWith("a=mid:")) out.add(line.substring(6).trim());
         }
         return out;
     }
@@ -811,22 +824,25 @@ public class NativeCallPlugin extends Plugin {
         @Override public void onRemoveStream(MediaStream stream) {}
         @Override public void onDataChannel(org.webrtc.DataChannel dc) {}
         @Override public void onRenegotiationNeeded() {}
-        @Override public void onAddTrack(RtpReceiver receiver, MediaStream[] streams) {
-            // Дорожка участника — запоминаем и применяем громкость, если её
-            // выставили раньше, чем дорожка появилась.
-            if (receiver.track() instanceof AudioTrack) {
-                AudioTrack t = (AudioTrack) receiver.track();
-                synchronized (remoteTracks) {
-                    remoteTracks.put(peerId, t);
-                    Double v = peerVolumes.get(peerId);
-                    if (v != null) t.setVolume(v);
-                }
-            }
-            // Видео — в onTrack: там видно, какой это канал.
-        }
+        // Дорожки — в onTrack: там видно, какой это канал.
+        @Override public void onAddTrack(RtpReceiver receiver, MediaStream[] streams) {}
 
         @Override public void onTrack(RtpTransceiver transceiver) {
             RtpReceiver receiver = transceiver.getReceiver();
+            if (receiver.track() instanceof AudioTrack) {
+                // Голос — запоминаем и применяем громкость, если её выставили
+                // раньше, чем дорожка появилась. Второй аудиоканал — звук
+                // компьютера при демонстрации: играет сам, громкость участника — не его.
+                String amid = transceiver.getMid();
+                String akey = amid != null && amid.equals(screenAudioMids.get(peerId)) ? peerId + "#screen" : peerId;
+                AudioTrack t = (AudioTrack) receiver.track();
+                synchronized (remoteTracks) {
+                    remoteTracks.put(akey, t);
+                    Double v = peerVolumes.get(akey);
+                    if (v != null) t.setVolume(v);
+                }
+                return;
+            }
             if (!(receiver.track() instanceof VideoTrack)) return;
             // Второй видеоканал — демонстрация экрана, своим окном, не вместо камеры.
             String mid = transceiver.getMid();
