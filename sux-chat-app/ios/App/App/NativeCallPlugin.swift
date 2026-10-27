@@ -58,10 +58,9 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     // подставляется в него без пересогласования, как в веб-версии. Картинку
     // рисуют нативные окна под прозрачным WebView: кнопки звонка остаются
     // вёрсткой поверх видео, а их места страница сообщает через setVideoLayout.
-    private var videoPeers = Set<String>()
     // Демонстрация экрана собеседника — второй видеоканал соединения, только
     // на приём (первый — камера). Его дорожка и окно — под ключом "id#screen".
-    private var screenPeers = Set<String>()
+    private var videoPeers = Set<String>()
     private var videoSource: RTCVideoSource?
     private var videoTrack: RTCVideoTrack?
     private var capturer: RTCCameraVideoCapturer?
@@ -147,8 +146,24 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         let screen = call.getBool("screen") ?? false
         queue.async {
             if video { self.videoPeers.insert(peerId) }
-            if video && screen { self.screenPeers.insert(peerId) }
-            _ = self.peer(for: peerId)
+            let pc = self.peer(for: peerId)
+            // Звонящий с видео: пустой видеоканал сразу. Только здесь: у
+            // отвечающего свой канал предложение не займёт (каналы из
+            // addTransceiver не переиспользуются) — вышел бы лишний, и камера
+            // с демонстрацией разъехались бы по номерам.
+            if video && pc.transceivers.allSatisfy({ $0.mediaType != .video }) {
+                let initVideo = RTCRtpTransceiverInit()
+                initVideo.direction = .sendRecv
+                initVideo.streamIds = ["hyax"]
+                let t = pc.addTransceiver(of: .video, init: initVideo)
+                if let track = self.videoTrack { t?.sender.track = track }
+                // Собеседник умеет показывать экран — второй канал под демонстрацию.
+                if screen {
+                    let initScreen = RTCRtpTransceiverInit()
+                    initScreen.direction = .recvOnly
+                    _ = pc.addTransceiver(of: .video, init: initScreen)
+                }
+            }
             call.resolve()
         }
     }
@@ -263,7 +278,6 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             self.audioTrack = nil
             self.stopCamera()
             self.videoPeers.removeAll()
-            self.screenPeers.removeAll()
             self.remoteVideoTracks.removeAll()
             self.stopDiag()
             NativeCallAudio.shared.endCall()
@@ -614,21 +628,8 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         if let audioTrack {
             pc.add(audioTrack, streamIds: ["hyax"])
         }
-        // Звонящий с видео: пустой видеоканал сразу (отвечающий получит его
-        // из предложения — см. setRemoteDescription).
-        if videoPeers.contains(peerId) && pc.transceivers.allSatisfy({ $0.mediaType != .video }) {
-            let initVideo = RTCRtpTransceiverInit()
-            initVideo.direction = .sendRecv
-            initVideo.streamIds = ["hyax"]
-            let t = pc.addTransceiver(of: .video, init: initVideo)
-            if let track = videoTrack { t?.sender.track = track }
-            // Собеседник умеет показывать экран — второй канал под демонстрацию.
-            if screenPeers.contains(peerId) {
-                let initScreen = RTCRtpTransceiverInit()
-                initScreen.direction = .recvOnly
-                _ = pc.addTransceiver(of: .video, init: initScreen)
-            }
-        }
+        // Видеоканалы звонящего добавляет createPeer, отвечающий получит
+        // их из предложения — см. setRemoteDescription.
         peers[peerId] = pc
         delegates[peerId] = delegate
         return pc
@@ -639,7 +640,6 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         peers.removeValue(forKey: peerId)
         remoteVideoTracks.removeValue(forKey: peerId)
         remoteVideoTracks.removeValue(forKey: "\(peerId)#screen")
-        screenPeers.remove(peerId)
         delegates.removeValue(forKey: peerId)
         remoteTracks.removeValue(forKey: peerId)
         peerVolumes.removeValue(forKey: peerId)
