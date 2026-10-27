@@ -105,6 +105,8 @@ public class NativeCallPlugin extends Plugin {
     private final Map<String, Double> peerVolumes = new HashMap<>();
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
     private int previousAudioMode = AudioManager.MODE_NORMAL;
+    /** Фоновый сервис звонка не дали запустить (приложение было не на экране) — запустим при возврате. */
+    private boolean foregroundPending = false;
 
     /** Что умеет эта сборка: страница обновляется по воздуху и в старых
      *  сборках, новое она включает только по этому ответу. */
@@ -142,8 +144,21 @@ public class NativeCallPlugin extends Plugin {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             am.setSpeakerphoneOn(false);
         }
-        CallForegroundService.start(getContext());
+        startForegroundService();
         call.resolve();
+    }
+
+    /** Android 12+ не даёт запускать сервис, пока приложение не на экране
+     *  (ForegroundServiceStartNotAllowedException) — раньше это роняло всё
+     *  приложение. Теперь звонок идёт, а сервис встанет при возврате на экран. */
+    private void startForegroundService() {
+        try {
+            CallForegroundService.start(getContext());
+            foregroundPending = false;
+        } catch (RuntimeException e) {
+            foregroundPending = true;
+            android.util.Log.w("NativeCall", "сервис звонка отложен: " + e);
+        }
     }
 
     @PluginMethod
@@ -300,6 +315,7 @@ public class NativeCallPlugin extends Plugin {
             am.setSpeakerphoneOn(false);
             am.setMode(previousAudioMode);
         }
+        foregroundPending = false;
         CallForegroundService.stop(getContext());
         call.resolve();
     }
@@ -532,6 +548,7 @@ public class NativeCallPlugin extends Plugin {
     @Override
     protected void handleOnResume() {
         super.handleOnResume();
+        if (foregroundPending && audioTrack != null) startForegroundService();
         if (capturer != null && cameraPaused) { capturer.startCapture(1280, 720, 30); cameraPaused = false; }
     }
 
