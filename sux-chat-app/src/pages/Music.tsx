@@ -2,7 +2,7 @@ import { t as tr, tn } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ListMusic, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe, Radio, Headphones, Upload, Link2, Link2Off,
+import { ListMusic, ListPlus, Music2, Pause, Play, Plus, Trash2, ChevronLeft, Pencil, Share2, Send, Globe, Radio, Headphones, Upload, Link2, Link2Off,
          Shuffle, Repeat, Repeat1, SkipBack, SkipForward, X, Volume1, Volume2, VolumeX, Check, Loader2, FolderUp } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { SettingsCard, SettingsRow } from "@/components/settings";
@@ -22,6 +22,7 @@ import { clearFinished, enqueueTracks, nativeTrackUploads, pickNativeTracks, ret
 import { PlaylistStatsBar } from "@/components/music/PlaylistStats";
 import ResumeButton from "@/components/music/ResumeButton";
 import ShareTrackButton from "@/components/music/ShareTrackButton";
+import PlaylistPicker, { type PickTrack } from "@/components/chat/PlaylistPicker";
 import { playPlaylist, resumeTrack } from "@/lib/playlistResume";
 
 /**
@@ -54,10 +55,21 @@ const playlistName = (pl: Playlist) => (pl.is_default ? tr(pl.name) : pl.name);
  * экрана — вкладка целиком отведена под музыку. Полоску (MiniPlayer) на этом
  * экране прячем, чтобы плеер не двоился.
  */
+/** Что играет — в плейлист: файл из сообщения или поста — по id сообщения,
+ *  трек плейлиста (свой, чужой открытый, эфира, по ссылке) — по id трека. */
+const pickOfTrack = (t: Track): PickTrack | null => {
+  if (t.kind === "voice") return null;
+  if (t.source === "message") return { key: t.id, message: t.id, title: t.title };
+  if (t.source === "track" || t.source === "mine") return { key: t.id, track: t.id, token: t.token, title: t.title };
+  return null;
+};
+
 const PlayerPanel = ({ onLive }: { onLive?: () => void }) => {
   const s = usePlayer();
   const t = currentTrack();
+  const [pick, setPick] = useState<PickTrack[] | null>(null);
   if (!t) return null;
+  const toPlaylist = pickOfTrack(t);
   const frac = s.duration ? Math.min(1, s.time / s.duration) : 0;
   const RepeatIcon = s.repeat === "one" ? Repeat1 : Repeat;
 
@@ -73,11 +85,18 @@ const PlayerPanel = ({ onLive }: { onLive?: () => void }) => {
               {s.live ? ` · 📻 ${s.live.name}` : s.queue.length > 1 && ` · ${tr("{i} из {n}", { i: s.index + 1, n: s.queue.length })}`}
             </span>
           </span>
+          {toPlaylist && (
+            <button type="button" onClick={() => setPick([toPlaylist])} className="p-2 text-subtle"
+              aria-label={tr("Добавить в плейлист")} title={tr("Добавить в плейлист")}>
+              <ListPlus className="w-4 h-4" />
+            </button>
+          )}
           <ShareTrackButton track={t} className="p-2" />
           <button type="button" onClick={stop} className="p-2 text-subtle" aria-label={tr("Закрыть плеер")}>
             <X className="w-4 h-4" />
           </button>
         </div>
+        <PlaylistPicker tracks={pick} onClose={() => setPick(null)} />
 
         <div
           className={cn("h-1.5 rounded-full bg-black/20 overflow-hidden", !s.live && "cursor-pointer")}
@@ -498,7 +517,7 @@ const Music = () => {
             <p className="text-small text-subtle">{tr("Загрузка…")}</p>
           ) : tracks.length === 0 ? (
             <div className="ui-card rounded-lg bg-surface-2 border border-border p-4 text-small text-subtle">
-              {tr("Пусто. Загрузите свои треки кнопкой ниже или добавьте музыку из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
+              {tr("Пусто. Загрузите свои треки кнопкой ниже или добавьте музыку из переписки: нажмите «+» у аудиофайла.")}
             </div>
           ) : (
             <>
@@ -812,7 +831,7 @@ const Music = () => {
         )}
 
         <p className="px-1 text-caption text-subtle">
-          {tr("Музыка берётся из переписки: удерживайте аудиофайл в чате и выберите «В плейлист».")}
+          {tr("Музыка берётся из переписки: нажмите «+» у аудиофайла в чате, на Стене или в канале.")}
         </p>
 
         <p className="px-1 pt-3 text-small font-semibold text-subtle">{tr("Плейлисты собеседников")}</p>

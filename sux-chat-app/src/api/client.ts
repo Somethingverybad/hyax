@@ -1487,9 +1487,11 @@ export const api = {
     return d;
   },
 
-  /** Трек из открытого плейлиста собеседника, эфира или плейлиста по ссылке (shareToken) — в «Мою музыку». */
-  addTrackFromPublic: async (trackId: string, shareToken?: string): Promise<{ track: PlaylistTrack; already: boolean }> => {
-    const res = await fetchWithAuth(`${API_URL}/playlists/tracks/`, {
+  /** Трек из своего плейлиста, открытого плейлиста собеседника, эфира или
+   *  плейлиста по ссылке (shareToken) — в «Мою музыку» или в playlistId. */
+  addTrackFromPublic: async (trackId: string, shareToken?: string, playlistId?: string): Promise<{ track: PlaylistTrack; playlist?: Playlist; already: boolean }> => {
+    const url = playlistId ? `${API_URL}/playlists/${playlistId}/tracks/` : `${API_URL}/playlists/tracks/`;
+    const res = await fetchWithAuth(url, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ track_id: trackId, token: shareToken || undefined }),
     });
     const data = await res.json().catch(() => ({}));

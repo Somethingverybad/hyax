@@ -999,6 +999,18 @@ class PlaylistTests(TestCase):
     def test_only_audio(self):
         self.assertEqual(self.add(self.me, self.doc).status_code, 400)
 
+    def test_copy_own_track_to_another_playlist(self):
+        """Большой плеер: трек из своего плейлиста — в другой свой; чужой закрытый — нельзя."""
+        track = self.add(self.me, self.song).data["track"]
+        other = client_for(self.me).post("/api/playlists/", {"name": "В дорогу"}, format="json").data
+        other_id = (other.get("playlist") or other)["id"]
+        r = client_for(self.me).post(f"/api/playlists/{other_id}/tracks/", {"track_id": track["id"]}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data["track"]["title"], "Дом культуры")
+        self.assertEqual(client_for(self.me).post(f"/api/playlists/{other_id}/tracks/", {"track_id": track["id"]}, format="json").data["already"], True)
+        r = client_for(self.stranger).post("/api/playlists/tracks/", {"track_id": track["id"]}, format="json")
+        self.assertEqual(r.status_code, 404)
+
     def test_outsider_cannot_add(self):
         self.assertEqual(self.add(self.stranger, self.song).status_code, 403)
 

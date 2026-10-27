@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { createPortal } from "react-dom";
-import { Paperclip, Download, Play, Pause, X } from "lucide-react";
+import { Paperclip, Download, ListPlus, Play, Pause, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { useNearView } from "@/hooks/use-near-view";
@@ -41,11 +41,13 @@ export const isAudioFile = (fileName: string | null | undefined, fileUrl: string
  *  Строка показывает название, прогресс и состояние; скачать можно кнопкой
  *  справа. Файл, отправленный как «Файл» (download_only), тоже сюда — для
  *  музыки скачивание вместо воспроизведения сбивало с толку. */
-export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
+export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay, onAdd }: {
   raw: string; name: string | null; isOwn: boolean;
   onSave: (url: string, name: string) => void;
   /** Запустить очередь этого чата с этого трека; без обработчика — просто строка. */
   onPlay?: () => void;
+  /** Этот трек — в плейлист (PlaylistPicker); без обработчика кнопки нет. */
+  onAdd?: () => void;
 }) => {
   const [nearRef, near] = useNearView();
   const src = useMediaUrl(near ? raw : null);
@@ -95,6 +97,17 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
           {mine ? `${fmtTime(s.time)}${s.duration ? ` / ${fmtTime(s.duration)}` : ""}` : tr("Нажми, чтобы слушать")}
         </div>
       </div>
+      {onAdd && (
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAdd(); }}
+          className="p-1 rounded hover:bg-background/50 transition-colors shrink-0"
+          title={tr("В плейлист")}
+          aria-label={tr("В плейлист")}
+        >
+          <ListPlus className="w-4 h-4" />
+        </button>
+      )}
       <button
         type="button"
         onClick={(e) => { e.preventDefault(); if (src) onSave(src, name || "audio"); }}
@@ -106,6 +119,18 @@ export const MessageAudioFile = ({ raw, name, isOwn, onSave, onPlay }: {
     </div>
   );
 };
+
+/** Под несколькими треками сообщения или поста: все разом в плейлист
+ *  (в шторке отмечены все — лишние можно снять). */
+export const AudioAddAll = ({ count, onClick }: { count: number; onClick: () => void }) => (
+  <button
+    type="button"
+    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
+    className="flex items-center gap-1.5 px-1 py-0.5 text-small font-medium opacity-85 hover:opacity-100"
+  >
+    <ListPlus className="w-4 h-4" /> {tr("Все в плейлист · {n}", { n: count })}
+  </button>
+);
 
 /** Вписывает натуральный размер в бокс превью (240×192), не увеличивая. */
 export const previewSize = (dims: { w: number; h: number }, maxW = 240, maxH = 192) => {

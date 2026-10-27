@@ -5953,13 +5953,15 @@ class PlaylistTracksView(APIView):
         on_air = pl.stations.exists()
         # {next: true} — поставить сразу за тем, что сейчас в эфире (диджей).
         play_next = request.data.get("next") in (True, "true", "1", 1)
-        # {track_id} — трек из открытого плейлиста собеседника или из эфира,
-        # который мне виден: берём его файл и подписи, как при копировании.
+        # {track_id} — трек из своего плейлиста (большой плеер: «в другой
+        # плейлист»), из открытого плейлиста собеседника или из эфира, который
+        # мне виден: берём его файл и подписи, как при копировании.
         if request.data.get("track_id"):
             src = PlaylistTrack.objects.filter(id=request.data.get("track_id")).select_related("playlist").first()
             token = (request.data.get("token") or "").strip()
             if not src or not (
-                (src.playlist.is_public and _public_playlist(me, src.playlist_id))
+                src.playlist.owner_id == me.id
+                or (src.playlist.is_public and _public_playlist(me, src.playlist_id))
                 or track_on_air_for(me, track_id=src.id)
                 # Плейлист по ссылке (карточка в сообщении): ключ ссылки — и есть доступ.
                 or (token and src.playlist.share_token and src.playlist.share_token == token)

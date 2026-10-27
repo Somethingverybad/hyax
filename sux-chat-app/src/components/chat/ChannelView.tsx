@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { createPortal } from "react-dom";
+import PlaylistPicker, { fileTitle, type PickTrack } from "@/components/chat/PlaylistPicker";
 import { t as tr, tn, getLang } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { setSection } from "@/lib/sections";
@@ -46,7 +47,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumMosaic, postMediaBox, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, AudioAddAll, MessageVideoFile, VideoNote, MediaSkeleton, AlbumMosaic, postMediaBox, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
@@ -145,7 +146,12 @@ const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: nu
   );
 };
 
-const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; album?: Post[]; onOpenImage?: (url: string, post: Post) => void; onPlayAudio?: (p: Post) => void }) => {
+const PostMedia = ({ post, album, onOpenImage, onPlayAudio, onAddAudio }: {
+  post: Post; album?: Post[]; onOpenImage?: (url: string, post: Post) => void; onPlayAudio?: (p: Post) => void;
+  /** Треки поста — в плейлист (у каждого «+», у нескольких — ещё «все»). */
+  onAddAudio?: (list: Post[]) => void;
+}) => {
+  const add = (list: Post[]) => (onAddAudio && !list.some((p) => p._pending) ? () => onAddAudio(list) : undefined);
   // Альбом одной публикации: картинки и видео — сеткой, музыка и файлы —
   // строками под ней, всё в одном посте.
   if (album && album.length > 1) {
@@ -175,8 +181,9 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
         )}
         {audio.map((p) => (
           <MessageAudioFile key={p.id} raw={p.file_url as string} name={p.file_name || null}
-            isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(p)} />
+            isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(p)} onAdd={add([p])} />
         ))}
+        {audio.length > 1 && add(audio) && <AudioAddAll count={audio.length} onClick={add(audio)!} />}
         {rest.map((p) => (
           <MessageFile key={p.id} raw={p.file_url as string} name={p.file_name || null}
             isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} />
@@ -203,7 +210,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
   }
   if (!post.download_only && isImageFile(post.file_name, post.file_url)) return <PostImage raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} preview={post.file_preview} onOpen={(url) => onOpenImage?.(url, post)} />;
   if (isAudioFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
+    return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} onAdd={add([post])} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
     return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} poster={post.poster_url} post /></div>;
@@ -257,6 +264,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [composeOpts, setComposeOpts] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Post | null>(null);
+  // Музыка поста, для которой выбирают плейлист.
+  const [playlistFor, setPlaylistFor] = useState<PickTrack[] | null>(null);
   const [repostFor, setRepostFor] = useState<Post | null>(null);
   const fetchPosts = useCallback((opts: { limit?: number; before?: string; since?: string }) =>
     wall ? api.getWallPosts(opts) : api.getChannelPosts(channelId, opts), [wall, channelId]);
@@ -1399,7 +1408,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 })()}
                 <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
                   onOpenImage={(_url, p) => openViewer(p.id)}
-                  onPlayAudio={playAudioFrom} />
+                  onPlayAudio={playAudioFrom}
+                  onAddAudio={(list) => setPlaylistFor(list.map((p) => ({ key: p.id, message: p.id, title: fileTitle(p.file_name) })))} />
                 {post._pending && post._failed && (
                   <div className="mt-2 flex items-center gap-3 text-caption">
                     <span className="text-destructive font-medium">{tr("Не опубликовано")}</span>
@@ -1863,6 +1873,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         returnTo={wall ? { path: "/wall" } : { path: "/chat", state: { chatId: channelId, kind: "channel", title: channel?.name } }}
       />
 
+      <PlaylistPicker tracks={playlistFor} onClose={() => setPlaylistFor(null)} />
       {menuFor && (
         <SheetPortal>
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={() => { if (Date.now() - menuOpenedAtRef.current > 500) setMenuFor(null); }}>

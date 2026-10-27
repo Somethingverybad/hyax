@@ -45,7 +45,7 @@ import { userSocket } from "@/lib/userSocket";
 import { lastSeenText } from "@/lib/lastSeen";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 const GraffitiSheet = lazy(() => import("@/components/chat/Graffiti").then((m) => ({ default: m.GraffitiSheet })));
-import PlaylistPicker from "@/components/chat/PlaylistPicker";
+import PlaylistPicker, { fileTitle, type PickTrack } from "@/components/chat/PlaylistPicker";
 import type { Playlist } from "@/api/client";
 import { playSfx } from "@/lib/sfx";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken, stationLinkId } from "@/lib/linkify";
@@ -89,7 +89,7 @@ import type { ChatActionInfo } from "@/api/client";
 import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, loadCustomEmojiIndex, matchCustomEmoji, trailingEmoji, type IndexedSticker, type IndexedEmoji } from "@/lib/stickerIndex";
 import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
-import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudioFile, MessageFile, VideoNote, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
+import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudioFile, AudioAddAll, MessageFile, VideoNote, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
 import type { ViewerItem } from "@/components/ImageViewer";
 const ImageViewer = lazy(() => import("@/components/ImageViewer"));
@@ -709,8 +709,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       window.dispatchEvent(new CustomEvent("hyax:player-top"));
     };
   }, [chatId, peer?.id, active]);
-  // Сообщение с музыкой, для которого выбирают плейлист.
-  const [playlistFor, setPlaylistFor] = useState<Message | null>(null);
+  // Музыка из сообщения (или всего альбома), для которой выбирают плейлист.
+  const [playlistFor, setPlaylistFor] = useState<PickTrack[] | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
   // Дублируем флаг отмены ссылкой: отпускание может прийти раньше, чем React
   // перерисует состояние, и запись ушла бы собеседнику вопреки жесту.
@@ -3783,6 +3783,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     );
   }
 
+  // Музыка сообщения: у альбома — все его аудио (меню открывается на первом
+  // сообщении альбома, остальные файлы — соседние сообщения с тем же album_id).
+  const pickOf = (x: Message): PickTrack => ({ key: x.id, message: x.id, title: fileTitle(x.file_name) });
+  const audioOf = (m: Message): PickTrack[] =>
+    (m.album_id ? messages.filter((x) => x.album_id === m.album_id && !x.voice_url && !x.video_url && !x.sticker?.file_url) : [m])
+      .filter((x) => !x.pending && isAudioFile(x.file_name, x.file_url))
+      .map(pickOf);
+  // Кнопки «в плейлист» у трека: не у шифрованных (сервер файл не прочтёт) и не у неотправленных.
+  const addAudio = (list: Message[]) => {
+    const ok = list.filter((x) => !x.pending);
+    return isSecret || !ok.length ? undefined : () => setPlaylistFor(ok.map(pickOf));
+  };
+  const menuAudio = menuMessage && !isSecret ? audioOf(menuMessage) : [];
+
   // Пункты меню сообщения — общий список для шторки и компактного меню.
   // Порядок — как в Telegram; «Реакция» только в меню у курсора (на
   // телефоне реакции — рядом над пузырём), «Выбрать» — отделено внизу.
@@ -3834,7 +3848,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           } },
         { label: tr("Редактировать"), icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
         { label: tr("В избранное"), icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
-        { label: tr("В плейлист"), icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && !isSecret && isAudioFile(menuMessage.file_name, menuMessage.file_url), onClick: () => { const m = menuMessage; closeMenu(); setPlaylistFor(m); } },
+        { label: tr("В плейлист"), icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && menuAudio.length > 0, onClick: () => { const list = menuAudio; closeMenu(); setPlaylistFor(list); } },
         { label: tr("Просмотры и реакции"), icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
         { label: tr("Пожаловаться"), icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
         { label: tr("Удалить у себя"), icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
@@ -4823,8 +4837,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                           {albumAudio.map((m) => (
                             <MessageAudioFile key={m.id} raw={m.file_url as string} name={m.file_name ?? null}
-                              isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(m)} />
+                              isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(m)} onAdd={addAudio([m])} />
                           ))}
+                          {albumAudio.length > 1 && addAudio(albumAudio) && (
+                            <AudioAddAll count={albumAudio.length} onClick={addAudio(albumAudio)!} />
+                          )}
                           {albumRest.map((m) => (
                             <MessageFile key={m.id} raw={m.file_url as string} name={m.file_name ?? null}
                               isOwn={isOwn} onSave={handleSaveFile} />
@@ -4843,7 +4860,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                               onError={() => setImageLoadErrors(prev => new Set(prev).add(message.id))}
                             />
                           ) : isAudioFile(message.file_name, message.file_url) ? (
-                            <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(message)} />
+                            <MessageAudioFile raw={message.file_url} name={message.file_name} isOwn={isOwn} onSave={handleSaveFile} onPlay={() => playAudioFrom(message)} onAdd={addAudio([message])} />
                           ) : (!message.download_only && isVideoFile(message.file_name, message.file_url)) ? (
                             <MessageVideoFile raw={message.file_url} dims={dimsOf(message.file_width, message.file_height)} poster={message.poster_url} />
                           ) : (
@@ -5635,7 +5652,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
 
       <PlaylistPicker
-        message={playlistFor}
+        tracks={playlistFor}
         onClose={() => setPlaylistFor(null)}
       />
 
