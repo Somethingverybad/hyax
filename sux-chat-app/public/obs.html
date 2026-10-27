@@ -6,15 +6,22 @@
 <meta name="robots" content="noindex">
 <title>WYX → OBS</title>
 <!--
-  Звук звонка WYX для OBS и похожих программ (источник «Браузер»).
+  Звук и видео звонка WYX для OBS и похожих программ (источник «Браузер»).
   Ссылку копируют в WYX: экран звонка → настройки → «Трансляция в OBS».
   Параметры после «#»:
     key   — ключ трансляции (обязателен);
-    peer  — id участника: только его голос (свой ползунок в микшере OBS);
+    peer  — id участника: только он (свой ползунок в микшере OBS);
     lang  — en / ko: язык подсказок (по умолчанию русский);
-    view  — avatars: аватарки участников, говорящий подсвечен; без него страница прозрачная;
+    view  — avatars: аватарки участников, говорящий подсвечен;
+            video: камеры с голосом — один участник во всё окно, весь звонок сеткой,
+                   камера выключена — аватарка;
+            screen: демонстрация экрана во всё окно, без звука;
+            без него страница прозрачная, только звук;
+    fit   — contain: камера целиком, с полями (по умолчанию заполняет окно);
+    names — 0 / 1: подписи на плитках (по умолчанию — в сетке есть, у одного нет);
+    audio — 0: без звука (видео отдельно от голоса);
     ws    — адрес сокета (только для разработки).
-  Звук сюда отдаёт приложение стримера на компьютере (src/lib/obsRelay.ts),
+  Звук и видео сюда отдаёт приложение стримера на компьютере (src/lib/obsRelay.ts),
   сервер лишь сводит их по ключу (backend/chat/obs.py).
 -->
 <style>
@@ -32,10 +39,18 @@
     font-size: 18px; box-shadow: 0 0 0 3px transparent; transition: box-shadow .12s; flex: none; }
   .p.on .a { box-shadow: 0 0 0 3px #34c759; }
   .n { padding: 3px 9px; border-radius: 8px; background: rgba(0, 0, 0, .6); text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+  #stage { position: fixed; inset: 0; }
+  .t { position: absolute; overflow: hidden; display: grid; place-items: center; box-shadow: inset 0 0 0 0 transparent; transition: box-shadow .12s; }
+  .t.on { box-shadow: inset 0 0 0 4px #34c759; }
+  .t video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .t.fit video { object-fit: contain; }
+  .t .a { width: 30%; height: auto; aspect-ratio: 1; max-width: 160px; font-size: 48px; }
+  .t .n { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
 <div id="status" hidden><i></i><span id="statusText"></span></div>
+<div id="stage"></div>
 <div id="people"></div>
 <script>
 (function () {
@@ -44,6 +59,11 @@
   var key = P.get("key") || "";
   var want = P.get("peer") || null;
   var view = P.get("view") || "";
+  // Что просим у приложения: камеры (с голосом) или демонстрации (без звука).
+  var vid = view === "video" ? "cam" : view === "screen" ? "screen" : null;
+  var wantAudio = view !== "screen" && P.get("audio") !== "0";
+  var fit = P.get("fit") === "contain";
+  var names = P.get("names");
   var wsBase = P.get("ws") || ((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   var page = Math.random().toString(36).slice(2) + Date.now().toString(36);
   // Подсказки — на языке приложения (lang в ссылке), по умолчанию русский.
@@ -79,6 +99,8 @@
   var $status = document.getElementById("status");
   var $text = document.getElementById("statusText");
   var $people = document.getElementById("people");
+  var $stage = document.getElementById("stage");
+  var tiles = {};          // id плитки → { el, video, stream }
 
   function status(text, kind) {
     if (!text) { $status.hidden = true; return; }
@@ -94,7 +116,8 @@
   }
 
   function refresh() {
-    var playing = Object.keys(media).length > 0;
+    // Демонстрации может и не быть — тогда соединение есть, а потоков нет.
+    var playing = Object.keys(media).length > 0 || (!!vid && !!pc && pc.connectionState === "connected");
     if (fatal) return;
     if (needClick) status(T.noClick, "err");
     else if (!ws || ws.readyState !== 1) status(T.reconnect, "err");
@@ -106,6 +129,7 @@
   }
 
   function render() {
+    renderStage();
     if (view !== "avatars") { $people.textContent = ""; return; }
     var html = document.createDocumentFragment();
     roster.forEach(function (r) {
@@ -127,9 +151,77 @@
     $people.appendChild(html);
   }
 
-  // Кто говорит — по громкости потока (только для view=avatars).
+  // Плитки видео: сетка, где плитки выходят крупнее всего (16:9, неполный ряд по центру).
+  function grid(n, W, H) {
+    if (!n) return [];
+    var best = null;
+    for (var cols = 1; cols <= n; cols++) {
+      var rows = Math.ceil(n / cols), w = W / cols, h = H / rows;
+      if (w / h > 16 / 9) w = h * 16 / 9; else h = w * 9 / 16;
+      // Поровну по площади — шире: двое в окне 16:9 встают рядом, а не друг под другом.
+      if (!best || w * h >= best.w * best.h - 1) best = { cols: cols, rows: rows, w: w, h: h };
+    }
+    var out = [], y0 = (H - best.rows * best.h) / 2;
+    for (var i = 0; i < n; i++) {
+      var row = Math.floor(i / best.cols), inRow = row === best.rows - 1 ? n - best.cols * (best.rows - 1) : best.cols;
+      var x0 = (W - inRow * best.w) / 2;
+      out.push({ x: x0 + (i % best.cols) * best.w, y: y0 + row * best.h, w: best.w, h: best.h });
+    }
+    return out;
+  }
+
+  function renderStage() {
+    if (!vid) return;
+    var items = roster.filter(function (r) { return (!want || r.id === want) && (vid === "cam" || r.screen); });
+    var W = innerWidth, H = innerHeight;
+    // Один — во всё окно, без подписи; несколько — сеткой с подписями.
+    var rects = items.length === 1 ? [{ x: 0, y: 0, w: W, h: H }] : grid(items.length, W, H);
+    var label = names === "1" || (names !== "0" && items.length > 1);
+    var seen = {};
+    items.forEach(function (r, i) {
+      var id = vid === "screen" ? r.screen : r.stream;
+      seen[id] = true;
+      var t = tiles[id];
+      if (!t) {
+        var el = document.createElement("div");
+        el.className = "t" + (fit || vid === "screen" ? " fit" : "");
+        el.dataset.stream = r.stream;
+        var v = document.createElement("video");
+        v.muted = true; v.autoplay = true; v.playsInline = true;
+        var a = document.createElement("div"); a.className = "a";
+        var n = document.createElement("div"); n.className = "n";
+        el.appendChild(v); el.appendChild(a); el.appendChild(n);
+        $stage.appendChild(el);
+        t = tiles[id] = { el: el, video: v, avatar: a, name: n, stream: null };
+      }
+      var m = media[id];
+      // Видео могло прийти в поток позже голоса — привязываем заново.
+      var nv = m ? m.stream.getVideoTracks().length : 0;
+      if (m && (t.stream !== m.stream || t.nv !== nv)) { t.stream = m.stream; t.nv = nv; t.video.srcObject = m.stream; t.video.play().catch(function () {}); }
+      var live = !!m && m.stream.getVideoTracks().some(function (x) { return x.readyState === "live"; });
+      var show = live && (vid === "screen" || r.video);
+      t.video.style.display = show ? "" : "none";
+      // Камера выключена — аватарка (у демонстрации её нет: пусто, пока не придёт кадр).
+      t.avatar.style.display = show || vid === "screen" ? "none" : "";
+      if (r.avatar) { t.avatar.style.backgroundImage = "url(\"" + String(r.avatar).replace(/"/g, "") + "\")"; t.avatar.textContent = ""; }
+      else { t.avatar.style.backgroundImage = ""; t.avatar.textContent = (r.name || "?").slice(0, 1).toUpperCase(); }
+      t.name.textContent = r.name || "";
+      t.name.style.display = label ? "" : "none";
+      var q = rects[i];
+      t.el.style.left = q.x + "px"; t.el.style.top = q.y + "px"; t.el.style.width = q.w + "px"; t.el.style.height = q.h + "px";
+    });
+    Object.keys(tiles).forEach(function (id) {
+      if (seen[id]) return;
+      tiles[id].video.srcObject = null;
+      tiles[id].el.remove();
+      delete tiles[id];
+    });
+  }
+  addEventListener("resize", renderStage);
+
+  // Кто говорит — по громкости потока (аватарки и сетка камер).
   function meter(entry) {
-    if (view !== "avatars") return;
+    if (view !== "avatars" && view !== "video") return;
     try {
       actx = actx || new AudioContext();
       var an = actx.createAnalyser();
@@ -149,13 +241,18 @@
       m.level = Math.max(peak / 128, (m.level || 0) * 0.85);
       var row = $people.querySelector('[data-stream="' + id + '"]');
       if (row) row.classList.toggle("on", m.level > 0.06);
+      // В сетке подсвечиваем говорящего, у одного во всё окно — нет.
+      var tile = $stage.querySelector('[data-stream="' + id + '"]');
+      if (tile) tile.classList.toggle("on", m.level > 0.06 && Object.keys(tiles).length > 1);
     });
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
 
   function attach(stream) {
-    if (!stream || media[stream.id]) return;
+    if (!stream) return;
+    // Видео приходит в тот же поток, что и голос, — плитке хватит перерисовки.
+    if (media[stream.id]) { refresh(); return; }
     var audio = new Audio();
     audio.autoplay = true;
     audio.srcObject = stream;
@@ -164,7 +261,8 @@
     media[stream.id] = entry;
     meter(entry);
     stream.onremovetrack = function () {
-      if (!stream.getAudioTracks().some(function (t) { return t.readyState === "live"; })) detach(stream.id);
+      if (!stream.getTracks().some(function (t) { return t.readyState === "live"; })) detach(stream.id);
+      else refresh();
     };
     refresh();
   }
@@ -187,6 +285,11 @@
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "signal", data: data }));
   }
 
+  // video и audio — что слать этой странице; старое приложение их не знает и шлёт только звук.
+  function hello() {
+    signal({ kind: "hello", page: page, want: want, video: vid || undefined, audio: wantAudio });
+  }
+
   // Голос пересылается второй раз — даём Opus запас битрейта, чтобы не мылило.
   function boostOpus(sdp) {
     var m = /a=rtpmap:(\d+) opus\/48000/i.exec(sdp);
@@ -195,9 +298,23 @@
     return re.test(sdp) && !/maxaveragebitrate/.test(sdp) ? sdp.replace(re, "$1;maxaveragebitrate=128000") : sdp;
   }
 
+  // Видео тоже кодируется второй раз, а соединение — на этом же компьютере:
+  // сразу высокий битрейт, без разгона с низкого (иначе первые секунды мыло).
+  function boostVideo(sdp) {
+    var X = "x-google-start-bitrate=3000;x-google-min-bitrate=1000;x-google-max-bitrate=8000";
+    var pts = {};
+    sdp.replace(/a=rtpmap:(\d+) (VP8|VP9|H264|AV1)\/90000/gi, function (all, pt) { pts[pt] = true; return all; });
+    Object.keys(pts).forEach(function (pt) {
+      var fm = new RegExp("a=fmtp:" + pt + " [^\\r\\n]*", "g");
+      if (fm.test(sdp)) sdp = sdp.replace(fm, function (l) { return /x-google-/.test(l) ? l : l + ";" + X; });
+      else sdp = sdp.replace(new RegExp("(a=rtpmap:" + pt + " [^\\r\\n]*)", "g"), "$1\r\na=fmtp:" + pt + " " + X);
+    });
+    return sdp;
+  }
+
   function onSignal(d) {
     if (!d || !d.kind) return;
-    if (d.kind === "ping") { signal({ kind: "hello", page: page, want: want }); return; }
+    if (d.kind === "ping") { hello(); return; }
     if (d.page !== page) return;
     if (d.kind === "offer") {
       // Новое приложение (перезапустили WYX) — начинаем заново.
@@ -212,7 +329,7 @@
       var cur = pc;
       cur.setRemoteDescription({ type: "offer", sdp: d.sdp })
         .then(function () { return cur.createAnswer(); })
-        .then(function (a) { return cur.setLocalDescription({ type: "answer", sdp: boostOpus(a.sdp) }); })
+        .then(function (a) { return cur.setLocalDescription({ type: "answer", sdp: vid ? boostVideo(boostOpus(a.sdp)) : boostOpus(a.sdp) }); })
         .then(function () {
           signal({ kind: "answer", page: page, to: owner, sdp: cur.localDescription.sdp });
           iceQueue.splice(0).forEach(function (c) { cur.addIceCandidate(c).catch(function () {}); });
@@ -242,7 +359,7 @@
         ice = m.ice_servers || [];
         // После переподключения приложение заведёт соединение заново — и мы.
         closePc(); owner = null; roster = [];
-        signal({ kind: "hello", page: page, want: want });
+        hello();
         refresh();
       } else if (m.type === "auth_error" || m.type === "revoked") {
         fatal = true;

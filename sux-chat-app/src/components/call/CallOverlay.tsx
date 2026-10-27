@@ -4,6 +4,7 @@ import { readCache } from "@/lib/session-cache";
 import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
 import type { AudioLevels, PeerRect, VideoRect } from "@/lib/nativeCall";
+import type { ObsView } from "@/lib/obsRelay";
 import { Capacitor } from "@capacitor/core";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio, ScreenShare, ScreenShareOff, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -78,11 +79,12 @@ interface CallOverlayProps {
 
 export interface CallObs {
   on: boolean;
-  /** Сколько страниц OBS сейчас получают звук. */
+  /** Сколько страниц OBS сейчас получают звонок. */
   pages: number;
   onToggle: () => void;
-  /** Скопировать ссылку: весь звонок (без id) или один участник. */
-  onCopy: (peerId?: string | null) => void;
+  /** Скопировать ссылку: весь звонок (без id) или один участник; view — видео:
+   *  камеры с голосом или демонстрация экрана (без него — только звук). */
+  onCopy: (peerId?: string | null, view?: ObsView | null) => void;
   /** Новая ссылка — прежние перестают работать. */
   onRenew: () => void;
   people: { id: string; name: string }[];
@@ -170,6 +172,8 @@ const CallOverlay = ({
   // «Мята»: экран звонка 1:1 без видео — по макету (аватар 98, крупные кнопки, док).
   const mint = useMint();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Что передавать в OBS по ссылке: звук, камеры или демонстрацию.
+  const [obsKind, setObsKind] = useState<"audio" | ObsView>("audio");
   const [stageMode, setStageModeState] = useState<StageMode>(readStageMode);
   const setStageMode = (m: StageMode) => {
     setStageModeState(m);
@@ -444,28 +448,40 @@ const CallOverlay = ({
                 <span className="block text-body font-medium">{t("Трансляция в OBS")}</span>
                 <span className="block text-caption text-subtle">
                   {!obs.on
-                    ? t("Звук звонка — в OBS или другую программу для стримов. Участники увидят, что звонок транслируется")
+                    ? t("Звук и видео звонка — в OBS или другую программу для стримов. Участники увидят, что звонок транслируется")
                     : obs.pages
-                      ? t("Звук идёт в OBS: источников — {n}", { n: obs.pages })
+                      ? t("Звонок идёт в OBS: источников — {n}", { n: obs.pages })
                       : t("Ждём OBS: добавьте ссылку как источник «Браузер»")}
                 </span>
               </span>
               <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={obs.on} onChange={obs.onToggle} aria-label={t("Трансляция в OBS")} />
             </label>
+            <div className="flex rounded-md bg-surface-2 p-0.5" role="tablist" aria-label={t("Что передавать в OBS")}>
+              {([["audio", t("Звук")], ["cam", t("Видео")], ["screen", t("Экран")]] as const).map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={obsKind === k} onClick={() => setObsKind(k)}
+                  className={cn("flex-1 rounded px-2 py-1 text-small", obsKind === k ? "bg-surface-1 text-foreground shadow-sm font-medium" : "text-subtle")}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="rounded-md bg-surface-2 divide-y divide-border">
-              <button type="button" onClick={() => obs.onCopy(null)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-small active:bg-surface-3">
+              <button type="button" onClick={() => obs.onCopy(null, obsKind === "audio" ? null : obsKind)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-small active:bg-surface-3">
                 <Copy className="w-4 h-4 shrink-0 text-subtle" />
-                <span className="flex-1 min-w-0 truncate">{t("Ссылка: весь звонок")}</span>
+                <span className="flex-1 min-w-0 truncate">{obsKind === "screen" ? t("Ссылка: кто показывает экран") : t("Ссылка: весь звонок")}</span>
               </button>
               {obs.people.map((p) => (
-                <button key={p.id} type="button" onClick={() => obs.onCopy(p.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-small active:bg-surface-3">
+                <button key={p.id} type="button" onClick={() => obs.onCopy(p.id, obsKind === "audio" ? null : obsKind)} className="w-full flex items-center gap-2 px-3 py-2 text-left text-small active:bg-surface-3">
                   <Copy className="w-4 h-4 shrink-0 text-subtle" />
                   <span className="flex-1 min-w-0 truncate">{t("Ссылка: {name}", { name: p.name })}</span>
                 </button>
               ))}
             </div>
             <p className="text-caption text-subtle">
-              {t("В OBS: Источники → «+» → Браузер, вставьте ссылку и включите «Управлять звуком через OBS». Ссылка на одного участника — отдельный ползунок в микшере. Свой микрофон в OBS можно не добавлять: ваш голос тоже идёт из звонка.")}
+              {obsKind === "audio"
+                ? t("В OBS: Источники → «+» → Браузер, вставьте ссылку и включите «Управлять звуком через OBS». Ссылка на одного участника — отдельный ползунок в микшере. Свой микрофон в OBS можно не добавлять: ваш голос тоже идёт из звонка.")
+                : obsKind === "cam"
+                  ? t("Камера и голос без интерфейса WYX, фон прозрачный: один участник — во всё окно, весь звонок — сеткой. Камера выключена — аватарка. Каждую ссылку — отдельным источником «Браузер», размер — как у сцены.")
+                  : t("Демонстрация экрана во всё окно, без звука и интерфейса WYX. «Кто показывает» — того, кто показывает сейчас; никто — источник прозрачный.")}
             </p>
             <button type="button" onClick={obs.onRenew} className="text-caption text-subtle underline underline-offset-2">
               {t("Новая ссылка (прежние перестанут работать)")}

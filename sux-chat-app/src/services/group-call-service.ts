@@ -207,6 +207,8 @@ export class GroupCallService {
 
   /** Мой микрофон (для трансляции в OBS); нет звонка — null. */
   getLocalStream(): MediaStream | null { return this.localStream; }
+  /** Мой экран, пока показываю (трансляция в OBS). */
+  getScreenStream(): MediaStream | null { return this.screen; }
 
   /** Трансляция в OBS включена — участники увидят пометку на экране звонка. */
   setBroadcasting(on: boolean): void {

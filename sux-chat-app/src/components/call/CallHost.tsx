@@ -19,7 +19,7 @@ import ScreenPicker from "@/components/call/ScreenPicker";
 import { micMissingText } from "@/lib/callMic";
 import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
-import { ObsRelay, obsLink, type ObsSource } from "@/lib/obsRelay";
+import { ObsRelay, obsLink, type ObsSource, type ObsView } from "@/lib/obsRelay";
 import { getMicSettings, onMicSettings, setMicSettings, MIC_TRACK_EVENT } from "@/lib/micSettings";
 
 /** Чат из кеша списка (session-cache «chats») — ровно то, что нужно звонку. */
@@ -555,9 +555,9 @@ const CallHost = () => {
     if (r.active) { r.stop(); setObsOn(false); }
     else { r.start(); setObsOn(true); }
   };
-  const copyObsLink = async (peerId?: string | null, renew = false) => {
+  const copyObsLink = async (peerId?: string | null, renew = false, view?: ObsView | null) => {
     try {
-      const link = obsLink(await api.obsKey(renew), peerId);
+      const link = obsLink(await api.obsKey(renew), peerId, view);
       await writeClipboard(link);
       toast.success(renew ? tr("Новая ссылка скопирована — прежние больше не работают") : tr("Ссылка для OBS скопирована"));
     } catch (e) {
@@ -571,7 +571,7 @@ const CallHost = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obsOn, callState, groupState]);
   // Состав и дорожки поменялись — странице OBS тоже.
-  useEffect(() => { obsRef.current?.sync(); }, [groupStreams, groupPeers, remoteStream, callState, groupState, peopleInfo, obsOn]);
+  useEffect(() => { obsRef.current?.sync(); }, [groupStreams, groupPeers, groupScreens, groupMedia, remoteStream, media, callState, groupState, peopleInfo, obsOn]);
   useEffect(() => {
     const h = () => obsRef.current?.sync();
     window.addEventListener(MIC_TRACK_EVENT, h);
@@ -688,19 +688,41 @@ const CallHost = () => {
     },
   ];
 
-  // Что слышит страница OBS: каждый участник своей дорожкой и мой микрофон.
+  // Что получает страница OBS: каждый участник своей дорожкой и мой микрофон,
+  // камеры и демонстрации — для страниц с видео.
   obsSourcesRef.current = () => {
     const me = { id: myInfo?.id || "me", name: myInfo?.username || tr("Вы"), avatarUrl: myInfo?.avatar_url, self: true };
     if (groupState !== "idle") {
+      const g = groupWeb();
       return [
-        ...groupParticipants.map((p) => ({ id: p.id, name: p.name, avatarUrl: p.avatarUrl, track: p.stream?.getAudioTracks()[0] ?? null })),
-        { ...me, track: groupWeb()?.getLocalStream()?.getAudioTracks()[0] ?? null },
+        ...groupParticipants.map((p) => {
+          const m = groupMedia?.peers[p.id];
+          return {
+            id: p.id, name: p.name, avatarUrl: p.avatarUrl, track: p.stream?.getAudioTracks()[0] ?? null,
+            video: p.stream?.getVideoTracks()[0] ?? null, videoOn: !!m?.video,
+            screen: m?.screen ? groupScreens.find((x) => x.peerId === p.id)?.stream.getVideoTracks()[0] ?? null : null,
+          };
+        }),
+        {
+          ...me, track: g?.getLocalStream()?.getAudioTracks()[0] ?? null,
+          video: groupMedia?.localVideo?.getVideoTracks()[0] ?? null, videoOn: !!groupMedia?.localOn,
+          screen: g?.getScreenStream()?.getVideoTracks()[0] ?? null,
+        },
       ];
     }
     if (callState !== "idle" && callPeer) {
+      const svc = webSvc();
       return [
-        { id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, track: remoteStream?.getAudioTracks()[0] ?? null },
-        { ...me, track: webSvc()?.getLocalStream()?.getAudioTracks()[0] ?? null },
+        {
+          id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, track: remoteStream?.getAudioTracks()[0] ?? null,
+          video: remoteStream?.getVideoTracks()[0] ?? null, videoOn: !!media?.remoteVideo,
+          screen: media?.remoteScreen?.getVideoTracks()[0] ?? null,
+        },
+        {
+          ...me, track: svc?.getLocalStream()?.getAudioTracks()[0] ?? null,
+          video: media?.localVideo?.getVideoTracks()[0] ?? null, videoOn: !!media?.localOn,
+          screen: svc?.getScreenStream()?.getVideoTracks()[0] ?? null,
+        },
       ];
     }
     return [];
@@ -723,7 +745,7 @@ const CallHost = () => {
     on: obsOn,
     pages: obsPages,
     onToggle: toggleObs,
-    onCopy: (peerId?: string | null) => void copyObsLink(peerId),
+    onCopy: (peerId?: string | null, view?: ObsView | null) => void copyObsLink(peerId, false, view),
     onRenew: () => void copyObsLink(null, true),
     people: obsPeople,
   } : undefined;
