@@ -16,6 +16,7 @@ import { hasNativeCalls, nativeCall, type AudioLevels, type PeerRect, type Video
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
 import ScreenPicker from "@/components/call/ScreenPicker";
+import { micMissingText } from "@/lib/callMic";
 import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
 import { ObsRelay, obsLink, type ObsSource } from "@/lib/obsRelay";
@@ -657,6 +658,9 @@ const CallHost = () => {
     const st = groupStreams.find((x) => x.peerId === id);
     return { id, name: info.name, avatarUrl: info.avatarUrl, stream: st?.stream || null, connected: !!st || hasNativeCalls() };
   });
+  // Микрофон не открылся (lib/callMic) — звонок идёт без голоса, отвечать можно в чате.
+  const mic = groupState !== "idle" ? groupMedia : media;
+  const micMissing = mic?.micMissing ? micMissingText(mic.micMissingReason, tr) : null;
   // Плитки группового звонка: участники и я (последним).
   const myInfo = readCache<{ id?: string; username?: string; avatar_url?: string | null }>("user");
   const groupTiles: StageTile[] = [
@@ -676,7 +680,7 @@ const CallHost = () => {
     }),
     {
       id: myInfo?.id || "me", name: myInfo?.username || tr("Вы"), avatarUrl: myInfo?.avatar_url, self: true,
-      stream: groupMedia?.localVideo || null, video: !!groupMedia?.localOn, mirrored: groupMedia?.front ?? true, muted,
+      stream: groupMedia?.localVideo || null, video: !!groupMedia?.localOn, mirrored: groupMedia?.front ?? true, muted: muted || !!micMissing,
     },
   ];
 
@@ -722,7 +726,10 @@ const CallHost = () => {
   const noise = !hasNativeCalls() ? { on: noiseOn, onToggle: () => void toggleNoise() } : undefined;
 
   const common = {
-    muted,
+    muted: muted || !!micMissing,
+    micMissing,
+    // Переписка звонка: звонок сворачивается и продолжается, чат — на экране.
+    onOpenChat: callChat?.id ? () => { setMinimized(true); openChat(callChat.id, callChat.name); } : undefined,
     broadcast: broadcastText,
     obs,
     noise,
@@ -809,6 +816,7 @@ const CallHost = () => {
           onReject={rejectCall}
           onHangup={hangup}
           onToggleMute={toggleMute}
+          peerNoMic={!!media?.peerNoMic}
         />
       ) : null}
       {addToCallOpen && <AddToCall candidates={callCandidates} onClose={() => setAddToCallOpen(false)} onConfirm={addToCall} />}

@@ -2,6 +2,7 @@ import { WebSocketService } from "@/services/websocket";
 import { micConstraints, micKey, onMicSettings, swapMicTrack } from "@/lib/micSettings";
 import { t as tr } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
+import { openCallMic } from "@/lib/callMic";
 import type { AudioLevels } from "@/lib/nativeCall";
 import { canCaptureScreen, isScreenTransceiver, openScreenCapture, sdpCanVideo, tuneScreenSender, type AdoptedVideo } from "./call-service";
 import { myDeviceId } from "./deviceId";
@@ -55,6 +56,9 @@ export type GroupMedia = {
   canScreen?: boolean;
   /** Захват есть, но никто из участников экран не увидит (телефоны, старые версии). */
   screenUnavailable?: boolean;
+  /** Мой микрофон не открылся — меня не слышно (lib/callMic); участники видят «микрофон выключен». */
+  micMissing?: boolean;
+  micMissingReason?: string;
 };
 
 export const emptyPeerMedia = (): GroupPeerMedia => ({ video: false, muted: false, canVideo: false, known: false, connected: false });
@@ -98,6 +102,9 @@ export class GroupCallService {
   /** Параметры, с которыми открыт микрофон (micKey), и очередь его подмен. */
   private micOpenedWith = "";
   private micChain: Promise<void> = Promise.resolve();
+  /** Микрофон не открылся — в соединениях тихая дорожка. */
+  private micMissing = false;
+  private micMissingReason: string | undefined;
   /** Я транслирую звонок в OBS — участники узнают сигналом webrtc_media. */
   private broadcasting = false;
   private callId: string | null = null;
@@ -134,7 +141,7 @@ export class GroupCallService {
   /** Переоткрыть микрофон с новыми настройками и подменить дорожку во всех соединениях. */
   private applyMicSettings(): Promise<void> {
     const key = micKey();
-    if (!this.localStream || this.micOpenedWith === key) return this.micChain;
+    if (!this.localStream || this.micMissing || this.micOpenedWith === key) return this.micChain;
     this.micOpenedWith = key;
     this.micChain = this.micChain.catch(() => {}).then(() => {
       if (this.localStream) return swapMicTrack(this.localStream, this.peers.values());
@@ -163,10 +170,12 @@ export class GroupCallService {
   /** Личный звонок стал групповым: забираем готовое соединение из
    *  OneToOneCallService, не пересобирая его — разговор не прерывается,
    *  камера тоже. */
-  adopt(input: { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null; video?: AdoptedVideo }): void {
+  adopt(input: { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null; video?: AdoptedVideo; micMissing?: boolean; micMissingReason?: string }): void {
     this.callId = input.callId;
     this.chatId = input.chatId;
     this.localStream = input.localStream;
+    this.micMissing = !!input.micMissing;
+    this.micMissingReason = input.micMissingReason;
     // Микрофон открыт личным звонком с теми же настройками.
     this.micOpenedWith = micKey();
     const pc = input.pc;
@@ -203,11 +212,13 @@ export class GroupCallService {
   }
 
   isMuted(): boolean {
+    if (this.micMissing) return true;
     const track = this.localStream?.getAudioTracks()[0];
     return track ? !track.enabled : false;
   }
 
   toggleMute(): boolean {
+    if (this.micMissing) return true; // микрофона нет — включать нечего
     const tracks = this.localStream?.getAudioTracks() ?? [];
     if (!tracks.length) return false;
     const willMute = tracks[0].enabled;
@@ -230,6 +241,8 @@ export class GroupCallService {
       screenOn: !!this.screen,
       canScreen: canCaptureScreen() && viewers,
       screenUnavailable: canCaptureScreen() && peers.length > 0 && !viewers && peers.every((m) => m.connected),
+      micMissing: this.micMissing,
+      micMissingReason: this.micMissingReason,
     };
   }
 
@@ -526,10 +539,12 @@ export class GroupCallService {
   private async ensureMic(): Promise<void> {
     if (this.localStream) return;
     this.micOpenedWith = micKey();
-    this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: micConstraints(),
-      video: false,
-    });
+    // Не открылся микрофон — звонок всё равно идёт, без голоса (lib/callMic).
+    const mic = await openCallMic(micConstraints());
+    this.localStream = mic.stream;
+    this.micMissing = mic.missing;
+    this.micMissingReason = mic.reason;
+    this.emitMedia();
   }
 
   private async ensurePeer(peerId: string, offerer: boolean): Promise<RTCPeerConnection> {
@@ -628,6 +643,8 @@ export class GroupCallService {
     [...this.peers.keys()].forEach((id) => this.dropPeer(id));
     this.localStream?.getTracks().forEach((t) => t.stop());
     this.localStream = null;
+    this.micMissing = false;
+    this.micMissingReason = undefined;
     this.cam?.getTracks().forEach((t) => t.stop());
     this.cam = null;
     this.screen?.getTracks().forEach((t) => t.stop());

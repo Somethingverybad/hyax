@@ -2,6 +2,7 @@ import { WebSocketService } from "@/services/websocket";
 import { getMicSettings, micConstraints, micKey, onMicSettings, setMicSettings, swapMicTrack } from "@/lib/micSettings";
 import { t } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
+import { openCallMic } from "@/lib/callMic";
 import { myDeviceId } from "./deviceId";
 
 type CallType = "audio" | "video";
@@ -41,6 +42,8 @@ type SignalData = {
   /** webrtc_media: собеседник показывает экран. call_accept: отвечающий
    *  умеет смотреть демонстрацию — звонящий заведёт под неё второй канал. */
   screen?: boolean;
+  /** webrtc_media: у собеседника нет микрофона (говорит одна сторона, отвечает в чате). */
+  nomic?: boolean;
 };
 
 /** Видео и шумодав в звонке — для экрана звонка (CallHost). */
@@ -76,6 +79,11 @@ export type CallMedia = {
   screenUnavailable?: boolean;
   /** Демонстрация собеседника — отдельным потоком (камера остаётся своей). */
   remoteScreen?: MediaStream | null;
+  /** Мой микрофон не открылся — меня не слышно (lib/callMic). */
+  micMissing?: boolean;
+  micMissingReason?: string;
+  /** У собеседника нет микрофона. */
+  peerNoMic?: boolean;
 };
 
 /** Захват экрана есть: браузер на компьютере или программа WYX. На телефонах
@@ -194,6 +202,10 @@ export class OneToOneCallService {
   private remoteScreen = false;
   private remoteScreenStream: MediaStream | null = null;
   private micOpenedWith = "";
+  /** Микрофон не открылся — в соединении тихая дорожка (lib/callMic). */
+  private micMissing = false;
+  private micMissingReason: string | undefined;
+  private peerNoMic = false;
   /** Подмены микрофона — по очереди: две разом остановили бы не ту дорожку. */
   private micChain: Promise<void> = Promise.resolve();
   private localStream: MediaStream | null = null;
@@ -246,6 +258,9 @@ export class OneToOneCallService {
       canScreen: canCaptureScreen() && !!this.screenTransceiver,
       screenUnavailable: canCaptureScreen() && this.peerKnown && !this.screenTransceiver,
       remoteScreen: this.remoteScreen ? this.remoteScreenStream : null,
+      micMissing: this.micMissing,
+      micMissingReason: this.micMissingReason,
+      peerNoMic: this.peerNoMic,
     };
   }
 
@@ -336,7 +351,7 @@ export class OneToOneCallService {
     if (!this.currentCallId) return;
     this.wsService.send({
       type: "webrtc_media",
-      data: { chat_id: this.chatId, call_id: this.currentCallId, to_user_id: this.targetUserId, video: !!this.localVideoTrack, obs: this.broadcasting, screen: !!this.screenStream },
+      data: { chat_id: this.chatId, call_id: this.currentCallId, to_user_id: this.targetUserId, video: !!this.localVideoTrack, obs: this.broadcasting, screen: !!this.screenStream, nomic: this.micMissing },
     });
   }
 
@@ -361,7 +376,7 @@ export class OneToOneCallService {
   /** Переоткрыть микрофон, если настройки разошлись с теми, с которыми он открыт. */
   private applyMicSettings(): Promise<void> {
     const key = micKey();
-    if (!this.localStream || this.micOpenedWith === key) return this.micChain;
+    if (!this.localStream || this.micMissing || this.micOpenedWith === key) return this.micChain;
     this.micOpenedWith = key;
     this.micChain = this.micChain.catch(() => {}).then(() => {
       if (this.localStream) return swapMicTrack(this.localStream, this.peerConnection ? [this.peerConnection] : []);
@@ -520,6 +535,7 @@ export class OneToOneCallService {
   }
 
   toggleMute(): boolean {
+    if (this.micMissing) return true; // микрофона нет — включать нечего
     if (!this.localStream) {
       return false;
     }
@@ -632,6 +648,7 @@ export class OneToOneCallService {
         this.remoteVideo = !!data.video;
         this.peerObs = !!data.obs;
         this.remoteScreen = !!data.screen;
+        this.peerNoMic = !!data.nomic;
         this.emitMedia();
         break;
       default:
@@ -653,6 +670,7 @@ export class OneToOneCallService {
   }
 
   isMuted(): boolean {
+    if (this.micMissing) return true;
     const track = this.localStream?.getAudioTracks()[0];
     return track ? !track.enabled : false;
   }
@@ -663,10 +681,12 @@ export class OneToOneCallService {
     }
 
     this.micOpenedWith = micKey();
-    this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: micConstraints(),
-      video: false,
-    });
+    // Не открылся микрофон — звонок всё равно идёт, без голоса (lib/callMic).
+    const mic = await openCallMic(micConstraints());
+    this.localStream = mic.stream;
+    this.micMissing = mic.missing;
+    this.micMissingReason = mic.reason;
+    this.emitMedia();
   }
 
   private async ensurePeerConnection(): Promise<void> {
@@ -729,7 +749,7 @@ export class OneToOneCallService {
         this.setState("active");
         // Камеру могли включить, пока звонок ещё звонил, — тот сигнал
         // собеседник пропустил (до ответа медиасигналы не принимаются).
-        if (this.localVideoTrack || this.screenStream) this.sendMedia();
+        if (this.localVideoTrack || this.screenStream || this.micMissing) this.sendMedia();
       }
       if (state === "closed") {
         console.error("❌ [CallService] Соединение закрыто");
@@ -949,7 +969,7 @@ export class OneToOneCallService {
 
   /** Отдать живое соединение групповому сервису (добор участников): ничего
    *  не закрываем и не сообщаем об окончании — звонок продолжается. */
-  detach(): { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null; video: AdoptedVideo } | null {
+  detach(): { callId: string; chatId: string; peerId: string; pc: RTCPeerConnection; localStream: MediaStream | null; remoteStream: MediaStream | null; video: AdoptedVideo; micMissing?: boolean; micMissingReason?: string } | null {
     if (!this.peerConnection || !this.currentCallId || !this.targetUserId) return null;
     // Камера и видеоканал переходят в групповой звонок как есть.
     const video: AdoptedVideo = {
@@ -964,7 +984,10 @@ export class OneToOneCallService {
     const out = {
       callId: this.currentCallId, chatId: this.chatId, peerId: this.targetUserId,
       pc: this.peerConnection, localStream: this.localStream, remoteStream: this.remoteStream, video,
+      micMissing: this.micMissing, micMissingReason: this.micMissingReason,
     };
+    this.micMissing = false;
+    this.micMissingReason = undefined;
     this.peerConnection = null;
     this.localStream = null;
     this.remoteStream = null;
@@ -1000,6 +1023,8 @@ export class OneToOneCallService {
   }
 
   private cleanupLocalStream(): void {
+    this.micMissing = false;
+    this.micMissingReason = undefined;
     if (!this.localStream) {
       return;
     }
@@ -1015,6 +1040,7 @@ export class OneToOneCallService {
     this.peerCanScreen = false;
     this.remoteScreen = false;
     this.remoteScreenStream = null;
+    this.peerNoMic = false;
     this.videoTransceiver = null;
     this.remoteVideo = false;
     this.peerObs = false;

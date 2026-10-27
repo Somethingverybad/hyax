@@ -2189,5 +2189,12 @@ const en: Record<string, string> = {
   "Показать": "Share",
   "{name} · экран": "{name} · screen",
   "Участник": "Participant",
+  // Звонок без микрофона и чат звонка.
+  "Нет доступа к микрофону — вас не слышно. Разрешите его в настройках, а пока можно отвечать в чате": "No access to the microphone — nobody can hear you. Allow it in settings; meanwhile you can reply in the chat",
+  "Микрофон занят другой программой — вас не слышно. Можно отвечать в чате": "The microphone is busy in another app — nobody can hear you. You can reply in the chat",
+  "Микрофон не найден — вас не слышно. Можно отвечать в чате": "No microphone found — nobody can hear you. You can reply in the chat",
+  "Микрофон недоступен": "Microphone unavailable",
+  "Чат звонка": "Call chat",
+  "Собеседник без микрофона — отвечает в чате": "The other person has no microphone and replies in the chat",
 };
 export default en;

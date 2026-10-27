@@ -5,7 +5,7 @@ import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
 import type { AudioLevels, PeerRect, VideoRect } from "@/lib/nativeCall";
 import { Capacitor } from "@capacitor/core";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio, ScreenShare, ScreenShareOff } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio, ScreenShare, ScreenShareOff, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { RailCallPortal } from "@/components/call/RailCall";
@@ -68,6 +68,12 @@ interface CallOverlayProps {
   minimized?: boolean;
   onMinimize?: () => void;
   onExpand?: () => void;
+  /** Мой микрофон не открылся — текст подсказки (lib/callMic); звонок идёт без голоса. */
+  micMissing?: string | null;
+  /** У собеседника нет микрофона — он отвечает в чате. */
+  peerNoMic?: boolean;
+  /** Открыть переписку звонка (звонок сворачивается и продолжается). */
+  onOpenChat?: () => void;
 }
 
 export interface CallObs {
@@ -149,6 +155,9 @@ const CallOverlay = ({
   minimized,
   onMinimize,
   onExpand,
+  micMissing,
+  peerNoMic,
+  onOpenChat,
   video,
   noise,
   obs,
@@ -287,9 +296,10 @@ const CallOverlay = ({
     <>
       <button
         type="button"
-        onClick={onToggleMute}
-        className={roundBtn(muted)}
-        aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
+        onClick={micMissing ? () => toast(micMissing) : onToggleMute}
+        className={cn(roundBtn(muted), micMissing && "opacity-50")}
+        aria-label={micMissing ? t("Микрофон недоступен") : muted ? t("Включить микрофон") : t("Выключить микрофон")}
+        title={micMissing || undefined}
       >
         {glyphs ? <MintIcon name={muted ? "callMicOff" : "callMic"} size={[65, 55]} /> : muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
       </button>
@@ -372,6 +382,17 @@ const CallOverlay = ({
       <ScreenShare className="w-3.5 h-3.5 shrink-0" aria-hidden />
       <span className="truncate">{t("Вы показываете экран")} · <span className="underline">{t("Остановить")}</span></span>
     </button>
+  ) : null;
+
+  // Микрофона нет — звонок без голоса: подсказка и переход в переписку.
+  const noMicPill = micMissing && state !== "incoming" ? (
+    <span className="inline-flex items-center gap-2 max-w-full rounded-full pl-3 pr-1 py-1 text-caption font-medium bg-[#ff9500]/15 text-[#b25f00] dark:text-[#ffb340]" role="status">
+      <MicOff className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{micMissing}</span>
+      {onOpenChat && (
+        <button type="button" onClick={onOpenChat} className="shrink-0 rounded-full px-2.5 py-0.5 bg-[#ff9500] text-white font-semibold active:opacity-80">{t("Чат")}</button>
+      )}
+    </span>
   ) : null;
 
   // Пометка «звонок транслируется» — видят все участники.
@@ -480,6 +501,11 @@ const CallOverlay = ({
               ))}
             </div>
           )}
+          {onOpenChat && state === "active" && (
+            <button type="button" onClick={onOpenChat} className={headBtn} aria-label={t("Чат звонка")} title={t("Чат звонка")}>
+              <MessageSquare className="w-6 h-6" />
+            </button>
+          )}
           {(noise || obs) && (
             <button type="button" onClick={() => setSettingsOpen((v) => !v)} className={headBtn} aria-label={t("Настройки звонка")} title={t("Настройки звонка")}>
               <Settings2 className="w-6 h-6" />
@@ -488,6 +514,7 @@ const CallOverlay = ({
         </div>
         {broadcast && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{broadcastPill(false)}</div>}
         {video?.screenOn && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{screenPill}</div>}
+        {noMicPill && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{noMicPill}</div>}
         {settingsOpen && settingsPanel("calc(var(--sat) + 3.5rem)")}
         <GroupStage
           className="relative z-10 flex-1 min-h-0 mx-2 mt-1"
@@ -596,6 +623,18 @@ const CallOverlay = ({
           {settingsOpen && settingsPanel("calc(var(--sat) + 3.25rem)")}
         </>
       )}
+      {onOpenChat && state === "active" && (
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className={cn("absolute z-20 w-11 h-11 rounded-full flex items-center justify-center", chromeBtn, noise || obs ? "right-16" : "right-3")}
+          style={{ top: "calc(var(--sat) + 0.5rem)" }}
+          aria-label={t("Чат звонка")}
+          title={t("Чат звонка")}
+        >
+          <MessageSquare className="w-6 h-6" />
+        </button>
+      )}
       {broadcast && state !== "incoming" && (
         <div className="absolute z-10 inset-x-0 flex justify-center pointer-events-none" style={{ top: "calc(var(--sat) + 0.85rem)" }}>
           {broadcastPill(onVideo)}
@@ -612,6 +651,13 @@ const CallOverlay = ({
         )}
         <div className={cn("truncate max-w-full", mintCall ? "mt-[14px] text-[26.7px] leading-[30px] font-semibold text-center px-4 mint-call-name" : "text-2xl font-bold", !mintCall && (onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4"))}>{peer.name}</div>
         <div className={cn(mintCall ? "text-[16px] text-[#9cb2ab]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>{statusText}</div>
+        {peerNoMic && state === "active" && (
+          <div className={cn("text-caption flex items-center gap-1.5", onVideo ? "pl-12 text-white/85 drop-shadow" : "text-subtle")}>
+            <MicOff className="w-3.5 h-3.5 shrink-0" aria-hidden />
+            <span>{t("Собеседник без микрофона — отвечает в чате")}</span>
+          </div>
+        )}
+        {noMicPill && <div className={cn("mt-1 max-w-full", onVideo && "pl-12")}>{noMicPill}</div>}
 
         {showList && participants.length > 0 && !onVideo && (
           <div className="w-full max-w-md mt-2 space-y-2 overflow-y-auto max-h-[42vh]">
