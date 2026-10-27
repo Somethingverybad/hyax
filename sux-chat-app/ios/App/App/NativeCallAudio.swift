@@ -15,6 +15,9 @@ final class NativeCallAudio {
     /// По умолчанию разговорный динамик, громкая — по кнопке или с видео.
     private var speakerOn = false
     private var inCall = false
+    /// Звук включён: CallKit активировал сессию или мы сами (звонок без CallKit).
+    private var activated = false
+    private var manual = false
     private var routeObserver: NSObjectProtocol?
     /// Динамик сменили не мы (VoipPlugin передаёт странице событие callSpeaker).
     var onSpeakerChange: ((Bool) -> Void)?
@@ -68,11 +71,32 @@ final class NativeCallAudio {
         RTCAudioSessionConfiguration.setWebRTC(config)
         try? session.setConfiguration(config)
         session.unlockForConfiguration()
+        // Звонок без CallKit (система вызов не показала — «Не беспокоить»,
+        // лимиты — и ответили на экране приложения): didActivate не придёт,
+        // и разговор шёл бы без звука. Исходящий успевает зарегистрироваться
+        // в CallKit за доли секунды, поэтому ждём немного.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.inCall, !self.activated, !VoipManager.shared.hasCallKitCall else { return }
+            self.activateManually()
+        }
+    }
+
+    private func activateManually() {
+        CallDiag.log("activate without CallKit")
+        let session = RTCAudioSession.sharedInstance()
+        session.lockForConfiguration()
+        do { try session.setActive(true) } catch { CallDiag.log("setActive: \(error.localizedDescription)") }
+        session.unlockForConfiguration()
+        session.isAudioEnabled = true
+        activated = true
+        manual = true
+        applyRoute()
     }
 
     /// CallKit активировал сессию — включаем звук движка.
     func activate(_ audioSession: AVAudioSession) {
         CallDiag.log("didActivate")
+        activated = true
         let session = RTCAudioSession.sharedInstance()
         session.audioSessionDidActivate(audioSession)
         session.isAudioEnabled = true
@@ -81,6 +105,7 @@ final class NativeCallAudio {
 
     func deactivate(_ audioSession: AVAudioSession) {
         CallDiag.log("didDeactivate")
+        activated = false
         let session = RTCAudioSession.sharedInstance()
         session.isAudioEnabled = false
         session.audioSessionDidDeactivate(audioSession)
@@ -105,7 +130,15 @@ final class NativeCallAudio {
         CallDiag.log("endCall")
         inCall = false
         speakerOn = false
-        RTCAudioSession.sharedInstance().isAudioEnabled = false
+        activated = false
+        let session = RTCAudioSession.sharedInstance()
+        session.isAudioEnabled = false
+        if manual {
+            manual = false
+            session.lockForConfiguration()
+            try? session.setActive(false)
+            session.unlockForConfiguration()
+        }
     }
 
     private func applyRoute() {

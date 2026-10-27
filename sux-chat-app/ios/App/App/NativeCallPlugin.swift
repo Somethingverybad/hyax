@@ -34,6 +34,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setVideoLayout", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAudioLevels", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getFeatures", returnType: CAPPluginReturnPromise),
     ]
 
     private static let factory: RTCPeerConnectionFactory = {
@@ -57,6 +58,8 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     // подставляется в него без пересогласования, как в веб-версии. Картинку
     // рисуют нативные окна под прозрачным WebView: кнопки звонка остаются
     // вёрсткой поверх видео, а их места страница сообщает через setVideoLayout.
+    // Демонстрация экрана собеседника — второй видеоканал соединения, только
+    // на приём (первый — камера). Его дорожка и окно — под ключом "id#screen".
     private var videoPeers = Set<String>()
     private var videoSource: RTCVideoSource?
     private var videoTrack: RTCVideoTrack?
@@ -79,6 +82,12 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // MARK: - Методы из JS
+
+    /// Что умеет эта сборка: страница обновляется по воздуху и в старых
+    /// сборках, новое она включает только по этому ответу.
+    @objc func getFeatures(_ call: CAPPluginCall) {
+        call.resolve(["screen": true])
+    }
 
     @objc func start(_ call: CAPPluginCall) {
         let servers = call.getArray("iceServers", JSObject.self) ?? []
@@ -134,9 +143,27 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let video = call.getBool("video") ?? false
+        let screen = call.getBool("screen") ?? false
         queue.async {
             if video { self.videoPeers.insert(peerId) }
-            _ = self.peer(for: peerId)
+            let pc = self.peer(for: peerId)
+            // Звонящий с видео: пустой видеоканал сразу. Только здесь: у
+            // отвечающего свой канал предложение не займёт (каналы из
+            // addTransceiver не переиспользуются) — вышел бы лишний, и камера
+            // с демонстрацией разъехались бы по номерам.
+            if video && pc.transceivers.allSatisfy({ $0.mediaType != .video }) {
+                let initVideo = RTCRtpTransceiverInit()
+                initVideo.direction = .sendRecv
+                initVideo.streamIds = ["hyax"]
+                let t = pc.addTransceiver(of: .video, init: initVideo)
+                if let track = self.videoTrack { t?.sender.track = track }
+                // Собеседник умеет показывать экран — второй канал под демонстрацию.
+                if screen {
+                    let initScreen = RTCRtpTransceiverInit()
+                    initScreen.direction = .recvOnly
+                    _ = pc.addTransceiver(of: .video, init: initScreen)
+                }
+            }
             call.resolve()
         }
     }
@@ -187,12 +214,18 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
                 // Видеоканал из предложения: «и отправляю, и принимаю», чтобы
                 // включать камеру без пересогласования. Предложение без
                 // видео (старые клиенты) — канала нет, звонок голосовой.
+                // Второй видеоканал — демонстрация собеседника: только приём.
                 if self.videoPeers.contains(peerId) {
-                    for t in pc.transceivers where t.mediaType == .video {
+                    for (i, t) in pc.transceivers.filter({ $0.mediaType == .video }).enumerated() {
                         var err: NSError?
-                        t.setDirection(.sendRecv, error: &err)
-                        t.sender.streamIds = ["hyax"]
-                        if let track = self.videoTrack { t.sender.track = track }
+                        if i == 0 {
+                            t.setDirection(.sendRecv, error: &err)
+                            t.sender.streamIds = ["hyax"]
+                            if let track = self.videoTrack { t.sender.track = track }
+                        } else {
+                            t.setDirection(.recvOnly, error: &err)
+                            t.sender.track = nil
+                        }
                     }
                 }
                 // На входящий offer сразу отвечаем: лишний круг через JS
@@ -297,7 +330,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func setVideoLayout(_ call: CAPPluginCall) {
         let remotes: [PeerFrame] = (call.getArray("remotes", JSObject.self) ?? []).compactMap { o in
             guard let id = o["peerId"] as? String, let r = Self.rect(o) else { return nil }
-            return PeerFrame(peerId: id, rect: r, radius: Self.radius(o))
+            return PeerFrame(peerId: id, rect: r, radius: Self.radius(o), fit: (o["fit"] as? Bool) ?? false)
         }
         let localObj = call.getObject("local")
         let local = Self.rect(localObj)
@@ -399,7 +432,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
             && RTCCameraVideoCapturer.captureDevices().contains { $0.position == .back }
     }
 
-    private struct PeerFrame { let peerId: String; let rect: CGRect; let radius: CGFloat }
+    private struct PeerFrame { let peerId: String; let rect: CGRect; let radius: CGFloat; let fit: Bool }
 
     private static func radius(_ o: JSObject?) -> CGFloat { CGFloat((o?["r"] as? Double) ?? 0) }
 
@@ -441,9 +474,10 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { self.localView?.captureSession = nil }
     }
 
+    /// Камера — только в первый видеоканал (второй — демонстрация собеседника).
     private func setSenders(_ track: RTCVideoTrack?) {
         for (id, pc) in peers where videoPeers.contains(id) {
-            for t in pc.transceivers where t.mediaType == .video { t.sender.track = track }
+            pc.transceivers.first { $0.mediaType == .video }?.sender.track = track
         }
     }
 
@@ -484,6 +518,8 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
                 v.clipsToBounds = true
                 remoteViews[f.peerId] = v
             }
+            // Демонстрация — кадр целиком, камеры — с обрезкой по окну.
+            v.videoContentMode = f.fit ? .scaleAspectFit : .scaleAspectFill
             // Дорожка могла смениться (переподключение) — привязываем актуальную.
             if let t = tracks[f.peerId], viewTracks[f.peerId] !== t {
                 viewTracks[f.peerId]?.remove(v)
@@ -592,15 +628,8 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         if let audioTrack {
             pc.add(audioTrack, streamIds: ["hyax"])
         }
-        // Звонящий с видео: пустой видеоканал сразу (отвечающий получит его
-        // из предложения — см. setRemoteDescription).
-        if videoPeers.contains(peerId) && pc.transceivers.allSatisfy({ $0.mediaType != .video }) {
-            let initVideo = RTCRtpTransceiverInit()
-            initVideo.direction = .sendRecv
-            initVideo.streamIds = ["hyax"]
-            let t = pc.addTransceiver(of: .video, init: initVideo)
-            if let track = videoTrack { t?.sender.track = track }
-        }
+        // Видеоканалы звонящего добавляет createPeer, отвечающий получит
+        // их из предложения — см. setRemoteDescription.
         peers[peerId] = pc
         delegates[peerId] = delegate
         return pc
@@ -610,6 +639,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         peers[peerId]?.close()
         peers.removeValue(forKey: peerId)
         remoteVideoTracks.removeValue(forKey: peerId)
+        remoteVideoTracks.removeValue(forKey: "\(peerId)#screen")
         delegates.removeValue(forKey: peerId)
         remoteTracks.removeValue(forKey: peerId)
         peerVolumes.removeValue(forKey: peerId)
@@ -659,7 +689,12 @@ private final class PeerDelegate: NSObject, RTCPeerConnectionDelegate {
 
     func peerConnection(_ pc: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams mediaStreams: [RTCMediaStream]) {
         if let track = rtpReceiver.track as? RTCAudioTrack { plugin?.storeRemote(peerId, track) }
-        if let track = rtpReceiver.track as? RTCVideoTrack { plugin?.storeRemoteVideo(peerId, track) }
+        if let track = rtpReceiver.track as? RTCVideoTrack {
+            // Второй видеоканал — демонстрация экрана, своим окном, не вместо камеры.
+            let vids = pc.transceivers.filter { $0.mediaType == .video }
+            let screen = vids.count > 1 && vids[1].receiver.receiverId == rtpReceiver.receiverId
+            plugin?.storeRemoteVideo(screen ? "\(peerId)#screen" : peerId, track)
+        }
     }
 
     // Остальные требования протокола нам не нужны: звук воспроизводится
