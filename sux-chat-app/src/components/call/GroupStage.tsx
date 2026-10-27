@@ -202,7 +202,7 @@ const GroupStage = ({ tiles, mode, onModeChange, getLevels, nativeLayout, onHole
         const v: VideoRect = { x: sb.left + r.x, y: sb.top + r.y, w: r.w, h: r.h, r: RADIUS };
         holes.push({ ...v, x: v.x - lb.left, y: v.y - lb.top });
         if (tile.self) local = v;
-        else peers.push({ ...v, peerId: tile.id });
+        else peers.push({ ...v, peerId: tile.id, ...(tile.screen ? { fit: true } : {}) });
       }
       document.documentElement.classList.toggle("native-video", holes.length > 0);
       nativeLayout(peers, local);

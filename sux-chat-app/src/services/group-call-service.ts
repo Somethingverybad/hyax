@@ -36,9 +36,13 @@ export type GroupPeerMedia = {
   obs?: boolean;
   /** Участник показывает экран (webrtc_media, поле screen). */
   screen?: boolean;
-  /** Участник умеет смотреть демонстрацию (webrtc_media rx_screen: веб и
-   *  программа WYX; приложения на телефонах — нет). */
+  /** Участник умеет смотреть демонстрацию (webrtc_media rx_screen: веб,
+   *  программа WYX и приложения на телефонах с новой нативной частью). */
   rxScreen?: boolean;
+  /** Участник в приложении на телефоне (webrtc_media app): сам повторных
+   *  предложений не шлёт, поэтому канал демонстрации с ним заводим мы при
+   *  любом порядке id — встречных предложений не будет. */
+  app?: boolean;
 };
 
 export type GroupMedia = {
@@ -277,12 +281,13 @@ export class GroupCallService {
   }
 
   /** Завести канал демонстрации с участником, который умеет её смотреть:
-   *  только со стороны меньшего id и когда соединение устоялось (иначе —
-   *  при следующем stable, см. wire). */
+   *  со стороны меньшего id (с телефоном — всегда с нашей) и когда соединение
+   *  устоялось (иначе — при следующем stable, см. wire). */
   private ensureScreenTx(peerId: string): void {
     const pc = this.peers.get(peerId);
-    if (!pc || this.screenTx.has(peerId) || !(this.userId < peerId)) return;
-    if (!this.peerMedia.get(peerId)?.rxScreen || pc.signalingState !== "stable" || !this.videoTx.has(peerId)) return;
+    const m = this.peerMedia.get(peerId);
+    if (!pc || this.screenTx.has(peerId) || !(this.userId < peerId || m?.app)) return;
+    if (!m?.rxScreen || pc.signalingState !== "stable" || !this.videoTx.has(peerId)) return;
     this.screenOut ??= new MediaStream();
     const tx = pc.addTransceiver("video", { direction: "sendrecv", streams: [this.screenOut] });
     this.screenTx.set(peerId, tx);
@@ -483,6 +488,7 @@ export class GroupCallService {
         if (typeof data.audio === "boolean") patch.muted = !data.audio;
         if (typeof data.obs === "boolean") patch.obs = data.obs;
         if (data.rx_screen) patch.rxScreen = true;
+        if (data.app) patch.app = true;
         this.patchPeer(from, patch);
         this.emitScreens();
         if (data.rx_screen) this.ensureScreenTx(from);
