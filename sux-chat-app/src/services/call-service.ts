@@ -42,6 +42,8 @@ type SignalData = {
   /** webrtc_media: собеседник показывает экран. call_accept: отвечающий
    *  умеет смотреть демонстрацию — звонящий заведёт под неё второй канал. */
   screen?: boolean;
+  /** call_accept: отвечающий умеет слушать звук компьютера при демонстрации — звонящий заведёт второй аудиоканал. */
+  screen_audio?: boolean;
   /** webrtc_media: у собеседника нет микрофона (говорит одна сторона, отвечает в чате). */
   nomic?: boolean;
 };
@@ -79,6 +81,10 @@ export type CallMedia = {
   screenUnavailable?: boolean;
   /** Демонстрация собеседника — отдельным потоком (камера остаётся своей). */
   remoteScreen?: MediaStream | null;
+  /** Звук компьютера собеседника при демонстрации — своим потоком (играет экран звонка). */
+  remoteScreenAudio?: MediaStream | null;
+  /** Показываю экран со звуком компьютера. */
+  screenAudioOn?: boolean;
   /** Приложение: собеседник показывает экран — картинку рисует нативный
    *  движок (окно `${peerId}#screen`), потока в JS нет. */
   remoteScreenOn?: boolean;
@@ -103,7 +109,26 @@ export const canCaptureScreen = (): boolean => {
  *  текста. На компьютере выбор экрана или окна — у браузера или окна WYX
  *  (electron/main.cjs, ScreenPicker). */
 export async function openScreenCapture(): Promise<MediaStream> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false });
+  const video = { frameRate: { ideal: 15, max: 30 } };
+  // Звук компьютера (или вкладки) — отдельной дорожкой. В браузере галочку
+  // показывает его окно выбора; в программе WYX — наше (с 1.1.41, признак
+  // screenAudio в preload; старая на запрос звука не рассчитана — не просим).
+  const ea = typeof window !== "undefined" ? window.electronAPI : undefined;
+  const wantAudio = !ea || !!ea.screenAudio;
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia(wantAudio ? ({
+      video,
+      // Без обработки голоса: это музыка и видео. Голоса звонка не захватываем.
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+      systemAudio: "include",
+      suppressLocalAudioPlayback: false,
+    } as DisplayMediaStreamOptions) : { video, audio: false });
+  } catch (e) {
+    // Отмена — как есть; браузер без звука экрана (Safari, Firefox) — снова, без звука.
+    if (!wantAudio || (e as DOMException)?.name === "NotAllowedError" || (e as DOMException)?.name === "AbortError") throw e;
+    stream = await navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+  }
   const track = stream.getVideoTracks()[0];
   if (!track) { stream.getTracks().forEach((t) => t.stop()); throw new DOMException("no video", "NotFoundError"); }
   try { track.contentHint = "detail"; } catch { /* старый браузер */ }
@@ -121,6 +146,23 @@ export async function tuneScreenSender(sender: RTCRtpSender): Promise<void> {
     await sender.setParameters(p);
   } catch { /* не везде поддерживается — пусть решает браузер */ }
 }
+
+/** Звук демонстрации — музыке и видео битрейт повыше, чем голосу. */
+export async function tuneScreenAudioSender(sender: RTCRtpSender): Promise<void> {
+  try {
+    const p = sender.getParameters();
+    if (!p.encodings?.length) p.encodings = [{}];
+    p.encodings[0].maxBitrate = 128_000;
+    await sender.setParameters(p);
+  } catch { /* не везде поддерживается */ }
+}
+
+/** Звук демонстрации — второй аудиоканал соединения (первый — микрофон). */
+export const isScreenAudioTransceiver = (pc: RTCPeerConnection, tr: RTCRtpTransceiver | null | undefined): boolean => {
+  if (!tr) return false;
+  const auds = pc.getTransceivers().filter((x) => x.receiver.track?.kind === "audio");
+  return auds.length > 1 && auds.indexOf(tr) === 1;
+};
 
 /** Канал демонстрации — второй видеоканал соединения (первый — камера). */
 export const isScreenTransceiver = (pc: RTCPeerConnection, tr: RTCRtpTransceiver | null | undefined): boolean => {
@@ -204,6 +246,11 @@ export class OneToOneCallService {
   private peerCanScreen = false;
   private remoteScreen = false;
   private remoteScreenStream: MediaStream | null = null;
+  // Звук компьютера при демонстрации — второй аудиоканал, тоже пустой с начала
+  // звонка (call_accept со screen_audio): у голоса свой канал и своя обработка.
+  private screenAudioTx: RTCRtpTransceiver | null = null;
+  private peerCanScreenAudio = false;
+  private remoteScreenAudio: MediaStream | null = null;
   private micOpenedWith = "";
   /** Микрофон не открылся — в соединении тихая дорожка (lib/callMic). */
   private micMissing = false;
@@ -261,6 +308,8 @@ export class OneToOneCallService {
       canScreen: canCaptureScreen() && !!this.screenTransceiver,
       screenUnavailable: canCaptureScreen() && this.peerKnown && !this.screenTransceiver,
       remoteScreen: this.remoteScreen ? this.remoteScreenStream : null,
+      remoteScreenAudio: this.remoteScreen ? this.remoteScreenAudio : null,
+      screenAudioOn: !!this.screenStream?.getAudioTracks().length && !!this.screenAudioTx,
       micMissing: this.micMissing,
       micMissingReason: this.micMissingReason,
       peerNoMic: this.peerNoMic,
@@ -280,9 +329,16 @@ export class OneToOneCallService {
       this.screenStream = stream;
       await sender.replaceTrack(track);
       await tuneScreenSender(sender);
+      // Звук компьютера — если его дали и у собеседника есть под него канал.
+      const sound = stream.getAudioTracks()[0];
+      if (sound && this.screenAudioTx) {
+        await this.screenAudioTx.sender.replaceTrack(sound).catch(() => {});
+        await tuneScreenAudioSender(this.screenAudioTx.sender);
+      }
     } else {
       if (!this.screenStream) return;
       await sender?.replaceTrack(null).catch(() => {});
+      await this.screenAudioTx?.sender.replaceTrack(null).catch(() => {});
       this.stopScreen();
     }
     this.sendMedia();
@@ -494,8 +550,10 @@ export class OneToOneCallService {
           call_id: callId,
           to_user_id: fromUserId,
           device_id: myDeviceId(),
-          // Смотреть демонстрацию умеем — звонящий заведёт под неё канал.
+          // Смотреть демонстрацию умеем — звонящий заведёт под неё канал,
+          // и под звук компьютера тоже.
           screen: true,
+          screen_audio: true,
         },
       });
     } catch {
@@ -625,6 +683,7 @@ export class OneToOneCallService {
         if (this.isCaller) {
           this.setState("connecting");
           this.peerCanScreen = !!data.screen;
+          this.peerCanScreenAudio = !!data.screen_audio;
           await this.ensurePeerConnection();
           await this.createAndSendOffer();
         }
@@ -717,6 +776,12 @@ export class OneToOneCallService {
         this.emitMedia();
         return;
       }
+      // Звук компьютера собеседника — отдельно от голоса (иначе заменил бы его).
+      if (this.peerConnection && event.track.kind === "audio" && isScreenAudioTransceiver(this.peerConnection, event.transceiver)) {
+        this.remoteScreenAudio = new MediaStream([event.track]);
+        this.emitMedia();
+        return;
+      }
       // Звук и видео приходят отдельными дорожками — собираем их в один
       // поток (раньше видео заменило бы звук).
       const incoming = event.streams?.[0]?.getTracks() ?? [event.track];
@@ -782,6 +847,7 @@ export class OneToOneCallService {
       if (this.peerCanScreen) {
         this.screenOut = new MediaStream();
         this.screenTransceiver = this.peerConnection.addTransceiver("video", { direction: "sendrecv", streams: [this.screenOut] });
+        if (this.peerCanScreenAudio) this.screenAudioTx = this.peerConnection.addTransceiver("audio", { direction: "sendrecv", streams: [this.screenOut] });
       }
     }
   }
@@ -906,6 +972,16 @@ export class OneToOneCallService {
         this.screenTransceiver = st;
         this.peerCanScreen = true;
       }
+      // Второй аудиоканал — звук компьютера при демонстрации (поток тот же, что у экрана).
+      const auds = this.peerConnection.getTransceivers().filter((x) => x.receiver.track?.kind === "audio");
+      if (auds.length > 1 && !this.screenAudioTx) {
+        const at = auds[1];
+        at.direction = "sendrecv";
+        this.screenOut ??= new MediaStream();
+        at.sender.setStreams?.(this.screenOut);
+        this.screenAudioTx = at;
+        this.peerCanScreenAudio = true;
+      }
       this.emitMedia();
       
       console.log('📞 [CallService.handleOffer] Создаём answer');
@@ -984,6 +1060,7 @@ export class OneToOneCallService {
     this.localVideoTrack = null;
     // Демонстрацию в групповой звонок не переносим: там свой порядок каналов.
     void this.screenTransceiver?.sender.replaceTrack(null).catch(() => {});
+    void this.screenAudioTx?.sender.replaceTrack(null).catch(() => {});
     this.stopScreen();
     this.resetMedia();
     const out = {
@@ -1045,6 +1122,9 @@ export class OneToOneCallService {
     this.peerCanScreen = false;
     this.remoteScreen = false;
     this.remoteScreenStream = null;
+    this.screenAudioTx = null;
+    this.peerCanScreenAudio = false;
+    this.remoteScreenAudio = null;
     this.peerNoMic = false;
     this.videoTransceiver = null;
     this.remoteVideo = false;

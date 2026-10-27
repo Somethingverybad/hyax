@@ -2053,7 +2053,7 @@ const en: Record<string, string> = {
   "Экран": "Screen",
   "Ссылка: кто показывает экран": "Link: whoever is sharing their screen",
   "Камера и голос без интерфейса WYX, фон прозрачный: один участник — во всё окно, весь звонок — сеткой. Камера выключена — аватарка. Каждую ссылку — отдельным источником «Браузер», размер — как у сцены.": "Camera and voice without the WYX interface, on a transparent background: one participant fills the window, the whole call is shown as a grid. Camera off — avatar. Add each link as its own “Browser” source, sized like the scene.",
-  "Демонстрация экрана во всё окно, без звука и интерфейса WYX. «Кто показывает» — того, кто показывает сейчас; никто — источник прозрачный.": "Screen sharing fills the window, without audio or the WYX interface. “Whoever is sharing” follows the person sharing right now; when nobody is, the source is transparent.",
+  "Демонстрация экрана во всё окно со звуком компьютера показывающего, без голосов и интерфейса WYX. «Кто показывает» — того, кто показывает сейчас; никто — источник прозрачный.": "Screen sharing fills the window with the sharer's computer sound, without voices or the WYX interface. “Whoever is sharing” follows the person sharing right now; when nobody is, the source is transparent.",
   "Снять все": "Deselect all",
   "Выбрать все": "Select all",
   "Выбрано: {n} из {m} — выберите плейлист": "{n} of {m} selected — choose a playlist",

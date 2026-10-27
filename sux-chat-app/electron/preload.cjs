@@ -41,8 +41,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTranslateClipboard: (cb) => { const h = (_e, text) => cb(text); ipcRenderer.on('translate-clipboard', h); return () => ipcRenderer.removeListener('translate-clipboard', h); },
   // Демонстрация экрана в звонке: список экранов и окон для выбора
   // (ScreenPicker), выбор обратно (null — отмена), разрешение macOS.
-  onScreenPick: (cb) => { const h = (_e, list) => cb(list); ipcRenderer.on('screen-pick', h); return () => ipcRenderer.removeListener('screen-pick', h); },
-  pickScreen: (id) => ipcRenderer.send('screen-picked', id || null),
+  onScreenPick: (cb) => { const h = (_e, list, opts) => cb(list, opts || {}); ipcRenderer.on('screen-pick', h); return () => ipcRenderer.removeListener('screen-pick', h); },
+  pickScreen: (id, withAudio) => ipcRenderer.send('screen-picked', id || null, !!withAudio),
+  // Демонстрация со звуком компьютера (setDisplayMediaRequestHandler, loopback) — с 1.1.41.
+  screenAudio: true,
   screenAccess: () => ipcRenderer.invoke('screen-access'),
   openScreenSettings: () => ipcRenderer.send('open-screen-settings'),
 });

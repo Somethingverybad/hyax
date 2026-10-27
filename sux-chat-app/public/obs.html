@@ -15,11 +15,11 @@
     view  — avatars: аватарки участников, говорящий подсвечен;
             video: камеры с голосом — один участник во всё окно, весь звонок сеткой,
                    камера выключена — аватарка;
-            screen: демонстрация экрана во всё окно, без звука;
+            screen: демонстрация экрана во всё окно со звуком компьютера показывающего (без голосов);
             без него страница прозрачная, только звук;
     fit   — contain: камера целиком, с полями (по умолчанию заполняет окно);
     names — 0 / 1: подписи на плитках (по умолчанию — в сетке есть, у одного нет);
-    audio — 0: без звука (видео отдельно от голоса);
+    audio — 0: без звука (видео отдельно от голоса; у «Экрана» — без звука компьютера);
     ws    — адрес сокета (только для разработки).
   Звук и видео сюда отдаёт приложение стримера на компьютере (src/lib/obsRelay.ts),
   сервер лишь сводит их по ключу (backend/chat/obs.py).
@@ -62,6 +62,8 @@
   // Что просим у приложения: камеры (с голосом) или демонстрации (без звука).
   var vid = view === "video" ? "cam" : view === "screen" ? "screen" : null;
   var wantAudio = view !== "screen" && P.get("audio") !== "0";
+  // «Экран» — без голосов, но со звуком компьютера того, кто показывает.
+  var wantScreenAudio = view === "screen" && P.get("audio") !== "0";
   var fit = P.get("fit") === "contain";
   var names = P.get("names");
   var wsBase = P.get("ws") || ((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
@@ -287,7 +289,7 @@
 
   // video и audio — что слать этой странице; старое приложение их не знает и шлёт только звук.
   function hello() {
-    signal({ kind: "hello", page: page, want: want, video: vid || undefined, audio: wantAudio });
+    signal({ kind: "hello", page: page, want: want, video: vid || undefined, audio: wantAudio, screen_audio: wantScreenAudio });
   }
 
   // Голос пересылается второй раз — даём Opus запас битрейта, чтобы не мылило.

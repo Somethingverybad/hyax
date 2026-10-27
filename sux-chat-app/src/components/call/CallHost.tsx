@@ -701,12 +701,14 @@ const CallHost = () => {
             id: p.id, name: p.name, avatarUrl: p.avatarUrl, track: p.stream?.getAudioTracks()[0] ?? null,
             video: p.stream?.getVideoTracks()[0] ?? null, videoOn: !!m?.video,
             screen: m?.screen ? groupScreens.find((x) => x.peerId === p.id)?.stream.getVideoTracks()[0] ?? null : null,
+            screenAudio: m?.screen ? groupScreens.find((x) => x.peerId === p.id)?.stream.getAudioTracks()[0] ?? null : null,
           };
         }),
         {
           ...me, track: g?.getLocalStream()?.getAudioTracks()[0] ?? null,
           video: groupMedia?.localVideo?.getVideoTracks()[0] ?? null, videoOn: !!groupMedia?.localOn,
           screen: g?.getScreenStream()?.getVideoTracks()[0] ?? null,
+          screenAudio: g?.getScreenStream()?.getAudioTracks()[0] ?? null,
         },
       ];
     }
@@ -717,11 +719,13 @@ const CallHost = () => {
           id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, track: remoteStream?.getAudioTracks()[0] ?? null,
           video: remoteStream?.getVideoTracks()[0] ?? null, videoOn: !!media?.remoteVideo,
           screen: media?.remoteScreen?.getVideoTracks()[0] ?? null,
+          screenAudio: media?.remoteScreenAudio?.getAudioTracks()[0] ?? null,
         },
         {
           ...me, track: svc?.getLocalStream()?.getAudioTracks()[0] ?? null,
           video: media?.localVideo?.getVideoTracks()[0] ?? null, videoOn: !!media?.localOn,
           screen: svc?.getScreenStream()?.getVideoTracks()[0] ?? null,
+          screenAudio: svc?.getScreenStream()?.getAudioTracks()[0] ?? null,
         },
       ];
     }
@@ -774,6 +778,8 @@ const CallHost = () => {
       {groupState !== "idle" ? (
         <CallOverlay
           {...common}
+          // Звук компьютера показывающих экран — в браузере своей дорожкой (в приложении звук играет движок).
+          extraAudio={groupScreens.filter((sc) => sc.stream.getAudioTracks().length).map((sc) => ({ id: `${sc.peerId}#screen`, stream: sc.stream }))}
           state={groupState === "outgoing" ? "outgoing" : groupState === "incoming" ? "incoming" : "active"}
           peer={{
             id: groupInvite?.chatId || callChat?.id || "group",
@@ -799,6 +805,7 @@ const CallHost = () => {
             onToggle: () => void toggleVideo(true),
             onFlip: () => void flipCamera(true),
             screenOn: groupMedia.screenOn,
+            screenAudioOn: groupMedia.screenAudioOn,
             canScreen: groupMedia.canScreen,
             screenUnavailable: groupMedia.screenUnavailable,
             screenBusy,
@@ -815,6 +822,7 @@ const CallHost = () => {
       ) : callPeer ? (
         <CallOverlay
           {...common}
+          extraAudio={media?.remoteScreenAudio ? [{ id: `${callPeer.id}#screen`, stream: media.remoteScreenAudio }] : undefined}
           state={callState}
           peer={callPeer}
           participants={[{ id: callPeer.id, name: callPeer.name, avatarUrl: callPeer.avatarUrl, stream: remoteStream, connected: callState === "active" }]}
@@ -834,6 +842,7 @@ const CallHost = () => {
             screen: media.remoteScreen ?? null,
             nativeScreen: media.native && !!media.remoteScreenOn,
             screenOn: media.screenOn,
+            screenAudioOn: media.screenAudioOn,
             canScreen: media.canScreen,
             screenUnavailable: media.screenUnavailable,
             screenBusy,

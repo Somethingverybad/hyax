@@ -59,6 +59,9 @@ interface CallOverlayProps {
   obs?: CallObs;
   /** Звонок транслируется: «Вы транслируете…» / «Андрей транслирует…». */
   broadcast?: string | null;
+  /** Звук компьютера собеседников при демонстрации — свои дорожки рядом с голосами
+   *  (громкость — volumes[id], id вида «участник#screen»). */
+  extraAudio?: { id: string; stream: MediaStream }[];
   /** Групповой звонок: плитки участников вместе с собой. */
   stage?: {
     tiles: StageTile[];
@@ -113,6 +116,8 @@ export interface CallVideo {
   nativeScreen?: boolean;
   /** Я показываю экран. */
   screenOn?: boolean;
+  /** …со звуком компьютера. */
+  screenAudioOn?: boolean;
   /** Показать экран можно (компьютер, у собеседника новая версия). */
   canScreen?: boolean;
   /** Захват есть, но собеседник экран не увидит (телефон, старая версия). */
@@ -163,6 +168,7 @@ const CallOverlay = ({
   peerNoMic,
   onOpenChat,
   video,
+  extraAudio,
   noise,
   obs,
   broadcast,
@@ -294,7 +300,10 @@ const CallOverlay = ({
     : t(STATUS[state]);
   // Звук собеседников — и в свёрнутом виде: экран звонка не размонтируется,
   // поэтому и таймер не сбрасывается.
-  const audio = participants.map((p) => p.stream ? <RemoteAudio key={p.id} stream={p.stream} volume={volumes[p.id] ?? 1} /> : null);
+  const audio = [
+    ...participants.map((p) => p.stream ? <RemoteAudio key={p.id} stream={p.stream} volume={volumes[p.id] ?? 1} /> : null),
+    ...(extraAudio ?? []).map((x) => <RemoteAudio key={x.id} stream={x.stream} volume={volumes[x.id] ?? 1} />),
+  ];
 
   // Входящий не сворачивается — на него надо ответить.
   if (minimized && state !== "incoming") {
@@ -401,7 +410,7 @@ const CallOverlay = ({
     <button type="button" onClick={video.onScreen}
       className="inline-flex items-center gap-1.5 max-w-full rounded-full px-3 py-1 text-caption font-medium bg-primary text-primary-foreground shadow active:opacity-80">
       <ScreenShare className="w-3.5 h-3.5 shrink-0" aria-hidden />
-      <span className="truncate">{t("Вы показываете экран")} · <span className="underline">{t("Остановить")}</span></span>
+      <span className="truncate">{video.screenAudioOn ? t("Вы показываете экран со звуком") : t("Вы показываете экран")} · <span className="underline">{t("Остановить")}</span></span>
     </button>
   ) : null;
 
@@ -481,7 +490,7 @@ const CallOverlay = ({
                 ? t("В OBS: Источники → «+» → Браузер, вставьте ссылку и включите «Управлять звуком через OBS». Ссылка на одного участника — отдельный ползунок в микшере. Свой микрофон в OBS можно не добавлять: ваш голос тоже идёт из звонка.")
                 : obsKind === "cam"
                   ? t("Камера и голос без интерфейса WYX, фон прозрачный: один участник — во всё окно, весь звонок — сеткой. Камера выключена — аватарка. Каждую ссылку — отдельным источником «Браузер», размер — как у сцены.")
-                  : t("Демонстрация экрана во всё окно, без звука и интерфейса WYX. «Кто показывает» — того, кто показывает сейчас; никто — источник прозрачный.")}
+                  : t("Демонстрация экрана во всё окно со звуком компьютера показывающего, без голосов и интерфейса WYX. «Кто показывает» — того, кто показывает сейчас; никто — источник прозрачный.")}
             </p>
             <button type="button" onClick={obs.onRenew} className="text-caption text-subtle underline underline-offset-2">
               {t("Новая ссылка (прежние перестанут работать)")}

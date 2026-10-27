@@ -47,6 +47,19 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 if (process.env.HYAX_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.HYAX_DEBUG_PORT);
 }
+// Звук компьютера при демонстрации экрана (setDisplayMediaRequestHandler,
+// audio: 'loopback'): на Windows — сразу, на macOS 13+ — через ScreenCaptureKit
+// (звук самого WYX, то есть голоса звонка, он не захватывает — эха нет), на
+// Linux — через PulseAudio. Без этих возможностей Chromium на macOS и Linux
+// loopback не даёт.
+{
+  const features = [
+    app.commandLine.getSwitchValue('enable-features'),
+    'MacLoopbackAudioForScreenShare', 'MacSckSystemAudioLoopbackOverride', 'PulseaudioLoopbackForScreenShare',
+  ].filter(Boolean).join(',');
+  if (app.commandLine.hasSwitch('enable-features')) app.commandLine.removeSwitch('enable-features');
+  app.commandLine.appendSwitch('enable-features', features);
+}
 const DEV_URL = 'http://localhost:5143';
 const DIST = path.join(__dirname, '../dist');
 // На macOS и Windows иконку окна даёт сам бандл (.icns/.ico), на Linux её
@@ -203,17 +216,22 @@ function allowMediaPermissions() {
 // пустой ответ, getDisplayMedia на странице отклоняется.
 let screenCallback = null;
 let screenSources = new Map();
-function answerScreen(source) {
+let screenAudioAsked = false;
+/** Звук компьютера: macOS — с 13-й (ScreenCaptureKit, darwin 22), Windows и Linux — да. */
+const loopbackAudio = process.platform !== 'darwin' || Number(require('os').release().split('.')[0]) >= 22;
+function answerScreen(source, withAudio = false) {
   const cb = screenCallback;
   screenCallback = null;
   screenSources = new Map();
   if (!cb) return;
-  try { cb(source ? { video: source } : {}); } catch (e) { logLine('screen answer failed', String(e)); }
+  const audio = source && withAudio && screenAudioAsked && loopbackAudio ? { audio: 'loopback' } : {};
+  try { cb(source ? { video: source, ...audio } : {}); } catch (e) { logLine('screen answer failed', String(e)); }
 }
 function setupScreenShare() {
-  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     answerScreen(null); // прежний запрос, если висел, — отменяем
     screenCallback = callback;
+    screenAudioAsked = !!request.audioRequested;
     desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 400, height: 250 }, fetchWindowIcons: true })
       .then((sources) => {
         screenSources = new Map(sources.map((s) => [s.id, s]));
@@ -225,12 +243,13 @@ function setupScreenShare() {
           icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
         }));
         if (!mainWindow || mainWindow.isDestroyed()) { answerScreen(null); return; }
-        mainWindow.webContents.send('screen-pick', list);
+        // Второй аргумент — можно ли со звуком (старая страница его не читает).
+        mainWindow.webContents.send('screen-pick', list, { audio: screenAudioAsked && loopbackAudio });
       })
       .catch((e) => { logLine('screen sources failed', String(e)); answerScreen(null); });
   });
 }
-ipcMain.on('screen-picked', (_event, id) => answerScreen(id ? screenSources.get(id) || null : null));
+ipcMain.on('screen-picked', (_event, id, withAudio) => answerScreen(id ? screenSources.get(id) || null : null, !!withAudio));
 // macOS: разрешение «Запись экрана» (granted | denied | not-determined | restricted).
 ipcMain.handle('screen-access', () => (process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted'));
 ipcMain.on('open-screen-settings', () => {

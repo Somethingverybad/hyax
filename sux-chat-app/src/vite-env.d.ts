@@ -13,8 +13,11 @@ interface ElectronAPI {
   /** ⌘/Ctrl+Shift+Y — перевести буфер обмена (TranslatorHost); нет в установщиках до 1.1.38. */
   onTranslateClipboard?: (cb: (text: string) => void) => () => void;
   /** Демонстрация экрана (установщики с этой версии): источники для выбора. */
-  onScreenPick?: (cb: (list: ScreenSource[]) => void) => () => void;
-  pickScreen?: (id: string | null) => void;
+  /** opts.audio — можно показать со звуком компьютера (программа с 1.1.41). */
+  onScreenPick?: (cb: (list: ScreenSource[], opts?: { audio?: boolean }) => void) => () => void;
+  pickScreen?: (id: string | null, withAudio?: boolean) => void;
+  /** Программа умеет показывать экран со звуком компьютера (с 1.1.41). */
+  screenAudio?: boolean;
   /** macOS: granted | denied | not-determined | restricted; остальные — granted. */
   screenAccess?: () => Promise<string>;
   openScreenSettings?: () => void;

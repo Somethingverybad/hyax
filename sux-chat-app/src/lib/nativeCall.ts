@@ -42,15 +42,17 @@ export interface AudioLevels { peers: Record<string, number>; local: number }
 export interface NativeVideoState { on: boolean; front: boolean; canFlip: boolean }
 
 /** Что умеет нативная часть этой сборки. screen — смотреть демонстрацию экрана
- *  (второй видеоканал). Старые сборки метода не знают — тогда ничего. */
-export interface NativeFeatures { screen?: boolean }
+ *  (второй видеоканал), screenAudio — слушать звук компьютера при ней (второй
+ *  аудиоканал). Старые сборки метода не знают — тогда ничего. */
+export interface NativeFeatures { screen?: boolean; screenAudio?: boolean }
 
 interface NativeCallPlugin {
   /** Захватить микрофон (с настройками из «Настройки → Микрофон») и запомнить ICE-серверы. */
   start(o: { iceServers: RTCIceServer[]; mic?: { noiseSuppression: boolean; echoCancellation: boolean; autoGainControl: boolean } }): Promise<void>;
   /** video — в соединении сразу пустой видеоканал; screen — и второй, только
-   *  на приём, под демонстрацию экрана собеседника (личный звонок, звоню я). */
-  createPeer(o: { peerId: string; video?: boolean; screen?: boolean }): Promise<void>;
+   *  на приём, под демонстрацию экрана собеседника (личный звонок, звоню я);
+   *  screenAudio — ещё аудиоканал на приём под звук его компьютера. */
+  createPeer(o: { peerId: string; video?: boolean; screen?: boolean; screenAudio?: boolean }): Promise<void>;
   getFeatures(): Promise<NativeFeatures>;
   createOffer(o: { peerId: string }): Promise<void>;
   setRemoteDescription(o: { peerId: string; type: string; sdp: string; video?: boolean }): Promise<void>;
@@ -91,7 +93,7 @@ export const nativeCall = {
     const { noiseSuppression, echoCancellation, autoGainControl } = getMicSettings();
     return plugin.start({ iceServers, mic: { noiseSuppression, echoCancellation, autoGainControl } });
   },
-  createPeer: (peerId: string, video = false, screen = false) => plugin.createPeer({ peerId, video, screen }),
+  createPeer: (peerId: string, video = false, screen = false, screenAudio = false) => plugin.createPeer({ peerId, video, screen, screenAudio }),
   /** Правка страницы приходит и в старые сборки по воздуху: новое — только если нативная часть его знает. */
   features: (): Promise<NativeFeatures> => (features ??= Promise.resolve().then(() => plugin.getFeatures()).catch(() => ({}))),
   createOffer: (peerId: string) => plugin.createOffer({ peerId }),

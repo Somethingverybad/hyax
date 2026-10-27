@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Monitor, AppWindow, X } from "lucide-react";
+import { Monitor, AppWindow, Volume2, X } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -10,17 +10,30 @@ import { cn } from "@/lib/utils";
  * странице уходит в main-процесс (setDisplayMediaRequestHandler), тот шлёт
  * сюда экраны и окна с миниатюрами, выбранный возвращается обратно
  * (electronAPI.pickScreen). Закрыли — отмена, getDisplayMedia отклоняется.
+ *
+ * Звук компьютера (программа с 1.1.41: Windows, macOS 13+, Linux) — переключатель
+ * внизу; выбор запоминаем. Старая программа о звуке не спрашивает — переключателя нет.
  */
+const AUDIO_KEY = "hyax:screen-audio";
+const readAudio = () => { try { return localStorage.getItem(AUDIO_KEY) !== "0"; } catch { return true; } };
+
 const ScreenPicker = () => {
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const [list, setList] = useState<ScreenSource[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [denied, setDenied] = useState(false);
+  const [canAudio, setCanAudio] = useState(false);
+  const [audio, setAudioState] = useState(readAudio);
+  const setAudio = (on: boolean) => {
+    setAudioState(on);
+    try { localStorage.setItem(AUDIO_KEY, on ? "1" : "0"); } catch { /* без памяти — не страшно */ }
+  };
 
   useEffect(() => {
     if (!api?.onScreenPick) return;
-    return api.onScreenPick((sources) => {
+    return api.onScreenPick((sources, opts) => {
       setList(sources);
+      setCanAudio(!!opts?.audio);
       setChosen(sources.find((s) => s.screen)?.id ?? sources[0]?.id ?? null);
       setDenied(false);
       // macOS без разрешения «Запись экрана» отдаёт миниатюры с одними обоями.
@@ -42,7 +55,7 @@ const ScreenPicker = () => {
   if (!list || !api) return null;
 
   function close(id: string | null) {
-    api?.pickScreen?.(id);
+    api?.pickScreen?.(id, canAudio && audio);
     setList(null);
     setChosen(null);
   }
@@ -102,7 +115,14 @@ const ScreenPicker = () => {
           )}
           {!list.length && <p className="text-small text-subtle py-6 text-center">{t("Нечего показать: система не отдала ни экранов, ни окон")}</p>}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+          {canAudio && (
+            <label className="mr-auto flex items-center gap-2 cursor-pointer select-none text-small" title={t("Собеседники услышат звук компьютера — видео, музыку, игру")}>
+              <input type="checkbox" className="w-4 h-4 accent-primary" checked={audio} onChange={(e) => setAudio(e.target.checked)} />
+              <Volume2 className="w-4 h-4 text-subtle" />
+              {t("Звук компьютера")}
+            </label>
+          )}
           <button type="button" onClick={() => close(null)} className="h-10 px-4 rounded-md hover:bg-surface-2">{t("Отмена")}</button>
           <button type="button" onClick={() => chosen && close(chosen)} disabled={!chosen}
             className="h-10 px-5 rounded-md bg-primary text-primary-foreground font-semibold disabled:opacity-40">

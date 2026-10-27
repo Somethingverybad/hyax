@@ -93,11 +93,17 @@ abstract class NativeBase {
     return !!(await nativeCall.features()).screen;
   }
 
-  /** screen — сразу и канал демонстрации собеседника (только на приём). */
-  protected async addPeer(peerId: string, offer: boolean, screen = false): Promise<void> {
+  /** …и слушать звук компьютера при ней. */
+  protected async canRxScreenAudio(): Promise<boolean> {
+    return !!(await nativeCall.features()).screenAudio;
+  }
+
+  /** screen — сразу и канал демонстрации собеседника (только на приём),
+   *  screenAudio — и канал звука его компьютера. */
+  protected async addPeer(peerId: string, offer: boolean, screen = false, screenAudio = false): Promise<void> {
     if (this.peers.has(peerId)) return;
     this.peers.add(peerId);
-    await nativeCall.createPeer(peerId, this.videoCalls, screen);
+    await nativeCall.createPeer(peerId, this.videoCalls, screen, screen && screenAudio);
     if (offer) await nativeCall.createOffer(peerId);
   }
 
@@ -342,7 +348,11 @@ export class NativeCallService extends NativeBase {
     this.setState("connecting");
     // Смотреть демонстрацию умеем — звонящий заведёт под неё второй видеоканал.
     const screen = await this.canRxScreen();
-    this.send("call_accept", { to_user_id: fromUserId, device_id: myDeviceId(), ...(screen ? { screen: true } : {}) });
+    const screenAudio = screen && (await this.canRxScreenAudio());
+    this.send("call_accept", {
+      to_user_id: fromUserId, device_id: myDeviceId(),
+      ...(screen ? { screen: true } : {}), ...(screenAudio ? { screen_audio: true } : {}),
+    });
   }
 
   rejectIncomingCall(callId: string, fromUserId: string): void {
@@ -375,7 +385,8 @@ export class NativeCallService extends NativeBase {
         if (this.isCaller) {
           this.setState("connecting");
           // Собеседник умеет показывать экран — канал под демонстрацию сразу.
-          await this.addPeer(from, true, !!data.screen && (await this.canRxScreen()));
+          await this.addPeer(from, true, !!data.screen && (await this.canRxScreen()),
+            !!data.screen_audio && (await this.canRxScreenAudio()));
         }
         break;
       case "call_reject":
@@ -466,8 +477,9 @@ export class NativeGroupCallService extends NativeBase {
   private front = true;
   private canFlip = false;
   private peerMedia = new Map<string, GroupPeerMedia>();
-  /** Смотреть демонстрацию умеем — участникам об этом в webrtc_media. */
+  /** Смотреть демонстрацию (и слушать звук компьютера) умеем — участникам об этом в webrtc_media. */
   private rxScreen = false;
+  private rxScreenAudio = false;
 
   constructor(options: {
     wsService: WebSocketService;
@@ -484,6 +496,7 @@ export class NativeGroupCallService extends NativeBase {
     this.videoCalls = true;
     this.cb = options;
     void this.canRxScreen().then((v) => { this.rxScreen = v; });
+    void this.canRxScreenAudio().then((v) => { this.rxScreenAudio = v; });
   }
 
   // ===== Видео =====
@@ -546,7 +559,7 @@ export class NativeGroupCallService extends NativeBase {
     if (!this.callId) return;
     // rx_screen + app: участник на компьютере заведёт канал демонстрации сам
     // (мы повторных предложений не шлём — встречных не будет).
-    const screen = this.rxScreen ? { rx_screen: true, app: true } : {};
+    const screen = this.rxScreen ? { rx_screen: true, app: true, ...(this.rxScreenAudio ? { rx_screen_audio: true } : {}) } : {};
     this.send("webrtc_media", { to_user_id: peerId, video: this.videoOn, audio: !this.muted, ...screen });
   }
 
@@ -607,6 +620,7 @@ export class NativeGroupCallService extends NativeBase {
       return;
     }
     this.rxScreen = await this.canRxScreen();
+    this.rxScreenAudio = await this.canRxScreenAudio();
     this.callId = this.newCallId();
     this.chatId = chatId;
     this.setState("outgoing");
@@ -631,6 +645,7 @@ export class NativeGroupCallService extends NativeBase {
       return;
     }
     this.rxScreen = await this.canRxScreen();
+    this.rxScreenAudio = await this.canRxScreenAudio();
     this.setState("active");
     this.send("call_accept", { device_id: myDeviceId() });
   }

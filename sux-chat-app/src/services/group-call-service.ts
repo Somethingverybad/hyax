@@ -4,7 +4,7 @@ import { t as tr } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
 import { openCallMic } from "@/lib/callMic";
 import type { AudioLevels } from "@/lib/nativeCall";
-import { canCaptureScreen, isScreenTransceiver, openScreenCapture, sdpCanVideo, tuneScreenSender, type AdoptedVideo } from "./call-service";
+import { canCaptureScreen, isScreenAudioTransceiver, isScreenTransceiver, openScreenCapture, sdpCanVideo, tuneScreenAudioSender, tuneScreenSender, type AdoptedVideo } from "./call-service";
 import { myDeviceId } from "./deviceId";
 
 export type GroupCallState = "idle" | "outgoing" | "incoming" | "active";
@@ -39,6 +39,9 @@ export type GroupPeerMedia = {
   /** Участник умеет смотреть демонстрацию (webrtc_media rx_screen: веб,
    *  программа WYX и приложения на телефонах с новой нативной частью). */
   rxScreen?: boolean;
+  /** Умеет слушать звук компьютера при демонстрации (webrtc_media rx_screen_audio):
+   *  под него второй аудиоканал заводится вместе с каналом демонстрации. */
+  rxScreenAudio?: boolean;
   /** Участник в приложении на телефоне (webrtc_media app): сам повторных
    *  предложений не шлёт, поэтому канал демонстрации с ним заводим мы при
    *  любом порядке id — встречных предложений не будет. */
@@ -56,6 +59,8 @@ export type GroupMedia = {
   peers: Record<string, GroupPeerMedia>;
   /** Я показываю экран. */
   screenOn?: boolean;
+  /** Показываю со звуком компьютера. */
+  screenAudioOn?: boolean;
   /** Показать экран можно: здесь есть захват, а кто-то из участников его увидит. */
   canScreen?: boolean;
   /** Захват есть, но никто из участников экран не увидит (телефоны, старые версии). */
@@ -129,6 +134,8 @@ export class GroupCallService {
   // заводим: они приняли бы его за камеру.
   private screen: MediaStream | null = null;
   private screenTx = new Map<string, RTCRtpTransceiver>();
+  /** Звук компьютера при демонстрации — второй аудиоканал (у голоса свой). */
+  private screenAudioTx = new Map<string, RTCRtpTransceiver>();
   /** Свой поток демонстрации — msid отдельный от микрофона и камеры. */
   private screenOut: MediaStream | null = null;
   private screens = new Map<string, MediaStream>();
@@ -197,6 +204,8 @@ export class GroupCallService {
     // Канал демонстрации, если личный звонок его завёл, — тот же.
     const vids = pc.getTransceivers().filter((x) => x.receiver.track?.kind === "video");
     if (vids.length > 1) this.screenTx.set(id, vids[1]);
+    const auds = pc.getTransceivers().filter((x) => x.receiver.track?.kind === "audio");
+    if (auds.length > 1) this.screenAudioTx.set(id, auds[1]);
     this.peerMedia.set(id, { ...emptyPeerMedia(), video: !!v?.remoteVideo, canVideo: !!v?.canVideo, known: v ? v.known : true, connected: true });
     this.wire(id, pc);
     this.setState("active");
@@ -245,6 +254,7 @@ export class GroupCallService {
       canFlip: this.canFlip,
       peers: Object.fromEntries(this.peerMedia),
       screenOn: !!this.screen,
+      screenAudioOn: !!this.screen?.getAudioTracks().length && this.screenAudioTx.size > 0,
       canScreen: canCaptureScreen() && viewers,
       screenUnavailable: canCaptureScreen() && peers.length > 0 && !viewers && peers.every((m) => m.connected),
       micMissing: this.micMissing,
@@ -265,7 +275,7 @@ export class GroupCallService {
       await Promise.all([...this.screenTx.keys()].map((id) => this.applyScreen(id)));
     } else {
       if (!this.screen) return;
-      await Promise.all([...this.screenTx.values()].map((tx) => tx.sender.replaceTrack(null).catch(() => {})));
+      await Promise.all([...this.screenTx.values(), ...this.screenAudioTx.values()].map((tx) => tx.sender.replaceTrack(null).catch(() => {})));
       this.screen.getTracks().forEach((t) => t.stop());
       this.screen = null;
     }
@@ -280,6 +290,13 @@ export class GroupCallService {
     if (!tx || !track) return;
     await tx.sender.replaceTrack(track).catch(() => {});
     await tuneScreenSender(tx.sender);
+    // Звук компьютера — если его дали и у участника есть под него канал.
+    const at = this.screenAudioTx.get(peerId);
+    const sound = this.screen?.getAudioTracks()[0];
+    if (at && sound) {
+      await at.sender.replaceTrack(sound).catch(() => {});
+      await tuneScreenAudioSender(at.sender);
+    }
   }
 
   /** Завести канал демонстрации с участником, который умеет её смотреть:
@@ -293,6 +310,8 @@ export class GroupCallService {
     this.screenOut ??= new MediaStream();
     const tx = pc.addTransceiver("video", { direction: "sendrecv", streams: [this.screenOut] });
     this.screenTx.set(peerId, tx);
+    // Тем же пересогласованием — канал под звук компьютера, если участник его понимает.
+    if (m.rxScreenAudio) this.screenAudioTx.set(peerId, pc.addTransceiver("audio", { direction: "sendrecv", streams: [this.screenOut] }));
     void this.applyScreen(peerId);
     void (async () => {
       try {
@@ -457,8 +476,17 @@ export class GroupCallService {
           this.screenOut ??= new MediaStream();
           st.sender.setStreams?.(this.screenOut);
           this.screenTx.set(from, st);
-          await this.applyScreen(from);
         }
+        // Второй аудиоканал — звук компьютера при демонстрации (тот же поток, что у экрана).
+        const auds = pc.getTransceivers().filter((x) => x.receiver.track?.kind === "audio");
+        if (auds.length > 1 && !this.screenAudioTx.has(from)) {
+          const at = auds[1];
+          at.direction = "sendrecv";
+          this.screenOut ??= new MediaStream();
+          at.sender.setStreams?.(this.screenOut);
+          this.screenAudioTx.set(from, at);
+        }
+        if (this.screenTx.has(from)) await this.applyScreen(from);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         this.send("webrtc_answer", { to_user_id: from, answer });
@@ -490,6 +518,7 @@ export class GroupCallService {
         if (typeof data.audio === "boolean") patch.muted = !data.audio;
         if (typeof data.obs === "boolean") patch.obs = data.obs;
         if (data.rx_screen) patch.rxScreen = true;
+        if (data.rx_screen_audio) patch.rxScreenAudio = true;
         if (data.app) patch.app = true;
         this.patchPeer(from, patch);
         this.emitScreens();
@@ -528,7 +557,7 @@ export class GroupCallService {
   /** Своя камера и микрофон — одному участнику (новому — при соединении). */
   private sendMediaTo(peerId: string): void {
     if (!this.callId) return;
-    this.send("webrtc_media", { to_user_id: peerId, video: !!this.cam, audio: !this.isMuted(), obs: this.broadcasting, screen: !!this.screen, rx_screen: true });
+    this.send("webrtc_media", { to_user_id: peerId, video: !!this.cam, audio: !this.isMuted(), obs: this.broadcasting, screen: !!this.screen, rx_screen: true, rx_screen_audio: true });
   }
 
   private broadcastMedia(): void {
@@ -581,8 +610,11 @@ export class GroupCallService {
     // начинает играть добавленную дорожку.
     pc.ontrack = (event) => {
       // Демонстрация участника — своим потоком, не вместо его камеры.
-      if (event.track.kind === "video" && isScreenTransceiver(pc, event.transceiver)) {
-        this.screens.set(peerId, new MediaStream([event.track]));
+      // Демонстрация и звук компьютера — одним потоком на участника, не вместо камеры и голоса.
+      const screenVideo = event.track.kind === "video" && isScreenTransceiver(pc, event.transceiver);
+      if (screenVideo || (event.track.kind === "audio" && isScreenAudioTransceiver(pc, event.transceiver))) {
+        const keep = (this.screens.get(peerId)?.getTracks() || []).filter((t) => t.kind !== event.track.kind);
+        this.screens.set(peerId, new MediaStream([...keep, event.track]));
         this.emitScreens();
         return;
       }
@@ -630,6 +662,7 @@ export class GroupCallService {
     this.streams.delete(peerId);
     this.videoTx.delete(peerId);
     this.screenTx.delete(peerId);
+    this.screenAudioTx.delete(peerId);
     this.screens.delete(peerId);
     this.emitScreens();
     this.peerMedia.delete(peerId);

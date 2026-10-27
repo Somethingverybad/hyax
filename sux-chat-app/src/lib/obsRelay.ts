@@ -33,6 +33,8 @@ export type ObsSource = {
   videoOn?: boolean;
   /** Демонстрация экрана — только пока показывает. */
   screen?: MediaStreamTrack | null;
+  /** Звук компьютера при демонстрации (если показывает со звуком). */
+  screenAudio?: MediaStreamTrack | null;
 };
 
 /** video — камера включена; screen — id потока демонстрации, пока показывает. */
@@ -50,6 +52,8 @@ type Page = {
   want: string | null;
   video: ObsView | null;
   audio: boolean;
+  /** Странице «Экран» — и звук компьютера показывающего (без голосов). */
+  screenAudio: boolean;
   pc: RTCPeerConnection;
   senders: Map<string, RTCRtpSender>;
   /** Ждём ответа на офер — следующий офер только после него. */
@@ -59,7 +63,7 @@ type Page = {
   iceQueue: RTCIceCandidateInit[];
 };
 
-type Signal = { kind?: string; page?: string; to?: string; want?: string | null; video?: string; audio?: boolean; sdp?: string; candidate?: RTCIceCandidateInit };
+type Signal = { kind?: string; page?: string; to?: string; want?: string | null; video?: string; audio?: boolean; screen_audio?: boolean; sdp?: string; candidate?: RTCIceCandidateInit };
 
 export class ObsRelay {
   /** Этот экземпляр приложения: у стримера может быть открыто несколько. */
@@ -106,7 +110,7 @@ export class ObsRelay {
       case "hello":
         if (page) this.close(page);
         this.open(d.page, typeof d.want === "string" && d.want ? d.want : null,
-          d.video === "cam" || d.video === "screen" ? d.video : null, d.audio !== false);
+          d.video === "cam" || d.video === "screen" ? d.video : null, d.audio !== false, d.screen_audio === true);
         break;
       case "answer":
         if (page && d.sdp) void this.onAnswer(page, d.sdp);
@@ -129,9 +133,9 @@ export class ObsRelay {
     for (const p of this.pages.values()) this.syncPage(p);
   }
 
-  private open(id: string, want: string | null, video: ObsView | null, audio: boolean): void {
+  private open(id: string, want: string | null, video: ObsView | null, audio: boolean, screenAudio: boolean): void {
     const pc = new RTCPeerConnection({ iceServers: this.iceServers() });
-    const page: Page = { id, want, video, audio, pc, senders: new Map(), waiting: false, again: false, roster: "", iceQueue: [] };
+    const page: Page = { id, want, video, audio, screenAudio, pc, senders: new Map(), waiting: false, again: false, roster: "", iceQueue: [] };
     pc.onicecandidate = (e) => {
       if (e.candidate) this.send({ kind: "ice", page: id, from: this.id, candidate: e.candidate.toJSON() });
     };
@@ -160,11 +164,15 @@ export class ObsRelay {
     const live = (t?: MediaStreamTrack | null): t is MediaStreamTrack => !!t && t.readyState === "live";
     const list = this.sources().filter((s) => (live(s.track) || live(s.video) || live(s.screen)) && (!page.want || s.id === page.want));
     // Дорожки этой странице: ключ — участник (голос), #cam, #screen.
-    const tracks = new Map<string, { track: MediaStreamTrack; stream: MediaStream; kind: "audio" | ObsView }>();
+    const tracks = new Map<string, { track: MediaStreamTrack; stream: MediaStream; kind: "audio" | "screenAudio" | ObsView }>();
     for (const s of list) {
       if (page.audio && live(s.track)) tracks.set(s.id, { track: s.track, stream: this.streamFor(s.id), kind: "audio" });
       if (page.video === "cam" && live(s.video)) tracks.set(`${s.id}#cam`, { track: s.video, stream: this.streamFor(s.id), kind: "cam" });
       if (page.video === "screen" && live(s.screen)) tracks.set(`${s.id}#screen`, { track: s.screen, stream: this.streamFor(`${s.id}#screen`), kind: "screen" });
+      // Звук компьютера — в тот же поток, что демонстрация: страница «Экран» его и играет.
+      if (page.video === "screen" && page.screenAudio && live(s.screen) && live(s.screenAudio)) {
+        tracks.set(`${s.id}#screen-audio`, { track: s.screenAudio, stream: this.streamFor(`${s.id}#screen`), kind: "screenAudio" });
+      }
     }
     let changed = fresh;
     for (const [key, t] of tracks) {
@@ -172,7 +180,7 @@ export class ObsRelay {
       if (sender) {
         // Тот же участник, новая дорожка (переоткрыли микрофон) — без пересогласования.
         if (sender.track !== t.track) void sender.replaceTrack(t.track).catch(() => {});
-      } else if (t.kind === "audio") {
+      } else if (t.kind === "audio" || t.kind === "screenAudio") {
         page.senders.set(key, page.pc.addTrack(t.track, t.stream));
         changed = true;
       } else {
