@@ -12,9 +12,23 @@ interface ElectronAPI {
   playerWidgetEnabled?: () => Promise<boolean>;
   /** ⌘/Ctrl+Shift+Y — перевести буфер обмена (TranslatorHost); нет в установщиках до 1.1.38. */
   onTranslateClipboard?: (cb: (text: string) => void) => () => void;
+  /** Демонстрация экрана (установщики с этой версии): источники для выбора. */
+  onScreenPick?: (cb: (list: ScreenSource[]) => void) => () => void;
+  pickScreen?: (id: string | null) => void;
+  /** macOS: granted | denied | not-determined | restricted; остальные — granted. */
+  screenAccess?: () => Promise<string>;
+  openScreenSettings?: () => void;
 }
 
 declare global {
+  /** Экран или окно для демонстрации (electron/main.cjs → ScreenPicker). */
+  interface ScreenSource {
+    id: string;
+    name: string;
+    screen: boolean;
+    thumb: string | null;
+    icon: string | null;
+  }
   interface Window {
     electronAPI?: ElectronAPI;
   }

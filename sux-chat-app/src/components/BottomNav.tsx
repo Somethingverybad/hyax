@@ -81,11 +81,15 @@ const MintIsland = () => {
   useEffect(() => {
     const el = wrapRef.current, root = document.documentElement;
     if (!el) return;
-    const set = () => root.style.setProperty("--mint-nav-space", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    // Отступ меняется уже после отрисовки (эффект и его уборка) — сообщаем
+    // о нём событием: панели ввода чатов перемеряют своё место по нему
+    // (ChatWindow, «Мята»), иначе в открытом чате оставался отступ острова.
+    const changed = () => window.dispatchEvent(new Event("hyax:nav-space"));
+    const set = () => { root.style.setProperty("--mint-nav-space", `${Math.ceil(el.getBoundingClientRect().height)}px`); changed(); };
     set();
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(set) : null;
     ro?.observe(el);
-    return () => { ro?.disconnect(); root.style.removeProperty("--mint-nav-space"); };
+    return () => { ro?.disconnect(); root.style.removeProperty("--mint-nav-space"); changed(); };
   }, []);
   useLayoutEffect(() => {
     if (idx < 0) return;

@@ -5,7 +5,7 @@ import { playSfx } from "@/lib/sfx";
 import { hasCallKit } from "@/lib/voip";
 import type { AudioLevels, PeerRect, VideoRect } from "@/lib/nativeCall";
 import { Capacitor } from "@capacitor/core";
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Volume1, Users, UserPlus, ChevronDown, Video, VideoOff, SwitchCamera, Settings2, LayoutGrid, AudioLines, Copy, Radio, ScreenShare, ScreenShareOff, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import Identicon from "@/components/Identicon";
 import { RailCallPortal } from "@/components/call/RailCall";
@@ -68,6 +68,12 @@ interface CallOverlayProps {
   minimized?: boolean;
   onMinimize?: () => void;
   onExpand?: () => void;
+  /** Мой микрофон не открылся — текст подсказки (lib/callMic); звонок идёт без голоса. */
+  micMissing?: string | null;
+  /** У собеседника нет микрофона — он отвечает в чате. */
+  peerNoMic?: boolean;
+  /** Открыть переписку звонка (звонок сворачивается и продолжается). */
+  onOpenChat?: () => void;
 }
 
 export interface CallObs {
@@ -99,6 +105,16 @@ export interface CallVideo {
   mirrored: boolean;
   onToggle: () => void;
   onFlip: () => void;
+  /** Демонстрация экрана собеседника — во весь экран, его камера окошком. */
+  screen?: MediaStream | null;
+  /** Я показываю экран. */
+  screenOn?: boolean;
+  /** Показать экран можно (компьютер, у собеседника новая версия). */
+  canScreen?: boolean;
+  /** Захват есть, но собеседник экран не увидит (телефон, старая версия). */
+  screenUnavailable?: boolean;
+  screenBusy?: boolean;
+  onScreen?: () => void;
   /** Приложение: видео рисует нативный движок под прозрачной страницей,
    *  потоков в JS нет — сюда отдаём, где рисовать (пусто — не рисовать). */
   nativeLayout?: (remotes: PeerRect[], local: VideoRect | null) => void;
@@ -139,6 +155,9 @@ const CallOverlay = ({
   minimized,
   onMinimize,
   onExpand,
+  micMissing,
+  peerNoMic,
+  onOpenChat,
   video,
   noise,
   obs,
@@ -265,7 +284,7 @@ const CallOverlay = ({
         <RailCallPortal peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
           muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand}
           fallback={<CallWidget peer={peer} isGroup={isGroup} status={state === "active" ? `${t("Звонок")} · ${statusText}` : statusText}
-            remoteVideo={video?.remote || null}
+            remoteVideo={video?.screen || video?.remote || null}
             muted={muted} onToggleMute={onToggleMute} onHangup={onHangup} onExpand={onExpand} />} />
       </>
     );
@@ -277,9 +296,10 @@ const CallOverlay = ({
     <>
       <button
         type="button"
-        onClick={onToggleMute}
-        className={roundBtn(muted)}
-        aria-label={muted ? t("Включить микрофон") : t("Выключить микрофон")}
+        onClick={micMissing ? () => toast(micMissing) : onToggleMute}
+        className={cn(roundBtn(muted), micMissing && "opacity-50")}
+        aria-label={micMissing ? t("Микрофон недоступен") : muted ? t("Включить микрофон") : t("Выключить микрофон")}
+        title={micMissing || undefined}
       >
         {glyphs ? <MintIcon name={muted ? "callMicOff" : "callMic"} size={[65, 55]} /> : muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
       </button>
@@ -304,6 +324,25 @@ const CallOverlay = ({
       {video?.localOn && video.canFlip && (
         <button type="button" onClick={video.onFlip} className={roundBtn(false)} aria-label={t("Переключить камеру")} title={t("Переключить камеру")}>
           <SwitchCamera className="w-6 h-6" />
+        </button>
+      )}
+      {/* Демонстрация экрана — с компьютера (браузер, программа WYX). */}
+      {video?.onScreen && (video.canScreen || video.screenUnavailable || video.screenOn) && (
+        <button
+          type="button"
+          onClick={() => {
+            if (video.screenUnavailable && !video.screenOn) {
+              toast(t("Собеседник не увидит экран: у него приложение на телефоне или старая версия"));
+              return;
+            }
+            video.onScreen?.();
+          }}
+          disabled={video.screenBusy}
+          className={cn(roundBtn(!!video.screenOn), video.screenUnavailable && !video.screenOn && "opacity-50")}
+          aria-label={video.screenOn ? t("Перестать показывать экран") : t("Показать экран")}
+          title={video.screenOn ? t("Перестать показывать экран") : t("Показать экран")}
+        >
+          {video.screenOn ? <ScreenShareOff className="w-6 h-6" /> : <ScreenShare className="w-6 h-6" />}
         </button>
       )}
       <button
@@ -335,6 +374,26 @@ const CallOverlay = ({
       </button>
     </>
   );
+
+  // Показываю экран — плашка с «Остановить» (личный и групповой экран).
+  const screenPill = video?.screenOn ? (
+    <button type="button" onClick={video.onScreen}
+      className="inline-flex items-center gap-1.5 max-w-full rounded-full px-3 py-1 text-caption font-medium bg-primary text-primary-foreground shadow active:opacity-80">
+      <ScreenShare className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{t("Вы показываете экран")} · <span className="underline">{t("Остановить")}</span></span>
+    </button>
+  ) : null;
+
+  // Микрофона нет — звонок без голоса: подсказка и переход в переписку.
+  const noMicPill = micMissing && state !== "incoming" ? (
+    <span className="inline-flex items-center gap-2 max-w-full rounded-full pl-3 pr-1 py-1 text-caption font-medium bg-[#ff9500]/15 text-[#b25f00] dark:text-[#ffb340]" role="status">
+      <MicOff className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{micMissing}</span>
+      {onOpenChat && (
+        <button type="button" onClick={onOpenChat} className="shrink-0 rounded-full px-2.5 py-0.5 bg-[#ff9500] text-white font-semibold active:opacity-80">{t("Чат")}</button>
+      )}
+    </span>
+  ) : null;
 
   // Пометка «звонок транслируется» — видят все участники.
   const broadcastPill = (onDark: boolean) => (
@@ -442,6 +501,11 @@ const CallOverlay = ({
               ))}
             </div>
           )}
+          {onOpenChat && state === "active" && (
+            <button type="button" onClick={onOpenChat} className={headBtn} aria-label={t("Чат звонка")} title={t("Чат звонка")}>
+              <MessageSquare className="w-6 h-6" />
+            </button>
+          )}
           {(noise || obs) && (
             <button type="button" onClick={() => setSettingsOpen((v) => !v)} className={headBtn} aria-label={t("Настройки звонка")} title={t("Настройки звонка")}>
               <Settings2 className="w-6 h-6" />
@@ -449,6 +513,8 @@ const CallOverlay = ({
           )}
         </div>
         {broadcast && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{broadcastPill(false)}</div>}
+        {video?.screenOn && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{screenPill}</div>}
+        {noMicPill && <div className="relative z-10 shrink-0 flex justify-center px-2 pb-1">{noMicPill}</div>}
         {settingsOpen && settingsPanel("calc(var(--sat) + 3.5rem)")}
         <GroupStage
           className="relative z-10 flex-1 min-h-0 mx-2 mt-1"
@@ -471,7 +537,9 @@ const CallOverlay = ({
   // Видео собеседника — во весь экран, поверх него имя, таймер и кнопки.
   // В приложении во весь экран и своё видео, пока собеседник без камеры.
   const native = !!nativeLayout;
-  const onVideo = native ? remoteOn || localOn : !!video?.remote;
+  const onVideo = native ? remoteOn || localOn : !!video?.remote || !!video?.screen;
+  // Окошки в углу: своя камера, а при демонстрации собеседника — и его камера.
+  const cornerTile = "w-28 h-40 md:w-40 md:h-56 rounded-xl overflow-hidden shadow-xl border border-white/20 bg-black";
   const chromeBtn = onVideo
     ? "text-white bg-black/30 active:bg-black/50 hover:bg-black/40"
     : "text-muted-foreground active:bg-surface-3 hover:bg-surface-2";
@@ -500,7 +568,9 @@ const CallOverlay = ({
         <>
           {native
             ? <div ref={fullRef} className="absolute inset-0 pointer-events-none" aria-hidden />
-            : <VideoView stream={video!.remote!} className="absolute inset-0 w-full h-full object-cover" />}
+            : video?.screen
+              ? <VideoView stream={video.screen} className="absolute inset-0 w-full h-full object-contain" />
+              : <VideoView stream={video!.remote!} className="absolute inset-0 w-full h-full object-cover" />}
           <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" aria-hidden />
           <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" aria-hidden />
         </>
@@ -510,10 +580,20 @@ const CallOverlay = ({
         <div ref={cornerRef} className="absolute right-3 z-10 w-28 h-40 md:w-40 md:h-56 rounded-xl border border-white/20 pointer-events-none"
           style={{ top: "calc(var(--sat) + 3.75rem)" }} aria-hidden />
       )}
-      {!native && video?.local && (
-        <div className="absolute right-3 z-10 w-28 h-40 md:w-40 md:h-56 rounded-xl overflow-hidden shadow-xl border border-white/20 bg-black"
-          style={{ top: "calc(var(--sat) + 3.75rem)" }}>
-          <VideoView stream={video.local} mirrored={video.mirrored} className="w-full h-full object-cover" />
+      {!native && (video?.local || (video?.screen && video.remote)) && (
+        <div className="absolute right-3 z-10 flex flex-col gap-2" style={{ top: "calc(var(--sat) + 3.75rem)" }}>
+          {video?.screen && video.remote && (
+            <div className={cornerTile}><VideoView stream={video.remote} className="w-full h-full object-cover" /></div>
+          )}
+          {video?.local && (
+            <div className={cornerTile}><VideoView stream={video.local} mirrored={video.mirrored} className="w-full h-full object-cover" /></div>
+          )}
+        </div>
+      )}
+      {/* Показываю экран — плашка с кнопкой «Остановить» (себе экран не дублируем). */}
+      {video?.screenOn && state !== "incoming" && (
+        <div className="absolute z-20 inset-x-0 flex justify-center px-16" style={{ top: broadcast ? "calc(var(--sat) + 2.85rem)" : "calc(var(--sat) + 0.85rem)" }}>
+          {screenPill}
         </div>
       )}
       {onMinimize && state !== "incoming" && (
@@ -543,6 +623,18 @@ const CallOverlay = ({
           {settingsOpen && settingsPanel("calc(var(--sat) + 3.25rem)")}
         </>
       )}
+      {onOpenChat && state === "active" && (
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className={cn("absolute z-20 w-11 h-11 rounded-full flex items-center justify-center", chromeBtn, noise || obs ? "right-16" : "right-3")}
+          style={{ top: "calc(var(--sat) + 0.5rem)" }}
+          aria-label={t("Чат звонка")}
+          title={t("Чат звонка")}
+        >
+          <MessageSquare className="w-6 h-6" />
+        </button>
+      )}
       {broadcast && state !== "incoming" && (
         <div className="absolute z-10 inset-x-0 flex justify-center pointer-events-none" style={{ top: "calc(var(--sat) + 0.85rem)" }}>
           {broadcastPill(onVideo)}
@@ -559,6 +651,13 @@ const CallOverlay = ({
         )}
         <div className={cn("truncate max-w-full", mintCall ? "mt-[14px] text-[26.7px] leading-[30px] font-semibold text-center px-4 mint-call-name" : "text-2xl font-bold", !mintCall && (onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4"))}>{peer.name}</div>
         <div className={cn(mintCall ? "text-[16px] text-[#9cb2ab]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>{statusText}</div>
+        {peerNoMic && state === "active" && (
+          <div className={cn("text-caption flex items-center gap-1.5", onVideo ? "pl-12 text-white/85 drop-shadow" : "text-subtle")}>
+            <MicOff className="w-3.5 h-3.5 shrink-0" aria-hidden />
+            <span>{t("Собеседник без микрофона — отвечает в чате")}</span>
+          </div>
+        )}
+        {noMicPill && <div className={cn("mt-1 max-w-full", onVideo && "pl-12")}>{noMicPill}</div>}
 
         {showList && participants.length > 0 && !onVideo && (
           <div className="w-full max-w-md mt-2 space-y-2 overflow-y-auto max-h-[42vh]">

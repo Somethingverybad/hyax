@@ -22,7 +22,7 @@ import ViewersSheet from "./ViewersSheet";
 import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
-import { useSwipeBack } from "@/hooks/use-swipe-back";
+import { useSwipeBack, EDGE_PX as SWIPE_BACK_EDGE } from "@/hooks/use-swipe-back";
 const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
@@ -322,8 +322,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const activeRef = useRef(active);
   activeRef.current = active;
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
-  // на телефоне привычнее свайп, как в нативных приложениях.
-  useSwipeBack(onBack);
+  // на телефоне привычнее свайп, как в нативных приложениях. Только у окна
+  // на экране: окна из пула недавних переписок слушали жест тоже.
+  useSwipeBack(onBack, active);
   const mintTheme = useMint();
   const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
@@ -510,6 +511,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   // Реплай: на какое сообщение сейчас отвечаем (черновик над полем ввода).
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const replyToRef = useRef(replyTo);
+  replyToRef.current = replyTo;
   // Редактирование своего текстового сообщения.
   const [editing, setEditing] = useState<Message | null>(null);
   // Удаление с отменой (5с): прячем локально, коммитим по таймеру.
@@ -1622,10 +1625,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   /** Высота панели ввода с однострочным полем — от неё считаем «лишнее». */
   const composeBaseRef = useRef(0);
-  const fitTextarea = () => {
+  /** force — пересчитать отступы, даже если высота поля не менялась (панель
+   *  выросла или ужалась сама: ответ, стикеры; окно вернулось из пула). */
+  const fitTextarea = (force = false) => {
     const el = textareaRef.current;
     if (!el) return;
-    const before = el.offsetHeight;
+    const before = force ? -1 : el.offsetHeight;
     // Измерение через height:auto — это промежуточный лейаут, в котором
     // панель на миг ниже, а соседняя лента выше: Chrome на Android в этот
     // момент подрезал scrollTop ленты, после возврата высоты она оказывалась
@@ -1674,6 +1679,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
   /** Поставить текст в поле программно: редактирование, отмена, возврат после ошибки. */
+  // Панель ответа открылась или закрылась, окно вернулось из пула — отступы
+  // ленты пересчитываем от панели как она есть, не дожидаясь, пока поменяется
+  // высота поля: прежние значения могли остаться от другого состояния панели.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => fitTextarea(true));
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replyTo, active]);
   const setDraft = (text: string, opts?: { keepCustom?: boolean }) => {
     if (!opts?.keepCustom) trackCustomEdit(draftRef.current, text);
     draftRef.current = text;
@@ -2041,6 +2054,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const gap = last && cs ? Math.round(cs.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : -1;
     const dist = Math.round(n.scrollHeight - n.scrollTop - n.clientHeight);
     applog.info(`kbcheck h=${Math.round(height)} gap=${gap} dist=${dist} pinned=${pinnedRef.current ? 1 : 0} tf=${getComputedStyle(n).transform} anims=${f.getAnimations().length}`);
+    if (gap > 40) logTail("kb");
+  };
+  /** Баг-репорт d4e36abf: после повторного входа в чат под последним
+   *  сообщением оставалась пустота ~130 px при прокрутке в самом низу. В лог —
+   *  зазор до поля ввода и хвост ленты: верх+высота, прозрачность, видимость,
+   *  анимации, своё ли (msg-in-own) и черновик ли (pending-) у последних строк. */
+  const logTail = (why: string) => {
+    const n = scrollRef.current, f = feedRef.current, cs = composeRef.current;
+    if (!n || !f) return;
+    const end = f.lastElementChild as HTMLElement | null;
+    const gap = end && cs ? Math.round(cs.getBoundingClientRect().top - end.getBoundingClientRect().bottom) : -1;
+    // Обычный зазор — 20 px; в лог только отклонения, чтобы не шуметь на каждом входе.
+    const dist = n.scrollHeight - n.scrollTop - n.clientHeight;
+    if (gap >= 0 && gap <= 40 || dist > 40) return;
+    const rows = Array.from(f.querySelectorAll<HTMLElement>(':scope > [id^="msg-"]')).slice(-5);
+    const tail = rows.map((k) => {
+      const r = k.getBoundingClientRect();
+      const st = getComputedStyle(k);
+      const a = k.getAnimations({ subtree: true }).length;
+      return `${Math.round(r.top)}+${Math.round(r.height)}`
+        + (st.opacity !== "1" ? ` o${(+st.opacity).toFixed(2)}` : "")
+        + (st.visibility !== "visible" ? " hid" : "")
+        + (a ? ` a${a}` : "")
+        + (k.classList.contains("msg-in-own") ? " own" : "")
+        + (k.id.startsWith("msg-pending-") ? " pend" : "");
+    }).join(" | ");
+    const ta = textareaRef.current;
+    const vars = `pb=${getComputedStyle(n).paddingBottom} h=${n.style.getPropertyValue("--compose-h") || "-"} extra=${n.style.getPropertyValue("--compose-extra") || "-"} csH=${cs?.offsetHeight ?? -1} mt=${cs?.style.marginTop || "0"} ta=${ta?.offsetHeight ?? -1} reply=${replyToRef.current ? 1 : 0}`;
+    applog.info(`feedtail ${why} gap=${gap} dist=${Math.round(n.scrollHeight - n.scrollTop - n.clientHeight)} ch=${n.clientHeight} cs=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} msgs=${messagesRef.current} ${vars} [${tail}]`);
   };
   useEffect(() => {
     let cleanup: ReturnType<typeof setTimeout> | undefined;
@@ -2405,6 +2447,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   };
   const openPosition = async (id: string) => {
     const r = await restoreChatPos(id);
+    setTimeout(() => logTail("position"), 1500);
     if (r === true) { unreadOpenRef.current = 0; setAnchoring(false); return; }
     // Запомненного места в ленте уже нет (история ушла дальше) — как раньше.
     if (r === false && unreadOpenRef.current === 0) { pinnedRef.current = true; goBottom(false); }
@@ -2429,6 +2472,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     pinnedRef.current = true;
     const snap = () => { const el = scrollRef.current; if (el && pinnedRef.current) el.scrollTop = el.scrollHeight; };
     requestAnimationFrame(() => { snap(); requestAnimationFrame(() => { snap(); logFeed("snap"); }); });
+    setTimeout(() => logTail("open"), 1500);
   };
 
   /** После отправки (текст, медиа, стикер) — вниз, плавно. */
@@ -2538,7 +2582,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // нажатие» и подменяла меню у курсора нижней шторкой во весь экран.
     if (e.pointerType === "mouse") { touchInputRef.current = false; return; }
     touchInputRef.current = true;
-    swipeStartRef.current = { x: e.clientX, y: e.clientY, id: message.id };
+    // От левого края — это жест «назад», а не свайп «ответить»: раньше по
+    // пузырю у края срабатывали оба — чат закрывался, а при возврате в него
+    // висела панель ответа и лента стояла выше (баг-репорт d4e36abf).
+    swipeStartRef.current = e.clientX <= SWIPE_BACK_EDGE + 4 ? null : { x: e.clientX, y: e.clientY, id: message.id };
     swipeActiveRef.current = false;
     swipeTimeRef.current = performance.now();
     // Второе касание того же сообщения в пределах 320 мс — двойной тап:
@@ -3191,6 +3238,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!became || !chatId) return;
     const id = chatId;
     void syncSince(id).then(() => { if (pinnedRef.current) goBottom(false); });
+    setTimeout(() => logTail("reshow"), 1500);
     const t = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3831,6 +3879,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // клавиатуре, когда панель поднята трансформом (баг-репорт d91c3437).
   // Высота панели плавает (ответ, стикеры, запись), поэтому меряем её;
   // рост поля ввода уже учтён в --compose-extra (fitTextarea) — вычитаем.
+  const composeMeasureRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     // Панель — та, что сейчас на экране: секретный чат открылся без ключа,
     // ключ перенесли — панель появилась, и наблюдатель должен начать мерить
@@ -3841,6 +3890,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!mintM || !cs || !sc || typeof ResizeObserver === "undefined") return;
     let last = -1;
     const set = () => {
+      // Окно в пуле недавних переписок скрыто, и его панель стоит над нижней
+      // навигацией списка (marginBottom ≈ 108 px). Закрылась клавиатура уже
+      // после выхода из чата — замер отсюда оставлял ленте лишние 108 px,
+      // и после возврата сообщения висели выше поля ввода (баг-репорт
+      // c1b55f41). Скрытое окно не меряем; вернулось — меряем заново.
+      if (!activeRef.current) return;
       const extra = parseFloat(sc.style.getPropertyValue("--compose-extra")) || 0;
       const nav = parseFloat(getComputedStyle(cs).marginBottom) || 0;
       // +20 — зона растворения над панелью (mint.css): прижатое последнее
@@ -3854,6 +3909,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       if (pinnedRef.current) { sc.scrollTop = sc.scrollHeight; requestAnimationFrame(() => { if (pinnedRef.current) sc.scrollTop = sc.scrollHeight; }); }
     };
     set();
+    composeMeasureRef.current = () => { last = -1; set(); };
     // border-box, а не content-box по умолчанию: при открытии и закрытии
     // клавиатуры у панели меняется только padding-bottom (отступ под полосу
     // навигации, --kb-sab: 12 ↔ 60 px на Samsung с кнопками), content-box
@@ -3866,13 +3922,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // переходы отступов точно закончились.
     const onKb = () => { setTimeout(set, 50); setTimeout(set, 400); };
     window.addEventListener("hyax:keyboard", onKb);
+    // Остров навигации появился или ушёл — у панели меняется отступ снизу
+    // (--mint-nav-space), а её размер — нет, и наблюдатель молчит.
+    window.addEventListener("hyax:nav-space", set);
     window.visualViewport?.addEventListener("resize", onKb);
     return () => {
+      composeMeasureRef.current = null;
       ro.disconnect(); sc.style.removeProperty("--compose-h");
       window.removeEventListener("hyax:keyboard", onKb);
+      window.removeEventListener("hyax:nav-space", set);
       window.visualViewport?.removeEventListener("resize", onKb);
     };
   }, [mintM, chatId, composeEl]);
+  // Окно вернулось из пула — отступ под панель меряем до отрисовки кадра.
+  // Остров навигации списка убирает свой отступ уже после этого кадра — ещё
+  // раз на следующих кадрах (и по событию hyax:nav-space выше).
+  useLayoutEffect(() => {
+    if (!active) return;
+    composeMeasureRef.current?.();
+    let raf2 = 0;
+    const raf = requestAnimationFrame(() => { composeMeasureRef.current?.(); raf2 = requestAnimationFrame(() => composeMeasureRef.current?.()); });
+    const t = setTimeout(() => composeMeasureRef.current?.(), 300);
+    return () => { cancelAnimationFrame(raf); cancelAnimationFrame(raf2); clearTimeout(t); };
+  }, [active]);
   const otherUnread = (chats || []).reduce((n, c) => n + (c.id !== chatId ? ((c as { unread_count?: number }).unread_count || 0) : 0), 0);
   const headerMenu = (
                 <>

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MicOff, Pin, Volume1, Volume2, VolumeX, X } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import type { AudioLevels, PeerRect, VideoRect } from "@/lib/nativeCall";
@@ -22,6 +22,8 @@ export interface StageTile {
   muted?: boolean;
   /** Соединение ещё поднимается. */
   connecting?: boolean;
+  /** Демонстрация экрана участника: кадр целиком (без обрезки), сама встаёт крупно. */
+  screen?: boolean;
 }
 
 /** Сетка — все поровну; «Говорящий» — крупно тот, кто говорит. */
@@ -126,6 +128,8 @@ const GroupStage = ({ tiles, mode, onModeChange, getLevels, nativeLayout, onHole
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [pinned, setPinned] = useState<string | null>(null);
   const [volFor, setVolFor] = useState<string | null>(null);
+  // Демонстрацию, которую свернули к сетке нажатием, больше крупно не ставим.
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const self = tiles.find((x) => x.self);
   const { speaking, activeSpeaker } = useSpeaking(getLevels, self?.id || "self", true);
 
@@ -144,13 +148,20 @@ const GroupStage = ({ tiles, mode, onModeChange, getLevels, nativeLayout, onHole
 
   const ids = tiles.map((x) => x.id);
   const remotes = tiles.filter((x) => !x.self);
+  // Кто-то показывает экран — он крупно, как в Зуме (пока не свернули).
+  const shared = tiles.find((x) => x.screen && x.id !== dismissed);
   let mainId: string | null = null;
   if (tiles.length > 1) {
     if (pinned && ids.includes(pinned)) mainId = pinned;
+    else if (shared) mainId = shared.id;
     else if (mode === "speaker") mainId = activeSpeaker && ids.includes(activeSpeaker) ? activeSpeaker : remotes[0]?.id ?? null;
   }
 
   const idsKey = ids.join();
+  // Демонстрация закончилась — следующая того же участника снова крупно.
+  useEffect(() => {
+    if (dismissed && !idsKey.split(",").includes(dismissed)) setDismissed(null);
+  }, [idsKey, dismissed]);
   const rects = useMemo(() => {
     const m = new Map<string, Rect>();
     if (!size.w || !size.h) return m;
@@ -234,6 +245,7 @@ const GroupStage = ({ tiles, mode, onModeChange, getLevels, nativeLayout, onHole
             onTap={() => {
               if (isMain) {
                 setPinned(null);
+                if (tile.screen) setDismissed(tile.id);
                 if (mode === "speaker") onModeChange("grid");
               } else {
                 setPinned(tile.id);
@@ -325,7 +337,7 @@ const Tile = ({ tile, rect, native, speaking, pinned, small, main, onTap, onVolu
       }}
     >
       {tile.video && !native && tile.stream && (
-        <VideoView stream={tile.stream} mirrored={tile.self && tile.mirrored} className="absolute inset-0 w-full h-full object-cover" />
+        <VideoView stream={tile.stream} mirrored={tile.self && tile.mirrored} className={cn("absolute inset-0 w-full h-full", tile.screen ? "object-contain" : "object-cover")} />
       )}
       {!tile.video && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-2">

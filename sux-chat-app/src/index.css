@@ -1665,6 +1665,23 @@ html.native-video .call-layer {
   background: linear-gradient(to bottom, hsl(var(--background) / 0) 0, hsl(var(--background) / 0.8) 17px, hsl(var(--background)) 28px);
 }
 
+/* Чужой канал (ChannelView): поля ввода нет, лента идёт до низа экрана и
+   растворяется под этой подложкой — зеркально стеклу шапки (.mint-glass::before).
+   Раньше лента обрывалась над полосой под home-индикатор, и с обоями канала
+   конец растворения (сплошной фон) резко упирался в обои. С кнопкой
+   «Подписаться» подложка выше: кнопка стоит на плотной части. */
+.channel-veil {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; pointer-events: none;
+  height: calc(var(--sab, 0px) + 56px);
+  background: linear-gradient(to top, hsl(var(--background)) 0%, hsl(var(--background) / 0.82) 45%, hsl(var(--background) / 0) 100%);
+}
+.channel-veil-bar { height: calc(var(--sab, 0px) + 120px); }
+[data-shape="soft"] .channel-veil {
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to top, #000 62%, transparent);
+  mask-image: linear-gradient(to top, #000 62%, transparent);
+}
+
 /* Плеер в панели разделов (components/RailPlayer): под разделами, своим островом. */
 .rail-player { margin-top: 12px; gap: 2px; }
 .rail-vertical {

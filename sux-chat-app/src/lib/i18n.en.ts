@@ -2173,5 +2173,28 @@ const en: Record<string, string> = {
   "По центру": "Center",
   "Снизу": "Bottom",
   "Панель разделов у левого края: сверху, по центру или снизу": "The section rail on the left edge: top, center or bottom",
+  // Демонстрация экрана в звонке (CallOverlay, ScreenPicker).
+  "Собеседник не увидит экран: у него приложение на телефоне или старая версия": "The other person won't see your screen: they're on the phone app or an older version",
+  "Перестать показывать экран": "Stop sharing screen",
+  "Показать экран": "Share screen",
+  "Вы показываете экран": "You're sharing your screen",
+  "Не удалось показать экран": "Couldn't share the screen",
+  "Разрешите WYX запись экрана: Системные настройки → Конфиденциальность и безопасность → Запись экрана": "Allow WYX to record the screen: System Settings → Privacy & Security → Screen Recording",
+  "Что показать": "Choose what to share",
+  "Весь экран": "Entire screen",
+  "macOS не даёт WYX записывать экран — собеседник увидит только обои. Разрешите в Системных настройках → Конфиденциальность и безопасность → Запись экрана и перезапустите WYX.": "macOS doesn't let WYX record the screen — the other person would see only the wallpaper. Allow it in System Settings → Privacy & Security → Screen Recording and restart WYX.",
+  "Экраны": "Screens",
+  "Окна": "Windows",
+  "Нечего показать: система не отдала ни экранов, ни окон": "Nothing to share: the system returned no screens or windows",
+  "Показать": "Share",
+  "{name} · экран": "{name} · screen",
+  "Участник": "Participant",
+  // Звонок без микрофона и чат звонка.
+  "Нет доступа к микрофону — вас не слышно. Разрешите его в настройках, а пока можно отвечать в чате": "No access to the microphone — nobody can hear you. Allow it in settings; meanwhile you can reply in the chat",
+  "Микрофон занят другой программой — вас не слышно. Можно отвечать в чате": "The microphone is busy in another app — nobody can hear you. You can reply in the chat",
+  "Микрофон не найден — вас не слышно. Можно отвечать в чате": "No microphone found — nobody can hear you. You can reply in the chat",
+  "Микрофон недоступен": "Microphone unavailable",
+  "Чат звонка": "Call chat",
+  "Собеседник без микрофона — отвечает в чате": "The other person has no microphone and replies in the chat",
 };
 export default en;

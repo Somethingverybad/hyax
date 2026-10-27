@@ -46,7 +46,7 @@ import { takePendingShare } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
+import { LivePreview, MessageFile, MessageAudioFile, MessageVideoFile, VideoNote, MediaSkeleton, AlbumMosaic, postMediaBox, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, dimsOf, Micro } from "@/components/chat/media";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 import WallpaperSheet from "./WallpaperSheet";
@@ -124,13 +124,13 @@ const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: nu
   const seen = mediaSeen(raw);
   const { url, failed } = useMediaUrlState(near || seen ? raw : null);
   const [loaded, setLoaded] = useState(seen);
-  // Бокс по соотношению сторон с сервера (не выше 320px) — пост не растёт
+  // Во всю ширину карточки, по соотношению сторон с сервера — пост не растёт
   // скачком, когда картинка докачалась; внутри до этого плывёт скелетон.
-  // На широкой карточке (планшет, компьютер) высота упирается в предел, и
-  // бокс сужается до ширины картинки — иначе по бокам серые поля.
-  const style = dims
-    ? { aspectRatio: `${dims.w} / ${dims.h}`, maxHeight: 320, width: `min(100%, ${Math.round(320 * dims.w / dims.h)}px)` }
-    : { height: 160 };
+  // Раньше бокс был не выше 320 px и сужался до ширины картинки — у
+  // вертикальных и квадратных фото справа оставалось пустое место.
+  // Слишком высокая (выше 3:4) или маленькая картинка — по центру: высота
+  // не больше предела и не больше самой картинки, мелкую не растягиваем.
+  const style = postMediaBox(dims, 160);
   return (
     <div ref={nearRef} className="mt-2 relative w-full rounded-md overflow-hidden bg-black/20" style={style}>
       {/* Подпись не дали (пост удалён, доступа нет) — тихий серый бокс, а не вечно пульсирующий скелет. */}
@@ -138,7 +138,8 @@ const PostImage = ({ raw, dims, preview, onOpen }: { raw: string; dims?: { w: nu
       {url && (
         <img src={url} alt="" loading={seen ? "eager" : "lazy"} decoding={seen ? "sync" : "async"}
           onLoad={() => { setLoaded(true); markMediaSeen(raw); }} onClick={() => onOpen?.(url)}
-          className={cn("w-full h-full object-contain cursor-zoom-in", seen ? "" : "transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
+          style={dims ? { width: dims.w, height: dims.h } : undefined}
+          className={cn("absolute inset-0 m-auto max-w-full max-h-full object-contain cursor-zoom-in", !dims && "w-full h-full", seen ? "" : "transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")} />
       )}
     </div>
   );
@@ -154,13 +155,14 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
     return (
       <div className="mt-2 space-y-1.5">
         {media.length > 0 && (
-        <AlbumGrid
+        <AlbumMosaic
           items={media.map((p) => ({
             id: p.id,
             raw: p.file_url || "",
             name: p.file_name ?? null,
             dims: dimsOf(p.file_width, p.file_height),
             poster: p.poster_url ?? null,
+            preview: p.file_preview ?? null,
             pending: p._pending,
             progress: p._progress ?? null,
             failed: p._failed,
@@ -204,7 +206,7 @@ const PostMedia = ({ post, album, onOpenImage, onPlayAudio }: { post: Post; albu
     return <div className="mt-2"><MessageAudioFile raw={post.file_url} name={post.file_name || null} isOwn={false} onSave={(url, name) => void saveFileToDevice(url, name)} onPlay={() => onPlayAudio?.(post)} /></div>;
   }
   if (!post.download_only && isVideoFile(post.file_name, post.file_url)) {
-    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} poster={post.poster_url} /></div>;
+    return <div className="mt-2"><MessageVideoFile raw={post.file_url} dims={dimsOf(post.file_width, post.file_height)} poster={post.poster_url} post /></div>;
   }
   return (
     <div className="mt-2">
@@ -649,6 +651,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // Кто может писать: в канал — админы, на Стену — все, кроме забаненных.
   const canPost = wall ? !!wallState && !banned : isAdmin;
   const subscribed = wall ? true : !!channel?.my_role;
+  // Чужой канал: поля ввода нет — лента до низа экрана под подложкой
+  // .channel-veil, как под стеклом шапки (раньше обрывалась резкой границей
+  // над полосой под home-индикатор). С кнопкой «Подписаться» — над ней.
+  const reader = !wall && !canPost;
+  const readerBar = reader && !!channel && !subscribed;
 
   // Лента канала живёт по тем же правилам, что и переписка (см. messageCache):
   // при входе рисуем из IndexedDB, сеть догоняет приращением по since, старые
@@ -1302,7 +1309,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // Стена-вкладка: лента до низа экрана, под остров навигации (как в чате под
         // поле ввода), — отступ, чтобы последний пост можно было докрутить из-под
         // острова и кнопки «+»; низ прикрывает вуаль .wall-veil.
-        style={wall && !onBack ? { paddingBottom: "calc(var(--mint-nav-space, 0px) + 88px)" } : undefined}>
+        style={wall && !onBack ? { paddingBottom: "calc(var(--mint-nav-space, 0px) + 88px)" }
+          : reader ? { paddingBottom: `calc(var(--sab, 0px) + ${readerBar ? 96 : 32}px)` } : undefined}>
         {hasMore && (
           <div className="flex justify-center">
             <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder}
@@ -1478,12 +1486,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
 
       {/* Низ ленты растворяется в фоне, как над полем ввода в чате (.mint-compose-island),
           а не обрывается резкой границей над композером канала и островом Стены. */}
-      {!(wall && !onBack) && <div aria-hidden className="feed-fade relative h-0 z-10 pointer-events-none" />}
+      {!(wall && !onBack) && !reader && <div aria-hidden className="feed-fade relative h-0 z-10 pointer-events-none" />}
 
       {/* Канал: кнопка «вниз» со счётчиком пропущенных, пока лента не внизу. */}
       {!wall && !atBottom && (
         <div className="relative h-0 z-20">
           <button type="button" onClick={jumpDown} aria-label={missed > 0 ? tr("Пропущено постов: {n}. Вниз", { n: missed }) : tr("Вниз")}
+            style={reader ? { bottom: `calc(var(--sab, 0px) + ${readerBar ? 84 : 16}px)` } : undefined}
             className="ui-btn absolute right-3 md:right-6 bottom-3 w-11 h-11 rounded-full bg-surface-1 border border-border text-foreground shadow-card flex items-center justify-center active:opacity-80">
             <ArrowDown className="w-5 h-5" />
             {missed > 0 && (
@@ -1770,13 +1779,16 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         // ещё не факт — кнопка мелькала на мгновение у подписчиков и админов.
         // Подписчику кнопка не нужна — она стояла и после подписки, потому что
         // ветка была просто «не админ». Отписка — в инфо-модалке канала.
-        <div className="pad-safe-bottom px-3 py-3 shrink-0">
-          <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
-            {tr("Подписаться")}
-          </button>
-        </div>
+        <>
+          <div aria-hidden className="channel-veil channel-veil-bar" />
+          <div className="absolute left-0 right-0 bottom-0 z-20 pad-safe-bottom px-3 pt-3">
+            <button type="button" onClick={subscribe} className="w-full h-11 rounded-md bg-primary text-primary-foreground font-semibold">
+              {tr("Подписаться")}
+            </button>
+          </div>
+        </>
       ) : (
-        <div className="pad-safe-bottom shrink-0" />
+        <div aria-hidden className="channel-veil" />
       )}
 
       {infoOpen && wall && wallState && (

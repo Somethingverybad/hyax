@@ -15,6 +15,8 @@ import { NativeCallService, NativeGroupCallService } from "@/services/native-cal
 import { hasNativeCalls, nativeCall, type AudioLevels, type PeerRect, type VideoRect } from "@/lib/nativeCall";
 import { voip, hasCallKit, type VoipCallPayload } from "@/lib/voip";
 import CallOverlay, { type CallParticipant } from "@/components/call/CallOverlay";
+import ScreenPicker from "@/components/call/ScreenPicker";
+import { micMissingText } from "@/lib/callMic";
 import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
 import { ObsRelay, obsLink, type ObsSource } from "@/lib/obsRelay";
@@ -89,6 +91,8 @@ const CallHost = () => {
   const [groupState, setGroupState] = useState<GroupCallState>("idle");
   const [groupInvite, setGroupInvite] = useState<GroupCallInvite | null>(null);
   const [groupStreams, setGroupStreams] = useState<PeerStream[]>([]);
+  // Демонстрации экрана участников группового звонка — отдельными плитками.
+  const [groupScreens, setGroupScreens] = useState<PeerStream[]>([]);
   const [groupPeers, setGroupPeers] = useState<string[]>([]);
   const [groupMedia, setGroupMedia] = useState<GroupMedia | null>(null);
   const groupCallIdRef = useRef<string | null>(null);
@@ -112,6 +116,7 @@ const CallHost = () => {
     camWasOn.current = !!media?.localOn;
   }, [media]);
   const [videoBusy, setVideoBusy] = useState(false);
+  const [screenBusy, setScreenBusy] = useState(false);
   // Шумодав — общая настройка микрофона (Настройки → Микрофон).
   const [noiseOn, setNoiseOn] = useState(() => getMicSettings().noiseSuppression);
   useEffect(() => onMicSettings((m) => setNoiseOn(m.noiseSuppression)), []);
@@ -329,6 +334,7 @@ const CallHost = () => {
         },
         onIncoming: (invite) => { setGroupInvite(invite); setCallChat({ id: invite.chatId, name: invite.chatName }); },
         onStreams: setGroupStreams,
+        onScreens: setGroupScreens,
         onPeers: setGroupPeers,
         onMedia: setGroupMedia,
         onError: (m) => toast.error(m),
@@ -480,6 +486,25 @@ const CallHost = () => {
   /** Камера: нет разрешения — подсказка, где его дать; следующее нажатие
    *  запрашивает снова (браузер или система спросят, если не запрещено навсегда).
    *  group — камера группового звонка. */
+  /** Демонстрация экрана (личный звонок в браузере и программе WYX). Отмена в
+   *  окне выбора — молча; на Mac без разрешения «Запись экрана» — подсказка. */
+  const toggleScreen = async (group = false) => {
+    const svc = group ? groupWeb() : webSvc();
+    if (!svc || screenBusy) return;
+    setScreenBusy(true);
+    try {
+      await svc.setScreen(!svc.getMedia().screenOn);
+    } catch (e) {
+      const name = (e as { name?: string })?.name || "";
+      if (name !== "NotAllowedError" && name !== "AbortError") toast.error(tr("Не удалось показать экран"));
+      else if (/Mac/.test(navigator.userAgent) && window.electronAPI) {
+        // Окно выбора закрыли без выбора — или macOS не дала «Запись экрана».
+        void window.electronAPI?.screenAccess?.().then((st) => {
+          if (st === "denied" || st === "restricted") toast(tr("Разрешите WYX запись экрана: Системные настройки → Конфиденциальность и безопасность → Запись экрана"));
+        }).catch(() => {});
+      }
+    } finally { setScreenBusy(false); }
+  };
   const toggleVideo = async (group = false) => {
     const svc = group ? groupCallRef.current : videoSvc();
     if (!svc || videoBusy) return;
@@ -633,9 +658,18 @@ const CallHost = () => {
     const st = groupStreams.find((x) => x.peerId === id);
     return { id, name: info.name, avatarUrl: info.avatarUrl, stream: st?.stream || null, connected: !!st || hasNativeCalls() };
   });
+  // Микрофон не открылся (lib/callMic) — звонок идёт без голоса, отвечать можно в чате.
+  const mic = groupState !== "idle" ? groupMedia : media;
+  const micMissing = mic?.micMissing ? micMissingText(mic.micMissingReason, tr) : null;
   // Плитки группового звонка: участники и я (последним).
   const myInfo = readCache<{ id?: string; username?: string; avatar_url?: string | null }>("user");
   const groupTiles: StageTile[] = [
+    // Демонстрации — первыми: сами встают крупно (GroupStage).
+    ...groupScreens.flatMap((sc) => {
+      if (!groupMedia?.peers[sc.peerId]?.screen) return [];
+      const p = groupParticipants.find((x) => x.id === sc.peerId);
+      return [{ id: `${sc.peerId}#screen`, name: tr("{name} · экран", { name: p?.name || tr("Участник") }), avatarUrl: p?.avatarUrl, stream: sc.stream, video: true, screen: true }];
+    }),
     ...groupParticipants.map((p) => {
       const m = groupMedia?.peers[p.id];
       return {
@@ -646,7 +680,7 @@ const CallHost = () => {
     }),
     {
       id: myInfo?.id || "me", name: myInfo?.username || tr("Вы"), avatarUrl: myInfo?.avatar_url, self: true,
-      stream: groupMedia?.localVideo || null, video: !!groupMedia?.localOn, mirrored: groupMedia?.front ?? true, muted,
+      stream: groupMedia?.localVideo || null, video: !!groupMedia?.localOn, mirrored: groupMedia?.front ?? true, muted: muted || !!micMissing,
     },
   ];
 
@@ -692,7 +726,10 @@ const CallHost = () => {
   const noise = !hasNativeCalls() ? { on: noiseOn, onToggle: () => void toggleNoise() } : undefined;
 
   const common = {
-    muted,
+    muted: muted || !!micMissing,
+    micMissing,
+    // Переписка звонка: звонок сворачивается и продолжается, чат — на экране.
+    onOpenChat: callChat?.id ? () => { setMinimized(true); openChat(callChat.id, callChat.name); } : undefined,
     broadcast: broadcastText,
     obs,
     noise,
@@ -735,6 +772,11 @@ const CallHost = () => {
             mirrored: groupMedia.front,
             onToggle: () => void toggleVideo(true),
             onFlip: () => void flipCamera(true),
+            screenOn: groupMedia.screenOn,
+            canScreen: groupMedia.canScreen,
+            screenUnavailable: groupMedia.screenUnavailable,
+            screenBusy,
+            onScreen: groupWeb() ? () => void toggleScreen(true) : undefined,
           } : undefined}
           onAccept={async () => {
             await groupCallRef.current?.accept();
@@ -763,14 +805,23 @@ const CallHost = () => {
             mirrored: media.front,
             onToggle: () => void toggleVideo(),
             onFlip: () => void flipCamera(),
+            screen: media.remoteScreen ?? null,
+            screenOn: media.screenOn,
+            canScreen: media.canScreen,
+            screenUnavailable: media.screenUnavailable,
+            screenBusy,
+            onScreen: webSvc() ? () => void toggleScreen() : undefined,
           } : undefined}
           onAccept={acceptCall}
           onReject={rejectCall}
           onHangup={hangup}
           onToggleMute={toggleMute}
+          peerNoMic={!!media?.peerNoMic}
         />
       ) : null}
       {addToCallOpen && <AddToCall candidates={callCandidates} onClose={() => setAddToCallOpen(false)} onConfirm={addToCall} />}
+      {/* Программа WYX: выбор экрана или окна для демонстрации (в браузере — свой). */}
+      <ScreenPicker />
     </>
   );
 };
