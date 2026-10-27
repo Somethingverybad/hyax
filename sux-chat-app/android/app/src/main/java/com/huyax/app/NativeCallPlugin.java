@@ -78,9 +78,8 @@ public class NativeCallPlugin extends Plugin {
     // вёрсткой поверх, их места страница сообщает через setVideoLayout.
     private final java.util.Set<String> videoPeers = new java.util.HashSet<>();
     // Демонстрация экрана собеседника — второй видеоканал соединения, только
-    // на приём (первый — камера). Его дорожка и окно — под ключом "id#screen".
-    private final java.util.Set<String> screenPeers = new java.util.HashSet<>();
-    // mid канала демонстрации по участнику — из SDP собеседника (второй видеоканал).
+    // на приём (первый — камера). Его дорожка и окно — под ключом "id#screen",
+    // mid канала по участнику — из SDP собеседника (второй видеоканал).
     private final Map<String, String> screenMids = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, VideoTrack> remoteVideoTracks = new HashMap<>();
     private VideoSource videoSource;
@@ -169,9 +168,26 @@ public class NativeCallPlugin extends Plugin {
             return;
         }
         boolean video = Boolean.TRUE.equals(call.getBoolean("video", false));
-        if (video) videoPeers.add(peerId);
-        if (video && Boolean.TRUE.equals(call.getBoolean("screen", false))) screenPeers.add(peerId);
-        peer(peerId);
+        boolean screen = Boolean.TRUE.equals(call.getBoolean("screen", false));
+        synchronized (this) {
+            if (video) videoPeers.add(peerId);
+            boolean fresh = !peers.containsKey(peerId);
+            PeerConnection pc = peer(peerId);
+            // Звонящий с видео: пустой видеоканал сразу. Только здесь: у
+            // отвечающего свой канал предложение не займёт (каналы из
+            // addTransceiver не переиспользуются) — вышел бы лишний, и камера
+            // с демонстрацией разъехались бы по номерам.
+            if (pc != null && video && fresh) {
+                RtpTransceiver t = pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+                    new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV, Collections.singletonList("hyax")));
+                if (videoTrack != null) t.getSender().setTrack(videoTrack, false);
+                // Собеседник умеет показывать экран — второй канал под демонстрацию.
+                if (screen) {
+                    pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+                        new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY));
+                }
+            }
+        }
         call.resolve();
     }
 
@@ -298,7 +314,6 @@ public class NativeCallPlugin extends Plugin {
         for (String id : new ArrayList<>(peers.keySet())) drop(id);
         stopCamera();
         videoPeers.clear();
-        screenPeers.clear();
         screenMids.clear();
         synchronized (remoteVideoTracks) { remoteVideoTracks.clear(); }
         getActivity().runOnUiThread(() -> applyLayout(new ArrayList<>(), null));
@@ -724,18 +739,8 @@ public class NativeCallPlugin extends Plugin {
         if (pc != null && audioTrack != null) {
             pc.addTrack(audioTrack, Collections.singletonList("hyax"));
         }
-        // Звонящий с видео: пустой видеоканал сразу (отвечающий получит его
-        // из предложения — см. setRemoteDescription).
-        if (pc != null && videoPeers.contains(peerId)) {
-            RtpTransceiver t = pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
-                new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV, Collections.singletonList("hyax")));
-            if (videoTrack != null) t.getSender().setTrack(videoTrack, false);
-            // Собеседник умеет показывать экран — второй канал под демонстрацию.
-            if (screenPeers.contains(peerId)) {
-                pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
-                    new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY));
-            }
-        }
+        // Видеоканалы звонящего добавляет createPeer, отвечающий получит
+        // их из предложения — см. setRemoteDescription.
         peers.put(peerId, pc);
         return pc;
     }
@@ -743,7 +748,6 @@ public class NativeCallPlugin extends Plugin {
     private synchronized void drop(String peerId) {
         PeerConnection pc = peers.remove(peerId);
         if (pc != null) pc.close();
-        screenPeers.remove(peerId);
         screenMids.remove(peerId);
         synchronized (remoteVideoTracks) {
             remoteVideoTracks.remove(peerId);
