@@ -17,11 +17,15 @@ public class MainActivity extends BridgeActivity {
     /** Сервису пушей: рисовать уведомление о звонке или отдать экран JS. */
     static volatile boolean isForeground = false;
 
+    /** Android 11+: клавиатура синхронно с анимацией системы (см. KeyboardSync). */
+    private KeyboardSync keyboardSync;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoipPlugin.class);
         registerPlugin(NativeCallPlugin.class);
         registerPlugin(InsetsPlugin.class);
+        registerPlugin(KeyboardSyncPlugin.class);
         registerPlugin(PushSecretPlugin.class);
         registerPlugin(RovHapticsPlugin.class);
         registerPlugin(ShareInboxPlugin.class);
@@ -35,7 +39,12 @@ public class MainActivity extends BridgeActivity {
         handleCallIntent(getIntent());
         // Холодный старт из «Поделиться»: JS заберёт очередь сам после загрузки.
         ShareInboxPlugin.accept(this, getIntent());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installImeResize();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Синхронная клавиатура (KeyboardSync) включается страницей; до
+            // этого — прежнее ужатие WebView ниже.
+            keyboardSync = new KeyboardSync(this);
+            installImeResize();
+        }
     }
 
     /**
@@ -53,6 +62,8 @@ public class MainActivity extends BridgeActivity {
     private void installImeResize() {
         final View decor = getWindow().getDecorView();
         decor.setOnApplyWindowInsetsListener((v, insets) -> {
+            // Клавиатурой управляет KeyboardSync — прежнее ужатие не трогаем.
+            if (keyboardSync != null && keyboardSync.isEnabled()) return v.onApplyWindowInsets(insets);
             WebView web = getBridge() != null ? getBridge().getWebView() : null;
             if (web != null && web.getParent() instanceof ViewGroup) {
                 ViewGroup parent = (ViewGroup) web.getParent();
