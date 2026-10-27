@@ -134,10 +134,19 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         update.supportsUngrouping = false
         update.supportsDTMF = false
 
-        calls[callId] = CallInfo(uuid: uuid, payload: data)
+        // Тот же звонок уже показан: сигнал из сокета пришёл раньше пуша.
+        // Повторный reportNewIncomingCall — только ради правила PushKit, CallKit
+        // ответит «такой уже есть» (callUUIDAlreadyExists), и это не отказ.
+        // Раньше звонок на этом забывался и поверх шторки CallKit открывался
+        // свой экран входящего: ответ там шёл мимо CallKit — шторка звонила
+        // дальше, аудиосессия не включалась, звука не было ни с одной стороны.
+        let known = calls[callId] != nil
+        if !known { calls[callId] = CallInfo(uuid: uuid, payload: data) }
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
             guard let self else { return }
-            if let error {
+            if let error, known || !valid {
+                VoipManager.log("повторный показ пропущен: \(error.localizedDescription)")
+            } else if let error {
                 // Система отказалась показать вызов (режим «Не беспокоить»,
                 // блокировка номера, лимиты) — показываем свой экран, иначе
                 // пользователь не узнает о звонке вовсе.
@@ -190,6 +199,10 @@ final class VoipManager: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
             if error != nil { self?.calls.removeValue(forKey: callId) }
         }
     }
+
+    /// Звонок ведёт CallKit — аудиосессию включит он (didActivate). Нет —
+    /// значит, вызов система не показала и звук включаем сами (NativeCallAudio).
+    var hasCallKitCall: Bool { !calls.isEmpty }
 
     func reportConnected(callId: String) {
         guard let info = calls[callId] else { return }
