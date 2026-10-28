@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Hand, Pencil, Utensils, PawPrint } from "lucide-react";
 import { api, type Pet, type PetAction } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { moodInfo, petDisplayName, profilePose, purr, rememberPet, type PetPack, type PoseName } from "@/lib/pets";
+import { moodInfo, petDisplayName, profilePose, purr, rememberPet, usePetsAvailable, type PetPack, type PoseName } from "@/lib/pets";
 import Identicon from "@/components/Identicon";
 import PetSprite from "./PetSprite";
 
@@ -30,18 +30,20 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [, tick] = useState(0);
+  const available = usePetsAvailable();
 
   useEffect(() => {
+    if (!available) return;
     let off = false;
     api.getPetOf(profileId).then((p) => { if (!off) setPet(p); }).catch(() => { if (!off) setPet(null); });
     return () => { off = true; };
-  }, [profileId]);
+  }, [profileId, available]);
   // «через N ч» — пересчитать раз в минуту.
   useEffect(() => { const id = setInterval(() => tick((n) => n + 1), 60_000); return () => clearInterval(id); }, []);
   // Своему без клички — сразу предложить назвать.
   useEffect(() => { if (own && pet && !pet.name) setNaming(true); }, [own, pet]);
 
-  if (!pet) return null;
+  if (!pet || !available) return null;
   const lang = getLang();
   const title = petDisplayName(pet, pack, lang);
   const mi = moodInfo(pet.mood);

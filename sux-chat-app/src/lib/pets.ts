@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { api, type Pet, type PetBrief, type PetMood } from "@/api/client";
 import { t } from "@/lib/i18n";
 import { onUserMessage } from "@/lib/userSocket";
@@ -156,6 +158,32 @@ export function useChatPets(ownerIds: string[]): Brief[] {
 
 // ---------- «Питомцы в чатах» у смотрящего (своя настройка, на этом устройстве) ----------
 const HIDE_KEY = "hyax:pets-hidden";
+/**
+ * На iPhone питомцы — крупная новая функция, и по правилам Apple она приезжает
+ * сборкой через TestFlight, а не по воздуху: в сборках до IOS_MIN_BUILD их нет
+ * (ни в профиле, ни в чатах, ни в настройках). Android, компьютеры и сайт — сразу.
+ */
+const IOS_MIN_BUILD = 197;
+let available: boolean | null = Capacitor.getPlatform() === "ios" ? null : true;
+const availWaiters = new Set<() => void>();
+if (available === null) {
+  App.getInfo()
+    .then((i) => { available = (parseInt(i.build, 10) || 0) >= IOS_MIN_BUILD; })
+    .catch(() => { available = false; })
+    .finally(() => availWaiters.forEach((f) => f()));
+}
+export const petsAvailable = () => available === true;
+export function usePetsAvailable(): boolean {
+  const [v, setV] = useState(petsAvailable);
+  useEffect(() => {
+    if (available !== null) { setV(petsAvailable()); return; }
+    const f = () => setV(petsAvailable());
+    availWaiters.add(f);
+    return () => { availWaiters.delete(f); };
+  }, []);
+  return v;
+}
+
 export const petsHidden = () => { try { return localStorage.getItem(HIDE_KEY) === "1"; } catch { return false; } };
 export function setPetsHidden(on: boolean) {
   try { localStorage.setItem(HIDE_KEY, on ? "1" : "0"); } catch { /* без памяти */ }

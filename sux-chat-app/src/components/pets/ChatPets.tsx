@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { api, type PetBrief, type PetMood } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { isNight, loadPack, petDisplayName, purr, rememberPet, useChatPets, usePetsHidden, type PetPack, type PoseName } from "@/lib/pets";
+import { isNight, loadPack, petDisplayName, purr, rememberPet, useChatPets, usePetsAvailable, usePetsHidden, type PetPack, type PoseName } from "@/lib/pets";
 import PetSprite from "./PetSprite";
 
 /**
@@ -234,7 +234,8 @@ export default function ChatPets({ ownerIds, feedRef, scrollRef, active }: {
   active: boolean;
 }) {
   const hidden = usePetsHidden();
-  const pets = useChatPets(ownerIds).slice(0, MAX_PETS);
-  if (hidden || !active || !pets.length) return null;
+  const available = usePetsAvailable();
+  const pets = useChatPets(available ? ownerIds : []).slice(0, MAX_PETS);
+  if (hidden || !available || !active || !pets.length) return null;
   return <>{pets.map((p) => <PetActor key={p.id} pet={p} feedRef={feedRef} scrollRef={scrollRef} />)}</>;
 }
