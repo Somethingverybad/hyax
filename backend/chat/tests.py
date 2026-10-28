@@ -3184,3 +3184,103 @@ class LinkImageYoutubeTests(TestCase):
         with mock.patch("chat.linkimage._public_host", return_value=True), mock.patch("requests.get") as get:
             fetch_image(str(msg.id), msg.content)
         get.assert_not_called()
+
+
+class PetTests(TestCase):
+    """Питомцы: уход раз в сутки от человека, +1 вайб, шкала убывает, напоминания хозяину."""
+
+    def setUp(self):
+        from .models import Pet
+        self.owner = make_user("pet_owner")
+        self.guest = make_user("pet_guest")
+        self.pet = Pet.objects.create(owner=self.owner, name="Мистер Кот", level=50)
+
+    def care(self, who, action="pet"):
+        return client_for(who).post(f"/api/pets/{self.pet.id}/care/", {"action": action}, format="json")
+
+    def test_owner_care_once_a_day_with_vibe(self):
+        from .pets import OWNER_GAIN, PET_CARE_VIBE
+        r = self.care(self.owner, "feed")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["pet"]["level"], round(50 + OWNER_GAIN))
+        self.assertEqual(r.data["vibe_gain"], PET_CARE_VIBE)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.vibe, PET_CARE_VIBE)
+        self.assertFalse(r.data["pet"]["can_care"])
+        # Второе действие за сутки — нельзя ни кормить, ни гладить.
+        again = self.care(self.owner, "pet")
+        self.assertEqual(again.status_code, 429)
+        self.assertTrue(again.data["next_care_at"])
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.vibe, PET_CARE_VIBE)
+
+    def test_guest_care_smaller_gain_and_own_vibe(self):
+        from .pets import GUEST_GAIN
+        r = self.care(self.guest, "pet")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["pet"]["level"], round(50 + GUEST_GAIN))
+        self.guest.refresh_from_db(); self.owner.refresh_from_db()
+        self.assertEqual(self.guest.vibe, 1)
+        self.assertEqual(self.owner.vibe, 0)
+        self.assertEqual(r.data["pet"]["today"][0]["who"]["username"], "pet_guest")
+        # Через сутки — снова можно.
+        from .models import PetCare
+        PetCare.objects.update(created_at=timezone.now() - timedelta(hours=25))
+        self.assertEqual(self.care(self.guest, "feed").status_code, 200)
+
+    def test_level_decays_and_moods(self):
+        from .models import Pet
+        from .pets import current_level, mood, DAY_DECAY
+        now = timezone.now()
+        Pet.objects.filter(id=self.pet.id).update(level=100, level_at=now - timedelta(days=2))
+        self.pet.refresh_from_db()
+        self.assertAlmostEqual(current_level(self.pet, now), 100 - 2 * DAY_DECAY, places=3)
+        self.assertEqual(mood(self.pet, now), "bored")  # два дня без ухода: 100 → 50
+        Pet.objects.filter(id=self.pet.id).update(level=30, level_at=now, last_fed_at=now - timedelta(days=3), last_petted_at=now - timedelta(hours=5))
+        self.pet.refresh_from_db()
+        self.assertEqual(mood(self.pet, now), "hungry")
+        Pet.objects.filter(id=self.pet.id).update(level=0, level_at=now)
+        self.pet.refresh_from_db()
+        self.assertEqual(mood(self.pet, now), "sick")
+
+    def test_reminders_once_a_day_and_opt_out(self):
+        from unittest import mock
+        from .models import Pet
+        from .pets import send_reminders
+        Pet.objects.filter(id=self.pet.id).update(owner_cared_at=timezone.now() - timedelta(hours=26))
+        with mock.patch("chat.fcm.notify_profiles") as push:
+            self.assertEqual(send_reminders(), 1)
+            self.assertEqual(push.call_args.kwargs["extra"]["kind"], "pet")
+            # В тот же день повторно — нет.
+            self.assertEqual(send_reminders(), 0)
+        self.pet.refresh_from_db()
+        self.assertEqual(self.pet.reminders, 1)
+        # Хозяин поухаживал — счётчик сброшен, напоминаний нет.
+        self.care(self.owner)
+        self.pet.refresh_from_db()
+        self.assertEqual(self.pet.reminders, 0)
+        # Выключил напоминания — не шлём.
+        from .models import Profile
+        Profile.objects.filter(id=self.owner.id).update(notify_pet=False)
+        Pet.objects.filter(id=self.pet.id).update(owner_cared_at=timezone.now() - timedelta(days=3), reminded_at=None)
+        with mock.patch("chat.fcm.notify_profiles"):
+            self.assertEqual(send_reminders(), 0)
+
+    def test_name_visibility_and_chat_list(self):
+        r = client_for(self.owner).patch("/api/pets/mine/", {"name": "  Барсик  "}, format="json")
+        self.assertEqual(r.data["pet"]["name"], "Барсик")
+        self.assertEqual(client_for(self.owner).patch("/api/pets/mine/", {"name": "  "}, format="json").status_code, 400)
+        self.assertEqual(client_for(self.guest).patch("/api/pets/mine/", {"name": "x"}, format="json").status_code, 404)
+        lst = client_for(self.guest).get(f"/api/pets/?owners={self.owner.id},{self.guest.id}")
+        self.assertEqual([p["name"] for p in lst.data["pets"]], ["Барсик"])
+        client_for(self.owner).patch("/api/pets/mine/", {"show_in_chats": False}, format="json")
+        self.assertEqual(client_for(self.guest).get(f"/api/pets/?owners={self.owner.id}").data["pets"], [])
+        # В профиле виден всё равно.
+        self.assertEqual(client_for(self.guest).get(f"/api/pets/of/{self.owner.id}/").data["pet"]["name"], "Барсик")
+
+    def test_vibe_history_shows_care(self):
+        self.care(self.guest, "feed")
+        items = client_for(self.guest).get("/api/vibe/history/").data["items"]
+        self.assertEqual(items[0]["kind"], "pet_care")
+        self.assertEqual(items[0]["pet"], "Мистер Кот")
+        self.assertEqual(items[0]["who"]["username"], "pet_owner")

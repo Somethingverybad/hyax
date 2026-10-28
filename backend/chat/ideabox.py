@@ -696,6 +696,11 @@ class VibeHistoryView(APIView):
             rows.append((v.created_at, {"kind": "idea_vote", "points": VOTE_POINTS, "idea": _clip(v.idea.text, 120)}))
         for r in Report.objects.filter(target_profile=me).order_by("-created_at")[:n]:
             rows.append((r.created_at, {"kind": "report", "points": -VIBE_REPORT_PENALTY}))
+        from .models import PetCare
+        from .pets import PET_CARE_VIBE
+        for c in PetCare.objects.filter(carer=me).select_related("pet", "pet__owner").order_by("-created_at")[:n]:
+            rows.append((c.created_at, {"kind": "pet_care", "points": PET_CARE_VIBE, "action": c.action, "pet": c.pet.name,
+                                        "who": None if c.pet.owner_id == me.id else who(c.pet.owner)}))
         from .models import VibeAdjustment
         for a in VibeAdjustment.objects.filter(target=me).order_by("-created_at")[:n]:
             rows.append((a.created_at, {"kind": "admin", "points": a.points, "reason": a.reason}))

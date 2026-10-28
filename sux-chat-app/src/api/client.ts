@@ -246,6 +246,8 @@ export interface Profile {
   notify_silent?: boolean;
   /** Пуш, когда собеседник написал на Стене. Только в своём профиле. */
   notify_wall?: boolean;
+  /** Напоминания питомца (chat/pets.py): сутки без ухода — пуш. */
+  notify_pet?: boolean;
   /** «Мой звук»: с ним приходят пуши о моих сообщениях у собеседников. */
   notify_sound?: NotificationSoundInfo | null;
   /** Звук входящего звонка (lib/ringtone.ts). Только в своём профиле. */
@@ -329,8 +331,31 @@ export interface SoundPackInfo {
 
 /** Стикерпак — карточка по ссылке /stp/<id>. author — сериализованный профиль. */
 /** Событие вайбометра (chat/ideabox.py, VibeHistoryView). who нет — анонимно. */
+export type PetAction = "feed" | "pet";
+/** Настроение питомца (chat/pets.py mood). */
+export type PetMood = "happy" | "content" | "bored" | "hungry" | "lonely" | "sad" | "sick" | "overfed";
+/** Коротко — для чатов. */
+export interface PetBrief {
+  id: string;
+  owner_id: string;
+  species: string;
+  name: string;
+  level: number;
+  mood: PetMood;
+  show_in_chats: boolean;
+}
+/** Полностью — для карточки профиля. */
+export interface Pet extends PetBrief {
+  last_fed_at: string | null;
+  last_petted_at: string | null;
+  can_care: boolean;
+  next_care_at: string | null;
+  today: { who: { id: string; username: string; avatar_url?: string | null }; action: PetAction; at: string }[];
+  cares_total: number;
+}
+
 export interface VibeEvent {
-  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report" | "playlist_like" | "admin";
+  kind: "profile" | "saved" | "idea_like" | "idea_vote" | "report" | "playlist_like" | "admin" | "pet_care";
   points: number;
   at: string;
   /** admin: за что админ начислил или снял баллы. */
@@ -340,6 +365,9 @@ export interface VibeEvent {
   idea?: string;
   /** playlist_like: название плейлиста, который лайкнули. */
   playlist?: string;
+  /** pet_care: кличка питомца и что сделали (who — хозяин, если питомец чужой). */
+  pet?: string;
+  action?: PetAction;
 }
 export interface VibeHistory { vibe: number; silent: boolean; items: VibeEvent[] }
 
@@ -1712,6 +1740,35 @@ export const api = {
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
+  // ===== ПИТОМЦЫ (chat/pets.py, рисунки — public/pets/<вид>/) =====
+  /** Питомец человека для карточки профиля (нет — null). */
+  getPetOf: async (profileId: string): Promise<Pet | null> => {
+    const res = await fetchWithAuth(`${API_URL}/pets/of/${profileId}/`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
+    return (await res.json()).pet ?? null;
+  },
+  /** Питомцы участников чата, которых показывают в переписке. */
+  getPets: async (ownerIds: string[]): Promise<PetBrief[]> => {
+    if (!ownerIds.length) return [];
+    const res = await fetchWithAuth(`${API_URL}/pets/?owners=${ownerIds.map(encodeURIComponent).join(",")}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
+    return (await res.json()).pets ?? [];
+  },
+  /** Покормить или погладить: раз в сутки от человека (+1 к вайбу). Рано — ошибка с next_care_at и pet. */
+  carePet: async (petId: string, action: PetAction): Promise<{ pet: Pet; vibe: number; vibe_gain: number }> => {
+    const res = await fetchWithAuth(`${API_URL}/pets/${petId}/care/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ action }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new LError(data?.error || "Не получилось"), { status: res.status, pet: data?.pet as Pet | undefined, nextCareAt: data?.next_care_at as string | undefined });
+    return data;
+  },
+  /** Свой питомец: кличка, показывать ли в чатах. */
+  updateMyPet: async (patch: { name?: string; show_in_chats?: boolean }): Promise<Pet> => {
+    const res = await fetchWithAuth(`${API_URL}/pets/mine/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не получилось");
+    return data.pet;
+  },
+
   /** Кто и за что поднимал мой вайб (и что снимало) — от новых к старым. */
   vibeHistory: async (): Promise<VibeHistory> => {
     const res = await fetchWithAuth(`${API_URL}/vibe/history/`, { method: "GET", headers: authHeaders() });
@@ -2535,7 +2592,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; quick_reaction?: { key: string; emoji?: string; custom?: { url: string; repaint?: boolean } } | null; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; notify_pet?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; quick_reaction?: { key: string; emoji?: string; custom?: { url: string; repaint?: boolean } } | null; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

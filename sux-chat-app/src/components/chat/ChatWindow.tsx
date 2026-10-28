@@ -67,6 +67,7 @@ const PhotoEditor = lazy(() => import("@/components/PhotoEditor"));
 import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
 import ChatMediaSheet from "./ChatMediaSheet";
+import ChatPets from "@/components/pets/ChatPets";
 import { WallpaperVideo } from "./ChatWallpaper";
 import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
@@ -579,6 +580,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [headerTitle, setHeaderTitle] = useState(title || "");
   useEffect(() => { setHeaderTitle(title || ""); }, [title]);
   const isGroup = !!group?.is_group;
+  // Чьи питомцы гуляют по этой переписке: собеседник и я, в группе — участники.
+  const petOwners = useMemo(
+    () => (isGroup ? (group?.participants || []).map((p) => p.id) : [userId, peer?.id || ""]).filter(Boolean).slice(0, 20),
+    [isGroup, group?.participants, userId, peer?.id],
+  );
   const isGroupAdmin = isGroup && group?.creator === userId;
   // «Печатает…», «записывает голосовое…» собеседника (lib/chatActivity): в группе — с именем.
   const activityText = activityLabel(useChatActivity(chatId), isGroup);
@@ -4262,7 +4268,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         {/* mt-auto: короткая переписка (часто секретный чат) прижата к полю
             ввода, как длинная, а не висит под шапкой с пустотой снизу
             (баг-репорт 54ff0f55). */}
-        <div ref={feedRef} className={cn("mt-auto w-full max-w-4xl mx-auto space-y-2", mintM && pinned && "pt-[56px]")}>
+        <div ref={feedRef} className={cn("relative mt-auto w-full max-w-4xl mx-auto space-y-2", mintM && pinned && "pt-[56px]")}>
           {hasMore && (
             <div className="flex justify-center">
               <button
@@ -4419,6 +4425,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               <div
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
+                data-sender-id={message.sender?.id}
                 className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", message._key ? "msg-in-own" : freshIds.has(message.id) && "msg-in", foundId === message.id && "msg-found", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
               >
                 {/* Разделитель с датой */}
@@ -4967,6 +4974,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           })}
           {/* Невидимый элемент для прокрутки вниз */}
           <div ref={messagesEndRef} />
+          {/* Питомцы участников — гуляют по пузырям (только анимация, components/pets). */}
+          <div className="absolute inset-0 !mt-0 pointer-events-none" aria-hidden={false}>
+            <ChatPets ownerIds={petOwners} feedRef={feedRef} scrollRef={scrollRef} active={active && !selected} />
+          </div>
         </div>
       </div>
 

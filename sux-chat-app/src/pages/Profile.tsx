@@ -35,6 +35,7 @@ import {
   Sticker, Activity, Flame, Lightbulb, Sparkles, Mic, Heart,
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
+import PetCard from "@/components/pets/PetCard";
 import { useMint, MintIcon } from "@/themes/mint";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useGlassHeight } from "@/themes/mint/glass";
@@ -51,6 +52,7 @@ export interface Profile {
   notify_silent?: boolean;
   /** Пуш, когда собеседник написал на Стене (chat/wall_notify.py). */
   notify_wall?: boolean;
+  notify_pet?: boolean;
   rov_enabled?: boolean;
   notify_sound?: NotificationSoundInfo | null;
   /** Звук входящего звонка: "" — стандартный, "classic", "sound:<id>" (lib/ringtone.ts). */
@@ -408,6 +410,7 @@ const ProfilePage = () => {
           </button>
 
           {profile?.id && <Vibometer profileId={profile.id} own initial={(profile as { vibe?: number }).vibe} />}
+          {profile?.id && <PetCard profileId={profile.id} own />}
 
           <SettingsCard>
             <SettingsRow

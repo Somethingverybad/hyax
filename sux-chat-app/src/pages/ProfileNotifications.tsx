@@ -10,6 +10,7 @@ import { SettingsCard, SettingsRow } from "@/components/settings";
 import { getSetting, setSetting } from "@/lib/settings";
 import SoundPicker from "@/components/SoundPicker";
 import { toast } from "sonner";
+import { petsHidden, setPetsHidden } from "@/lib/pets";
 import { Music2, Library, Phone, Check, X } from "lucide-react";
 import { BUILTIN_RINGTONES, ringtoneLabel, previewRingtone, resolveRingtoneUrl } from "@/lib/ringtone";
 import type { Profile } from "./Profile";
@@ -33,6 +34,7 @@ const ProfileNotifications = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(readCache<Profile>("user"));
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [petsHiddenNow, setPetsHiddenNow] = useState(petsHidden);
   // Звук звонка: встроенные варианты или любой звук из каталога.
   const [ringOpen, setRingOpen] = useState(false);
   const [ringCatalog, setRingCatalog] = useState(false);
@@ -202,6 +204,24 @@ const ProfileNotifications = () => {
                   onChange={(v) => patch({ notify_wall: v }, { ...profile, notify_wall: v }, profile)}
                 />
               }
+            />
+            {/* Питомец: сутки без ухода — пуш (chat/pets.py), не чаще раза в сутки. */}
+            <SettingsRow
+              label={t("Напоминания питомца")}
+              hint={t("Если сутки не ухаживали — питомец напомнит о себе, раз в день")}
+              trailing={
+                <Toggle
+                  label={t("Напоминания питомца")}
+                  checked={profile.notify_pet !== false}
+                  onChange={(v) => patch({ notify_pet: v }, { ...profile, notify_pet: v }, profile)}
+                />
+              }
+            />
+            {/* Чужие питомцы в переписке — только на этом устройстве. */}
+            <SettingsRow
+              label={t("Питомцы в чатах")}
+              hint={t("Питомцы собеседников гуляют по сообщениям. Выключите, если отвлекают (на этом устройстве)")}
+              trailing={<Toggle label={t("Питомцы в чатах")} checked={!petsHiddenNow} onChange={(v) => { setPetsHidden(!v); setPetsHiddenNow(!v); }} />}
             />
             {/* Текст в уведомлениях. Выключено — сервер шлёт «Новое сообщение»
                 вместо текста; сам пуш при этом всё равно зашифрован. */}

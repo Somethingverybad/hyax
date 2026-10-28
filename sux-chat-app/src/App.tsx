@@ -121,6 +121,8 @@ const PushOpen = () => {
       FirebaseMessaging.addListener("notificationActionPerformed", (e) => {
         const data = ((e as { notification?: { data?: Record<string, unknown> } })?.notification?.data) || {};
         if (data.kind === "vibe") { navigate("/profile"); return; }
+        // Напоминание питомца — к нему в профиль.
+        if (data.kind === "pet") { navigate("/profile"); return; }
         // Пост собеседника на Стене. Старые сборки тип пуша из шифротекста не
         // передают — узнаём Стену по chat_id.
         const wallId = readCache<{ id?: string }>("wall")?.id;

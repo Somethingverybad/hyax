@@ -553,6 +553,14 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         toast.success(who ? tr("{name} поднял(а) ваш вайб", { name: who }) : tr("Кто-то поднял ваш вайб"), { description: tr("Вайбометр: {n}", { n: msg.data.vibe }), id: "vibe" });
         playSfx("sent");
         setUser((u) => { if (!u) return u; const n = { ...u, vibe: msg.data.vibe }; writeCache("user", n); return n; });
+      } else if (msg?.data?.type === "pet") {
+        // За моим питомцем поухаживал кто-то другой — короткая заметка (свой уход — без неё).
+        const by = msg.data.by;
+        const me = readCache<{ id?: string }>("user")?.id;
+        if (by && by.id !== me) {
+          const name = msg.data.pet?.name || tr("ваш питомец");
+          toast(msg.data.action === "feed" ? tr("{who} покормил(а) питомца — {name}", { who: by.username, name }) : tr("{who} погладил(а) питомца — {name}", { who: by.username, name }), { id: "pet" });
+        }
       } else if (msg?.data?.type === "rov") {
         // Сигнал живёт, только пока приложение открыто: в истории его нет.
         if (msg.data.on) rovOn(msg.data.from_username);

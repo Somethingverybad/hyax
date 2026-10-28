@@ -18,6 +18,7 @@ import ShareToChat from "@/components/ShareToChat";
 import { toast } from "sonner";
 import { useSwipeDismiss } from "@/lib/useSwipeDismiss";
 import Vibometer from "@/components/Vibometer";
+import PetCard from "@/components/pets/PetCard";
 import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import ChatMediaSheet, { ChatMediaPreview } from "@/components/chat/ChatMediaSheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -260,6 +261,7 @@ const UserProfileModal = ({
               </div>
 
               {!isBot && <Vibometer profileId={profile.id} username={profile.username} initial={(profile as { vibe?: number }).vibe} />}
+              {!isBot && <PetCard profileId={profile.id} />}
 
               {saved && saved.count > 0 && (
                 <div className="mint-card overflow-hidden">
@@ -400,6 +402,7 @@ const UserProfileModal = ({
             <div className="border-t border-border" />
 
             {!(profile as { is_bot?: boolean }).is_bot && <Vibometer profileId={profile.id} username={profile.username} initial={(profile as { vibe?: number }).vibe} />}
+            {!(profile as { is_bot?: boolean }).is_bot && <PetCard profileId={profile.id} />}
 
             {profile.bio && (
               <div className="rounded-lg bg-surface-4 p-4">

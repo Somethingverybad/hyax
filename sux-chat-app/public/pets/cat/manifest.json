@@ -1,0 +1,82 @@
+{
+  "format": 1,
+  "species": "cat",
+  "rev": 1,
+  "name": {
+    "ru": "Кот",
+    "en": "Cat",
+    "ko": "고양이"
+  },
+  "defaultName": {
+    "ru": "Мистер Кот",
+    "en": "Mister Cat",
+    "ko": "미스터 고양이"
+  },
+  "canvas": [
+    200,
+    240
+  ],
+  "anchor": [
+    100,
+    200
+  ],
+  "scale": 0.3,
+  "author": "WYX",
+  "sounds": {
+    "purr": "synth:purr"
+  },
+  "poses": {
+    "sit": {
+      "file": "sit.json",
+      "loop": true
+    },
+    "purr": {
+      "file": "purr.json",
+      "loop": true,
+      "sound": "purr"
+    },
+    "walk": {
+      "file": "walk.json",
+      "loop": true,
+      "speed": 34,
+      "facing": "right"
+    },
+    "lie": {
+      "file": "lie.json",
+      "loop": true
+    },
+    "sleep": {
+      "file": "sleep.json",
+      "loop": true
+    },
+    "belly": {
+      "file": "belly.json",
+      "loop": true
+    },
+    "scratch": {
+      "file": "scratch.json",
+      "loop": true
+    },
+    "bury": {
+      "file": "bury.json",
+      "loop": true,
+      "facing": "right"
+    },
+    "eat": {
+      "file": "eat.json",
+      "loop": true
+    },
+    "sad": {
+      "file": "sad.json",
+      "loop": true
+    },
+    "sick": {
+      "file": "sick.json",
+      "loop": true
+    },
+    "sulk": {
+      "file": "sulk.json",
+      "loop": true
+    }
+  }
+}

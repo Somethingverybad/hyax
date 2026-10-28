@@ -1,7 +1,7 @@
 import { useMediaUrl } from "@/hooks/use-media-url";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Flag, Image as ImageIcon, Lightbulb, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { Flag, Image as ImageIcon, Lightbulb, PawPrint, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
 import Identicon from "@/components/Identicon";
 import { VibeBar } from "@/components/Vibometer";
@@ -49,11 +49,16 @@ const ProfileVibeHistory = () => {
       case "report": return t("Жалоба на вас");
       case "playlist_like": return name ? t("{name} лайкнул(а) ваш плейлист", { name }) : t("Лайк вашего плейлиста");
       case "admin": return e.reason || (e.points > 0 ? t("Начисление от команды WYX") : t("Снятие баллов командой WYX"));
+      case "pet_care": {
+        const pet = e.pet || t("питомца");
+        if (name) return e.action === "feed" ? t("Вы покормили питомца {name} — {pet}", { name, pet }) : t("Вы погладили питомца {name} — {pet}", { name, pet });
+        return e.action === "feed" ? t("Вы покормили своего питомца — {pet}", { pet }) : t("Вы погладили своего питомца — {pet}", { pet });
+      }
     }
   };
   const icon = (e: VibeEvent) => {
     if (e.who) return <Identicon id={e.who.id} avatarUrl={e.who.avatar_url} className="w-10 h-10 shrink-0" />;
-    const Icon = e.kind === "report" ? Flag : e.kind === "saved" ? ImageIcon : e.kind.startsWith("idea") ? Lightbulb : e.kind === "admin" ? ShieldCheck : UserRound;
+    const Icon = e.kind === "report" ? Flag : e.kind === "saved" ? ImageIcon : e.kind.startsWith("idea") ? Lightbulb : e.kind === "admin" ? ShieldCheck : e.kind === "pet_care" ? PawPrint : UserRound;
     return (
       <span className={cn("w-10 h-10 shrink-0 rounded-full flex items-center justify-center", e.kind === "report" || (e.kind === "admin" && e.points < 0) ? "bg-destructive/10 text-destructive" : e.kind === "admin" ? "bg-primary/10 text-primary" : "bg-surface-4 text-subtle")}>
         <Icon className="w-5 h-5" />

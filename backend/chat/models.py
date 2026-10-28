@@ -74,6 +74,8 @@ class Profile(models.Model):
     # Пуш, когда собеседник (живая личка) написал на Стене (chat/wall_notify.py).
     # Отдельных авторов глушат в меню поста — WallNotifyMute.
     notify_wall = models.BooleanField(default=True, db_default=True)
+    # Напоминания питомца: «скучает, загляните» — если хозяин сутки не ухаживал (chat/pets.py).
+    notify_pet = models.BooleanField(default=True, db_default=True)
     # «Долгий ящик» в списке чатов: скрыл — строки нет и пушей от бота нет;
     # возвращается в настройках («Внешний вид» → «Разделы»).
     ideabox_enabled = models.BooleanField(default=True)
@@ -1025,6 +1027,40 @@ class PlaylistLike(models.Model):
 
     class Meta:
         unique_together = ("playlist", "profile")
+
+
+class Pet(models.Model):
+    """Питомец пользователя (пока по одному): вид — пак клиента (public/pets/<вид>/),
+    кличку даёт хозяин. Шкала состояния хранится значением на момент level_at и
+    убывает со временем (pets.current_level) — фоновые задачи не нужны.
+    Хозяин и гости ухаживают раз в сутки (PetCare), за уход — +1 к вайбу."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.OneToOneField(Profile, on_delete=models.CASCADE, related_name="pet")
+    species = models.CharField(max_length=24, default="cat")
+    name = models.CharField(max_length=40, blank=True, default="")
+    level = models.FloatField(default=80)
+    level_at = models.DateTimeField(default=timezone.now)
+    last_fed_at = models.DateTimeField(null=True, blank=True)
+    last_petted_at = models.DateTimeField(null=True, blank=True)
+    # Когда ухаживал сам хозяин: от этого — напоминания (раз в сутки, не больше REMIND_MAX подряд).
+    owner_cared_at = models.DateTimeField(null=True, blank=True)
+    reminded_at = models.DateTimeField(null=True, blank=True)
+    reminders = models.PositiveSmallIntegerField(default=0)
+    # Показывать в переписке хозяина (его чаты, у собеседников тоже).
+    show_in_chats = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+
+class PetCare(models.Model):
+    """Уход за питомцем: покормил (feed) или погладил (pet). Один раз в сутки от
+    человека на питомца — это и есть его +1 к вайбу (pets.care)."""
+    pet = models.ForeignKey(Pet, on_delete=models.CASCADE, related_name="cares")
+    carer = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="pet_cares")
+    action = models.CharField(max_length=8)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["pet", "carer", "-created_at"], name="petcare_pet_carer")]
 
 
 class StationListener(models.Model):

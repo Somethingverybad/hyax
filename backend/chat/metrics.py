@@ -176,6 +176,9 @@ def _loop():
                 cpu=cpu, mem=round(100.0 * mem[0] / mem[1], 1) if mem else None,
                 load1=la[0] if la else None,
             )
+            # Напоминания питомцев: раз в час, один воркер (cache.add внутри).
+            from .pets import maybe_send_reminders
+            maybe_send_reminders()
             if time.time() - last_cleanup > 6 * 3600:
                 last_cleanup = time.time()
                 MetricSample.objects.filter(ts__lt=timezone.now() - timedelta(days=KEEP_DAYS)).delete()
