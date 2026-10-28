@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { Capacitor } from "@capacitor/core";
-import { App } from "@capacitor/app";
 import { api, type Pet, type PetBrief, type PetMood } from "@/api/client";
 import { t } from "@/lib/i18n";
 import { onUserMessage } from "@/lib/userSocket";
@@ -246,29 +244,15 @@ export function useMyPet(userId: string | null | undefined): Brief | Pet | null 
 // ---------- «Питомцы в чатах» у смотрящего (своя настройка, на этом устройстве) ----------
 const HIDE_KEY = "hyax:pets-hidden";
 /**
- * На iPhone питомцы — крупная новая функция, и по правилам Apple она приезжает
- * сборкой через TestFlight, а не по воздуху: в сборках до IOS_MIN_BUILD их нет
- * (ни в профиле, ни в чатах, ни в настройках). Android, компьютеры и сайт — сразу.
+ * Питомцы есть везде, где есть веб-часть, в том числе на iPhone по воздуху:
+ * правила Apple (DPLA 3.3.1(B)) разрешают загружать JS, если не меняется
+ * назначение приложения. Сначала на iPhone они ждали сборки 197, по
+ * решению пользователя ограничение снято. Выключатель оставлен: понадобится
+ * спрятать питомцев на какой-то платформе — достаточно поменять здесь.
  */
-const IOS_MIN_BUILD = 197;
-let available: boolean | null = Capacitor.getPlatform() === "ios" ? null : true;
-const availWaiters = new Set<() => void>();
-if (available === null) {
-  App.getInfo()
-    .then((i) => { available = (parseInt(i.build, 10) || 0) >= IOS_MIN_BUILD; })
-    .catch(() => { available = false; })
-    .finally(() => availWaiters.forEach((f) => f()));
-}
-export const petsAvailable = () => available === true;
+export const petsAvailable = () => true;
 export function usePetsAvailable(): boolean {
-  const [v, setV] = useState(petsAvailable);
-  useEffect(() => {
-    if (available !== null) { setV(petsAvailable()); return; }
-    const f = () => setV(petsAvailable());
-    availWaiters.add(f);
-    return () => { availWaiters.delete(f); };
-  }, []);
-  return v;
+  return petsAvailable();
 }
 
 export const petsHidden = () => { try { return localStorage.getItem(HIDE_KEY) === "1"; } catch { return false; } };
