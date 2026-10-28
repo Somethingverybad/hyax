@@ -1051,6 +1051,8 @@ class Pet(models.Model):
     # Где питомец сейчас: в одном чате хозяина (зовут из меню чата) или дома — только в профиле.
     chat = models.ForeignKey("Chat", null=True, blank=True, on_delete=models.SET_NULL, related_name="pets_here")
     chat_at = models.DateTimeField(null=True, blank=True)
+    # Окрас из пака вида (manifest.coats на клиенте); пусто — как нарисован.
+    color = models.CharField(max_length=24, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
 
 

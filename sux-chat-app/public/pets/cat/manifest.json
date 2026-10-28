@@ -1,7 +1,7 @@
 {
   "format": 1,
   "species": "cat",
-  "rev": 2,
+  "rev": 3,
   "name": {
     "ru": "Кот",
     "en": "Cat",
@@ -24,6 +24,117 @@
   "author": "WYX",
   "sounds": {
     "purr": "synth:purr"
+  },
+  "palette": {
+    "ink": "#1E1E1E",
+    "fur": "#FFFFFF",
+    "eye": "#1E1E1F",
+    "glint": "#FEFEFE",
+    "face": "#1E1F1E",
+    "nose": "#1F1E1E",
+    "tip": "#1E1F1F",
+    "bow": "#1F1E1F",
+    "ear": "#F3B9B4"
+  },
+  "defaultCoat": "white",
+  "coats": {
+    "white": {
+      "name": {
+        "ru": "Белый",
+        "en": "White",
+        "ko": "흰색"
+      },
+      "colors": {}
+    },
+    "ginger": {
+      "name": {
+        "ru": "Рыжий",
+        "en": "Ginger",
+        "ko": "치즈"
+      },
+      "colors": {
+        "fur": "#F7B46A",
+        "tip": "#D2702F",
+        "ink": "#3B2416",
+        "eye": "#2A1A10",
+        "face": "#3B2416",
+        "nose": "#C2574A",
+        "ear": "#F59A8F",
+        "bow": "#2F6B57"
+      }
+    },
+    "grey": {
+      "name": {
+        "ru": "Серый",
+        "en": "Grey",
+        "ko": "회색"
+      },
+      "colors": {
+        "fur": "#C3C8D0",
+        "tip": "#5F656E",
+        "ear": "#EBB2B8",
+        "nose": "#B5707E"
+      }
+    },
+    "black": {
+      "name": {
+        "ru": "Чёрный",
+        "en": "Black",
+        "ko": "검은색"
+      },
+      "colors": {
+        "fur": "#3A3A42",
+        "ink": "#121216",
+        "eye": "#F5C842",
+        "glint": "#FFFFFF",
+        "face": "#C9C9D2",
+        "nose": "#E98AA0",
+        "tip": "#1B1B20",
+        "bow": "#E5484D",
+        "ear": "#8A6472"
+      }
+    },
+    "cream": {
+      "name": {
+        "ru": "Кремовый",
+        "en": "Cream",
+        "ko": "크림"
+      },
+      "colors": {
+        "fur": "#F4E4C6",
+        "tip": "#A87A4C",
+        "ink": "#2E2318",
+        "ear": "#F2B7A8",
+        "nose": "#B8705E"
+      }
+    },
+    "mint": {
+      "name": {
+        "ru": "Мятный",
+        "en": "Mint",
+        "ko": "민트"
+      },
+      "colors": {
+        "fur": "#C6EBDC",
+        "tip": "#2F6B57",
+        "bow": "#2F6B57",
+        "ear": "#F2B7B4"
+      }
+    },
+    "pink": {
+      "name": {
+        "ru": "Розовый",
+        "en": "Pink",
+        "ko": "분홍"
+      },
+      "colors": {
+        "fur": "#FAD3DD",
+        "tip": "#D9728C",
+        "bow": "#B34766",
+        "ear": "#F59AB0",
+        "nose": "#C45A78"
+      }
+    }
   },
   "poses": {
     "sit": {

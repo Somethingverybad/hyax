@@ -20,6 +20,7 @@ design/pets/README.md). Здесь только правила, которым �
 from __future__ import annotations
 
 import logging
+import re
 from datetime import timedelta
 
 from django.core.cache import cache
@@ -49,6 +50,8 @@ OVERFED_FEEDS = 3
 OVERFED_WINDOW = timedelta(hours=12)
 OVERFED_FOR = timedelta(hours=4)
 NAME_MAX = 40
+# Окрасы описаны в паке клиента; сервер только хранит имя (неизвестное клиент рисует как есть).
+COLOR_RE = re.compile(r"^[a-z0-9_-]{0,24}$")
 PET_CHAT_KINDS = ("direct", "group", "secret")  # не в каналах и не на стене
 NOTIFY_MEMBERS_MAX = 300
 
@@ -114,6 +117,7 @@ def pet_json(pet: Pet, viewer: Profile | None = None, now=None, brief=False) -> 
         "mood": mood(pet, now, lv),
         "show_in_chats": pet.show_in_chats,
         "chat_id": str(pet.chat_id) if pet.chat_id else None,
+        "color": pet.color,
     }
     if brief:
         return out
@@ -360,7 +364,7 @@ class PetCareView(APIView):
 
 
 class MyPetView(APIView):
-    """PATCH /api/pets/mine/ {name?, show_in_chats?, chat_id?} — кличка; позвать в чат (chat_id) или домой (null)."""
+    """PATCH /api/pets/mine/ {name?, show_in_chats?, chat_id?, color?} — кличка, окрас; позвать в чат (chat_id) или домой (null)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request):
@@ -375,7 +379,17 @@ class MyPetView(APIView):
             pet.name = name
         if "show_in_chats" in request.data:
             pet.show_in_chats = bool(request.data.get("show_in_chats"))
-        pet.save(update_fields=["name", "show_in_chats"])
+        recolored = False
+        if "color" in request.data:
+            color = str(request.data.get("color") or "")
+            if not COLOR_RE.match(color):
+                return Response({"error": "Нет такого окраса"}, status=400)
+            recolored = color != pet.color
+            pet.color = color
+        pet.save(update_fields=["name", "show_in_chats", "color"])
+        if recolored and pet.chat_id:
+            # Кот сейчас в чате — собеседники видят новый окрас сразу.
+            _tell_members(pet, [pet.chat_id], pet.chat_id)
         if "chat_id" in request.data:
             try:
                 pet = move(pet, me, request.data.get("chat_id") or None)

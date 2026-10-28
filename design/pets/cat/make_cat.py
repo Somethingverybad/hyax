@@ -26,9 +26,21 @@ def rgb(h, a=1.0):
     return [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)] + [a]
 
 
-INK = rgb("#1E1E1E")
-FUR = rgb("#FFFFFF")
-PINK = rgb("#F3B9B4")
+# Слоты окраса: у каждой детали свой цвет-метка (на глаз — те же чёрный и белый).
+# Приложение при загрузке позы меняет метки на цвета окраса из manifest.coats
+# (lib/pets.ts recolor), поэтому разные детали — разными значениями.
+PALETTE = {
+    "ink": "#1E1E1E",    # контур
+    "fur": "#FFFFFF",    # мех
+    "eye": "#1E1E1F",    # зрачки и закрытые глаза
+    "glint": "#FEFEFE",  # блик в глазу
+    "face": "#1E1F1E",   # рот, усы, брови
+    "nose": "#1F1E1E",
+    "tip": "#1E1F1F",    # кончик хвоста
+    "bow": "#1F1E1F",    # бантик
+    "ear": "#F3B9B4",    # внутри ушей
+}
+INK, FUR, EYE, GLINT, FACE, NOSE, TIP, BOW, PINK = (rgb(PALETTE[k]) for k in ("ink", "fur", "eye", "glint", "face", "nose", "tip", "bow", "ear"))
 DUST = rgb("#B9B1A7")
 DUST2 = rgb("#7A6C5E")
 HEART = rgb("#FF5A6E")
@@ -174,35 +186,35 @@ def eyes(kind="open", dy=0, blink=None, n=90):
         y = 86 + dy
         if kind == "open" or kind == "sad":
             g = stack("eye", [
-                gr("pupil", [el(cx, y, 9, 11)], fl=INK),
-                gr("glint", [el(cx - 1.8, y - 2.4, 3, 3)], fl=FUR),
+                gr("pupil", [el(cx, y, 9, 11)], fl=EYE),
+                gr("glint", [el(cx - 1.8, y - 2.4, 3, 3)], fl=GLINT),
             ], t=pivot(cx, y, s=blink))
             out.append(g)
             if kind == "sad":
                 side = -1 if cx < 100 else 1
-                out.append(gr("brow", [sh(poly([(cx - 6 * side, y - 11), (cx + 4 * side, y - 8)]))], stc=INK, sw=SW2))
+                out.append(gr("brow", [sh(poly([(cx - 6 * side, y - 11), (cx + 4 * side, y - 8)]))], stc=FACE, sw=SW2))
         elif kind == "closed":
-            out.append(gr("eye", [sh(smooth([(cx - 6, y), (cx, y + 4), (cx + 6, y)], closed=False, tension=0.6))], stc=INK, sw=SW2))
+            out.append(gr("eye", [sh(smooth([(cx - 6, y), (cx, y + 4), (cx + 6, y)], closed=False, tension=0.6))], stc=EYE, sw=SW2))
         elif kind == "happy":
-            out.append(gr("eye", [sh(smooth([(cx - 6, y + 3), (cx, y - 3), (cx + 6, y + 3)], closed=False, tension=0.6))], stc=INK, sw=SW2))
+            out.append(gr("eye", [sh(smooth([(cx - 6, y + 3), (cx, y - 3), (cx + 6, y + 3)], closed=False, tension=0.6))], stc=EYE, sw=SW2))
         elif kind == "half":
-            out.append(gr("eye", [sh(poly([(cx - 6, y + 1), (cx + 6, y + 1)]))], stc=INK, sw=SW2))
-            out.append(gr("lid", [sh(smooth([(cx - 6, y + 1), (cx, y + 4), (cx + 6, y + 1)], closed=False, tension=0.6))], stc=INK, sw=SW2))
+            out.append(gr("eye", [sh(poly([(cx - 6, y + 1), (cx + 6, y + 1)]))], stc=EYE, sw=SW2))
+            out.append(gr("lid", [sh(smooth([(cx - 6, y + 1), (cx, y + 4), (cx + 6, y + 1)], closed=False, tension=0.6))], stc=EYE, sw=SW2))
     return out
 
 
 def face(eye_kind="open", dy=0, blink=None, mouth="w"):
     g = eyes(eye_kind, dy, blink)
-    g.append(gr("nose", [sh(smooth([(96, 96 + dy), (104, 96 + dy), (100, 100.5 + dy)], tension=0.25))], fl=INK, stc=INK, sw=1.5))
+    g.append(gr("nose", [sh(smooth([(96, 96 + dy), (104, 96 + dy), (100, 100.5 + dy)], tension=0.25))], fl=NOSE, stc=NOSE, sw=1.5))
     if mouth == "w":
-        g.append(gr("mouth", [sh(smooth([(93.5, 103 + dy), (97, 106 + dy), (100, 102 + dy), (103, 106 + dy), (106.5, 103 + dy)], closed=False, tension=0.5))], stc=INK, sw=SW2 - 0.6))
+        g.append(gr("mouth", [sh(smooth([(93.5, 103 + dy), (97, 106 + dy), (100, 102 + dy), (103, 106 + dy), (106.5, 103 + dy)], closed=False, tension=0.5))], stc=FACE, sw=SW2 - 0.6))
     elif mouth == "sad":
-        g.append(gr("mouth", [sh(smooth([(95, 106 + dy), (100, 103 + dy), (105, 106 + dy)], closed=False, tension=0.6))], stc=INK, sw=SW2 - 0.6))
+        g.append(gr("mouth", [sh(smooth([(95, 106 + dy), (100, 103 + dy), (105, 106 + dy)], closed=False, tension=0.6))], stc=FACE, sw=SW2 - 0.6))
     for side in (-1, 1):
         for a, b in (((81, 97), (60, 93)), ((81, 100.5), (58, 101)), ((81, 104), (61, 109))):
             p0 = (100 + (a[0] - 100) * side, a[1] + dy)
             p1 = (100 + (b[0] - 100) * side, b[1] + dy)
-            g.append(gr("whisker", [sh(poly([p0, p1]))], stc=INK, sw=2.2))
+            g.append(gr("whisker", [sh(poly([p0, p1]))], stc=FACE, sw=2.2))
     return g
 
 
@@ -215,9 +227,9 @@ def head(eye_kind="open", dy=0, blink=None, mouth="w", t=None, ears_r=(None, Non
 
 def bow(cx=100, cy=117, t=None):
     return stack("bow", [
-        gr("wing-l", [sh(smooth([(cx, cy), (cx - 15, cy - 8), (cx - 16, cy + 8)], tension=0.2))], fl=INK, stc=INK, sw=2),
-        gr("wing-r", [sh(smooth([(cx, cy), (cx + 15, cy - 8), (cx + 16, cy + 8)], tension=0.2))], fl=INK, stc=INK, sw=2),
-        gr("knot", [el(cx, cy, 8, 8)], fl=INK),
+        gr("wing-l", [sh(smooth([(cx, cy), (cx - 15, cy - 8), (cx - 16, cy + 8)], tension=0.2))], fl=BOW, stc=BOW, sw=2),
+        gr("wing-r", [sh(smooth([(cx, cy), (cx + 15, cy - 8), (cx + 16, cy + 8)], tension=0.2))], fl=BOW, stc=BOW, sw=2),
+        gr("knot", [el(cx, cy, 8, 8)], fl=BOW),
     ], t=t)
 
 
@@ -230,7 +242,7 @@ def tail(points, rot=None, piv=None, tip_from=0.62, w=15):
     return stack("tail", [
         gr("tail-out", [sh(smooth(points, closed=False, tension=0.55))], stc=INK, sw=w),
         gr("tail-fur", [sh(smooth(points, closed=False, tension=0.55))], stc=FUR, sw=w - 2 * SW + 1.6),
-        gr("tail-tip", [sh(smooth(tip, closed=False, tension=0.55))], stc=INK, sw=w),
+        gr("tail-tip", [sh(smooth(tip, closed=False, tension=0.55))], stc=TIP, sw=w),
     ], t=pivot(*piv, r=rot))
 
 
@@ -544,7 +556,7 @@ POSES = {
 MANIFEST = {
     "format": 1,
     "species": "cat",
-    "rev": 2,
+    "rev": 3,
     "name": {"ru": "Кот", "en": "Cat", "ko": "고양이"},
     "defaultName": {"ru": "Мистер Кот", "en": "Mister Cat", "ko": "미스터 고양이"},
     "canvas": [W, H],
@@ -552,6 +564,25 @@ MANIFEST = {
     "scale": 0.3,
     "author": "WYX",
     "sounds": {"purr": "synth:purr"},
+    # Окрасы: хозяин выбирает в карточке питомца. colors — что поменять в палитре,
+    # остальные слоты остаются как в palette.
+    "palette": PALETTE,
+    "defaultCoat": "white",
+    "coats": {
+        "white": {"name": {"ru": "Белый", "en": "White", "ko": "흰색"}, "colors": {}},
+        "ginger": {"name": {"ru": "Рыжий", "en": "Ginger", "ko": "치즈"},
+                   "colors": {"fur": "#F7B46A", "tip": "#D2702F", "ink": "#3B2416", "eye": "#2A1A10", "face": "#3B2416", "nose": "#C2574A", "ear": "#F59A8F", "bow": "#2F6B57"}},
+        "grey": {"name": {"ru": "Серый", "en": "Grey", "ko": "회색"},
+                 "colors": {"fur": "#C3C8D0", "tip": "#5F656E", "ear": "#EBB2B8", "nose": "#B5707E"}},
+        "black": {"name": {"ru": "Чёрный", "en": "Black", "ko": "검은색"},
+                  "colors": {"fur": "#3A3A42", "ink": "#121216", "eye": "#F5C842", "glint": "#FFFFFF", "face": "#C9C9D2", "nose": "#E98AA0", "tip": "#1B1B20", "bow": "#E5484D", "ear": "#8A6472"}},
+        "cream": {"name": {"ru": "Кремовый", "en": "Cream", "ko": "크림"},
+                  "colors": {"fur": "#F4E4C6", "tip": "#A87A4C", "ink": "#2E2318", "ear": "#F2B7A8", "nose": "#B8705E"}},
+        "mint": {"name": {"ru": "Мятный", "en": "Mint", "ko": "민트"},
+                 "colors": {"fur": "#C6EBDC", "tip": "#2F6B57", "bow": "#2F6B57", "ear": "#F2B7B4"}},
+        "pink": {"name": {"ru": "Розовый", "en": "Pink", "ko": "분홍"},
+                 "colors": {"fur": "#FAD3DD", "tip": "#D9728C", "bow": "#B34766", "ear": "#F59AB0", "nose": "#C45A78"}},
+    },
 }
 
 

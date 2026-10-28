@@ -345,6 +345,8 @@ export interface PetBrief {
   show_in_chats: boolean;
   /** В каком чате сейчас (зовёт хозяин из меню чата); null — дома, только в профиле. */
   chat_id?: string | null;
+  /** Окрас из пака вида (manifest.coats); пусто — как нарисован. */
+  color?: string;
 }
 /** Полностью — для карточки профиля. */
 export interface Pet extends PetBrief {
@@ -1765,7 +1767,7 @@ export const api = {
     return data;
   },
   /** Свой питомец: кличка; позвать в чат (chat_id) или домой (chat_id: null). */
-  updateMyPet: async (patch: { name?: string; show_in_chats?: boolean; chat_id?: string | null }): Promise<Pet> => {
+  updateMyPet: async (patch: { name?: string; show_in_chats?: boolean; chat_id?: string | null; color?: string }): Promise<Pet> => {
     const res = await fetchWithAuth(`${API_URL}/pets/mine/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не получилось");

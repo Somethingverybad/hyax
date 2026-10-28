@@ -139,6 +139,24 @@ export function rovOn(from?: string) {
 }
 
 /** «Отпустил» — либо сигналы кончились, либо вышло время. */
+/**
+ * Мягкий короткий гул — мурчание питомца (lib/pets.ts purr): тот же плагин,
+ * что у РЁВ (Core Haptics на iPhone, амплитуда на Android), но слабо и низко.
+ * Плагина нет — молчим: системная вибрация для мурчания слишком резкая.
+ * Идёт РЁВ — он главнее.
+ */
+export function softRumble(ms = 1300, intensity = 0.2) {
+  if (active) return;
+  if (Capacitor.isNativePlatform()) {
+    rovHaptics.start({ intensity, sharpness: 0.05 })
+      .then(({ value }) => { if (value) setTimeout(() => { if (!active) rovHaptics.stop().catch(() => {}); }, ms); })
+      .catch(() => {});
+    return;
+  }
+  // Браузер на Android: частые короткие толчки на ощупь — мелкое дрожание.
+  try { navigator.vibrate?.(Array.from({ length: Math.round(ms / 36) * 2 }, (_, i) => (i % 2 ? 28 : 8))); } catch { /* нет вибрации */ }
+}
+
 export function rovOff() {
   if (!active && !rumble) return;
   active = false;

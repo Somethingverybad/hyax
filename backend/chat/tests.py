@@ -3273,6 +3273,14 @@ class PetTests(TestCase):
         self.assertEqual(client_for(self.guest).patch("/api/pets/mine/", {"name": "x"}, format="json").status_code, 404)
         self.assertEqual(client_for(self.guest).get(f"/api/pets/of/{self.owner.id}/").data["pet"]["name"], "Барсик")
 
+    def test_color(self):
+        r = client_for(self.owner).patch("/api/pets/mine/", {"color": "ginger"}, format="json")
+        self.assertEqual(r.data["pet"]["color"], "ginger")
+        self.assertEqual(client_for(self.guest).get(f"/api/pets/of/{self.owner.id}/").data["pet"]["color"], "ginger")
+        for bad in ("Рыжий", "a" * 25, "<b>"):
+            self.assertEqual(client_for(self.owner).patch("/api/pets/mine/", {"color": bad}, format="json").status_code, 400)
+        self.assertEqual(client_for(self.owner).patch("/api/pets/mine/", {"color": ""}, format="json").data["pet"]["color"], "")
+
     def _chat(self, *who, kind="direct", name=""):
         from .models import Chat, ChatParticipant
         chat = Chat.objects.create(kind=kind, is_group=kind == "group", name=name)

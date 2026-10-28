@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { Hand, Pencil, Utensils, PawPrint } from "lucide-react";
 import { api, type Pet, type PetAction } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { moodInfo, petDisplayName, profilePose, purr, rememberPet, usePetsAvailable, type PetPack, type PoseName } from "@/lib/pets";
+import { coatSwatch, moodInfo, petDisplayName, profilePose, purr, rememberPet, usePetsAvailable, warmPurr, type PetPack, type PoseName } from "@/lib/pets";
 import Identicon from "@/components/Identicon";
 import PetSprite from "./PetSprite";
 
 /** Через сколько снова можно ухаживать: «через 5 ч» / «через 20 мин». */
+const DOUBLE_TAP = 320; // мс между тапами — «покормить»
+
 function untilText(iso: string | null): string {
   if (!iso) return "";
   const ms = new Date(iso).getTime() - Date.now();
@@ -30,6 +32,8 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [, tick] = useState(0);
+  const tapAt = useRef(0);
+  const tapTimer = useRef<number | null>(null);
   const available = usePetsAvailable();
 
   useEffect(() => {
@@ -42,6 +46,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   useEffect(() => { const id = setInterval(() => tick((n) => n + 1), 60_000); return () => clearInterval(id); }, []);
   // Своему без клички — сразу предложить назвать.
   useEffect(() => { if (own && pet && !pet.name) setNaming(true); }, [own, pet]);
+  useEffect(() => { if (pet) warmPurr(); }, [pet]);
 
   if (!pet || !available) return null;
   const lang = getLang();
@@ -71,11 +76,24 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
     setReact(p);
     window.setTimeout(() => setReact((cur) => (cur === p ? null : cur)), ms);
   };
-  // Тап по питомцу: мурчит всегда, а состояние улучшает раз в сутки (как «Погладить»).
-  const tapPet = () => {
+  // Тап — мурчит, двойной тап — ест. Состояние улучшает раз в сутки (как кнопки);
+  // уход «погладить» ждёт DOUBLE_TAP — вдруг это двойной тап и надо «покормить».
+  const tapPet = (e: MouseEvent) => {
+    const now = e.timeStamp || performance.now(); // время касания, а не обработки
+    if (now - tapAt.current < DOUBLE_TAP) {
+      tapAt.current = 0;
+      if (tapTimer.current) { window.clearTimeout(tapTimer.current); tapTimer.current = null; }
+      showReaction("eat", 3000);
+      if (pet.can_care) void doCare("feed");
+      return;
+    }
+    tapAt.current = now;
     purr();
     showReaction("purr", 2600);
-    if (pet.can_care) void doCare("pet", true).then((ok) => { if (ok) toast.success(t("{name} мурчит — +1 к вайбу", { name: title })); });
+    tapTimer.current = window.setTimeout(() => {
+      tapTimer.current = null;
+      if (pet.can_care) void doCare("pet", true).then((ok) => { if (ok) toast.success(t("{name} мурчит — +1 к вайбу", { name: title })); });
+    }, DOUBLE_TAP);
   };
   const feed = async () => { if (await doCare("feed")) showReaction("eat", 3000); };
   const pat = async () => { purr(); if (await doCare("pet")) showReaction("purr", 2600); };
@@ -85,6 +103,14 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
     if (!v) return;
     try { const p = await api.updateMyPet({ name: v }); setPet(p); setNaming(false); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
+  };
+  // Окрас — сразу на экране, сервер догоняет; не вышло — вернуть прежний.
+  const setCoat = async (color: string) => {
+    if (color === (pet.color || pack?.defaultCoat)) return;
+    const was = pet;
+    setPet({ ...pet, color });
+    try { const p = await api.updateMyPet({ color }); setPet(p); rememberPet(p); }
+    catch (e) { setPet(was); toast.error((e as Error).message || t("Не получилось")); }
   };
   const goHome = async () => {
     try { const p = await api.updateMyPet({ chat_id: null }); setPet(p); rememberPet(p); toast.success(t("{name} ушёл домой", { name: title })); }
@@ -116,9 +142,9 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
         </div>
       )}
 
-      <button type="button" onClick={tapPet} className="mt-2 mx-auto block select-none active:scale-[0.98] transition-transform"
+      <button type="button" onClick={tapPet} style={{ touchAction: "manipulation" }} className="mt-2 mx-auto block select-none active:scale-[0.98] transition-transform"
         aria-label={t("Погладить {name}", { name: title })}>
-        <PetSprite species={pet.species} pose={pose} scale={0.62} onPack={setPack} />
+        <PetSprite species={pet.species} pose={pose} coat={pet.color} scale={0.62} onPack={setPack} />
       </button>
 
       {/* Шкала состояния */}
@@ -150,6 +176,27 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
             ))}
           </div>
           <span className="text-caption text-subtle truncate">{t("Сегодня ухаживали: {n}", { n: pet.today.length })}</span>
+        </div>
+      )}
+
+      {/* Окрас: кружки из пака (manifest.coats), видят все. */}
+      {own && pack?.coats && Object.keys(pack.coats).length > 1 && (
+        <div className="mt-3">
+          <span className="block text-small mb-2">{t("Окрас")}</span>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(pack.coats).map(([id, coat]) => {
+              const sw = coatSwatch(pack, id);
+              const on = (pet.color || pack.defaultCoat) === id;
+              const label = coat.name[lang] || coat.name.ru || id;
+              return (
+                <button key={id} type="button" onClick={() => void setCoat(id)} aria-label={label} title={label} aria-pressed={on}
+                  className={`w-9 h-9 rounded-full grid place-items-center transition-transform active:scale-95 ${on ? "ring-2 ring-primary ring-offset-2 ring-offset-surface-4" : ""}`}
+                  style={{ background: sw.fur, boxShadow: "inset 0 0 0 1.5px rgba(0,0,0,.18)" }}>
+                  <span className="w-3 h-3 rounded-full" style={{ background: sw.tip }} />
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

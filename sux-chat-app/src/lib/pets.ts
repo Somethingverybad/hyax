@@ -4,6 +4,7 @@ import { App } from "@capacitor/app";
 import { api, type Pet, type PetBrief, type PetMood } from "@/api/client";
 import { t } from "@/lib/i18n";
 import { onUserMessage } from "@/lib/userSocket";
+import { softRumble } from "@/lib/rov";
 
 /**
  * Питомцы на клиенте: пак вида (рисунки и поведение) и состояние с сервера.
@@ -40,6 +41,16 @@ export interface PetPack {
   scale: number;
   poses: Partial<Record<PoseName, PetPose>>;
   sounds?: Record<string, string>;
+  /** Слоты окраса: деталь → цвет-метка в файлах поз (#rrggbb). */
+  palette?: Record<string, string>;
+  /** Окрасы: что поменять в палитре. Выбирает хозяин (Pet.color). */
+  coats?: Record<string, PetCoat>;
+  defaultCoat?: string;
+}
+
+export interface PetCoat {
+  name: Record<string, string>;
+  colors: Record<string, string>;
 }
 
 const base = () => (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
@@ -59,8 +70,42 @@ export function loadPack(species: string): Promise<PetPack> {
   return p;
 }
 
-/** Данные Lottie позы (кэш на весь сеанс). Нет такой позы в паке — «сидит». */
-export async function loadPose(species: string, pose: PoseName): Promise<{ data: unknown; pose: PetPose; pack: PetPack }> {
+const hexRgb = (h: string): number[] => {
+  const n = parseInt(h.replace("#", ""), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+};
+
+/**
+ * Окрас: цвета-метки палитры пака меняются на цвета окраса. Остальные цвета
+ * (сердечки, миска, плед) не трогаем. Метки разных деталей отличаются на 1/255 —
+ * сравниваем с допуском меньше этого.
+ */
+export function recolor(data: unknown, pack: PetPack, coat: string | null | undefined): unknown {
+  const c = coat ? pack.coats?.[coat] : undefined;
+  const pal = pack.palette;
+  if (!c || !pal) return data;
+  const pairs = Object.entries(c.colors).filter(([slot]) => pal[slot]).map(([slot, to]) => [hexRgb(pal[slot]), hexRgb(to)] as const);
+  if (!pairs.length) return data;
+  const same = (a: number[], b: number[]) => Math.abs(a[0] - b[0]) < 0.0015 && Math.abs(a[1] - b[1]) < 0.0015 && Math.abs(a[2] - b[2]) < 0.0015;
+  const walk = (o: unknown): unknown => {
+    if (Array.isArray(o)) return o.map(walk);
+    if (!o || typeof o !== "object") return o;
+    const r: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) r[k] = walk(v);
+    if (r.ty === "fl" || r.ty === "st") {
+      const cc = r.c as { a?: number; k?: number[] } | undefined;
+      if (cc && !cc.a && Array.isArray(cc.k)) {
+        const hit = pairs.find(([from]) => same(cc.k!, from));
+        if (hit) r.c = { ...cc, k: [...hit[1], cc.k[3] ?? 1] };
+      }
+    }
+    return r;
+  };
+  return walk(data);
+}
+
+/** Данные Lottie позы в окрасе (кэш на весь сеанс). Нет такой позы в паке — «сидит». */
+export async function loadPose(species: string, pose: PoseName, coat?: string | null): Promise<{ data: unknown; pose: PetPose; pack: PetPack }> {
   const pack = await loadPack(species);
   const meta = pack.poses[pose] || pack.poses.sit!;
   const key = `${species}/${meta.file}`;
@@ -70,7 +115,21 @@ export async function loadPose(species: string, pose: PoseName): Promise<{ data:
     d.catch(() => poses.delete(key));
     poses.set(key, d);
   }
-  return { data: await d, pose: meta, pack };
+  const ck = coat && pack.coats?.[coat] && coat !== pack.defaultCoat ? `${key}#${coat}` : "";
+  if (!ck) return { data: await d, pose: meta, pack };
+  let cd = poses.get(ck);
+  if (!cd) {
+    cd = d.then((raw) => recolor(raw, pack, coat));
+    poses.set(ck, cd);
+  }
+  return { data: await cd, pose: meta, pack };
+}
+
+/** Цвет меха окраса — для кружков выбора. */
+export function coatSwatch(pack: PetPack, coat: string): { fur: string; tip: string } {
+  const pal = pack.palette || {};
+  const c = pack.coats?.[coat]?.colors || {};
+  return { fur: c.fur || pal.fur || "#FFFFFF", tip: c.tip || pal.tip || "#1E1E1E" };
 }
 
 export function petDisplayName(pet: { name?: string | null }, pack?: PetPack | null, lang = "ru"): string {
@@ -232,9 +291,29 @@ let actx: AudioContext | null = null;
 let purring = 0;
 
 /** Мурлыканье ~1,6 с: шум в низких частотах, «пульс» ~26 раз в секунду. Тихо. */
+/**
+ * Звук — заранее, в простое, когда питомец показался. Первый new AudioContext
+ * будит звуковое устройство и держит страницу сотни миллисекунд (на стенде —
+ * 340 мс): на тапе это и тормозило, и съедало двойной тап. Созданный без жеста
+ * контекст стоит на паузе — purr будит его resume() уже в обработчике тапа.
+ */
+export function warmPurr(): void {
+  if (actx) return;
+  const run = () => {
+    if (actx) return;
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AC) actx = new AC();
+    } catch { /* без звука */ }
+  };
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  if (ric) ric(run, { timeout: 4000 }); else window.setTimeout(run, 1500);
+}
+
 export function purr(volume = 0.22): void {
   if (Date.now() - purring < 1400) return;
   purring = Date.now();
+  softRumble(1300, 0.2);
   try {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;

@@ -8,9 +8,11 @@ import { loadPose, type PetPack, type PoseName } from "@/lib/pets";
  * flip — отражение (идёт влево). Анимацию держим одну на позу: сменилась поза —
  * прежняя уничтожается.
  */
-export default function PetSprite({ species, pose, scale, flip, paused, className, onPack }: {
+export default function PetSprite({ species, pose, coat, scale, flip, paused, className, onPack }: {
   species: string;
   pose: PoseName;
+  /** Окрас из пака (Pet.color); пусто — как нарисован. */
+  coat?: string | null;
   /** Пикселей на единицу холста; по умолчанию — из пака (как в чате). */
   scale?: number;
   flip?: boolean;
@@ -24,7 +26,7 @@ export default function PetSprite({ species, pose, scale, flip, paused, classNam
 
   useEffect(() => {
     let off = false;
-    void Promise.all([loadPose(species, pose), loadLottie()]).then(([{ data, pack: p }, lottie]) => {
+    void Promise.all([loadPose(species, pose, coat), loadLottie()]).then(([{ data, pack: p }, lottie]) => {
       if (off || !box.current) return;
       setPack(p);
       onPack?.(p);
@@ -36,7 +38,7 @@ export default function PetSprite({ species, pose, scale, flip, paused, classNam
     }).catch(() => {});
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [species, pose]);
+  }, [species, pose, coat]);
 
   useEffect(() => {
     if (!anim.current) return;

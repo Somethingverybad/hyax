@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { toast } from "sonner";
-import { api, type PetBrief, type PetMood } from "@/api/client";
+import { api, type PetAction, type PetBrief, type PetMood } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { isNight, loadPack, petDisplayName, purr, rememberPet, useChatPets, usePetsAvailable, usePetsHidden, type PetPack, type PoseName } from "@/lib/pets";
+import { isNight, loadPack, petDisplayName, purr, rememberPet, useChatPets, usePetsAvailable, usePetsHidden, warmPurr, type PetPack, type PoseName } from "@/lib/pets";
 import PetSprite from "./PetSprite";
 
 /**
@@ -17,6 +17,7 @@ import PetSprite from "./PetSprite";
  */
 
 const MAX_PETS = 2;
+const DOUBLE_TAP = 320; // мс между тапами — «покормить»
 // left/right — где может стоять середина питомца: на ровной части верхнего края, не под соседним сообщением.
 type Spot = { msgId: string; own: boolean; left: number; right: number; top: number };
 type Act = { pose: PoseName; min: number; max: number; target: "owner" | "other" | "any"; w: number };
@@ -65,9 +66,20 @@ const reduceMotion = () => typeof window !== "undefined" && window.matchMedia?.(
  * у входящих и исходящих это часть края, не прикрытая соседом сверху.
  * Если свободного места нет нигде — садимся как придётся.
  */
+/**
+ * Видимая часть ленты на экране. Шапка «Мяты» и панель ввода лежат поверх
+ * ленты, и под них она отводит место отступами прокрутки (--glass-h сверху,
+ * --compose-h и клавиатура снизу) — эти отступы и вычитаем.
+ */
+function visibleBand(scroll: HTMLElement): { top: number; bottom: number } {
+  const sb = scroll.getBoundingClientRect();
+  const cs = getComputedStyle(scroll);
+  return { top: sb.top + (parseFloat(cs.paddingTop) || 0), bottom: sb.bottom - (parseFloat(cs.paddingBottom) || 0) };
+}
+
 function visibleSpots(feed: HTMLElement, scroll: HTMLElement, ownerId: string, catH: number, halfW: number): Spot[] {
   const fb = feed.getBoundingClientRect();
-  const sb = scroll.getBoundingClientRect();
+  const band = visibleBand(scroll);
   const rows = [...feed.querySelectorAll<HTMLElement>(':scope > [id^="msg-"]')];
   // Всё, что видно в ленте и что кот может заслонить: пузыри, картинки, стикеры.
   const blocks = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".msg-bubble, img, video, canvas")]
@@ -79,7 +91,7 @@ function visibleSpots(feed: HTMLElement, scroll: HTMLElement, ownerId: string, c
     const bubble = row.querySelector<HTMLElement>(".msg-bubble");
     if (!bubble) return;
     const r = bubble.getBoundingClientRect();
-    if (r.width < 96 || r.top - catH < sb.top + 8 || r.top > sb.bottom - 24) return;
+    if (r.width < 96 || r.top - catH < band.top + 4 || r.top > band.bottom - 16) return;
     const base = { msgId: row.id, own: row.dataset.senderId === ownerId, top: r.top - fb.top };
     const lo = r.left + edge, hi = r.right - edge;
     if (hi < lo) return;
@@ -105,11 +117,14 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
   const timer = useRef<number | null>(null);
   const el = useRef<HTMLButtonElement>(null);
   const tapLock = useRef(0);
+  const doing = useRef<PoseName>("sit");
+  const lastTap = useRef(0);
+  const pendingCare = useRef<number | null>(null);
   // Текущее положение — для шагов автомата (таймеры живут дольше одной отрисовки).
   const posRef = useRef(pos);
   posRef.current = pos;
 
-  useEffect(() => { void loadPack(pet.species).then(setPack).catch(() => {}); }, [pet.species]);
+  useEffect(() => { void loadPack(pet.species).then(setPack).catch(() => {}); warmPurr(); }, [pet.species]);
 
   useEffect(() => {
     if (!pack) return;
@@ -166,43 +181,111 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
         el.current?.animate([{ translate: "0 0" }, { translate: "0 -34px" }, { translate: "0 0" }], { duration: 550, easing: "ease-out" });
         window.setTimeout(() => { if (alive) setPose(act.pose === "walk" ? "sit" : act.pose); }, 560);
       }
+      doing.current = act.pose === "walk" ? "sit" : act.pose;
       timer.current = window.setTimeout(step, rand(act.min, act.max) * 1000);
     };
+
+    // Пузырь уезжает за край экрана (листают, пришли новые сообщения) — кот не
+    // едет с ним под шапку или под панель ввода, а перепрыгивает на ближайшее
+    // видимое сообщение: уходит вверх — на то, что ниже, вниз — на то, что выше.
+    let lastHop = 0;
+    const curBubble = () => {
+      const feed = feedRef.current;
+      return feed && spot.current ? feed.querySelector<HTMLElement>(`#${CSS.escape(spot.current)} .msg-bubble`) : null;
+    };
+    const hopAway = (dir: "down" | "up") => {
+      const feed = feedRef.current, scroll = scrollRef.current;
+      if (!feed || !scroll) return;
+      const from = posRef.current;
+      const spots = visibleSpots(feed, scroll, pet.owner_id, catH, halfW)
+        .filter((s) => s.msgId !== spot.current && (dir === "down" ? s.top > from.y : s.top < from.y))
+        .sort((a, b) => (dir === "down" ? a.top - b.top : b.top - a.top));
+      const target = spots[0];
+      if (!target) { spot.current = null; setPos((p) => ({ ...p, shown: false })); return; }
+      const x = clampX(target, from.x);
+      const band = visibleBand(scroll);
+      if (still || Math.abs(target.top - from.y) > (band.bottom - band.top) * 0.8) {
+        // Далеко (пролистали) — не летит через весь экран: исчез и появился.
+        spot.current = target.msgId;
+        setPos((p) => ({ ...p, shown: false }));
+        window.setTimeout(() => { if (alive && spot.current === target.msgId) setPos({ x, y: target.top, flip: from.flip, dur: 0, shown: true }); }, 260);
+        return;
+      }
+      setPose("walk");
+      place(target, x, 0.55, x < from.x);
+      el.current?.animate([{ translate: "0 0" }, { translate: "0 -30px" }, { translate: "0 0" }], { duration: 550, easing: "ease-out" });
+      window.setTimeout(() => { if (alive) setPose(doing.current); }, 560);
+    };
+    const checkEdges = () => {
+      const scroll = scrollRef.current, row = curBubble();
+      if (!alive || !scroll || !row || !posRef.current.shown || Date.now() - lastHop < 650) return;
+      const band = visibleBand(scroll);
+      const r = row.getBoundingClientRect();
+      const dir = r.top - catH * 0.6 < band.top ? "down" : r.top > band.bottom - 10 ? "up" : null;
+      if (!dir) return;
+      lastHop = Date.now();
+      hopAway(dir);
+    };
+    let raf = 0;
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(); }); };
+    const scrollEl = scrollRef.current;
+    scrollEl?.addEventListener("scroll", onScroll, { passive: true });
 
     // Пузырь мог уехать (новые сообщения, клавиатура) — держимся за него.
     const follow = window.setInterval(() => {
       const feed = feedRef.current;
       if (!feed || !spot.current) return;
-      const row = feed.querySelector<HTMLElement>(`#${CSS.escape(spot.current)} .msg-bubble`);
+      const row = curBubble();
       if (!row) { setPos((p) => ({ ...p, shown: false })); return; }
       const fb = feed.getBoundingClientRect();
       const r = row.getBoundingClientRect();
       const top = r.top - fb.top;
       setPos((p) => (Math.abs(p.y - top) > 1 ? { ...p, y: top, dur: 0 } : p));
+      checkEdges();
     }, 700);
 
     timer.current = window.setTimeout(step, 600);
-    return () => { alive = false; window.clearInterval(follow); if (timer.current) window.clearTimeout(timer.current); };
+    return () => {
+      alive = false; window.clearInterval(follow); if (timer.current) window.clearTimeout(timer.current);
+      scrollEl?.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pack, pet.mood, pet.owner_id]);
 
-  // Тап: мурчит всегда; первый за сутки — уход «погладить» (+1 к вайбу), как кнопка в профиле.
-  const tap = () => {
-    purr();
-    setPose("purr");
-    window.setTimeout(() => setPose((p) => (p === "purr" ? "sit" : p)), 2600);
+  // Уход раз в сутки от человека (chat/pets.py); дальше — только анимация.
+  const careOnce = (action: PetAction) => {
     const key = `hyax:pet-cared:${pet.id}`;
     let until = 0;
     try { until = Number(localStorage.getItem(key) || 0); } catch { /* без памяти */ }
     if (Date.now() < until || Date.now() - tapLock.current < 3000) return;
     tapLock.current = Date.now();
-    api.carePet(pet.id, "pet").then((r) => {
+    const name = petDisplayName(pet, pack, getLang());
+    api.carePet(pet.id, action).then((r) => {
       rememberPet(r.pet);
       try { localStorage.setItem(key, String(Date.now() + 24 * 3600_000)); } catch { /* */ }
-      toast.success(t("{name} мурчит — +1 к вайбу", { name: petDisplayName(pet, pack, getLang()) }));
+      toast.success(action === "feed" ? t("{name} накормлен — +{n} к вайбу", { name, n: r.vibe_gain }) : t("{name} мурчит — +1 к вайбу", { name }));
     }).catch((e: { nextCareAt?: string }) => {
       if (e?.nextCareAt) { try { localStorage.setItem(key, String(new Date(e.nextCareAt).getTime())); } catch { /* */ } }
     });
+  };
+  // Тап — мурчит (и «погладить»), двойной тап — ест (и «покормить»). Мурчание
+  // начинается сразу, а уход «погладить» ждёт DOUBLE_TAP: вдруг это двойной.
+  const tap = (e: MouseEvent) => {
+    // Время самого касания, а не обработки: телефон мог задуматься между тапами.
+    const now = e.timeStamp || performance.now();
+    if (now - lastTap.current < DOUBLE_TAP) {
+      lastTap.current = 0;
+      if (pendingCare.current) { window.clearTimeout(pendingCare.current); pendingCare.current = null; }
+      setPose("eat");
+      window.setTimeout(() => setPose((p) => (p === "eat" ? doing.current : p)), 3200);
+      careOnce("feed");
+      return;
+    }
+    lastTap.current = now;
+    purr();
+    setPose("purr");
+    window.setTimeout(() => setPose((p) => (p === "purr" ? doing.current : p)), 2600);
+    pendingCare.current = window.setTimeout(() => { pendingCare.current = null; careOnce("pet"); }, DOUBLE_TAP);
   };
 
   if (!pack) return null;
@@ -221,9 +304,10 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
         transition: pos.dur ? `transform ${pos.dur}s linear, opacity .3s` : "opacity .3s",
         opacity: pos.shown ? 1 : 0,
         pointerEvents: pos.shown ? "auto" : "none",
+        touchAction: "manipulation", // двойной тап — «покормить», а не увеличение страницы
       }}
     >
-      <PetSprite species={pet.species} pose={pose} flip={pos.flip} paused={reduceMotion()} />
+      <PetSprite species={pet.species} pose={pose} coat={pet.color} flip={pos.flip} paused={reduceMotion()} />
     </button>
   );
 }
