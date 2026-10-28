@@ -86,7 +86,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
     /// Что умеет эта сборка: страница обновляется по воздуху и в старых
     /// сборках, новое она включает только по этому ответу.
     @objc func getFeatures(_ call: CAPPluginCall) {
-        call.resolve(["screen": true])
+        call.resolve(["screen": true, "screenAudio": true])
     }
 
     @objc func start(_ call: CAPPluginCall) {
@@ -144,6 +144,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let video = call.getBool("video") ?? false
         let screen = call.getBool("screen") ?? false
+        let screenAudio = call.getBool("screenAudio") ?? false
         queue.async {
             if video { self.videoPeers.insert(peerId) }
             let pc = self.peer(for: peerId)
@@ -162,6 +163,12 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
                     let initScreen = RTCRtpTransceiverInit()
                     initScreen.direction = .recvOnly
                     _ = pc.addTransceiver(of: .video, init: initScreen)
+                    // …и под звук его компьютера (второй аудиоканал, тоже на приём).
+                    if screenAudio {
+                        let initSound = RTCRtpTransceiverInit()
+                        initSound.direction = .recvOnly
+                        _ = pc.addTransceiver(of: .audio, init: initSound)
+                    }
                 }
             }
             call.resolve()
@@ -642,6 +649,7 @@ public class NativeCallPlugin: CAPPlugin, CAPBridgedPlugin {
         remoteVideoTracks.removeValue(forKey: "\(peerId)#screen")
         delegates.removeValue(forKey: peerId)
         remoteTracks.removeValue(forKey: peerId)
+        remoteTracks.removeValue(forKey: "\(peerId)#screen")
         peerVolumes.removeValue(forKey: peerId)
     }
 
@@ -688,7 +696,13 @@ private final class PeerDelegate: NSObject, RTCPeerConnectionDelegate {
     }
 
     func peerConnection(_ pc: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams mediaStreams: [RTCMediaStream]) {
-        if let track = rtpReceiver.track as? RTCAudioTrack { plugin?.storeRemote(peerId, track) }
+        if let track = rtpReceiver.track as? RTCAudioTrack {
+            // Второй аудиоканал — звук компьютера при демонстрации: играет сам,
+            // а громкость участника — у его голоса, не у этой дорожки.
+            let auds = pc.transceivers.filter { $0.mediaType == .audio }
+            let screen = auds.count > 1 && auds[1].receiver.receiverId == rtpReceiver.receiverId
+            plugin?.storeRemote(screen ? "\(peerId)#screen" : peerId, track)
+        }
         if let track = rtpReceiver.track as? RTCVideoTrack {
             // Второй видеоканал — демонстрация экрана, своим окном, не вместо камеры.
             let vids = pc.transceivers.filter { $0.mediaType == .video }
