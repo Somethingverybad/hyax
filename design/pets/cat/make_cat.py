@@ -299,14 +299,20 @@ def pose_purr():
 
 
 def pose_eat():
+    """Ест: голова опущена к самой миске, тело за ней — видны только плечи, лапы и хвост."""
     n = 40
-    bob = loop(n, (0, [0, 0]), (0.25, [0, 13]), (0.4, [0, 11]), (0.55, [0, 13]), (0.8, [0, 0]), (1, [0, 0]))
+    chew = loop(n, (0, [100, 196]), (0.25, [100, 199]), (0.5, [100, 196]), (0.75, [100, 199]), (1, [100, 196]))
+    body = gr("body", [sh(smooth([(56, 178), (60, 152), (80, 138), (120, 138), (140, 152), (144, 178), (138, 195), (100, 199), (62, 195)]))],
+              fl=FUR, stc=INK)
+    tail_g = tail([(128, 186), (152, 182), (166, 162), (166, 136), (158, 118)], rot=loop(n, (0, -4), (0.5, 6), (1, -4)))
+    paws = [paw(66, 197), paw(134, 197)]
+    head_g = head("closed", ears_r=(loop(n, (0, 0), (0.5, -6), (1, 0)), None),
+                  t=tr(p=chew, a=[100, 112], s=[92, 92]))
     bowl = stack("bowl", [
-        gr("kibble", [el(92, 189, 7, 6), el(101, 187, 7, 6), el(109, 189, 7, 6)], fl=KIBBLE, stc=INK, sw=1.5),
-        gr("bowl", [sh(smooth([(72, 190), (128, 190), (122, 204), (78, 204)], tension=0.12))], fl=BOWL, stc=INK, sw=4),
+        gr("kibble", [el(91, 186, 7, 6), el(100, 184, 7, 6), el(109, 186, 7, 6)], fl=KIBBLE, stc=INK, sw=1.5),
+        gr("bowl", [sh(smooth([(74, 187), (126, 187), (120, 204), (80, 204)], tension=0.12))], fl=BOWL, stc=INK, sw=4),
     ])
-    parts = sit_parts(n, eye_kind="closed", tail_rot=loop(n, (0, 0), (0.5, 5), (1, 0)), head_t=tr(p=bob), paws=[])
-    return doc("cat-eat", n, parts + [bowl])
+    return doc("cat-eat", n, [tail_g, body, *paws, head_g, bowl])
 
 
 def pose_sad():
@@ -350,37 +356,47 @@ SIDE_EAR_B = [(128, 92), (127, 60), (146, 80)]
 SIDE_EAR_F = [(150, 78), (165, 50), (176, 88)]
 
 
-def side_cat(n, legs_rot, tail_rot, bob, head_rot=None, eye="open"):
+def side_cat(n, legs_rot, tail_rot, bob, head_rot=None, eye="open", crouch=0):
+    """Тело и лапы сбоку, а голова — та же, что спереди: идёт и смотрит в экран.
+
+    crouch — на сколько градусов кот припал грудью (закапывает): тело и хвост
+    наклоняются вокруг задних лап, голова опускается, передние лапы подогнуты.
+    """
     def leg(x, top, rot, name):
         return stack(name, [
             gr("leg-out", [sh(poly([(x, top), (x, 192)]))], stc=INK, sw=17),
             gr("leg-fur", [sh(poly([(x, top), (x, 192)]))], stc=FUR, sw=8.4),
             paw(x + 2, 196, w=18, h=11),
         ], t=pivot(x, top, r=rot))
+
+    def tucked(x, top, name):
+        # Подогнутая, как у сфинкса: плечо под грудью, локоть у самого пузыря,
+        # предплечье лежит вперёд — лапа выглядывает из-под груди.
+        pts = [(x, top), (x - 6, 192), (x + 16, 194)]
+        return stack(name, [
+            gr("leg-out", [sh(poly(pts))], stc=INK, sw=17),
+            gr("leg-fur", [sh(poly(pts))], stc=FUR, sw=8.4),
+            paw(x + 21, 196, w=20, h=10),
+        ])
+
+    drop = round(crouch * 0.6)  # присел: всё тело ниже, задние лапы короче
+    lean = (lambda g: stack(g["nm"] + "-lean", [g], t=pivot(84, 176, p=[84, 176 + drop], r=st(crouch)))) if crouch else (lambda g: g)
     lf, lb, hf, hb = legs_rot
-    face_parts = []
-    if eye == "open":
-        face_parts.append(stack("eye", [gr("pupil", [el(160, 102, 10, 12)], fl=INK), gr("glint", [el(158, 99, 3.6, 3.6)], fl=FUR)],
-                                t=pivot(160, 102, s=blink_keys(n, 0.6))))
+    blink = blink_keys(n, 0.6) if eye == "open" else None
+    hx, hy = (146, 143) if crouch else (150, 132)  # шея: у присевшего ниже и ближе
+    head_g = stack("head-wrap", [
+        bow(hx, hy + 5, t=pivot(hx, hy + 5, s=st([74, 74]))),
+        head(eye, blink=blink, t=tr(p=[hx, hy], a=[100, 112], s=[80, 80], r=head_rot)),
+    ])
+    if crouch:
+        fore_b, fore_f = tucked(118, 178, "fore-back"), tucked(132, 180, "fore-front")
     else:
-        face_parts.append(gr("eye", [sh(smooth([(153, 103), (160, 107), (167, 103)], closed=False, tension=0.6))], stc=INK, sw=SW2))
-    face_parts += [
-        gr("nose", [sh(smooth([(176, 108), (183, 108), (179.5, 112)], tension=0.25))], fl=INK, stc=INK, sw=1.5),
-        gr("whisker", [sh(poly([(172, 116), (196, 112)])), sh(poly([(172, 119.5), (197, 121)]))], stc=INK, sw=2.2),
-        gr("mouth", [sh(smooth([(170, 118), (175, 122), (179, 117)], closed=False, tension=0.6))], stc=INK, sw=2.4),
-    ]
-    head_g = stack("head", [
-        ear(SIDE_EAR_B, [(132, 84), (132, 68), (141, 80)], (136, 86), name="ear-b"),
-        gr("head", [sh(smooth(SIDE_HEAD))], fl=FUR, stc=INK),
-        ear(SIDE_EAR_F, [(156, 78), (164, 60), (171, 84)], (160, 84), name="ear-f"),
-        *face_parts,
-        bow(150, 134, t=pivot(150, 134, r=st(-8), s=st([82, 82]))),
-    ], t=pivot(136, 128, r=head_rot))
+        fore_b, fore_f = leg(126, 160, lb, "fore-back"), leg(136, 162, lf, "fore-front")
     body = stack("cat", [
-        leg(80, 160, hb, "hind-back"), leg(126, 160, lb, "fore-back"),
-        tail([(70, 150), (54, 138), (46, 116), (52, 96), (63, 86)], rot=tail_rot),
-        gr("body", [sh(smooth(SIDE_BODY))], fl=FUR, stc=INK),
-        leg(90, 162, hf, "hind-front"), leg(136, 162, lf, "fore-front"),
+        leg(80, 160 + drop, hb, "hind-back"), fore_b,
+        lean(tail([(70, 150), (54, 138), (46, 116), (52, 96), (63, 86)], rot=tail_rot)),
+        lean(gr("body", [sh(smooth(SIDE_BODY))], fl=FUR, stc=INK)),
+        leg(90, 162 + drop, hf, "hind-front"), fore_f,
         head_g,
     ], t=tr(p=bob))
     return body
@@ -397,12 +413,14 @@ def pose_walk():
 
 def pose_bury():
     n = 24
-    kick = lambda ph: kf([(0, 0), (4 + ph, -48), (9 + ph, 8), (14 + ph, -48), (19 + ph, 8), (n, 0)], EASE)
+    # Задние лапы бьют назад (к хвосту, туда же летит пыль), а не вперёд под живот.
+    kick = lambda ph: kf([(0, 0), (4 + ph, 46), (9 + ph, -6), (14 + ph, 46), (19 + ph, -6), (n, 0)], EASE)
     still = st(0)
-    cat = side_cat(n, (still, still, kick(0), kick(3)), loop(n, (0, -8), (0.5, 8), (1, -8)), st([0, 0]), head_rot=st(-6))
+    cat = side_cat(n, (still, still, kick(0), kick(3)), loop(n, (0, -8), (0.5, 8), (1, -8)), st([0, 0]), head_rot=st(-4), crouch=10)
     dust = []
-    for i, (x0, y0, dx, dy, f, d) in enumerate([(72, 196, -40, -30, 3, 13), (68, 198, -52, -12, 4, 11), (74, 195, -30, -42, 13, 12),
-                                                (66, 197, -48, -22, 14, 14), (70, 197, -36, -6, 15, 10)]):
+    # Земля летит из-под задних лап назад — начинается за лапой, чтобы не слипаться с ней.
+    for i, (x0, y0, dx, dy, f, d) in enumerate([(56, 194, -36, -30, 5, 13), (52, 197, -44, -12, 6, 11), (58, 193, -28, -40, 15, 12),
+                                                (50, 196, -42, -22, 16, 14), (54, 196, -32, -6, 17, 10)]):
         dust.append(rising(f"dust{i}", lambda d=d: el(0, 0, d, d), x0, y0, n, f, dx=dx, dy=dy, fl=DUST2, stc=INK, sw=1.2))
     return doc("cat-bury", n, [cat, *dust])
 
@@ -526,7 +544,7 @@ POSES = {
 MANIFEST = {
     "format": 1,
     "species": "cat",
-    "rev": 1,
+    "rev": 2,
     "name": {"ru": "Кот", "en": "Cat", "ko": "고양이"},
     "defaultName": {"ru": "Мистер Кот", "en": "Mister Cat", "ko": "미스터 고양이"},
     "canvas": [W, H],
