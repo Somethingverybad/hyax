@@ -7,7 +7,8 @@ import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
 import { useEscape } from "@/lib/escape";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff, PawPrint } from "lucide-react";
+import { usePetChats, usePetsAvailable } from "@/lib/pets";
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
 import { toast as sonnerToast } from "sonner";
@@ -376,6 +377,10 @@ const ChatSidebar = ({
   const [pinOverride, setPinOverride] = useState<Record<string, string | null>>({});
   const pinnedAt = (c: Chat) => (c.id in pinOverride ? pinOverride[c.id] : c.pinned_at ?? null);
 
+  // Лапка у чата, где сейчас чей-то питомец (свой или собеседника).
+  const petsOn = usePetsAvailable();
+  const petChatsAll = usePetChats();
+  const petChats = petsOn ? petChatsAll : new Set<string>();
   const togglePin = async (chat: Chat) => {
     if ((chat as any).kind === "wall") { setPinSwipedId(null); return; }
     const next = pinnedAt(chat) ? null : new Date().toISOString();
@@ -1316,6 +1321,7 @@ const ChatSidebar = ({
                             {isChannel && !isWall && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
                             {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label={t("Секретный чат")} />}
                             <span className="truncate">{chatTitle}</span>
+                            {petChats.has(chat.id) && <PawPrint className="w-3.5 h-3.5 text-primary shrink-0" aria-label={t("Здесь питомец")} />}
                           </p>
                           {mint && editMode ? (
                             <span className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>

@@ -343,6 +343,8 @@ export interface PetBrief {
   level: number;
   mood: PetMood;
   show_in_chats: boolean;
+  /** В каком чате сейчас (зовёт хозяин из меню чата); null — дома, только в профиле. */
+  chat_id?: string | null;
 }
 /** Полностью — для карточки профиля. */
 export interface Pet extends PetBrief {
@@ -352,6 +354,8 @@ export interface Pet extends PetBrief {
   next_care_at: string | null;
   today: { who: { id: string; username: string; avatar_url?: string | null }; action: PetAction; at: string }[];
   cares_total: number;
+  /** Только хозяину: где питомец и как чат у него называется. */
+  chat?: { id: string; title: string } | null;
 }
 
 export interface VibeEvent {
@@ -1747,10 +1751,9 @@ export const api = {
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return (await res.json()).pet ?? null;
   },
-  /** Питомцы участников чата, которых показывают в переписке. */
-  getPets: async (ownerIds: string[]): Promise<PetBrief[]> => {
-    if (!ownerIds.length) return [];
-    const res = await fetchWithAuth(`${API_URL}/pets/?owners=${ownerIds.map(encodeURIComponent).join(",")}`, { method: "GET", headers: authHeaders() });
+  /** Питомцы во всех моих чатах (у каждого — chat_id): кот в ленте и лапка в списке чатов. */
+  getPetsHere: async (): Promise<PetBrief[]> => {
+    const res = await fetchWithAuth(`${API_URL}/pets/here/`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return (await res.json()).pets ?? [];
   },
@@ -1761,8 +1764,8 @@ export const api = {
     if (!res.ok) throw Object.assign(new LError(data?.error || "Не получилось"), { status: res.status, pet: data?.pet as Pet | undefined, nextCareAt: data?.next_care_at as string | undefined });
     return data;
   },
-  /** Свой питомец: кличка, показывать ли в чатах. */
-  updateMyPet: async (patch: { name?: string; show_in_chats?: boolean }): Promise<Pet> => {
+  /** Свой питомец: кличка; позвать в чат (chat_id) или домой (chat_id: null). */
+  updateMyPet: async (patch: { name?: string; show_in_chats?: boolean; chat_id?: string | null }): Promise<Pet> => {
     const res = await fetchWithAuth(`${API_URL}/pets/mine/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не получилось");

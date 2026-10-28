@@ -15,7 +15,7 @@ import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import { actionTemplate, type ActionView } from "@/lib/actionText";
 import type { ChatTranslate } from "@/api/client";
-import { Brush, Languages, Quote, TextSelect, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid } from "lucide-react";
+import { Brush, Languages, Quote, TextSelect, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid, PawPrint } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -68,6 +68,7 @@ import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
 import ChatMediaSheet from "./ChatMediaSheet";
 import ChatPets from "@/components/pets/ChatPets";
+import { rememberPet, useMyPet, usePetsAvailable } from "@/lib/pets";
 import { WallpaperVideo } from "./ChatWallpaper";
 import StickerBurst from "./StickerBurst";
 import { getSetting } from "@/lib/settings";
@@ -580,11 +581,19 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const [headerTitle, setHeaderTitle] = useState(title || "");
   useEffect(() => { setHeaderTitle(title || ""); }, [title]);
   const isGroup = !!group?.is_group;
-  // Чьи питомцы гуляют по этой переписке: собеседник и я, в группе — участники.
-  const petOwners = useMemo(
-    () => (isGroup ? (group?.participants || []).map((p) => p.id) : [userId, peer?.id || ""]).filter(Boolean).slice(0, 20),
-    [isGroup, group?.participants, userId, peer?.id],
-  );
+  // Мой питомец: позвать сюда или отправить домой — пункт меню чата (chat/pets.py move).
+  const petsOn = usePetsAvailable();
+  const myPet = useMyPet(petsOn ? userId : null);
+  const petHereMine = !!myPet && myPet.chat_id === chatId;
+  const togglePet = async () => {
+    if (!myPet || !chatId) return;
+    const name = myPet.name || tr("Питомец");
+    try {
+      const p = await api.updateMyPet({ chat_id: petHereMine ? null : chatId });
+      rememberPet(p);
+      toast.success(petHereMine ? tr("{name} ушёл домой", { name }) : tr("{name} пришёл в чат", { name }));
+    } catch (e) { toast.error((e as Error).message || tr("Не получилось")); }
+  };
   const isGroupAdmin = isGroup && group?.creator === userId;
   // «Печатает…», «записывает голосовое…» собеседника (lib/chatActivity): в группе — с именем.
   const activityText = activityLabel(useChatActivity(chatId), isGroup);
@@ -3991,6 +4000,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     )}
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       <ImageIcon className="w-5 h-5 text-foreground/80" />{tr("Обои чата")}</button>
+                    {myPet && !reqPending && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); void togglePet(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <PawPrint className="w-5 h-5 text-foreground/80" />{petHereMine ? tr("Отправить питомца домой") : tr("Позвать питомца")}</button>
+                    )}
                     {isSecret && skey && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); setKeyOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <KeyRound className="w-5 h-5 text-foreground/80" />{tr("Ключ шифрования")}</button>
@@ -4976,7 +4989,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <div ref={messagesEndRef} />
           {/* Питомцы участников — гуляют по пузырям (только анимация, components/pets). */}
           <div className="absolute inset-0 !mt-0 pointer-events-none" aria-hidden={false}>
-            <ChatPets ownerIds={petOwners} feedRef={feedRef} scrollRef={scrollRef} active={active && !selected} />
+            <ChatPets chatId={chatId} feedRef={feedRef} scrollRef={scrollRef} active={active && !selected} />
           </div>
         </div>
       </div>

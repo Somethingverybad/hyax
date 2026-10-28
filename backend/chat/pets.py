@@ -10,6 +10,9 @@ design/pets/README.md). Здесь только правила, которым �
   Хозяин поднимает шкалу на OWNER_GAIN (каждый день — держит в норме),
   гость — на GUEST_GAIN (друзья делают питомца счастливым).
 - Настроение (mood) — из шкалы и того, когда кормили и гладили.
+- Питомец живёт в одном чате хозяина (chat) — туда его зовут из меню чата,
+  там его видят все участники, в списке чатов у этого чата лапка. chat пуст —
+  питомец дома, только в профиле.
 - Хозяин сутки не ухаживал — пуш, как у Duolingo: раз в сутки, текст по
   состоянию, не больше REMIND_MAX подряд. Сутки отсчитываются от его ухода,
   поэтому напоминание приходит примерно в то время, когда он обычно заходит.
@@ -20,6 +23,7 @@ import logging
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 from rest_framework import permissions
@@ -27,7 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .i18n import L
-from .models import Pet, PetCare, Profile
+from .models import Chat, ChatParticipant, Pet, PetCare, Profile
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,8 @@ OVERFED_FEEDS = 3
 OVERFED_WINDOW = timedelta(hours=12)
 OVERFED_FOR = timedelta(hours=4)
 NAME_MAX = 40
+PET_CHAT_KINDS = ("direct", "group", "secret")  # не в каналах и не на стене
+NOTIFY_MEMBERS_MAX = 300
 
 
 def current_level(pet: Pet, now=None) -> float:
@@ -107,9 +113,12 @@ def pet_json(pet: Pet, viewer: Profile | None = None, now=None, brief=False) -> 
         "level": round(lv),
         "mood": mood(pet, now, lv),
         "show_in_chats": pet.show_in_chats,
+        "chat_id": str(pet.chat_id) if pet.chat_id else None,
     }
     if brief:
         return out
+    if viewer is not None and viewer.id == pet.owner_id:
+        out["chat"] = {"id": str(pet.chat_id), "title": _chat_title(pet.chat, viewer)} if pet.chat_id else None
     nxt = next_care_at(pet, viewer, now)
     today = (PetCare.objects.filter(pet=pet, created_at__gt=now - CARE_COOLDOWN)
              .select_related("carer").order_by("-created_at")[:12])
@@ -122,6 +131,59 @@ def pet_json(pet: Pet, viewer: Profile | None = None, now=None, brief=False) -> 
         "cares_total": PetCare.objects.filter(pet=pet).count(),
     })
     return out
+
+
+def _chat_title(chat: Chat, viewer: Profile) -> str:
+    """Как чат называется у хозяина: группа — по имени, личный — по собеседнику."""
+    if chat.name:
+        return chat.name
+    other = chat.participants.exclude(id=viewer.id).only("username").first()
+    return other.username if other else ""
+
+
+class NotInChat(Exception):
+    pass
+
+
+def move(pet: Pet, me: Profile, chat_id) -> Pet:
+    """Позвать питомца в чат хозяина (chat_id) или отправить домой (None)."""
+    if pet.owner_id != me.id:
+        raise NotInChat()
+    chat = None
+    if chat_id:
+        try:
+            chat = Chat.objects.filter(id=chat_id, kind__in=PET_CHAT_KINDS).first()
+        except (ValueError, ValidationError):
+            raise NotInChat()
+        if not chat or not ChatParticipant.objects.filter(chat=chat, user=me).exists():
+            raise NotInChat()
+    old = pet.chat_id
+    pet.chat = chat
+    pet.chat_at = timezone.now() if chat else None
+    if chat:
+        pet.show_in_chats = True
+    pet.save(update_fields=["chat", "chat_at", "show_in_chats"])
+    if old != pet.chat_id:
+        _tell_members(pet, [c for c in (old, pet.chat_id) if c], old)
+    return pet
+
+
+def _tell_members(pet: Pet, chat_ids, from_chat_id) -> None:
+    """Участникам старого и нового чата: питомец ушёл / пришёл — лапка в списке и кот в ленте."""
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        layer = get_channel_layer()
+        if not layer:
+            return
+        ids = set(ChatParticipant.objects.filter(chat_id__in=chat_ids).values_list("user_id", flat=True)[:NOTIFY_MEMBERS_MAX])
+        ids.add(pet.owner_id)
+        data = {"type": "pet_moved", "pet": pet_json(pet, brief=True),
+                "from_chat_id": str(from_chat_id) if from_chat_id else None}
+        for uid in ids:
+            async_to_sync(layer.group_send)(f"user_{uid}", {"type": "notification", "data": data})
+    except Exception:
+        logger.exception("pet: сокет не ответил")
 
 
 class CareTooSoon(Exception):
@@ -239,13 +301,38 @@ class PetOfView(APIView):
 
 
 class PetsView(APIView):
-    """GET /api/pets/?owners=id,id — питомцы участников чата, которых показывают в переписке."""
+    """GET /api/pets/?chat=<id> — питомцы, которые сейчас в этом чате (смотрящий — участник).
+
+    Сборка 952 спрашивала ?owners= и показывала питомца во всех чатах хозяина;
+    теперь он в одном чате, поэтому старому запросу — пусто.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        ids = [x for x in (request.query_params.get("owners") or "").split(",") if x][:20]
-        pets = Pet.objects.filter(owner_id__in=ids, show_in_chats=True) if ids else Pet.objects.none()
+        me = _me(request)
+        chat_id = request.query_params.get("chat")
+        pets = Pet.objects.none()
+        if me and chat_id:
+            try:
+                if ChatParticipant.objects.filter(chat_id=chat_id, user=me).exists():
+                    pets = Pet.objects.filter(chat_id=chat_id)
+            except (ValueError, ValidationError):
+                pass
         now = timezone.now()
+        return Response({"pets": [pet_json(p, now=now, brief=True) for p in pets]})
+
+
+class PetsHereView(APIView):
+    """GET /api/pets/here/ — питомцы во всех моих чатах: лапка в списке чатов."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        me = _me(request)
+        if not me:
+            return Response({"pets": []})
+        chats = ChatParticipant.objects.filter(user=me).values("chat_id")
+        now = timezone.now()
+        pets = Pet.objects.filter(chat_id__in=chats)[:200]
         return Response({"pets": [pet_json(p, now=now, brief=True) for p in pets]})
 
 
@@ -273,7 +360,7 @@ class PetCareView(APIView):
 
 
 class MyPetView(APIView):
-    """PATCH /api/pets/mine/ {name?, show_in_chats?} — хозяин даёт кличку и прячет из чатов."""
+    """PATCH /api/pets/mine/ {name?, show_in_chats?, chat_id?} — кличка; позвать в чат (chat_id) или домой (null)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request):
@@ -289,6 +376,11 @@ class MyPetView(APIView):
         if "show_in_chats" in request.data:
             pet.show_in_chats = bool(request.data.get("show_in_chats"))
         pet.save(update_fields=["name", "show_in_chats"])
+        if "chat_id" in request.data:
+            try:
+                pet = move(pet, me, request.data.get("chat_id") or None)
+            except NotInChat:
+                return Response({"error": "Сюда питомца не позвать"}, status=400)
         return Response({"pet": pet_json(pet, me)})
 
 

@@ -86,8 +86,8 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
     try { const p = await api.updateMyPet({ name: v }); setPet(p); setNaming(false); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
   };
-  const toggleChats = async () => {
-    try { const p = await api.updateMyPet({ show_in_chats: !pet.show_in_chats }); setPet(p); rememberPet(p); }
+  const goHome = async () => {
+    try { const p = await api.updateMyPet({ chat_id: null }); setPet(p); rememberPet(p); toast.success(t("{name} ушёл домой", { name: title })); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
   };
   const later = untilText(pet.next_care_at);
@@ -153,14 +153,17 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
         </div>
       )}
 
+      {/* Где сейчас: в одном чате (позвать — в меню чата) или дома. */}
       {own && (
-        <label className="mt-3 flex items-center gap-3 cursor-pointer">
+        <div className="mt-3 flex items-center gap-3">
           <span className="flex-1 min-w-0">
-            <span className="block text-small">{t("Гуляет по моим чатам")}</span>
-            <span className="block text-caption text-subtle">{t("Собеседники тоже видят — спит на сообщениях, царапает их, если голоден")}</span>
+            <span className="block text-small truncate">{pet.chat ? t("Сейчас в чате: {title}", { title: pet.chat.title || t("Чат") }) : t("Сейчас дома")}</span>
+            <span className="block text-caption text-subtle">{pet.chat ? t("Его видят все в этом чате — спит на сообщениях, царапает их, если голоден") : t("Позвать в чат — в меню чата: «Позвать питомца»")}</span>
           </span>
-          <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={pet.show_in_chats} onChange={() => void toggleChats()} />
-        </label>
+          {pet.chat && (
+            <button type="button" onClick={() => void goHome()} className="h-9 px-3 rounded-md bg-surface-2 text-small font-medium shrink-0 active:opacity-80">{t("Домой")}</button>
+          )}
+        </div>
       )}
     </div>
   );

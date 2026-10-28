@@ -109,15 +109,23 @@ export function profilePose(m: PetMood): PoseName {
   }
 }
 
-// ---------- питомцы участников чатов: общий кэш и обновления по сокету ----------
+// ---------- где питомцы: у каждого один чат (chat/pets.py move) ----------
+// Один запрос на все мои чаты (/api/pets/here/), дальше — события сокета:
+// pet_moved (позвали, ушёл домой) и pet (покормили — шкала и настроение).
 type Brief = PetBrief;
-const byOwner = new Map<string, { pet: Brief | null; at: number }>();
+const inChats = new Map<string, Brief>(); // id питомца → он в одном из моих чатов
+let hereAt = 0;
+let hereLoading: Promise<void> | null = null;
+let myPet: Brief | Pet | null | undefined; // undefined — ещё не спрашивали
+let myPetFor = "";
 const listeners = new Set<() => void>();
 const TTL = 5 * 60_000;
 const emit = () => listeners.forEach((f) => f());
 
 export function rememberPet(pet: Brief | Pet): void {
-  byOwner.set(pet.owner_id, { pet, at: Date.now() });
+  if (pet.chat_id) inChats.set(pet.id, { ...inChats.get(pet.id), ...pet });
+  else inChats.delete(pet.id);
+  if (myPet && myPet.id === pet.id) myPet = { ...myPet, ...pet };
   emit();
 }
 
@@ -126,34 +134,54 @@ function bindSocket() {
   if (socketBound) return;
   socketBound = true;
   onUserMessage((msg: { type?: string; data?: { type?: string; pet?: Brief } }) => {
-    if (msg?.type === "notification" && msg.data?.type === "pet" && msg.data.pet) rememberPet(msg.data.pet);
+    if (msg?.type !== "notification" || !msg.data?.pet) return;
+    if (msg.data.type === "pet" || msg.data.type === "pet_moved") rememberPet(msg.data.pet);
   });
 }
 
-/** Питомцы этих людей, которых показывают в переписке (не чаще раза в 5 минут на человека). */
-export function useChatPets(ownerIds: string[]): Brief[] {
-  const key = ownerIds.filter(Boolean).sort().join(",");
+function loadHere(force = false): void {
+  if (hereLoading || (!force && Date.now() - hereAt < TTL)) return;
+  hereLoading = api.getPetsHere().then((list) => {
+    hereAt = Date.now();
+    inChats.clear();
+    for (const p of list) if (p.chat_id) inChats.set(p.id, p);
+    emit();
+  }).catch(() => {}).finally(() => { hereLoading = null; });
+}
+
+function useStore(): void {
   const [, bump] = useState(0);
   useEffect(() => {
     bindSocket();
     const f = () => bump((n) => n + 1);
     listeners.add(f);
+    loadHere();
     return () => { listeners.delete(f); };
   }, []);
+}
+
+/** Питомцы, которые сейчас в этом чате. */
+export function useChatPets(chatId: string | null | undefined): Brief[] {
+  useStore();
+  if (!chatId) return [];
+  return [...inChats.values()].filter((p) => p.chat_id === chatId);
+}
+
+/** Чаты, где сейчас есть питомец — лапка в списке чатов. */
+export function usePetChats(): Set<string> {
+  useStore();
+  return new Set([...inChats.values()].map((p) => p.chat_id!).filter(Boolean));
+}
+
+/** Мой питомец (null — нет): позвать в чат из меню чата. */
+export function useMyPet(userId: string | null | undefined): Brief | Pet | null {
+  useStore();
   useEffect(() => {
-    const ids = key ? key.split(",") : [];
-    const stale = ids.filter((id) => { const c = byOwner.get(id); return !c || Date.now() - c.at > TTL; });
-    if (!stale.length) return;
-    let off = false;
-    api.getPets(stale).then((list) => {
-      if (off) return;
-      const now = Date.now();
-      for (const id of stale) byOwner.set(id, { pet: list.find((p) => p.owner_id === id) ?? null, at: now });
-      emit();
-    }).catch(() => {});
-    return () => { off = true; };
-  }, [key]);
-  return (key ? key.split(",") : []).map((id) => byOwner.get(id)?.pet).filter((p): p is Brief => !!p && p.show_in_chats);
+    if (!userId || (myPet !== undefined && myPetFor === userId)) return;
+    myPetFor = userId;
+    api.getPetOf(userId).then((p) => { myPet = p; if (p) rememberPet(p); else emit(); }).catch(() => {});
+  }, [userId]);
+  return myPetFor === userId ? myPet ?? null : null;
 }
 
 // ---------- «Питомцы в чатах» у смотрящего (своя настройка, на этом устройстве) ----------

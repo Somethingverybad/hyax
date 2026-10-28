@@ -10,7 +10,7 @@ from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
 from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransferBlobView
 from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
-from .pets import PetOfView, PetsView, PetCareView, MyPetView, PetGrantView
+from .pets import PetOfView, PetsView, PetsHereView, PetCareView, MyPetView, PetGrantView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView, VibeAdjustView, VibeReasonsView
 from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
@@ -41,6 +41,7 @@ urlpatterns = [
     path('vibe/history/', VibeHistoryView.as_view(), name='vibe-history'),
     path('pets/', PetsView.as_view(), name='pets'),
     path('pets/mine/', MyPetView.as_view(), name='pet-mine'),
+    path('pets/here/', PetsHereView.as_view(), name='pets-here'),
     path('pets/grant/', PetGrantView.as_view(), name='pet-grant'),
     path('pets/of/<uuid:profile_id>/', PetOfView.as_view(), name='pet-of'),
     path('pets/<uuid:pk>/care/', PetCareView.as_view(), name='pet-care'),

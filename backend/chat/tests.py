@@ -3266,17 +3266,58 @@ class PetTests(TestCase):
         with mock.patch("chat.fcm.notify_profiles"):
             self.assertEqual(send_reminders(), 0)
 
-    def test_name_visibility_and_chat_list(self):
+    def test_name(self):
         r = client_for(self.owner).patch("/api/pets/mine/", {"name": "  Барсик  "}, format="json")
         self.assertEqual(r.data["pet"]["name"], "Барсик")
         self.assertEqual(client_for(self.owner).patch("/api/pets/mine/", {"name": "  "}, format="json").status_code, 400)
         self.assertEqual(client_for(self.guest).patch("/api/pets/mine/", {"name": "x"}, format="json").status_code, 404)
-        lst = client_for(self.guest).get(f"/api/pets/?owners={self.owner.id},{self.guest.id}")
-        self.assertEqual([p["name"] for p in lst.data["pets"]], ["Барсик"])
-        client_for(self.owner).patch("/api/pets/mine/", {"show_in_chats": False}, format="json")
-        self.assertEqual(client_for(self.guest).get(f"/api/pets/?owners={self.owner.id}").data["pets"], [])
-        # В профиле виден всё равно.
         self.assertEqual(client_for(self.guest).get(f"/api/pets/of/{self.owner.id}/").data["pet"]["name"], "Барсик")
+
+    def _chat(self, *who, kind="direct", name=""):
+        from .models import Chat, ChatParticipant
+        chat = Chat.objects.create(kind=kind, is_group=kind == "group", name=name)
+        for p in who:
+            ChatParticipant.objects.create(chat=chat, user=p)
+        return chat
+
+    def test_call_into_chat_and_home(self):
+        dm = self._chat(self.owner, self.guest)
+        other = self._chat(self.owner, make_user("pet_third"))
+        stranger = make_user("pet_stranger")
+        foreign = self._chat(self.guest, stranger)
+        channel = self._chat(self.owner, kind="channel", name="Канал")
+        mine = lambda: client_for(self.owner).patch  # noqa: E731
+        # Дома: ни в одном чате, в списке «где питомцы» пусто.
+        self.assertIsNone(client_for(self.owner).get(f"/api/pets/of/{self.owner.id}/").data["pet"]["chat"])
+        self.assertEqual(client_for(self.guest).get("/api/pets/here/").data["pets"], [])
+        # Позвать в личный чат: виден обоим, у хозяина — название (собеседник).
+        r = mine()("/api/pets/mine/", {"chat_id": str(dm.id)}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["pet"]["chat"], {"id": str(dm.id), "title": "pet_guest"})
+        self.assertEqual([p["chat_id"] for p in client_for(self.guest).get("/api/pets/here/").data["pets"]], [str(dm.id)])
+        self.assertEqual(len(client_for(self.guest).get(f"/api/pets/?chat={dm.id}").data["pets"]), 1)
+        self.assertEqual(client_for(self.owner).get(f"/api/pets/?chat={other.id}").data["pets"], [])
+        # Не участник чата питомца не видит; старый запрос сборки 952 — пусто.
+        self.assertEqual(client_for(stranger).get(f"/api/pets/?chat={dm.id}").data["pets"], [])
+        self.assertEqual(client_for(stranger).get("/api/pets/here/").data["pets"], [])
+        self.assertEqual(client_for(self.guest).get(f"/api/pets/?owners={self.owner.id}").data["pets"], [])
+        # Нельзя: чужой чат, канал, мусор; чужого питомца не позвать.
+        for bad in (str(foreign.id), str(channel.id), "nope"):
+            self.assertEqual(mine()("/api/pets/mine/", {"chat_id": bad}, format="json").status_code, 400, bad)
+        self.assertEqual(client_for(self.guest).patch("/api/pets/mine/", {"chat_id": str(dm.id)}, format="json").status_code, 404)
+        # Перешёл в другой чат — из первого ушёл.
+        mine()("/api/pets/mine/", {"chat_id": str(other.id)}, format="json")
+        self.assertEqual(client_for(self.guest).get("/api/pets/here/").data["pets"], [])
+        self.assertEqual(len(client_for(self.owner).get(f"/api/pets/?chat={other.id}").data["pets"]), 1)
+        # Домой.
+        r = mine()("/api/pets/mine/", {"chat_id": None}, format="json")
+        self.assertIsNone(r.data["pet"]["chat"])
+        self.assertEqual(client_for(self.owner).get("/api/pets/here/").data["pets"], [])
+        # Чат удалили — питомец сам дома.
+        mine()("/api/pets/mine/", {"chat_id": str(dm.id)}, format="json")
+        dm.delete()
+        self.pet.refresh_from_db()
+        self.assertIsNone(self.pet.chat_id)
 
     def test_vibe_history_shows_care(self):
         self.care(self.guest, "feed")

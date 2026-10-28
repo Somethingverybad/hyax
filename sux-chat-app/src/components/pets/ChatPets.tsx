@@ -9,6 +9,7 @@ import PetSprite from "./PetSprite";
  * Питомцы участников в переписке: гуляют по пузырям, спят на них, царапают и
  * закапывают — только анимация поверх ленты, на сами сообщения не влияет.
  *
+ * Питомец в чате, куда его позвал хозяин (меню чата → «Позвать питомца»).
  * Кот живёт внутри колонки ленты (feedRef, position: relative) — едет вместе с
  * пузырями при прокрутке. Пузыри — `[id^="msg-"]` с `data-sender-id`, сам
  * пузырь — `.msg-bubble` (картинки и стикеры без пузыря не годятся).
@@ -227,15 +228,15 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
   );
 }
 
-export default function ChatPets({ ownerIds, feedRef, scrollRef, active }: {
-  ownerIds: string[];
+export default function ChatPets({ chatId, feedRef, scrollRef, active }: {
+  chatId: string | null | undefined;
   feedRef: RefObject<HTMLDivElement>;
   scrollRef: RefObject<HTMLDivElement>;
   active: boolean;
 }) {
   const hidden = usePetsHidden();
   const available = usePetsAvailable();
-  const pets = useChatPets(available ? ownerIds : []).slice(0, MAX_PETS);
+  const pets = useChatPets(available ? chatId : null).slice(0, MAX_PETS);
   if (hidden || !available || !active || !pets.length) return null;
   return <>{pets.map((p) => <PetActor key={p.id} pet={p} feedRef={feedRef} scrollRef={scrollRef} />)}</>;
 }

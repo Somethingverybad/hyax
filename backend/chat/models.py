@@ -1048,6 +1048,9 @@ class Pet(models.Model):
     reminders = models.PositiveSmallIntegerField(default=0)
     # Показывать в переписке хозяина (его чаты, у собеседников тоже).
     show_in_chats = models.BooleanField(default=True)
+    # Где питомец сейчас: в одном чате хозяина (зовут из меню чата) или дома — только в профиле.
+    chat = models.ForeignKey("Chat", null=True, blank=True, on_delete=models.SET_NULL, related_name="pets_here")
+    chat_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
 
