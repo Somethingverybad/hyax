@@ -112,7 +112,9 @@ function visibleSpots(feed: HTMLElement, scroll: HTMLElement, ownerId: string, c
 function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObject<HTMLDivElement>; scrollRef: RefObject<HTMLDivElement> }) {
   const [pack, setPack] = useState<PetPack | null>(null);
   const [pose, setPose] = useState<PoseName>("sit");
-  const [pos, setPos] = useState<{ x: number; y: number; flip: boolean; dur: number; shown: boolean }>({ x: 0, y: 0, flip: false, dur: 0, shown: false });
+  // dur — шаги по пузырю (x), ydur — прыжок на другой пузырь (y); за своим
+  // пузырём y следует мгновенно, поэтому движения разведены по двум элементам.
+  const [pos, setPos] = useState<{ x: number; y: number; flip: boolean; dur: number; ydur: number; shown: boolean }>({ x: 0, y: 0, flip: false, dur: 0, ydur: 0, shown: false });
   const spot = useRef<string | null>(null);
   const timer = useRef<number | null>(null);
   const el = useRef<HTMLButtonElement>(null);
@@ -134,9 +136,11 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
     const halfW = (pack.canvas[0] * k) / 2;
     const still = reduceMotion();
 
-    const place = (s: Spot, x: number, dur: number, flip: boolean) => {
+    let hopUntil = 0;
+    const place = (s: Spot, x: number, dur: number, flip: boolean, ydur = 0) => {
       spot.current = s.msgId;
-      setPos({ x, y: s.top, flip, dur, shown: true });
+      if (ydur) hopUntil = performance.now() + ydur * 1000 + 40;
+      setPos({ x, y: s.top, flip, dur, ydur, shown: true });
     };
     const clampX = (s: Spot, x: number) => Math.min(s.right, Math.max(s.left, x));
 
@@ -177,7 +181,7 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
         // Другой пузырь — прыжок дугой: по горизонтали плавно, по вертикали — через верх.
         const flip = x < fromX;
         setPose("walk");
-        place(target, x, 0.55, flip);
+        place(target, x, 0.55, flip, 0.55);
         el.current?.animate([{ translate: "0 0" }, { translate: "0 -34px" }, { translate: "0 0" }], { duration: 550, easing: "ease-out" });
         window.setTimeout(() => { if (alive) setPose(act.pose === "walk" ? "sit" : act.pose); }, 560);
       }
@@ -208,11 +212,11 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
         // Далеко (пролистали) — не летит через весь экран: исчез и появился.
         spot.current = target.msgId;
         setPos((p) => ({ ...p, shown: false }));
-        window.setTimeout(() => { if (alive && spot.current === target.msgId) setPos({ x, y: target.top, flip: from.flip, dur: 0, shown: true }); }, 260);
+        window.setTimeout(() => { if (alive && spot.current === target.msgId) setPos({ x, y: target.top, flip: from.flip, dur: 0, ydur: 0, shown: true }); }, 260);
         return;
       }
       setPose("walk");
-      place(target, x, 0.55, x < from.x);
+      place(target, x, 0.55, x < from.x, 0.55);
       el.current?.animate([{ translate: "0 0" }, { translate: "0 -30px" }, { translate: "0 0" }], { duration: 550, easing: "ease-out" });
       window.setTimeout(() => { if (alive) setPose(doing.current); }, 560);
     };
@@ -231,23 +235,49 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
     const scrollEl = scrollRef.current;
     scrollEl?.addEventListener("scroll", onScroll, { passive: true });
 
-    // Пузырь мог уехать (новые сообщения, клавиатура) — держимся за него.
-    const follow = window.setInterval(() => {
-      const feed = feedRef.current;
-      if (!feed || !spot.current) return;
-      const row = curBubble();
-      if (!row) { setPos((p) => ({ ...p, shown: false })); return; }
-      const fb = feed.getBoundingClientRect();
-      const r = row.getBoundingClientRect();
-      const top = r.top - fb.top;
-      setPos((p) => (Math.abs(p.y - top) > 1 ? { ...p, y: top, dur: 0 } : p));
-      checkEdges();
-    }, 700);
+    // Прокрутка двигает кота вместе с лентой сама. А пузыри внутри ленты
+    // сдвигает другое: отступ прижатой ленты (pt-[56px] в «Мяте» — компенсируется
+    // прокруткой, и кот без этого съезжал на 56 px), догрузка картинок и
+    // стикеров выше, подгрузка истории, новый пузырь. Любое изменение ленты
+    // будит слежение по кадрам на 0,7 с — кот держится за свой пузырь каждый кадр.
+    const syncY = () => {
+      const feed = feedRef.current, row = curBubble();
+      if (!feed || !spot.current || performance.now() < hopUntil) return;
+      if (!row) { setPos((p) => (p.shown ? { ...p, shown: false } : p)); return; }
+      const top = row.getBoundingClientRect().top - feed.getBoundingClientRect().top;
+      setPos((p) => (Math.abs(p.y - top) > 0.5 || p.ydur ? { ...p, y: top, ydur: 0 } : p));
+    };
+    let syncRaf = 0, syncUntil = 0;
+    const syncLoop = () => {
+      syncRaf = 0;
+      if (!alive) return;
+      syncY();
+      if (performance.now() < syncUntil) syncRaf = requestAnimationFrame(syncLoop);
+      else checkEdges();
+    };
+    const wake = () => {
+      syncUntil = performance.now() + 700;
+      if (!syncRaf) syncRaf = requestAnimationFrame(syncLoop);
+    };
+    const feedEl = feedRef.current;
+    const ro = feedEl && typeof ResizeObserver !== "undefined" ? new ResizeObserver(wake) : null;
+    const moRows = feedEl ? new MutationObserver(wake) : null;
+    const moFeed = feedEl ? new MutationObserver(wake) : null;
+    if (feedEl) {
+      ro?.observe(feedEl);
+      moRows!.observe(feedEl, { childList: true, subtree: true });
+      moFeed!.observe(feedEl, { attributes: true, attributeFilter: ["class", "style"] });
+    }
+
+    // Запасной ход: раз в 0,7 с сверка с пузырём и краями экрана.
+    const follow = window.setInterval(() => { syncY(); checkEdges(); }, 700);
 
     timer.current = window.setTimeout(step, 600);
     return () => {
       alive = false; window.clearInterval(follow); if (timer.current) window.clearTimeout(timer.current);
       scrollEl?.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf);
+      if (syncRaf) cancelAnimationFrame(syncRaf);
+      ro?.disconnect(); moRows?.disconnect(); moFeed?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pack, pet.mood, pet.owner_id]);
@@ -292,23 +322,27 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
   const k = pack.scale;
   const [ax, ay] = pack.anchor;
   return (
-    <button
-      ref={el}
-      type="button"
-      onClick={tap}
-      aria-label={t("Погладить {name}", { name: petDisplayName(pet, pack, getLang()) })}
-      className="absolute z-[5] p-0 bg-transparent border-0 outline-none select-none"
-      style={{
-        left: 0, top: 0,
-        transform: `translate(${pos.x - ax * k}px, ${pos.y - ay * k}px)`,
-        transition: pos.dur ? `transform ${pos.dur}s linear, opacity .3s` : "opacity .3s",
-        opacity: pos.shown ? 1 : 0,
-        pointerEvents: pos.shown ? "auto" : "none",
-        touchAction: "manipulation", // двойной тап — «покормить», а не увеличение страницы
-      }}
-    >
-      <PetSprite species={pet.species} pose={pose} coat={pet.color} flip={pos.flip} paused={reduceMotion()} />
-    </button>
+    // Снаружи — высота (за пузырём, плавно только в прыжке), внутри — шаги по пузырю.
+    <div className="absolute left-0 top-0 z-[5] pointer-events-none"
+      style={{ transform: `translateY(${pos.y - ay * k}px)`, transition: pos.ydur ? `transform ${pos.ydur}s ease-in-out` : undefined }}>
+      <button
+        ref={el}
+        type="button"
+        onClick={tap}
+        data-spot={spot.current ?? ""}
+        aria-label={t("Погладить {name}", { name: petDisplayName(pet, pack, getLang()) })}
+        className="block p-0 bg-transparent border-0 outline-none select-none"
+        style={{
+          transform: `translateX(${pos.x - ax * k}px)`,
+          transition: pos.dur ? `transform ${pos.dur}s linear, opacity .3s` : "opacity .3s",
+          opacity: pos.shown ? 1 : 0,
+          pointerEvents: pos.shown ? "auto" : "none",
+          touchAction: "manipulation", // двойной тап — «покормить», а не увеличение страницы
+        }}
+      >
+        <PetSprite species={pet.species} pose={pose} coat={pet.color} flip={pos.flip} paused={reduceMotion()} />
+      </button>
+    </div>
   );
 }
 
