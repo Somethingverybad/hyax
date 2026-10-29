@@ -10,7 +10,7 @@ from .themes import ThemesView, ThemeDetailView, ThemeInstallView
 from .secret import SecretChatCreateView, SecretChatAcceptView, SecretChatDeclineView
 from .keytransfer import KeyTransferCreateView, KeyTransferLookupView, KeyTransferBlobView
 from .devices import DeviceTokenRefreshSerializer, DevicesView, DeviceRevokeView, DevicesRevokeOthersView
-from .pets import PetOfView, PetsView, PetsHereView, PetCareView, MyPetView, PetGrantView
+from .pets import PetOfView, PetsView, PetsHereView, PetCareView, PetHomeView, MyPetView, PetGrantView
 from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeHistoryView, VibeLevelsView, VibeAdjustView, VibeReasonsView
 from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
@@ -45,6 +45,7 @@ urlpatterns = [
     path('pets/grant/', PetGrantView.as_view(), name='pet-grant'),
     path('pets/of/<uuid:profile_id>/', PetOfView.as_view(), name='pet-of'),
     path('pets/<uuid:pk>/care/', PetCareView.as_view(), name='pet-care'),
+    path('pets/<uuid:pk>/home/', PetHomeView.as_view(), name='pet-home'),
     path('vibe/<uuid:profile_id>/', VibeView.as_view(), name='vibe'),
     path('vibe/<uuid:profile_id>/adjust/', VibeAdjustView.as_view(), name='vibe-adjust'),
     path('vibe-reasons/', VibeReasonsView.as_view(), name='vibe-reasons'),

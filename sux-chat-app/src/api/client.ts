@@ -591,6 +591,8 @@ export interface ChatInfo {
   avatar_url?: string | null;
   creator?: string | null;
   participants?: Profile[];
+  /** Группа: сколько питомцев одновременно (chat/pets.py); 0 — выключены. */
+  pet_limit?: number;
 }
 
 /** Живой перевод текста (chat/live.py LiveTextView): исходный язык, язык перевода и сам перевод. */
@@ -1770,6 +1772,14 @@ export const api = {
   updateMyPet: async (patch: { name?: string; show_in_chats?: boolean; chat_id?: string | null; color?: string }): Promise<Pet> => {
     const res = await fetchWithAuth(`${API_URL}/pets/mine/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) });
     const data = await res.json().catch(() => ({}));
+    // 409: в группе нет мест (code=pets_full, limit, pets — кто уже здесь) или питомцы выключены (pets_off).
+    if (!res.ok) throw Object.assign(new LError(data?.error || "Не получилось"), { code: data?.code as string | undefined, limit: data?.limit as number | undefined, pets: data?.pets as { name: string; species: string; owner: { username: string } }[] | undefined });
+    return data.pet;
+  },
+  /** Домой: хозяин — своего, владелец группы — любого питомца в ней. */
+  sendPetHome: async (petId: string): Promise<Pet> => {
+    const res = await fetchWithAuth(`${API_URL}/pets/${petId}/home/`, { method: "POST", headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не получилось");
     return data.pet;
   },
@@ -2219,8 +2229,9 @@ export const api = {
   },
 
   // Настройки группы (название, аватар) — только для админа-создателя.
-  configureGroup: async (chatId: string, data: { name?: string; avatarUrl?: string; notifySoundId?: string | null }): Promise<ChatInfo> => {
-    const body: Record<string, string | null> = {};
+  configureGroup: async (chatId: string, data: { name?: string; avatarUrl?: string; notifySoundId?: string | null; petLimit?: number }): Promise<ChatInfo> => {
+    const body: Record<string, string | number | null> = {};
+    if (data.petLimit !== undefined) body.pet_limit = data.petLimit;
     if (data.name !== undefined) body.name = data.name;
     if (data.avatarUrl !== undefined) body.avatar_url = data.avatarUrl;
     // Общий звук группы: с ним все её сообщения приходят всем участникам.

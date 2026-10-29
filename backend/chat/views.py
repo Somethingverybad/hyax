@@ -498,8 +498,19 @@ class ChatViewSet(viewsets.ModelViewSet):
             sid = request.data.get('notify_sound_id')
             chat.notify_sound = NotificationSound.objects.filter(id=sid, is_active=True).first() if sid else None
             fields.append('notify_sound')
+        if 'pet_limit' in request.data:
+            # Сколько питомцев одновременно (chat/pets.py); 0 — выключены.
+            from .pets import PET_LIMIT_MAX
+            try:
+                chat.pet_limit = max(0, min(PET_LIMIT_MAX, int(request.data.get('pet_limit'))))
+            except (TypeError, ValueError):
+                return Response({"error": "Лимит — число"}, status=400)
+            fields.append('pet_limit')
         if fields:
             chat.save(update_fields=fields)
+        if 'pet_limit' in fields:
+            from .pets import trim_to_limit
+            trim_to_limit(chat, profile)
         return Response(self.get_serializer(chat).data)
 
     @action(detail=True, methods=['get'])

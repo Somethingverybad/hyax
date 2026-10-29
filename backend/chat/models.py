@@ -235,6 +235,9 @@ class Chat(models.Model):
     # Звук уведомлений канала: с ним подписчики получают пуши о новых постах,
     # если у самого поста нет аудио-стикера (см. _notify_new_message).
     notify_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Сколько питомцев может быть в группе одновременно (chat/pets.py move);
+    # 0 — питомцы в группе выключены. Меняет владелец группы.
+    pet_limit = models.PositiveSmallIntegerField(default=3, db_default=3)
     # Зеркало публичного Telegram-канала (chat/telegram_mirror.py, команда
     # tg_mirror): tg_username — @канал в Telegram, tg_peer_id — его id для
     # сверки входящих обновлений, tg_state — pending → active | error.

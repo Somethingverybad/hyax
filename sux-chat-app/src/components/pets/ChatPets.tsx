@@ -16,7 +16,11 @@ import PetSprite from "./PetSprite";
  * Поведение — маленький автомат по настроению с сервера (chat/pets.py mood).
  */
 
-const MAX_PETS = 2;
+// На экране — не больше стольких: каждый питомец — живая анимация, десяток
+// повесит слабый телефон. Лимит группы (Chat.pet_limit) — по умолчанию 3.
+const MAX_PETS = 4;
+// Кто на каком пузыре: двое на одно сообщение не садятся.
+const taken = new Map<string, string>(); // id строки сообщения → id питомца
 const DOUBLE_TAP = 320; // мс между тапами — «покормить»
 // left/right — где может стоять середина питомца: на ровной части верхнего края, не под соседним сообщением.
 type Spot = { msgId: string; own: boolean; left: number; right: number; top: number };
@@ -109,7 +113,7 @@ function visibleSpots(feed: HTMLElement, scroll: HTMLElement, ownerId: string, c
   return free.length ? free : any;
 }
 
-function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObject<HTMLDivElement>; scrollRef: RefObject<HTMLDivElement> }) {
+function PetActor({ pet, group, feedRef, scrollRef }: { pet: PetBrief; group: boolean; feedRef: RefObject<HTMLDivElement>; scrollRef: RefObject<HTMLDivElement> }) {
   const [pack, setPack] = useState<PetPack | null>(null);
   const [pose, setPose] = useState<PoseName>("sit");
   // dur — шаги по пузырю (x), ydur — прыжок на другой пузырь (y); за своим
@@ -137,8 +141,14 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
     const still = reduceMotion();
 
     let hopUntil = 0;
+    const free = (s: Spot) => { const who = taken.get(s.msgId); return !who || who === pet.id; };
+    const claim = (msgId: string | null) => {
+      if (spot.current && taken.get(spot.current) === pet.id) taken.delete(spot.current);
+      spot.current = msgId;
+      if (msgId) taken.set(msgId, pet.id);
+    };
     const place = (s: Spot, x: number, dur: number, flip: boolean, ydur = 0) => {
-      spot.current = s.msgId;
+      claim(s.msgId);
       if (ydur) hopUntil = performance.now() + ydur * 1000 + 40;
       setPos({ x, y: s.top, flip, dur, ydur, shown: true });
     };
@@ -148,13 +158,15 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
       if (!alive) return;
       const feed = feedRef.current, scroll = scrollRef.current;
       if (!feed || !scroll || document.hidden) { timer.current = window.setTimeout(step, 3000); return; }
-      const spots = visibleSpots(feed, scroll, pet.owner_id, catH, halfW);
+      const spots = visibleSpots(feed, scroll, pet.owner_id, catH, halfW).filter(free);
       if (!spots.length) { setPos((p) => ({ ...p, shown: false })); timer.current = window.setTimeout(step, 2500); return; }
       const acts = BEHAVIOUR[pet.mood] ?? BEHAVIOUR.content;
       const night = isNight() && (pet.mood === "happy" || pet.mood === "content" || pet.mood === "bored");
       let act = night && Math.random() < 0.7 ? { pose: "sleep" as PoseName, min: 20, max: 50, target: "owner" as const, w: 1 } : pick(acts);
       if (still && act.pose === "walk") act = { ...act, pose: "sit" };
-      const wanted = spots.filter((s) => act.target === "any" || (act.target === "owner" ? s.own : !s.own));
+      // В группе питомец держится своего хозяина — сразу видно, чей он.
+      const aim = group && act.target === "any" && Math.random() < 0.7 ? "owner" : act.target;
+      const wanted = spots.filter((s) => aim === "any" || (aim === "owner" ? s.own : !s.own));
       const pool = wanted.length ? wanted : spots;
       const cur = spots.find((s) => s.msgId === spot.current);
       // Чаще остаёмся на том же пузыре — переходим, если там «не то» или пора прогуляться.
@@ -201,16 +213,16 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
       const feed = feedRef.current, scroll = scrollRef.current;
       if (!feed || !scroll) return;
       const from = posRef.current;
-      const spots = visibleSpots(feed, scroll, pet.owner_id, catH, halfW)
+      const spots = visibleSpots(feed, scroll, pet.owner_id, catH, halfW).filter(free)
         .filter((s) => s.msgId !== spot.current && (dir === "down" ? s.top > from.y : s.top < from.y))
         .sort((a, b) => (dir === "down" ? a.top - b.top : b.top - a.top));
       const target = spots[0];
-      if (!target) { spot.current = null; setPos((p) => ({ ...p, shown: false })); return; }
+      if (!target) { claim(null); setPos((p) => ({ ...p, shown: false })); return; }
       const x = clampX(target, from.x);
       const band = visibleBand(scroll);
       if (still || Math.abs(target.top - from.y) > (band.bottom - band.top) * 0.8) {
         // Далеко (пролистали) — не летит через весь экран: исчез и появился.
-        spot.current = target.msgId;
+        claim(target.msgId);
         setPos((p) => ({ ...p, shown: false }));
         window.setTimeout(() => { if (alive && spot.current === target.msgId) setPos({ x, y: target.top, flip: from.flip, dur: 0, ydur: 0, shown: true }); }, 260);
         return;
@@ -277,10 +289,11 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
       alive = false; window.clearInterval(follow); if (timer.current) window.clearTimeout(timer.current);
       scrollEl?.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf);
       if (syncRaf) cancelAnimationFrame(syncRaf);
+      claim(null);
       ro?.disconnect(); moRows?.disconnect(); moFeed?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pack, pet.mood, pet.owner_id]);
+  }, [pack, pet.mood, pet.owner_id, group]);
 
   // Уход раз в сутки от человека (chat/pets.py); дальше — только анимация.
   const careOnce = (action: PetAction) => {
@@ -346,8 +359,9 @@ function PetActor({ pet, feedRef, scrollRef }: { pet: PetBrief; feedRef: RefObje
   );
 }
 
-export default function ChatPets({ chatId, feedRef, scrollRef, active }: {
+export default function ChatPets({ chatId, group = false, feedRef, scrollRef, active }: {
   chatId: string | null | undefined;
+  group?: boolean;
   feedRef: RefObject<HTMLDivElement>;
   scrollRef: RefObject<HTMLDivElement>;
   active: boolean;
@@ -356,5 +370,5 @@ export default function ChatPets({ chatId, feedRef, scrollRef, active }: {
   const available = usePetsAvailable();
   const pets = useChatPets(available ? chatId : null).slice(0, MAX_PETS);
   if (hidden || !available || !active || !pets.length) return null;
-  return <>{pets.map((p) => <PetActor key={p.id} pet={p} feedRef={feedRef} scrollRef={scrollRef} />)}</>;
+  return <>{pets.map((p) => <PetActor key={p.id} pet={p} group={group} feedRef={feedRef} scrollRef={scrollRef} />)}</>;
 }

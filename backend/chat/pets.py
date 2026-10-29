@@ -13,6 +13,10 @@ design/pets/README.md). Здесь только правила, которым �
 - Питомец живёт в одном чате хозяина (chat) — туда его зовут из меню чата,
   там его видят все участники, в списке чатов у этого чата лапка. chat пуст —
   питомец дома, только в профиле.
+- В группе питомцев не больше Chat.pet_limit (по умолчанию 3, 0 — выключены).
+  Мест нет — не позвать (вытеснять первых нельзя: так выгоняли бы назло).
+  Владелец группы меняет лимит и отправляет домой любого питомца; уменьшил
+  лимит — лишние, пришедшие последними, уходят домой сами.
 - Хозяин сутки не ухаживал — пуш, как у Duolingo: раз в сутки, текст по
   состоянию, не больше REMIND_MAX подряд. Сутки отсчитываются от его ухода,
   поэтому напоминание приходит примерно в то время, когда он обычно заходит.
@@ -53,6 +57,7 @@ NAME_MAX = 40
 # Окрасы описаны в паке клиента; сервер только хранит имя (неизвестное клиент рисует как есть).
 COLOR_RE = re.compile(r"^[a-z0-9_-]{0,24}$")
 PET_CHAT_KINDS = ("direct", "group", "secret")  # не в каналах и не на стене
+PET_LIMIT_MAX = 10  # потолок лимита группы
 NOTIFY_MEMBERS_MAX = 300
 
 
@@ -149,6 +154,18 @@ class NotInChat(Exception):
     pass
 
 
+class ChatFull(Exception):
+    """Мест для питомцев в группе нет (code=pets_full) или они выключены (pets_off)."""
+    def __init__(self, code, pets=(), limit=0):
+        self.code, self.pets, self.limit = code, list(pets), limit
+
+
+def is_group_owner(chat: Chat, me: Profile) -> bool:
+    """Владелец группы — её создатель (как в настройках группы, ChatViewSet.configure)."""
+    return chat.kind == "group" and (chat.creator_id == me.id or not chat.creator_id and
+                                     ChatParticipant.objects.filter(chat=chat, user=me).exists())
+
+
 def move(pet: Pet, me: Profile, chat_id) -> Pet:
     """Позвать питомца в чат хозяина (chat_id) или отправить домой (None)."""
     if pet.owner_id != me.id:
@@ -161,6 +178,14 @@ def move(pet: Pet, me: Profile, chat_id) -> Pet:
             raise NotInChat()
         if not chat or not ChatParticipant.objects.filter(chat=chat, user=me).exists():
             raise NotInChat()
+        if chat.kind == "group" and pet.chat_id != chat.id:
+            if chat.pet_limit <= 0:
+                raise ChatFull("pets_off")
+            here = list(Pet.objects.filter(chat=chat).select_related("owner").order_by("chat_at"))
+            if len(here) >= chat.pet_limit:
+                raise ChatFull("pets_full", [{"name": p.name, "species": p.species, "owner": _who(p.owner)} for p in here], chat.pet_limit)
+    if chat and pet.chat_id == chat.id:
+        return pet  # уже здесь: время прихода не сбрасываем (по нему уходят лишние)
     old = pet.chat_id
     pet.chat = chat
     pet.chat_at = timezone.now() if chat else None
@@ -170,6 +195,39 @@ def move(pet: Pet, me: Profile, chat_id) -> Pet:
     if old != pet.chat_id:
         _tell_members(pet, [c for c in (old, pet.chat_id) if c], old)
     return pet
+
+
+def send_home(pet: Pet, by: Profile | None, reason: str) -> Pet:
+    """Отправить питомца домой не хозяином: владелец группы (reason=admin) или
+    уменьшенный лимит (reason=limit). Хозяину — заметка, кто и откуда."""
+    chat = pet.chat
+    if not chat:
+        return pet
+    pet.chat = None
+    pet.chat_at = None
+    pet.save(update_fields=["chat", "chat_at"])
+    _tell_members(pet, [chat.id], chat.id)
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(f"user_{pet.owner_id}", {"type": "notification", "data": {
+                "type": "pet", "action": "home", "reason": reason, "pet": pet_json(pet, brief=True),
+                "by": _who(by) if by else None, "chat": {"id": str(chat.id), "name": chat.name},
+            }})
+    except Exception:
+        logger.exception("pet: сокет не ответил")
+    return pet
+
+
+def trim_to_limit(chat: Chat, by: Profile | None) -> int:
+    """Лимит группы уменьшили — лишние питомцы (пришедшие последними) уходят домой."""
+    here = list(Pet.objects.filter(chat=chat).order_by("chat_at"))
+    extra = here[max(0, chat.pet_limit):]
+    for p in extra:
+        send_home(p, by, "limit")
+    return len(extra)
 
 
 def _tell_members(pet: Pet, chat_ids, from_chat_id) -> None:
@@ -395,7 +453,26 @@ class MyPetView(APIView):
                 pet = move(pet, me, request.data.get("chat_id") or None)
             except NotInChat:
                 return Response({"error": "Сюда питомца не позвать"}, status=400)
+            except ChatFull as e:
+                msg = "В этой группе питомцы выключены" if e.code == "pets_off" else "Мест для питомцев нет"
+                return Response({"error": msg, "code": e.code, "limit": e.limit, "pets": e.pets}, status=409)
         return Response({"pet": pet_json(pet, me)})
+
+
+class PetHomeView(APIView):
+    """POST /api/pets/<id>/home/ — домой: хозяин или владелец группы, где питомец сейчас."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        me = _me(request)
+        pet = Pet.objects.filter(id=pk).select_related("chat").first()
+        if not me or not pet:
+            return Response({"error": "Питомец не найден"}, status=404)
+        if pet.owner_id == me.id:
+            return Response({"pet": pet_json(move(pet, me, None), me)})
+        if not pet.chat or not is_group_owner(pet.chat, me):
+            return Response({"error": "Отправить домой может хозяин или владелец группы"}, status=403)
+        return Response({"pet": pet_json(send_home(pet, me, "admin"), me)})
 
 
 class PetGrantView(APIView):

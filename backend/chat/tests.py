@@ -3327,6 +3327,52 @@ class PetTests(TestCase):
         self.pet.refresh_from_db()
         self.assertIsNone(self.pet.chat_id)
 
+    def test_group_pet_limit(self):
+        from .models import Pet
+        others = [make_user(f"pet_g{i}") for i in range(4)]
+        for i, o in enumerate(others):
+            Pet.objects.create(owner=o, name=f"Кот{i}")
+        group = self._chat(self.owner, self.guest, *others, kind="group", name="Котики")
+        group.creator = self.owner
+        group.save(update_fields=["creator"])
+        call = lambda who: client_for(who).patch("/api/pets/mine/", {"chat_id": str(group.id)}, format="json")  # noqa: E731
+        self.assertEqual(group.pet_limit, 3)
+        for o in others[:3]:
+            self.assertEqual(call(o).status_code, 200)
+        r = call(others[3])
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data["code"], "pets_full")
+        self.assertEqual(r.data["limit"], 3)
+        self.assertEqual([p["name"] for p in r.data["pets"]], ["Кот0", "Кот1", "Кот2"])
+        # Тот, кто уже здесь, позвать себя ещё раз может (мест не занимает).
+        self.assertEqual(call(others[0]).status_code, 200)
+        # Лимит меняет только владелец группы.
+        self.assertEqual(client_for(self.guest).post(f"/api/chats/{group.id}/configure/", {"pet_limit": 5}, format="json").status_code, 403)
+        # Уменьшил до 2 — ушёл пришедший последним.
+        r = client_for(self.owner).post(f"/api/chats/{group.id}/configure/", {"pet_limit": 2}, format="json")
+        self.assertEqual(r.data["pet_limit"], 2)
+        here = list(Pet.objects.filter(chat=group).order_by("chat_at").values_list("name", flat=True))
+        self.assertEqual(here, ["Кот0", "Кот1"])
+        # Владелец группы отправляет домой чужого, участник — нет, хозяин — своего.
+        kot0 = Pet.objects.get(name="Кот0")
+        self.assertEqual(client_for(self.guest).post(f"/api/pets/{kot0.id}/home/").status_code, 403)
+        self.assertEqual(client_for(self.owner).post(f"/api/pets/{kot0.id}/home/").status_code, 200)
+        kot1 = Pet.objects.get(name="Кот1")
+        self.assertEqual(client_for(others[1]).post(f"/api/pets/{kot1.id}/home/").status_code, 200)
+        self.assertFalse(Pet.objects.filter(chat=group).exists())
+        # 0 — выключены: не позвать, а кто был — дома.
+        call(others[2])
+        client_for(self.owner).post(f"/api/chats/{group.id}/configure/", {"pet_limit": 0}, format="json")
+        self.assertFalse(Pet.objects.filter(chat=group).exists())
+        r = call(others[2])
+        self.assertEqual((r.status_code, r.data["code"]), (409, "pets_off"))
+        # Потолок — 10, мусор — 400.
+        self.assertEqual(client_for(self.owner).post(f"/api/chats/{group.id}/configure/", {"pet_limit": 99}, format="json").data["pet_limit"], 10)
+        self.assertEqual(client_for(self.owner).post(f"/api/chats/{group.id}/configure/", {"pet_limit": "x"}, format="json").status_code, 400)
+        # В личном чате лимита нет.
+        dm = self._chat(self.owner, others[3])
+        self.assertEqual(client_for(others[3]).patch("/api/pets/mine/", {"chat_id": str(dm.id)}, format="json").status_code, 200)
+
     def test_vibe_history_shows_care(self):
         self.care(self.guest, "feed")
         items = client_for(self.guest).get("/api/vibe/history/").data["items"]

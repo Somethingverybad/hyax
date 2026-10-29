@@ -592,7 +592,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const p = await api.updateMyPet({ chat_id: petHereMine ? null : chatId });
       rememberPet(p);
       toast.success(petHereMine ? tr("{name} ушёл домой", { name }) : tr("{name} пришёл в чат", { name }));
-    } catch (e) { toast.error((e as Error).message || tr("Не получилось")); }
+    } catch (e) {
+      const err = e as Error & { code?: string; limit?: number; pets?: { name: string; owner: { username: string } }[] };
+      if (err.code === "pets_full") {
+        const names = (err.pets || []).map((p) => p.name || tr("питомец {owner}", { owner: p.owner.username })).join(", ");
+        toast.error(tr("Мест для питомцев нет — {n} из {n}", { n: err.limit ?? 0 }), { description: names || undefined });
+      } else toast.error(err.message || tr("Не получилось"));
+    }
   };
   const isGroupAdmin = isGroup && group?.creator === userId;
   // «Печатает…», «записывает голосовое…» собеседника (lib/chatActivity): в группе — с именем.
@@ -4000,7 +4006,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     )}
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       <ImageIcon className="w-5 h-5 text-foreground/80" />{tr("Обои чата")}</button>
-                    {myPet && !reqPending && (
+                    {myPet && !reqPending && !(isGroup && group?.pet_limit === 0 && !petHereMine) && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); void togglePet(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <PawPrint className="w-5 h-5 text-foreground/80" />{petHereMine ? tr("Отправить питомца домой") : tr("Позвать питомца")}</button>
                     )}
@@ -4989,7 +4995,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           <div ref={messagesEndRef} />
           {/* Питомцы участников — гуляют по пузырям (только анимация, components/pets). */}
           <div className="absolute inset-0 !mt-0 pointer-events-none" aria-hidden={false}>
-            <ChatPets chatId={chatId} feedRef={feedRef} scrollRef={scrollRef} active={active && !selected} />
+            <ChatPets chatId={chatId} group={isGroup} feedRef={feedRef} scrollRef={scrollRef} active={active && !selected} />
           </div>
         </div>
       </div>
@@ -5801,6 +5807,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           initialName={headerTitle || group.name || tr("Группа")}
           initialAvatar={group.avatar_url}
           initialSound={(group as { notify_sound?: NotificationSoundInfo | null }).notify_sound ?? null}
+          initialPetLimit={group.pet_limit ?? 3}
           onClose={() => setGroupOpen(false)}
           onUpdated={(patch) => {
             if (patch.name !== undefined) setHeaderTitle(patch.name);

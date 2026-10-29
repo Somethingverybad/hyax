@@ -558,8 +558,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         // За моим питомцем поухаживал кто-то другой — короткая заметка (свой уход — без неё).
         const by = msg.data.by;
         const me = readCache<{ id?: string }>("user")?.id;
-        if (by && by.id !== me && petsAvailable()) {
-          const name = msg.data.pet?.name || tr("ваш питомец");
+        const name = msg.data.pet?.name || tr("ваш питомец");
+        if (msg.data.action === "home" && petsAvailable()) {
+          // Моего питомца отправили домой из группы: её владелец или уменьшенный лимит.
+          const chat = msg.data.chat?.name || tr("группы");
+          toast(msg.data.reason === "admin" && by ? tr("{who} отправил(а) {name} домой из «{chat}»", { who: by.username, name, chat }) : tr("В «{chat}» стало меньше мест для питомцев — {name} вернулся домой", { chat, name }), { id: "pet" });
+        } else if (by && by.id !== me && petsAvailable()) {
           toast(msg.data.action === "feed" ? tr("{who} покормил(а) питомца — {name}", { who: by.username, name }) : tr("{who} погладил(а) питомца — {name}", { who: by.username, name }), { id: "pet" });
         }
       } else if (msg?.data?.type === "rov") {

@@ -1,7 +1,8 @@
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Aura } from "@/components/Aura";
-import { X, Camera, UserPlus, UserMinus, Users, Check, Music2 } from "lucide-react";
+import { X, Camera, UserPlus, UserMinus, Users, Check, Music2, PawPrint, Minus, Plus } from "lucide-react";
+import { rememberPet, useChatPets, usePetsAvailable } from "@/lib/pets";
 import { confirmDialog } from "@/lib/confirm";
 import SoundPickerSheet from "@/components/SoundPicker";
 import type { NotificationSoundInfo } from "@/api/client";
@@ -13,6 +14,8 @@ import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 
 interface Person { id: string; username: string; avatar_url?: string | null }
+
+const PET_LIMIT_MAX = 10; // как на сервере (chat/pets.py)
 
 /**
  * Настройки группы. Админ (создатель) меняет название, аватар и добавляет
@@ -26,6 +29,7 @@ const GroupSettingsModal = ({
   initialName,
   initialAvatar,
   initialSound,
+  initialPetLimit = 3,
   onClose,
   onUpdated,
 }: {
@@ -39,6 +43,8 @@ const GroupSettingsModal = ({
   initialAvatar?: string | null;
   /** Общий звук уведомлений группы (задаёт админ). */
   initialSound?: NotificationSoundInfo | null;
+  /** Сколько питомцев одновременно (chat/pets.py); 0 — выключены. */
+  initialPetLimit?: number;
   onClose: () => void;
   onUpdated: (patch: { name?: string; avatar_url?: string | null }) => void;
 }) => {
@@ -52,6 +58,22 @@ const GroupSettingsModal = ({
   const fileRef = useRef<HTMLInputElement>(null);
   const [sound, setSound] = useState<NotificationSoundInfo | null>(initialSound ?? null);
   const [soundOpen, setSoundOpen] = useState(false);
+  // Питомцы: лимит меняет владелец; уменьшил — лишние (пришедшие последними) уходят домой на сервере.
+  const petsOn = usePetsAvailable();
+  const petsHere = useChatPets(petsOn ? chatId : null);
+  const [petLimit, setPetLimit] = useState(initialPetLimit);
+  const changePetLimit = async (n: number) => {
+    const next = Math.max(0, Math.min(PET_LIMIT_MAX, n));
+    if (next === petLimit) return;
+    const prev = petLimit;
+    setPetLimit(next);
+    try { await api.configureGroup(chatId, { petLimit: next }); }
+    catch (e) { setPetLimit(prev); toast.error((e as Error).message || t("Не получилось")); }
+  };
+  const petHome = async (petId: string) => {
+    try { rememberPet(await api.sendPetHome(petId)); }
+    catch (e) { toast.error((e as Error).message || t("Не получилось")); }
+  };
   const pickSound = async (s: NotificationSoundInfo | null) => {
     setSoundOpen(false);
     const prev = sound;
@@ -214,6 +236,52 @@ const GroupSettingsModal = ({
         ) : null}
         {soundOpen && (
           <SoundPickerSheet title={t("Звук уведомлений группы")} current={sound?.id || null} onClose={() => setSoundOpen(false)} onPick={(s) => void pickSound(s)} />
+        )}
+
+        {/* Питомцы в группе: сколько одновременно и кто сейчас здесь. */}
+        {petsOn && (
+          <div className="mt-4">
+            <div className="flex items-center gap-3 py-2.5">
+              <PawPrint className="w-5 h-5 text-primary shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{t("Питомцы в группе")}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {petLimit === 0 ? t("Выключены — позвать питомца сюда нельзя") : t("Одновременно — до {n}", { n: petLimit })}
+                </span>
+              </span>
+              {isAdmin && (
+                <span className="shrink-0 flex items-center gap-1">
+                  <button type="button" onClick={() => void changePetLimit(petLimit - 1)} disabled={petLimit <= 0}
+                    className="w-8 h-8 rounded-full bg-surface-2 grid place-items-center disabled:opacity-40" aria-label={t("Меньше питомцев")}>
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <span className="w-6 text-center text-sm font-semibold tabular-nums">{petLimit}</span>
+                  <button type="button" onClick={() => void changePetLimit(petLimit + 1)} disabled={petLimit >= PET_LIMIT_MAX}
+                    className="w-8 h-8 rounded-full bg-surface-2 grid place-items-center disabled:opacity-40" aria-label={t("Больше питомцев")}>
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </span>
+              )}
+            </div>
+            {petsHere.length > 0 && (
+              <div className="pl-8 space-y-1">
+                {petsHere.map((p) => {
+                  const owner = members.find((m) => m.id === p.owner_id)?.username || "";
+                  return (
+                    <div key={p.id} className="flex items-center gap-2 text-sm">
+                      <span className="min-w-0 flex-1 truncate">
+                        {p.name || t("питомец {owner}", { owner })}
+                        {owner && <span className="text-muted-foreground"> · {owner}</span>}
+                      </span>
+                      {isAdmin && (
+                        <button type="button" onClick={() => void petHome(p.id)} className="shrink-0 text-xs text-primary px-2 py-1">{t("Домой")}</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Участники */}
