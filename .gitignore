@@ -17,3 +17,6 @@ backend/whisper-models/
 
 # журнал ключей S3 после удаления аккаунтов (chat/account.py)
 backend/private/
+
+# Набор автора питомцев — сборка design/pets/kit/build_kit.py, на сервер копированием
+backend/media/pets/

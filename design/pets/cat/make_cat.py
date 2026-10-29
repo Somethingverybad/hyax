@@ -474,7 +474,8 @@ MANIFEST = {
 
 
 def main():
-    write_pack(OUT, POSES, MANIFEST)
+    # Папка назначения — аргументом (так генератор запускают из набора Студии), иначе — в приложение.
+    write_pack(sys.argv[1] if len(sys.argv) > 1 else OUT, POSES, MANIFEST)
 
 
 if __name__ == "__main__":

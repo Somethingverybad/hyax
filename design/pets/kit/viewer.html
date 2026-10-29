@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Просмотр пака питомца</title>
+<!-- Просмотрщик пака питомца WYX: живые позы на «пузыре», пол, окрасы, украшения
+     и проверка по правилам. Работает без интернета: lottie-web и пример пака
+     вшиты при сборке (design/pets/kit/build_kit.py). Шаблон: /*LOTTIE*/, /*LOOK*/, /*PACK*/. -->
+<style>
+  :root{--bg:#EFEBE4;--card:#fff;--fg:#1f2024;--sub:#6f7078;--line:#e2ddd4;--bub:#2F6B57;--bub2:#F4F1EC;--err:#C8402F;--warn:#B7791F;--ok:#2F8F5B;--acc:#2F6B57}
+  body.dark{--bg:#111513;--card:#1A211E;--fg:#eef0ee;--sub:#98a09b;--line:#2a332f;--bub2:#2A322E}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px}
+  h1{font-size:20px;margin:0 0 4px} .sub{color:var(--sub);margin:0 0 14px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  button,.file{font:inherit;padding:7px 12px;border-radius:9px;border:1px solid #8884;background:var(--card);color:var(--fg);cursor:pointer}
+  button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .file input{display:none}
+  .grp{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-right:10px;margin-right:4px;border-right:1px solid var(--line)}
+  .grp:last-child{border-right:0}
+  .lbl{color:var(--sub);font-size:13px;margin-right:2px}
+  .dot{display:inline-block;width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 1px #0003;vertical-align:-1px;margin-right:5px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:12px}
+  .card{background:var(--card);border-radius:12px;padding:10px 10px 12px;text-align:center;overflow:hidden}
+  .stage{position:relative;margin:0 auto;transform-origin:top center}
+  .bubble{position:absolute;bottom:0;border-radius:16px 16px 0 0;background:var(--bub)}
+  body.other .bubble{background:var(--bub2);box-shadow:0 0 0 1px #8883}
+  .line{position:absolute;left:0;right:0;border-top:1px dashed #E5484D88}
+  .anim{position:absolute;inset:0}
+  .name{font-weight:600;margin-top:8px} .key{color:var(--sub);font-size:13px}
+  .missing{opacity:.45}
+  .report{background:var(--card);border-radius:12px;padding:12px 14px;margin-top:12px}
+  .report h2{font-size:15px;margin:0 0 6px}
+  .report ul{margin:4px 0 0;padding-left:20px} .report li{margin:2px 0}
+  .e{color:var(--err)} .w{color:var(--warn)} .o{color:var(--ok)}
+  code{background:#8881;padding:1px 5px;border-radius:5px;font-size:13px}
+</style>
+</head>
+<body>
+<h1>Просмотр пака питомца</h1>
+<p class="sub" id="who">Пример — Мистер Кот. Откройте папку своего пака, чтобы увидеть его так, как он будет выглядеть в чате, и проверить по правилам.</p>
+<div class="bar">
+  <label class="file">Открыть папку пака<input id="pickDir" type="file" webkitdirectory multiple></label>
+  <label class="file">Или выбрать файлы<input id="pickFiles" type="file" multiple accept=".json,application/json"></label>
+  <button id="reset" type="button">Пример (кот)</button>
+</div>
+<div class="bar" id="controls"></div>
+<div class="report" id="report"></div>
+<div class="grid" id="grid"></div>
+
+<script>/*LOTTIE*/</script>
+<script>/*LOOK*/</script>
+<script>
+const EXAMPLE = /*PACK*/;
+// Стандартные позы: что приложение показывает и когда (design/pets/README.md).
+const POSES = [
+  ["sit", "сидит — спокоен, ждёт", true], ["purr", "тап по питомцу"], ["walk", "идёт по пузырю"],
+  ["lie", "лежит — скучает, отдыхает"], ["sleep", "спит — счастлив, ночь"], ["belly", "объелся"],
+  ["scratch", "голоден"], ["bury", "обижен"], ["eat", "покормили (двойной тап)"],
+  ["sad", "грустит"], ["sick", "шкала на нуле"], ["sulk", "обижен, сидит спиной"],
+];
+const state = { pack: EXAMPLE, sex: "m", coat: null, acc: null, small: false };
+const $ = (id) => document.getElementById(id);
+let anims = [];
+
+function hexRgb(h) { const n = parseInt(String(h).replace("#", ""), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; }
+
+// ---------- проверка пака ----------
+function check(pack) {
+  const E = [], W = [], O = [];
+  const m = pack.manifest;
+  if (!m) { E.push("Нет <code>manifest.json</code> — без него пак не откроется."); return { E, W, O }; }
+  const [cw, ch] = Array.isArray(m.canvas) ? m.canvas : [];
+  if (!cw || !ch) E.push("В манифесте нет <code>canvas</code> — размер холста, например <code>[200, 240]</code>.");
+  if (!Array.isArray(m.anchor)) E.push("В манифесте нет <code>anchor</code> — точки, где лапы касаются пузыря, например <code>[100, 200]</code>.");
+  if (!m.poses || !m.poses.sit) E.push("Нет позы <code>sit</code>: она обязательна, ею заменяются все недостающие.");
+  if (!m.species) W.push("Нет <code>species</code> — названия вида латиницей (cat, dog…).");
+  if (!m.defaultName) W.push("Нет <code>defaultName</code> — имени, пока хозяин не дал кличку.");
+  if (m.scale && (m.scale < 0.2 || m.scale > 0.45)) W.push(`<code>scale</code> = ${m.scale}: в чате питомец будет ${Math.round((ch || 240) * m.scale)} px — привычно 0,3 (около 70 px).`);
+  const missing = POSES.filter(([k]) => !(m.poses || {})[k]).map(([k]) => k);
+  if (missing.length && m.poses && m.poses.sit) W.push(`Нет поз: ${missing.map((k) => `<code>${k}</code>`).join(", ")} — вместо них будет показана <code>sit</code>.`);
+  const used = new Set(); const nms = new Set(); const badCanvas = [];
+  for (const [key, meta] of Object.entries(m.poses || {})) {
+    const files = [meta.file, ...Object.values(meta.files || {})];
+    for (const f of files) {
+      const d = pack.files[f];
+      if (!d) { E.push(`Поза <code>${key}</code>: нет файла <code>${f}</code>.`); continue; }
+      if (d.__error) { E.push(`Файл <code>${f}</code> — не JSON: ${d.__error}`); continue; }
+      if (cw && (d.w !== cw || d.h !== ch)) badCanvas.push(`${f} (${d.w}×${d.h})`);
+      if (d.fr && Math.abs(d.fr - 30) > 0.01) W.push(`<code>${f}</code>: ${d.fr} кадров в секунду — у остальных питомцев 30.`);
+      if ((d.assets || []).some((a) => a.p || a.u)) E.push(`<code>${f}</code>: внутри растровые картинки — питомец должен быть только из векторных фигур.`);
+      const size = pack.sizes[f] || 0;
+      if (size > 60 * 1024) E.push(`<code>${f}</code>: ${Math.round(size / 1024)} КБ — слишком тяжело, держите позу до 40 КБ.`);
+      else if (size > 40 * 1024) W.push(`<code>${f}</code>: ${Math.round(size / 1024)} КБ — лучше до 40 КБ.`);
+      const s = JSON.stringify(d);
+      if (/"x":"/.test(s)) W.push(`<code>${f}</code>: есть выражения (expressions) — приложение их не выполнит.`);
+      if (/"ef":\[\{/.test(s)) W.push(`<code>${f}</code>: есть эффекты After Effects — приложение их не нарисует.`);
+      for (const mm of s.matchAll(/"nm":"((?:acc|sex):[^"]+)"/g)) nms.add(mm[1]);
+      for (const mm of s.matchAll(/"c":\{"a":0,"k":\[([\d.e-]+),([\d.e-]+),([\d.e-]+)/g)) used.add([+mm[1], +mm[2], +mm[3]].map((v) => Math.round(v * 255)).join(","));
+    }
+  }
+  if (badCanvas.length) E.push(`Холст поз не как в манифесте (${cw}×${ch}): ${badCanvas.map((x) => `<code>${x}</code>`).join(", ")}.`);
+  if (m.poses && m.poses.walk && !m.poses.walk.speed) W.push("У <code>walk</code> нет <code>speed</code> — будет 34 px/с.");
+  for (const [slot, hex] of Object.entries(m.palette || {})) {
+    const key = hexRgb(hex).map((v) => Math.round(v * 255)).join(",");
+    if (!used.has(key)) W.push(`Слот окраса <code>${slot}</code> (${hex}) не нашёлся ни в одной позе — окрасы его не перекрасят.`);
+  }
+  for (const [id, coat] of Object.entries(m.coats || {}))
+    for (const slot of Object.keys(coat.colors || {}))
+      if (!(m.palette || {})[slot]) W.push(`Окрас <code>${id}</code> меняет слот <code>${slot}</code>, которого нет в <code>palette</code>.`);
+  for (const id of Object.keys(m.accessories || {}))
+    if (!nms.has(`acc:${id}`)) W.push(`Украшение <code>${id}</code>: ни в одной позе нет слоя <code>acc:${id}</code>.`);
+  for (const nm of nms) {
+    if (nm.startsWith("acc:") && !(m.accessories || {})[nm.slice(4)]) W.push(`Слой <code>${nm}</code> есть, а украшения в манифесте нет — его никто не увидит.`);
+    if (nm.startsWith("sex:") && !["m", "f"].includes(nm.slice(4))) W.push(`Слой <code>${nm}</code>: пол бывает только <code>m</code> или <code>f</code>.`);
+  }
+  for (const [mood, acts] of Object.entries(m.extras || {}))
+    for (const a of acts) if (!(m.poses || {})[a.pose]) E.push(`Прикол <code>${a.pose}</code> (${mood}) — такой позы нет в <code>poses</code>.`);
+  if (!E.length) O.push(`Поз: ${Object.keys(m.poses || {}).length}, окрасов: ${Object.keys(m.coats || {}).length || "—"}, украшений: ${Object.keys(m.accessories || {}).length || "—"}, пол: ${(m.sexes || ["m"]).join(", ")}.`);
+  return { E, W, O };
+}
+
+function renderReport() {
+  const { E, W, O } = check(state.pack);
+  const li = (cls, arr) => arr.map((t) => `<li class="${cls}">${t}</li>`).join("");
+  $("report").innerHTML = `<h2>${E.length ? `<span class="e">Ошибок: ${E.length}</span>` : `<span class="o">Ошибок нет</span>`}${W.length ? ` · <span class="w">замечаний: ${W.length}</span>` : ""}</h2><ul>${li("e", E)}${li("w", W)}${li("o", O)}</ul>`;
+}
+
+// ---------- переключатели ----------
+function renderControls() {
+  const m = state.pack.manifest || {};
+  const c = $("controls"); c.innerHTML = "";
+  const group = (label) => { const g = document.createElement("div"); g.className = "grp"; g.innerHTML = `<span class="lbl">${label}</span>`; c.appendChild(g); return g; };
+  const btn = (g, text, on, fn, dot) => { const b = document.createElement("button"); b.type = "button"; b.className = on ? "on" : ""; b.innerHTML = (dot ? `<span class="dot" style="background:${dot}"></span>` : "") + text; b.onclick = fn; g.appendChild(b); };
+  if ((m.sexes || []).length > 1) {
+    const g = group("Пол");
+    for (const sx of m.sexes) btn(g, sx === "f" ? "Девочка" : "Мальчик", state.sex === sx, () => { state.sex = sx; state.acc = null; draw(); });
+  }
+  if (m.coats && Object.keys(m.coats).length > 1) {
+    const g = group("Окрас");
+    for (const [id, coat] of Object.entries(m.coats)) btn(g, (coat.name && (coat.name.ru || coat.name.en)) || id, (state.coat || m.defaultCoat) === id, () => { state.coat = id; draw(); }, (coat.colors && coat.colors.fur) || (m.palette && m.palette.fur));
+  }
+  const accs = Object.entries(m.accessories || {}).filter(([, a]) => !a.sex || a.sex.includes(state.sex));
+  if (accs.length) {
+    const g = group("Украшения");
+    const worn = PetLook.wornAccessories(m, { sex: state.sex, acc: state.acc });
+    for (const [id, a] of accs) btn(g, (a.name && (a.name.ru || a.name.en)) || id, worn.includes(id), () => {
+      const slot = a.slot;
+      state.acc = worn.includes(id) ? worn.filter((x) => x !== id) : [...worn.filter((x) => m.accessories[x].slot !== slot), id];
+      draw();
+    });
+  }
+  const g = group("Вид");
+  btn(g, "Как в чате", state.small, () => { state.small = !state.small; draw(); });
+  btn(g, "Тёмная тема", document.body.classList.contains("dark"), () => { document.body.classList.toggle("dark"); renderControls(); });
+  btn(g, "Чужой пузырь", document.body.classList.contains("other"), () => { document.body.classList.toggle("other"); renderControls(); });
+}
+
+// ---------- позы ----------
+function draw() {
+  renderControls();
+  anims.forEach((a) => a.destroy()); anims = [];
+  const grid = $("grid"); grid.innerHTML = "";
+  const m = state.pack.manifest;
+  if (!m || !m.poses) return;
+  const [cw, ch] = m.canvas || [200, 240], [, ay] = m.anchor || [cw / 2, ch - 40];
+  const k = state.small ? (m.scale || 0.3) : 1;
+  const extras = new Set(Object.values(m.extras || {}).flat().map((a) => a.pose));
+  const keys = [...POSES.map(([kk]) => kk), ...Object.keys(m.poses).filter((kk) => !POSES.some(([p]) => p === kk))];
+  for (const key of keys) {
+    const meta = m.poses[key];
+    const desc = (POSES.find(([p]) => p === key) || [])[1] || (extras.has(key) ? "прикол вида" : "своя поза");
+    const card = document.createElement("div"); card.className = "card" + (meta ? "" : " missing");
+    card.innerHTML = `<div class="stage" style="width:${cw * k}px;height:${ch * k}px"><div class="bubble" style="left:${14 * k}px;right:${14 * k}px;top:${ay * k}px"></div><div class="line" style="top:${ay * k}px"></div><div class="anim"></div></div><div class="name">${key}</div><div class="key">${meta ? desc : "нет — будет sit"}</div>`;
+    grid.appendChild(card);
+    if (!meta) continue;
+    const file = (meta.files && meta.files[state.sex]) || meta.file;
+    const data = state.pack.files[file];
+    if (!data || data.__error) continue;
+    const shaped = PetLook.shapePet(JSON.parse(JSON.stringify(data)), m, { sex: state.sex, coat: state.coat, acc: state.acc });
+    const box = card.querySelector(".anim");
+    box.style.width = cw * k + "px"; box.style.height = ch * k + "px";
+    anims.push(lottie.loadAnimation({ container: box, renderer: "svg", loop: true, autoplay: true, animationData: shaped }));
+  }
+}
+
+// ---------- открыть свой пак ----------
+async function load(fileList) {
+  const files = {}, sizes = {};
+  let manifest = null;
+  for (const f of fileList) {
+    if (!/\.json$/i.test(f.name)) continue;
+    const text = await f.text();
+    sizes[f.name] = f.size;
+    let data; try { data = JSON.parse(text); } catch (e) { data = { __error: e.message }; }
+    if (f.name === "manifest.json") manifest = data.__error ? null : data; else files[f.name] = data;
+  }
+  state.pack = { manifest, files, sizes };
+  state.sex = (manifest && manifest.sexes && manifest.sexes[0]) || "m"; state.coat = null; state.acc = null;
+  $("who").textContent = manifest ? `Пак: ${(manifest.name && (manifest.name.ru || manifest.name.en)) || manifest.species || "без названия"} — ${Object.keys(files).length} файлов.` : "В выбранном нет manifest.json.";
+  renderReport(); draw();
+}
+$("pickDir").onchange = (e) => load([...e.target.files]);
+$("pickFiles").onchange = (e) => load([...e.target.files]);
+$("reset").onclick = () => { state.pack = EXAMPLE; state.sex = "m"; state.coat = null; state.acc = null; $("who").textContent = "Пример — Мистер Кот."; renderReport(); draw(); };
+renderReport(); draw();
+</script>
+</body>
+</html>

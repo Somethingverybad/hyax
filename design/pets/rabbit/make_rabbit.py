@@ -183,25 +183,28 @@ def head(kind="open", dy=0, blink=None, mouth="w", t=None, ears_r=(None, None), 
 
 def paw(cx, cy, w=15, h=10, t=None):
     return stack("paw", [
-        gr("paw", [el(cx, cy, w, h)], fl=FUR, stc=INK),
-        gr("toes", [sh(poly([(cx - 2.5, cy + 0.5), (cx - 2.5, cy + 4)])), sh(poly([(cx + 2.5, cy + 0.5), (cx + 2.5, cy + 4)]))], stc=INK, sw=1.6),
+        gr("paw", [el(cx, cy, w, h)], fl=FUR, stc=INK, sw=3.2),
+        gr("toes", [sh(poly([(cx - 2.5, cy + 0.5), (cx - 2.5, cy + 3.5)])), sh(poly([(cx + 2.5, cy + 0.5), (cx + 2.5, cy + 3.5)]))], stc=INK, sw=1.4),
     ], t=t)
 
 
 def foot(cx, cy, w=30, h=11, t=None):
     """Большая задняя лапа (вид спереди — смотрит вперёд)."""
     return stack("foot", [
-        gr("foot", [el(cx, cy, w, h)], fl=FUR, stc=INK),
+        gr("foot", [el(cx, cy, w, h)], fl=FUR, stc=INK, sw=4),
         gr("toes", [sh(poly([(cx - 4, cy + 0.5), (cx - 4, cy + 4.5)])), sh(poly([(cx + 4, cy + 0.5), (cx + 4, cy + 4.5)]))], stc=INK, sw=1.6),
     ], t=t)
 
 
 def pompom(cx, cy, r=10, t=None):
-    """Хвостик-помпон: пушистый круг с парой штрихов шерсти."""
+    """Хвостик-помпон: ровный круг (путь из точек давал «грани»), пушистость — завитки по краю."""
+    tufts = [sh(smooth([(cx + (r + 0.5) * math.cos(a0), cy + (r + 0.5) * math.sin(a0)),
+                        (cx + (r + 2.6) * math.cos(a0 + 0.22), cy + (r + 2.6) * math.sin(a0 + 0.22)),
+                        (cx + (r + 0.5) * math.cos(a0 + 0.44), cy + (r + 0.5) * math.sin(a0 + 0.44))], closed=False, tension=0.6))
+             for a0 in (math.radians(-130), math.radians(-40), math.radians(60))]
     return stack("tail", [
-        # Круг с лёгкой волной по краю — пушистый, но не многоугольник.
-        gr("tail", [sh(smooth([(cx + r * math.cos(a) * (1 + 0.045 * math.cos(5 * a)), cy + r * math.sin(a) * (1 + 0.045 * math.cos(5 * a)))
-                               for a in (math.radians(360 / 20 * j) for j in range(20))], tension=0.45))], fl=FUR, stc=INK, sw=4),
+        gr("tail", [el(cx, cy, 2 * r, 2 * r)], fl=FUR, stc=INK, sw=4),
+        gr("tufts", tufts, stc=INK, sw=2.2),
         gr("fluff", [sh(poly([(cx - 3, cy - 2), (cx - 1, cy + 1)])), sh(poly([(cx + 2, cy - 3), (cx + 3, cy)]))], stc=INK, sw=1.6),
     ], t=t)
 
@@ -295,15 +298,23 @@ def pose_thump():
 
 
 def pose_gnaw():
-    """Голоден (scratch): наклонился к краю пузыря и подгрызает его — голова у края, крошки летят вниз."""
+    """Голоден (scratch): вцепился лапками в край пузыря и подгрызает его — голова опущена
+    к самой кромке, зубы на краю, жуёт с наклоном туда-сюда, на кромке следы укусов, крошки от зубов."""
     n = 36
-    chew = kf([(f, [100, 186 + (1.8 if (f // 3) % 2 else 0)]) for f in range(0, n, 3)] + [(n, [100, 186])], LIN)
-    body = gr("body", [sh(smooth([(58, 178), (62, 150), (80, 136), (120, 136), (138, 150), (142, 178), (136, 196), (100, 200), (64, 196)]))], fl=FUR, stc=INK)
-    hd = head("open", mouth="w", ears_r=(st(-14), st(14)), n=n, twitch=nose_twitch(n, (0.1, 0.5), fast=True),
-              t=tr(p=chew, a=[100, 118], s=[94, 94]))
-    crumbs = [rising(f"crumb{i}", lambda d=d: el(0, 0, d, d * 0.85), 100 + dx0, 198, n, f, dx=dx, dy=34, fl=CRUMB, stc=INK, sw=1)
-              for i, (dx0, f, dx, d) in enumerate([(-3, 2, -14, 4.5), (4, 9, 12, 4), (0, 16, -6, 5), (-6, 23, -18, 3.5), (5, 29, 10, 4.5)])]
-    return doc("rabbit-gnaw", n, [pompom(144, 184), body, paw(70, 197), paw(130, 197), hd, *crumbs])
+    # Зубы (низ — 112.5 по голове) у кромки пузыря: голова опущена, подбородок заходит за край.
+    chew_p = kf([(f, [100, 203 + (1.6 if (f // 3) % 2 else 0)]) for f in range(0, n, 3)] + [(n, [100, 203])], LIN)
+    chew_r = kf([(0, -9), (4, 9), (8, -9), (12, 9), (16, -9), (20, 9), (24, -9), (28, 9), (32, -9), (n, -9)], EASE)
+    body = gr("body", [sh(smooth([(54, 186), (60, 160), (80, 146), (120, 146), (140, 160), (146, 186), (136, 200), (100, 203), (64, 200)]))], fl=FUR, stc=INK)
+    hd = head("open", mouth="w", ears_r=(st(18), st(-18)), n=n, twitch=nose_twitch(n, (0.1, 0.5), fast=True),
+              t=tr(p=chew_p, a=[100, 118], s=[94, 94], r=chew_r))
+    bites = []
+    for i, (cx, f) in enumerate([(94, 8), (108, 22)]):
+        o = kf([(0, 0), (f, 0), (f + 2, 100), (n - 3, 100), (n, 0)], LIN)
+        bites.append(gr(f"bite{i}", [sh(smooth([(cx - 6, 200), (cx - 3, 206), (cx + 3, 206), (cx + 6, 200)], closed=False, tension=0.5))],
+                        stc=INK, sw=3, t=tr(o=o)))
+    crumbs = [rising(f"crumb{i}", lambda d=d: el(0, 0, d, d * 0.85), 100 + dx0, 199, n, f, dx=dx, dy=22, fl=CRUMB, stc=INK, sw=1)
+              for i, (dx0, f, dx, d) in enumerate([(-4, 3, -22, 4.5), (5, 9, 20, 4), (-2, 15, -16, 5), (3, 21, 24, 3.5), (0, 27, -12, 4.5)])]
+    return doc("rabbit-gnaw", n, [pompom(146, 190), body, paw(66, 199), paw(134, 199), hd, *bites, *crumbs])
 
 
 # ---------- вид сбоку (прыжки, бинки) ----------
@@ -315,9 +326,9 @@ def side_bunny(n, haunch_rot, fore_rot, body_t, head_rot=None, kind="open", tail
     """Тело и лапы сбоку, голова — спереди (смотрит в экран)."""
     def fore(x, rot, name):
         return stack(name, [
-            gr("leg-out", [sh(poly([(x, 178), (x + 2, 191)]))], stc=INK, sw=15),
-            gr("leg-fur", [sh(poly([(x, 178), (x + 2, 191)]))], stc=FUR, sw=7),
-            paw(x + 4, 196, w=15, h=9),
+            gr("leg-out", [sh(poly([(x, 176), (x + 2, 193)]))], stc=INK, sw=13),
+            gr("leg-fur", [sh(poly([(x, 176), (x + 2, 193)]))], stc=FUR, sw=7),
+            paw(x + 4, 197, w=15, h=9),
         ], t=pivot(x, 178, r=rot))
     haunch = stack("haunch", [
         gr("haunch", [sh(smooth(HAUNCH, tension=0.35))], fl=FUR, stc=INK),
@@ -402,8 +413,9 @@ def pose_flop():
     parts = [
         pompom(156, 158),
         stack("body", [gr("body", [sh(smooth(body))], fl=FUR, stc=INK)], t=pivot(128, BASE, s=breathe(n, 2.6))),
-        foot(174, 184, w=28, h=10, t=pivot(174, 184, r=loop(n, (0, -18), (0.5, -12), (1, -18)))),
-        foot(178, 196, w=28, h=10, t=pivot(178, 196, r=st(-8))),
+        # Задние лапы врозь: одна задрана вверх-вправо, другая вытянута вдоль пузыря.
+        foot(178, 170, w=28, h=10, t=pivot(170, 176, r=loop(n, (0, -40), (0.5, -32), (1, -40)))),
+        foot(176, 200, w=28, h=10, t=pivot(168, 198, r=st(-4))),
         paw(118, 205, w=14, h=8), paw(138, 205, w=14, h=8),
         hd,
     ]
@@ -467,7 +479,7 @@ def pose_periscope():
     turn = stack("turn", [head("open", blink=blink_keys(n, 0.42), n=n, twitch=nose_twitch(n, (0.3, 0.7), fast=True),
                                ears_s=(st([100, 106]), st([100, 106])))], t=tr(p=look))
     parts = [
-        pompom(140, 186),
+        pompom(128, 186),
         stack("body", [gr("body", [sh(smooth(body))], fl=FUR, stc=INK)], t=pivot(100, BASE, s=up)),
         foot(73, 198), foot(127, 198),
         stack("head-up", [turn], t=head_t),
@@ -480,9 +492,17 @@ def pose_periscope():
 def pose_groom():
     """Умывается: лапки по очереди трут мордочку, глаза закрыты, уши прижаты."""
     n = 60
-    rub_l = loop(n, (0, [0, 0]), (0.25, [0, -9]), (0.5, [0, 0]), (0.75, [0, -9]), (1, [0, 0]))
-    rub_r = loop(n, (0, [0, -9]), (0.25, [0, 0]), (0.5, [0, -9]), (0.75, [0, 0]), (1, [0, -9]))
-    paws = [paw(84, 108, t=tr(p=rub_l)), paw(116, 108, t=tr(p=rub_r))]
+    # Лапки подняты к мордочке на ручках от плеч и трут её по очереди — качаются вокруг плеча.
+    rub_l = loop(n, (0, 0), (0.25, 10), (0.5, 0), (0.75, 10), (1, 0))
+    rub_r = loop(n, (0, -10), (0.25, 0), (0.5, -10), (0.75, 0), (1, -10))
+
+    def arm(sx, sy, px, py, rot):
+        return stack("arm", [
+            gr("arm-out", [sh(poly([(sx, sy), (px, py)]))], stc=INK, sw=13),
+            gr("arm-fur", [sh(poly([(sx, sy), (px, py)]))], stc=FUR, sw=7),
+            paw(px, py, w=17, h=13),
+        ], t=pivot(sx, sy, r=rot))
+    paws = [arm(84, 150, 86, 112, rub_l), arm(116, 150, 114, 112, rub_r)]
     parts = sit_parts(n, kind="closed", paws=[], ears_r=(st(-12), st(12)), twitch=nose_twitch(n, (0.4,)))
     return doc("rabbit-groom", n, parts + paws)
 
@@ -545,7 +565,8 @@ MANIFEST = {
 
 
 def main():
-    write_pack(OUT, POSES, MANIFEST)
+    # Папка назначения — аргументом (так генератор запускают из набора Студии), иначе — в приложение.
+    write_pack(sys.argv[1] if len(sys.argv) > 1 else OUT, POSES, MANIFEST)
 
 
 if __name__ == "__main__":

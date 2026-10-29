@@ -98,6 +98,17 @@
   .phead .info{flex:1;min-width:0}
   .phead .title{font-size:22px;font-weight:800;line-height:1.2;word-break:break-word}
   .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+  a.btn{text-decoration:none;display:inline-flex;align-items:center;color:inherit}
+  a.btn.primary{color:#fff}
+  /* Гайд «как сделать питомца» (раздел #/pets; тот же текст уходит в архив — design/pets/kit/build_kit.py) */
+  .guide{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px 18px;margin-top:12px}
+  .guide h3{font-size:17px;margin:20px 0 8px}
+  .guide p,.guide li{color:#d9d9e0} .guide ul,.guide ol{padding-left:22px;margin:6px 0} .guide li{margin:4px 0}
+  .guide code{background:var(--card3);border-radius:6px;padding:1px 6px;font-size:13px}
+  .guide pre{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;overflow-x:auto;font-size:13px;line-height:1.45}
+  .guide table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0;display:block;overflow-x:auto}
+  .guide th,.guide td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  .guide th{color:var(--muted);font-weight:600}
   .renm{display:flex;gap:8px;margin-top:10px}
   .chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;color:var(--muted);font-size:13.5px;
     border:1px solid var(--line);border-radius:10px;padding:6px 10px}
@@ -185,6 +196,8 @@
         <div class="d">Создание, токены, аватар — и документация API</div><span class="badge">доступно</span></a>
       <div class="tile active"><div class="ico">😍</div><div class="t">Реакции</div>
         <div class="d">Любой эмодзи из ваших наборов — реакцией на сообщение и пост</div><span class="badge">доступно</span></div>
+      <a class="tile active" href="#/pets"><div class="ico">🐾</div><div class="t">Питомцы</div>
+        <div class="d">Исходники кота, просмотрщик и гайд — как нарисовать своего зверя</div><span class="badge">доступно</span></a>
     </div>
 
     <div class="card who mt">
@@ -278,6 +291,100 @@
     <div class="folders" id="botFolders"></div>
     <div class="hint mt">Бот — аккаунт, которым управляет ваша программа: отвечает в личке и группах, ведёт эфир, показывает кнопки и inline-результаты.
       Как писать бота — в <a href="bots.html">документации</a>.</div>
+  </div>
+
+  <!-- ПИТОМЦЫ: исходники кота, просмотрщик пака и гайд (открыто и без входа) -->
+  <div id="petsView" hidden>
+    <button class="back" type="button" data-back>← Инструменты</button>
+    <h2>Питомцы</h2>
+    <div class="card">
+      <div>Питомец WYX живёт в чате хозяина: сидит и спит на пузырях сообщений, прыгает по ним, просит есть, обижается. Здесь всё, чтобы нарисовать своего зверя: исходники кота со всеми анимациями, просмотрщик и гайд.</div>
+      <div class="actions">
+        <a class="btn primary" id="petKitLink" href="/media/pets/wyx-pet-kit-r1.zip" download>Скачать исходники кота (zip)</a>
+        <a class="btn" id="petViewerLink" href="/media/pets/viewer-r1.html" target="_blank" rel="noopener">Открыть просмотрщик пака</a>
+      </div>
+      <div class="hint">В архиве: готовый пак кота (манифест и 12 поз Lottie, окрасы, пол, украшения), просмотрщик <code>viewer.html</code> — работает без интернета, генератор, из которого кот собран кодом, и этот гайд.</div>
+    </div>
+
+    <!-- pet-guide:start -->
+    <div class="guide">
+      <h3>1. Как устроен питомец</h3>
+      <p>Питомец — это <b>пак</b>: папка с файлом <code>manifest.json</code> и анимациями Lottie (<code>.json</code>), по одной на позу. Код приложения общий для всех зверей: он сам решает, когда питомец сидит, идёт, спит или просит есть, и берёт из пака нужную позу. Вы рисуете позы и описываете пак в манифесте — программировать не нужно.</p>
+      <p>Проще всего начать с кота: скачайте архив, откройте <code>viewer.html</code> и посмотрите, как ведёт себя каждая поза. Потом замените позы своими.</p>
+
+      <h3>2. Холст и линия пузыря</h3>
+      <ul>
+        <li>Холст каждой позы — <b>200 × 240</b>, у всех поз одинаковый (<code>canvas</code> в манифесте).</li>
+        <li>Линия <b>y = 200</b> — верхний край пузыря сообщения (<code>anchor</code>: <code>[100, 200]</code>). На неё питомец ставит лапы. Всё, что ниже, свешивается на пузырь: лапы, хвост, плед. В просмотрщике эта линия — красный пунктир.</li>
+        <li>В чате питомец рисуется в масштабе <b>0,3</b> (<code>scale</code>): высота холста 240 → около 70 точек экрана. Мелкие детали в чате пропадают — рисуйте крупно и с толстым контуром (у кота 5).</li>
+        <li>Голова в позах сбоку смотрит в экран — так питомец всегда «на связи» с тем, кто читает чат.</li>
+      </ul>
+
+      <h3>3. Позы</h3>
+      <p>Обязательна только <code>sit</code> — ею заменяется любая недостающая поза. Остальные — чтобы характер был живым:</p>
+      <table>
+        <tr><th>Поза</th><th>Когда показывается</th><th>Что рисовать</th></tr>
+        <tr><td><code>sit</code></td><td>спокоен, ждёт</td><td>сидит, дышит, моргает, шевелит хвостом</td></tr>
+        <tr><td><code>purr</code></td><td>тап по питомцу</td><td>доволен: глаза-дуги, лёгкая дрожь, сердечки</td></tr>
+        <tr><td><code>walk</code></td><td>идёт по пузырю</td><td>цикл шага или прыжка на месте, вид сбоку; двигает его приложение</td></tr>
+        <tr><td><code>lie</code></td><td>скучает, отдыхает</td><td>лежит на пузыре, лапы свешиваются</td></tr>
+        <tr><td><code>sleep</code></td><td>счастлив, ночь</td><td>спит, глаза закрыты, «Z»</td></tr>
+        <tr><td><code>belly</code></td><td>объелся</td><td>валяется на спине или на боку</td></tr>
+        <tr><td><code>scratch</code></td><td>голоден</td><td>что-то делает с пузырём: кот царапает, кролик подгрызает</td></tr>
+        <tr><td><code>bury</code></td><td>обижен</td><td>кот закапывает, кролик стучит лапой</td></tr>
+        <tr><td><code>eat</code></td><td>покормили (двойной тап)</td><td>ест: миска, морковка</td></tr>
+        <tr><td><code>sad</code></td><td>грустит</td><td>уши вниз, грустная мордочка</td></tr>
+        <tr><td><code>sick</code></td><td>шкала на нуле</td><td>под пледом, с градусником</td></tr>
+        <tr><td><code>sulk</code></td><td>обижен</td><td>сидит спиной, хвост дёргается</td></tr>
+      </table>
+      <p>Смысл позы может быть «своим» для вида, если настроение то же. Свои трюки, которых нет в списке (кролик делает бинки и встаёт столбиком), добавляются как <b>приколы</b> — см. раздел 7.</p>
+
+      <h3>4. Правила рисунка</h3>
+      <ul>
+        <li>Только векторные фигуры. Нельзя: растровые картинки, выражения (expressions), эффекты After Effects — приложение их не нарисует.</li>
+        <li>Фон прозрачный. Контур тёмный и толстый: в тёмной теме питомца держит светлая заливка, в светлой — контур.</li>
+        <li>30 кадров в секунду. <b>Каждая поза зациклена</b>: последний кадр совпадает с первым, иначе на стыке будет рывок.</li>
+        <li>Поза — до 40 КБ. Тяжёлые файлы медленнее открываются на телефоне.</li>
+        <li>Ничего важного за краями холста — обрежется.</li>
+      </ul>
+
+      <h3>5. Где рисовать</h3>
+      <ul>
+        <li><b>Lottie Creator</b> (LottieFiles) или <b>Lottielab</b> — в браузере, открывают наш JSON напрямую: можно взять позу кота и переделать.</li>
+        <li><b>Glaxnimate</b> — бесплатная программа для Mac, Windows и Linux, сохраняет Lottie JSON.</li>
+        <li><b>After Effects</b> + плагин Bodymovin или LottieFiles — если рисуете с нуля. Холст композиции 200 × 240.</li>
+        <li>Кодом — как кот: <code>generator/cat/make_cat.py</code> собирает все позы из общих деталей <code>generator/kit.py</code>. Запуск: <code>python generator/cat/make_cat.py моя-папка</code>.</li>
+      </ul>
+
+      <h3>6. Окрасы</h3>
+      <p>Окрас выбирает хозяин, и приложение перекрашивает позы само. Для этого каждая деталь, которая должна менять цвет, рисуется своим <b>цветом-меткой</b> из <code>palette</code>: мех, контур, глаза, блик, нос, кончик хвоста, бантик… Метки разных деталей должны отличаться (хватит разницы в 1 из 255 — на глаз не видно, например контур <code>#1E1E1E</code>, глаза <code>#1E1E1F</code>). Окрас в <code>coats</code> — только то, что меняется:</p>
+      <pre>"coats": {
+  "white": { "name": { "ru": "Белый" }, "colors": {} },
+  "black": { "name": { "ru": "Чёрный" }, "colors": { "fur": "#3A3A42", "eye": "#F5C842" } }
+}</pre>
+      <ul>
+        <li>Перекрашиваемое рисуйте ровно цветом метки, без градиентов и прозрачности.</li>
+        <li>Держите в отдельных слотах то, что на тёмном окрасе должно остаться видно: глаза, блик, нос, усы. Иначе у чёрного зверя пропадут глаза.</li>
+        <li>Цвета вне палитры (сердечки, миска, плед) не меняются.</li>
+      </ul>
+
+      <h3>7. Пол, украшения, звук и приколы</h3>
+      <ul>
+        <li><b>Украшения</b> — слои с именем <code>acc:&lt;id&gt;</code> в позах, где украшение видно. Кладите их <b>внутрь группы головы или шеи</b> — тогда они двигаются вместе с ней. В манифесте у украшения: название, место (<code>slot</code> — на одно место одно украшение), кому подходит (<code>sex</code>) и надето ли по умолчанию (<code>default</code>). У кота: бабочка мальчику, бантик на голову девочке; у кролика: повязка и цветок.</li>
+        <li><b>Пол</b> — <code>"sexes": ["m", "f"]</code>. Отличия рисуются слоями <code>sex:f</code> / <code>sex:m</code> (например, ресницы). Если у пола своя анимация — у позы <code>"files": {"f": "walk-f.json"}</code>. Имя для девочки — <code>defaultNameBySex.f</code>.</li>
+        <li><b>Звук и фраза на тап</b> — <code>sounds.tap</code> (<code>synth:purr</code> — мурчание, <code>synth:chatter</code> — довольный скрип зубками) и <code>texts.tap</code> на каждом языке: <code>"{name} мурчит — +1 к вайбу"</code>.</li>
+        <li><b>Приколы</b> — свои трюки вида по настроению: <code>"extras": {"happy": [{"pose": "binky", "min": 2, "max": 3, "target": "owner", "w": 2}]}</code>. <code>min</code>/<code>max</code> — сколько секунд, <code>target</code> — на чьих пузырях (owner — хозяина, other — чужих, any — любых), <code>w</code> — как часто по сравнению с остальными действиями.</li>
+      </ul>
+
+      <h3>8. Проверка и сдача</h3>
+      <ol>
+        <li>Откройте <code>viewer.html</code> → «Открыть папку пака». Посмотрите все позы, переключите пол, окрасы и украшения, включите «Как в чате» — так питомец выглядит на самом деле.</li>
+        <li>Исправьте всё красное в отчёте и по возможности жёлтое.</li>
+        <li>Проверьте глазами: лапы стоят на красной линии, позы не дёргаются на стыке цикла, украшения не «уплывают» с головы, на чёрном окрасе видны глаза.</li>
+        <li>Заархивируйте папку пака в zip и пришлите нам. Загрузка своих питомцев прямо в Студию появится позже.</li>
+      </ol>
+    </div>
+    <!-- pet-guide:end -->
   </div>
 
   <!-- НОВЫЙ БОТ -->
@@ -498,7 +605,7 @@
   function isMine(pack){ var a=pack.author; return !!meId && (a===meId || (a&&a.id===meId)); }
 
   // ── маршруты: #/sp/<id>, #/stp/<id>, #/new, #/import ──
-  var VIEWS=["loginBlock","homeView","soundView","newView","stickerView","importView","botsView","newBotView","botView"];
+  var VIEWS=["loginBlock","homeView","soundView","newView","stickerView","importView","botsView","newBotView","botView","petsView"];
   function show(id){ VIEWS.forEach(function(v){ el(v).hidden = v!==id; }); window.scrollTo(0,0); }
   function go(h){ if(location.hash===h) route(); else location.hash=h; }
   Array.prototype.forEach.call(document.querySelectorAll("[data-back]"), function(b){ b.addEventListener("click", function(){ stopAudio(); go("#/"); }); });
@@ -507,6 +614,8 @@
 
   function route(){
     stopAudio();
+    // Питомцы (исходники и гайд) — открыты и без входа.
+    if(location.hash.replace(/^#\/?/,"").split("/")[0]==="pets"){ show("petsView"); return; }
     if(!access){ show("loginBlock"); return; }
     var h=location.hash.replace(/^#\/?/,""), parts=h.split("/");
     loadMe().then(function(){
