@@ -1,0 +1,230 @@
+{
+  "format": 2,
+  "species": "sketchcat",
+  "rev": 1,
+  "name": {
+    "ru": "Кот (эскиз)",
+    "en": "Cat (sketch)",
+    "ko": "고양이 (스케치)"
+  },
+  "defaultName": {
+    "ru": "Мистер Кот",
+    "en": "Mister Cat",
+    "ko": "미스터 고양이"
+  },
+  "sexes": [
+    "m",
+    "f"
+  ],
+  "defaultNameBySex": {
+    "f": {
+      "ru": "Мисс Кошка",
+      "en": "Miss Kitty",
+      "ko": "미스 고양이"
+    }
+  },
+  "accessories": {
+    "bow_tie": {
+      "name": {
+        "ru": "Бабочка",
+        "en": "Bow tie",
+        "ko": "나비넥타이"
+      },
+      "slot": "neck",
+      "sex": [
+        "m"
+      ],
+      "default": true
+    },
+    "bow_head": {
+      "name": {
+        "ru": "Бантик на голову",
+        "en": "Hair bow",
+        "ko": "머리 리본"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    }
+  },
+  "texts": {
+    "tap": {
+      "ru": "{name} мурчит — +1 к вайбу",
+      "en": "{name} purrs — +1 vibe",
+      "ko": "{name}이(가) 골골거려요 — 바이브 +1"
+    }
+  },
+  "sounds": {
+    "purr": "synth:purr",
+    "tap": "synth:purr"
+  },
+  "extras": {
+    "bored": [
+      {
+        "pose": "glass",
+        "min": 3,
+        "max": 5,
+        "target": "any",
+        "w": 1
+      }
+    ],
+    "content": [
+      {
+        "pose": "glass",
+        "min": 3,
+        "max": 4,
+        "target": "any",
+        "w": 1
+      }
+    ]
+  },
+  "canvas": [
+    200,
+    240
+  ],
+  "anchor": [
+    100,
+    200
+  ],
+  "scale": 0.3,
+  "author": "WYX (по эскизу)",
+  "palette": {
+    "ink": "#1E1E1E",
+    "fur": "#FFFFFF",
+    "eye": "#1E1E1F",
+    "face": "#1E1F1E",
+    "nose": "#1F1E1E",
+    "tip": "#1E1F1F",
+    "bow": "#1F1E1F",
+    "ribbon": "#FF6F91"
+  },
+  "defaultCoat": "white",
+  "coats": {
+    "white": {
+      "name": {
+        "ru": "Белый",
+        "en": "White",
+        "ko": "흰색"
+      },
+      "colors": {}
+    },
+    "ginger": {
+      "name": {
+        "ru": "Рыжий",
+        "en": "Ginger",
+        "ko": "치즈"
+      },
+      "colors": {
+        "fur": "#F7B46A",
+        "tip": "#D2702F",
+        "ink": "#3B2416",
+        "eye": "#2A1A10",
+        "face": "#3B2416",
+        "nose": "#C2574A",
+        "bow": "#2F6B57",
+        "ribbon": "#2F6B57"
+      }
+    },
+    "grey": {
+      "name": {
+        "ru": "Серый",
+        "en": "Grey",
+        "ko": "회색"
+      },
+      "colors": {
+        "fur": "#C3C8D0",
+        "tip": "#5F656E",
+        "nose": "#B5707E"
+      }
+    },
+    "black": {
+      "name": {
+        "ru": "Чёрный",
+        "en": "Black",
+        "ko": "검은색"
+      },
+      "colors": {
+        "fur": "#3A3A42",
+        "ink": "#121216",
+        "eye": "#F5C842",
+        "face": "#C9C9D2",
+        "nose": "#E98AA0",
+        "tip": "#1B1B20",
+        "bow": "#E5484D"
+      }
+    },
+    "cream": {
+      "name": {
+        "ru": "Кремовый",
+        "en": "Cream",
+        "ko": "크림"
+      },
+      "colors": {
+        "fur": "#F4E4C6",
+        "tip": "#A87A4C",
+        "ink": "#2E2318",
+        "nose": "#B8705E"
+      }
+    }
+  },
+  "poses": {
+    "sit": {
+      "file": "sit.json",
+      "loop": true
+    },
+    "purr": {
+      "file": "purr.json",
+      "loop": true,
+      "sound": "tap"
+    },
+    "walk": {
+      "file": "walk.json",
+      "loop": true,
+      "speed": 34,
+      "facing": "right"
+    },
+    "lie": {
+      "file": "lie.json",
+      "loop": true
+    },
+    "sleep": {
+      "file": "sleep.json",
+      "loop": true
+    },
+    "belly": {
+      "file": "belly.json",
+      "loop": true
+    },
+    "scratch": {
+      "file": "scratch.json",
+      "loop": true
+    },
+    "bury": {
+      "file": "bury.json",
+      "loop": true,
+      "facing": "right"
+    },
+    "eat": {
+      "file": "eat.json",
+      "loop": true
+    },
+    "sad": {
+      "file": "sad.json",
+      "loop": true
+    },
+    "sick": {
+      "file": "sick.json",
+      "loop": true
+    },
+    "sulk": {
+      "file": "sulk.json",
+      "loop": true
+    },
+    "glass": {
+      "file": "glass.json",
+      "loop": true
+    }
+  }
+}

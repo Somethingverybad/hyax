@@ -1,6 +1,6 @@
 """Кот по эскизу — пак, собранный по гайду Студии из листа design/pets/image copy 2.png.
 
-    python3 design/pets/cat-sketch/make_cat_sketch.py <папка>
+    python3 design/pets/cat-sketch/make_cat_sketch.py [папка]  →  sux-chat-app/public/pets/sketchcat/
 
 Это копия генератора Мистера Кота (design/pets/cat/make_cat.py) с деталями,
 перерисованными по меркам листа: 1 px эскиза = 0,47 единицы холста, нос — в
@@ -30,7 +30,7 @@ import kit  # noqa: E402
 from kit import *  # noqa: E402,F401,F403
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-OUT = os.path.join(ROOT, "design/pets/cat-sketch/pack")
+OUT = os.path.join(ROOT, "sux-chat-app/public/pets/sketchcat")
 BASE = 200
 LINE = 3.6   # контур: тоньше, чем у Мистера Кота (5), как на листе, но виден в чате
 FIT = 93     # ужать позу вокруг опоры, чтобы дуга хвоста слева влезла в холст
@@ -521,9 +521,9 @@ POSES = {
 
 MANIFEST = {
     "format": 2,
-    "species": "cat",
+    "species": "sketchcat",
     "rev": 1,
-    "name": {"ru": "Кот", "en": "Cat", "ko": "고양이"},
+    "name": {"ru": "Кот (эскиз)", "en": "Cat (sketch)", "ko": "고양이 (스케치)"},
     "defaultName": {"ru": "Мистер Кот", "en": "Mister Cat", "ko": "미스터 고양이"},
     "sexes": ["m", "f"],
     "defaultNameBySex": {"f": {"ru": "Мисс Кошка", "en": "Miss Kitty", "ko": "미스 고양이"}},
