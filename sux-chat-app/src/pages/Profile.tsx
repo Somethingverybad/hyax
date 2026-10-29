@@ -574,6 +574,8 @@ const ProfilePage = () => {
           <SettingsCard>
             {/* «Мята»: «Выйти» — обычная зелёная строка, как в макете; в остальных темах — красная. */}
             <SettingsRow icon={LogOut} label={t("Выйти")} danger={!mint} onClick={logout} trailing={<span />} />
+            {/* Удаление аккаунта — на виду, а не только в «Конфиденциальности» (App Store 5.1.1(v)). */}
+            <SettingsRow icon={Trash2} label={t("Удалить аккаунт")} danger onClick={() => navigate("/profile/delete")} />
           </SettingsCard>
 
           {/* Версия — чтобы сверить с huyax.e-tree.su/apk. Номер сборки один на

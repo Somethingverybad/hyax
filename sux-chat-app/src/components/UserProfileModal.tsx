@@ -8,6 +8,7 @@ import { openMiniApp } from "@/lib/miniapp";
 import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
 import type { SavedImage } from "@/api/client";
+import { setBlockedLocal } from "@/lib/blocks";
 import Identicon from "@/components/Identicon";
 import AvatarZoom from "@/components/AvatarZoom";
 import { Aura, DEFAULT_AURA } from "@/components/Aura";
@@ -109,8 +110,9 @@ const UserProfileModal = ({
     if (blocked === null) return;
     try {
       if (blocked) { await api.unblockUser(userId); toast.success(t("Разблокирован")); }
-      else { await api.blockUser(userId); toast.success(t("Заблокирован: его сообщения и пуши больше не придут")); }
+      else { await api.blockUser(userId); toast.success(t("Заблокирован: его сообщения и посты скрыты, модераторы получили сигнал")); }
       setBlocked(!blocked);
+      setBlockedLocal(userId, !blocked); // ленты убирают его контент сразу
     } catch (e: any) { toast.error(e?.message || t("Не получилось")); }
   };
   useEffect(() => {

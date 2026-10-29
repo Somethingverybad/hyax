@@ -201,6 +201,37 @@ class AdultPacksTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ModerationNoticeTests(TestCase):
+    """App Store 1.2: жалоба и блокировка доходят до модераторов пушем (разбор за сутки)."""
+
+    def setUp(self):
+        self.a = make_user("mod_a")
+        self.b = make_user("mod_b")
+        self.staff = make_user("mod_staff", role="admin")
+
+    def _staff_msgs(self):
+        from .moderation import REPORTS_CHAT_NAME
+        return list(Message.objects.filter(chat__name=REPORTS_CHAT_NAME).values_list("content", flat=True))
+
+    def test_report_pushes_staff(self):
+        from unittest import mock
+        with mock.patch("chat.views._notify_new_message") as push:
+            r = client_for(self.a).post("/api/reports/", {"target_type": "user", "target_id": str(self.b.id), "reason": "abuse"}, format="json")
+        self.assertIn(r.status_code, (200, 201), r.data)
+        self.assertTrue(any("mod_b" in m for m in self._staff_msgs()))
+        self.assertEqual(push.call_count, 1)
+
+    def test_block_notifies_staff_once(self):
+        from unittest import mock
+        with mock.patch("chat.views._notify_new_message") as push:
+            client_for(self.a).post("/api/blocks/", {"profile_id": str(self.b.id)}, format="json")
+            client_for(self.a).post("/api/blocks/", {"profile_id": str(self.b.id)}, format="json")  # повтор — без второй заметки
+        notes = [m for m in self._staff_msgs() if m.startswith("🚫 Блокировка")]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("mod_a", notes[0]); self.assertIn("mod_b", notes[0])
+        self.assertEqual(push.call_count, 1)
+
+
 class DeleteAccountTests(TestCase):
     def setUp(self):
         self.me = make_user("me")

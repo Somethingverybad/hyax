@@ -68,6 +68,7 @@ import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
 import ChatMediaSheet from "./ChatMediaSheet";
 import ChatPets from "@/components/pets/ChatPets";
+import { useBlocked } from "@/lib/blocks";
 import { rememberPet, useMyPet, usePetsAvailable } from "@/lib/pets";
 import { WallpaperVideo } from "./ChatWallpaper";
 import StickerBurst from "./StickerBurst";
@@ -3881,13 +3882,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
   // Соседние сообщения одного альбома показываем одной сеткой: группу рисуем
   // на первом её сообщении, остальные из ленты убираем.
+  const blockedIds = useBlocked();
   const { albumsById, feedRows } = useMemo(() => {
     // Секретный чат: пока сообщение не расшифровано, его файл — шифротекст;
     // такие поля пузырю не отдаём (иначе мелькнул бы «файл .bin»).
     const src = isSecret
       ? messages.map((m) => (m.cipher && !m._ready ? { ...m, file_url: null, voice_url: null, video_url: null, download_only: false, album_id: null } : m))
       : messages;
-    const visible = src.filter((m) => !hiddenIds.has(m.id));
+    // Заблокированные — сразу из ленты, вместе с уже загруженным (lib/blocks.ts).
+    const visible = src.filter((m) => !hiddenIds.has(m.id) && !(m.sender?.id && blockedIds.has(m.sender.id)));
     const albumsById = new Map<string, Message[]>();
     for (const m of visible) {
       // Стикеры, голосовые и видео-кружки в общий пузырь не складываем: у них
@@ -3900,7 +3903,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const albumTail = new Set<string>();
     albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
     return { albumsById, feedRows: visible.filter((m) => !albumTail.has(m.id)) };
-  }, [messages, hiddenIds, isSecret]);
+  }, [messages, hiddenIds, isSecret, blockedIds]);
   const hiddenRows = Math.max(0, feedRows.length - renderLimit);
   hiddenRowsRef.current = hiddenRows;
   const shownRows = hiddenRows ? feedRows.slice(hiddenRows) : feedRows;

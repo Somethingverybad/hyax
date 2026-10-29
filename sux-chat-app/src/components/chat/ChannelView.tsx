@@ -7,6 +7,8 @@ import { setSection } from "@/lib/sections";
 import { confirmDialog } from "@/lib/confirm";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, type RefObject, lazy, Suspense } from "react";
 import { api, mediaUrl, type Chat, type NotificationSoundInfo, type PollInfo, type WallState } from "@/api/client";
+import { useBlocked } from "@/lib/blocks";
+import ReportSheet from "@/components/ReportSheet";
 import PollCard from "@/components/chat/PollCard";
 import AnchoredMenu from "@/components/AnchoredMenu";
 import StickerView from "@/components/chat/StickerView";
@@ -25,7 +27,7 @@ import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/comp
 import type { ViewerItem } from "@/components/ImageViewer";
 const ImageViewer = lazy(() => import("@/components/ImageViewer"));
 import { toast } from "sonner";
-import { X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy } from "lucide-react";
+import { Flag, X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy } from "lucide-react";
 import { writeClipboard } from "@/lib/clipboard";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
@@ -296,6 +298,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   };
   const [channel, setChannel] = useState<Channel | null>(null);
   const [posts, setPosts] = useState<Post[]>(() => postsMemo.get(channelId)?.posts ?? []);
+  const blockedIds = useBlocked();
+  const [reportPost, setReportPost] = useState<Post | null>(null);
   const postsRef = useRef<Post[]>(posts);
   postsRef.current = posts;
   // Обои канала: полные данные чата (общие и мои), перечитываем по событию
@@ -1215,7 +1219,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   }
   const albumTail = new Set<string>();
   albumsById.forEach((list) => list.slice(1).forEach((p) => albumTail.add(p.id)));
-  const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id) && wallVisible(p));
+  // Заблокированные авторы — сразу из ленты (lib/blocks.ts), не дожидаясь сверки со Стеной.
+  const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id) && wallVisible(p) && !(p.sender?.id && blockedIds.has(p.sender.id)));
   // Автоперевод: чужие посты на другом языке (по письменности), по одному,
   // новые первыми. Уже спрошенные в этом сеансе не повторяем.
   useEffect(() => {
@@ -1909,6 +1914,12 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 </button>
               );
             })()}
+            {/* Жалоба на сам пост — модераторам (App Store 1.2), не только на автора. */}
+            {menuFor.sender?.id !== userId && (
+              <button type="button" onClick={() => { setReportPost(menuFor); setMenuFor(null); }} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
+                <Flag className="w-5 h-5 text-muted-foreground" /> {tr("Пожаловаться на пост")}
+              </button>
+            )}
             {menuFor.sender?.id !== userId && (
               <button type="button" onClick={() => void hideAuthor(menuFor)} className="w-full px-4 py-3 text-left text-body flex items-center gap-3 active:bg-secondary">
                 <EyeOff className="w-5 h-5 text-muted-foreground" /> {tr("Скрыть автора {name}", { name: menuFor.sender?.username ?? "" })}
@@ -1978,6 +1989,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
         <RepostSheet post={repostFor} onClose={() => setRepostFor(null)} onConfirm={(safeFlag) => void doRepost(repostFor, safeFlag)} />
       )}
       {profileFor && <UserProfileModal userId={profileFor} onClose={() => setProfileFor(null)} />}
+      {/* В body: внутри ленты слой ниже нижнего меню, и оно закрывало «Отправить жалобу». */}
+      {reportPost && <SheetPortal><ReportSheet target={{ type: "message", id: reportPost.id }} title={tr("Жалоба на пост")} onClose={() => setReportPost(null)} /></SheetPortal>}
 
       {commentsFor && (
         <CommentsSheet

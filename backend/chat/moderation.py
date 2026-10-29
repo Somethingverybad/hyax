@@ -139,15 +139,45 @@ def deliver_bug(bug, origin):
         return None
 
 
-def deliver(report: Report):
-    """Кладёт жалобу сообщением в чат «Жалобы». Ошибку глотаем намеренно:
-    жалоба уже сохранена в базе, и сбой доставки не должен возвращать
-    пользователю ошибку отправки."""
+def _post_staff(text):
+    """Сообщение в чат «Жалобы» — с пушем модераторам: жалобу надо разобрать
+    в течение суток (правило App Store 1.2), молча в чате её легко пропустить."""
+    from django.utils import timezone
+    from .views import _notify_new_message
+    chat = sync_staff_membership()
+    bot = system_bot()
+    m = Message.objects.create(chat=chat, sender=bot, content=text)
+    Chat.objects.filter(id=chat.id).update(updated_at=timezone.now())
     try:
-        chat = sync_staff_membership()
-        return Message.objects.create(chat=chat, sender=system_bot(), content=_describe(report))
+        _notify_new_message(m, bot, None)
+    except Exception:
+        logger.exception("Пуш модераторам не ушёл (сообщение %s)", m.id)
+    return m
+
+
+def deliver(report: Report):
+    """Кладёт жалобу сообщением в чат «Жалобы» и шлёт пуш модераторам. Ошибку
+    глотаем намеренно: жалоба уже сохранена в базе, и сбой доставки не должен
+    возвращать пользователю ошибку отправки."""
+    try:
+        return _post_staff(_describe(report))
     except Exception:
         logger.exception("Жалоба %s сохранена, но не доставлена в чат", report.id)
+        return None
+
+
+def deliver_block(blocker: Profile, blocked: Profile):
+    """Блокировка — тоже сигнал модераторам (App Store 1.2: «blocking should also
+    notify the developer»): кто кого и где посмотреть."""
+    try:
+        return _post_staff("\n".join([
+            "🚫 Блокировка",
+            f"Кто: {blocker.username}",
+            f"Кого: {blocked.username} (id {blocked.id})",
+            "Проверьте недавние сообщения и посты — при нарушении правил удалите и заблокируйте.",
+        ]))
+    except Exception:
+        logger.exception("Блокировка %s → %s не доставлена в чат", blocker.id, blocked.id)
         return None
 
 

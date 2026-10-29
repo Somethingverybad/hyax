@@ -6179,7 +6179,10 @@ class BlockView(APIView):
             return Response({"error": "Пользователь не найден"}, status=404)
         if other.id == me.id:
             return Response({"error": "Нельзя заблокировать себя"}, status=400)
-        Block.objects.get_or_create(blocker=me, blocked=other)
+        _, created = Block.objects.get_or_create(blocker=me, blocked=other)
+        if created:
+            from .moderation import deliver_block
+            deliver_block(me, other)
         return Response({"ok": True})
 
     def delete(self, request):
