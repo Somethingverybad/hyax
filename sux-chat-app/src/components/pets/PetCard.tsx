@@ -3,12 +3,15 @@ import { toast } from "sonner";
 import { Hand, Pencil, Utensils, PawPrint } from "lucide-react";
 import { api, type Pet, type PetAction } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { coatSwatch, moodInfo, petDisplayName, profilePose, purr, rememberPet, usePetsAvailable, warmPurr, type PetPack, type PoseName } from "@/lib/pets";
+import { bySex, coatSwatch, moodInfo, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
+import { readCache } from "@/lib/session-cache";
 import Identicon from "@/components/Identicon";
 import PetSprite from "./PetSprite";
 
 /** Через сколько снова можно ухаживать: «через 5 ч» / «через 20 мин». */
 const DOUBLE_TAP = 320; // мс между тапами — «покормить»
+// Виды для проверки админом (как SPECIES в chat/pets.py); в магазине — из каталога.
+const PET_SPECIES: [string, string][] = [["cat", "Кот"], ["rabbit", "Кролик"]];
 
 function untilText(iso: string | null): string {
   if (!iso) return "";
@@ -51,7 +54,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   if (!pet || !available) return null;
   const lang = getLang();
   const title = petDisplayName(pet, pack, lang);
-  const mi = moodInfo(pet.mood);
+  const mi = moodInfo(pet.mood, pet.sex);
   const pose: PoseName = react ?? profilePose(pet.mood);
 
   const doCare = async (action: PetAction, quiet = false) => {
@@ -62,7 +65,9 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
       setPet(r.pet);
       rememberPet(r.pet);
       onVibe?.(r.vibe);
-      if (!quiet) toast.success(action === "feed" ? t("{name} накормлен — +{n} к вайбу", { name: title, n: r.vibe_gain }) : t("{name} доволен — +{n} к вайбу", { name: title, n: r.vibe_gain }));
+      if (!quiet) toast.success(action === "feed"
+        ? t(bySex(pet.sex, "{name} накормлен — +{n} к вайбу", "{name} накормлена — +{n} к вайбу"), { name: title, n: r.vibe_gain })
+        : t(bySex(pet.sex, "{name} доволен — +{n} к вайбу", "{name} довольна — +{n} к вайбу"), { name: title, n: r.vibe_gain }));
       return true;
     } catch (e) {
       const err = e as Error & { pet?: Pet };
@@ -88,21 +93,36 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
       return;
     }
     tapAt.current = now;
-    purr();
+    tapSound(pack);
     showReaction("purr", 2600);
     tapTimer.current = window.setTimeout(() => {
       tapTimer.current = null;
-      if (pet.can_care) void doCare("pet", true).then((ok) => { if (ok) toast.success(t("{name} мурчит — +1 к вайбу", { name: title })); });
+      if (pet.can_care) void doCare("pet", true).then((ok) => { if (ok) toast.success(t(packText(pack, "tap", lang, pet.sex, "{name} мурчит — +1 к вайбу"), { name: title })); });
     }, DOUBLE_TAP);
   };
   const feed = async () => { if (await doCare("feed")) showReaction("eat", 3000); };
-  const pat = async () => { purr(); if (await doCare("pet")) showReaction("purr", 2600); };
+  const pat = async () => { tapSound(pack); if (await doCare("pet")) showReaction("purr", 2600); };
 
   const saveName = async () => {
     const v = name.trim();
     if (!v) return;
     try { const p = await api.updateMyPet({ name: v }); setPet(p); setNaming(false); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
+  };
+  // Пол, украшения, вид — как окрас: сразу на экране, сервер догоняет.
+  const patchLook = async (patch: { sex?: PetSex; accessories?: string[] | null; species?: string }) => {
+    const was = pet;
+    setPet({ ...pet, ...patch } as typeof pet);
+    try { const p = await api.updateMyPet(patch); setPet(p); rememberPet(p); }
+    catch (e) { setPet(was); toast.error((e as Error).message || t("Не получилось")); }
+  };
+  // Украшение: одно на место — надел новое, прежнее с того же места снялось.
+  const toggleAcc = (id: string) => {
+    if (!pack?.accessories) return;
+    const worn = wornAccessories(pack, { sex: pet.sex, acc: pet.accessories });
+    const slot = pack.accessories[id]?.slot;
+    const next = worn.includes(id) ? worn.filter((x) => x !== id) : [...worn.filter((x) => pack.accessories![x]?.slot !== slot), id];
+    void patchLook({ accessories: next });
   };
   // Окрас — сразу на экране, сервер догоняет; не вышло — вернуть прежний.
   const setCoat = async (color: string) => {
@@ -113,7 +133,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
     catch (e) { setPet(was); toast.error((e as Error).message || t("Не получилось")); }
   };
   const goHome = async () => {
-    try { const p = await api.updateMyPet({ chat_id: null }); setPet(p); rememberPet(p); toast.success(t("{name} ушёл домой", { name: title })); }
+    try { const p = await api.updateMyPet({ chat_id: null }); setPet(p); rememberPet(p); toast.success(t(bySex(pet.sex, "{name} ушёл домой", "{name} ушла домой"), { name: title })); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
   };
   const later = untilText(pet.next_care_at);
@@ -144,7 +164,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
 
       <button type="button" onClick={tapPet} style={{ touchAction: "manipulation" }} className="mt-2 mx-auto block select-none active:scale-[0.98] transition-transform"
         aria-label={t("Погладить {name}", { name: title })}>
-        <PetSprite species={pet.species} pose={pose} coat={pet.color} scale={0.62} onPack={setPack} />
+        <PetSprite species={pet.species} pose={pose} coat={pet.color} sex={pet.sex} acc={pet.accessories} scale={0.62} onPack={setPack} />
       </button>
 
       {/* Шкала состояния */}
@@ -176,6 +196,60 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
             ))}
           </div>
           <span className="text-caption text-subtle truncate">{t("Сегодня ухаживали: {n}", { n: pet.today.length })}</span>
+        </div>
+      )}
+
+      {/* Пол: меняет украшения и фразы (позже — и анимации). */}
+      {own && pack?.sexes && pack.sexes.length > 1 && (
+        <div className="mt-3 flex items-center gap-3">
+          <span className="flex-1 text-small">{t("Пол")}</span>
+          <div className="flex rounded-md bg-surface-2 p-0.5">
+            {pack.sexes.map((sx) => (
+              <button key={sx} type="button" onClick={() => { if ((pet.sex || "m") !== sx) void patchLook({ sex: sx, accessories: null }); }} aria-pressed={(pet.sex || "m") === sx}
+                className={`h-8 px-3 rounded text-small font-medium ${(pet.sex || "m") === sx ? "bg-primary text-primary-foreground" : "text-subtle"}`}>
+                {sx === "f" ? t("Девочка") : t("Мальчик")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Украшения своего пола: кнопки-переключатели, одно на место (голова, шея…). */}
+      {own && pack?.accessories && (() => {
+        const sex = pet.sex || "m";
+        const list = Object.entries(pack.accessories).filter(([, a]) => !a.sex || a.sex.includes(sex));
+        if (!list.length) return null;
+        const worn = wornAccessories(pack, { sex: pet.sex, acc: pet.accessories });
+        return (
+          <div className="mt-3">
+            <span className="block text-small mb-2">{t("Украшения")}</span>
+            <div className="flex flex-wrap gap-2">
+              {list.map(([id, a]) => {
+                const on = worn.includes(id);
+                return (
+                  <button key={id} type="button" onClick={() => toggleAcc(id)} aria-pressed={on}
+                    className={`h-8 px-3 rounded-full text-small font-medium ${on ? "bg-primary text-primary-foreground" : "bg-surface-2 text-foreground"}`}>
+                    {a.name[lang] || a.name.ru || id}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Вид — пока только админу: проверить новых зверей до магазина. */}
+      {own && readCache<{ is_admin?: boolean }>("user")?.is_admin && (
+        <div className="mt-3 flex items-center gap-3">
+          <span className="flex-1 text-small">{t("Вид (проверка)")}</span>
+          <div className="flex rounded-md bg-surface-2 p-0.5">
+            {PET_SPECIES.map(([sp, label]) => (
+              <button key={sp} type="button" onClick={() => { if (pet.species !== sp) void patchLook({ species: sp }); }} aria-pressed={pet.species === sp}
+                className={`h-8 px-3 rounded text-small font-medium ${pet.species === sp ? "bg-primary text-primary-foreground" : "text-subtle"}`}>
+                {t(label)}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

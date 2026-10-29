@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import type { AnimationItem } from "lottie-web";
 import { loadLottie } from "@/components/chat/StickerView";
-import { loadPose, type PetPack, type PoseName } from "@/lib/pets";
+import { loadPose, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
 
 /**
  * Поза питомца: Lottie из пака вида (lib/pets). Размер — холст пака × scale;
  * flip — отражение (идёт влево). Анимацию держим одну на позу: сменилась поза —
  * прежняя уничтожается.
  */
-export default function PetSprite({ species, pose, coat, scale, flip, paused, className, onPack }: {
+export default function PetSprite({ species, pose, coat, sex, acc, scale, flip, paused, className, onPack }: {
   species: string;
   pose: PoseName;
   /** Окрас из пака (Pet.color); пусто — как нарисован. */
   coat?: string | null;
+  /** Пол и надетые украшения (null — по умолчанию для пола). */
+  sex?: PetSex | null;
+  acc?: string[] | null;
   /** Пикселей на единицу холста; по умолчанию — из пака (как в чате). */
   scale?: number;
   flip?: boolean;
@@ -26,7 +29,7 @@ export default function PetSprite({ species, pose, coat, scale, flip, paused, cl
 
   useEffect(() => {
     let off = false;
-    void Promise.all([loadPose(species, pose, coat), loadLottie()]).then(([{ data, pack: p }, lottie]) => {
+    void Promise.all([loadPose(species, pose, { coat, sex, acc }), loadLottie()]).then(([{ data, pack: p }, lottie]) => {
       if (off || !box.current) return;
       setPack(p);
       onPack?.(p);
@@ -38,7 +41,7 @@ export default function PetSprite({ species, pose, coat, scale, flip, paused, cl
     }).catch(() => {});
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [species, pose, coat]);
+  }, [species, pose, coat, sex, acc?.join(",") ?? "-"]);
 
   useEffect(() => {
     if (!anim.current) return;

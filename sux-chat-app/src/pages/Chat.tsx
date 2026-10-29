@@ -562,7 +562,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         if (msg.data.action === "home" && petsAvailable()) {
           // Моего питомца отправили домой из группы: её владелец или уменьшенный лимит.
           const chat = msg.data.chat?.name || tr("группы");
-          toast(msg.data.reason === "admin" && by ? tr("{who} отправил(а) {name} домой из «{chat}»", { who: by.username, name, chat }) : tr("В «{chat}» стало меньше мест для питомцев — {name} вернулся домой", { chat, name }), { id: "pet" });
+          toast(msg.data.reason === "admin" && by ? tr("{who} отправил(а) {name} домой из «{chat}»", { who: by.username, name, chat }) : tr(msg.data.pet?.sex === "f" ? "В «{chat}» стало меньше мест для питомцев — {name} вернулась домой" : "В «{chat}» стало меньше мест для питомцев — {name} вернулся домой", { chat, name }), { id: "pet" });
         } else if (by && by.id !== me && petsAvailable()) {
           toast(msg.data.action === "feed" ? tr("{who} покормил(а) питомца — {name}", { who: by.username, name }) : tr("{who} погладил(а) питомца — {name}", { who: by.username, name }), { id: "pet" });
         }

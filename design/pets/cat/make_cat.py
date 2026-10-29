@@ -11,19 +11,17 @@
 (голова, тело, уши, хвост), меняются только их положение и движение.
 Все позы зациклены (первый кадр = последнему), 30 к/с.
 """
-import json
 import math
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from kit import *  # noqa: E402,F401,F403 — примитивы Lottie, ритмы, эффекты (design/pets/kit.py)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 OUT = os.path.join(ROOT, "sux-chat-app/public/pets/cat")
-W, H, FR = 200, 240, 30
 BASE = 200  # линия верхнего края пузыря
 
-
-def rgb(h, a=1.0):
-    h = h.lstrip("#")
-    return [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)] + [a]
 
 
 # Слоты окраса: у каждой детали свой цвет-метка (на глаз — те же чёрный и белый).
@@ -39,8 +37,9 @@ PALETTE = {
     "tip": "#1E1F1F",    # кончик хвоста
     "bow": "#1F1E1F",    # бантик
     "ear": "#F3B9B4",    # внутри ушей
+    "ribbon": "#FF6F91", # бантик на голове (украшение девочки)
 }
-INK, FUR, EYE, GLINT, FACE, NOSE, TIP, BOW, PINK = (rgb(PALETTE[k]) for k in ("ink", "fur", "eye", "glint", "face", "nose", "tip", "bow", "ear"))
+INK, FUR, EYE, GLINT, FACE, NOSE, TIP, BOW, PINK, RIBBON = (rgb(PALETTE[k]) for k in ("ink", "fur", "eye", "glint", "face", "nose", "tip", "bow", "ear", "ribbon"))
 DUST = rgb("#B9B1A7")
 DUST2 = rgb("#7A6C5E")
 HEART = rgb("#FF5A6E")
@@ -49,115 +48,6 @@ KIBBLE = rgb("#B9855A")
 BLANKET = rgb("#A9C2DE")
 BLANKET2 = rgb("#86A6CB")
 THERMO = rgb("#E5484D")
-SW = 5.0      # контур
-SW2 = 3.2     # детали лица
-EASE = {"i": {"x": [0.42], "y": [1]}, "o": {"x": [0.58], "y": [0]}}
-LIN = {"i": {"x": [1], "y": [1]}, "o": {"x": [0], "y": [0]}}
-
-
-# ---------- примитивы Lottie ----------
-def st(v):
-    return {"a": 0, "k": v}
-
-
-def kf(keys, ease=EASE):
-    """keys: [(кадр, значение)] — значение число, список или путь (dict)."""
-    out = []
-    for i, (t, v) in enumerate(keys):
-        s = [v] if isinstance(v, (int, float, dict)) else v
-        k = {"t": t, "s": s}
-        if i < len(keys) - 1:
-            k.update(ease)
-        out.append(k)
-    return {"a": 1, "k": out}
-
-
-def smooth(points, closed=True, tension=0.38):
-    """Точки → гладкий путь Lottie (касательные по соседям, как Catmull-Rom)."""
-    n = len(points)
-    vi, vo = [], []
-    for j, (x, y) in enumerate(points):
-        if not closed and (j == 0 or j == n - 1):
-            vi.append([0, 0]); vo.append([0, 0]); continue
-        px, py = points[(j - 1) % n]
-        nx, ny = points[(j + 1) % n]
-        tx, ty = (nx - px) * tension / 2, (ny - py) * tension / 2
-        vi.append([-tx, -ty]); vo.append([tx, ty])
-    return {"i": vi, "o": vo, "v": [list(p) for p in points], "c": closed}
-
-
-def poly(points, closed=False):
-    return {"i": [[0, 0]] * len(points), "o": [[0, 0]] * len(points), "v": [list(p) for p in points], "c": closed}
-
-
-def sh(path):
-    return {"ty": "sh", "ks": kf(path) if isinstance(path, list) else st(path)}
-
-
-def el(cx, cy, w, h):
-    return {"ty": "el", "p": st([cx, cy]), "s": st([w, h])}
-
-
-def fill(c):
-    return {"ty": "fl", "c": st(c), "o": st(100), "r": 1, "bm": 0}
-
-
-def stroke(c, w=SW):
-    return {"ty": "st", "c": st(c), "o": st(100), "w": st(w), "lc": 2, "lj": 2, "bm": 0}
-
-
-def tr(p=None, a=None, s=None, r=None, o=None):
-    def prop(v, d):
-        if v is None:
-            return st(d)
-        return v if isinstance(v, dict) else st(v)
-    return {"ty": "tr", "p": prop(p, [0, 0]), "a": prop(a, [0, 0]), "s": prop(s, [100, 100]),
-            "r": prop(r, 0), "o": prop(o, 100), "sk": st(0), "sa": st(0)}
-
-
-def gr(name, items, fl=None, stc=None, sw=SW, t=None):
-    """Группа: фигуры, затем контур (поверх) и заливка, затем трансформ."""
-    it = list(items)
-    if stc is not None:
-        it.append(stroke(stc, sw))
-    if fl is not None:
-        it.append(fill(fl))
-    it.append(t or tr())
-    return {"ty": "gr", "nm": name, "it": it}
-
-
-def stack(name, groups_bottom_first, t=None):
-    """Группа из групп; на вход — снизу вверх (в Lottie первым идёт верхний)."""
-    return {"ty": "gr", "nm": name, "it": list(reversed(groups_bottom_first)) + [t or tr()]}
-
-
-def pivot(cx, cy, r=None, s=None, p=None, o=None):
-    """Трансформ с центром вращения/масштаба в (cx, cy)."""
-    if p is None:
-        p = [cx, cy]
-    elif isinstance(p, dict):
-        pass
-    return tr(p=p, a=[cx, cy], r=r, s=s, o=o)
-
-
-def loop(n, *pairs, ease=EASE):
-    """Ключи для зацикленной анимации: pairs — (доля 0..1, значение), первый = последний."""
-    return kf([(round(f * n), v) for f, v in pairs], ease)
-
-
-def doc(name, n, groups_bottom_first):
-    layer = {"ddd": 0, "ind": 1, "ty": 4, "nm": name, "sr": 1,
-             "ks": {"o": st(100), "r": st(0), "p": st([0, 0, 0]), "a": st([0, 0, 0]), "s": st([100, 100, 100])},
-             "ao": 0, "shapes": list(reversed(groups_bottom_first)), "ip": 0, "op": n, "st": 0, "bm": 0}
-    return {"v": "5.7.4", "fr": FR, "ip": 0, "op": n, "w": W, "h": H, "nm": name, "ddd": 0, "assets": [], "layers": [layer]}
-
-
-def mirror(points, cx=100):
-    return [(2 * cx - x, y) for x, y in points]
-
-
-def shift(points, dx=0, dy=0, k=1.0, cx=100, cy=100):
-    return [(cx + (x - cx) * k + dx, cy + (y - cy) * k + dy) for x, y in points]
 
 
 # ---------- части кота (вид спереди) ----------
@@ -200,6 +90,10 @@ def eyes(kind="open", dy=0, blink=None, n=90):
         elif kind == "half":
             out.append(gr("eye", [sh(poly([(cx - 6, y + 1), (cx + 6, y + 1)]))], stc=EYE, sw=SW2))
             out.append(gr("lid", [sh(smooth([(cx - 6, y + 1), (cx, y + 4), (cx + 6, y + 1)], closed=False, tension=0.6))], stc=EYE, sw=SW2))
+        # Ресницы у внешнего уголка — только у девочки (слой sex:f, приложение прячет его у мальчика).
+        side = -1 if cx < 100 else 1
+        ox, oy = cx + 5.5 * side, y + (0 if kind in ("closed", "half") else -2.5)
+        out.append(gr("sex:f", [sh(poly([(ox, oy), (ox + 4 * side, oy - 3.5)])), sh(poly([(ox - 1.5 * side, oy - 2.5), (ox + 1.5 * side, oy - 6.5)]))], stc=EYE, sw=2.0))
     return out
 
 
@@ -218,15 +112,26 @@ def face(eye_kind="open", dy=0, blink=None, mouth="w"):
     return g
 
 
+def ribbon(cx, cy, rot=14):
+    """Бантик на голову (украшение acc:bow_head): две петли и узелок, цвет — слот ribbon."""
+    return stack("acc:bow_head", [
+        gr("loop-l", [sh(smooth([(cx, cy), (cx - 11, cy - 7), (cx - 12, cy + 6)], tension=0.25))], fl=RIBBON, stc=INK, sw=2.6),
+        gr("loop-r", [sh(smooth([(cx, cy), (cx + 11, cy - 7), (cx + 12, cy + 6)], tension=0.25))], fl=RIBBON, stc=INK, sw=2.6),
+        gr("knot", [el(cx, cy, 7, 7)], fl=RIBBON, stc=INK, sw=2.2),
+    ], t=pivot(cx, cy, r=st(rot)))
+
+
 def head(eye_kind="open", dy=0, blink=None, mouth="w", t=None, ears_r=(None, None)):
     parts = ears(*ears_r, dy=dy)
     parts.append(gr("head", [sh(smooth(shift(HEAD, dy=dy)))], fl=FUR, stc=INK))
     parts += face(eye_kind, dy, blink, mouth)
+    parts.append(ribbon(121, 60 + dy))
     return stack("head", parts, t=t)
 
 
 def bow(cx=100, cy=117, t=None):
-    return stack("bow", [
+    """Бабочка под подбородком (украшение acc:bow_tie)."""
+    return stack("acc:bow_tie", [
         gr("wing-l", [sh(smooth([(cx, cy), (cx - 15, cy - 8), (cx - 16, cy + 8)], tension=0.2))], fl=BOW, stc=BOW, sw=2),
         gr("wing-r", [sh(smooth([(cx, cy), (cx + 15, cy - 8), (cx + 16, cy + 8)], tension=0.2))], fl=BOW, stc=BOW, sw=2),
         gr("knot", [el(cx, cy, 8, 8)], fl=BOW),
@@ -253,15 +158,6 @@ def paw(cx, cy, w=19, h=11, t=None):
     ], t=t)
 
 
-def blink_keys(n, at=0.78, dur=6):
-    a = round(at * n)
-    return kf([(0, [100, 100]), (a, [100, 100]), (a + dur // 2, [100, 10]), (a + dur, [100, 100]), (n, [100, 100])], LIN)
-
-
-def breathe(n, amount=1.8):
-    return loop(n, (0, [100, 100]), (0.5, [100, 100 + amount]), (1, [100, 100]))
-
-
 def sit_parts(n, eye_kind="open", tail_pts=None, tail_rot=None, ears_r=(None, None), mouth="w", head_t=None, paws=None, extra_top=()):
     tail_pts = tail_pts or [(130, 188), (155, 188), (168, 170), (166, 146), (156, 130)]
     blink = blink_keys(n) if eye_kind in ("open", "sad") else None
@@ -282,20 +178,6 @@ def pose_sit():
     ear_tw = kf([(0, 0), (40, 0), (43, -14), (47, 0), (n, 0)], LIN)
     tilt = loop(n, (0, 0), (0.4, 4), (0.75, -2), (1, 0))
     return doc("cat-sit", n, sit_parts(n, tail_rot=rot, ears_r=(None, ear_tw), head_t=pivot(100, 112, r=tilt, s=breathe(n, 1.2))))
-
-
-def heart(cx, cy, s=1.0):
-    pts = [(0, 3), (-6, -3), (-6, -8), (-3, -10), (0, -7), (3, -10), (6, -8), (6, -3)]
-    return sh(smooth([(cx + x * s, cy + y * s) for x, y in pts], tension=0.35))
-
-
-def rising(name, item_fn, x, y, n, start, dx=6, dy=-40, fl=None, stc=None, sw=SW2):
-    f0 = start
-    f1 = min(n, start + n // 2)
-    o = kf([(0, 0), (f0, 0), (f0 + 3, 100), (f1 - 4, 100), (f1, 0), (n, 0)], LIN)
-    p = kf([(0, [x, y]), (f0, [x, y]), (f1, [x + dx, y + dy]), (n, [x + dx, y + dy])], LIN)
-    s = kf([(0, [60, 60]), (f0, [60, 60]), (f0 + 6, [100, 100]), (n, [100, 100])], LIN)
-    return gr(name, [item_fn()], fl=fl, stc=stc, sw=sw, t=tr(p=p, a=[0, 0], s=s, o=o))
 
 
 def pose_purr():
@@ -458,10 +340,6 @@ def pose_lie():
     return doc("cat-lie", n, lie_parts(n))
 
 
-def z_letter(s=1.0):
-    return sh(poly([(0, 0), (8 * s, 0), (0, 8 * s), (8 * s, 8 * s)]))
-
-
 def pose_sleep():
     n = 120
     body = [(56, 176), (66, 152), (96, 140), (128, 144), (150, 164), (150, 188), (128, 202), (96, 204), (66, 196)]
@@ -532,6 +410,7 @@ def pose_sulk():
         *ears(),
         gr("head", [sh(smooth(HEAD))], fl=FUR, stc=INK),
         gr("fur", [sh(poly([(94, 62), (96, 70)])), sh(poly([(100, 60), (100, 69)])), sh(poly([(106, 62), (104, 70)]))], stc=INK, sw=2.4),
+        ribbon(79, 60, rot=-14),  # с затылка бантик — на другой стороне
     ])
     parts = [body, back_head, paw(84, 198, w=16, h=8), paw(116, 198, w=16, h=8),
              tail([(104, 196), (120, 204), (148, 202), (164, 188), (166, 170)], rot=flick, piv=(104, 196))]
@@ -554,16 +433,24 @@ POSES = {
 }
 
 MANIFEST = {
-    "format": 1,
+    "format": 2,
     "species": "cat",
-    "rev": 3,
+    "rev": 4,
     "name": {"ru": "Кот", "en": "Cat", "ko": "고양이"},
     "defaultName": {"ru": "Мистер Кот", "en": "Mister Cat", "ko": "미스터 고양이"},
+    # Формат 2: пол, украшения, фразы и звук вида (design/pets/README.md).
+    "sexes": ["m", "f"],
+    "defaultNameBySex": {"f": {"ru": "Мисс Кошка", "en": "Miss Kitty", "ko": "미스 고양이"}},
+    "accessories": {
+        "bow_tie": {"name": {"ru": "Бабочка", "en": "Bow tie", "ko": "나비넥타이"}, "slot": "neck", "sex": ["m"], "default": True},
+        "bow_head": {"name": {"ru": "Бантик на голову", "en": "Hair bow", "ko": "머리 리본"}, "slot": "head", "sex": ["f"], "default": True},
+    },
+    "texts": {"tap": {"ru": "{name} мурчит — +1 к вайбу", "en": "{name} purrs — +1 vibe", "ko": "{name}이(가) 골골거려요 — 바이브 +1"}},
     "canvas": [W, H],
     "anchor": [100, BASE],
     "scale": 0.3,
     "author": "WYX",
-    "sounds": {"purr": "synth:purr"},
+    "sounds": {"purr": "synth:purr", "tap": "synth:purr"},
     # Окрасы: хозяин выбирает в карточке питомца. colors — что поменять в палитре,
     # остальные слоты остаются как в palette.
     "palette": PALETTE,
@@ -571,7 +458,7 @@ MANIFEST = {
     "coats": {
         "white": {"name": {"ru": "Белый", "en": "White", "ko": "흰색"}, "colors": {}},
         "ginger": {"name": {"ru": "Рыжий", "en": "Ginger", "ko": "치즈"},
-                   "colors": {"fur": "#F7B46A", "tip": "#D2702F", "ink": "#3B2416", "eye": "#2A1A10", "face": "#3B2416", "nose": "#C2574A", "ear": "#F59A8F", "bow": "#2F6B57"}},
+                   "colors": {"fur": "#F7B46A", "tip": "#D2702F", "ink": "#3B2416", "eye": "#2A1A10", "face": "#3B2416", "nose": "#C2574A", "ear": "#F59A8F", "bow": "#2F6B57", "ribbon": "#2F6B57"}},
         "grey": {"name": {"ru": "Серый", "en": "Grey", "ko": "회색"},
                  "colors": {"fur": "#C3C8D0", "tip": "#5F656E", "ear": "#EBB2B8", "nose": "#B5707E"}},
         "black": {"name": {"ru": "Чёрный", "en": "Black", "ko": "검은색"},
@@ -581,24 +468,13 @@ MANIFEST = {
         "mint": {"name": {"ru": "Мятный", "en": "Mint", "ko": "민트"},
                  "colors": {"fur": "#C6EBDC", "tip": "#2F6B57", "bow": "#2F6B57", "ear": "#F2B7B4"}},
         "pink": {"name": {"ru": "Розовый", "en": "Pink", "ko": "분홍"},
-                 "colors": {"fur": "#FAD3DD", "tip": "#D9728C", "bow": "#B34766", "ear": "#F59AB0", "nose": "#C45A78"}},
+                 "colors": {"fur": "#FAD3DD", "tip": "#D9728C", "bow": "#B34766", "ear": "#F59AB0", "nose": "#C45A78", "ribbon": "#B34766"}},
     },
 }
 
 
 def main():
-    os.makedirs(OUT, exist_ok=True)
-    poses = {}
-    for key, (fn, meta) in POSES.items():
-        data = fn()
-        name = f"{key}.json"
-        with open(os.path.join(OUT, name), "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-        poses[key] = {"file": name, **meta}
-    manifest = {**MANIFEST, "poses": poses}
-    with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-    print("→", OUT, ", ".join(poses))
+    write_pack(OUT, POSES, MANIFEST)
 
 
 if __name__ == "__main__":

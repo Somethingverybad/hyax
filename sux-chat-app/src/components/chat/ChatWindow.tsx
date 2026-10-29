@@ -591,7 +591,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       const p = await api.updateMyPet({ chat_id: petHereMine ? null : chatId });
       rememberPet(p);
-      toast.success(petHereMine ? tr("{name} ушёл домой", { name }) : tr("{name} пришёл в чат", { name }));
+      const f = myPet.sex === "f";
+      toast.success(petHereMine ? tr(f ? "{name} ушла домой" : "{name} ушёл домой", { name }) : tr(f ? "{name} пришла в чат" : "{name} пришёл в чат", { name }));
     } catch (e) {
       const err = e as Error & { code?: string; limit?: number; pets?: { name: string; owner: { username: string } }[] };
       if (err.code === "pets_full") {

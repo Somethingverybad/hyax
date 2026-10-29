@@ -1,0 +1,264 @@
+{
+  "format": 2,
+  "species": "rabbit",
+  "rev": 1,
+  "name": {
+    "ru": "Кролик",
+    "en": "Rabbit",
+    "ko": "토끼"
+  },
+  "defaultName": {
+    "ru": "Мистер Кролик",
+    "en": "Mister Bunny",
+    "ko": "미스터 토끼"
+  },
+  "defaultNameBySex": {
+    "f": {
+      "ru": "Мисс Зайка",
+      "en": "Miss Bunny",
+      "ko": "미스 토끼"
+    }
+  },
+  "canvas": [
+    200,
+    240
+  ],
+  "anchor": [
+    100,
+    200
+  ],
+  "scale": 0.3,
+  "author": "WYX",
+  "sexes": [
+    "m",
+    "f"
+  ],
+  "accessories": {
+    "headband": {
+      "name": {
+        "ru": "Повязка",
+        "en": "Headband",
+        "ko": "머리띠"
+      },
+      "slot": "head",
+      "sex": [
+        "m"
+      ],
+      "default": true
+    },
+    "flower": {
+      "name": {
+        "ru": "Цветок",
+        "en": "Flower",
+        "ko": "꽃"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    }
+  },
+  "texts": {
+    "tap": {
+      "ru": "{name} довольно скрипит зубками — +1 к вайбу",
+      "en": "{name} is happily grinding its teeth — +1 vibe",
+      "ko": "{name}이(가) 기분 좋게 이를 갈아요 — 바이브 +1"
+    }
+  },
+  "sounds": {
+    "tap": "synth:chatter"
+  },
+  "extras": {
+    "happy": [
+      {
+        "pose": "binky",
+        "min": 2,
+        "max": 3,
+        "target": "owner",
+        "w": 2
+      },
+      {
+        "pose": "groom",
+        "min": 4,
+        "max": 6,
+        "target": "owner",
+        "w": 1
+      }
+    ],
+    "content": [
+      {
+        "pose": "groom",
+        "min": 4,
+        "max": 7,
+        "target": "any",
+        "w": 2
+      },
+      {
+        "pose": "periscope",
+        "min": 3,
+        "max": 5,
+        "target": "any",
+        "w": 1
+      }
+    ],
+    "bored": [
+      {
+        "pose": "periscope",
+        "min": 3,
+        "max": 6,
+        "target": "any",
+        "w": 3
+      }
+    ]
+  },
+  "palette": {
+    "ink": "#1E1E1E",
+    "fur": "#FFFFFF",
+    "eye": "#1E1E1F",
+    "glint": "#FEFEFE",
+    "face": "#1E1F1E",
+    "nose": "#F29CB0",
+    "ear": "#F7B8C4",
+    "teeth": "#FFFDF6",
+    "pad": "#F5B1BE",
+    "petal": "#FF8FB1",
+    "petal2": "#FFD24A",
+    "band": "#3F7DD8"
+  },
+  "defaultCoat": "white",
+  "coats": {
+    "white": {
+      "name": {
+        "ru": "Белый",
+        "en": "White",
+        "ko": "흰색"
+      },
+      "colors": {}
+    },
+    "grey": {
+      "name": {
+        "ru": "Серый",
+        "en": "Grey",
+        "ko": "회색"
+      },
+      "colors": {
+        "fur": "#BFC4CC",
+        "ear": "#E9AEB9",
+        "nose": "#C98896"
+      }
+    },
+    "brown": {
+      "name": {
+        "ru": "Шоколадный",
+        "en": "Chocolate",
+        "ko": "초코"
+      },
+      "colors": {
+        "fur": "#C9A27C",
+        "ink": "#3A2717",
+        "eye": "#2A1A10",
+        "face": "#3A2717",
+        "ear": "#E9A99A",
+        "nose": "#B86F62"
+      }
+    },
+    "black": {
+      "name": {
+        "ru": "Чёрный",
+        "en": "Black",
+        "ko": "검은색"
+      },
+      "colors": {
+        "fur": "#3A3A42",
+        "ink": "#121216",
+        "eye": "#D9A441",
+        "glint": "#FFFFFF",
+        "face": "#C9C9D2",
+        "ear": "#8A6472",
+        "nose": "#D98AA0",
+        "teeth": "#F3EFE6",
+        "pad": "#8A6472"
+      }
+    },
+    "cream": {
+      "name": {
+        "ru": "Кремовый",
+        "en": "Cream",
+        "ko": "크림"
+      },
+      "colors": {
+        "fur": "#F4E4C6",
+        "ink": "#2E2318",
+        "ear": "#F2B7A8",
+        "nose": "#C9887A"
+      }
+    }
+  },
+  "poses": {
+    "sit": {
+      "file": "sit.json",
+      "loop": true
+    },
+    "purr": {
+      "file": "purr.json",
+      "loop": true,
+      "sound": "tap"
+    },
+    "walk": {
+      "file": "walk.json",
+      "loop": true,
+      "speed": 40,
+      "facing": "right"
+    },
+    "lie": {
+      "file": "lie.json",
+      "loop": true
+    },
+    "sleep": {
+      "file": "sleep.json",
+      "loop": true
+    },
+    "belly": {
+      "file": "belly.json",
+      "loop": true
+    },
+    "scratch": {
+      "file": "scratch.json",
+      "loop": true
+    },
+    "bury": {
+      "file": "bury.json",
+      "loop": true
+    },
+    "eat": {
+      "file": "eat.json",
+      "loop": true
+    },
+    "sad": {
+      "file": "sad.json",
+      "loop": true
+    },
+    "sick": {
+      "file": "sick.json",
+      "loop": true
+    },
+    "sulk": {
+      "file": "sulk.json",
+      "loop": true
+    },
+    "binky": {
+      "file": "binky.json",
+      "loop": true,
+      "facing": "right"
+    },
+    "periscope": {
+      "file": "periscope.json",
+      "loop": true
+    },
+    "groom": {
+      "file": "groom.json",
+      "loop": true
+    }
+  }
+}

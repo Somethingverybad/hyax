@@ -40,7 +40,9 @@ from .models import Chat, ChatParticipant, Pet, PetCare, Profile
 
 logger = logging.getLogger(__name__)
 
-SPECIES = ("cat",)
+SPECIES = ("cat", "rabbit")
+SEXES = ("m", "f")
+ACC_MAX = 8
 DAY_DECAY = 25.0
 OWNER_GAIN = 30.0
 GUEST_GAIN = 15.0
@@ -123,6 +125,8 @@ def pet_json(pet: Pet, viewer: Profile | None = None, now=None, brief=False) -> 
         "show_in_chats": pet.show_in_chats,
         "chat_id": str(pet.chat_id) if pet.chat_id else None,
         "color": pet.color,
+        "sex": pet.sex,
+        "accessories": pet.accessories,
     }
     if brief:
         return out
@@ -297,13 +301,20 @@ def _tell_owner(pet: Pet, me: Profile, action: str) -> None:
 
 
 # ---------- напоминания ----------
+# (мальчик, девочка); «настроение:вид» — если у вида своё (кролик не царапает, а подгрызает).
 REMIND_TEXT = {
-    "bored": L("{name} скучает — загляните погладить"),
-    "hungry": L("{name} проголодался и царапает сообщения"),
-    "lonely": L("{name} обиделся: вас не было больше суток"),
-    "sad": L("{name} совсем загрустил — без вас ему плохо"),
-    "sick": L("{name} приболел. Немного заботы — и он поправится"),
+    "bored": (L("{name} скучает — загляните погладить"),) * 2,
+    "hungry": (L("{name} проголодался и царапает сообщения"), L("{name} проголодалась и царапает сообщения")),
+    "hungry:rabbit": (L("{name} проголодался и подгрызает сообщения"), L("{name} проголодалась и подгрызает сообщения")),
+    "lonely": (L("{name} обиделся: вас не было больше суток"), L("{name} обиделась: вас не было больше суток")),
+    "sad": (L("{name} совсем загрустил — без вас ему плохо"), L("{name} совсем загрустила — без вас ей плохо")),
+    "sick": (L("{name} приболел. Немного заботы — и он поправится"), L("{name} приболела. Немного заботы — и она поправится")),
 }
+
+
+def remind_text(pet: Pet, m: str):
+    pair = REMIND_TEXT.get(f"{m}:{pet.species}") or REMIND_TEXT.get(m)
+    return pair[1 if pet.sex == "f" else 0] if pair else L("{name} ждёт вас — загляните погладить")
 
 
 def due_reminders(now=None):
@@ -322,7 +333,7 @@ def send_reminders() -> int:
     sent = 0
     for pet in due_reminders(now)[:500]:
         m = mood(pet, now)
-        text = REMIND_TEXT.get(m) or L("{name} ждёт вас — загляните погладить")
+        text = remind_text(pet, m)
         name = pet.name or L("Ваш питомец")
         try:
             notify_profiles(Profile.objects.filter(id=pet.owner_id), title=L("Питомец"),
@@ -437,6 +448,30 @@ class MyPetView(APIView):
             pet.name = name
         if "show_in_chats" in request.data:
             pet.show_in_chats = bool(request.data.get("show_in_chats"))
+        if "sex" in request.data:
+            sex = request.data.get("sex")
+            if sex not in SEXES:
+                return Response({"error": "Пол — m или f"}, status=400)
+            if sex != pet.sex:
+                pet.sex = sex
+                pet.accessories = None  # у другого пола свои украшения — по умолчанию
+        if "accessories" in request.data:
+            acc = request.data.get("accessories")
+            if acc is not None and (not isinstance(acc, list) or len(acc) > ACC_MAX
+                                    or not all(isinstance(a, str) and COLOR_RE.match(a) and a for a in acc)):
+                return Response({"error": "Нет таких украшений"}, status=400)
+            pet.accessories = list(dict.fromkeys(acc)) if acc is not None else None
+        if "species" in request.data:
+            # Сменить вид — пока только админу (проверка новых зверей до магазина).
+            from .serializers import is_admin_profile
+            species = request.data.get("species")
+            if not is_admin_profile(me):
+                return Response({"error": "Сменить вид пока нельзя"}, status=403)
+            if species not in SPECIES:
+                return Response({"error": "Нет такого вида"}, status=400)
+            if species != pet.species:
+                pet.species = species
+                pet.accessories = None
         recolored = False
         if "color" in request.data:
             color = str(request.data.get("color") or "")
@@ -444,8 +479,9 @@ class MyPetView(APIView):
                 return Response({"error": "Нет такого окраса"}, status=400)
             recolored = color != pet.color
             pet.color = color
-        pet.save(update_fields=["name", "show_in_chats", "color"])
-        if recolored and pet.chat_id:
+        looks = {"color", "sex", "accessories", "species"} & set(request.data)
+        pet.save(update_fields=["name", "show_in_chats", "color", "sex", "accessories", "species"])
+        if (recolored or looks - {"color"}) and pet.chat_id:
             # Кот сейчас в чате — собеседники видят новый окрас сразу.
             _tell_members(pet, [pet.chat_id], pet.chat_id)
         if "chat_id" in request.data:

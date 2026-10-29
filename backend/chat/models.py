@@ -1056,6 +1056,10 @@ class Pet(models.Model):
     chat_at = models.DateTimeField(null=True, blank=True)
     # Окрас из пака вида (manifest.coats на клиенте); пусто — как нарисован.
     color = models.CharField(max_length=24, blank=True, default="")
+    # Пол: m / f — украшения, фразы, позже и анимации (пак, формат 2).
+    sex = models.CharField(max_length=1, default="m", db_default="m")
+    # Надетые украшения (ключи manifest.accessories); null — по умолчанию для пола.
+    accessories = models.JSONField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(default=timezone.now)
 
 

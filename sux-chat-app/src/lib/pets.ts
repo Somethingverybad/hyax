@@ -14,10 +14,13 @@ import { softRumble } from "@/lib/rov";
  * Правила (шкала, уход раз в сутки, вайб, напоминания) — на сервере, chat/pets.py.
  */
 
-export type PoseName = "sit" | "purr" | "walk" | "lie" | "sleep" | "belly" | "scratch" | "bury" | "eat" | "sad" | "sick" | "sulk";
+export type PoseName = "sit" | "purr" | "walk" | "lie" | "sleep" | "belly" | "scratch" | "bury" | "eat" | "sad" | "sick" | "sulk" | (string & {});
+export type PetSex = "m" | "f";
 
 export interface PetPose {
   file: string;
+  /** Своя анимация у пола (формат 2): { f: "walk-f.json" }; нет — общая file. */
+  files?: Partial<Record<PetSex, string>>;
   loop?: boolean;
   /** walk: скорость в CSS-пикселях в секунду при масштабе пака. */
   speed?: number;
@@ -44,6 +47,31 @@ export interface PetPack {
   /** Окрасы: что поменять в палитре. Выбирает хозяин (Pet.color). */
   coats?: Record<string, PetCoat>;
   defaultCoat?: string;
+  // ---- формат 2 ----
+  sexes?: PetSex[];
+  /** Имя по умолчанию у пола, если оно не как defaultName (тот — для «m» и старых версий). */
+  defaultNameBySex?: Partial<Record<PetSex, Record<string, string>>>;
+  /** Украшения: слои acc:<id> в позах; slot — одно на место; sex — кому подходит. */
+  accessories?: Record<string, PetAccessory>;
+  /** Фразы вида: tap — после ухода тапом («{name} мурчит — +1 к вайбу»), строка или { m, f }. */
+  texts?: Record<string, Record<string, string | Partial<Record<PetSex, string>>>>;
+  /** Свои «приколы» вида: дополнительные действия по настроению (к общему характеру). */
+  extras?: Partial<Record<PetMood, PetAct[]>>;
+}
+
+export interface PetAccessory {
+  name: Record<string, string>;
+  slot: string;
+  sex?: PetSex[];
+  default?: boolean;
+}
+
+export interface PetAct {
+  pose: PoseName;
+  min: number;
+  max: number;
+  target: "owner" | "other" | "any";
+  w: number;
 }
 
 export interface PetCoat {
@@ -102,25 +130,84 @@ export function recolor(data: unknown, pack: PetPack, coat: string | null | unde
   return walk(data);
 }
 
-/** Данные Lottie позы в окрасе (кэш на весь сеанс). Нет такой позы в паке — «сидит». */
-export async function loadPose(species: string, pose: PoseName, coat?: string | null): Promise<{ data: unknown; pose: PetPose; pack: PetPack }> {
+/** Как выглядит питомец: окрас, пол, надетые украшения (null — по умолчанию для пола). */
+export interface PetLook {
+  coat?: string | null;
+  sex?: PetSex | null;
+  acc?: string[] | null;
+}
+
+/** Надетые украшения: свои или те, что у пола по умолчанию; чужие полу и неизвестные — мимо. */
+export function wornAccessories(pack: PetPack, look: PetLook): string[] {
+  const all = pack.accessories || {};
+  const sex = look.sex || "m";
+  const fits = (id: string) => { const a = all[id]; return !!a && (!a.sex || a.sex.includes(sex)); };
+  const list = look.acc ?? Object.keys(all).filter((id) => all[id].default);
+  // Одно украшение на место: последнее выигрывает.
+  const bySlot = new Map<string, string>();
+  for (const id of list) if (fits(id)) bySlot.set(all[id].slot, id);
+  return [...bySlot.values()];
+}
+
+/**
+ * Слои по виду: acc:<id> — только надетые украшения, sex:<пол> — только своего пола.
+ * Остальные группы не трогаем. Работает и для групп фигур, и для слоёв Lottie.
+ */
+export function filterLayers(data: unknown, worn: string[], sex: PetSex): unknown {
+  const keep = (nm: unknown) => {
+    if (typeof nm !== "string") return true;
+    if (nm.startsWith("acc:")) return worn.includes(nm.slice(4));
+    if (nm.startsWith("sex:")) return nm.slice(4) === sex;
+    return true;
+  };
+  const walk = (o: unknown): unknown => {
+    if (Array.isArray(o)) return o.filter((x) => !(x && typeof x === "object" && "nm" in x && !keep((x as { nm: unknown }).nm))).map(walk);
+    if (!o || typeof o !== "object") return o;
+    const r: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) r[k] = walk(v);
+    return r;
+  };
+  return walk(data);
+}
+
+/** Данные Lottie позы в нужном виде (кэш на весь сеанс). Нет такой позы в паке — «сидит». */
+export async function loadPose(species: string, pose: PoseName, look: PetLook = {}): Promise<{ data: unknown; pose: PetPose; pack: PetPack }> {
   const pack = await loadPack(species);
   const meta = pack.poses[pose] || pack.poses.sit!;
-  const key = `${species}/${meta.file}`;
+  const sex: PetSex = look.sex || "m";
+  const file = meta.files?.[sex] || meta.file;
+  const key = `${species}/${file}`;
   let d = poses.get(key);
   if (!d) {
-    d = fetch(`${base()}pets/${species}/${meta.file}${pack.rev ? `?r=${pack.rev}` : ""}`).then((r) => r.json());
+    d = fetch(`${base()}pets/${species}/${file}${pack.rev ? `?r=${pack.rev}` : ""}`).then((r) => r.json());
     d.catch(() => poses.delete(key));
     poses.set(key, d);
   }
-  const ck = coat && pack.coats?.[coat] && coat !== pack.defaultCoat ? `${key}#${coat}` : "";
-  if (!ck) return { data: await d, pose: meta, pack };
+  const coat = look.coat && pack.coats?.[look.coat] && look.coat !== pack.defaultCoat ? look.coat : "";
+  const worn = wornAccessories(pack, look);
+  const layered = (pack.format ?? 1) >= 2;
+  const ck = `${key}#${coat}#${layered ? `${sex}:${worn.join(",")}` : ""}`;
   let cd = poses.get(ck);
   if (!cd) {
-    cd = d.then((raw) => recolor(raw, pack, coat));
+    cd = d.then((raw) => {
+      const shaped = layered ? filterLayers(raw, worn, sex) : raw;
+      return coat ? recolor(shaped, pack, coat) : shaped;
+    });
     poses.set(ck, cd);
   }
   return { data: await cd, pose: meta, pack };
+}
+
+/** Род во фразах: «накормлен / накормлена». */
+export const bySex = (sex: string | null | undefined, m: string, f: string) => (sex === "f" ? f : m);
+
+/** Фраза вида из пака (texts[key]) на языке и для пола; нет — запасная. */
+export function packText(pack: PetPack | null | undefined, key: string, lang: string, sex: string | null | undefined, fallback: string): string {
+  const byLang = pack?.texts?.[key];
+  const v = byLang?.[lang] ?? byLang?.ru;
+  if (!v) return fallback;
+  if (typeof v === "string") return v;
+  return v[(sex as PetSex) || "m"] || v.m || fallback;
 }
 
 /** Цвет меха окраса — для кружков выбора. */
@@ -130,21 +217,23 @@ export function coatSwatch(pack: PetPack, coat: string): { fur: string; tip: str
   return { fur: c.fur || pal.fur || "#FFFFFF", tip: c.tip || pal.tip || "#1E1E1E" };
 }
 
-export function petDisplayName(pet: { name?: string | null }, pack?: PetPack | null, lang = "ru"): string {
-  return pet.name || pack?.defaultName?.[lang] || pack?.defaultName?.ru || t("Питомец");
+export function petDisplayName(pet: { name?: string | null; sex?: string | null }, pack?: PetPack | null, lang = "ru"): string {
+  const bySexName = pet.sex === "f" ? pack?.defaultNameBySex?.f : undefined;
+  return pet.name || bySexName?.[lang] || bySexName?.ru || pack?.defaultName?.[lang] || pack?.defaultName?.ru || t("Питомец");
 }
 
 /** Подпись и цвет настроения. */
-export function moodInfo(m: PetMood): { label: string; color: string } {
+export function moodInfo(m: PetMood, sex?: string | null): { label: string; color: string } {
+  const g = (mm: string, f: string) => t(bySex(sex, mm, f));
   switch (m) {
-    case "happy": return { label: t("Счастлив"), color: "#2BB673" };
-    case "content": return { label: t("Доволен"), color: "#5FB44E" };
+    case "happy": return { label: g("Счастлив", "Счастлива"), color: "#2BB673" };
+    case "content": return { label: g("Доволен", "Довольна"), color: "#5FB44E" };
     case "bored": return { label: t("Скучает"), color: "#C9A227" };
-    case "hungry": return { label: t("Голоден"), color: "#E08A2E" };
-    case "lonely": return { label: t("Обиделся"), color: "#D9733B" };
+    case "hungry": return { label: g("Голоден", "Голодна"), color: "#E08A2E" };
+    case "lonely": return { label: g("Обиделся", "Обиделась"), color: "#D9733B" };
     case "sad": return { label: t("Грустит"), color: "#C8553D" };
-    case "sick": return { label: t("Приболел"), color: "#B23A48" };
-    case "overfed": return { label: t("Объелся"), color: "#8E7CC3" };
+    case "sick": return { label: g("Приболел", "Приболела"), color: "#B23A48" };
+    case "overfed": return { label: g("Объелся", "Объелась"), color: "#8E7CC3" };
   }
 }
 
@@ -292,6 +381,48 @@ export function warmPurr(): void {
   };
   const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
   if (ric) ric(run, { timeout: 4000 }); else window.setTimeout(run, 1500);
+}
+
+/**
+ * Звук на тап по виду (manifest.sounds.tap): synth:purr — мурчание кота,
+ * synth:chatter — довольный скрип зубами кролика. Вибрация — в обоих.
+ */
+export function tapSound(pack: PetPack | null | undefined): void {
+  const s = pack?.sounds?.tap || pack?.sounds?.purr || "synth:purr";
+  if (s === "synth:chatter") chatter(); else purr();
+}
+
+/** Кролик доволен — мелко «скрипит» зубами: частые мягкие щелчки около 2 кГц. */
+export function chatter(volume = 0.16): void {
+  if (Date.now() - purring < 1100) return;
+  purring = Date.now();
+  softRumble(700, 0.14);
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    actx ??= new AC();
+    const ctx = actx;
+    void ctx.resume().catch(() => {});
+    const t0 = ctx.currentTime;
+    const n = 11;
+    for (let i = 0; i < n; i++) {
+      const at = t0 + i * 0.075 + (Math.random() * 0.02);
+      const len = 0.018;
+      const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * len), ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      for (let j = 0; j < ch.length; j++) ch[j] = (Math.random() * 2 - 1) * (1 - j / ch.length);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const band = ctx.createBiquadFilter();
+      band.type = "bandpass";
+      band.frequency.value = 1800 + Math.random() * 600;
+      band.Q.value = 4;
+      const g = ctx.createGain();
+      g.gain.value = volume * (0.7 + Math.random() * 0.3) * (i < 2 || i > n - 3 ? 0.6 : 1);
+      src.connect(band).connect(g).connect(ctx.destination);
+      src.start(at); src.stop(at + len);
+    }
+  } catch { /* без звука */ }
 }
 
 export function purr(volume = 0.22): void {

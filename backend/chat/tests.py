@@ -3373,6 +3373,39 @@ class PetTests(TestCase):
         dm = self._chat(self.owner, others[3])
         self.assertEqual(client_for(others[3]).patch("/api/pets/mine/", {"chat_id": str(dm.id)}, format="json").status_code, 200)
 
+    def test_look_sex_accessories_species(self):
+        from unittest import mock
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import Pet
+        mine = lambda d: client_for(self.owner).patch("/api/pets/mine/", d, format="json")  # noqa: E731
+        r = mine({"accessories": ["bow_tie"]})
+        self.assertEqual((r.data["pet"]["sex"], r.data["pet"]["accessories"]), ("m", ["bow_tie"]))
+        # Сменил пол — украшения по умолчанию для пола (null).
+        r = mine({"sex": "f"})
+        self.assertEqual((r.data["pet"]["sex"], r.data["pet"]["accessories"]), ("f", None))
+        self.assertEqual(mine({"accessories": ["bow_head", "bow_head"]}).data["pet"]["accessories"], ["bow_head"])
+        self.assertIsNone(mine({"accessories": None}).data["pet"]["accessories"])
+        for bad in ({"sex": "x"}, {"accessories": "bow"}, {"accessories": ["<b>"]}, {"accessories": [""]}, {"accessories": ["a"] * 9}):
+            self.assertEqual(mine(bad).status_code, 400, bad)
+        # Вид меняет только админ; сменил — украшения по умолчанию.
+        self.assertEqual(mine({"species": "rabbit"}).status_code, 403)
+        admin = make_user("pet_admin", role="admin")
+        Pet.objects.create(owner=admin, species="cat", accessories=["bow_tie"])
+        r = client_for(admin).patch("/api/pets/mine/", {"species": "rabbit"}, format="json")
+        self.assertEqual((r.data["pet"]["species"], r.data["pet"]["accessories"]), ("rabbit", None))
+        self.assertEqual(client_for(admin).patch("/api/pets/mine/", {"species": "dragon"}, format="json").status_code, 400)
+        # Напоминание по виду и полу: кролик-девочка проголодалась и подгрызает.
+        self.pet.refresh_from_db()
+        Pet.objects.filter(id=self.pet.id).update(species="rabbit", sex="f", level=40, level_at=timezone.now(),
+                                                  last_petted_at=timezone.now(), last_fed_at=timezone.now() - timedelta(days=3),
+                                                  owner_cared_at=timezone.now() - timedelta(days=2), created_at=timezone.now() - timedelta(days=5))
+        with mock.patch("chat.fcm.notify_profiles") as push:
+            from .pets import send_reminders
+            send_reminders()
+        bodies = [str(c.kwargs["body"]) for c in push.call_args_list]
+        self.assertTrue(any("проголодалась и подгрызает" in b for b in bodies), bodies)
+
     def test_vibe_history_shows_care(self):
         self.care(self.guest, "feed")
         items = client_for(self.guest).get("/api/vibe/history/").data["items"]

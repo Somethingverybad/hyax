@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "re
 import { toast } from "sonner";
 import { api, type PetAction, type PetBrief, type PetMood } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { isNight, loadPack, petDisplayName, purr, rememberPet, useChatPets, usePetsAvailable, usePetsHidden, warmPurr, type PetPack, type PoseName } from "@/lib/pets";
+import { bySex, isNight, loadPack, packText, petDisplayName, rememberPet, tapSound, useChatPets, usePetsAvailable, usePetsHidden, warmPurr, type PetAct, type PetPack, type PoseName } from "@/lib/pets";
 import PetSprite from "./PetSprite";
 
 /**
@@ -24,7 +24,7 @@ const taken = new Map<string, string>(); // id строки сообщения �
 const DOUBLE_TAP = 320; // мс между тапами — «покормить»
 // left/right — где может стоять середина питомца: на ровной части верхнего края, не под соседним сообщением.
 type Spot = { msgId: string; own: boolean; left: number; right: number; top: number };
-type Act = { pose: PoseName; min: number; max: number; target: "owner" | "other" | "any"; w: number };
+type Act = PetAct;
 
 // Что делает и где: target — на чьих сообщениях (хозяина / чужих).
 const BEHAVIOUR: Record<PetMood, Act[]> = {
@@ -160,7 +160,9 @@ function PetActor({ pet, group, feedRef, scrollRef }: { pet: PetBrief; group: bo
       if (!feed || !scroll || document.hidden) { timer.current = window.setTimeout(step, 3000); return; }
       const spots = visibleSpots(feed, scroll, pet.owner_id, catH, halfW).filter(free);
       if (!spots.length) { setPos((p) => ({ ...p, shown: false })); timer.current = window.setTimeout(step, 2500); return; }
-      const acts = BEHAVIOUR[pet.mood] ?? BEHAVIOUR.content;
+      // Общий характер + «приколы» вида из пака (кролик: бинки, столбик…); позы, которых нет в паке, — мимо.
+      const acts = [...(BEHAVIOUR[pet.mood] ?? BEHAVIOUR.content), ...(pack.extras?.[pet.mood] ?? [])]
+        .filter((a) => a.pose === "walk" || pack.poses[a.pose]);
       const night = isNight() && (pet.mood === "happy" || pet.mood === "content" || pet.mood === "bored");
       let act = night && Math.random() < 0.7 ? { pose: "sleep" as PoseName, min: 20, max: 50, target: "owner" as const, w: 1 } : pick(acts);
       if (still && act.pose === "walk") act = { ...act, pose: "sit" };
@@ -306,7 +308,9 @@ function PetActor({ pet, group, feedRef, scrollRef }: { pet: PetBrief; group: bo
     api.carePet(pet.id, action).then((r) => {
       rememberPet(r.pet);
       try { localStorage.setItem(key, String(Date.now() + 24 * 3600_000)); } catch { /* */ }
-      toast.success(action === "feed" ? t("{name} накормлен — +{n} к вайбу", { name, n: r.vibe_gain }) : t("{name} мурчит — +1 к вайбу", { name }));
+      toast.success(action === "feed"
+        ? t(bySex(pet.sex, "{name} накормлен — +{n} к вайбу", "{name} накормлена — +{n} к вайбу"), { name, n: r.vibe_gain })
+        : t(packText(pack, "tap", getLang(), pet.sex, "{name} мурчит — +1 к вайбу"), { name }));
     }).catch((e: { nextCareAt?: string }) => {
       if (e?.nextCareAt) { try { localStorage.setItem(key, String(new Date(e.nextCareAt).getTime())); } catch { /* */ } }
     });
@@ -325,7 +329,7 @@ function PetActor({ pet, group, feedRef, scrollRef }: { pet: PetBrief; group: bo
       return;
     }
     lastTap.current = now;
-    purr();
+    tapSound(pack);
     setPose("purr");
     window.setTimeout(() => setPose((p) => (p === "purr" ? doing.current : p)), 2600);
     pendingCare.current = window.setTimeout(() => { pendingCare.current = null; careOnce("pet"); }, DOUBLE_TAP);
@@ -353,7 +357,7 @@ function PetActor({ pet, group, feedRef, scrollRef }: { pet: PetBrief; group: bo
           touchAction: "manipulation", // двойной тап — «покормить», а не увеличение страницы
         }}
       >
-        <PetSprite species={pet.species} pose={pose} coat={pet.color} flip={pos.flip} paused={reduceMotion()} />
+        <PetSprite species={pet.species} pose={pose} coat={pet.color} sex={pet.sex} acc={pet.accessories} flip={pos.flip} paused={reduceMotion()} />
       </button>
     </div>
   );
