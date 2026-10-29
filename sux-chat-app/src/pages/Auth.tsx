@@ -316,7 +316,9 @@ const Auth = () => {
         />
       )}
       {legal && (
-        <div className="fixed inset-0 z-50">
+        // Плотная подложка у самого окна: в «стекле» и «мягкой» экраны прозрачны,
+        // и сквозь правила просвечивала форма входа.
+        <div className="fixed inset-0 z-50 bg-background" role="dialog" aria-modal="true">
           <LegalView kind={legal} onClose={() => setLegal(null)} />
         </div>
       )}

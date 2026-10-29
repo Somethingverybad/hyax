@@ -24,7 +24,7 @@ const TermsGate = ({ onAccepted, onLogout }: { onAccepted: (p: Profile) => void;
 
   if (legal) {
     return (
-      <div className="fixed inset-0 z-[70]">
+      <div className="fixed inset-0 z-[70] bg-background" role="dialog" aria-modal="true">
         <LegalView kind={legal} onClose={() => setLegal(null)} />
       </div>
     );
