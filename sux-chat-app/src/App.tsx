@@ -15,6 +15,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { useScreenScroll } from "@/lib/screenScroll";
 import { App as CapApp } from "@capacitor/app";
 import MiniPlayer from "./components/MiniPlayer";
 import VideoNoteHost from "./components/VideoNoteHost";
@@ -177,11 +178,15 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   const isTab = (p: string) => TAB_ROOTS.includes(p);
   const tabSwitch = isTab(location.pathname) && isTab(prevPath.current) && location.pathname !== prevPath.current;
   const dir = tabSwitch ? "route-tab" : navType === "POP" ? "screen-pop" : step > 0 ? "screen-push" : step < 0 ? "screen-pop" : "";
+  // Вернулись назад — прокрутка экрана там же, где ушли (lib/screenScroll).
+  // Список чатов и ленты — нет: у них своя прокрутка и прижатие к низу.
+  const boxRef = useRef<HTMLDivElement>(null);
+  useScreenScroll(boxRef, location.key, location.pathname, !tabSwitch && (navType === "POP" || step < 0), CHAT_TABS.has(location.pathname));
   // Переходы — в лог баг-репорта: по ним видно, на каком экране что случилось.
   useEffect(() => { applog.info(`route ${location.pathname}`); }, [location.pathname]);
   useEffect(() => { prevPath.current = location.pathname; }, [location.pathname]);
   return (
-    <div key={CHAT_TABS.has(location.pathname) ? "chat-tabs" : location.pathname} className={`route-transition h-full ${dir}`}>
+    <div ref={boxRef} key={CHAT_TABS.has(location.pathname) ? "chat-tabs" : location.pathname} className={`route-transition h-full ${dir}`}>
       {/* Экран ещё грузится (первый раз) — фон без мигания, не спиннер. */}
       <Suspense fallback={null}>
         <Routes location={location}>{children}</Routes>
