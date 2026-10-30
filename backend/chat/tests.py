@@ -211,6 +211,23 @@ class AdultPacksTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class StarterPetTests(TestCase):
+    """Стартовые питомцы — всем: завести себе и сменить вид может каждый, выдать другому — только админ."""
+
+    def test_anyone_adopts_and_switches(self):
+        from .models import Pet
+        me, other = make_user("starter_me"), make_user("starter_other")
+        c = client_for(me)
+        self.assertEqual(c.post("/api/pets/grant/", {"profile_id": str(other.id), "species": "dog"}, format="json").status_code, 403)
+        r = c.post("/api/pets/grant/", {"profile_id": str(me.id), "species": "frog"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Pet.objects.get(owner=me).species, "frog")
+        r = client_for(me).patch("/api/pets/mine/", {"species": "bunny", "sex": "f"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(Pet.objects.get(owner=me).species, "bunny")
+        self.assertFalse(Pet.objects.filter(owner=other).exists())
+
+
 class PetDeleteTests(TestCase):
     """Хозяин отпускает питомца: запись удалена, повтор — 404, чужого не тронуть."""
 
@@ -3529,8 +3546,9 @@ class PetTests(TestCase):
         self.assertIsNone(mine({"accessories": None}).data["pet"]["accessories"])
         for bad in ({"sex": "x"}, {"accessories": "bow"}, {"accessories": ["<b>"]}, {"accessories": [""]}, {"accessories": ["a"] * 9}):
             self.assertEqual(mine(bad).status_code, 400, bad)
-        # Вид меняет только админ; сменил — украшения по умолчанию.
-        self.assertEqual(mine({"species": "rabbit"}).status_code, 403)
+        # Стартовый вид меняет и хозяин (30.10); сменил — украшения по умолчанию.
+        self.assertEqual(mine({"species": "rabbit"}).data["pet"]["accessories"], None)
+        mine({"species": "cat"})
         admin = make_user("pet_admin", role="admin")
         Pet.objects.create(owner=admin, species="cat", accessories=["bow_tie"])
         r = client_for(admin).patch("/api/pets/mine/", {"species": "rabbit"}, format="json")

@@ -1768,7 +1768,7 @@ export const api = {
     return (await res.json()).pets ?? [];
   },
   /** Покормить или погладить: раз в сутки от человека (+1 к вайбу). Рано — ошибка с next_care_at и pet. */
-  /** Завести питомца (пока только админ, chat/pets.py PetGrantView): себе — свой profile_id. */
+  /** Завести питомца (chat/pets.py PetGrantView): себе — свой profile_id, стартовые — всем. */
   grantPet: async (profileId: string, species: string): Promise<Pet> => {
     const res = await fetchWithAuth(`${API_URL}/pets/grant/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ profile_id: profileId, species }) });
     const data = await res.json().catch(() => ({}));

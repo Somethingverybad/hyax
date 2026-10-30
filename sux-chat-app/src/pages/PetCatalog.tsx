@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -14,14 +14,13 @@ import { cn } from "@/lib/utils";
 /**
  * «Питомцы» — витрина видов сеткой, как подарки в Telegram: в каждой карточке
  * живой питомец, имя и сколько окрасов. Нажатие — шторка с крупным питомцем,
- * где можно примерить пол и окрас. Пока экран только для админа (он же
- * заводит питомцев, chat/pets.py); остальных возвращает в профиль.
+ * где можно примерить пол и окрас. Стартовые питомцы — бесплатно всем
+ * (chat/pets.py STARTER_SPECIES): завести, сменить вид, пол и окрас.
  */
 const PetCatalog = () => {
   const navigate = useNavigate();
   const lang = getLang();
-  const me = readCache<{ id?: string; is_admin?: boolean }>("user");
-  const admin = !!me?.is_admin;
+  const me = readCache<{ id?: string }>("user");
   const [packs, setPacks] = useState<Record<string, PetPack>>({});
   const [pet, setPet] = useState<Pet | null>(() => (me?.id ? cachedPetOf(me.id, true) ?? null : null));
   const [open, setOpen] = useState<string | null>(null);
@@ -33,16 +32,12 @@ const PetCatalog = () => {
 
   const name = (p?: PetPack) => (p ? p.name[lang] || p.name.ru : "");
 
-  // Пока витрина только для админа (решение пользователя 30.10): остальным —
-  // обратно в профиль, даже если открыли адрес напрямую.
-  if (!admin) return <Navigate to="/profile" replace />;
-
   return (
     <div className="h-screen flex flex-col bg-background nav-rail-pad">
       <ScreenHeader title={t("Питомцы")} />
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
         <p className="px-1 pb-3 text-small text-subtle">
-          {admin ? t("Нажмите на питомца, чтобы примерить пол и окрас и выбрать его.") : t("Все питомцы WYX. Скоро их можно будет завести и подарить.")}
+          {t("Нажмите на питомца, чтобы примерить пол и окрас и выбрать его.")}
         </p>
         <div className="grid grid-cols-3 gap-2.5">
           {PET_KINDS.map((sp) => {
@@ -65,7 +60,7 @@ const PetCatalog = () => {
         </div>
       </div>
       {open && packs[open] && (
-        <PetSheet species={open} pack={packs[open]} pet={pet} admin={admin} onClose={() => setOpen(null)}
+        <PetSheet species={open} pack={packs[open]} pet={pet} onClose={() => setOpen(null)}
           onChosen={(p) => { setPet(p); rememberMyPet(p); if (me?.id) storePetOf(me.id, p, true); setOpen(null); toast.success(t("Теперь у вас {name}", { name: name(packs[open]) })); navigate(-1); }} />
       )}
     </div>
@@ -73,8 +68,8 @@ const PetCatalog = () => {
 };
 
 /** Шторка вида: крупный питомец мурчит, пол и окрас меняют его на глазах. */
-const PetSheet = ({ species, pack, pet, admin, onClose, onChosen }: {
-  species: string; pack: PetPack; pet: Pet | null; admin: boolean;
+const PetSheet = ({ species, pack, pet, onClose, onChosen }: {
+  species: string; pack: PetPack; pet: Pet | null;
   onClose: () => void; onChosen: (p: Pet) => void;
 }) => {
   const lang = getLang();
@@ -88,7 +83,7 @@ const PetSheet = ({ species, pack, pet, admin, onClose, onChosen }: {
   const choose = async () => {
     setBusy(true);
     try {
-      // Питомца ещё нет — заводим (пока только админ), затем пол и окрас.
+      // Питомца ещё нет — заводим (стартовые — всем), затем пол и окрас.
       if (!pet) {
         const me = readCache<{ id?: string }>("user");
         if (!me?.id) throw new Error(t("Не получилось"));
@@ -128,14 +123,10 @@ const PetSheet = ({ species, pack, pet, admin, onClose, onChosen }: {
         {pack.coats && Object.keys(pack.coats).length > 1 && (
           <CoatSwatches pack={pack} value={coat} onPick={setCoat} />
         )}
-        {admin ? (
-          <button type="button" disabled={busy} onClick={() => void choose()}
-            className="w-full h-12 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 disabled:opacity-60 active:opacity-90">
-            <Check className="w-5 h-5" />{!pet ? t("Завести") : pet.species === species ? t("Сохранить пол и окрас") : t("Выбрать")}
-          </button>
-        ) : (
-          <p className="text-center text-caption text-subtle">{t("Завести такого питомца пока нельзя — скоро")}</p>
-        )}
+        <button type="button" disabled={busy} onClick={() => void choose()}
+          className="w-full h-12 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 disabled:opacity-60 active:opacity-90">
+          <Check className="w-5 h-5" />{!pet ? t("Завести") : pet.species === species ? t("Сохранить пол и окрас") : t("Выбрать")}
+        </button>
       </div>
     </div>
   );

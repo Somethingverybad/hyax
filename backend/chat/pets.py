@@ -41,6 +41,9 @@ from .models import Chat, ChatParticipant, Pet, PetCare, Profile
 logger = logging.getLogger(__name__)
 
 SPECIES = ("cat", "rabbit", "frog", "kitty", "bunny", "dog")
+# Стартовые — бесплатно всем (решение пользователя 30.10): завести себе и
+# сменить вид своему может каждый. Платные и подарочные — потом, отдельно.
+STARTER_SPECIES = SPECIES
 SEXES = ("m", "f")
 ACC_MAX = 8
 DAY_DECAY = 25.0
@@ -478,13 +481,13 @@ class MyPetView(APIView):
                 return Response({"error": "Нет таких украшений"}, status=400)
             pet.accessories = list(dict.fromkeys(acc)) if acc is not None else None
         if "species" in request.data:
-            # Сменить вид — пока только админу (проверка новых зверей до магазина).
+            # Стартовые виды меняет любой хозяин, остальные — только админ.
             from .serializers import is_admin_profile
             species = request.data.get("species")
-            if not is_admin_profile(me):
-                return Response({"error": "Сменить вид пока нельзя"}, status=403)
             if species not in SPECIES:
                 return Response({"error": "Нет такого вида"}, status=400)
+            if species not in STARTER_SPECIES and not is_admin_profile(me):
+                return Response({"error": "Этого питомца пока нельзя выбрать"}, status=403)
             if species != pet.species:
                 pet.species = species
                 pet.accessories = None
@@ -528,17 +531,23 @@ class PetHomeView(APIView):
 
 
 class PetGrantView(APIView):
-    """POST /api/pets/grant/ {profile_id, species} — админ дарит питомца (пока без «завести самому»)."""
+    """POST /api/pets/grant/ {profile_id, species} — завести питомца. Себе —
+    любой, из стартовых видов (бесплатно, один на человека); другому — только админ."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         from .serializers import is_admin_profile
         me = _me(request)
-        if not me or not is_admin_profile(me):
-            return Response({"error": "Только для админов"}, status=403)
+        if not me or me.is_bot:
+            return Response({"error": "Нельзя"}, status=403)
+        admin = is_admin_profile(me)
         target = Profile.objects.filter(id=request.data.get("profile_id")).first()
+        if target and target.id != me.id and not admin:
+            return Response({"error": "Только для админов"}, status=403)
         species = request.data.get("species") or "cat"
         if not target or target.is_bot or species not in SPECIES:
             return Response({"error": "Нельзя"}, status=400)
+        if species not in STARTER_SPECIES and not admin:
+            return Response({"error": "Этого питомца пока нельзя завести"}, status=403)
         pet, _ = Pet.objects.get_or_create(owner=target, defaults={"species": species})
         return Response({"pet": pet_json(pet, me)})

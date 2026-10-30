@@ -56,9 +56,8 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   useEffect(() => { if (own && pet && !pet.name) setNaming(true); }, [own, pet]);
   useEffect(() => { if (pet) warmPurr(); }, [pet]);
 
-  // Своего питомца нет — «Добавить питомца» ведёт на витрину. Пока заводит
-  // питомцев только админ, поэтому и кнопка только у него.
-  if (pet === null && own && available && readCache<{ is_admin?: boolean }>("user")?.is_admin) {
+  // Своего питомца нет — «Добавить питомца» ведёт на витрину (стартовые — всем).
+  if (pet === null && own && available) {
     return (
       <div className="rounded-lg bg-surface-4 p-4 flex flex-col items-center text-center gap-1.5">
         <span className="w-12 h-12 rounded-full bg-surface-2 grid place-items-center mb-1"><PawPrint className="w-6 h-6 text-primary" /></span>
@@ -157,9 +156,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   };
   // Отпустить насовсем — с подтверждением: «{name} будет скучать».
   const release = async () => {
-    const admin = !!readCache<{ is_admin?: boolean }>("user")?.is_admin;
-    const msg = t("{name} будет скучать по вам. Удалить питомца насовсем?", { name: title })
-      + (admin ? "" : " " + t("Завести нового пока может только администратор."));
+    const msg = t("{name} будет скучать по вам. Удалить питомца насовсем?", { name: title });
     if (!(await confirmDialog(msg, { ok: t("Удалить"), danger: true }))) return;
     try {
       await api.deleteMyPet();
@@ -270,8 +267,8 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
         );
       })()}
 
-      {/* Вид — витрина «Питомцы» сеткой (pages/PetCatalog); выбрать пока может только админ. */}
-      {own && readCache<{ is_admin?: boolean }>("user")?.is_admin && (
+      {/* Вид — витрина «Питомцы» сеткой (pages/PetCatalog). */}
+      {own && (
         <button type="button" onClick={() => navigate("/profile/pets")}
           className="mt-3 w-full flex items-center gap-3 text-left active:opacity-80">
           <span className="flex-1 text-small">{t("Вид")}</span>
