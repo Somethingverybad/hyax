@@ -128,7 +128,7 @@ export function paintTheme(el: HTMLElement, t: ThemeDef) {
 }
 
 /** Проблемы читаемости: пары «текст на фоне» с контрастом ниже порога.
- *  Сохранить тему с нечитаемым основным текстом нельзя (см. редактор). */
+ *  Только предупреждение в редакторе — сохранить можно любую тему. */
 export function contrastIssues(c: ThemeColors): { pair: string; ratio: number; fatal: boolean }[] {
   const pairs: [string, string, string, number][] = [
     ["Текст на фоне", c.foreground, c.background, 4.5],

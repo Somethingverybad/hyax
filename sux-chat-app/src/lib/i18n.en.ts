@@ -1034,7 +1034,7 @@ const en: Record<string, string> = {
   "Скрыть предпросмотр": "Hide preview",
   "Показать предпросмотр": "Show preview",
   "Плохо читается": "Hard to read",
-  "{pair}: контраст {ratio} — так сохранить нельзя": "{pair}: contrast {ratio} — can't save like this",
+  "{pair}: контраст {ratio} — почти не видно": "{pair}: contrast {ratio} — barely visible",
   "{pair}: контраст {ratio}": "{pair}: contrast {ratio}",
   "Моя тема": "My theme",
   "Тёмная основа": "Dark base",

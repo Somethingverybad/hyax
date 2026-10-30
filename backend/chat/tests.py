@@ -394,12 +394,13 @@ class ThemeTests(TestCase):
         for body in (bad_color, bad_radius, bad_flag, missing, theme_body(name="  "), theme_body(base="sepia")):
             self.assertEqual(client_for(self.author).post("/api/themes/", body, format="json").status_code, 400)
 
-    def test_rejects_unreadable_theme(self):
+    def test_accepts_unreadable_theme(self):
+        # Красить можно как угодно (30.10): низкий контраст — только
+        # предупреждение в редакторе, сервер тему принимает.
         body = theme_body()
         body["colors"]["foreground"] = "#222222"  # тёмным по тёмному
         r = client_for(self.author).post("/api/themes/", body, format="json")
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("контраст", r.data["error"])
+        self.assertEqual(r.status_code, 201, r.data)
 
     def test_install_flow(self):
         tid = self.create().data["id"]

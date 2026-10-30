@@ -107,7 +107,6 @@ const ThemeEditor = () => {
 
   const theme = useMemo(() => ({ ...draft, colors: derive(draft.colors) }), [draft]);
   const issues = useMemo(() => contrastIssues(theme.colors), [theme]);
-  const blocking = issues.some((i) => i.fatal);
 
   const setColor = (key: ColorKey, value: string) => setDraft((d) => ({ ...d, colors: { ...d.colors, [key]: value.toUpperCase() } }));
   const setShape = (patch: Partial<ThemeDef["shape"]>) => setDraft((d) => ({ ...d, shape: { ...d.shape, ...patch } }));
@@ -116,7 +115,6 @@ const ThemeEditor = () => {
 
   const save = async () => {
     if (!draft.name.trim()) { toast.error(tr("Придумайте название темы")); return; }
-    if (blocking) { toast.error(tr("Слишком низкий контраст — текст не читается")); return; }
     setBusy(true);
     try {
       const saved = normalizeTheme(await api.saveTheme({
@@ -155,7 +153,7 @@ const ThemeEditor = () => {
           <div className="rounded-lg bg-surface-2 border border-border p-3 space-y-1">
             <p className="text-small font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber" /> {tr("Плохо читается")}</p>
             {issues.map((i) => (
-              <p key={i.pair} className="text-caption text-subtle">{tr(i.fatal ? "{pair}: контраст {ratio} — так сохранить нельзя" : "{pair}: контраст {ratio}", { pair: tr(i.pair), ratio: i.ratio })}</p>
+              <p key={i.pair} className="text-caption text-subtle">{tr(i.fatal ? "{pair}: контраст {ratio} — почти не видно" : "{pair}: контраст {ratio}", { pair: tr(i.pair), ratio: i.ratio })}</p>
             ))}
           </div>
         )}

@@ -109,19 +109,8 @@ def clean_theme(raw):
             raise ThemeError("Параметр формы должен быть true или false", f"shape.{key}")
         shape[key] = shape_in[key]
 
-    # Нечитаемую тему не принимаем: ею можно спрятать интерфейс от самого
-    # себя и от того, кто её установит. Порог мягкий (2:1) — отсекает «белым по
-    # белому», вкус не ограничивает; строже предупреждает уже редактор.
-    for message, fg, bg in (
-        ("Слишком низкий контраст: текст на фоне", "foreground", "background"),
-        ("Слишком низкий контраст: текст на карточке", "foreground", "surface1"),
-        ("Слишком низкий контраст: текст на акцентной кнопке", "primaryForeground", "primary"),
-        ("Слишком низкий контраст: текст на красной кнопке", "destructiveForeground", "destructive"),
-        ("Слишком низкий контраст: свои сообщения", "bubbleOwnFg", "bubbleOwn"),
-        ("Слишком низкий контраст: входящие сообщения", "bubbleInFg", "bubbleIn"),
-    ):
-        if contrast(colors[fg], colors[bg]) < 2:
-            raise ThemeError(message, f"colors.{fg}")
+    # Контраст не проверяем: красить можно как угодно (решение пользователя
+    # 30.10). Плохую читаемость редактор только показывает предупреждением.
 
     return name, {"version": 1, "base": base, "colors": colors, "shape": shape}
 
