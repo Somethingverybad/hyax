@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils";
 /**
  * «Питомцы» — витрина видов сеткой, как подарки в Telegram: в каждой карточке
  * живой питомец, имя и сколько окрасов. Нажатие — шторка с крупным питомцем,
- * где можно примерить пол и окрас. Выбрать вид своему питомцу пока может
- * только админ (заводит питомцев он же, chat/pets.py); остальным — посмотреть.
+ * где можно примерить пол и окрас. Пока экран только для админа (он же
+ * заводит питомцев, chat/pets.py); остальных возвращает в профиль.
  */
 const PetCatalog = () => {
   const navigate = useNavigate();
@@ -32,6 +32,10 @@ const PetCatalog = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = (p?: PetPack) => (p ? p.name[lang] || p.name.ru : "");
+
+  // Пока витрина только для админа (решение пользователя 30.10): остальным —
+  // обратно в профиль, даже если открыли адрес напрямую.
+  if (!admin) return <Navigate to="/profile" replace />;
 
   return (
     <div className="h-screen flex flex-col bg-background nav-rail-pad">
