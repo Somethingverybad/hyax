@@ -303,6 +303,12 @@ export function rememberPet(pet: Brief | Pet): void {
   emit();
 }
 
+/** Завёл питомца (витрина): он и есть «мой питомец» — меню чата сразу его знает. */
+export function rememberMyPet(pet: Pet): void {
+  myPet = pet;
+  rememberPet(pet);
+}
+
 /** Питомца удалили: убрать из чатов и из «моего питомца». */
 export function forgetPet(id: string): void {
   inChats.delete(id);

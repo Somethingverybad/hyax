@@ -54,6 +54,20 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   useEffect(() => { if (own && pet && !pet.name) setNaming(true); }, [own, pet]);
   useEffect(() => { if (pet) warmPurr(); }, [pet]);
 
+  // Своего питомца нет — «Добавить питомца» ведёт на витрину. Пока заводит
+  // питомцев только админ, поэтому и кнопка только у него.
+  if (pet === null && own && available && readCache<{ is_admin?: boolean }>("user")?.is_admin) {
+    return (
+      <div className="rounded-lg bg-surface-4 p-4 flex flex-col items-center text-center gap-1.5">
+        <span className="w-12 h-12 rounded-full bg-surface-2 grid place-items-center mb-1"><PawPrint className="w-6 h-6 text-primary" /></span>
+        <span className="text-body font-medium">{t("Питомца пока нет")}</span>
+        <span className="text-caption text-subtle">{t("Выберите, кто будет жить с вами в чатах")}</span>
+        <button type="button" onClick={() => navigate("/profile/pets")} className="mt-2 w-full h-11 rounded-md bg-primary text-primary-foreground text-small font-semibold active:opacity-90">
+          {t("Добавить питомца")}
+        </button>
+      </div>
+    );
+  }
   if (!pet || !available) return null;
   const lang = getLang();
   const title = petDisplayName(pet, pack, lang);

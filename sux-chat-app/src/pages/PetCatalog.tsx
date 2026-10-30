@@ -7,7 +7,7 @@ import PetSprite from "@/components/pets/PetSprite";
 import CoatSwatches from "@/components/pets/CoatSwatches";
 import { api, type Pet } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { loadPack, PET_KINDS, rememberPet, type PetPack, type PetSex } from "@/lib/pets";
+import { loadPack, PET_KINDS, rememberMyPet, type PetPack, type PetSex } from "@/lib/pets";
 import { readCache } from "@/lib/session-cache";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +66,7 @@ const PetCatalog = () => {
       </div>
       {open && packs[open] && (
         <PetSheet species={open} pack={packs[open]} pet={pet} admin={admin} onClose={() => setOpen(null)}
-          onChosen={(p) => { setPet(p); rememberPet(p); setOpen(null); toast.success(t("Теперь у вас {name}", { name: name(packs[open]) })); navigate(-1); }} />
+          onChosen={(p) => { setPet(p); rememberMyPet(p); setOpen(null); toast.success(t("Теперь у вас {name}", { name: name(packs[open]) })); navigate(-1); }} />
       )}
     </div>
   );
@@ -88,6 +88,12 @@ const PetSheet = ({ species, pack, pet, admin, onClose, onChosen }: {
   const choose = async () => {
     setBusy(true);
     try {
+      // Питомца ещё нет — заводим (пока только админ), затем пол и окрас.
+      if (!pet) {
+        const me = readCache<{ id?: string }>("user");
+        if (!me?.id) throw new Error(t("Не получилось"));
+        await api.grantPet(me.id, species);
+      }
       // Новый вид — свои украшения: сбрасываем на «по умолчанию для пола».
       onChosen(await api.updateMyPet({ species, sex, color: coat, accessories: null }));
     } catch (e) {
@@ -122,13 +128,13 @@ const PetSheet = ({ species, pack, pet, admin, onClose, onChosen }: {
         {pack.coats && Object.keys(pack.coats).length > 1 && (
           <CoatSwatches pack={pack} value={coat} onPick={setCoat} />
         )}
-        {admin && pet ? (
+        {admin ? (
           <button type="button" disabled={busy} onClick={() => void choose()}
             className="w-full h-12 rounded-md bg-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 disabled:opacity-60 active:opacity-90">
-            <Check className="w-5 h-5" />{pet.species === species ? t("Сохранить пол и окрас") : t("Выбрать")}
+            <Check className="w-5 h-5" />{!pet ? t("Завести") : pet.species === species ? t("Сохранить пол и окрас") : t("Выбрать")}
           </button>
         ) : (
-          <p className="text-center text-caption text-subtle">{admin ? t("Сначала заведите питомца") : t("Завести такого питомца пока нельзя — скоро")}</p>
+          <p className="text-center text-caption text-subtle">{t("Завести такого питомца пока нельзя — скоро")}</p>
         )}
       </div>
     </div>
