@@ -1,0 +1,328 @@
+{
+  "format": 2,
+  "species": "dog",
+  "rev": 1,
+  "name": {
+    "ru": "Пёс",
+    "en": "Dog",
+    "ko": "강아지"
+  },
+  "defaultName": {
+    "ru": "Шарик",
+    "en": "Buddy",
+    "ko": "바둑이"
+  },
+  "sexes": [
+    "m",
+    "f"
+  ],
+  "defaultNameBySex": {
+    "f": {
+      "ru": "Жучка",
+      "en": "Daisy",
+      "ko": "초코"
+    }
+  },
+  "accessories": {
+    "collar": {
+      "name": {
+        "ru": "Ошейник с жетоном",
+        "en": "Tag collar",
+        "ko": "이름표 목걸이"
+      },
+      "slot": "neck",
+      "default": true
+    },
+    "bandana": {
+      "name": {
+        "ru": "Бандана",
+        "en": "Bandana",
+        "ko": "반다나"
+      },
+      "slot": "neck"
+    },
+    "bow_tie": {
+      "name": {
+        "ru": "Бабочка",
+        "en": "Bow tie",
+        "ko": "나비넥타이"
+      },
+      "slot": "neck",
+      "sex": [
+        "m"
+      ]
+    },
+    "beads": {
+      "name": {
+        "ru": "Бусы",
+        "en": "Beads",
+        "ko": "구슬 목걸이"
+      },
+      "slot": "neck",
+      "sex": [
+        "f"
+      ]
+    },
+    "bow_head": {
+      "name": {
+        "ru": "Бантик на голову",
+        "en": "Hair bow",
+        "ko": "머리 리본"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    },
+    "flower": {
+      "name": {
+        "ru": "Цветочек",
+        "en": "Flower",
+        "ko": "꽃"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ]
+    },
+    "crown": {
+      "name": {
+        "ru": "Корона",
+        "en": "Crown",
+        "ko": "왕관"
+      },
+      "slot": "head"
+    }
+  },
+  "texts": {
+    "tap": {
+      "ru": "{name} виляет хвостом — +1 к вайбу",
+      "en": "{name} wags — +1 vibe",
+      "ko": "{name}이(가) 꼬리를 흔들어요 — 바이브 +1"
+    }
+  },
+  "scale": 0.3,
+  "author": "WYX",
+  "defaultCoat": "patch",
+  "coats": {
+    "patch": {
+      "name": {
+        "ru": "С пятнышком",
+        "en": "Patch",
+        "ko": "얼룩이"
+      },
+      "colors": {}
+    },
+    "white": {
+      "name": {
+        "ru": "Белый",
+        "en": "White",
+        "ko": "흰색"
+      },
+      "colors": {
+        "spot": "#FFFFFF",
+        "bib": "#FFFFFF"
+      }
+    },
+    "beagle": {
+      "name": {
+        "ru": "Бигль",
+        "en": "Beagle",
+        "ko": "비글"
+      },
+      "colors": {
+        "fur": "#E9B676",
+        "spot": "#8A5A2E",
+        "bib": "#FFFFFF",
+        "ink": "#2E1F14"
+      }
+    },
+    "golden": {
+      "name": {
+        "ru": "Золотистый",
+        "en": "Golden",
+        "ko": "골든"
+      },
+      "colors": {
+        "fur": "#F2C46D",
+        "spot": "#D9963A",
+        "bib": "#FFF1D6",
+        "ink": "#3A2A16"
+      }
+    },
+    "chocolate": {
+      "name": {
+        "ru": "Шоколадный",
+        "en": "Chocolate",
+        "ko": "초콜릿"
+      },
+      "colors": {
+        "fur": "#8B5E3C",
+        "spot": "#5A3A22",
+        "bib": "#D8B48C",
+        "ink": "#24170E",
+        "eye": "#140C07",
+        "nose": "#140C07",
+        "face": "#D8B48C"
+      }
+    },
+    "black": {
+      "name": {
+        "ru": "Чёрный",
+        "en": "Black",
+        "ko": "검은색"
+      },
+      "colors": {
+        "fur": "#3A3A42",
+        "spot": "#24242A",
+        "bib": "#9A9AA6",
+        "ink": "#121216",
+        "eye": "#F5C842",
+        "face": "#C9C9D2"
+      }
+    },
+    "grey": {
+      "name": {
+        "ru": "Серый",
+        "en": "Grey",
+        "ko": "회색"
+      },
+      "colors": {
+        "fur": "#C3C8D0",
+        "spot": "#7D8592",
+        "bib": "#EEF0F3"
+      }
+    },
+    "pink": {
+      "name": {
+        "ru": "Розовый",
+        "en": "Pink",
+        "ko": "분홍"
+      },
+      "colors": {
+        "fur": "#FAD3DD",
+        "spot": "#E58FAE",
+        "bib": "#FFF0F4"
+      }
+    },
+    "mint": {
+      "name": {
+        "ru": "Мятный",
+        "en": "Mint",
+        "ko": "민트"
+      },
+      "colors": {
+        "fur": "#C6EBDC",
+        "spot": "#6FBF9F",
+        "bib": "#EFFAF5"
+      }
+    }
+  },
+  "palette": {
+    "ink": "#1E1B17",
+    "fur": "#FFFFFF",
+    "eye": "#1E1B18",
+    "nose": "#1F1B17",
+    "face": "#1E1C17",
+    "spot": "#D9B98C",
+    "bib": "#FFF6E8"
+  },
+  "canvas": [
+    200,
+    240
+  ],
+  "anchor": [
+    100,
+    200
+  ],
+  "poses": {
+    "sit": {
+      "file": "sit.json",
+      "files": {
+        "f": "sit-f.json"
+      },
+      "loop": true
+    },
+    "purr": {
+      "file": "purr.json",
+      "files": {
+        "f": "purr-f.json"
+      },
+      "loop": true
+    },
+    "walk": {
+      "file": "walk.json",
+      "files": {
+        "f": "walk-f.json"
+      },
+      "speed": 18,
+      "facing": "right",
+      "loop": true
+    },
+    "lie": {
+      "file": "lie.json",
+      "files": {
+        "f": "lie-f.json"
+      },
+      "loop": true
+    },
+    "sleep": {
+      "file": "sleep.json",
+      "files": {
+        "f": "sleep-f.json"
+      },
+      "loop": true
+    },
+    "belly": {
+      "file": "belly.json",
+      "files": {
+        "f": "belly-f.json"
+      },
+      "loop": true
+    },
+    "scratch": {
+      "file": "scratch.json",
+      "files": {
+        "f": "scratch-f.json"
+      },
+      "loop": true
+    },
+    "bury": {
+      "file": "bury.json",
+      "files": {
+        "f": "bury-f.json"
+      },
+      "facing": "right",
+      "loop": true
+    },
+    "eat": {
+      "file": "eat.json",
+      "files": {
+        "f": "eat-f.json"
+      },
+      "loop": true
+    },
+    "sad": {
+      "file": "sad.json",
+      "files": {
+        "f": "sad-f.json"
+      },
+      "loop": true
+    },
+    "sick": {
+      "file": "sick.json",
+      "files": {
+        "f": "sick-f.json"
+      },
+      "loop": true
+    },
+    "sulk": {
+      "file": "sulk.json",
+      "files": {
+        "f": "sulk-f.json"
+      },
+      "loop": true
+    }
+  }
+}

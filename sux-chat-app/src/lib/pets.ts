@@ -386,10 +386,14 @@ export function warmPurr(): void {
 /**
  * Звук на тап по виду (manifest.sounds.tap): synth:purr — мурчание кота,
  * synth:chatter — довольный скрип зубами кролика. Вибрация — в обоих.
+ * Пак без звука (пёс) — только вибрация, а не чужое мурчание; пак ещё не
+ * загрузился — мурчание, как раньше.
  */
 export function tapSound(pack: PetPack | null | undefined): void {
-  const s = pack?.sounds?.tap || pack?.sounds?.purr || "synth:purr";
-  if (s === "synth:chatter") chatter(); else purr();
+  const s = pack?.sounds?.tap || pack?.sounds?.purr || (pack ? "" : "synth:purr");
+  if (s === "synth:chatter") chatter();
+  else if (s === "synth:purr") purr();
+  else softRumble(500, 0.12);
 }
 
 /** Кролик доволен — мелко «скрипит» зубами: частые мягкие щелчки около 2 кГц. */

@@ -1,0 +1,340 @@
+{
+  "format": 2,
+  "species": "kitty",
+  "rev": 5,
+  "name": {
+    "ru": "Котик",
+    "en": "Kitty",
+    "ko": "아기 고양이"
+  },
+  "defaultName": {
+    "ru": "Мистер Кот",
+    "en": "Mister Cat",
+    "ko": "미스터 고양이"
+  },
+  "sexes": [
+    "m",
+    "f"
+  ],
+  "defaultNameBySex": {
+    "f": {
+      "ru": "Мисс Кошка",
+      "en": "Miss Kitty",
+      "ko": "미스 고양이"
+    }
+  },
+  "accessories": {
+    "bow_tie": {
+      "name": {
+        "ru": "Бабочка",
+        "en": "Bow tie",
+        "ko": "나비넥타이"
+      },
+      "slot": "neck",
+      "sex": [
+        "m"
+      ],
+      "default": true
+    },
+    "beads": {
+      "name": {
+        "ru": "Бусы",
+        "en": "Beads",
+        "ko": "구슬 목걸이"
+      },
+      "slot": "neck",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    },
+    "collar": {
+      "name": {
+        "ru": "Ошейник с колокольчиком",
+        "en": "Bell collar",
+        "ko": "방울 목걸이"
+      },
+      "slot": "neck"
+    },
+    "bow_head": {
+      "name": {
+        "ru": "Бантик на голову",
+        "en": "Hair bow",
+        "ko": "머리 리본"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    },
+    "flower": {
+      "name": {
+        "ru": "Цветочек",
+        "en": "Flower",
+        "ko": "꽃"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ]
+    },
+    "crown": {
+      "name": {
+        "ru": "Корона",
+        "en": "Crown",
+        "ko": "왕관"
+      },
+      "slot": "head"
+    }
+  },
+  "texts": {
+    "tap": {
+      "ru": "{name} мурчит — +1 к вайбу",
+      "en": "{name} purrs — +1 vibe",
+      "ko": "{name}이(가) 골골거려요 — 바이브 +1"
+    }
+  },
+  "canvas": [
+    200,
+    240
+  ],
+  "anchor": [
+    100,
+    200
+  ],
+  "scale": 0.3,
+  "author": "WYX",
+  "sounds": {
+    "purr": "synth:purr",
+    "tap": "synth:purr"
+  },
+  "palette": {
+    "ink": "#1E1B17",
+    "fur": "#FFFFFF",
+    "eye": "#1E1B18",
+    "face": "#1E1C17",
+    "nose": "#1F1B17",
+    "tip": "#1E1B19"
+  },
+  "defaultCoat": "white",
+  "coats": {
+    "white": {
+      "name": {
+        "ru": "Белый",
+        "en": "White",
+        "ko": "흰색"
+      },
+      "colors": {}
+    },
+    "ginger": {
+      "name": {
+        "ru": "Рыжий",
+        "en": "Ginger",
+        "ko": "치즈"
+      },
+      "colors": {
+        "fur": "#F7B46A",
+        "tip": "#D2702F",
+        "ink": "#3B2416",
+        "eye": "#2A1A10",
+        "face": "#3B2416",
+        "nose": "#C2574A"
+      }
+    },
+    "grey": {
+      "name": {
+        "ru": "Серый",
+        "en": "Grey",
+        "ko": "회색"
+      },
+      "colors": {
+        "fur": "#C3C8D0",
+        "tip": "#5F656E",
+        "nose": "#B5707E"
+      }
+    },
+    "black": {
+      "name": {
+        "ru": "Чёрный",
+        "en": "Black",
+        "ko": "검은색"
+      },
+      "colors": {
+        "fur": "#3A3A42",
+        "ink": "#121216",
+        "eye": "#F5C842",
+        "face": "#C9C9D2",
+        "nose": "#E98AA0",
+        "tip": "#1B1B20"
+      }
+    },
+    "cream": {
+      "name": {
+        "ru": "Кремовый",
+        "en": "Cream",
+        "ko": "크림"
+      },
+      "colors": {
+        "fur": "#F4E4C6",
+        "tip": "#A87A4C",
+        "ink": "#2E2318",
+        "nose": "#B8705E"
+      }
+    },
+    "mint": {
+      "name": {
+        "ru": "Мятный",
+        "en": "Mint",
+        "ko": "민트"
+      },
+      "colors": {
+        "fur": "#C6EBDC",
+        "tip": "#2F6B57"
+      }
+    },
+    "pink": {
+      "name": {
+        "ru": "Розовый",
+        "en": "Pink",
+        "ko": "분홍"
+      },
+      "colors": {
+        "fur": "#FAD3DD",
+        "tip": "#D9728C",
+        "nose": "#C45A78"
+      }
+    },
+    "siamese": {
+      "name": {
+        "ru": "Сиамский",
+        "en": "Siamese",
+        "ko": "샴"
+      },
+      "colors": {
+        "fur": "#F3E7D3",
+        "tip": "#4A3326",
+        "ink": "#3A2A20",
+        "eye": "#4F9BE0",
+        "face": "#4A3326",
+        "nose": "#4A3326"
+      }
+    },
+    "blue": {
+      "name": {
+        "ru": "Русский голубой",
+        "en": "Russian blue",
+        "ko": "러시안 블루"
+      },
+      "colors": {
+        "fur": "#8FA3B8",
+        "tip": "#56677C",
+        "ink": "#232B36",
+        "eye": "#3FAE5A",
+        "nose": "#6E7F95"
+      }
+    },
+    "lilac": {
+      "name": {
+        "ru": "Сиреневый",
+        "en": "Lilac",
+        "ko": "라일락"
+      },
+      "colors": {
+        "fur": "#DCCDF4",
+        "tip": "#8F6CCB",
+        "nose": "#B07ACB"
+      }
+    }
+  },
+  "poses": {
+    "sit": {
+      "file": "sit.json",
+      "files": {
+        "f": "sit-f.json"
+      },
+      "loop": true
+    },
+    "purr": {
+      "file": "purr.json",
+      "files": {
+        "f": "purr-f.json"
+      },
+      "loop": true,
+      "sound": "purr"
+    },
+    "walk": {
+      "file": "walk.json",
+      "files": {
+        "f": "walk-f.json"
+      },
+      "loop": true,
+      "speed": 18,
+      "facing": "right"
+    },
+    "lie": {
+      "file": "lie.json",
+      "files": {
+        "f": "lie-f.json"
+      },
+      "loop": true
+    },
+    "sleep": {
+      "file": "sleep.json",
+      "files": {
+        "f": "sleep-f.json"
+      },
+      "loop": true
+    },
+    "belly": {
+      "file": "belly.json",
+      "files": {
+        "f": "belly-f.json"
+      },
+      "loop": true
+    },
+    "scratch": {
+      "file": "scratch.json",
+      "files": {
+        "f": "scratch-f.json"
+      },
+      "loop": true
+    },
+    "bury": {
+      "file": "bury.json",
+      "files": {
+        "f": "bury-f.json"
+      },
+      "loop": true,
+      "facing": "right"
+    },
+    "eat": {
+      "file": "eat.json",
+      "files": {
+        "f": "eat-f.json"
+      },
+      "loop": true
+    },
+    "sad": {
+      "file": "sad.json",
+      "files": {
+        "f": "sad-f.json"
+      },
+      "loop": true
+    },
+    "sick": {
+      "file": "sick.json",
+      "files": {
+        "f": "sick-f.json"
+      },
+      "loop": true
+    },
+    "sulk": {
+      "file": "sulk.json",
+      "files": {
+        "f": "sulk-f.json"
+      },
+      "loop": true
+    }
+  }
+}

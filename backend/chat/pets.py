@@ -40,7 +40,7 @@ from .models import Chat, ChatParticipant, Pet, PetCare, Profile
 
 logger = logging.getLogger(__name__)
 
-SPECIES = ("cat", "rabbit", "frog")
+SPECIES = ("cat", "rabbit", "frog", "kitty", "bunny", "dog")
 SEXES = ("m", "f")
 ACC_MAX = 8
 DAY_DECAY = 25.0
