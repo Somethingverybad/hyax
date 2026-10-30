@@ -15,7 +15,9 @@ const { chromium } = await import(pw);
 const [dir, out, sex = "m", coat = "", only = "", framesArg = "3"] = process.argv.slice(2);
 const man = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
 const keys = only ? only.split(",") : Object.keys(man.poses);
-const poses = Object.fromEntries(keys.map((k) => [k, JSON.parse(fs.readFileSync(`${dir}/${man.poses[k].file}`, "utf8"))]));
+// У пола может быть свой файл позы (poses.<поза>.files.f) — как в приложении (lib/pets.ts).
+const poseFile = (k) => (man.poses[k].files || {})[sex] || man.poses[k].file;
+const poses = Object.fromEntries(keys.map((k) => [k, JSON.parse(fs.readFileSync(`${dir}/${poseFile(k)}`, "utf8"))]));
 const lottie = fs.readFileSync(path.join(repo, "sux-chat-app/node_modules/lottie-web/build/player/lottie.min.js"), "utf8");
 const look = fs.readFileSync(path.join(here, "look.js"), "utf8");
 const k = 0.9, [cw, ch] = man.canvas, frames = Number(framesArg);
