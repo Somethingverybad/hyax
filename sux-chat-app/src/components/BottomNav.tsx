@@ -9,6 +9,7 @@ import { useMint, MintIcon, type MintIconName } from "@/themes/mint";
 import { readCache } from "@/lib/session-cache";
 import type { WallState } from "@/api/client";
 import { useSections } from "@/lib/sections";
+import { useNavTabs, type NavTab } from "@/lib/navTabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 import RailPlayer from "@/components/RailPlayer";
 import { useRailPos } from "@/lib/railPos";
@@ -36,27 +37,27 @@ const WallBadge = ({ n }: { n: number }) => n > 0 ? (
  * до края экрана. На широком окне — вертикальная панель у левого края
  * (NavRail); экраны с ней отступают слева на её ширину (класс nav-rail-pad).
  */
-const ITEMS = [
-  { to: "/chat", label: "Чаты", icon: MessageSquare },
-  { to: "/wall", label: "Стена", icon: Newspaper },
-  { to: "/saved", label: "Избранное", icon: Bookmark },
-  { to: "/music", label: "Музыка", icon: Music2 },
-  { to: "/profile", label: "Настройки", icon: Settings },
-];
+/** Вкладки — одна запись на каждую: путь, подпись, иконка обычной темы и
+ *  «Мяты». Порядок и набор — lib/navTabs (настраивается в «Внешнем виде»). */
+export const TAB_DEFS: Record<NavTab, { to: string; label: string; icon: typeof MessageSquare; mint: MintIconName; size: [number, number] }> = {
+  chat: { to: "/chat", label: "Чаты", icon: MessageSquare, mint: "navChat", size: [28, 20] },
+  wall: { to: "/wall", label: "Стена", icon: Newspaper, mint: "navWall", size: [21, 21] },
+  saved: { to: "/saved", label: "Избранное", icon: Bookmark, mint: "navSaved", size: [16, 21] },
+  music: { to: "/music", label: "Музыка", icon: Music2, mint: "navMusic", size: [17, 21] },
+  profile: { to: "/profile", label: "Настройки", icon: Settings, mint: "navSettings", size: [23, 23] },
+};
 
-/** «Мята»: остров по макету — свои иконки и порядок вкладок. */
-const MINT_ITEMS: { to: string; label: string; icon: MintIconName; size: [number, number] }[] = [
-  { to: "/music", label: "Музыка", icon: "navMusic", size: [17, 21] },
-  { to: "/saved", label: "Избранное", icon: "navSaved", size: [16, 21] },
-  { to: "/chat", label: "Чаты", icon: "navChat", size: [28, 20] },
-  { to: "/wall", label: "Стена", icon: "navWall", size: [21, 21] },
-  { to: "/profile", label: "Настройки", icon: "navSettings", size: [23, 23] },
-];
+/** На телефоне в «Мяте» последняя вкладка — «Профиль» с человечком, как в
+ *  мобильном макете; на широком окне (NavRail) — «Настройки» с шестерёнкой:
+ *  там экран открывается колонкой настроек. */
+export const MINT_PROFILE = { label: "Профиль", mint: "navProfile" as MintIconName, size: [21, 22] as [number, number] };
 
-/** На телефоне последняя вкладка — «Профиль» с человечком, как в мобильном
- *  макете; на широком окне (NavRail) — «Настройки» с шестерёнкой: там экран
- *  открывается колонкой настроек. */
-const MINT_PROFILE: (typeof MINT_ITEMS)[number] = { to: "/profile", label: "Профиль", icon: "navProfile", size: [21, 22] };
+/** Вкладки меню по порядку; Стену можно выключить целиком (lib/sections). */
+const useTabs = (mint: boolean) => {
+  const { tabs } = useNavTabs(mint);
+  const sections = useSections();
+  return tabs.filter((id) => id !== "wall" || sections.wall).map((id) => ({ id, ...TAB_DEFS[id] }));
+};
 
 /** Вкладки — ссылки, и долгое нажатие на телефоне начинало их «перетаскивать»
  *  с подсказкой https://localhost/chat (баг-репорт): ни тянуть, ни меню ссылки. */
@@ -74,9 +75,9 @@ let lastMintIndex = -1;
 const MintIsland = () => {
   const { pathname } = useLocation();
   const wallNew = useWallNew();
-  // Стену можно скрыть (lib/sections) — тогда вкладок четыре.
-  const sections = useSections();
-  const items = MINT_ITEMS.filter((i) => i.to !== "/wall" || sections.wall).map((i) => i.to === "/profile" ? MINT_PROFILE : i);
+  const items = useTabs(true).map((d) => d.id === "profile"
+    ? { to: d.to, label: MINT_PROFILE.label, icon: MINT_PROFILE.mint, size: MINT_PROFILE.size }
+    : { to: d.to, label: d.label, icon: d.mint, size: d.size });
   const idx = items.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
   const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
   // Остров висит поверх контента: экраны отступают снизу на его высоту
@@ -122,9 +123,7 @@ const NavRail = ({ mint }: { mint: boolean }) => {
   const { pathname } = useLocation();
   const railPos = useRailPos();
   const wallNew = useWallNew();
-  const sections = useSections();
-  const items = ITEMS.filter((i) => i.to !== "/wall" || sections.wall);
-  const mintIcons = Object.fromEntries(MINT_ITEMS.map((i) => [i.to, i]));
+  const items = useTabs(false);
   const idx = items.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
   const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
   useLayoutEffect(() => {
@@ -137,13 +136,13 @@ const NavRail = ({ mint }: { mint: boolean }) => {
     <div className={cn("nav-rail-wrap", mint ? "mint-rail-wrap" : "ui-nav-rail border-r border-border bg-background")} data-pos={railPos}>
       <nav className={cn("nav-rail-tabs", mint ? "mint-rail" : "flex flex-col gap-1")} aria-label={t("Разделы")}>
         {mint && pos >= 0 && pos < items.length && <span className="mint-rail-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
-        {items.map(({ to, label, icon: Icon }) => (
+        {items.map(({ id, to, label, icon: Icon }) => (
           <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} {...NO_DRAG}
             className={({ isActive }) => mint
               ? cn("mint-rail-item", isActive && "mint-nav-on")
               : cn("ui-nav-item relative flex items-center justify-center w-12 h-12 rounded-md transition-colors hover:bg-surface-2",
                 isActive ? "ui-nav-on text-primary" : "text-subtle")}>
-            {mint ? <MintIcon name={mintIcons[to].icon} size={mintIcons[to].size} /> : <Icon className="w-6 h-6" />}
+            {mint ? <MintIcon name={TAB_DEFS[id].mint} size={TAB_DEFS[id].size} /> : <Icon className="w-6 h-6" />}
             {to === "/wall" && <WallBadge n={wallNew} />}
           </NavLink>
         ))}
@@ -160,13 +159,13 @@ const NavRail = ({ mint }: { mint: boolean }) => {
 const BottomNav = () => {
   const mint = useMint();
   const wallNew = useWallNew();
-  const sections = useSections();
+  const items = useTabs(false);
   const isMobile = useIsMobile();
   if (isMobile === false) return <NavRail mint={mint} />;
   if (mint) return <MintIsland />;
   return (
     <nav className="ui-bottom-nav shrink-0 flex border-t border-border bg-background pad-safe-bottom">
-      {ITEMS.filter((i) => i.to !== "/wall" || sections.wall).map(({ to, label, icon: Icon }) => (
+      {items.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
