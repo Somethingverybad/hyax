@@ -11,7 +11,7 @@ import PetSprite from "./PetSprite";
 /** Через сколько снова можно ухаживать: «через 5 ч» / «через 20 мин». */
 const DOUBLE_TAP = 320; // мс между тапами — «покормить»
 // Виды для проверки админом (как SPECIES в chat/pets.py); в магазине — из каталога.
-const PET_SPECIES: [string, string][] = [["cat", "Кот"], ["rabbit", "Кролик"]];
+const PET_SPECIES: [string, string][] = [["cat", "Кот"], ["rabbit", "Кролик"], ["frog", "Жаба"]];
 
 function untilText(iso: string | null): string {
   if (!iso) return "";

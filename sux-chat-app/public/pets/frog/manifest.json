@@ -1,0 +1,255 @@
+{
+  "format": 2,
+  "species": "frog",
+  "rev": 2,
+  "name": {
+    "ru": "Жаба",
+    "en": "Frog",
+    "ko": "개구리"
+  },
+  "defaultName": {
+    "ru": "Жабич",
+    "en": "Froggy",
+    "ko": "개굴이"
+  },
+  "sexes": [
+    "m",
+    "f"
+  ],
+  "defaultNameBySex": {
+    "f": {
+      "ru": "Жабуля",
+      "en": "Miss Froggy",
+      "ko": "개굴양"
+    }
+  },
+  "accessories": {
+    "hat": {
+      "name": {
+        "ru": "Шляпа",
+        "en": "Top hat",
+        "ko": "실크햇"
+      },
+      "slot": "head",
+      "sex": [
+        "m"
+      ],
+      "default": true
+    },
+    "flower": {
+      "name": {
+        "ru": "Цветочек",
+        "en": "Flower",
+        "ko": "꽃"
+      },
+      "slot": "head",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    },
+    "crown": {
+      "name": {
+        "ru": "Корона",
+        "en": "Crown",
+        "ko": "왕관"
+      },
+      "slot": "head"
+    },
+    "beads": {
+      "name": {
+        "ru": "Бусы",
+        "en": "Beads",
+        "ko": "구슬 목걸이"
+      },
+      "slot": "neck",
+      "sex": [
+        "f"
+      ],
+      "default": true
+    },
+    "bow_tie": {
+      "name": {
+        "ru": "Бабочка",
+        "en": "Bow tie",
+        "ko": "나비넥타이"
+      },
+      "slot": "neck",
+      "sex": [
+        "m"
+      ]
+    }
+  },
+  "texts": {
+    "tap": {
+      "ru": "{name} квакает — +1 к вайбу",
+      "en": "{name} croaks — +1 vibe",
+      "ko": "{name}이(가) 개굴개굴 — 바이브 +1"
+    }
+  },
+  "canvas": [
+    200,
+    240
+  ],
+  "anchor": [
+    100,
+    200
+  ],
+  "scale": 0.3,
+  "author": "WYX",
+  "sounds": {
+    "tap": "synth:chatter"
+  },
+  "palette": {
+    "ink": "#050505",
+    "skin": "#8FD368",
+    "spot": "#3F762F",
+    "glint": "#FFFFFF",
+    "eye": "#000000",
+    "mouth": "#010000"
+  },
+  "defaultCoat": "green",
+  "coats": {
+    "green": {
+      "name": {
+        "ru": "Зелёная",
+        "en": "Green",
+        "ko": "초록"
+      },
+      "colors": {}
+    },
+    "blue": {
+      "name": {
+        "ru": "Голубая",
+        "en": "Blue",
+        "ko": "파랑"
+      },
+      "colors": {
+        "skin": "#6BBAF0",
+        "spot": "#1F5D99"
+      }
+    },
+    "gold": {
+      "name": {
+        "ru": "Золотая",
+        "en": "Golden",
+        "ko": "황금"
+      },
+      "colors": {
+        "skin": "#F6D55C",
+        "spot": "#A9801A"
+      }
+    },
+    "pink": {
+      "name": {
+        "ru": "Розовая",
+        "en": "Pink",
+        "ko": "분홍"
+      },
+      "colors": {
+        "skin": "#F8AFCB",
+        "spot": "#C2577F"
+      }
+    },
+    "lilac": {
+      "name": {
+        "ru": "Сиреневая",
+        "en": "Lilac",
+        "ko": "라일락"
+      },
+      "colors": {
+        "skin": "#BFA6F0",
+        "spot": "#6E52B5"
+      }
+    },
+    "toad": {
+      "name": {
+        "ru": "Бурая",
+        "en": "Toad brown",
+        "ko": "갈색"
+      },
+      "colors": {
+        "skin": "#B88D62",
+        "spot": "#6E4A2A"
+      }
+    },
+    "albino": {
+      "name": {
+        "ru": "Альбинос",
+        "en": "Albino",
+        "ko": "알비노"
+      },
+      "colors": {
+        "skin": "#F4EFE4",
+        "spot": "#C8B9A2",
+        "eye": "#D9475B"
+      }
+    },
+    "night": {
+      "name": {
+        "ru": "Ночная",
+        "en": "Night",
+        "ko": "밤"
+      },
+      "colors": {
+        "skin": "#3C4250",
+        "spot": "#0E1118",
+        "eye": "#F5C842",
+        "mouth": "#C9C9D2"
+      }
+    }
+  },
+  "poses": {
+    "sit": {
+      "file": "sit.json",
+      "loop": true
+    },
+    "purr": {
+      "file": "purr.json",
+      "loop": true
+    },
+    "walk": {
+      "file": "walk.json",
+      "loop": true,
+      "speed": 32,
+      "facing": "right"
+    },
+    "lie": {
+      "file": "lie.json",
+      "loop": true
+    },
+    "sleep": {
+      "file": "sleep.json",
+      "loop": true
+    },
+    "belly": {
+      "file": "belly.json",
+      "loop": true
+    },
+    "scratch": {
+      "file": "scratch.json",
+      "loop": true
+    },
+    "bury": {
+      "file": "bury.json",
+      "loop": true,
+      "facing": "right"
+    },
+    "eat": {
+      "file": "eat.json",
+      "loop": true
+    },
+    "sad": {
+      "file": "sad.json",
+      "loop": true
+    },
+    "sick": {
+      "file": "sick.json",
+      "loop": true
+    },
+    "sulk": {
+      "file": "sulk.json",
+      "loop": true
+    }
+  }
+}
