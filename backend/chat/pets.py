@@ -234,8 +234,9 @@ def trim_to_limit(chat: Chat, by: Profile | None) -> int:
     return len(extra)
 
 
-def _tell_members(pet: Pet, chat_ids, from_chat_id) -> None:
-    """Участникам старого и нового чата: питомец ушёл / пришёл — лапка в списке и кот в ленте."""
+def _tell_members(pet: Pet, chat_ids, from_chat_id, gone: bool = False) -> None:
+    """Участникам старого и нового чата: питомец ушёл / пришёл — лапка в списке и кот в ленте.
+    gone — питомца удалили совсем: клиенты забывают его, а не только уводят домой."""
     try:
         from asgiref.sync import async_to_sync
         from channels.layers import get_channel_layer
@@ -246,6 +247,8 @@ def _tell_members(pet: Pet, chat_ids, from_chat_id) -> None:
         ids.add(pet.owner_id)
         data = {"type": "pet_moved", "pet": pet_json(pet, brief=True),
                 "from_chat_id": str(from_chat_id) if from_chat_id else None}
+        if gone:
+            data["gone"] = True
         for uid in ids:
             async_to_sync(layer.group_send)(f"user_{uid}", {"type": "notification", "data": data})
     except Exception:
@@ -433,8 +436,21 @@ class PetCareView(APIView):
 
 
 class MyPetView(APIView):
-    """PATCH /api/pets/mine/ {name?, show_in_chats?, chat_id?, color?} — кличка, окрас; позвать в чат (chat_id) или домой (null)."""
+    """PATCH /api/pets/mine/ {name?, show_in_chats?, chat_id?, color?} — кличка, окрас; позвать в чат (chat_id) или домой (null).
+    DELETE — отпустить своего питомца насовсем (завести нового пока может только админ)."""
     permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        me = _me(request)
+        pet = Pet.objects.filter(owner=me).first() if me else None
+        if not pet:
+            return Response({"error": "Питомца нет"}, status=404)
+        # Из чата он уходит у всех сразу: то же событие, что «домой», с пометкой gone.
+        old = pet.chat_id
+        pet.chat = None
+        _tell_members(pet, [old] if old else [], old, gone=True)
+        pet.delete()
+        return Response(status=204)
 
     def patch(self, request):
         me = _me(request)

@@ -4,8 +4,9 @@ import { Hand, Pencil, Utensils, PawPrint, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, type Pet, type PetAction } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { bySex, moodInfo, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
+import { bySex, forgetPet, moodInfo, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
 import { readCache } from "@/lib/session-cache";
+import { confirmDialog } from "@/lib/confirm";
 import Identicon from "@/components/Identicon";
 import PetSprite from "./PetSprite";
 import CoatSwatches from "./CoatSwatches";
@@ -138,6 +139,19 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
     try { const p = await api.updateMyPet({ chat_id: null }); setPet(p); rememberPet(p); toast.success(t(bySex(pet.sex, "{name} ушёл домой", "{name} ушла домой"), { name: title })); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
   };
+  // Отпустить насовсем — с подтверждением: «{name} будет скучать».
+  const release = async () => {
+    const admin = !!readCache<{ is_admin?: boolean }>("user")?.is_admin;
+    const msg = t("{name} будет скучать по вам. Удалить питомца насовсем?", { name: title })
+      + (admin ? "" : " " + t("Завести нового пока может только администратор."));
+    if (!(await confirmDialog(msg, { ok: t("Удалить"), danger: true }))) return;
+    try {
+      await api.deleteMyPet();
+      forgetPet(pet.id);
+      setPet(null);
+      toast.success(t(bySex(pet.sex, "{name} ушёл. Мы тоже будем скучать", "{name} ушла. Мы тоже будем скучать"), { name: title }));
+    } catch (e) { toast.error((e as Error).message || t("Не получилось")); }
+  };
   const later = untilText(pet.next_care_at);
 
   return (
@@ -269,6 +283,12 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
             <button type="button" onClick={() => void goHome()} className="h-9 px-3 rounded-md bg-surface-2 text-small font-medium shrink-0 active:opacity-80">{t("Домой")}</button>
           )}
         </div>
+      )}
+
+      {own && (
+        <button type="button" onClick={() => void release()} className="mt-4 w-full h-10 rounded-md text-small font-medium text-destructive active:bg-destructive/10">
+          {t("Удалить питомца")}
+        </button>
       )}
     </div>
   );

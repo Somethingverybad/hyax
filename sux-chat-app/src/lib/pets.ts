@@ -303,13 +303,21 @@ export function rememberPet(pet: Brief | Pet): void {
   emit();
 }
 
+/** Питомца удалили: убрать из чатов и из «моего питомца». */
+export function forgetPet(id: string): void {
+  inChats.delete(id);
+  if (myPet && myPet.id === id) myPet = null;
+  emit();
+}
+
 let socketBound = false;
 function bindSocket() {
   if (socketBound) return;
   socketBound = true;
-  onUserMessage((msg: { type?: string; data?: { type?: string; pet?: Brief } }) => {
+  onUserMessage((msg: { type?: string; data?: { type?: string; pet?: Brief; gone?: boolean } }) => {
     if (msg?.type !== "notification" || !msg.data?.pet) return;
-    if (msg.data.type === "pet" || msg.data.type === "pet_moved") rememberPet(msg.data.pet);
+    if (msg.data.type === "pet_moved" && msg.data.gone) forgetPet(msg.data.pet.id);
+    else if (msg.data.type === "pet" || msg.data.type === "pet_moved") rememberPet(msg.data.pet);
   });
 }
 

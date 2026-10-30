@@ -1775,6 +1775,15 @@ export const api = {
     return data;
   },
   /** Свой питомец: кличка; позвать в чат (chat_id) или домой (chat_id: null). */
+  /** Отпустить своего питомца насовсем (chat/pets.py MyPetView.delete). */
+  deleteMyPet: async (): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/pets/mine/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok && res.status !== 404) {
+      const data = await res.json().catch(() => ({}));
+      throw new LError((data as { error?: string }).error || `HTTP ${res.status}`);
+    }
+  },
+
   updateMyPet: async (patch: { name?: string; show_in_chats?: boolean; chat_id?: string | null; color?: string; sex?: "m" | "f"; accessories?: string[] | null; species?: string }): Promise<Pet> => {
     const res = await fetchWithAuth(`${API_URL}/pets/mine/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch) });
     const data = await res.json().catch(() => ({}));

@@ -211,6 +211,24 @@ class AdultPacksTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PetDeleteTests(TestCase):
+    """Хозяин отпускает питомца: запись удалена, повтор — 404, чужого не тронуть."""
+
+    def test_owner_deletes_pet(self):
+        from .models import Pet
+        me, other = make_user("petdel_me"), make_user("petdel_other")
+        chat = Chat.objects.create(kind="direct")
+        for p in (me, other):
+            ChatParticipant.objects.create(chat=chat, user=p)
+        Pet.objects.create(owner=me, species="cat", chat=chat)
+        Pet.objects.create(owner=other, species="dog")
+        r = client_for(me).delete("/api/pets/mine/")
+        self.assertEqual(r.status_code, 204)
+        self.assertFalse(Pet.objects.filter(owner=me).exists())
+        self.assertTrue(Pet.objects.filter(owner=other).exists())
+        self.assertEqual(client_for(me).delete("/api/pets/mine/").status_code, 404)
+
+
 class NavTabsTests(TestCase):
     """Нижнее меню как док: порядок вкладок в профиле, чаты и профиль — всегда."""
 
