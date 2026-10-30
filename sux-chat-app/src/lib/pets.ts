@@ -84,7 +84,12 @@ export interface PetCoat {
 /** Все виды по порядку витрины (pages/PetCatalog). Новый вид — пак в public/pets и строка здесь и в SPECIES (chat/pets.py). */
 export const PET_KINDS = ["cat", "kitty", "rabbit", "bunny", "dog", "frog"] as const;
 
-const base = () => (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+// От корня приложения, как звуки (/sounds/…): в сборке base: "./", и адрес
+// относительно страницы на /profile/pets уходил в /profile/pets/<вид>/… —
+// вместо пака приходила страница, на витрине не грузился ни один питомец
+// (баг-репорт 76afa590: телефон, компьютер, сайт). В профиле и чатах путь
+// случайно совпадал.
+const base = () => "/";
 const packs = new Map<string, Promise<PetPack>>();
 const poses = new Map<string, Promise<unknown>>();
 
