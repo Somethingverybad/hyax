@@ -3840,9 +3840,10 @@ class PeopleSearchView(APIView):
 
 class MessageSearchView(APIView):
     """GET /api/messages/search/?q=<текст>&chat=<id>&before=<iso>&limit=30 — поиск по
-    сообщениям (текст и расшифровки голосовых) в чатах, которые мне видны: где я
-    участник, Стена, публичные каналы. Секретные чаты — шифротекст, их не ищем.
-    Без chat — по всем, с chat — только в нём. before — курсор «старее этого».
+    сообщениям (текст и расшифровки голосовых). Без chat — по моим чатам и
+    каналам, где я подписчик, и по Стене (если включена, по её правилам); с chat —
+    в одном видимом мне чате (в том числе публичном канале без подписки).
+    Секретные чаты — шифротекст, их не ищем. before — курсор «старее этого».
     Не чаще 60 запросов в минуту."""
     permission_classes = [permissions.IsAuthenticated]
     LIMIT, PER_MINUTE, SNIPPET = 30, 60, 70
@@ -3869,9 +3870,10 @@ class MessageSearchView(APIView):
             limit = max(1, min(int(request.query_params.get("limit") or self.LIMIT), 50))
         except ValueError:
             limit = self.LIMIT
-        mine = ChatParticipant.objects.filter(user=me).values("chat_id")
+        from .serializers import is_admin_profile
+        from .wall import feed_queryset, wall_chat
+        admin = is_admin_profile(me)
         qs = (Message.objects
-              .filter(Q(chat_id__in=mine) | Q(chat__kind="wall") | Q(chat__kind="channel", chat__is_public=True))
               .exclude(chat__kind="secret").exclude(deleted_for_all=True).exclude(deleted_for=me)
               .filter(Q(content__icontains=q) | Q(voice_transcript__icontains=q)))
         chat_id = request.query_params.get("chat")
@@ -3879,7 +3881,20 @@ class MessageSearchView(APIView):
             chat = Chat.objects.filter(id=chat_id).first()
             if not chat or not _can_see_chat(chat, me):
                 return Response({"error": "Чат не найден"}, status=404)
-            qs = qs.filter(chat=chat)
+            if chat.kind == "wall":
+                qs = qs.filter(id__in=feed_queryset(me, chat, admin).values("id"))
+            else:
+                qs = qs.filter(chat=chat)
+        else:
+            # По всем — только мои чаты и каналы, где я подписчик, плюс Стена,
+            # если она включена, и по её правилам (скрытые модератором, 18+,
+            # скрытые авторы). Раньше сюда шли все публичные каналы и вся
+            # Стена: чужие посты, которых человек нигде бы не увидел.
+            mine = ChatParticipant.objects.filter(user=me).exclude(chat__kind="wall").values("chat_id")
+            scope = Q(chat_id__in=mine)
+            if me.wall_enabled:
+                scope |= Q(id__in=feed_queryset(me, wall_chat(), admin).values("id"))
+            qs = qs.filter(scope)
         blocked = blocked_ids(me)
         if blocked:
             qs = qs.exclude(sender_id__in=blocked)

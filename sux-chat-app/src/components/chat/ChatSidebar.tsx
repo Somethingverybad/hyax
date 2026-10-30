@@ -206,6 +206,9 @@ const ChatSidebar = ({
   }, [listFilter, userId]);
   // Сообщения по тексту во всех моих чатах (api.searchMessages) — ниже людей.
   const msgSearch = useMessageSearch(listFilter.replace(/^@/, ""));
+  // Служебные строки (Долгий ящик, Стена, Избранное) при поиске — только если
+  // запрос совпал с названием: иначе они стояли над результатами всегда.
+  const rowMatches = (title: string) => { const q = listFilter.trim().toLowerCase(); return !q || title.toLowerCase().includes(q); };
   // Фильтр-чипы под поиском: все чаты, только с непрочитанным, только каналы.
   const [listTab, setListTab] = useState<"all" | "unread" | "channels">("all");
   // Черновики (lib/drafts): в строке чата вместо последнего сообщения.
@@ -1034,7 +1037,7 @@ const ChatSidebar = ({
             справа над перепиской, а список от него зря уезжал вниз. */}
         <div className={mint ? "ui-chat-list" : undefined} style={{ paddingTop: mint ? `calc(${isMobileLayout ? "var(--player-h, 0px) + var(--call-h, 0px)" : "0px"} + var(--glass-h, 0px))` : isMobileLayout ? "calc(var(--player-h, 0px) + var(--call-h, 0px))" : "0px", transition: "padding-top 220ms cubic-bezier(0.32,0.72,0,1)" }}>
           {/* «Долгий ящик» — идеи разработчику; доступен всем, всегда первым. */}
-          {onOpenIdeabox && sections.ideabox && (
+          {onOpenIdeabox && sections.ideabox && rowMatches(t("Долгий ящик")) && (
             <div className="relative overflow-hidden">
             {hideSwipeButton("ideabox")}
             <button
@@ -1067,7 +1070,7 @@ const ChatSidebar = ({
             </button>
             </div>
           )}
-          {onOpenWall && sections.wall && (
+          {onOpenWall && sections.wall && rowMatches(t("Стена")) && (
             <div className="relative overflow-hidden hidden md:block">
             {hideSwipeButton("wall")}
             <button
@@ -1090,7 +1093,7 @@ const ChatSidebar = ({
             </button>
             </div>
           )}
-          {onOpenSaved && (
+          {onOpenSaved && rowMatches(t("Избранное")) && (
             <button
               type="button"
               onClick={onOpenSaved}
@@ -1107,35 +1110,6 @@ const ChatSidebar = ({
               </div>
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>
-          )}
-          {peopleHits.length > 0 && (
-            <div className="px-4 pt-2 pb-1">
-              <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Люди")}</p>
-              {(peopleAll ? peopleHits : peopleHits.slice(0, 5)).map((person) => (
-                <button key={person.id} type="button" onClick={() => { setListFilter(""); void createChat(person.id); }}
-                  className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
-                  <Aura active={false} owner={person as never} size={46}><Identicon id={person.id} avatarUrl={person.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
-                  <span className="min-w-0">
-                    <span className="block text-h2 md:text-[15px] truncate">{person.username}</span>
-                    <span className="block text-small text-subtle truncate">{(person as { bio?: string }).bio || `@${person.username}`} · {t("написать")}</span>
-                  </span>
-                </button>
-              ))}
-              {!peopleAll && peopleHits.length > 5 && (
-                <button type="button" onClick={() => setPeopleAll(true)} className="w-full py-2 text-small text-primary text-left">
-                  {t("Ещё люди: {n}", { n: peopleHits.length - 5 })}
-                </button>
-              )}
-            </div>
-          )}
-          {msgSearch.active && (msgSearch.hits.length > 0 || msgSearch.loading) && (
-            <div className="px-4 pt-2 pb-1">
-              <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Сообщения")}</p>
-              {msgSearch.loading && !msgSearch.hits.length && <p className="py-2 text-small text-subtle">{t("Ищу…")}</p>}
-              <MessageHits hits={msgSearch.hits} q={listFilter} showChat
-                onPick={(h) => { setPendingJump(h.chat.id, h.id); setListFilter(""); handleSelectChat(h.chat.id, h.chat.title, h.chat.kind); }}
-                hasMore={msgSearch.hasMore} onMore={msgSearch.more} loading={msgSearch.loading} />
-            </div>
           )}
           {chats.length > 0 ? (
             // ui-chat-list — общая подложка строк: в стиле «мягкие карточки»
@@ -1440,6 +1414,37 @@ const ChatSidebar = ({
                   {t("Пригласить друзей")}
                 </button>
               )}
+            </div>
+          )}
+          {/* Ниже моих чатов: люди по нику и сообщения (только мои чаты, каналы
+              с подпиской и Стена — chat/views.py MessageSearchView). */}
+          {peopleHits.length > 0 && (
+            <div className="px-4 pt-2 pb-1">
+              <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Люди")}</p>
+              {(peopleAll ? peopleHits : peopleHits.slice(0, 5)).map((person) => (
+                <button key={person.id} type="button" onClick={() => { setListFilter(""); void createChat(person.id); }}
+                  className="w-full flex items-center gap-3 py-2 text-left rounded-md hover:bg-surface-2 active:bg-surface-3">
+                  <Aura active={false} owner={person as never} size={46}><Identicon id={person.id} avatarUrl={person.avatar_url} className="w-[46px] h-[46px] md:w-9 md:h-9" /></Aura>
+                  <span className="min-w-0">
+                    <span className="block text-h2 md:text-[15px] truncate">{person.username}</span>
+                    <span className="block text-small text-subtle truncate">{(person as { bio?: string }).bio || `@${person.username}`} · {t("написать")}</span>
+                  </span>
+                </button>
+              ))}
+              {!peopleAll && peopleHits.length > 5 && (
+                <button type="button" onClick={() => setPeopleAll(true)} className="w-full py-2 text-small text-primary text-left">
+                  {t("Ещё люди: {n}", { n: peopleHits.length - 5 })}
+                </button>
+              )}
+            </div>
+          )}
+          {msgSearch.active && (msgSearch.hits.length > 0 || msgSearch.loading) && (
+            <div className="px-4 pt-2 pb-1">
+              <p className="text-caption uppercase tracking-wide text-subtle mb-1">{t("Сообщения")}</p>
+              {msgSearch.loading && !msgSearch.hits.length && <p className="py-2 text-small text-subtle">{t("Ищу…")}</p>}
+              <MessageHits hits={msgSearch.hits} q={listFilter} showChat
+                onPick={(h) => { setPendingJump(h.chat.id, h.id); setListFilter(""); handleSelectChat(h.chat.id, h.chat.title, h.chat.kind); }}
+                hasMore={msgSearch.hasMore} onMore={msgSearch.more} loading={msgSearch.loading} />
             </div>
           )}
         </div>

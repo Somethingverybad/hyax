@@ -2801,6 +2801,41 @@ class MessageSearchTests(TestCase):
         r = client_for(self.me).get(f"/api/messages/search/?q=завтра&chat={self.chat.id}")
         self.assertEqual(len(r.data["items"]), 1)
 
+    def test_across_chats_only_mine_and_subscribed(self):
+        # Общий поиск: мои чаты, каналы с подпиской, Стена по её правилам.
+        from .wall import wall_chat
+        ch = Chat.objects.create(kind="channel", is_public=True, name="чужой")
+        ChatParticipant.objects.create(chat=ch, user=self.stranger, role="owner")
+        Message.objects.create(chat=ch, sender=self.stranger, content="созвон в чужом канале")
+        wall = wall_chat()
+        Message.objects.create(chat=wall, sender=self.stranger, content="созвон на стене 4+", wall_safe=True)
+        Message.objects.create(chat=wall, sender=self.stranger, content="созвон на стене 18+", wall_safe=False)
+        Message.objects.create(chat=wall, sender=self.stranger, content="созвон скрытый", wall_safe=True, wall_hidden=True)
+        texts = lambda r: sorted(i["text"] for i in r.data["items"])
+        mine = ["про созвон голосом", "созвон завтра в 10 — договорились?"]
+        Profile.objects.filter(id=self.me.id).update(wall_enabled=False, allow_adult=False)
+        self.assertEqual(texts(client_for(self.me).get("/api/messages/search/?q=созвон")), mine)
+        Profile.objects.filter(id=self.me.id).update(wall_enabled=True)
+        self.assertEqual(texts(client_for(self.me).get("/api/messages/search/?q=созвон")), sorted(mine + ["созвон на стене 4+"]))
+        ChatParticipant.objects.create(chat=ch, user=self.me, role="subscriber")
+        self.assertIn("созвон в чужом канале", texts(client_for(self.me).get("/api/messages/search/?q=созвон")))
+
+    def test_inside_public_channel_and_wall_by_its_rules(self):
+        from .wall import wall_chat
+        ch = Chat.objects.create(kind="channel", is_public=True, name="чужой")
+        ChatParticipant.objects.create(chat=ch, user=self.stranger, role="owner")
+        Message.objects.create(chat=ch, sender=self.stranger, content="созвон в чужом канале")
+        wall = wall_chat()
+        Message.objects.create(chat=wall, sender=self.stranger, content="созвон на стене 4+", wall_safe=True)
+        Message.objects.create(chat=wall, sender=self.stranger, content="созвон на стене 18+", wall_safe=False)
+        Message.objects.create(chat=wall, sender=self.stranger, content="созвон скрытый", wall_safe=True, wall_hidden=True)
+        Profile.objects.filter(id=self.me.id).update(allow_adult=False)
+        texts = lambda r: sorted(i["text"] for i in r.data["items"])
+        r = client_for(self.me).get(f"/api/messages/search/?q=созвон&chat={ch.id}")
+        self.assertEqual(texts(r), ["созвон в чужом канале"])
+        r = client_for(self.me).get(f"/api/messages/search/?q=созвон&chat={wall.id}")
+        self.assertEqual(texts(r), ["созвон на стене 4+"])
+
     def test_snippet_is_clipped_around_match(self):
         Message.objects.create(chat=self.chat, sender=self.peer, content="а" * 200 + " иголка " + "б" * 200)
         r = client_for(self.me).get("/api/messages/search/?q=иголка")
