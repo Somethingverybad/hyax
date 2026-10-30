@@ -2114,7 +2114,9 @@ class MessageViewSet(viewsets.ModelViewSet):
 @permission_classes([AllowAny])
 def register_user(request):
     try:
-        username = request.data.get('username')
+        # Пробел по краям — от подсказок клавиатуры iPhone («Demo »). Вход
+        # его срезает, и аккаунт с пробелом в нике войти уже не мог.
+        username = (request.data.get('username') or '').strip()
         password = request.data.get('password')
 
         if not all([username, password]):

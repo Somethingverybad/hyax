@@ -34,6 +34,16 @@ class RegisterTermsTests(TestCase):
         self.assertEqual(r.status_code, 201)
         self.assertIsNotNone(Profile.objects.get(username="neo").terms_accepted_at)
 
+    def test_trailing_space_is_stripped_and_login_works(self):
+        # Подсказка клавиатуры iPhone дописывает пробел: «Demo » → вход не находил ник.
+        r = APIClient().post("/api/auth/register/", {"username": "Demo ", "password": "pass-12345", "accept_terms": True}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(Profile.objects.filter(username="Demo").exists())
+        r = APIClient().post("/api/token/", {"username": "Demo ", "password": "pass-12345"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        r = APIClient().post("/api/auth/register/", {"username": " demo", "password": "pass-12345"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
     def test_old_client_without_flag_still_registers(self):
         r = APIClient().post("/api/auth/register/", {"username": "old", "password": "pass-12345"}, format="json")
         self.assertEqual(r.status_code, 201)

@@ -95,9 +95,10 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      const name = username.trim();
       const data = isLogin
-        ? await api.login(username, password)
-        : await api.register(username, password, agreed);
+        ? await api.login(name, password)
+        : await api.register(name, password, agreed);
 
       const failed = (data as { error?: string }).error;
       if (failed) throw new Error(failed);
@@ -106,7 +107,7 @@ const Auth = () => {
       // поэтому сразу входим теми же данными. Иначе переход на /chat случался,
       // но экран не находил токен и возвращал обратно на форму.
       if (!isLogin) {
-        await api.login(username, password);
+        await api.login(name, password);
       }
 
       toast.success(t("Ого! Заработало"));
@@ -185,6 +186,10 @@ const Auth = () => {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       autoComplete="username"
+                      // Без автозамены: подсказка клавиатуры iPhone дописывала пробел к нику.
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       tabIndex={step === 0 ? 0 : -1}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
