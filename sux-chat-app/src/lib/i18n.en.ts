@@ -2091,6 +2091,7 @@ const en: Record<string, string> = {
   "Нулевая терпимость к недопустимому контенту и оскорблениям: на сообщение или человека можно пожаловаться и заблокировать его, нарушителей удаляем в течение суток.": "Zero tolerance for objectionable content and abusive users: you can report any message or person and block them; we remove violators within 24 hours.",
   "У нас правила и политика конфиденциальности. Коротко: нулевая терпимость к недопустимому контенту, угрозам и оскорблениям. На любое сообщение, пост или человека можно пожаловаться и заблокировать его, а нарушителей модераторы удаляют в течение суток.": "We have rules and a privacy policy. In short: zero tolerance for objectionable content, threats and abuse. You can report and block any message, post or person, and moderators remove violators within 24 hours.",
   "Заблокирован: его сообщения и посты скрыты, модераторы получили сигнал": "Blocked: their messages and posts are hidden, and moderators have been notified",
+  "Вы заблокировали {name} — писать ему нельзя.": "You blocked {name} — you can't message them.",
   "Пожаловаться на пост": "Report post",
   "Жалоба на пост": "Report a post",
   "Мест для питомцев нет — {n} из {n}": "No room for pets — {n} of {n}",

@@ -1138,6 +1138,19 @@ def _can_post_to(chat, profile):
     return True
 
 
+YOU_BLOCKED = "Вы заблокировали собеседника — разблокируйте, чтобы написать"
+
+
+def _you_blocked_peer(chat, profile):
+    """Личка (и секретный чат) с тем, кого я заблокировал: писать в неё нельзя,
+    пока не разблокирую — вместо поля ввода «Разблокировать», как в других
+    мессенджерах. Заблокированному блокировка не видна: его сообщения уходят
+    как обычно, просто до меня не доходят."""
+    if chat.is_group or (chat.kind or "direct") not in ("direct", "secret"):
+        return False
+    return Block.objects.filter(blocker=profile, blocked__chatparticipant__chat=chat).exclude(blocked=profile).exists()
+
+
 # Разделы «Медиа и файлы» чата: по расширению вложения (оно есть и в s3://,
 # и в /media/...). Видео-сообщения («треугольники») — к видео.
 MEDIA_KINDS = ("photo", "video", "music", "voice", "file")
@@ -1548,6 +1561,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Секретные сообщения не пересылаются"}, status=403)
         if not _can_post_to(target, profile):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
+        if _you_blocked_peer(target, profile):
+            return Response({"error": YOU_BLOCKED, "you_blocked": True}, status=403)
 
         message = _forward_copy(src, target, profile)
         Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
@@ -1574,6 +1589,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Чат не найден"}, status=404)
         if not _can_post_to(target, profile):
             return Response({"error": "В этот чат нельзя написать"}, status=403)
+        if _you_blocked_peer(target, profile):
+            return Response({"error": YOU_BLOCKED, "you_blocked": True}, status=403)
         sources = list(Message.objects.filter(id__in=ids, deleted_for_all=False).select_related('chat', 'sender', 'forwarded_from').order_by('created_at'))
         if len(sources) != len(set(ids)):
             return Response({"error": "Часть сообщений не найдена"}, status=404)
@@ -1887,7 +1904,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Канал: публиковать может только owner/admin.
         _chat_id = request.data.get('chat')
         if _chat_id:
-            _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name', 'pending_for').first()
+            _ch = Chat.objects.filter(id=_chat_id).only('id', 'kind', 'name', 'pending_for', 'is_group').first()
             if not _ch:
                 return Response({"error": "Чат не найден"}, status=404)
             # Писать можно только туда, где ты участник (Стена — всем, кроме
@@ -1899,6 +1916,8 @@ class MessageViewSet(viewsets.ModelViewSet):
             if _ch and _ch.pending_for_id:
                 return Response({"error": "Сначала примите запрос на переписку" if _ch.pending_for_id == profile.id
                                  else "Собеседник ещё не принял запрос на переписку", "chat_request": True}, status=403)
+            if _ch and _you_blocked_peer(_ch, profile):
+                return Response({"error": YOU_BLOCKED, "you_blocked": True}, status=403)
             # Секретный чат: сервер принимает только шифротекст (chat/secret.py).
             if _ch and _ch.kind == 'secret':
                 from .secret import create_secret_message

@@ -68,7 +68,7 @@ import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
 import ChatMediaSheet from "./ChatMediaSheet";
 import ChatPets from "@/components/pets/ChatPets";
-import { useBlocked } from "@/lib/blocks";
+import { setBlockedLocal, useBlocked } from "@/lib/blocks";
 import { rememberPet, useMyPet, usePetsAvailable } from "@/lib/pets";
 import { WallpaperVideo } from "./ChatWallpaper";
 import StickerBurst from "./StickerBurst";
@@ -3883,6 +3883,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Соседние сообщения одного альбома показываем одной сеткой: группу рисуем
   // на первом её сообщении, остальные из ленты убираем.
   const blockedIds = useBlocked();
+  const [unblocking, setUnblocking] = useState(false);
   const { albumsById, feedRows } = useMemo(() => {
     // Секретный чат: пока сообщение не расшифровано, его файл — шифротекст;
     // такие поля пузырю не отдаём (иначе мелькнул бы «файл .bin»).
@@ -5054,7 +5055,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       )}
 
       {/* Поле ввода */}
-      {peer?.readonly_bot ? (
+      {peer && !isGroup && blockedIds.has(peer.id) ? (
+        // Заблокировал собеседника — писать ему нельзя, пока не разблокирую
+        // (сервер тоже не примет: you_blocked). Ему блокировка не видна.
+        <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 space-y-2">
+          <p className="text-center text-small text-subtle">{tr("Вы заблокировали {name} — писать ему нельзя.", { name: peer.username })}</p>
+          <button type="button" disabled={unblocking}
+            onClick={async () => {
+              setUnblocking(true);
+              try { await api.unblockUser(peer.id); setBlockedLocal(peer.id, false); }
+              catch { toast.error(tr("Не удалось разблокировать")); }
+              finally { setUnblocking(false); }
+            }}
+            className="w-full h-11 rounded-md bg-primary text-primary-foreground text-small font-medium flex items-center justify-center gap-2 active:opacity-90 disabled:opacity-50">
+            {tr("Разблокировать")}
+          </button>
+        </div>
+      ) : peer?.readonly_bot ? (
         <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">{tr("Это канал обновлений — только чтение")}</div>
       ) : reqPending ? (
         <div className="chat-compose px-4 py-3 pad-safe-bottom bg-surface-2 md:bg-transparent border-t border-border md:border-t-0 text-center text-small text-subtle">

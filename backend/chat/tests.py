@@ -211,6 +211,36 @@ class AdultPacksTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class BlockerCannotWriteTests(TestCase):
+    """Заблокировал — в личку ему не пишу, пока не разблокирую; ему блокировка
+    не видна; в общей группе пишем оба."""
+
+    def setUp(self):
+        self.a = make_user("blk_a")
+        self.b = make_user("blk_b")
+        self.direct = Chat.objects.create(kind="direct")
+        self.group = Chat.objects.create(kind="direct", is_group=True, name="общая")
+        for c in (self.direct, self.group):
+            for p in (self.a, self.b):
+                ChatParticipant.objects.create(chat=c, user=p)
+
+    def _send(self, who, chat):
+        return client_for(who).post("/api/messages/", {"chat": str(chat.id), "content": "привет"}, format="json")
+
+    def test_blocker_cannot_write_in_direct(self):
+        client_for(self.a).post("/api/blocks/", {"profile_id": str(self.b.id)}, format="json")
+        r = self._send(self.a, self.direct)
+        self.assertEqual(r.status_code, 403)
+        self.assertTrue(r.data.get("you_blocked"))
+        self.assertEqual(self._send(self.b, self.direct).status_code, 201)
+        self.assertEqual(self._send(self.a, self.group).status_code, 201)
+        src = Message.objects.filter(chat=self.group, sender=self.a).first()
+        r = client_for(self.a).post(f"/api/messages/{src.id}/forward/", {"chat_id": str(self.direct.id)}, format="json")
+        self.assertEqual(r.status_code, 403)
+        client_for(self.a).delete("/api/blocks/", {"profile_id": str(self.b.id)}, format="json")
+        self.assertEqual(self._send(self.a, self.direct).status_code, 201)
+
+
 class ModerationNoticeTests(TestCase):
     """App Store 1.2: жалоба и блокировка доходят до модераторов пушем (разбор за сутки)."""
 
