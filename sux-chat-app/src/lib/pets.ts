@@ -44,6 +44,8 @@ export interface PetPack {
   sounds?: Record<string, string>;
   /** Слоты окраса: деталь → цвет-метка в файлах поз (#rrggbb). */
   palette?: Record<string, string>;
+  /** Слоты палитры для кружка окраса: [основной цвет, точка]. Нет — угадываем (coatSwatch). */
+  swatch?: [string, string];
   /** Окрасы: что поменять в палитре. Выбирает хозяин (Pet.color). */
   coats?: Record<string, PetCoat>;
   defaultCoat?: string;
@@ -78,6 +80,9 @@ export interface PetCoat {
   name: Record<string, string>;
   colors: Record<string, string>;
 }
+
+/** Все виды по порядку витрины (pages/PetCatalog). Новый вид — пак в public/pets и строка здесь и в SPECIES (chat/pets.py). */
+export const PET_KINDS = ["cat", "kitty", "rabbit", "bunny", "dog", "frog"] as const;
 
 const base = () => (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
 const packs = new Map<string, Promise<PetPack>>();
@@ -211,10 +216,28 @@ export function packText(pack: PetPack | null | undefined, key: string, lang: st
 }
 
 /** Цвет меха окраса — для кружков выбора. */
+/** Какие слоты палитры показывать в кружке окраса. У кота это fur и tip, но у
+ *  жабы — skin и spot, у пса — fur и spot: раньше брались только fur/tip, и у
+ *  жабы все кружки были одинаково белыми. Можно задать в манифесте (swatch),
+ *  иначе основной — fur или skin, а точка — tip или слот, который окрасы
+ *  меняют чаще всего (контур, глаза и блики не в счёт). */
+const SWATCH_SKIP = new Set(["ink", "eye", "glint", "mouth", "teeth"]);
+function swatchSlots(pack: PetPack): [string, string] {
+  if (pack.swatch?.length === 2) return pack.swatch;
+  const pal = Object.keys(pack.palette || {});
+  const used: Record<string, number> = {};
+  for (const c of Object.values(pack.coats || {})) for (const k of Object.keys(c.colors || {})) used[k] = (used[k] || 0) + 1;
+  const ranked = pal.filter((k) => !SWATCH_SKIP.has(k)).sort((a, b) => (used[b] || 0) - (used[a] || 0));
+  const main = pal.includes("fur") ? "fur" : pal.includes("skin") ? "skin" : ranked[0] || "fur";
+  const dot = pal.includes("tip") ? "tip" : ranked.find((k) => k !== main && used[k]) || "tip";
+  return [main, dot];
+}
+
 export function coatSwatch(pack: PetPack, coat: string): { fur: string; tip: string } {
   const pal = pack.palette || {};
   const c = pack.coats?.[coat]?.colors || {};
-  return { fur: c.fur || pal.fur || "#FFFFFF", tip: c.tip || pal.tip || "#1E1E1E" };
+  const [main, dot] = swatchSlots(pack);
+  return { fur: c[main] || pal[main] || "#FFFFFF", tip: c[dot] || pal[dot] || "#1E1E1E" };
 }
 
 export function petDisplayName(pet: { name?: string | null; sex?: string | null }, pack?: PetPack | null, lang = "ru"): string {

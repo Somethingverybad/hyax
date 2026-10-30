@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
-import { Hand, Pencil, Utensils, PawPrint } from "lucide-react";
+import { Hand, Pencil, Utensils, PawPrint, ChevronRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api, type Pet, type PetAction } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { bySex, coatSwatch, moodInfo, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
+import { bySex, moodInfo, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
 import { readCache } from "@/lib/session-cache";
 import Identicon from "@/components/Identicon";
 import PetSprite from "./PetSprite";
+import CoatSwatches from "./CoatSwatches";
 
 /** Через сколько снова можно ухаживать: «через 5 ч» / «через 20 мин». */
 const DOUBLE_TAP = 320; // мс между тапами — «покормить»
 // Виды для проверки админом (как SPECIES в chat/pets.py); в магазине — из каталога.
-const PET_SPECIES: [string, string][] = [["cat", "Кот"], ["rabbit", "Кролик"], ["frog", "Жаба"], ["kitty", "Котик"], ["bunny", "Зайчик"], ["dog", "Пёс"]];
 
 function untilText(iso: string | null): string {
   if (!iso) return "";
@@ -38,6 +39,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   const tapAt = useRef(0);
   const tapTimer = useRef<number | null>(null);
   const available = usePetsAvailable();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!available) return;
@@ -238,39 +240,21 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
         );
       })()}
 
-      {/* Вид — пока только админу: проверить новых зверей до магазина. */}
+      {/* Вид — витрина «Питомцы» сеткой (pages/PetCatalog); выбрать пока может только админ. */}
       {own && readCache<{ is_admin?: boolean }>("user")?.is_admin && (
-        <div className="mt-3 flex items-center gap-3">
-          <span className="flex-1 text-small">{t("Вид (проверка)")}</span>
-          <div className="flex rounded-md bg-surface-2 p-0.5">
-            {PET_SPECIES.map(([sp, label]) => (
-              <button key={sp} type="button" onClick={() => { if (pet.species !== sp) void patchLook({ species: sp }); }} aria-pressed={pet.species === sp}
-                className={`h-8 px-3 rounded text-small font-medium ${pet.species === sp ? "bg-primary text-primary-foreground" : "text-subtle"}`}>
-                {t(label)}
-              </button>
-            ))}
-          </div>
-        </div>
+        <button type="button" onClick={() => navigate("/profile/pets")}
+          className="mt-3 w-full flex items-center gap-3 text-left active:opacity-80">
+          <span className="flex-1 text-small">{t("Вид")}</span>
+          <span className="text-small text-subtle">{pack ? pack.name[lang] || pack.name.ru : ""}</span>
+          <ChevronRight className="w-4 h-4 text-subtle" />
+        </button>
       )}
 
       {/* Окрас: кружки из пака (manifest.coats), видят все. */}
       {own && pack?.coats && Object.keys(pack.coats).length > 1 && (
         <div className="mt-3">
           <span className="block text-small mb-2">{t("Окрас")}</span>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(pack.coats).map(([id, coat]) => {
-              const sw = coatSwatch(pack, id);
-              const on = (pet.color || pack.defaultCoat) === id;
-              const label = coat.name[lang] || coat.name.ru || id;
-              return (
-                <button key={id} type="button" onClick={() => void setCoat(id)} aria-label={label} title={label} aria-pressed={on}
-                  className={`w-9 h-9 rounded-full grid place-items-center transition-transform active:scale-95 ${on ? "ring-2 ring-primary ring-offset-2 ring-offset-surface-4" : ""}`}
-                  style={{ background: sw.fur, boxShadow: "inset 0 0 0 1.5px rgba(0,0,0,.18)" }}>
-                  <span className="w-3 h-3 rounded-full" style={{ background: sw.tip }} />
-                </button>
-              );
-            })}
-          </div>
+          <CoatSwatches pack={pack} value={pet.color || pack.defaultCoat || ""} onPick={(id) => void setCoat(id)} />
         </div>
       )}
 

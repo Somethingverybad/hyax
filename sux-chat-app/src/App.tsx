@@ -68,6 +68,7 @@ const ProfileDeleteAccount = lazy(() => import("./pages/ProfileDeleteAccount"));
 const ProfileEmail = lazy(() => import("./pages/ProfileEmail"));
 const ProfileSecretTransfer = lazy(() => import("./pages/ProfileSecretTransfer"));
 const ProfileDevices = lazy(() => import("./pages/ProfileDevices"));
+const PetCatalog = lazy(() => import("./pages/PetCatalog"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const ProfileLanguage = lazy(() => import("./pages/ProfileLanguage"));
 const ProfileMicrophone = lazy(() => import("./pages/ProfileMicrophone"));
@@ -415,6 +416,7 @@ const App = () => {
                 <Route path="/profile/email" element={<ProfileEmail />} />
                 <Route path="/profile/secret-transfer" element={<ProfileSecretTransfer />} />
                 <Route path="/profile/devices" element={<ProfileDevices />} />
+                <Route path="/profile/pets" element={<PetCatalog />} />
                 <Route path="/profile/language" element={<ProfileLanguage />} />
                 <Route path="/profile/microphone" element={<ProfileMicrophone />} />
                 <Route path="/profile/vibe" element={<ProfileVibeHistory />} />
