@@ -7,7 +7,7 @@ import PetSprite from "@/components/pets/PetSprite";
 import CoatSwatches from "@/components/pets/CoatSwatches";
 import { api, type Pet } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { loadPack, PET_KINDS, rememberMyPet, type PetPack, type PetSex } from "@/lib/pets";
+import { cachedPetOf, loadPack, PET_KINDS, rememberMyPet, storePetOf, type PetPack, type PetSex } from "@/lib/pets";
 import { readCache } from "@/lib/session-cache";
 import { cn } from "@/lib/utils";
 
@@ -23,12 +23,12 @@ const PetCatalog = () => {
   const me = readCache<{ id?: string; is_admin?: boolean }>("user");
   const admin = !!me?.is_admin;
   const [packs, setPacks] = useState<Record<string, PetPack>>({});
-  const [pet, setPet] = useState<Pet | null>(null);
+  const [pet, setPet] = useState<Pet | null>(() => (me?.id ? cachedPetOf(me.id, true) ?? null : null));
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
     for (const sp of PET_KINDS) loadPack(sp).then((p) => setPacks((m) => ({ ...m, [sp]: p }))).catch(() => {});
-    if (me?.id) api.getPetOf(me.id).then(setPet).catch(() => setPet(null));
+    if (me?.id) api.getPetOf(me.id).then((p) => { setPet(p); storePetOf(me.id!, p, true); }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = (p?: PetPack) => (p ? p.name[lang] || p.name.ru : "");
@@ -66,7 +66,7 @@ const PetCatalog = () => {
       </div>
       {open && packs[open] && (
         <PetSheet species={open} pack={packs[open]} pet={pet} admin={admin} onClose={() => setOpen(null)}
-          onChosen={(p) => { setPet(p); rememberMyPet(p); setOpen(null); toast.success(t("Теперь у вас {name}", { name: name(packs[open]) })); navigate(-1); }} />
+          onChosen={(p) => { setPet(p); rememberMyPet(p); if (me?.id) storePetOf(me.id, p, true); setOpen(null); toast.success(t("Теперь у вас {name}", { name: name(packs[open]) })); navigate(-1); }} />
       )}
     </div>
   );

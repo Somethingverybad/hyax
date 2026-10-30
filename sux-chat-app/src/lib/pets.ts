@@ -95,6 +95,32 @@ const base = () => "/";
 const packs = new Map<string, Promise<PetPack>>();
 const poses = new Map<string, Promise<unknown>>();
 
+// Уже загруженные паки — сразу, без ожидания промиса: карточка и рисунок
+// показывают окрасы и размер с первой отрисовки.
+const loadedPacks = new Map<string, PetPack>();
+export const peekPack = (species?: string | null): PetPack | null => (species ? loadedPacks.get(species) ?? null : null);
+
+// Питомец профиля — с прошлого раза, пока идёт запрос: карточка в настройках
+// не пропадает и не грузится заново при каждом входе. Свой — ещё и на
+// устройстве (между запусками), чужие — только в памяти.
+const PET_KEY = "hyax:pet:";
+const petMem = new Map<string, Pet | null>();
+export function cachedPetOf(profileId: string, persist = false): Pet | null | undefined {
+  if (petMem.has(profileId)) return petMem.get(profileId);
+  if (!persist) return undefined;
+  try {
+    const v = localStorage.getItem(PET_KEY + profileId);
+    if (v === null) return undefined;
+    const p = JSON.parse(v) as Pet | null;
+    petMem.set(profileId, p);
+    return p;
+  } catch { return undefined; }
+}
+export function storePetOf(profileId: string, pet: Pet | null, persist = false): void {
+  petMem.set(profileId, pet);
+  if (persist) try { localStorage.setItem(PET_KEY + profileId, JSON.stringify(pet)); } catch { /* без памяти */ }
+}
+
 export function loadPack(species: string): Promise<PetPack> {
   let p = packs.get(species);
   if (!p) {
@@ -102,7 +128,7 @@ export function loadPack(species: string): Promise<PetPack> {
       if (!r.ok) throw new Error(`pet pack ${species}: ${r.status}`);
       return r.json();
     });
-    p.catch(() => packs.delete(species));
+    p.then((v) => { loadedPacks.set(species, v); }, () => packs.delete(species));
     packs.set(species, p);
   }
   return p;

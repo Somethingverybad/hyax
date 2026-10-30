@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AnimationItem } from "lottie-web";
 import { loadLottie } from "@/components/chat/StickerView";
-import { loadPose, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
+import { loadPose, type PetPack, type PetSex, type PoseName, peekPack } from "@/lib/pets";
 
 /**
  * Поза питомца: Lottie из пака вида (lib/pets). Размер — холст пака × scale;
@@ -25,7 +25,7 @@ export default function PetSprite({ species, pose, coat, sex, acc, scale, flip, 
 }) {
   const box = useRef<HTMLDivElement>(null);
   const anim = useRef<AnimationItem | null>(null);
-  const [pack, setPack] = useState<PetPack | null>(null);
+  const [pack, setPack] = useState<PetPack | null>(() => peekPack(species));
 
   useEffect(() => {
     let off = false;

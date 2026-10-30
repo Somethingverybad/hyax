@@ -4,7 +4,7 @@ import { Hand, Pencil, Utensils, PawPrint, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, type Pet, type PetAction } from "@/api/client";
 import { getLang, t } from "@/lib/i18n";
-import { bySex, forgetPet, moodInfo, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
+import { bySex, cachedPetOf, forgetPet, moodInfo, peekPack, storePetOf, packText, petDisplayName, profilePose, rememberPet, tapSound, usePetsAvailable, warmPurr, wornAccessories, type PetPack, type PetSex, type PoseName } from "@/lib/pets";
 import { readCache } from "@/lib/session-cache";
 import { confirmDialog } from "@/lib/confirm";
 import Identicon from "@/components/Identicon";
@@ -30,8 +30,10 @@ function untilText(iso: string | null): string {
  * Хозяин даёт кличку и решает, гулять ли питомцу по его чатам.
  */
 export default function PetCard({ profileId, own, onVibe }: { profileId: string; own?: boolean; onVibe?: (vibe: number) => void }) {
-  const [pet, setPet] = useState<Pet | null | undefined>(undefined);
-  const [pack, setPack] = useState<PetPack | null>(null);
+  // С прошлого раза — сразу, свежий придёт запросом ниже (lib/pets cachedPetOf).
+  const [pet, setPetState] = useState<Pet | null | undefined>(() => cachedPetOf(profileId, own));
+  const setPet = (p: Pet | null) => { setPetState(p); storePetOf(profileId, p, own); };
+  const [pack, setPack] = useState<PetPack | null>(() => peekPack(cachedPetOf(profileId, own)?.species));
   const [busy, setBusy] = useState(false);
   const [react, setReact] = useState<PoseName | null>(null);
   const [naming, setNaming] = useState(false);
