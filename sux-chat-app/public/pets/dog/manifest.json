@@ -1,7 +1,7 @@
 {
   "format": 2,
   "species": "dog",
-  "rev": 1,
+  "rev": 2,
   "name": {
     "ru": "Пёс",
     "en": "Dog",
@@ -275,9 +275,9 @@
       "loop": true
     },
     "belly": {
-      "file": "belly.json",
+      "file": "sleep.json",
       "files": {
-        "f": "belly-f.json"
+        "f": "sleep-f.json"
       },
       "loop": true
     },

@@ -1,7 +1,7 @@
 {
   "format": 2,
   "species": "kitty",
-  "rev": 5,
+  "rev": 6,
   "name": {
     "ru": "Котик",
     "en": "Kitty",
@@ -287,9 +287,9 @@
       "loop": true
     },
     "belly": {
-      "file": "belly.json",
+      "file": "sleep.json",
       "files": {
-        "f": "belly-f.json"
+        "f": "sleep-f.json"
       },
       "loop": true
     },

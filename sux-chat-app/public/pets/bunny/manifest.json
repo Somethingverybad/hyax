@@ -1,7 +1,7 @@
 {
   "format": 2,
   "species": "bunny",
-  "rev": 10,
+  "rev": 11,
   "name": {
     "ru": "Зайчик",
     "en": "Bunny",
@@ -271,9 +271,9 @@
       "loop": true
     },
     "belly": {
-      "file": "belly.json",
+      "file": "sleep.json",
       "files": {
-        "f": "belly-f.json"
+        "f": "sleep-f.json"
       },
       "loop": true
     },
