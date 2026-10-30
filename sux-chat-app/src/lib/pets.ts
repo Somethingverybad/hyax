@@ -3,6 +3,8 @@ import { api, type Pet, type PetBrief, type PetMood } from "@/api/client";
 import { t } from "@/lib/i18n";
 import { onUserMessage } from "@/lib/userSocket";
 import { softRumble } from "@/lib/rov";
+import { Capacitor } from "@capacitor/core";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 
 /**
  * Питомцы на клиенте: пак вида (рисунки и поведение) и состояние с сервера.
@@ -425,6 +427,13 @@ export function warmPurr(): void {
   if (ric) ric(run, { timeout: 4000 }); else window.setTimeout(run, 1500);
 }
 
+/** Лёгкий «тык» на каждое нажатие, как у вкладок внизу: мурчание — мягкий гул
+ *  (softRumble 0,2) и раз в секунду, рукой его почти не слышно. */
+function tapHaptic(): void {
+  if (Capacitor.isNativePlatform()) { Haptics.impact({ style: ImpactStyle.Light }).catch(() => {}); return; }
+  try { navigator.vibrate?.(12); } catch { /* нет вибрации */ }
+}
+
 /**
  * Звук на тап по виду (manifest.sounds.tap): synth:purr — мурчание кота,
  * synth:chatter — довольный скрип зубами кролика. Вибрация — в обоих.
@@ -432,6 +441,7 @@ export function warmPurr(): void {
  * загрузился — мурчание, как раньше.
  */
 export function tapSound(pack: PetPack | null | undefined): void {
+  tapHaptic();
   const s = pack?.sounds?.tap || pack?.sounds?.purr || (pack ? "" : "synth:purr");
   if (s === "synth:chatter") chatter();
   else if (s === "synth:purr") purr();
