@@ -2095,6 +2095,8 @@ const en: Record<string, string> = {
   "Кот": "Cat",
   "Кролик": "Rabbit",
   "Жаба": "Frog",
+  "Сюда картинку не вставить": "Images can't be pasted here",
+  "Не удалось вставить картинку": "Couldn't paste the image",
   "Пожаловаться на пост": "Report post",
   "Жалоба на пост": "Report a post",
   "Мест для питомцев нет — {n} из {n}": "No room for pets — {n} of {n}",

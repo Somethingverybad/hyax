@@ -8,6 +8,7 @@ import "./index.css";
 import { initTheme } from "./lib/theme";
 import { installAppLog, applog } from "./lib/applog";
 import { installBugHotkey } from "./lib/bugHotkey";
+import { installNativePaste } from "./lib/nativePaste";
 import { otaBoot, otaRestoreRoute, startOtaAutoApply, startOtaChecks } from "./lib/ota";
 // Мини-плеер и кнопки плеера в оболочке компьютера (electron/playerWidget.cjs).
 import "./lib/desktopPlayer";
@@ -18,6 +19,8 @@ import "./lib/nativeMedia";
 installAppLog();
 // Ctrl/⌘+Shift+B на компьютере — отправить лог, даже если интерфейс сломан (lib/bugHotkey).
 installBugHotkey();
+// Картинки из клавиатуры Android (буфер Gboard) — во вставку поля (lib/nativePaste).
+installNativePaste();
 // Тему ставим до первой отрисовки: иначе светлая тема моргнёт тёмным кадром.
 initTheme();
 

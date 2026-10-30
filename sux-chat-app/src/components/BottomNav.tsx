@@ -58,6 +58,10 @@ const MINT_ITEMS: { to: string; label: string; icon: MintIconName; size: [number
  *  открывается колонкой настроек. */
 const MINT_PROFILE: (typeof MINT_ITEMS)[number] = { to: "/profile", label: "Профиль", icon: "navProfile", size: [21, 22] };
 
+/** Вкладки — ссылки, и долгое нажатие на телефоне начинало их «перетаскивать»
+ *  с подсказкой https://localhost/chat (баг-репорт): ни тянуть, ни меню ссылки. */
+const NO_DRAG = { draggable: false, onContextMenu: (e: React.MouseEvent) => e.preventDefault(), onDragStart: (e: React.DragEvent) => e.preventDefault() };
+
 /** Лёгкий отклик при переключении вкладок (на телефоне). */
 const tap = () => {
   if (Capacitor.isNativePlatform()) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
@@ -102,7 +106,7 @@ const MintIsland = () => {
       <nav className="mint-nav" style={{ ["--n" as string]: items.length }}>
         {pos >= 0 && pos < items.length && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {items.map(({ to, label, icon, size }) => (
-          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} onClick={tap}
+          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} {...NO_DRAG} onClick={tap}
             className={({ isActive }) => cn("mint-nav-item", isActive && "mint-nav-on")}>
             <MintIcon name={icon} size={size} />
             {to === "/wall" && <WallBadge n={wallNew} />}
@@ -134,7 +138,7 @@ const NavRail = ({ mint }: { mint: boolean }) => {
       <nav className={cn("nav-rail-tabs", mint ? "mint-rail" : "flex flex-col gap-1")} aria-label={t("Разделы")}>
         {mint && pos >= 0 && pos < items.length && <span className="mint-rail-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {items.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)}
+          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} {...NO_DRAG}
             className={({ isActive }) => mint
               ? cn("mint-rail-item", isActive && "mint-nav-on")
               : cn("ui-nav-item relative flex items-center justify-center w-12 h-12 rounded-md transition-colors hover:bg-surface-2",
@@ -166,6 +170,7 @@ const BottomNav = () => {
         <NavLink
           key={to}
           to={to}
+          {...NO_DRAG}
           aria-label={t(label)}
           title={t(label)}
           onClick={tap}

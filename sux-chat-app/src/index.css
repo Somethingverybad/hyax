@@ -1731,3 +1731,12 @@ html.native-video .call-layer {
   .liquid-island-anim { transition: none; }
   .liquid-out, .liquid-in { animation: none; }
 }
+
+/* Вкладки нижнего меню и колонки — ссылки: долгое нажатие не тянет их и не
+   открывает меню ссылки (баг-репорт: подсказка https://localhost/chat). */
+.mint-nav-item, .mint-rail-item, .ui-nav-item {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
