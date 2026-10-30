@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { api, type Pet, type PetBrief, type PetMood } from "@/api/client";
 import { t } from "@/lib/i18n";
 import { onUserMessage } from "@/lib/userSocket";
-import { softRumble } from "@/lib/rov";
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 
@@ -453,16 +452,33 @@ export function warmPurr(): void {
   if (ric) ric(run, { timeout: 4000 }); else window.setTimeout(run, 1500);
 }
 
-/** Лёгкий «тык» на каждое нажатие, как у вкладок внизу: мурчание — мягкий гул
- *  (softRumble 0,2) и раз в секунду, рукой его почти не слышно. */
+/** Лёгкий «тык» на каждое нажатие, как у вкладок внизу. */
 function tapHaptic(): void {
   if (Capacitor.isNativePlatform()) { Haptics.impact({ style: ImpactStyle.Light }).catch(() => {}); return; }
   try { navigator.vibrate?.(12); } catch { /* нет вибрации */ }
 }
 
+/** Вибрация под мурчание: те же лёгкие толчки, что на нажатие, чередой всё
+ *  время звука — «тр-тр-тр», как мурчит кот. Раньше был непрерывный гул
+ *  softRumble силой 0,2 — рукой его почти не было слышно. */
+let purrPulses = 0;
+function purrHaptic(ms: number, every = 95): void {
+  window.clearInterval(purrPulses);
+  if (!Capacitor.isNativePlatform()) {
+    try { navigator.vibrate?.(Array.from({ length: Math.round(ms / every) * 2 }, (_, i) => (i % 2 ? every - 12 : 12))); } catch { /* нет вибрации */ }
+    return;
+  }
+  const until = Date.now() + ms;
+  purrPulses = window.setInterval(() => {
+    if (Date.now() >= until) { window.clearInterval(purrPulses); return; }
+    Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+  }, every);
+}
+
 /**
  * Звук на тап по виду (manifest.sounds.tap): synth:purr — мурчание кота,
- * synth:chatter — довольный скрип зубами кролика. Вибрация — в обоих.
+ * synth:chatter — довольный скрип зубами кролика, synth:croak — «ква-ква»
+ * жабы, synth:pant — дыхание пса. Вибрация — в обоих.
  * Пак без звука (пёс) — только вибрация, а не чужое мурчание; пак ещё не
  * загрузился — мурчание, как раньше.
  */
@@ -471,14 +487,97 @@ export function tapSound(pack: PetPack | null | undefined): void {
   const s = pack?.sounds?.tap || pack?.sounds?.purr || (pack ? "" : "synth:purr");
   if (s === "synth:chatter") chatter();
   else if (s === "synth:purr") purr();
-  else softRumble(500, 0.12);
+  else if (s === "synth:croak") croak();
+  else if (s === "synth:pant") pant();
+  else purrHaptic(500);
 }
 
 /** Кролик доволен — мелко «скрипит» зубами: частые мягкие щелчки около 2 кГц. */
+/** «Ква-ква» жабы: два низких кваканья — пила с падающим тоном (210 → 150 Гц),
+ *  хрип от частой модуляции (~38 Гц) и «горловая» полоса около 700 Гц.
+ *  Контекст параметром — так же пишется в файл для прослушивания. */
+export function croakAt(ctx: BaseAudioContext, t0: number, volume = 0.2): void {
+  for (let k = 0; k < 2; k++) {
+    const at = t0 + k * 0.26, dur = 0.17;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(210 - k * 15, at);
+    osc.frequency.exponentialRampToValueAtTime(150 - k * 10, at + dur);
+    const am = ctx.createGain();
+    am.gain.value = 0.55;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 38;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.45;
+    lfo.connect(depth).connect(am.gain);
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass"; band.frequency.value = 700; band.Q.value = 2.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(volume, at + 0.015);
+    g.gain.setValueAtTime(volume, at + dur * 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    osc.connect(am).connect(band).connect(g).connect(ctx.destination);
+    osc.start(at); lfo.start(at); osc.stop(at + dur + 0.02); lfo.stop(at + dur + 0.02);
+  }
+}
+
+/** Дыхание пса с открытой пастью: «хх-хх» четыре раза — выдох (шум в полосе
+ *  ~1,4 кГц) и короткий тихий вдох повыше (~2,4 кГц). */
+export function pantAt(ctx: BaseAudioContext, t0: number, volume = 0.18): void {
+  const len = 0.2;
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * len), ctx.sampleRate);
+  const ch = buf.getChannelData(0);
+  for (let j = 0; j < ch.length; j++) ch[j] = Math.random() * 2 - 1;
+  const breath = (at: number, dur: number, freq: number, vol: number) => {
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass"; band.frequency.value = freq; band.Q.value = 0.9;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + dur * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    src.connect(band).connect(g).connect(ctx.destination);
+    src.start(at); src.stop(at + dur);
+  };
+  for (let i = 0; i < 4; i++) {
+    const at = t0 + i * 0.3 + Math.random() * 0.015;
+    breath(at, 0.15, 1400 + Math.random() * 200, volume);
+    breath(at + 0.17, 0.1, 2400, volume * 0.45);
+  }
+}
+
+function withCtx(play: (ctx: AudioContext, t0: number) => void): void {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    actx ??= new AC();
+    void actx.resume().catch(() => {});
+    play(actx, actx.currentTime);
+  } catch { /* без звука */ }
+}
+
+/** Жаба квакнула — звук и толчки на каждое «ква». */
+export function croak(): void {
+  if (Date.now() - purring < 700) return;
+  purring = Date.now();
+  purrHaptic(450, 75);
+  withCtx((ctx, t0) => croakAt(ctx, t0));
+}
+
+/** Пёс дышит — звук и лёгкий толчок на каждый выдох и вдох. */
+export function pant(): void {
+  if (Date.now() - purring < 1300) return;
+  purring = Date.now();
+  purrHaptic(1200, 150);
+  withCtx((ctx, t0) => pantAt(ctx, t0));
+}
+
 export function chatter(volume = 0.16): void {
   if (Date.now() - purring < 1100) return;
   purring = Date.now();
-  softRumble(700, 0.14);
+  purrHaptic(700, 70);
   try {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
@@ -510,7 +609,7 @@ export function chatter(volume = 0.16): void {
 export function purr(volume = 0.22): void {
   if (Date.now() - purring < 1400) return;
   purring = Date.now();
-  softRumble(1300, 0.2);
+  purrHaptic(1300);
   try {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;

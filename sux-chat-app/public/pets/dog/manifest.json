@@ -324,5 +324,8 @@
       },
       "loop": true
     }
+  },
+  "sounds": {
+    "tap": "synth:pant"
   }
 }
