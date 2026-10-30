@@ -211,6 +211,22 @@ class AdultPacksTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class NavTabsTests(TestCase):
+    """Нижнее меню как док: порядок вкладок в профиле, чаты и профиль — всегда."""
+
+    def test_nav_tabs_saved_and_cleaned(self):
+        me = make_user("dock_me")
+        c = client_for(me)
+        r = c.patch(f"/api/profiles/{me.id}/", {"nav_tabs": ["music", "chat", "bogus", "chat", "saved"]}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        me.refresh_from_db()
+        self.assertEqual(me.nav_tabs, ["music", "chat", "saved", "profile"])
+        self.assertEqual(client_for(me).get("/api/profiles/current/").data["nav_tabs"], ["music", "chat", "saved", "profile"])
+        c.patch(f"/api/profiles/{me.id}/", {"nav_tabs": None}, format="json")
+        me.refresh_from_db()
+        self.assertIsNone(me.nav_tabs)
+
+
 class BlockerCannotWriteTests(TestCase):
     """Заблокировал — в личку ему не пишу, пока не разблокирую; ему блокировка
     не видна; в общей группе пишем оба."""

@@ -71,6 +71,10 @@ class Profile(models.Model):
     # «Стена» (chat/wall.py) в списке чатов. «Удалить» Стену из списка —
     # выключить её здесь; включается обратно в настройках.
     wall_enabled = models.BooleanField(default=True)
+    # Нижнее меню, как док на iPhone: вкладки по порядку (chat, wall, saved,
+    # music, profile). Пусто — порядок темы по умолчанию. Чаты и профиль есть
+    # всегда; что убрано из меню — строкой в списке чатов.
+    nav_tabs = models.JSONField(null=True, blank=True, default=None)
     # Пуш, когда собеседник (живая личка) написал на Стене (chat/wall_notify.py).
     # Отдельных авторов глушат в меню поста — WallNotifyMute.
     notify_wall = models.BooleanField(default=True, db_default=True)

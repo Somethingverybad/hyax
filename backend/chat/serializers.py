@@ -160,7 +160,7 @@ class OwnProfileSerializer(ProfileSerializer):
         return is_admin_profile(obj)
 
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'quick_reaction', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall', 'notify_pet']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'quick_reaction', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall', 'notify_pet', 'nav_tabs']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at', 'email', 'email_verified']
 
@@ -194,6 +194,24 @@ class OwnProfileSerializer(ProfileSerializer):
             except Exception:
                 pass
         return instance
+
+    NAV_TABS = ("chat", "wall", "saved", "music", "profile")
+
+    def validate_nav_tabs(self, value):
+        """Нижнее меню: известные вкладки без повторов, чаты и профиль — всегда
+        (без профиля меню не вернуть). None — по умолчанию."""
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Список вкладок")
+        out = []
+        for v in value:
+            if v in self.NAV_TABS and v not in out:
+                out.append(v)
+        for must in ("chat", "profile"):
+            if must not in out:
+                out.append(must)
+        return out
 
     def validate_active_theme(self, value):
         from .themes import BUILTIN_IDS

@@ -18,6 +18,7 @@ import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { DELETE_VARIANT_LABELS, getDeleteAnimChoice, setDeleteAnimChoice, type DeleteVariant } from "@/lib/deleteAnim";
 import { RAIL_POS, RAIL_POS_LABELS, setRailPos, useRailPos, type RailPos } from "@/lib/railPos";
 import { useIsMobile } from "@/hooks/use-mobile";
+import DockEditor from "@/components/DockEditor";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
 export const Swatch = ({ theme }: { theme: ThemeDef }) => {
@@ -159,6 +160,7 @@ const ProfileAppearance = () => {
         </p>
 
         <ThemeSyncCard />
+        <DockEditor />
         <SectionsCard />
         <RailPosCard />
         <DeleteAnimCard />

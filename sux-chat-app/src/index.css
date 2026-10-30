@@ -1740,3 +1740,9 @@ html.native-video .call-layer {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* Редактор нижнего меню (DockEditor): пока тянут вкладку, остальные
+   покачиваются, как иконки дока на iPhone. */
+@keyframes dock-wiggle { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+.dock-wiggle > div:first-child { animation: dock-wiggle 0.28s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .dock-wiggle > div:first-child { animation: none; } }

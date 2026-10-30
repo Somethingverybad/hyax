@@ -7,7 +7,9 @@ import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
 import { useEscape } from "@/lib/escape";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff, PawPrint } from "lucide-react";
+import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff, PawPrint, Music2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useNavTabs, type NavTab } from "@/lib/navTabs";
 import { usePetChats, usePetsAvailable } from "@/lib/pets";
 import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { shareProfile } from "@/lib/share";
@@ -170,6 +172,11 @@ const ChatSidebar = ({
 }: ChatSidebarProps) => {
   const isMobileLayout = useIsMobile();
   const mint = useMint() && isMobileLayout;
+  // Раздел убран из нижнего меню (lib/navTabs) — на телефоне он строкой в
+  // списке, иначе до него не добраться. На компьютере строки как были.
+  const dock = useNavTabs(false).tabs;
+  const offDock = (id: NavTab) => !!isMobileLayout && !dock.includes(id);
+  const navigateTo = useNavigate();
   const listRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = usePullToRefresh(listRef, onRefresh);
   // Запоминаем прокрутку списка и возвращаем её при следующем монтировании.
@@ -1070,12 +1077,12 @@ const ChatSidebar = ({
             </button>
             </div>
           )}
-          {onOpenWall && sections.wall && rowMatches(t("Стена")) && (
-            <div className="relative overflow-hidden hidden md:block">
+          {(onOpenWall || offDock("wall")) && sections.wall && rowMatches(t("Стена")) && (
+            <div className={`relative overflow-hidden ${offDock("wall") ? "block" : "hidden md:block"}`}>
             {hideSwipeButton("wall")}
             <button
               type="button"
-              onClick={sectionClick("wall", onOpenWall)}
+              onClick={sectionClick("wall", onOpenWall ?? (() => navigateTo("/wall")))}
               {...sectionPress("wall")}
               style={swipeStyle("wall")}
               className={`relative w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 transition-transform ${
@@ -1093,10 +1100,10 @@ const ChatSidebar = ({
             </button>
             </div>
           )}
-          {onOpenSaved && rowMatches(t("Избранное")) && (
+          {(isMobileLayout ? offDock("saved") : !!onOpenSaved) && rowMatches(t("Избранное")) && (
             <button
               type="button"
-              onClick={onOpenSaved}
+              onClick={onOpenSaved && !isMobileLayout ? onOpenSaved : () => navigateTo("/saved")}
               className={`w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 ${
                 savedChatId && selectedChatId === savedChatId ? "bg-surface-3 border-primary" : "border-transparent hover:bg-surface-2"
               }`}
@@ -1107,6 +1114,19 @@ const ChatSidebar = ({
               <div className="flex-1 min-w-0">
                 <p className="text-h2 md:text-[15px] truncate">{t("Избранное")}</p>
                 <p className="text-small text-subtle truncate">{t("Сообщения для себя")}</p>
+              </div>
+              <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
+            </button>
+          )}
+          {offDock("music") && rowMatches(t("Музыка")) && (
+            <button type="button" onClick={() => navigateTo("/music")}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left border-l-4 border-transparent hover:bg-surface-2">
+              <div className="w-[46px] h-[46px] md:w-9 md:h-9 shrink-0 rounded-full bg-surface-1 md:bg-transparent flex items-center justify-center">
+                <Music2 className="w-6 h-6 md:w-5 md:h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-h2 md:text-[15px] truncate">{t("Музыка")}</p>
+                <p className="text-small text-subtle truncate">{t("Плейлисты и эфиры")}</p>
               </div>
               <ArrowRightIcon className="w-5 h-5 md:w-4 md:h-4 text-subtle shrink-0" />
             </button>

@@ -260,6 +260,8 @@ export interface Profile {
   wall_enabled?: boolean;
   /** «Долгий ящик» в списке чатов (скрыть / вернуть в «Внешний вид»). */
   ideabox_enabled?: boolean;
+  /** Нижнее меню по порядку (lib/navTabs); null — как в теме по умолчанию. */
+  nav_tabs?: string[] | null;
   /** Бот: таким сохранёнки не открывают и в личку не пишут вручную. */
   is_bot?: boolean;
   /** Мини-приложение бота (chat/webapp.py): адрес и подпись кнопки. */
@@ -2612,7 +2614,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; notify_pet?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; quick_reaction?: { key: string; emoji?: string; custom?: { url: string; repaint?: boolean } } | null; language?: string; translate_in_default?: boolean; translate_out_default?: boolean }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; notify_pet?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; quick_reaction?: { key: string; emoji?: string; custom?: { url: string; repaint?: boolean } } | null; language?: string; translate_in_default?: boolean; translate_out_default?: boolean; nav_tabs?: string[] | null }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),
