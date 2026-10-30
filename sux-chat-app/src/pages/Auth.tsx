@@ -23,9 +23,9 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   // Согласие с правилами и политикой — обязательное условие регистрации
   // (App Store, гайдлайн 1.2: пользовательский контент).
-  // Правила принимают и при входе, а не только при регистрации (App Store 1.2: EULA до входа).
-  // На этом устройстве уже принимал — галочка стоит; снять можно.
-  const [agreed, setAgreed] = useState(() => { try { return localStorage.getItem("hyax:terms-ok") === "1"; } catch { return false; } });
+  // При входе галочки нет: кто правила ещё не принимал, после входа видит
+  // TermsGate и без согласия дальше не попадает.
+  const [agreed, setAgreed] = useState(false);
   // Правила открываются поверх формы: переход на /terms размонтировал бы
   // экран и стёр уже введённые логин с паролем.
   const [legal, setLegal] = useState<LegalKind | null>(null);
@@ -107,11 +107,7 @@ const Auth = () => {
       // но экран не находил токен и возвращал обратно на форму.
       if (!isLogin) {
         await api.login(username, password);
-      } else {
-        // Вошёл с принятыми правилами — отметим и на сервере (старым аккаунтам не покажется TermsGate).
-        void api.acceptTerms().catch(() => {});
       }
-      try { localStorage.setItem("hyax:terms-ok", "1"); } catch { /* без памяти */ }
 
       toast.success(t("Ого! Заработало"));
       await applyPendingAura();
@@ -254,7 +250,7 @@ const Auth = () => {
                   </button>
                   </div>
                 </div>
-                {(
+                {!isLogin && (
                   <label className="flex items-start gap-2.5 text-small text-subtle">
                     <input
                       type="checkbox"
@@ -275,7 +271,7 @@ const Auth = () => {
                 <Button
                   type="submit"
                   className="w-full h-12 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-body disabled:opacity-40"
-                  disabled={loading || !password || !agreed}
+                  disabled={loading || !password || (!isLogin && !agreed)}
                 >
                   {loading ? (
                     <div className="flex items-center gap-2">
