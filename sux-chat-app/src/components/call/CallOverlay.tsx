@@ -695,7 +695,7 @@ const CallOverlay = ({
           <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className={mintCall ? "w-[98px] h-[98px] mint-call-avatar" : "w-24 h-24"} />
         )}
         <div className={cn("truncate max-w-full", mintCall ? "mt-[14px] text-[26.7px] leading-[30px] font-semibold text-center px-4 mint-call-name" : "text-2xl font-bold", !mintCall && (onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4"))}>{peer.name}</div>
-        <div className={cn(mintCall ? "text-[16px] text-[#9cb2ab]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>{statusText}</div>
+        <div className={cn(mintCall ? "text-[16px] text-[color:var(--mint-faint)]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>{statusText}</div>
         {peerNoMic && state === "active" && (
           <div className={cn("text-caption flex items-center gap-1.5", onVideo ? "pl-12 text-white/85 drop-shadow" : "text-subtle")}>
             <MicOff className="w-3.5 h-3.5 shrink-0" aria-hidden />

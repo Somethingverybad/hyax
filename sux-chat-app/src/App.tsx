@@ -16,6 +16,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { useScreenScroll } from "@/lib/screenScroll";
+import ThemeTryBar from "@/components/ThemeTryBar";
 import { App as CapApp } from "@capacitor/app";
 import MiniPlayer from "./components/MiniPlayer";
 import VideoNoteHost from "./components/VideoNoteHost";
@@ -352,6 +353,7 @@ const App = () => {
             <EscapeKey />
             <ShareInboxSheet />
             <ConfirmHost />
+            <ThemeTryBar />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
             <MiniPlayer />
             {/* Видео-сообщение во весь экран и виджетом — тоже выше экранов (lib/videoNote). */}

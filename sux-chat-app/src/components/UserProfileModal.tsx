@@ -218,7 +218,7 @@ const UserProfileModal = ({
               </AvatarZoom>
             </div>
             <h2 className="mt-[12px] px-4 text-center text-[26.7px] leading-[30px] font-semibold truncate" style={{ color: "var(--mint-title)" }}>{profile.username}</h2>
-            <p className={cn("mt-[4px] text-center text-[16px] truncate px-4", profile.is_online ? "text-online" : "text-[#9cb2ab]")}>
+            <p className={cn("mt-[4px] text-center text-[16px] truncate px-4", profile.is_online ? "text-online" : "text-[color:var(--mint-faint)]")}>
               {profile.is_online ? t("в сети") : lastSeenText(profile.last_seen)}
             </p>
 

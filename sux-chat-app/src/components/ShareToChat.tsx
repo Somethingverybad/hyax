@@ -136,7 +136,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
         onClick={(e) => e.stopPropagation()}
       >
         <div className={cn("shrink-0 space-y-2", mint ? "px-[24px] pt-[16px] pb-[6px]" : "px-4 pt-4 pb-2")}>
-          <div className={cn("md:hidden mx-auto rounded-full", mint ? "h-[4px] w-[33px] bg-[#9cb2ab] mb-[14px]" : "h-1 w-9 bg-foreground/20")} aria-hidden />
+          <div className={cn("md:hidden mx-auto rounded-full", mint ? "h-[4px] w-[33px] bg-[var(--mint-faint)] mb-[14px]" : "h-1 w-9 bg-foreground/20")} aria-hidden />
           <p className={mint ? "text-[15px] font-semibold leading-[18px]" : "text-h2"} style={mint ? { color: "var(--mint-title)" } : undefined}>{title}</p>
 
           {rows && rows.length > 6 && (
@@ -174,8 +174,8 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                   <Newspaper className="w-4 h-4 text-primary" />
                 </span>
               ) : r.kind === "saved" ? (
-                <span className={cn("w-8 h-8 shrink-0 flex items-center justify-center", mint ? "rounded-[13px] bg-[#2f5b53]" : "rounded-md bg-primary")}>
-                  <Bookmark className={cn("w-4 h-4", mint ? "text-white" : "text-primary-foreground")} />
+                <span className={cn("w-8 h-8 shrink-0 flex items-center justify-center", mint ? "rounded-[13px] bg-[var(--mint-deep)]" : "rounded-md bg-primary")}>
+                  <Bookmark className={cn("w-4 h-4", mint ? "text-[color:var(--mint-on-primary)]" : "text-primary-foreground")} />
                 </span>
               ) : r.kind === "channel" && !r.avatar ? (
                 <span className="w-8 h-8 rounded-md shrink-0 bg-surface-3 flex items-center justify-center">

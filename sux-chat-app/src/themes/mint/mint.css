@@ -4,7 +4,51 @@
  * Цвета — из переменных темы, поэтому светлая и тёмная «Мята» и любая своя
  * тема со стилем soft выглядят согласованно.
  */
+/* Своя тема со стилем soft: всё от цветов темы — акцент, фон, текст, линии.
+   Встроенные «Мята» и «Мята тёмная» ниже — со значениями макета, как были. */
 [data-shape="soft"] {
+  --mint-surface: hsl(var(--surface-1));
+  --mint-border: 1px solid transparent;
+  --mint-shadow: 0 4.3px 16.7px rgb(0 0 0 / 0.2);
+  --mint-card-shadow: 0 5px 11px rgb(0 0 0 / 0.2);
+  --mint-title: hsl(var(--primary));
+  --mint-ink: hsl(var(--primary));
+  --mint-muted: hsl(var(--muted-foreground));
+  --mint-label: hsl(var(--foreground));
+  --mint-hint: hsl(var(--subtle-foreground));
+  --mint-faint: hsl(var(--subtle-foreground));
+  --mint-divider: hsl(var(--ui-divider));
+  --mint-nav-bg: linear-gradient(104deg, hsl(var(--accent) / 0.22) 16%, hsl(var(--accent-soft) / 0.35) 76%, hsl(var(--surface-1) / 0.2) 110%), hsl(var(--surface-1));
+  --mint-nav-on: hsl(var(--primary) / 0.1);
+  --mint-tint: hsl(var(--primary) / 0.1);
+  --mint-pill-dark: hsl(var(--primary));
+  --mint-pill-dark-fg: hsl(var(--primary-foreground));
+  --mint-on-primary: hsl(var(--primary-foreground));
+  --mint-sheet: linear-gradient(hsl(var(--primary) / 0.35), hsl(var(--primary) / 0.35)), hsl(var(--surface-1));
+  --mint-ring: hsl(var(--surface-1));
+  --mint-call-accept: hsl(var(--primary));
+  --mint-call-decline: hsl(var(--destructive));
+  --mint-check: hsl(var(--primary));
+  --mint-deep: hsl(var(--primary));
+  --mint-check-border: hsl(var(--primary) / 0.5);
+  --mint-strong: hsl(var(--foreground));
+  --mint-on-accent: hsl(var(--accent-foreground));
+  font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+[data-shape="soft"][data-base="dark"] {
+  --mint-surface: linear-gradient(137.65deg, hsl(var(--background)) 25.06%, hsl(var(--surface-1)) 82.39%, hsl(var(--accent)) 425.81%);
+  --mint-border: 1px solid hsl(var(--accent) / 0.3);
+  --mint-shadow: 0 4.3px 16.7px rgb(0 0 0 / 0.35);
+  --mint-card-shadow: 0 5px 11px rgb(0 0 0 / 0.35);
+  --mint-title: hsl(var(--foreground));
+  --mint-ink: hsl(var(--accent));
+  --mint-divider: hsl(var(--accent) / 0.15);
+  --mint-nav-bg: linear-gradient(104deg, hsl(var(--background)) 25%, hsl(var(--surface-1)) 82%);
+  --mint-nav-on: hsl(var(--accent) / 0.1);
+  --mint-sheet: linear-gradient(hsl(var(--accent) / 0.06), hsl(var(--accent) / 0.06)), hsl(var(--surface-1));
+}
+/* Встроенная «Мята» — цвета макета из Figma как есть. */
+[data-shape="soft"][data-theme="mint"] {
   --mint-surface: hsl(var(--surface-1));
   --mint-border: 1px solid transparent;
   --mint-shadow: 0 4.3px 16.7px rgb(0 0 0 / 0.2);
@@ -17,11 +61,11 @@
   --mint-divider: #d9d9d9;
   --mint-nav-bg: linear-gradient(104deg, rgb(66 129 22 / 0.2) 16%, rgb(162 193 140 / 0.2) 76%, rgb(255 255 255 / 0.2) 110%), hsl(var(--surface-1));
   --mint-nav-on: rgb(52 92 84 / 0.1);
-  font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mint-sheet: linear-gradient(rgb(52 92 84 / 0.35), rgb(52 92 84 / 0.35)), #fff;
 }
-[data-shape="soft"][data-base="dark"] {
-  /* Карточка тёмного макета: градиент от цвета фона к #2D392B, лайм — далеко
-     за краем (137.6°: 25 % / 82 % / 426 %), рамка — лайм 30 %. */
+/* Карточка тёмного макета: градиент от цвета фона к #2D392B, лайм — далеко
+   за краем (137.6°: 25 % / 82 % / 426 %), рамка — лайм 30 %. */
+[data-shape="soft"][data-theme="mint-dark"] {
   --mint-surface: linear-gradient(137.65deg, hsl(var(--background)) 25.06%, #2d392b 82.39%, #c7f964 425.81%);
   --mint-border: 1px solid hsl(var(--accent) / 0.3);
   --mint-shadow: 0 4.3px 16.7px rgb(0 0 0 / 0.35);
@@ -34,6 +78,22 @@
   --mint-divider: hsl(var(--accent) / 0.15);
   --mint-nav-bg: linear-gradient(104deg, hsl(var(--background)) 25%, #2d392b 82%);
   --mint-nav-on: hsl(var(--accent) / 0.1);
+  --mint-sheet: linear-gradient(rgb(199 249 100 / 0.06), rgb(199 249 100 / 0.06)), hsl(var(--surface-1));
+}
+[data-shape="soft"][data-theme="mint"], [data-shape="soft"][data-theme="mint-dark"] {
+  --mint-faint: #9cb2ab;
+  --mint-tint: rgb(52 92 84 / 0.1);
+  --mint-pill-dark: #345c54;
+  --mint-pill-dark-fg: #fff;
+  --mint-on-primary: #fff;
+  --mint-ring: #fff;
+  --mint-call-accept: #2f5b53;
+  --mint-call-decline: #c65a52;
+  --mint-check: #2f5b53;
+  --mint-deep: #2f5b53;
+  --mint-check-border: rgb(47 91 83 / 0.5);
+  --mint-strong: #fff;
+  --mint-on-accent: #2f5b53;
 }
 [data-shape="soft"] body { font-family: inherit; }
 
@@ -42,7 +102,7 @@
 .mint-pill { background: var(--mint-surface); border-radius: 999px; color: hsl(var(--foreground)); }
 .mint-card { background: var(--mint-surface); border-radius: 20px; box-shadow: var(--mint-card-shadow); }
 .mint-lime { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); border-radius: 999px; border-color: transparent; }
-.mint-dark-pill { background: #345c54; color: #fff; border-radius: 999px; border-color: transparent; }
+.mint-dark-pill { background: var(--mint-pill-dark); color: var(--mint-pill-dark-fg); border-radius: 999px; border-color: transparent; }
 .mint-pill:active, .mint-lime:active, .mint-dark-pill:active { filter: brightness(0.95); }
 .mint-title { font-weight: 500; font-size: 17.7px; line-height: 18px; color: var(--mint-title); text-align: center; }
 .mint-muted { color: var(--mint-muted); }
@@ -52,7 +112,7 @@
    43 → 14.3 px, цвет заголовков, отступ до карточки 32 → 10.7 px. */
 .mint-label { display: block; margin: 0 0 11px 1px; font-size: 14.3px; font-weight: 500; line-height: 18px; color: var(--mint-title); }
 /* Сноска под карточками: 35 → 11.7 px, приглушённый зелёный #9CB2AB. */
-.mint-faint { color: #9cb2ab; }
+.mint-faint { color: var(--mint-faint); }
 
 /* Шапка экрана: три зоны, заголовок строго по центру. */
 .mint-head {
@@ -136,7 +196,7 @@
   /* Как в макете: правый сегмент самой таблетки — во всю её высоту, прижат
      к краю, скругление по форме таблетки. */
   width: 55px; height: 38px; border-radius: 19px;
-  background: rgb(52 92 84 / 0.1) !important; color: var(--mint-ink);
+  background: var(--mint-tint) !important; color: var(--mint-ink);
   border: 0 !important; box-shadow: none !important;
 }
 [data-base="dark"] .mint-compose .mint-attach-wrap > button { background: hsl(var(--accent) / 0.1) !important; }
@@ -162,9 +222,8 @@
 /* Панель стикеров и звуков: зеленоватая шторка во всю ширину под полем ввода. */
 .mint-sticker-sheet {
   margin: 8px -16px 0; border-radius: 20px 20px 0 0; overflow: hidden;
-  background: linear-gradient(rgb(52 92 84 / 0.35), rgb(52 92 84 / 0.35)), #fff;
+  background: var(--mint-sheet);
 }
-[data-base="dark"] .mint-sticker-sheet { background: linear-gradient(rgb(199 249 100 / 0.06), rgb(199 249 100 / 0.06)), hsl(var(--surface-1)); }
 .mint-sticker-panel input:not([type="file"]) {
   height: 28px; border-radius: 999px; padding: 0 14px; font-size: 12px;
   background: var(--mint-surface); box-shadow: var(--mint-card-shadow); border: var(--mint-border);
@@ -281,21 +340,21 @@
    кнопки 219×189 → 73×63 в белой подложке; в разговоре — белый док
    925×189 → 308×63 с клавишами 195×165 → 65×55. Включённая — зелёная,
    отбой — #C65A52. */
-.mint-call-avatar { border-radius: 17px !important; border: 2px solid #fff; box-shadow: 0 4.3px 13.3px rgb(0 0 0 / 0.25); }
+.mint-call-avatar { border-radius: 17px !important; border: 2px solid var(--mint-ring); box-shadow: 0 4.3px 13.3px rgb(0 0 0 / 0.25); }
 .mint-call-name { color: var(--mint-title); }
 .mint-call-big { width: 73px; height: 63px; padding: 4px; border-radius: 20px; background: var(--mint-surface); box-shadow: var(--mint-shadow); }
-.mint-call-big > span.mint-call-accept { background: #2f5b53; }
-.mint-call-big > span.mint-call-decline { background: #c65a52; }
+.mint-call-big > span.mint-call-accept { background: var(--mint-call-accept); }
+.mint-call-big > span.mint-call-decline { background: var(--mint-call-decline); }
 .mint-call-big > span { width: 100%; height: 100%; border-radius: 17px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 3.9px 14.9px rgb(0 0 0 / 0.2); }
 .mint-call-big:active { filter: brightness(0.95); }
 .mint-call-dock { display: flex; gap: 13px; padding: 4px; max-width: calc(100vw - 16px); border-radius: 20px; background: var(--mint-surface); box-shadow: var(--mint-shadow); }
 .mint-call-key { width: 65px; min-width: 52px; flex: 0 1 65px; height: 55px; overflow: hidden; border-radius: 18px; display: flex; align-items: center; justify-content: center; background: var(--mint-surface); color: var(--mint-ink); box-shadow: 0 3.9px 14.9px rgb(0 0 0 / 0.2); }
-.mint-call-key-on { background: hsl(var(--primary)); color: #fff; }
-.mint-call-key-end { background: #c65a52; color: #fff; }
+.mint-call-key-on { background: hsl(var(--primary)); color: var(--mint-on-primary); }
+.mint-call-key-end { background: var(--mint-call-decline); color: #fff; }
 .mint-call-key:active { filter: brightness(0.95); }
 
 /* Кнопки под именем в профиле собеседника (макет: 195×165 → 65×55, #345C54). */
-.mint-act { background: #345c54; box-shadow: var(--mint-shadow); }
+.mint-act { background: var(--mint-pill-dark); box-shadow: var(--mint-shadow); }
 .mint-act:active { filter: brightness(1.1); }
 
 /* Чекбоксы (макет «Конфиденциальность»): квадрат 19 px со скруглением 5,
@@ -303,9 +362,9 @@
    в тёмной — рамка и заливка лаймом, галочка тёмно-зелёная. */
 [data-shape="soft"] input[type="checkbox"].accent-primary {
   appearance: none; -webkit-appearance: none; width: 19px; height: 19px; margin: 0; flex-shrink: 0;
-  border-radius: 5px; border: 1.3px solid rgb(47 91 83 / 0.5); background: transparent center / 12px 10px no-repeat;
+  border-radius: 5px; border: 1.3px solid var(--mint-check-border); background: transparent center / 12px 10px no-repeat;
 }
-[data-shape="soft"] input[type="checkbox"].accent-primary:checked { background-color: #2f5b53; border-color: #2f5b53; background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%2010%22%3E%3Cpath%20d%3D%22M1.5%205.2%204.6%208.2%2010.5%201.8%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E"); }
+[data-shape="soft"] input[type="checkbox"].accent-primary:checked { background-color: var(--mint-check); border-color: var(--mint-check); background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%2010%22%3E%3Cpath%20d%3D%22M1.5%205.2%204.6%208.2%2010.5%201.8%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E"); }
 [data-shape="soft"] input[type="checkbox"].accent-primary:disabled { opacity: 0.5; }
 [data-shape="soft"][data-base="dark"] input[type="checkbox"].accent-primary { border-color: hsl(var(--accent) / 0.5); }
 [data-shape="soft"][data-base="dark"] input[type="checkbox"].accent-primary:checked { background-color: hsl(var(--accent)); border-color: hsl(var(--accent)); background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2012%2010%22%3E%3Cpath%20d%3D%22M1.5%205.2%204.6%208.2%2010.5%201.8%22%20fill%3D%22none%22%20stroke%3D%22%232f5b53%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E"); }
@@ -314,19 +373,19 @@
 /* Надписи на таблетках («Изм.», невыбранные вкладки списка) — белые; лайм —
    у значков и акцентов. */
 [data-shape="soft"][data-base="dark"] .mint-head > .mint-btn.mint-ink,
-[data-shape="soft"][data-base="dark"] .mint-card > button.mint-pill.mint-ink { color: #fff; }
+[data-shape="soft"][data-base="dark"] .mint-card > button.mint-pill.mint-ink { color: var(--mint-strong); }
 /* «Поделиться профилем» и другие тёмные таблетки в тёмной теме — лаймовые. */
-[data-shape="soft"][data-base="dark"] .mint-dark-pill { background: hsl(var(--accent)); color: #2f5b53; }
+[data-shape="soft"][data-base="dark"] .mint-dark-pill { background: hsl(var(--accent)); color: var(--mint-on-accent); }
 /* Пост: комментарии, «поделиться», корзина — лаймовые; реакции — лайм 15 % с белым. */
-[data-shape="soft"][data-base="dark"] .post-card .post-actions button { background: hsl(var(--accent)); color: #2f5b53; }
-[data-shape="soft"][data-base="dark"] .post-card .post-actions .ui-reaction { background: hsl(var(--accent) / 0.15); color: #fff; }
+[data-shape="soft"][data-base="dark"] .post-card .post-actions button { background: hsl(var(--accent)); color: var(--mint-on-accent); }
+[data-shape="soft"][data-base="dark"] .post-card .post-actions .ui-reaction { background: hsl(var(--accent) / 0.15); color: var(--mint-strong); }
 [data-shape="soft"][data-base="dark"] .post-card .post-actions .ui-reaction[aria-pressed="true"] { background: hsl(var(--accent) / 0.35); }
 /* Кнопки профиля собеседника: стекло с лаймовой рамкой, значок лайм, подпись #BDBDBD. */
 [data-shape="soft"][data-base="dark"] .mint-act { background: var(--mint-surface); border: var(--mint-border); color: hsl(var(--accent)); }
-[data-shape="soft"][data-base="dark"] .mint-act > span:last-child { color: #bdbdbd; }
+[data-shape="soft"][data-base="dark"] .mint-act > span:last-child { color: var(--mint-muted); }
 /* Звонок: клавиши и док — стекло с рамкой, значки белые; включённая и «принять» — лайм с тёмно-зелёным. */
-[data-shape="soft"][data-base="dark"] .mint-call-key { border: var(--mint-border); color: #fff; }
-[data-shape="soft"][data-base="dark"] .mint-call-key-on { background: hsl(var(--accent)); color: #2f5b53; }
+[data-shape="soft"][data-base="dark"] .mint-call-key { border: var(--mint-border); color: var(--mint-strong); }
+[data-shape="soft"][data-base="dark"] .mint-call-key-on { background: hsl(var(--accent)); color: var(--mint-on-accent); }
 [data-shape="soft"][data-base="dark"] .mint-call-dock,
 [data-shape="soft"][data-base="dark"] .mint-call-big { border: var(--mint-border); }
-[data-shape="soft"][data-base="dark"] .mint-call-big > span.mint-call-accept { background: hsl(var(--accent)); color: #2f5b53; }
+[data-shape="soft"][data-base="dark"] .mint-call-big > span.mint-call-accept { background: hsl(var(--accent)); color: var(--mint-on-accent); }

@@ -1,4 +1,4 @@
-import type { ThemeDef } from "./types";
+import type { ThemeDef, ThemeShape } from "./types";
 
 /**
  * Встроенные темы — такие же данные, как темы пользователей. Новая встроенная
@@ -274,6 +274,13 @@ export const MINT_DARK: ThemeDef = {
   },
   shape: { ...SOFT },
 };
+
+/** Форма по стилю — с неё начинается тема, когда в редакторе меняют стиль. */
+export const SHAPE_PRESETS: Record<ThemeShape["style"], ThemeShape> = {
+  flat: { ...FLAT }, outlined: { ...NEO.shape }, glass: { ...GLASS }, soft: { ...SOFT },
+};
+/** Основы своей темы в редакторе: обе «Мяты» и прежние встроенные. */
+export const THEME_BASES: ThemeDef[] = [MINT, MINT_DARK, LIGHT, DARK, NEO, GLASS_LIGHT, GLASS_DARK];
 
 /** «Мята» — единственная встроенная тема (светлая и тёмная); остальное
  *  приложение строится от неё. Прежние встроенные темы ведут на «Мяту» той

@@ -127,6 +127,80 @@ export function paintTheme(el: HTMLElement, t: ThemeDef) {
   for (const [k, val] of Object.entries(themeAttrs(t))) el.setAttribute(k, val);
 }
 
+// ---------- быстрая палитра (редактор, режим «Быстро») ----------
+const rgbOf = (hex: string): [number, number, number] => {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const hexOf = ([r, g, b]: number[]) => "#" + [r, g, b].map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("").toUpperCase();
+/** Смесь двух цветов: t = 0 — первый, 1 — второй. */
+export function mixHex(a: string, b: string, t: number): string {
+  const x = rgbOf(a), y = rgbOf(b);
+  return hexOf(x.map((v, i) => v + (y[i] - v) * t));
+}
+/** Текст на подложке: светлый или тёмный. На насыщенных цветах привычнее
+ *  белый — он, если его контраст не ниже prefer (3,5 для кнопок, 4,5 для
+ *  текста сообщений), иначе что контрастнее. */
+export function readableOn(bg: string, light = "#FFFFFF", dark = "#1C1C1C", prefer = 3.5): string {
+  const l = contrast(light, bg);
+  return l >= prefer || l >= contrast(dark, bg) ? light : dark;
+}
+/** Сдвигать цвет к цели, пока контраст с фоном не дорастёт до min. */
+function untilContrast(c: string, bg: string, toward: string, min: number): string {
+  let out = c;
+  for (let i = 1; i <= 10 && contrast(out, bg) < min; i++) out = mixHex(c, toward, i / 10);
+  return out;
+}
+
+/**
+ * Все 29 цветов из трёх: фон, акцент и свои сообщения. Остальное — смеси с
+ * понятными ролями (карточки чуть светлее фона, линии — фон с каплей текста,
+ * мягкий акцент — фон с акцентом), а текст на подложках — по контрасту.
+ */
+export function paletteFrom(o: { base: "light" | "dark"; background: string; accent: string; bubbleOwn: string }): ThemeColors {
+  const light = o.base === "light";
+  const bg = o.background, a = o.accent;
+  const fg = light ? untilContrast(mixHex(a, "#000000", 0.8), bg, "#000000", 7) : untilContrast(mixHex(bg, "#FFFFFF", 0.94), bg, "#FFFFFF", 7);
+  const surface1 = light ? mixHex(bg, "#FFFFFF", 0.7) : mixHex(bg, "#FFFFFF", 0.06);
+  // Основной цвет — сам акцент, если он читается на фоне, иначе — темнее (светлая) или светлее (тёмная).
+  const primary = untilContrast(a, bg, light ? fg : "#FFFFFF", 3);
+  // Входящие — между своими и фоном; попали в тон, где ни белый, ни тёмный
+  // текст не читается, — ближе к фону, пока не станет читаемо.
+  let bubbleIn = mixHex(o.bubbleOwn, bg, light ? 0.5 : 0.45);
+  for (let t = 0.55; t <= 1 && contrast(readableOn(bubbleIn, "#FFFFFF", "#1C1C1C", 4.5), bubbleIn) < 4.5; t += 0.05) bubbleIn = mixHex(o.bubbleOwn, bg, t);
+  return {
+    background: bg,
+    foreground: fg,
+    surface1,
+    surface2: light ? surface1 : mixHex(bg, "#FFFFFF", 0.09),
+    surface3: mixHex(bg, a, light ? 0.08 : 0.12),
+    surface4: mixHex(bg, a, light ? 0.16 : 0.2),
+    mutedForeground: mixHex(fg, bg, 0.42),
+    subtleForeground: mixHex(fg, bg, 0.52),
+    primary,
+    primaryForeground: readableOn(primary),
+    primaryDeep: mixHex(primary, "#000000", 0.2),
+    accent: a,
+    accentForeground: readableOn(a, "#FFFFFF", light ? fg : mixHex(a, "#000000", 0.75)),
+    destructive: light ? "#D64545" : "#FF6B5E",
+    destructiveForeground: readableOn(light ? "#D64545" : "#FF6B5E"),
+    success: light ? "#3E8E41" : "#6FCF7B",
+    successForeground: readableOn(light ? "#3E8E41" : "#6FCF7B"),
+    online: light ? "#4FAE2A" : "#7BD35A",
+    amber: light ? "#E9A100" : "#FFB10A",
+    border: mixHex(bg, fg, light ? 0.1 : 0.16),
+    divider: mixHex(bg, fg, light ? 0.07 : 0.11),
+    ring: primary,
+    ink: fg,
+    accentSoft: mixHex(bg, a, light ? 0.22 : 0.18),
+    bubbleOwn: o.bubbleOwn,
+    bubbleOwnFg: readableOn(o.bubbleOwn, "#FFFFFF", "#1C1C1C", 4.5),
+    bubbleIn,
+    bubbleInFg: readableOn(bubbleIn, "#FFFFFF", "#1C1C1C", 4.5),
+    chatCanvas: light ? mixHex(mixHex(bg, "#000000", 0.04), a, 0.06) : mixHex(bg, "#000000", 0.18),
+  };
+}
+
 /** Проблемы читаемости: пары «текст на фоне» с контрастом ниже порога.
  *  Только предупреждение в редакторе — сохранить можно любую тему. */
 export function contrastIssues(c: ThemeColors): { pair: string; ratio: number; fatal: boolean }[] {

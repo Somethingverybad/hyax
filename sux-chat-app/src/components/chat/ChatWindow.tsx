@@ -4053,7 +4053,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             {onBack ? (
               <button type="button" onClick={onBack} aria-label={tr("Назад")} className="mint-pill h-[43px] px-[13px] inline-flex items-center gap-[8px] mint-muted">
                 <MintIcon name="back" size={[7, 13]} />
-                {otherUnread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#345c54] text-white text-[10.7px] leading-[18px] text-center">{otherUnread > 99 ? "99+" : otherUnread}</span>}
+                {otherUnread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--mint-pill-dark)] text-[color:var(--mint-pill-dark-fg)] text-[10.7px] leading-[18px] text-center">{otherUnread > 99 ? "99+" : otherUnread}</span>}
               </button>
             ) : <span />}
             {/* Островок с ником и статусом перетекает, как жидкость (LiquidIsland). */}

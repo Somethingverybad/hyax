@@ -23,6 +23,9 @@ const KEY_SYNC = "hyax-theme-sync";
 const listeners = new Set<() => void>();
 let current: ThemeDef = DEFAULT_THEME;
 let installed: ThemeDef[] = [];
+/** Примерка из редактора: тема на всё приложение, но не сохранённая — ни в
+ *  localStorage, ни на сервере. Перезапуск или «Отменить» — снова current. */
+let trial: { theme: ThemeDef; from: string } | null = null;
 const emit = () => listeners.forEach((l) => l());
 
 function read<T>(key: string): T | null {
@@ -95,7 +98,15 @@ export function initTheme() {
 }
 
 let legacyMigrated = false;
-export function getTheme(): ThemeDef { return current; }
+export function getTheme(): ThemeDef { return trial?.theme ?? current; }
+export function getTrial(): { theme: ThemeDef; from: string } | null { return trial; }
+
+/** Примерить тему (from — откуда вернуться в редактор) или снять примерку (null). */
+export function tryTheme(t: ThemeDef | null, from = "") {
+  trial = t ? { theme: normalizeTheme(t), from } : null;
+  repaint(trial?.theme ?? current);
+  emit();
+}
 export function getInstalledThemes(): ThemeDef[] { return installed; }
 
 /** Синхронизация темы между устройствами включена? (по умолчанию — да) */
@@ -124,7 +135,8 @@ function repaint(t: ThemeDef) {
   if (typeof vt === "function") {
     root.classList.add("theme-vt");
     try {
-      vt.call(document, () => paint(t)).finished.finally(() => root.classList.remove("theme-vt"));
+      // Новая смена поверх прежней отменяет её переход — это не ошибка.
+      vt.call(document, () => paint(t)).finished.catch(() => {}).finally(() => root.classList.remove("theme-vt"));
       return;
     } catch { root.classList.remove("theme-vt"); }
   }
@@ -140,7 +152,8 @@ export function setTheme(t: ThemeDef, remote = true) {
   current = t;
   write(KEY_ID, t.id);
   write(KEY_DEF, t);
-  if (changed && prev !== t) repaint(t); else paint(t);
+  // Идёт примерка — на экране она, сохранённое применится после неё.
+  if (!trial) { if (changed && prev !== t) repaint(t); else paint(t); }
   emit();
   if (remote && isThemeSync()) void import("@/api/client").then(({ api }) => api.setActiveTheme(t.id)).catch(() => {});
 }
@@ -152,7 +165,7 @@ export function setInstalledThemes(list: ThemeDef[]) {
   write(KEY_LIST, list);
   if (!current.builtin) {
     const fresh = list.find((t) => t.id === current.id);
-    if (fresh) { current = fresh; write(KEY_DEF, fresh); paint(fresh); }
+    if (fresh) { current = fresh; write(KEY_DEF, fresh); if (!trial) paint(fresh); }
   }
   emit();
 }
@@ -177,6 +190,9 @@ function subscribe(onChange: () => void) {
 }
 export function useTheme(): ThemeDef {
   return useSyncExternalStore(subscribe, getTheme, () => DEFAULT_THEME);
+}
+export function useTrial(): { theme: ThemeDef; from: string } | null {
+  return useSyncExternalStore(subscribe, getTrial, () => null);
 }
 export function useInstalledThemes(): ThemeDef[] {
   return useSyncExternalStore(subscribe, getInstalledThemes, () => []);
