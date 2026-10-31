@@ -21,6 +21,8 @@ import type { StageTile } from "@/components/call/GroupStage";
 import AddToCall, { type CallCandidate } from "@/components/call/AddToCall";
 import { ObsRelay, obsLink, type ObsSource, type ObsView } from "@/lib/obsRelay";
 import { getMicSettings, onMicSettings, setMicSettings, MIC_TRACK_EVENT } from "@/lib/micSettings";
+import { autotuneOn, canAutotune, onAutotune, sendTrack, stopAutotune } from "@/lib/autotune";
+import { approxQuality, type CallQuality } from "@/lib/callQuality";
 
 /** Чат из кеша списка (session-cache «chats») — ровно то, что нужно звонку. */
 type CachedChat = {
@@ -140,6 +142,8 @@ const CallHost = () => {
       setMinimized(false); setCallChat(null);
       // Трансляция — на звонок: следующий начнётся без неё.
       if (obsRef.current?.active) { obsRef.current.stop(); setObsOn(false); }
+      // Автотюн — тоже: серьёзный звонок после шуточного начнётся обычным голосом.
+      stopAutotune();
     }
   }, [callState, groupState]);
 
@@ -540,6 +544,46 @@ const CallHost = () => {
     () => groupCallRef.current?.getAudioLevels().catch(() => NO_LEVELS) ?? Promise.resolve(NO_LEVELS),
     [],
   );
+  // Автотюн (браузер и компьютер): голос по нотам — собеседники слышат эффект.
+  const [tuneOn, setTuneOn] = useState(autotuneOn);
+  const [tuneBusy, setTuneBusy] = useState(false);
+  useEffect(() => onAutotune(setTuneOn), []);
+  const toggleAutotune = async () => {
+    const svc = groupState !== "idle" ? groupWeb() : webSvc();
+    if (!svc || tuneBusy) return;
+    setTuneBusy(true);
+    try {
+      await svc.setAutotune(!tuneOn);
+      toast(!tuneOn ? tr("Автотюн включён — собеседники слышат эффект") : tr("Автотюн выключен"));
+    } catch {
+      toast.error(tr("Не удалось включить автотюн"));
+    } finally {
+      setTuneBusy(false);
+    }
+  };
+
+  // Качество связи: в браузере — по статистике соединений раз в 2 с,
+  // в приложении — по задержке до сервера раз в 5 с (приблизительно).
+  const [quality, setQuality] = useState<CallQuality | null>(null);
+  useEffect(() => {
+    if (callState !== "active" && groupState !== "active") { setQuality(null); return; }
+    let alive = true;
+    const tick = async () => {
+      const web = groupState !== "idle" ? groupWeb() : webSvc();
+      let q: CallQuality | null = null;
+      if (web) q = await web.sampleQuality().catch(() => null);
+      else if (hasNativeCalls()) {
+        const native = groupState !== "idle" ? groupCallRef.current : callRef.current;
+        const down = native && "linkDown" in native ? native.linkDown() : false;
+        q = approxQuality(down ? null : (await wsRef.current?.measureRtt().catch(() => null)) ?? null, down);
+      }
+      if (alive) setQuality(q);
+    };
+    void tick();
+    const id = setInterval(() => void tick(), hasNativeCalls() ? 5000 : 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, [callState, groupState]);
+
   const toggleNoise = async () => {
     const svc = webSvc();
     // Личный звонок ждёт, пока микрофон переоткроется, — чтобы сказать об ошибке.
@@ -691,6 +735,8 @@ const CallHost = () => {
   // Что получает страница OBS: каждый участник своей дорожкой и мой микрофон,
   // камеры и демонстрации — для страниц с видео.
   obsSourcesRef.current = () => {
+    // Мой голос — каким его слышат собеседники (с автотюном, если включён).
+    const mine = (st?: MediaStream | null) => { const tr0 = st?.getAudioTracks()[0]; return tr0 ? sendTrack(tr0) : null; };
     const me = { id: myInfo?.id || "me", name: myInfo?.username || tr("Вы"), avatarUrl: myInfo?.avatar_url, self: true };
     if (groupState !== "idle") {
       const g = groupWeb();
@@ -705,7 +751,7 @@ const CallHost = () => {
           };
         }),
         {
-          ...me, track: g?.getLocalStream()?.getAudioTracks()[0] ?? null,
+          ...me, track: mine(g?.getLocalStream()),
           video: groupMedia?.localVideo?.getVideoTracks()[0] ?? null, videoOn: !!groupMedia?.localOn,
           screen: g?.getScreenStream()?.getVideoTracks()[0] ?? null,
           screenAudio: g?.getScreenStream()?.getAudioTracks()[0] ?? null,
@@ -722,7 +768,7 @@ const CallHost = () => {
           screenAudio: media?.remoteScreenAudio?.getAudioTracks()[0] ?? null,
         },
         {
-          ...me, track: svc?.getLocalStream()?.getAudioTracks()[0] ?? null,
+          ...me, track: mine(svc?.getLocalStream()),
           video: media?.localVideo?.getVideoTracks()[0] ?? null, videoOn: !!media?.localOn,
           screen: svc?.getScreenStream()?.getVideoTracks()[0] ?? null,
           screenAudio: svc?.getScreenStream()?.getAudioTracks()[0] ?? null,
@@ -754,6 +800,8 @@ const CallHost = () => {
     people: obsPeople,
   } : undefined;
   const noise = !hasNativeCalls() ? { on: noiseOn, onToggle: () => void toggleNoise() } : undefined;
+  const autotune = !hasNativeCalls() && canAutotune() && !micMissing && (callState === "active" || groupState === "active")
+    ? { on: tuneOn, busy: tuneBusy, onToggle: () => void toggleAutotune() } : undefined;
 
   const common = {
     muted: muted || !!micMissing,
@@ -763,6 +811,8 @@ const CallHost = () => {
     broadcast: broadcastText,
     obs,
     noise,
+    autotune,
+    quality,
     volumes: peerVolumes,
     onVolume: setPeerVolume,
     onAdd: () => setAddToCallOpen(true),

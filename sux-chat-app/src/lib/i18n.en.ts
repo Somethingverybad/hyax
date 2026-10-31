@@ -2364,5 +2364,18 @@ const en: Record<string, string> = {
   "Микрофон недоступен": "Microphone unavailable",
   "Чат звонка": "Call chat",
   "Собеседник без микрофона — отвечает в чате": "The other person has no microphone and replies in the chat",
+  "Соединение лучше, чем на парковке": "Better connection than in a parking lot",
+  "Связь хорошая — говорите смело": "Good connection — talk away",
+  "Связь так себе — голос может подзаикаться": "So-so connection — voices may stutter",
+  "Фиксики скоро починят": "The Fixies will fix it soon",
+  "Связь пропала — Фиксики уже чинят": "Connection lost — the Fixies are on it",
+  "Задержка до сервера {ms} мс · оценка приблизительная": "Server delay {ms} ms · rough estimate",
+  "задержка {ms} мс": "delay {ms} ms",
+  "потери {p}%": "loss {p}%",
+  "Автотюн": "Autotune",
+  "Голос по нотам, как у поп-звёзд. Собеседники слышат эффект": "Your voice snaps to notes like a pop star's. Others in the call hear it",
+  "Автотюн включён — собеседники слышат эффект": "Autotune on — others hear the effect",
+  "Автотюн выключен": "Autotune off",
+  "Не удалось включить автотюн": "Couldn't turn on autotune",
 };
 export default en;

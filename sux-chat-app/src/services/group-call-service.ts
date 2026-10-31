@@ -3,6 +3,8 @@ import { micConstraints, micKey, onMicSettings, swapMicTrack } from "@/lib/micSe
 import { t as tr } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
 import { openCallMic } from "@/lib/callMic";
+import { sendTrack, setAutotune } from "@/lib/autotune";
+import { QualityMeter, type CallQuality } from "@/lib/callQuality";
 import type { AudioLevels } from "@/lib/nativeCall";
 import { canCaptureScreen, isScreenAudioTransceiver, isScreenTransceiver, openScreenCapture, sdpCanVideo, tuneScreenAudioSender, tuneScreenSender, type AdoptedVideo } from "./call-service";
 import { myDeviceId } from "./deviceId";
@@ -111,6 +113,7 @@ export class GroupCallService {
   /** Параметры, с которыми открыт микрофон (micKey), и очередь его подмен. */
   private micOpenedWith = "";
   private micChain: Promise<void> = Promise.resolve();
+  private quality = new QualityMeter();
   /** Микрофон не открылся — в соединениях тихая дорожка. */
   private micMissing = false;
   private micMissingReason: string | undefined;
@@ -212,6 +215,18 @@ export class GroupCallService {
     this.cb.onPeers?.([id]);
     this.emitStreams();
     this.emitMedia();
+  }
+
+  /** Автотюн голоса (lib/autotune) — во всех соединениях, и у новых участников. */
+  async setAutotune(on: boolean): Promise<void> {
+    await this.micChain.catch(() => {});
+    await setAutotune(on, this.localStream, this.peers.values());
+  }
+
+  /** Качество связи по статистике соединений с участниками (lib/callQuality). */
+  sampleQuality(): Promise<CallQuality | null> {
+    const pcs = [...this.peers.values()].filter((pc) => pc.connectionState === "connected" || pc.iceConnectionState === "disconnected");
+    return this.state === "active" ? this.quality.sample(pcs) : Promise.resolve(null);
   }
 
   /** Мой микрофон (для трансляции в OBS); нет звонка — null. */
@@ -593,7 +608,7 @@ export class GroupCallService {
     this.peers.set(peerId, pc);
     if (!this.peerMedia.has(peerId)) this.peerMedia.set(peerId, emptyPeerMedia());
 
-    this.localStream?.getTracks().forEach((t) => pc.addTrack(t, this.localStream as MediaStream));
+    this.localStream?.getTracks().forEach((t) => pc.addTrack(sendTrack(t), this.localStream as MediaStream));
     // Видеоканал предлагающего — сразу (с камерой, если она уже включена);
     // отвечающий берёт его из предложения.
     if (offerer) {

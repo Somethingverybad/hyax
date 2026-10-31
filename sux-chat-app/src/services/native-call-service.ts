@@ -37,6 +37,8 @@ abstract class NativeBase {
   protected callId: string | null = null;
   protected chatId: string | null = null;
   protected peers = new Set<string>();
+  /** Последнее состояние соединения с каждым (для шкалы качества связи). */
+  private links = new Map<string, string>();
   protected muted = false;
   /** Соединения с видеоканалом: камера включается без пересогласования. */
   protected videoCalls = false;
@@ -69,12 +71,18 @@ abstract class NativeBase {
       }),
       nativeCall.onPeerState((d: NativePeerState) => {
         if (!this.peers.has(d.peerId)) return;
+        this.links.set(d.peerId, d.state);
         this.onPeerState(d.peerId, d.state);
       })
     );
   }
 
   protected abstract onPeerState(peerId: string, state: string): void;
+
+  /** Соединение с кем-то из звонка прервалось (движок переподключается). */
+  linkDown(): boolean {
+    return [...this.peers].some((id) => { const st = this.links.get(id); return st === "disconnected" || st === "failed"; });
+  }
   /** SDP собеседника — по нему видно, умеет ли он видео. */
   protected onRemoteSdp(_peerId: string, _sdp: string): void {}
 
@@ -102,6 +110,7 @@ abstract class NativeBase {
    *  screenAudio — и канал звука его компьютера. */
   protected async addPeer(peerId: string, offer: boolean, screen = false, screenAudio = false): Promise<void> {
     if (this.peers.has(peerId)) return;
+    this.links.delete(peerId);
     this.peers.add(peerId);
     await nativeCall.createPeer(peerId, this.videoCalls, screen, screen && screenAudio);
     if (offer) await nativeCall.createOffer(peerId);
@@ -115,6 +124,7 @@ abstract class NativeBase {
   protected async handleMedia(signalType: string, from: string, data: SignalData): Promise<void> {
     switch (signalType) {
       case "webrtc_offer":
+        this.links.delete(from);
         this.peers.add(from);
         this.onRemoteSdp(from, data.offer?.sdp || "");
         await nativeCall.setRemote(from, "offer", data.offer?.sdp || "", this.videoCalls);

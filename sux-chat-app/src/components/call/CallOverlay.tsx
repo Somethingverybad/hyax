@@ -20,6 +20,8 @@ const readStageMode = (): StageMode => {
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { useMint, MintIcon } from "@/themes/mint";
+import QualityBars from "@/components/call/QualityBars";
+import type { CallQuality } from "@/lib/callQuality";
 
 export type CallUiState = "idle" | "outgoing" | "incoming" | "connecting" | "active";
 
@@ -55,6 +57,10 @@ interface CallOverlayProps {
   video?: CallVideo;
   /** Шумоподавление микрофона — переключатель в настройках звонка. */
   noise?: { on: boolean; onToggle: () => void };
+  /** Автотюн голоса (браузер и компьютер) — в настройках звонка. */
+  autotune?: { on: boolean; busy?: boolean; onToggle: () => void };
+  /** Качество связи — шкала рядом с таймером; null — ещё не измерено. */
+  quality?: CallQuality | null;
   /** Трансляция в OBS (браузер и компьютер) — в настройках звонка. */
   obs?: CallObs;
   /** Звонок транслируется: «Вы транслируете…» / «Андрей транслирует…». */
@@ -170,6 +176,8 @@ const CallOverlay = ({
   video,
   extraAudio,
   noise,
+  autotune,
+  quality,
   obs,
   broadcast,
   stage,
@@ -298,6 +306,9 @@ const CallOverlay = ({
       ? `${fmt(seconds)} · ${t("участников: {n}", { n: participants.length + 1 })}`
       : fmt(seconds)
     : t(STATUS[state]);
+  // Шкала качества связи — только в идущем разговоре.
+  const bars = (align: "center" | "start", onDark: boolean) =>
+    quality && state === "active" ? <QualityBars quality={quality} align={align} onDark={onDark} /> : null;
   // Звук собеседников — и в свёрнутом виде: экран звонка не размонтируется,
   // поэтому и таймер не сбрасывается.
   const audio = [
@@ -449,8 +460,17 @@ const CallOverlay = ({
             <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={noise.on} onChange={noise.onToggle} aria-label={t("Шумоподавление")} />
           </label>
         )}
+        {autotune && (
+          <label className={cn("flex items-center gap-3 cursor-pointer", noise && "pt-3 border-t border-border")}>
+            <span className="flex-1 min-w-0">
+              <span className="block text-body font-medium">{t("Автотюн")}</span>
+              <span className="block text-caption text-subtle">{t("Голос по нотам, как у поп-звёзд. Собеседники слышат эффект")}</span>
+            </span>
+            <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" checked={autotune.on} disabled={autotune.busy} onChange={autotune.onToggle} aria-label={t("Автотюн")} />
+          </label>
+        )}
         {obs && (
-          <div className={cn("space-y-2", noise && "pt-3 border-t border-border")}>
+          <div className={cn("space-y-2", (noise || autotune) && "pt-3 border-t border-border")}>
             <label className="flex items-center gap-3 cursor-pointer">
               <Radio className={cn("w-5 h-5 shrink-0", obs.on ? "text-[#ff3b30]" : "text-subtle")} />
               <span className="flex-1 min-w-0">
@@ -524,7 +544,10 @@ const CallOverlay = ({
           )}
           <div className="min-w-0 flex-1 px-1">
             <div className="text-body font-semibold truncate">{peer.name}</div>
-            <div className="text-caption text-subtle tabular-nums truncate">{statusText}</div>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="text-caption text-subtle tabular-nums truncate">{statusText}</div>
+              {bars("start", false)}
+            </div>
           </div>
           {stage.tiles.length > 1 && (
             <div className="shrink-0 flex items-center rounded-full bg-surface-2 p-0.5" role="group" aria-label={t("Вид")}>
@@ -548,7 +571,7 @@ const CallOverlay = ({
               <MessageSquare className="w-6 h-6" />
             </button>
           )}
-          {(noise || obs) && (
+          {(noise || autotune || obs) && (
             <button type="button" onClick={() => setSettingsOpen((v) => !v)} className={headBtn} aria-label={t("Настройки звонка")} title={t("Настройки звонка")}>
               <Settings2 className="w-6 h-6" />
             </button>
@@ -653,7 +676,7 @@ const CallOverlay = ({
           <ChevronDown className="w-7 h-7" />
         </button>
       )}
-      {(noise || obs) && state !== "incoming" && (
+      {(noise || autotune || obs) && state !== "incoming" && (
         <>
           <button
             type="button"
@@ -672,7 +695,7 @@ const CallOverlay = ({
         <button
           type="button"
           onClick={onOpenChat}
-          className={cn("absolute z-20 w-11 h-11 rounded-full flex items-center justify-center", chromeBtn, noise || obs ? "right-16" : "right-3")}
+          className={cn("absolute z-20 w-11 h-11 rounded-full flex items-center justify-center", chromeBtn, noise || autotune || obs ? "right-16" : "right-3")}
           style={{ top: "calc(var(--sat) + 0.5rem)" }}
           aria-label={t("Чат звонка")}
           title={t("Чат звонка")}
@@ -695,7 +718,10 @@ const CallOverlay = ({
           <Identicon id={peer.id} avatarUrl={peer.avatarUrl} className={mintCall ? "w-[98px] h-[98px] mint-call-avatar" : "w-24 h-24"} />
         )}
         <div className={cn("truncate max-w-full", mintCall ? "mt-[14px] text-[26.7px] leading-[30px] font-semibold text-center px-4 mint-call-name" : "text-2xl font-bold", !mintCall && (onVideo ? "pl-12 pr-36 text-left drop-shadow" : "text-center px-4"))}>{peer.name}</div>
-        <div className={cn(mintCall ? "text-[16px] text-[color:var(--mint-faint)]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>{statusText}</div>
+        <div className={cn("flex items-center gap-2", mintCall ? "text-[16px] text-[color:var(--mint-faint)]" : "text-sm", !mintCall && (onVideo ? "pl-12 text-white/85 drop-shadow" : "text-muted-foreground"))}>
+          <span>{statusText}</span>
+          {bars(onVideo ? "start" : "center", onVideo)}
+        </div>
         {peerNoMic && state === "active" && (
           <div className={cn("text-caption flex items-center gap-1.5", onVideo ? "pl-12 text-white/85 drop-shadow" : "text-subtle")}>
             <MicOff className="w-3.5 h-3.5 shrink-0" aria-hidden />

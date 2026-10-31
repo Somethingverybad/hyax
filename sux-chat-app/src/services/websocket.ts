@@ -32,6 +32,7 @@ export class WebSocketService {
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
+  private pongWaiters: Array<(t: number) => void> = [];
   private isManuallyClosed = false;
   private tokenSource?: string | (() => Promise<string | undefined>);
 
@@ -142,8 +143,10 @@ export class WebSocketService {
         try {
           const data: WebSocketMessage = JSON.parse(event.data);
           
-          // Игнорируем pong сообщения
+          // pong — только замерам задержки (measureRtt)
           if (data.type === 'pong') {
+            const now = performance.now();
+            this.pongWaiters.splice(0).forEach((w) => w(now));
             return;
           }
 
@@ -231,6 +234,18 @@ export class WebSocketService {
     const pending = this.queue.filter((m) => now - m.at < QUEUE_TTL);
     this.queue = [];
     for (const m of pending) this.ws?.send(m.data);
+  }
+
+  /** Задержка до сервера туда и обратно, мс (ping → pong); null — не ответил за timeout. */
+  measureRtt(timeout = 4000): Promise<number | null> {
+    if (this.ws?.readyState !== WebSocket.OPEN) return Promise.resolve(null);
+    const t0 = performance.now();
+    return new Promise((resolve) => {
+      const w = (t: number) => { clearTimeout(timer); resolve(t - t0); };
+      const timer = setTimeout(() => { this.pongWaiters = this.pongWaiters.filter((x) => x !== w); resolve(null); }, timeout);
+      this.pongWaiters.push(w);
+      this.send({ type: 'ping' });
+    });
   }
 
   private startPing(): void {

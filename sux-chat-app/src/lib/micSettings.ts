@@ -8,6 +8,8 @@
  * телефонах — со следующего звонка: там микрофон держит нативный движок.
  */
 
+import { retargetAutotune, tunesTrack } from "@/lib/autotune";
+
 export type MicSettings = {
   /** Убирать фоновый шум. */
   noiseSuppression: boolean;
@@ -74,7 +76,10 @@ export const micKey = (s: MicSettings = getMicSettings()) =>
 export async function swapMicTrack(stream: MediaStream, pcs: Iterable<RTCPeerConnection>): Promise<void> {
   const old = stream.getAudioTracks()[0];
   if (!old) return;
-  const senders = [...pcs].map((pc) => pc.getSenders().find((x) => x.track === old) ?? pc.getSenders().find((x) => x.track?.kind === "audio")).filter((x): x is RTCRtpSender => !!x);
+  // Автотюн (lib/autotune): в соединениях не микрофон, а обработанная
+  // дорожка — её не трогаем, эффект просто начнёт слушать новый микрофон.
+  const tuned = tunesTrack(old);
+  const senders = tuned ? [] : [...pcs].map((pc) => pc.getSenders().find((x) => x.track === old) ?? pc.getSenders().find((x) => x.track?.kind === "audio")).filter((x): x is RTCRtpSender => !!x);
   old.stop();
   let fresh: MediaStream;
   try {
@@ -88,6 +93,7 @@ export async function swapMicTrack(stream: MediaStream, pcs: Iterable<RTCPeerCon
   const track = fresh.getAudioTracks()[0];
   if (!track) return;
   track.enabled = old.enabled;
+  if (tuned) retargetAutotune(old, track);
   for (const sender of senders) await sender.replaceTrack(track);
   stream.removeTrack(old);
   stream.addTrack(track);

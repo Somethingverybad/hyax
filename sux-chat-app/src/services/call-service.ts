@@ -3,6 +3,8 @@ import { getMicSettings, micConstraints, micKey, onMicSettings, setMicSettings, 
 import { t } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
 import { openCallMic } from "@/lib/callMic";
+import { sendTrack, setAutotune } from "@/lib/autotune";
+import { QualityMeter, type CallQuality } from "@/lib/callQuality";
 import { myDeviceId } from "./deviceId";
 
 type CallType = "audio" | "video";
@@ -258,6 +260,7 @@ export class OneToOneCallService {
   private peerNoMic = false;
   /** Подмены микрофона — по очереди: две разом остановили бы не ту дорожку. */
   private micChain: Promise<void> = Promise.resolve();
+  private quality = new QualityMeter();
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
   private currentCallId: string | null = null;
@@ -432,6 +435,17 @@ export class OneToOneCallService {
     setMicSettings({ noiseSuppression: on });
     await this.applyMicSettings();
     this.emitMedia();
+  }
+
+  /** Автотюн голоса (lib/autotune): собеседник слышит обработанный голос. */
+  async setAutotune(on: boolean): Promise<void> {
+    await this.micChain.catch(() => {});
+    await setAutotune(on, this.localStream, this.peerConnection ? [this.peerConnection] : []);
+  }
+
+  /** Качество связи по статистике соединения (lib/callQuality). */
+  sampleQuality(): Promise<CallQuality | null> {
+    return this.peerConnection && this.state === "active" ? this.quality.sample([this.peerConnection]) : Promise.resolve(null);
   }
 
   /** Переоткрыть микрофон, если настройки разошлись с теми, с которыми он открыт. */
@@ -833,7 +847,7 @@ export class OneToOneCallService {
       console.log(`📤 [CallService] Добавление локальных треков: ${tracks.length}`);
       tracks.forEach((track) => {
         console.log(`  - Трек: ${track.kind}, enabled: ${track.enabled}`);
-        this.peerConnection?.addTrack(track, this.localStream as MediaStream);
+        this.peerConnection?.addTrack(sendTrack(track), this.localStream as MediaStream);
       });
     } else {
       console.error('❌ [CallService] Нет локального потока для добавления треков!');
