@@ -276,7 +276,7 @@ const ProfilePage = () => {
     await clearAppCache(); // сам перезагрузит приложение
   };
 
-  // Своя точка: зелёная — «В сети», серая — выбран статус «Скрыт».
+  // «В сети» видно другим (не выбран статус «Скрыт») — аура аватара.
   const online = !profile?.hide_online;
   const mint = useMint();
   // На телефоне экран — «Профиль» (вкладка с человечком, мобильный макет),
@@ -388,7 +388,6 @@ const ProfilePage = () => {
           <div className={mint ? "shrink-0 pt-[12px] text-center" : "shrink-0 pt-10"}>
             <div className={mint ? "flex items-center justify-center gap-2" : "flex items-center gap-2"}>
               <p className={mint ? "text-[21.3px] leading-tight font-semibold truncate" : "text-[24px] leading-tight font-semibold truncate"} style={mint ? { color: "var(--mint-title)" } : undefined}>{profile?.username || "…"}</p>
-              <span className={`${mint ? "w-3 h-3" : "w-2.5 h-2.5"} shrink-0 rounded-full ${online ? (mint ? "bg-[#6ede32]" : "bg-online") : "bg-subtle"}`} title={online ? t("В сети") : t("Скрыт")} aria-hidden />
             </div>
             {(!mint || bio) && <p className={mint ? "mt-1 text-[12.7px] mint-muted truncate" : "mt-1 text-body text-subtle truncate"}>{bio || t("Статус не указан")}</p>}
             {uploading && (
