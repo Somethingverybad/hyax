@@ -1186,7 +1186,7 @@ const en: Record<string, string> = {
   "Опасное действие": "Destructive action",
   "Текст на красном": "Text on red",
   "«В сети»": "“Online”",
-  "Янтарный": "Amber",
+  "Отметки и фокус (звезда, закреп, поле ввода)": "Marks and focus (star, pin, input field)",
   "Свои": "Mine",
   "Текст своих": "My message text",
   "Входящие": "Incoming",

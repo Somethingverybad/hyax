@@ -29,7 +29,7 @@ const ALL_GROUPS: { title: string; items: [ColorKey, string][] }[] = [
   ] },
   { title: "Состояния", items: [
     ["destructive", "Опасное действие"], ["destructiveForeground", "Текст на опасном"], ["success", "Успех"],
-    ["successForeground", "Текст на успехе"], ["online", "«В сети»"], ["amber", "Янтарный"],
+    ["successForeground", "Текст на успехе"], ["online", "«В сети»"], ["amber", "Отметки и фокус (звезда, закреп, поле ввода)"],
   ] },
   { title: "Сообщения", items: [
     ["bubbleOwn", "Свои"], ["bubbleOwnFg", "Текст своих"], ["bubbleIn", "Входящие"], ["bubbleInFg", "Текст входящих"],
