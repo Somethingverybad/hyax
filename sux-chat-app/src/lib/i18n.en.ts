@@ -2382,5 +2382,7 @@ const en: Record<string, string> = {
   "Отправить в чаты: {n}": "Send to {n} chats",
   "Переслано в чаты: {n}": "Forwarded to {n} chats",
   "Не переслано: {list}": "Not forwarded: {list}",
+  "Рамка треугольников": "Video triangle frame",
+  "Шкала и хорошее настроение": "Bar and good mood",
 };
 export default en;

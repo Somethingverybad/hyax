@@ -13,7 +13,7 @@ import { COLOR_KEYS, SHAPE_LIMITS, type ColorKey, type ThemeDef, type ThemeShape
 import { t as tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-/** Подписи всех 29 цветов (режим «Все цвета»), по группам. */
+/** Подписи всех цветов темы (режим «Все цвета»), по группам. */
 const ALL_GROUPS: { title: string; items: [ColorKey, string][] }[] = [
   { title: "Фон и поверхности", items: [
     ["background", "Фон экрана"], ["surface1", "Карточки"], ["surface2", "Карточки, второй слой"],
@@ -33,6 +33,10 @@ const ALL_GROUPS: { title: string; items: [ColorKey, string][] }[] = [
   ] },
   { title: "Сообщения", items: [
     ["bubbleOwn", "Свои"], ["bubbleOwnFg", "Текст своих"], ["bubbleIn", "Входящие"], ["bubbleInFg", "Текст входящих"],
+    ["triRim", "Рамка треугольников"],
+  ] },
+  { title: "Питомец", items: [
+    ["pet", "Шкала и хорошее настроение"],
   ] },
 ];
 // Ни один цвет не забыт: если схема пополнится, а подписи нет — увидим в разработке.

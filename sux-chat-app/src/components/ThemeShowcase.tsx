@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { paintTheme } from "@/themes/engine";
 import { MintIcon } from "@/themes/mint";
 import type { ThemeDef } from "@/themes/types";
+import { GlassTriangle } from "@/components/chat/media";
 
 /**
  * Предпросмотр темы в редакторе: три экрана (чаты, переписка, настройки),
@@ -118,7 +119,9 @@ function SoftScreen({ tab }: { tab: Tab }) {
             <span className="mint-title">{t("Настройки")}</span>
             <span />
           </div>
-          <div className="px-4 pt-1">
+          {/* Середина прокручивается: экран выше рамки, остров навигации — внизу. */}
+          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-4 pt-1 pb-3">
+            <div className="mb-3"><PetMock soft /></div>
             <span className="mint-label">{t("Аккаунт")}</span>
             <div className="mint-card overflow-hidden">
               {[[User, "Профиль"], [Bell, "Уведомления"], [Lock, "Конфиденциальность"]].map(([Icon, label], i) => {
@@ -181,7 +184,28 @@ function Bubbles() {
       {row(false, "Привет! Как тебе новая тема?", "18:31")}
       {row(true, "Огонь 🔥 Цвета свои подобрал", "18:32")}
       {row(false, "Покажешь в профиле?", "18:33")}
-      {row(true, "Уже поделился ссылкой", "18:35")}
+      {/* Треугольник-видеосообщение: рамка — цвет «Рамка треугольников». */}
+      <div className="flex justify-end">
+        <GlassTriangle size={84} innerClassName="bg-[#1f2a27]">
+          <span className="tri-pill tri-pill-pos absolute left-1/2 -translate-x-1/2 rounded-full px-1.5 text-[10px] leading-[14px] tabular-nums">0:07</span>
+        </GlassTriangle>
+      </div>
+    </div>
+  );
+}
+
+/** Карточка питомца: «Счастлив» и шкала — цвет темы «Питомец». */
+function PetMock({ soft }: { soft: boolean }) {
+  return (
+    <div className={cn("px-4 py-3 space-y-2", soft ? "mint-card" : "rounded-[var(--radius)] bg-surface-1 border border-border")}>
+      <div className="flex items-center gap-2">
+        <span className="flex-1 text-[14px] font-semibold" style={soft ? { color: "var(--mint-label)" } : undefined}>{t("Питомец")}</span>
+        <span className="h-6 px-2.5 rounded-full text-[11.5px] font-medium grid place-items-center"
+          style={{ color: "hsl(var(--pet))", background: "color-mix(in srgb, hsl(var(--pet)) 16%, transparent)" }}>{t("Счастлив")}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+        <div className="h-full w-[78%] rounded-full" style={{ background: "hsl(var(--pet))" }} />
+      </div>
     </div>
   );
 }
@@ -244,7 +268,8 @@ function ClassicScreen({ tab }: { tab: Tab }) {
       {tab === "settings" && (
         <>
           <div className="px-4 pt-3 pb-2 text-[19px] font-bold">{t("Настройки")}</div>
-          <div className="px-4 space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-4 pb-3 space-y-3">
+            <PetMock soft={false} />
             <div className="rounded-[var(--radius)] bg-surface-1 border border-border overflow-hidden">
               {[[User, "Профиль"], [Bell, "Уведомления"], [Palette, "Оформление"]].map(([Icon, label], i) => {
                 const I = Icon as typeof User;

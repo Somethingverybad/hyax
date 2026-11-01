@@ -429,6 +429,21 @@ class ThemeTests(TestCase):
         for body in (bad_color, bad_radius, bad_flag, missing, theme_body(name="  "), theme_body(base="sepia")):
             self.assertEqual(client_for(self.author).post("/api/themes/", body, format="json").status_code, 400)
 
+    def test_optional_colors(self):
+        # Рамка треугольников и питомец (01.11) — необязательные: без них тема
+        # прежняя, с ними — сохраняются; мимо hex — отказ, как у остальных.
+        from .models import Theme
+        r = self.create()
+        self.assertEqual(r.status_code, 201)
+        self.assertNotIn("pet", Theme.objects.get(pk=r.data["id"]).data["colors"])
+        body = theme_body(); body["colors"]["triRim"] = "#ff00aa"; body["colors"]["pet"] = "#7c3aed"
+        r = client_for(self.author).post("/api/themes/", body, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        colors = Theme.objects.get(pk=r.data["id"]).data["colors"]
+        self.assertEqual((colors["triRim"], colors["pet"]), ("#FF00AA", "#7C3AED"))
+        bad = theme_body(); bad["colors"]["pet"] = "green"
+        self.assertEqual(client_for(self.author).post("/api/themes/", bad, format="json").status_code, 400)
+
     def test_accepts_unreadable_theme(self):
         # Красить можно как угодно (30.10): низкий контраст — только
         # предупреждение в редакторе, сервер тему принимает.

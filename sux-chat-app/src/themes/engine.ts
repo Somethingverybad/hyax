@@ -1,4 +1,4 @@
-import { COLOR_KEYS, SHAPE_LIMITS, type ColorKey, type ThemeColors, type ThemeDef, type ThemeShape } from "./types";
+import { COLOR_KEYS, EXTRA_KEYS, SHAPE_LIMITS, type ColorKey, type ThemeColors, type ThemeDef, type ThemeShape } from "./types";
 import { DEFAULT_THEME } from "./builtin";
 
 /** #RRGGBB → «H S% L%» — в таком виде цвета ждёт Tailwind: hsl(var(--x)). */
@@ -47,6 +47,7 @@ const VAR: Record<ColorKey, string[]> = {
   border: ["--border", "--input"], divider: ["--ui-divider"], ring: ["--ring"], ink: ["--ink"], accentSoft: ["--accent-soft"],
   bubbleOwn: ["--bubble-own"], bubbleOwnFg: ["--bubble-own-fg"], bubbleIn: ["--bubble-in"], bubbleInFg: ["--bubble-in-fg"],
   chatCanvas: ["--chat-canvas"],
+  triRim: ["--tri-rim"], pet: ["--pet"],
 };
 
 const clamp = (v: unknown, [lo, hi]: readonly [number, number], fallback: number) => {
@@ -60,10 +61,16 @@ const clamp = (v: unknown, [lo, hi]: readonly [number, number], fallback: number
  *  строка мимо hex, ни радиус в тысячу пикселей. */
 export function normalizeTheme(raw: any, fallback: ThemeDef = DEFAULT_THEME): ThemeDef {
   const colors = {} as ThemeColors;
+  const extra = new Set<ColorKey>(EXTRA_KEYS);
   for (const k of COLOR_KEYS) {
     const v = raw?.colors?.[k];
-    colors[k] = typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : fallback.colors[k];
+    if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) colors[k] = v.toUpperCase();
+    else if (!extra.has(k)) colors[k] = fallback.colors[k];
   }
+  // Новых цветов в старой теме нет — от её же цветов, а не от темы-основы:
+  // иначе у любой своей темы рамка и питомец остались бы мятными.
+  const derived = extrasFrom(colors);
+  for (const k of EXTRA_KEYS) colors[k] ??= derived[k];
   const s = raw?.shape ?? {}, f = fallback.shape;
   const shape: ThemeShape = {
     // Раскладка у всех тем одна — «мягкие карточки» «Мяты»; своя тема меняет цвета.
@@ -93,6 +100,9 @@ export function themeVars(t: ThemeDef): Record<string, string> {
   const v: Record<string, string> = {};
   for (const k of COLOR_KEYS) for (const name of VAR[k]) v[name] = hexToTriplet(t.colors[k]);
   const p = v["--primary"], s1 = v["--surface-1"], ink = v["--ink"];
+  // Рамка треугольников — градиент от цвета рамки к его тёмному тону.
+  v["--tri-rim-mid"] = hexToTriplet(mixHex(t.colors.triRim, "#000000", 0.22));
+  v["--tri-rim-deep"] = hexToTriplet(mixHex(t.colors.triRim, "#000000", 0.62));
   v["--gradient-primary"] = `linear-gradient(0deg, hsl(${p}), hsl(${p}))`;
   v["--gradient-card"] = `linear-gradient(0deg, hsl(${s1}), hsl(${s1}))`;
   v["--radius"] = `${t.shape.radius}px`;
@@ -152,12 +162,22 @@ function untilContrast(c: string, bg: string, toward: string, min: number): stri
   return out;
 }
 
+/** Рамка треугольников — акцент; питомец (шкала и «Счастлив») — основной цвет,
+ *  дотянутый до читаемости на карточке. */
+export function extrasFrom(c: Omit<ThemeColors, (typeof EXTRA_KEYS)[number]>): Pick<ThemeColors, (typeof EXTRA_KEYS)[number]> {
+  return { triRim: c.accent, pet: untilContrast(c.primary, c.surface1, c.foreground, 3) };
+}
+
 /**
- * Все 29 цветов из трёх: фон, акцент и свои сообщения. Остальное — смеси с
+ * Все 31 цвет из трёх: фон, акцент и свои сообщения. Остальное — смеси с
  * понятными ролями (карточки чуть светлее фона, линии — фон с каплей текста,
  * мягкий акцент — фон с акцентом), а текст на подложках — по контрасту.
  */
 export function paletteFrom(o: { base: "light" | "dark"; background: string; accent: string; bubbleOwn: string }): ThemeColors {
+  const c = paletteBase(o);
+  return { ...c, ...extrasFrom(c) };
+}
+function paletteBase(o: { base: "light" | "dark"; background: string; accent: string; bubbleOwn: string }): Omit<ThemeColors, (typeof EXTRA_KEYS)[number]> {
   const light = o.base === "light";
   const bg = o.background, a = o.accent;
   const fg = light ? untilContrast(mixHex(a, "#000000", 0.8), bg, "#000000", 7) : untilContrast(mixHex(bg, "#FFFFFF", 0.94), bg, "#FFFFFF", 7);

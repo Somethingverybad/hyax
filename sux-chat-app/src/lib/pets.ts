@@ -281,8 +281,10 @@ export function petDisplayName(pet: { name?: string | null; sex?: string | null 
 export function moodInfo(m: PetMood, sex?: string | null): { label: string; color: string } {
   const g = (mm: string, f: string) => t(bySex(sex, mm, f));
   switch (m) {
-    case "happy": return { label: g("Счастлив", "Счастлива"), color: "#2BB673" };
-    case "content": return { label: g("Доволен", "Довольна"), color: "#5FB44E" };
+    // Хорошее настроение — цвет темы «Питомец» (у «Мяты» прежний зелёный);
+    // плохие остаются своими: по цвету видно, что питомцу худо.
+    case "happy": return { label: g("Счастлив", "Счастлива"), color: "hsl(var(--pet))" };
+    case "content": return { label: g("Доволен", "Довольна"), color: "hsl(var(--pet))" };
     case "bored": return { label: t("Скучает"), color: "#C9A227" };
     case "hungry": return { label: g("Голоден", "Голодна"), color: "#E08A2E" };
     case "lonely": return { label: g("Обиделся", "Обиделась"), color: "#D9733B" };

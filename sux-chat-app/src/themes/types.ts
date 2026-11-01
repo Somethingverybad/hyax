@@ -20,8 +20,12 @@ export const COLOR_KEYS = [
   "border", "divider", "ring", "ink", "accentSoft",
   "bubbleOwn", "bubbleOwnFg", "bubbleIn", "bubbleInFg",
   "chatCanvas",
+  "triRim", "pet",
 ] as const;
 export type ColorKey = (typeof COLOR_KEYS)[number];
+/** Появились позже (01.11): у старых тем их нет — подбираются из остальных
+ *  цветов (engine.ts extrasFrom); сервер принимает тему и без них. */
+export const EXTRA_KEYS = ["triRim", "pet"] as const satisfies readonly ColorKey[];
 export type ThemeColors = Record<ColorKey, string>;
 
 /** Форма: то, чего цветами не выразить. */

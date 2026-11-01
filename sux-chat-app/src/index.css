@@ -50,6 +50,11 @@ All colors MUST be HSL.
     --online: 126 48% 47%;
     /* Янтарный #FFB308: звезда «Избранного» и рамка фокуса. */
     --amber: 41 100% 52%;
+    /* Рамка треугольников (градиент) и питомец — до темы, как в «Мяте». */
+    --tri-rim: 80 92% 68%;
+    --tri-rim-mid: 80 50% 53%;
+    --tri-rim-deep: 80 48% 26%;
+    --pet: 151 62% 44%;
 
     /* Линии 1 px #262628: разделители строк, обводки полей. */
     --border: 240 3% 15%;
@@ -1016,7 +1021,13 @@ html.theme-switch, html.theme-switch * {
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   border: 1px solid rgb(255 255 255 / 0.25);
 }
-.tri-rim { background: linear-gradient(160deg, #C7F964 0%, #8DBB5C 40%, #2F5B53 100%); }
+/* Рамка треугольников — цвет темы «Рамка треугольников» (engine.ts: --tri-rim,
+   тона --tri-rim-mid/-deep); у встроенных «Мят» — прежний градиент макета.
+   Градиент — переменной на элементе с data-theme: корень приложения и окно
+   предпросмотра в редакторе (data-theme="custom") берут каждый свой. */
+[data-theme] { --tri-rim-grad: linear-gradient(160deg, hsl(var(--tri-rim)) 0%, hsl(var(--tri-rim-mid)) 40%, hsl(var(--tri-rim-deep)) 100%); }
+[data-theme="mint"], [data-theme="mint-dark"] { --tri-rim-grad: linear-gradient(160deg, #C7F964 0%, #8DBB5C 40%, #2F5B53 100%); }
+.tri-rim { background: hsl(var(--tri-rim)); background: var(--tri-rim-grad, linear-gradient(160deg, #C7F964 0%, #8DBB5C 40%, #2F5B53 100%)); }
 .tri-sheen { background: linear-gradient(160deg, rgb(255 255 255 / 0.4) 0%, rgb(255 255 255 / 0.12) 28%, transparent 48%); }
 .tri-glass {
   background: hsl(var(--surface-1) / 0.6); color: hsl(var(--primary));

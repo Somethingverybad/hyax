@@ -29,6 +29,9 @@ COLOR_KEYS = (
     "bubbleOwn", "bubbleOwnFg", "bubbleIn", "bubbleInFg",
     "chatCanvas",
 )
+# Необязательные цвета (появились позже): старые темы и клиенты их не шлют —
+# тогда клиент подбирает их из остальных (themes/engine.ts extrasFrom).
+OPTIONAL_COLOR_KEYS = ("triRim", "pet")
 SHAPE_LIMITS = {
     "radius": (0, 24), "radiusField": (0, 20), "borderWidth": (1, 4),
     "shadowOffset": (0, 8), "iconStroke": (1, 2.5),
@@ -89,6 +92,13 @@ def clean_theme(raw):
     colors = {}
     for key in COLOR_KEYS:
         value = colors_in.get(key)
+        if not isinstance(value, str) or not HEX.match(value):
+            raise ThemeError("Цвет темы должен быть в виде #RRGGBB", f"colors.{key}")
+        colors[key] = value.upper()
+    for key in OPTIONAL_COLOR_KEYS:
+        value = colors_in.get(key)
+        if value is None:
+            continue
         if not isinstance(value, str) or not HEX.match(value):
             raise ThemeError("Цвет темы должен быть в виде #RRGGBB", f"colors.{key}")
         colors[key] = value.upper()

@@ -38,6 +38,7 @@ export const DARK: ThemeDef = {
     bubbleIn: "#287742",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#0C0C0C",
+    triRim: "#D12B1F", pet: "#287742",
     ink: "#FFFFFF",
     accentSoft: "#1D1D1E",
     divider: "#252527",
@@ -74,6 +75,7 @@ export const LIGHT: ThemeDef = {
     bubbleIn: "#189044",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#F3F4F6",
+    triRim: "#EF4343", pet: "#189044",
     ink: "#111827",
     accentSoft: "#F3F4F6",
     divider: "#E5E7EB",
@@ -112,6 +114,7 @@ export const NEO: ThemeDef = {
     bubbleIn: "#FFFFFF",
     bubbleInFg: "#121212",
     chatCanvas: "#EDEDDE",
+    triRim: "#D9C7FF", pet: "#137638",
     ink: "#121212",
     accentSoft: "#86EAAA",
     divider: "#DBDBD1",
@@ -157,6 +160,7 @@ export const GLASS_LIGHT: ThemeDef = {
     bubbleIn: "#FFFFFF",
     bubbleInFg: "#0B0B0C",
     chatCanvas: "#F8F8F5",
+    triRim: "#E11D2E", pet: "#16A34A",
   },
   shape: { ...GLASS },
 };
@@ -193,6 +197,7 @@ export const GLASS_DARK: ThemeDef = {
     bubbleIn: "#1F1F23",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#0B0B0C",
+    triRim: "#FF3B3B", pet: "#22C55E",
   },
   shape: { ...GLASS },
 };
@@ -235,6 +240,7 @@ export const MINT: ThemeDef = {
     bubbleIn: "#789184",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#E3EDDB",
+    triRim: "#C7F964", pet: "#2BB673",
   },
   shape: { ...SOFT },
 };
@@ -271,6 +277,7 @@ export const MINT_DARK: ThemeDef = {
     bubbleIn: "#789184",
     bubbleInFg: "#FFFFFF",
     chatCanvas: "#1C2420",
+    triRim: "#C7F964", pet: "#2BB673",
   },
   shape: { ...SOFT },
 };
