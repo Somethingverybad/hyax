@@ -2,12 +2,13 @@ import { createPortal } from "react-dom";
 import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bookmark, Share2, Users, Radio, Newspaper } from "lucide-react";
+import { Bookmark, Share2, Users, Radio, Newspaper, Check, Send } from "lucide-react";
 import Identicon from "@/components/Identicon";
 import { api } from "@/api/client";
 import { readCache } from "@/lib/session-cache";
 import { cn } from "@/lib/utils";
 import { useMint, MintIcon } from "@/themes/mint";
+import type { ShareTarget } from "@/lib/forward";
 
 /**
  * «Отправить в чат» — шторка со списком переписок.
@@ -21,8 +22,11 @@ import { useMint, MintIcon } from "@/themes/mint";
  * пересылка ссылки в канал — не то, чего ждут от «поделиться профилем».
  * Пересылка сообщений (includeChannels) их показывает — своим каналом
  * делятся постами из переписки.
+ *
+ * Пересылка с комментарием (onSend): нажатие отмечает чат, можно несколько,
+ * внизу — поле «Комментарий» и «Отправить», как в Telegram.
  */
-type Row = { id: string; title: string; kind: "saved" | "group" | "direct" | "channel" | "wall"; peerId?: string; avatar?: string | null };
+type Row = ShareTarget & { peerId?: string; avatar?: string | null };
 
 const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeChatId?: string): Row[] => chats
   // Секретные чаты — мимо: отсюда уходит открытый текст или файл без
@@ -38,7 +42,7 @@ const toRows = (chats: any[], me?: string, includeChannels?: boolean, excludeCha
   // «Избранное» — первой строкой, как в пересылке сообщений.
   .sort((a, b) => Number(b.kind === "saved") - Number(a.kind === "saved"));
 
-const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, includeChannels, excludeChatId, onShareToWall, includeWall }: {
+const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, onSend, includeChannels, excludeChatId, onShareToWall, includeWall }: {
   open: boolean;
   /** Что отправляем: обычно ссылка. */
   text: string;
@@ -49,6 +53,8 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   onShareOutside?: () => void;
   /** Только выбрать чат — отправкой займётся вызывающий (вложения из «Поделиться»). */
   onPick?: (chatId: string, title: string, kind?: "saved" | "group" | "direct" | "channel" | "wall") => void;
+  /** Пересылка: отмеченные чаты и комментарий (может быть пустым); шторку закроет сама после успеха. */
+  onSend?: (targets: ShareTarget[], comment: string) => Promise<boolean | void>;
   /** Показывать и каналы (пересылка сообщений). */
   includeChannels?: boolean;
   /** Не показывать этот чат (откуда пересылаем). */
@@ -68,6 +74,9 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
   // «нет переписок»: на плохой сети getChats падает регулярно, и человек
   // думал, что чаты пропали (баг-репорт 220531bc).
   const [failed, setFailed] = useState(false);
+  // Пересылка: отмеченные чаты (по порядку нажатий) и комментарий.
+  const [picked, setPicked] = useState<Row[]>([]);
+  const [comment, setComment] = useState("");
 
   useEffect(() => {
     if (!open || rows) return;
@@ -99,11 +108,15 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
 
   // Закрыли — следующее открытие грузит список заново (мог прийти новый чат,
   // могла появиться сеть).
-  useEffect(() => { if (!open) { setQuery(""); setRows(null); setFailed(false); } }, [open]);
+  useEffect(() => { if (!open) { setQuery(""); setRows(null); setFailed(false); setPicked([]); setComment(""); } }, [open]);
 
   if (!open) return null;
 
   const send = async (row: Row) => {
+    if (onSend) {
+      setPicked((prev) => (prev.some((x) => x.id === row.id) ? prev.filter((x) => x.id !== row.id) : [...prev, row]));
+      return;
+    }
     if (onPick) { onPick(row.id, row.title, row.kind); onClose(); return; }
     if (busy || !text) return;
     setBusy(true);
@@ -115,6 +128,16 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
       toast.error(e?.message || t("Не удалось отправить"));
     } finally { setBusy(false); }
   };
+
+  const sendPicked = async () => {
+    if (!onSend || busy || !picked.length) return;
+    setBusy(true);
+    try {
+      const ok = await onSend(picked.map(({ id, title, kind }) => ({ id, title, kind })), comment.trim());
+      if (ok !== false) onClose();
+    } finally { setBusy(false); }
+  };
+  const isPicked = (id: string) => picked.some((x) => x.id === id);
 
   const q = query.trim().toLowerCase();
   const shown = (rows || []).filter((r) => !q || r.title.toLowerCase().includes(q));
@@ -167,6 +190,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
               type="button"
               disabled={busy}
               onClick={() => void send(r)}
+              aria-pressed={onSend ? isPicked(r.id) : undefined}
               className={cn("w-full flex items-center text-left active:opacity-70 disabled:opacity-50", mint ? "min-h-[54px] px-[13px] gap-[11px]" : "min-h-12 px-3 rounded-md gap-3 bg-surface-4")}
             >
               {r.kind === "wall" ? (
@@ -189,11 +213,41 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
                 <Identicon id={r.peerId || r.id} avatarUrl={r.avatar} className={mint ? "w-8 h-8 !rounded-[13px]" : "w-8 h-8"} />
               )}
               <span className={cn("flex-1 truncate", mint ? "text-[14.3px] font-medium" : "text-body")} style={mint ? { color: "var(--mint-title)" } : undefined}>{r.title}</span>
+              {onSend && (
+                <span aria-hidden className={cn("w-[22px] h-[22px] rounded-full shrink-0 flex items-center justify-center border-2",
+                  isPicked(r.id) ? "bg-primary border-primary text-primary-foreground" : "border-foreground/25")}>
+                  {isPicked(r.id) && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        {(onShareOutside || onShareToWall) && (
+        {onSend && picked.length > 0 ? (
+          <div className={cn("shrink-0 pt-2 pb-[calc(var(--sab)+16px)] md:pb-4 flex items-end gap-2", mint ? "px-[24px]" : "px-4")}>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(pointer: fine)").matches) { e.preventDefault(); void sendPicked(); } }}
+              rows={1}
+              maxLength={4000}
+              placeholder={t("Добавить комментарий…")}
+              aria-label={t("Комментарий")}
+              className="flex-1 min-w-0 min-h-[44px] max-h-32 px-3 py-[11px] rounded-md bg-surface-4 text-body outline-none resize-none [field-sizing:content]"
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void sendPicked()}
+              aria-label={picked.length > 1 ? t("Отправить в чаты: {n}", { n: picked.length }) : t("Отправить")}
+              className={cn("shrink-0 h-11 min-w-11 px-3 rounded-full flex items-center justify-center gap-1.5 font-semibold disabled:opacity-60 active:opacity-90",
+                mint ? "mint-lime" : "bg-primary text-primary-foreground")}
+            >
+              <Send className="w-5 h-5" />
+              {picked.length > 1 && <span className="text-small tabular-nums">{picked.length}</span>}
+            </button>
+          </div>
+        ) : (onShareOutside || onShareToWall) && (
           <div className={cn("shrink-0 pt-2 pb-[calc(var(--sab)+16px)] md:pb-4 space-y-2", mint ? "px-[24px]" : "px-4")}>
             {onShareToWall && (
               <button
@@ -215,7 +269,7 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, inclu
             )}
           </div>
         )}
-        {!onShareOutside && !onShareToWall && <div className="shrink-0 h-[calc(var(--sab)+16px)] md:h-4" aria-hidden />}
+        {!onShareOutside && !onShareToWall && !(onSend && picked.length > 0) && <div className="shrink-0 h-[calc(var(--sab)+16px)] md:h-4" aria-hidden />}
       </div>
     </div>
   , document.body);

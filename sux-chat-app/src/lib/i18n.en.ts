@@ -2377,5 +2377,10 @@ const en: Record<string, string> = {
   "Автотюн включён — собеседники слышат эффект": "Autotune on — others hear the effect",
   "Автотюн выключен": "Autotune off",
   "Не удалось включить автотюн": "Couldn't turn on autotune",
+  "Добавить комментарий…": "Add a comment…",
+  "Комментарий": "Comment",
+  "Отправить в чаты: {n}": "Send to {n} chats",
+  "Переслано в чаты: {n}": "Forwarded to {n} chats",
+  "Не переслано: {list}": "Not forwarded: {list}",
 };
 export default en;

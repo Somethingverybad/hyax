@@ -63,6 +63,7 @@ import { openMiniApp } from "@/lib/miniapp";
 import ProfileLinkCard from "./ProfileLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 import ShareToChat from "@/components/ShareToChat";
+import { sendToTargets, type ShareTarget } from "@/lib/forward";
 const PhotoEditor = lazy(() => import("@/components/PhotoEditor"));
 import TrackPicker from "./TrackPicker";
 import WallpaperSheet from "./WallpaperSheet";
@@ -894,13 +895,28 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => { for (const ev of ["wheel", "touchstart", "pointerdown", "keydown"] as const) window.addEventListener(ev, off, true); }, 400);
   };
 
+  /** Переслать пакет в чат; порядок — по времени: отмечать могли в любом порядке. */
+  const sendForward = async (list: Message[], targetId: string) => {
+    const ordered = [...list].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    if (ordered.length === 1) await api.forwardMessage(ordered[0].id, targetId);
+    else await api.forwardMany(ordered.map((m) => m.id), targetId);
+  };
+  /** Пересылка из шторки: в каждый отмеченный чат; комментарий — обычным
+   *  сообщением перед пересланным, как в Telegram. Не вышло никуда — шторка
+   *  остаётся открытой (false), чтобы повторить. */
+  const forwardToTargets = async (list: Message[], targets: ShareTarget[], comment: string): Promise<boolean> => {
+    if (!list.length || !targets.length) return false;
+    const n = list.length;
+    return sendToTargets(targets, comment, (id) => sendForward(list, id), (tg) => tg.kind === "saved"
+      ? (n > 1 ? tr("В избранное: {n}", { n }) : tr("Добавлено в избранное"))
+      : (n > 1 ? tr("Переслано {n}: {label}", { n, label: tg.title }) : tr("Переслано: {label}", { label: tg.title })),
+    ).then((ok) => { if (ok) setSelected(null); return ok; });
+  };
+
   const forwardTo = async (list: Message[], targetId: string, label: string) => {
     if (!list.length) return;
     try {
-      // Порядок — по времени: отмечать могли в любом порядке.
-      const ordered = [...list].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-      if (ordered.length === 1) await api.forwardMessage(ordered[0].id, targetId);
-      else await api.forwardMany(ordered.map((m) => m.id), targetId);
+      await sendForward(list, targetId);
       toast.success(label);
       setSelected(null);
       if (targetId === chatId) syncSince();
@@ -5978,12 +5994,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           includeChannels
           excludeChatId={chatId}
           onClose={() => setForwardFor(null)}
-          onPick={(id, label) => {
-            const m = forwardFor;
-            forwardTo(m, id, label === tr("Избранное")
-              ? (m.length > 1 ? tr("В избранное: {n}", { n: m.length }) : tr("Добавлено в избранное"))
-              : (m.length > 1 ? tr("Переслано {n}: {label}", { n: m.length, label }) : tr("Переслано: {label}", { label })));
-          }}
+          onSend={(targets, comment) => forwardToTargets(forwardFor, targets, comment)}
           // Наружу — текстом сообщений; вложения через системное «Поделиться»
           // не уходят, для них есть «Сохранить» у файла.
           onShareOutside={forwardFor.some((m) => (m.content || "").trim()) ? async () => {

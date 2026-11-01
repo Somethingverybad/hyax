@@ -32,6 +32,7 @@ import { writeClipboard } from "@/lib/clipboard";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
+import { sendToTargets, type ShareTarget } from "@/lib/forward";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken, stationLinkId } from "@/lib/linkify";
 import { FormattedText, carryCustomEmoji, type TextEntity } from "@/lib/format";
 import PackLinkCard from "./PackLinkCard";
@@ -455,16 +456,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     const p = pressRef.current;
     if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) cancelPress();
   };
-  const forwardPost = async (post: Post, chatId: string, title: string) => {
+  /** Пост (с альбомом целиком) — в отмеченные чаты, с комментарием перед ним. */
+  const forwardPost = (post: Post, targets: ShareTarget[], comment: string) => {
     const list = post.album_id ? posts.filter((p) => p.album_id === post.album_id) : [post];
     const ids = list.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map((p) => p.id);
-    try {
-      if (ids.length === 1) await api.forwardMessage(ids[0], chatId);
-      else await api.forwardMany(ids, chatId);
-      toast.success(title === "Избранное" || title === tr("Избранное") ? tr("Добавлено в избранное") : tr("Отправлено: {title}", { title }));
-    } catch (e: any) {
-      toast.error(e?.message || tr("Не удалось переслать"));
-    }
+    return sendToTargets(targets, comment,
+      (chatId) => (ids.length === 1 ? api.forwardMessage(ids[0], chatId) : api.forwardMany(ids, chatId)),
+      (tg) => (tg.kind === "saved" ? tr("Добавлено в избранное") : tr("Отправлено: {title}", { title: tg.title })));
   };
   const sharePostOutside = async (post: Post) => {
     if (!channel) return;
@@ -1843,7 +1841,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           text=""
           title={tr("Поделиться постом")}
           onClose={() => setShareFor(null)}
-          onPick={(chatId, title) => void forwardPost(shareFor, chatId, title)}
+          onSend={(targets, comment) => forwardPost(shareFor, targets, comment)}
           onShareOutside={() => void sharePostOutside(shareFor)}
           onShareToWall={!wall && isAdmin ? () => setRepostFor(shareFor) : undefined}
         />
