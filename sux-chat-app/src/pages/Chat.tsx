@@ -17,7 +17,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate, useLocation } from "react-router-dom";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import type { LatestMessage } from "@/components/chat/ChatWindow";
-import Identicon from "@/components/Identicon";
 import UpdateBanner from "@/components/UpdateBanner";
 import TermsGate from "@/components/TermsGate";
 import { syncThemeFromProfile } from "@/lib/theme";
@@ -31,6 +30,7 @@ import { toast } from "sonner";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import logo from "@/assets/logo.png";
 
 interface ChatType {
   id: string;
@@ -1034,9 +1034,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       ) : (
         <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
           <div className="text-center p-8">
-            <div className="w-24 h-24 mx-auto mb-6">
-              <Identicon id="hyax-empty" avatarUrl={null} className="w-24 h-24" />
-            </div>
+            {/* Логотип, как на экране входа (раньше — пустая заглушка аватара). */}
+            <img src={logo} alt="WYX" draggable={false} className="w-24 h-24 mx-auto mb-6 rounded-[18px] select-none pointer-events-none" />
             <h2 className="text-2xl font-bold text-foreground mb-2">{tr("Выберите чат")}</h2>
             <p className="text-muted-foreground max-w-md">
               {tr("Слева — список чатов. Откройте любой, чтобы начать переписку или позвонить.")}
