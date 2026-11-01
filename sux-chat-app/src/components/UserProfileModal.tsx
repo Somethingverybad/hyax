@@ -139,8 +139,12 @@ const UserProfileModal = ({
     catch { toast.error(t("Не удалось скопировать")); }
   };
 
+  // Шторки поверх профиля — порталы, но клики в React всплывают по дереву
+  // компонентов: без обёртки нажатие в «Медиа» (фото, вкладки) доходило до
+  // подложки профиля, та закрывала профиль вместе со шторкой и просмотром
+  // фото (баг-репорт 031dfbf6). display: contents — обёртка не влияет на вёрстку.
   const extras = (
-    <>
+    <div className="contents" onClick={(e) => e.stopPropagation()}>
       {profile && (
         <ShareToChat
           open={shareOpen}
@@ -164,7 +168,7 @@ const UserProfileModal = ({
         <ChatMediaSheet chatId={chatId} title={profile.username} initialTab={mediaTab}
           onClose={() => setMediaTab(null)} onJump={(id) => { setMediaTab(null); onClose(); onJump?.(id); }} />
       )}
-    </>
+    </div>
   );
 
   if (mint) {

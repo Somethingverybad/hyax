@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, Play, Pause, Mic, FileText, Download, Music2, MessageSquare, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, type MediaKind } from "@/api/client";
-import { useMediaUrl } from "@/hooks/use-media-url";
+import { primeSigned, useMediaUrl } from "@/hooks/use-media-url";
 import ImageViewer from "@/components/ImageViewer";
 import { playQueue, usePlayer, currentTrack, toggle as togglePlay, type Track } from "@/lib/player";
 import { saveFileToDevice } from "@/lib/saveFile";
@@ -99,6 +99,7 @@ const ChatMediaSheet = ({ chatId, title, onClose, onJump, initialTab }: {
     try {
       const before = older ? cur?.items[cur.items.length - 1]?.created_at : undefined;
       const r = await api.getChatMedia(chatId, kind, before);
+      primeAll(r.results);
       if (r.counts) setCounts(r.counts);
       setLists((prev) => ({
         ...prev,
@@ -221,6 +222,13 @@ const ChatMediaSheet = ({ chatId, title, onClose, onJump, initialTab }: {
   );
 };
 
+/** Подписи ссылок пришли вместе со списком (поле signed) — в кэш сразу:
+ *  иначе каждый квадрат сетки просил свою подпись, сервер отвечал по одной,
+ *  и сетка с просмотром ждали десятки секунд (баг-репорт 031dfbf6). */
+const primeAll = (rows: unknown[]) => {
+  for (const m of rows) primeSigned((m as { signed?: Record<string, string> | null }).signed);
+};
+
 /** Квадрат сетки: фото — сама картинка, видео — кадр-превью и длительность. */
 const Thumb = ({ m, video, onOpen }: { m: MediaMsg; video: boolean; onOpen: () => void }) => {
   const raw = video ? (m.poster_url || null) : (m.file_url || null);
@@ -316,6 +324,7 @@ export const ChatMediaPreview = ({ chatId, onOpenAll }: { chatId: string; onOpen
     let alive = true;
     api.getChatMedia(chatId, tab)
       .then((r) => {
+        primeAll(r.results);
         if (!alive) return;
         if (r.counts) setCounts(r.counts);
         setData((prev) => ({ ...prev, [tab]: r.results as MediaMsg[] }));
