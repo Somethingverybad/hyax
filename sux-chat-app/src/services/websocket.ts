@@ -27,7 +27,12 @@ export class WebSocketService {
   private connecting = false;
   private queue: { data: string; at: number }[] = [];
   private openWaiters = new Set<() => void>();
-  private url: string;
+  /** Адреса по порядку: основной и запасные (запасной домен на случай, когда
+   *  не разрешается основной — 2026-11-02 лёг DNS Beget). Соединение, которое
+   *  закрылось, так и не открывшись, — повод попробовать следующий. */
+  private urls: string[];
+  private urlIndex = 0;
+  private get url() { return this.urls[this.urlIndex]; }
   private options: WebSocketOptions;
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -36,8 +41,8 @@ export class WebSocketService {
   private isManuallyClosed = false;
   private tokenSource?: string | (() => Promise<string | undefined>);
 
-  constructor(url: string, options: WebSocketOptions = {}) {
-    this.url = url;
+  constructor(url: string | string[], options: WebSocketOptions = {}) {
+    this.urls = Array.isArray(url) ? url : [url];
     this.options = {
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
@@ -127,8 +132,10 @@ export class WebSocketService {
       // iPhone: сокет в процессе приложения — он не засыпает в фоне со звонком.
       const ws = hasNativeSocket() ? new NativeSocket(wsUrl) : new WebSocket(wsUrl);
       this.ws = ws;
+      let opened = false;
 
       ws.onopen = () => {
+        opened = true;
         console.log('WebSocket connected:', this.url);
         this.reconnectAttempts = 0;
         this.flush();
@@ -163,6 +170,7 @@ export class WebSocketService {
 
       ws.onclose = () => {
         console.log('WebSocket closed');
+        if (!opened) this.nextUrl();
         this.stopPing();
         this.options.onClose?.();
 
@@ -182,7 +190,15 @@ export class WebSocketService {
       };
     } catch (error) {
       console.error('Error creating WebSocket:', error);
+      this.nextUrl();
     }
+  }
+
+  /** Следующий адрес по кругу (после последнего — снова основной). */
+  private nextUrl() {
+    if (this.urls.length < 2) return;
+    this.urlIndex = (this.urlIndex + 1) % this.urls.length;
+    console.warn('WebSocket: пробую адрес', this.url);
   }
 
   disconnect(): void {

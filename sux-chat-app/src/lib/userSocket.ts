@@ -1,6 +1,6 @@
 import { App } from "@capacitor/app";
 import { WebSocketService } from "@/services/websocket";
-import { WS_URL, getFreshAccessToken } from "@/api/client";
+import { WS_URLS, getFreshAccessToken } from "@/api/client";
 import { applog } from "@/lib/applog";
 
 /**
@@ -34,7 +34,7 @@ export function startUserSocket(userId: string): WebSocketService {
   if (ws && uid === userId) return ws;
   stopUserSocket();
   uid = userId;
-  const sock = new WebSocketService(`${WS_URL}/user/${userId}/`, {
+  const sock = new WebSocketService(WS_URLS.map((u) => `${u}/user/${userId}/`), {
     // Без предела: сервер перезапускается или сеть пропадает дольше минуты —
     // сокет всё равно должен вернуться сам (пауза растёт до 30 с).
     maxReconnectAttempts: Infinity,

@@ -13,6 +13,7 @@ ALLOWED_HOSTS = [
     "cdn.huyax.e-tree.su",
     # Запасной домен с DNS у Selectel: 2026-11-02 лёг DNS Beget, где живёт e-tree.su.
     "hyax.ru",
+    "cdn.hyax.ru",
     "localhost", 
     "127.0.0.1", 
     "95.214.63.151",
@@ -194,6 +195,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://huyax.e-tree.su",
     "https://cdn.huyax.e-tree.su",
     "https://hyax.ru",
+    "https://cdn.hyax.ru",
     "http://huyax.e-tree.su",
     "http://localhost:5143",  # Electron версия
     "http://localhost:5173",  # PWA версия (dev)
@@ -240,6 +242,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://huyax.e-tree.su",
     "http://huyax.e-tree.su",
     "https://hyax.ru",
+    "https://cdn.hyax.ru",
     "http://localhost:5143",
     "http://localhost:5173",
     "http://localhost:5174",

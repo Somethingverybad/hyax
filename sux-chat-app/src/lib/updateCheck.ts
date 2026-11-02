@@ -8,10 +8,26 @@ import { t } from "./i18n";
  * сравнивает свою APP_VERSION с версией из манифеста и, если серверная выше,
  * показывает плашку. Ссылку на файл выбираем под платформу.
  */
-const MANIFEST_URL = "https://cdn.huyax.e-tree.su/apk/version.json";
-// Тот же CDN под доменом Selectel — на случай, когда не разрешается e-tree.su (см. api/client.ts).
-const MANIFEST_URL_RESERVE = "https://43fb9b03-c74c-45ab-b258-7872345451b3.selcdn.net/apk/version.json";
-const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
+// Манифест: CDN, его запасные имена (на случай, когда не разрешается e-tree.su,
+// см. api/client.ts), потом сервер напрямую.
+const MANIFEST_URLS = [
+  "https://cdn.huyax.e-tree.su",
+  "https://cdn.hyax.ru",
+  "https://43fb9b03-c74c-45ab-b258-7872345451b3.selcdn.net",
+  "https://huyax.e-tree.su",
+  "https://hyax.ru",
+].map((o) => `${o}/apk/version.json`);
+
+async function fetchManifest(): Promise<Response> {
+  let last: unknown;
+  for (const url of MANIFEST_URLS) {
+    try {
+      const signal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(5000) : undefined;
+      return await fetch(`${url}?t=${Date.now()}`, { cache: "no-store", signal });
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
 
 /**
  * Сборка для Google Play (VITE_DISTRIBUTION=play): на Android обновляет только
@@ -71,10 +87,7 @@ function desktopOs(): "mac" | "win" | "linux" {
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
   if (updatesViaPlay()) return null;
   try {
-    // Манифест через CDN, при сетевой ошибке — через запасной домен CDN, потом напрямую с сервера.
-    const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(5000) })
-      .catch(() => fetch(`${MANIFEST_URL_RESERVE}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(5000) }))
-      .catch(() => fetch(`${MANIFEST_URL_DIRECT}?t=${Date.now()}`, { cache: "no-store" }));
+    const res = await fetchManifest();
     if (!res.ok) return null;
     const m: UpdateManifest = await res.json();
     if (!m?.version) return null;

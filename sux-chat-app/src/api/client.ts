@@ -13,13 +13,19 @@ class LError extends Error {
 // (проба /health), и по сетевой ошибке любого запроса.
 const DIRECT_ORIGIN = "https://huyax.e-tree.su";
 const CDN_ORIGIN = "https://cdn.huyax.e-tree.su";
-// Технический домен того же CDN-ресурса Selectel. Его DNS держит Selectel, а не
-// Beget, как у e-tree.su: 2026-11-02 у Beget лёг DNS целиком, оба адреса выше
-// перестали разрешаться, и приложение было мёртвым при живых сервере и CDN.
-// CDN ходит к серверу по IP с Host: huyax.e-tree.su — сервер разницы не видит.
+// Запасные адреса. DNS e-tree.su держит Beget: 2026-11-02 у Beget лёг DNS
+// целиком, оба адреса выше перестали разрешаться, и приложение было мёртвым
+// при живых сервере и CDN. У hyax.ru DNS в Selectel; cdn.hyax.ru — второе имя
+// того же CDN-ресурса, технический домен — его имя у самого Selectel (не
+// зависит ни от какого регистратора). CDN ходит к серверу по IP с
+// Host: huyax.e-tree.su — сервер разницы не видит.
+const CDN_RESERVE_ORIGIN = "https://cdn.hyax.ru";
 const RESERVE_ORIGIN = "https://43fb9b03-c74c-45ab-b258-7872345451b3.selcdn.net";
-/** Порядок отката: CDN → тот же CDN под доменом Selectel → сервер напрямую. */
-const FALLBACK_CHAIN = [CDN_ORIGIN, RESERVE_ORIGIN, DIRECT_ORIGIN];
+const DIRECT_RESERVE_ORIGIN = "https://hyax.ru";
+/** Адреса через CDN — у них общие ограничения (403, размер тела, таймаут шлюза). */
+const CDN_ORIGINS = [CDN_ORIGIN, CDN_RESERVE_ORIGIN, RESERVE_ORIGIN];
+/** Порядок отката: CDN под тремя именами → сервер напрямую под двумя. */
+const FALLBACK_CHAIN = [...CDN_ORIGINS, DIRECT_ORIGIN, DIRECT_RESERVE_ORIGIN];
 const ENV_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/api\/?$/, "");
 
 /** Какой из адресов цепочки у этого URL (null — чужой адрес). */
@@ -57,7 +63,7 @@ export function uploadTargets(path: string): string[] {
 /** С какого размера рубим на куски и по сколько. */
 const CHUNK_MIN = 6 * 1024 * 1024;
 const CHUNK_SIZE = 4 * 1024 * 1024;
-export const isCdnActive = () => apiOrigin === CDN_ORIGIN || apiOrigin === RESERVE_ORIGIN;
+export const isCdnActive = () => CDN_ORIGINS.includes(apiOrigin);
 
 /** Подвёл адрес from — дальше работаем через следующий в цепочке. Назад не
  *  переключаемся: если текущий адрес уже дальше по цепочке, ничего не делаем. */
@@ -69,7 +75,8 @@ function switchFrom(from: string, reason: string, to = nextOrigin(from)) {
 }
 
 /** Быстрая проба при старте: 3 секунды на ответ /health от CDN, иначе так же
- *  пробуем запасной домен CDN, иначе — напрямую. */
+ *  пробуем его запасные имена, иначе — напрямую (там уже без пробы: прямой
+ *  адрес откатится на запасной по ошибке первого запроса). */
 if (!ENV_ORIGIN && typeof window !== "undefined") {
   // Без AbortSignal.timeout (старые WebView, lib/polyfills.ts) — проба без
   // ограничения по времени, но не ошибка при загрузке модуля: она роняла всё приложение.
@@ -80,7 +87,7 @@ if (!ENV_ORIGIN && typeof window !== "undefined") {
       .catch((e) => {
         const next = nextOrigin(origin);
         switchFrom(origin, e?.message || e?.name || "network");
-        if (next && next !== DIRECT_ORIGIN) return probe(next);
+        if (next && CDN_ORIGINS.includes(next)) return probe(next);
       });
   };
   void probe(CDN_ORIGIN);
@@ -162,7 +169,7 @@ async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Pro
     // повторяем. Запросы обложек и загрузок это тоже чинит. Запасной домен —
     // тот же CDN-ресурс, поэтому с 403 и с него уходим сразу на сервер.
     const cdnFrom = originOf(url);
-    if (res.status === 403 && cdnFrom && cdnFrom !== DIRECT_ORIGIN) {
+    if (res.status === 403 && cdnFrom && CDN_ORIGINS.includes(cdnFrom)) {
       switchFrom(cdnFrom, "403 от CDN", DIRECT_ORIGIN);
       const retry = await fetch(retarget(url, cdnFrom, DIRECT_ORIGIN), init);
       done(retry);
@@ -212,8 +219,11 @@ async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Pro
   }
 }
 
-// WebSocket для сигналинга звонков и уведомлений — всегда напрямую на сервер.
-export const WS_URL = `${(ENV_ORIGIN || DIRECT_ORIGIN).replace(/^http/, "ws")}/ws`;
+// WebSocket для сигналинга звонков и уведомлений — всегда напрямую на сервер:
+// основной адрес и запасной (services/websocket переключается сам).
+const wsOf = (origin: string) => `${origin.replace(/^http/, "ws")}/ws`;
+export const WS_URLS = ENV_ORIGIN ? [wsOf(ENV_ORIGIN)] : [wsOf(DIRECT_ORIGIN), wsOf(DIRECT_RESERVE_ORIGIN)];
+export const WS_URL = WS_URLS[0];
 
 // Сервер отдаёт пути к медиа относительными (/media/...). В вебе они
 // резолвятся от домена сайта, а в приложении WebView живёт на
@@ -1033,7 +1043,7 @@ async function uploadWithProgress(
     if (!from || !next || !retryable) throw e;
     // Слишком большой файл или таймаут шлюза — это ограничение CDN, запасной
     // домен того же CDN упрётся в него же: сразу на сервер. Сеть — по цепочке.
-    const to = st === 413 || st === 408 ? DIRECT_ORIGIN : next;
+    const to = (st === 413 || st === 408) && CDN_ORIGINS.includes(from) ? DIRECT_ORIGIN : next;
     switchFrom(from, `upload ${st || "network"}`, to);
     onProgress?.(0);
     return attempt(retarget(url, from, to));
