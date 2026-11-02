@@ -9,11 +9,28 @@ class LError extends Error {
 // Сервер и его CDN-прокси. HTTP (API, медиа, загрузки) идёт через CDN,
 // чтобы клиенты не стучались на сервер напрямую; WebSocket CDN не проксирует,
 // он всегда идёт на сервер. Если CDN не отвечает (не настроен, лежит,
-// заблокирован) — откатываемся на прямой адрес: и при старте (проба /health),
-// и по сетевой ошибке любого запроса.
+// заблокирован) — откатываемся по цепочке FALLBACK_CHAIN: и при старте
+// (проба /health), и по сетевой ошибке любого запроса.
 const DIRECT_ORIGIN = "https://huyax.e-tree.su";
 const CDN_ORIGIN = "https://cdn.huyax.e-tree.su";
+// Технический домен того же CDN-ресурса Selectel. Его DNS держит Selectel, а не
+// Beget, как у e-tree.su: 2026-11-02 у Beget лёг DNS целиком, оба адреса выше
+// перестали разрешаться, и приложение было мёртвым при живых сервере и CDN.
+// CDN ходит к серверу по IP с Host: huyax.e-tree.su — сервер разницы не видит.
+const RESERVE_ORIGIN = "https://43fb9b03-c74c-45ab-b258-7872345451b3.selcdn.net";
+/** Порядок отката: CDN → тот же CDN под доменом Selectel → сервер напрямую. */
+const FALLBACK_CHAIN = [CDN_ORIGIN, RESERVE_ORIGIN, DIRECT_ORIGIN];
 const ENV_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/api\/?$/, "");
+
+/** Какой из адресов цепочки у этого URL (null — чужой адрес). */
+const originOf = (url: string) => FALLBACK_CHAIN.find((o) => url.startsWith(o)) ?? null;
+/** Следующий адрес после подведшего; null — откатываться некуда. */
+function nextOrigin(origin: string): string | null {
+  const i = FALLBACK_CHAIN.indexOf(origin);
+  return i >= 0 && i < FALLBACK_CHAIN.length - 1 ? FALLBACK_CHAIN[i + 1] : null;
+}
+/** Тот же URL на другом адресе цепочки. */
+const retarget = (url: string, from: string, to: string) => to + url.slice(from.length);
 
 let apiOrigin = ENV_ORIGIN || CDN_ORIGIN;
 let API_URL = `${apiOrigin}/api`;
@@ -33,28 +50,40 @@ const uploadBase = () => API_URL;
  *  или не примет большой файл. */
 export function uploadTargets(path: string): string[] {
   const first = `${uploadBase()}${path}`;
-  return first.startsWith(CDN_ORIGIN) ? [first, first.replace(CDN_ORIGIN, DIRECT_ORIGIN)] : [first];
+  const from = originOf(first);
+  if (!from) return [first];
+  return FALLBACK_CHAIN.slice(FALLBACK_CHAIN.indexOf(from)).map((o) => retarget(first, from, o));
 }
 /** С какого размера рубим на куски и по сколько. */
 const CHUNK_MIN = 6 * 1024 * 1024;
 const CHUNK_SIZE = 4 * 1024 * 1024;
-export const isCdnActive = () => apiOrigin === CDN_ORIGIN;
+export const isCdnActive = () => apiOrigin === CDN_ORIGIN || apiOrigin === RESERVE_ORIGIN;
 
-function switchToDirect(reason: string) {
-  if (apiOrigin === DIRECT_ORIGIN || ENV_ORIGIN) return;
-  console.warn(`[api] CDN недоступен (${reason}), переключаюсь на прямой адрес`);
-  apiOrigin = DIRECT_ORIGIN;
-  API_URL = `${DIRECT_ORIGIN}/api`;
+/** Подвёл адрес from — дальше работаем через следующий в цепочке. Назад не
+ *  переключаемся: если текущий адрес уже дальше по цепочке, ничего не делаем. */
+function switchFrom(from: string, reason: string, to = nextOrigin(from)) {
+  if (ENV_ORIGIN || !to || apiOrigin !== from) return;
+  console.warn(`[api] ${from} недоступен (${reason}), переключаюсь на ${to}`);
+  apiOrigin = to;
+  API_URL = `${to}/api`;
 }
 
-/** Быстрая проба CDN при старте: 3 секунды на ответ /health, иначе — напрямую. */
+/** Быстрая проба при старте: 3 секунды на ответ /health от CDN, иначе так же
+ *  пробуем запасной домен CDN, иначе — напрямую. */
 if (!ENV_ORIGIN && typeof window !== "undefined") {
   // Без AbortSignal.timeout (старые WebView, lib/polyfills.ts) — проба без
   // ограничения по времени, но не ошибка при загрузке модуля: она роняла всё приложение.
-  const signal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(3000) : undefined;
-  fetch(`${CDN_ORIGIN}/health`, { cache: "no-store", signal })
-    .then((r) => { if (!r.ok) switchToDirect(`health ${r.status}`); })
-    .catch((e) => switchToDirect(e?.name || "network"));
+  const probe = (origin: string): Promise<unknown> => {
+    const signal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(3000) : undefined;
+    return fetch(`${origin}/health`, { cache: "no-store", signal })
+      .then((r) => { if (!r.ok) throw new Error(`health ${r.status}`); })
+      .catch((e) => {
+        const next = nextOrigin(origin);
+        switchFrom(origin, e?.message || e?.name || "network");
+        if (next && next !== DIRECT_ORIGIN) return probe(next);
+      });
+  };
+  void probe(CDN_ORIGIN);
 }
 
 /** fetch с откатом: сетевая ошибка на CDN-адресе → повтор того же запроса напрямую. */
@@ -130,10 +159,12 @@ async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Pro
     // не доходит (в логах Django и nginx таких отказов нет), а в приложении
     // это выглядело как «Пак не найден». Свои запреты сервер шлёт кодами 401 и
     // 404, поэтому 403 с CDN считаем отказом самого CDN: уходим напрямую и
-    // повторяем. Запросы обложек и загрузок это тоже чинит.
-    if (res.status === 403 && url.startsWith(CDN_ORIGIN)) {
-      switchToDirect("403 от CDN");
-      const retry = await fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
+    // повторяем. Запросы обложек и загрузок это тоже чинит. Запасной домен —
+    // тот же CDN-ресурс, поэтому с 403 и с него уходим сразу на сервер.
+    const cdnFrom = originOf(url);
+    if (res.status === 403 && cdnFrom && cdnFrom !== DIRECT_ORIGIN) {
+      switchFrom(cdnFrom, "403 от CDN", DIRECT_ORIGIN);
+      const retry = await fetch(retarget(url, cdnFrom, DIRECT_ORIGIN), init);
       done(retry);
       return retry;
     }
@@ -145,9 +176,11 @@ async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Pro
     done(res);
     return res;
   } catch (e) {
-    // Запрос мог быть собран с CDN-адресом до того, как проба переключила
-    // origin — повторяем напрямую в любом случае, если URL был на CDN.
-    if (!url.startsWith(CDN_ORIGIN)) {
+    // Запрос мог быть собран со старым адресом до того, как проба переключила
+    // origin — идём по цепочке дальше в любом случае, если URL был не последним.
+    let from = originOf(url);
+    let next = from ? nextOrigin(from) : null;
+    if (!from || !next) {
       if (idempotent && attempt < RETRY_DELAYS.length) {
         applog.warn(`http ${method} ${safePath(url)} ✗ сеть, повтор ${attempt + 1}`);
         await sleep(RETRY_DELAYS[attempt++]);
@@ -155,20 +188,26 @@ async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Pro
       }
       done(null, e); throw e;
     }
-    switchToDirect((e as Error)?.name || "network");
-    try {
-      const res = await fetch(url.replace(CDN_ORIGIN, DIRECT_ORIGIN), init);
-      done(res);
-      return res;
-    } catch (e2) {
-      if (idempotent && attempt < RETRY_DELAYS.length) {
-        applog.warn(`http ${method} ${safePath(url)} ✗ сеть напрямую, повтор ${attempt + 1}`);
-        await sleep(RETRY_DELAYS[attempt++]);
-        continue;
+    let lastErr: unknown = e;
+    while (from && next) {
+      switchFrom(from, (lastErr as Error)?.name || "network");
+      try {
+        const res = await fetch(retarget(url, from, next), init);
+        done(res);
+        return res;
+      } catch (e2) {
+        lastErr = e2;
+        from = next;
+        next = nextOrigin(next);
       }
-      done(null, e2);
-      throw e2;
     }
+    if (idempotent && attempt < RETRY_DELAYS.length) {
+      applog.warn(`http ${method} ${safePath(url)} ✗ сеть на всех адресах, повтор ${attempt + 1}`);
+      await sleep(RETRY_DELAYS[attempt++]);
+      continue;
+    }
+    done(null, lastErr);
+    throw lastErr;
   }
   }
 }
@@ -989,10 +1028,15 @@ async function uploadWithProgress(
   } catch (e: any) {
     const st = e?.status ?? 0;
     const retryable = st === 0 || st === 413 || st === 408 || st >= 500;
-    if (!url.startsWith(CDN_ORIGIN) || !retryable) throw e;
-    switchToDirect(`upload ${st || "network"}`);
+    const from = originOf(url);
+    const next = from ? nextOrigin(from) : null;
+    if (!from || !next || !retryable) throw e;
+    // Слишком большой файл или таймаут шлюза — это ограничение CDN, запасной
+    // домен того же CDN упрётся в него же: сразу на сервер. Сеть — по цепочке.
+    const to = st === 413 || st === 408 ? DIRECT_ORIGIN : next;
+    switchFrom(from, `upload ${st || "network"}`, to);
     onProgress?.(0);
-    return attempt(url.replace(CDN_ORIGIN, DIRECT_ORIGIN));
+    return attempt(retarget(url, from, to));
   }
 }
 

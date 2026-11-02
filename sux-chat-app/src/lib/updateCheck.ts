@@ -9,6 +9,8 @@ import { t } from "./i18n";
  * показывает плашку. Ссылку на файл выбираем под платформу.
  */
 const MANIFEST_URL = "https://cdn.huyax.e-tree.su/apk/version.json";
+// Тот же CDN под доменом Selectel — на случай, когда не разрешается e-tree.su (см. api/client.ts).
+const MANIFEST_URL_RESERVE = "https://43fb9b03-c74c-45ab-b258-7872345451b3.selcdn.net/apk/version.json";
 const MANIFEST_URL_DIRECT = "https://huyax.e-tree.su/apk/version.json";
 
 /**
@@ -69,8 +71,9 @@ function desktopOs(): "mac" | "win" | "linux" {
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
   if (updatesViaPlay()) return null;
   try {
-    // Манифест через CDN, при сетевой ошибке — напрямую с сервера.
+    // Манифест через CDN, при сетевой ошибке — через запасной домен CDN, потом напрямую с сервера.
     const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(5000) })
+      .catch(() => fetch(`${MANIFEST_URL_RESERVE}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(5000) }))
       .catch(() => fetch(`${MANIFEST_URL_DIRECT}?t=${Date.now()}`, { cache: "no-store" }));
     if (!res.ok) return null;
     const m: UpdateManifest = await res.json();
