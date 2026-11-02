@@ -468,10 +468,42 @@ textarea,
 .route-transition.screen-push,
 .route-transition.screen-pop { animation-duration: 220ms; }
 
+/* iPhone — «жидкое стекло» (как iOS 26; выбор 02.11): новый экран проявляется
+   из размытого стекла со скруглёнными краями, прежний уходит вглубь —
+   уменьшается, мутнеет и тускнеет; назад — наоборот: уходящий растворяется,
+   экран под ним возвращается из глубины. Пока экран скрыт (visibility),
+   видимость держит сама анимация — слой виден ровно на время перехода.
+   Скругление — clip-path, без overflow: hidden на слое. */
+@keyframes glass-in {
+  from { opacity: 0; transform: scale(0.94); filter: blur(10px); clip-path: inset(0 round 34px); }
+  to { opacity: 1; transform: none; filter: blur(0); clip-path: inset(0 round 0); }
+}
+@keyframes glass-return {
+  from { opacity: 0.6; transform: scale(0.95); filter: blur(6px); clip-path: inset(0 round 30px); }
+  to { opacity: 1; transform: none; filter: blur(0); clip-path: inset(0 round 0); }
+}
+@keyframes glass-recede {
+  from { visibility: visible; opacity: 1; transform: none; filter: blur(0); clip-path: inset(0 round 0); }
+  to { visibility: visible; opacity: 0.5; transform: scale(0.94); filter: blur(8px); clip-path: inset(0 round 34px); }
+}
+/* Уходящий гаснет быстро (к середине почти прозрачен) — иначе два экрана
+   долго просвечивали друг через друга. */
+@keyframes glass-out {
+  0% { visibility: visible; opacity: 1; transform: none; filter: blur(0); clip-path: inset(0 round 0); }
+  50% { visibility: visible; opacity: 0.12; }
+  100% { visibility: visible; opacity: 0; transform: scale(0.86); filter: blur(14px); clip-path: inset(0 round 44px); }
+}
+[data-platform="ios"] .screen-push,
+[data-platform="ios"] .route-transition.screen-push { animation: glass-in 440ms cubic-bezier(0.22, 1, 0.36, 1); }
+[data-platform="ios"] .screen-pop,
+[data-platform="ios"] .route-transition.screen-pop { animation: glass-return 440ms cubic-bezier(0.22, 1, 0.36, 1); }
+[data-platform="ios"] .glass-recede { animation: glass-recede 400ms cubic-bezier(0.22, 1, 0.36, 1); }
+[data-platform="ios"] .glass-out { animation: glass-out 320ms cubic-bezier(0.3, 0.6, 0.6, 1); }
+
 /* «Плавнее» не значит «дольше»: кому анимации мешают — системная настройка
    их отключает. */
 @media (prefers-reduced-motion: reduce) {
-  .route-transition, .screen-push, .screen-pop { animation: none !important; }
+  .route-transition, .screen-push, .screen-pop, .glass-recede, .glass-out { animation: none !important; }
 }
 
 /* ── Стекло ────────────────────────────────────────────────────────────────
