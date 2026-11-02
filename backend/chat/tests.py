@@ -1,3 +1,4 @@
+from django.db import models
 import tempfile
 import time
 from datetime import timedelta
@@ -390,6 +391,28 @@ def theme_body(**over):
     }
     body.update(over)
     return body
+
+
+class UnreadCountTests(TestCase):
+    """Счётчик непрочитанных — только то, что видно в ленте (баг-репорт 76b414b8)."""
+    def test_hidden_messages_not_counted(self):
+        from .models import Chat, ChatParticipant, Message, Block
+        from .views import unread_messages
+        me, peer, spammer = make_user("me"), make_user("peer"), make_user("spammer")
+        chat = Chat.objects.create(kind="direct")
+        group = Chat.objects.create(kind="direct", is_group=True, name="g")
+        for c, people in ((chat, (me, peer)), (group, (me, peer, spammer))):
+            for p in people:
+                ChatParticipant.objects.create(chat=c, user=p)
+        Message.objects.create(chat=chat, sender=peer, content="видно")
+        Message.objects.create(chat=chat, sender=peer, content="удалено у всех", deleted_for_all=True)
+        hidden = Message.objects.create(chat=chat, sender=peer, content="скрыто у себя")
+        hidden.deleted_for.add(me)
+        Message.objects.create(chat=group, sender=spammer, content="от заблокированного")
+        Message.objects.create(chat=group, sender=peer, content="видно в группе")
+        Block.objects.create(blocker=me, blocked=spammer)
+        by_chat = {str(r["chat_id"]): r["n"] for r in unread_messages(me).values("chat_id").annotate(n=models.Count("id"))}
+        self.assertEqual(by_chat, {str(chat.id): 1, str(group.id): 1})
 
 
 class ThemeTests(TestCase):

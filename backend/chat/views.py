@@ -786,6 +786,20 @@ def _mark_chat_read_for(chat, profile):
         logger.exception("mark_chat_read_for failed")
 
 
+def unread_messages(profile):
+    """Непрочитанные мной сообщения моих чатов — ровно те, что есть в ленте
+    (MessageViewSet.get_queryset): без удалённых у всех, скрытых «у себя» и
+    сообщений заблокированных."""
+    qs = Message.objects.filter(
+        ~Q(sender=profile), chat__participants=profile
+    ).exclude(deleted_for_all=True).exclude(deleted_for=profile).exclude(read_statuses__user=profile)
+    from .moderation import blocked_ids
+    blocked = blocked_ids(profile)
+    if blocked:
+        qs = qs.exclude(sender_id__in=blocked)
+    return qs
+
+
 def _forward_copy(src, target, profile, album_id=None):
     """Копия сообщения в другой чат. Копируем содержимое, а не ссылаемся на
     оригинал: удаление исходника пересланное не трогает. Заголовок «от кого» —
@@ -1843,18 +1857,15 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         # Считаем сообщения в моих чатах, где я не отправитель и не прочитал.
         # Только мои чаты: иначе в счётчик попадали посты Стены и чужих каналов.
-        unread_count = Message.objects.filter(
-            ~Q(sender=profile), chat__participants=profile
-        ).exclude(
-            read_statuses__user=profile
-        ).count()
-        
+        # И только те, что есть в ленте (MessageViewSet.get_queryset): удалённые
+        # у всех, скрытые «у себя» и сообщения заблокированных счётчик считал,
+        # а лента — нет: бейдж завышался, и чат открывался «на первом
+        # непрочитанном» далеко вверху, на случайном месте (баг-репорт 76b414b8).
+        unread = unread_messages(profile)
+        unread_count = unread.count()
+
         # Или по чатам
-        unread_by_chat = Message.objects.filter(
-            ~Q(sender=profile), chat__participants=profile
-        ).exclude(
-            read_statuses__user=profile
-        ).values('chat_id').annotate(count=models.Count('id'))
+        unread_by_chat = unread.values('chat_id').annotate(count=models.Count('id'))
         
         # Преобразуем в словарь {chat_id: count}
         unread_by_chat_dict = {

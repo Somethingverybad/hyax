@@ -2425,7 +2425,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
     if (id !== chatIdRef.current) return;
     const inc = incoming();
-    const target = inc[Math.max(0, inc.length - n)];
+    // Первое непрочитанное — n-е с конца. Счётчик бывал больше ленты (сервер
+    // считал удалённые у всех, скрытые и от заблокированных, а в ленте их
+    // нет), и якорь уезжал на самое старое подгруженное — «чат открывается в
+    // случайном месте» (баг-репорт 76b414b8). Где видна граница по отметке
+    // «прочитано мной» (is_read; при открытии чат часто уже отмечен — тогда
+    // её нет), якорь не дальше неё; счётчик больше ленты, а границы не видно —
+    // вниз, к новым, а не на случайное старое.
+    let run = inc.length;
+    while (run > 0 && inc[run - 1].is_read === false) run--;
+    const tailKnown = run > 0 && run < inc.length;
+    const start = inc.length >= n
+      ? (tailKnown ? Math.max(inc.length - n, run) : inc.length - n)
+      : tailKnown ? run : -1;
+    const target = start >= 0 ? inc[start] : undefined;
     const box = scrollRef.current;
     if (!target || !box) { setAnchoring(false); pinnedRef.current = true; goBottom(false); return; }
     setUnreadMarkId(target.id);
