@@ -35,11 +35,12 @@ test/            node --test: правила, подпись, партии ко�
 
 1. Бот (от владельца, в приложении или запросом) — `POST /api/bots/ {"username": "shards"}`,
    токен из ответа — в `.env`: `SHARDS_BOT_TOKEN=…`.
-2. Адрес мини-приложения: `PATCH /api/bots/<id>/ {"webapp_url": "https://wyx.su/shards/", "webapp_title": "Осколки Короны"}`.
-3. `docker compose up -d --build shards`, затем перезагрузить nginx
-   (`location /shards/` в `nginx/conf.d/wyx.conf`).
+2. Адрес мини-приложения: `PATCH /api/bots/<id>/ {"webapp_url": "https://hyax.ru/shards/", "webapp_title": "Осколки Короны"}`
+   (сам бот своим токеном может). Игра отвечает и на `wyx.su/shards/`, но DNS `wyx.su` бывает недоступен.
+3. `docker compose up -d --build --no-deps shards`, затем перезагрузить nginx
+   (`location /shards/` в `nginx/conf.d/sux.conf` и `wyx.conf`).
 
-Ссылка для друзей — `https://wyx.su/u/shards?app`.
+Сейчас бот — `@heroesIII`, ссылка для друзей — `https://wyx.su/u/heroesIII?app`.
 
 ## Локально
 

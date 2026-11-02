@@ -169,7 +169,7 @@ services:
       - sux_chat_network
 
   # «Осколки Короны» — пошаговая стратегия, мини-приложение бота
-  # (bots/shards/README.md). Страница и WebSocket — https://wyx.su/shards/.
+  # (bots/shards/README.md). Страница и WebSocket — https://hyax.ru/shards/ (и wyx.su/shards/).
   shards:
     build: ./bots/shards
     container_name: sux_chat_shards
@@ -178,7 +178,7 @@ services:
       HYAX_API: http://api:8000/api
       HYAX_WS: ws://api:8000/ws
       HYAX_BOT_TOKEN: ${SHARDS_BOT_TOKEN:-}
-      APP_URL: https://wyx.su/shards/
+      APP_URL: https://hyax.ru/shards/
     volumes:
       # Партии и личные чаты с ботом (для уведомлений «ваш ход»).
       - ./bots/shards/data:/data
