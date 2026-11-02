@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ретро-ПК</title>
+<meta name="description" content="Эмулятор x86-компьютера в WYX: свои образы дисков с Windows 9x и DOS, файлы остаются на устройстве">
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<!-- Копия sux-chat-app/public/wyx-webapp.js — своя, чтобы страница открывалась и без основного домена -->
+<script src="wyx-webapp.js"></script>
+</head>
+<body>
+
+<!-- Подготовка: какие образы вставить -->
+<section id="setup" class="screen">
+  <header class="head">
+    <div class="logo">🖥️</div>
+    <h1>Ретро-ПК</h1>
+    <p class="muted">Старый компьютер прямо в WYX: Windows 95/98, DOS и игры для них.<br>Образы дисков — ваши; они остаются на этом устройстве и никуда не загружаются.</p>
+  </header>
+
+  <div class="card">
+    <div class="drive">
+      <div class="ic">💽</div>
+      <div class="grow">
+        <b>Жёсткий диск</b>
+        <div class="muted small" id="hdaName">Образ .img — система с установленными играми</div>
+      </div>
+      <label class="btn small">Выбрать<input type="file" id="hdaFile" hidden></label>
+      <button class="icon hidden" id="hdaClear" aria-label="Убрать">✕</button>
+    </div>
+    <label class="check hidden" id="rememberRow"><input type="checkbox" id="remember" checked> Запомнить на этом устройстве — не выбирать каждый раз</label>
+    <div class="progress hidden" id="copyProgress"><i></i><span></span></div>
+  </div>
+
+  <div class="card">
+    <div class="drive">
+      <div class="ic">💿</div>
+      <div class="grow"><b>CD-ROM</b> <span class="muted small">необязательно</span><div class="muted small" id="cdName">Образ .iso</div></div>
+      <label class="btn small">Выбрать<input type="file" id="cdFile" accept=".iso,.img,.bin,application/x-iso9660-image" hidden></label>
+      <button class="icon hidden" id="cdClear" aria-label="Убрать">✕</button>
+    </div>
+    <div class="drive">
+      <div class="ic">💾</div>
+      <div class="grow"><b>Дискета</b> <span class="muted small">необязательно</span><div class="muted small" id="fdName">Образ .img, 1,44 МБ</div></div>
+      <label class="btn small">Выбрать<input type="file" id="fdFile" hidden></label>
+      <button class="icon hidden" id="fdClear" aria-label="Убрать">✕</button>
+    </div>
+  </div>
+
+  <div class="card row">
+    <div class="grow"><b>Память</b><div class="muted small">Windows 98 хватает 128 МБ</div></div>
+    <select id="ram"><option value="64">64 МБ</option><option value="128" selected>128 МБ</option><option value="256">256 МБ</option></select>
+  </div>
+
+  <button class="btn primary wide" id="boot" disabled>▶ Включить</button>
+  <button class="btn wide hidden" id="resume">⏯ Продолжить с сохранения</button>
+  <label class="btn wide ghost">📂 Загрузить сохранение из файла<input type="file" id="stateFile" accept=".bin,.v86state,.zst" hidden></label>
+
+  <p class="muted small center" id="storageInfo"></p>
+
+  <details class="card guide">
+    <summary>Как подготовить Windows 98 с игрой</summary>
+    <ol>
+      <li>Нужны свои лицензии: диск Windows 98 SE и игра (например, купленная в GOG).</li>
+      <li>На компьютере с Linux или macOS поставьте QEMU и создайте диск:<br><code>qemu-img create -f raw win98.img 1500M</code></li>
+      <li>Установите Windows с компакт-диска:<br><code>qemu-system-i386 -m 128 -M pc,acpi=off -drive file=win98.img,format=raw -cdrom win98se.iso -boot d</code></li>
+      <li>Скопируйте в систему игру: соберите из её папки образ <code>genisoimage -J -r -o game.iso папка_игры</code> и вставьте его как CD (<code>-cdrom game.iso</code>), затем перенесите файлы на диск C:.</li>
+      <li><b>Мышь пальцем.</b> Поставьте драйвер VBMOUSE из пакета VBADOS — тогда курсор встаёт туда, куда нажали (режим «Указатель»). Без него работает режим «Тачпад».</li>
+      <li><b>Цвета и разрешение.</b> Стандартный драйвер Windows даёт только 640×480 и 16 цветов. Для игр нужен видеодрайвер VBE9x или VMDisp9x (800×600, 16 бит). Игры на DirectDraw с ними идут не всегда — это проверяется на месте.</li>
+      <li>Выключите Windows (Пуск → Завершение работы) и выберите <code>win98.img</code> здесь как жёсткий диск.</li>
+    </ol>
+    <p class="muted small">Подробности и решения ошибок — <a href="https://github.com/copy/v86/blob/master/docs/windows-9x.md" target="_blank" rel="noopener">в документации v86</a>.</p>
+  </details>
+  <p class="muted small center">Эмулятор — <a href="https://github.com/copy/v86" target="_blank" rel="noopener">v86</a> (BSD), BIOS — SeaBIOS (LGPL).</p>
+</section>
+
+<!-- Работающая машина -->
+<section id="machine" class="screen hidden">
+  <div class="bar">
+    <button class="icon" id="powerOff" aria-label="Выключить">⏏</button>
+    <div class="grow status" id="status">Загрузка…</div>
+    <button class="icon" id="saveBtn" aria-label="Сохранить машину" title="Сохранить машину">💾</button>
+    <button class="icon" id="mouseBtn" aria-label="Режим мыши" title="Режим мыши">🖱️</button>
+    <button class="icon" id="kbdBtn" aria-label="Клавиатура" title="Клавиатура">⌨️</button>
+    <button class="icon" id="fullBtn" aria-label="Во весь экран" title="Во весь экран">⛶</button>
+  </div>
+  <div id="stage">
+    <div id="screen"><div class="text"></div><canvas></canvas></div>
+    <div id="touch"></div>
+    <div id="hint" class="hint hidden"></div>
+  </div>
+  <div class="keys" id="keys">
+    <div class="krow">
+      <button data-k="esc">Esc</button><button data-k="enter">Enter</button><button data-k="space">␣</button><button data-k="bksp">⌫</button><button data-k="tab">Tab</button>
+      <button data-k="left">←</button><button data-k="up">↑</button><button data-k="down">↓</button><button data-k="right">→</button>
+      <button data-mod="ctrl">Ctrl</button><button data-mod="alt">Alt</button><button data-mod="shift">Shift</button><button data-k="del">Del</button>
+    </div>
+    <div class="krow">
+      <button data-k="f1">F1</button><button data-k="f2">F2</button><button data-k="f3">F3</button><button data-k="f4">F4</button><button data-k="f5">F5</button><button data-k="f6">F6</button>
+      <button data-k="f7">F7</button><button data-k="f8">F8</button><button data-k="f9">F9</button><button data-k="f10">F10</button><button data-k="f11">F11</button><button data-k="f12">F12</button>
+      <button data-k="cad" class="warn">Ctrl+Alt+Del</button>
+    </div>
+  </div>
+  <input id="kbd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Ввод текста">
+</section>
+
+<div id="toast" class="toast hidden"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
