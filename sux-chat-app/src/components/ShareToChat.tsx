@@ -77,6 +77,16 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, onSen
   // Пересылка: отмеченные чаты (по порядку нажатий) и комментарий.
   const [picked, setPicked] = useState<Row[]>([]);
   const [comment, setComment] = useState("");
+  // Клавиатура (комментарий к пересылке) закрывала поле: шторку поднимает
+  // .kb-lift вместе с клавиатурой (main.tsx, кадры натива), а высоту
+  // уменьшаем на высоту клавиатуры — иначе верх шторки ушёл бы за экран.
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const on = (e: Event) => setKb(Math.max(0, Math.round((e as CustomEvent<{ height?: number }>).detail?.height || 0)));
+    window.addEventListener("hyax:keyboard", on);
+    return () => window.removeEventListener("hyax:keyboard", on);
+  }, [open]);
 
   useEffect(() => {
     if (!open || rows) return;
@@ -155,7 +165,8 @@ const ShareToChat = ({ open, text, title, onClose, onShareOutside, onPick, onSen
       onClick={(e) => { e.stopPropagation(); onClose(); }}
     >
       <div
-        className={cn("relative md:w-[420px] max-h-[75vh] flex flex-col", mint ? "mint-sheet mx-[7px] w-[calc(100%-14px)] rounded-t-[20px] md:rounded-[20px]" : "ui-card w-full rounded-t-[16px] md:rounded-lg bg-surface-2")}
+        style={kb ? { maxHeight: `calc(100vh - ${kb}px + var(--sab) - var(--sat) - 12px)` } : undefined}
+        className={cn("kb-lift relative md:w-[420px] max-h-[75vh] flex flex-col", mint ? "mint-sheet mx-[7px] w-[calc(100%-14px)] rounded-t-[20px] md:rounded-[20px]" : "ui-card w-full rounded-t-[16px] md:rounded-lg bg-surface-2")}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={cn("shrink-0 space-y-2", mint ? "px-[24px] pt-[16px] pb-[6px]" : "px-4 pt-4 pb-2")}>
