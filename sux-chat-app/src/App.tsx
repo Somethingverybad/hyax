@@ -179,7 +179,16 @@ const AnimatedRoutes = ({ children }: { children: React.ReactNode }) => {
   // показывает сама панель (в «Мяте» подсветка переплывает к вкладке).
   const isTab = (p: string) => TAB_ROOTS.includes(p);
   const tabSwitch = isTab(location.pathname) && isTab(prevPath.current) && location.pathname !== prevPath.current;
-  const dir = tabSwitch ? "route-tab" : navType === "POP" ? "screen-pop" : step > 0 ? "screen-push" : step < 0 ? "screen-pop" : "";
+  // Путь тот же (повторное нажатие на вкладку — NavLink делает replace на
+  // месте, смена параметров) — класс прежний: иначе «route-tab» сменялся на
+  // базовый, браузер заново запускал проявление route-in с прозрачности 0,
+  // и экран на миг становился чёрным (только на втором нажатии — дальше
+  // класс уже не менялся).
+  const dirRef = useRef("");
+  const dir = location.pathname === prevPath.current
+    ? dirRef.current
+    : tabSwitch ? "route-tab" : navType === "POP" ? "screen-pop" : step > 0 ? "screen-push" : step < 0 ? "screen-pop" : "";
+  dirRef.current = dir;
   // Вернулись назад — прокрутка экрана там же, где ушли (lib/screenScroll).
   // Список чатов и ленты — нет: у них своя прокрутка и прижатие к низу.
   const boxRef = useRef<HTMLDivElement>(null);
