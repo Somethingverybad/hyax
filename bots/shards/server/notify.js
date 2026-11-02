@@ -4,7 +4,7 @@
 import WebSocket from "ws";
 import { readFileSync, writeFileSync } from "node:fs";
 
-export function createNotifier({ token, api, ws, appUrl, file, log = console }) {
+export function createNotifier({ token, api, ws, appUrl, file, reply = true, log = console }) {
   // Личные чаты с ботом: id пользователя → id чата. Узнаём из входящих сообщений.
   let chats = {};
   try { chats = JSON.parse(readFileSync(file, "utf8")); } catch { /* первый запуск */ }
@@ -37,7 +37,8 @@ export function createNotifier({ token, api, ws, appUrl, file, log = console }) 
         if (!from || !chat || String(from) === String(me.id)) return;
         if (body.chat_kind && body.chat_kind !== "direct") return;
         if (chats[from] !== String(chat)) { chats[from] = String(chat); save(); }
-        send(chat, "Осколки Короны — пошаговая стратегия на 2–4 игрока: герои, замки, бои на гексах.\n\n"
+        // Бот может открывать другое приложение — тогда о партиях только уведомления.
+        if (reply) send(chat, "Осколки Короны — пошаговая стратегия на 2–4 игрока: герои, замки, бои на гексах.\n\n"
           + "Создайте партию и позовите друзей кодом комнаты — или сыграйте против компьютера. "
           + "Когда придёт ваш ход, я напишу сюда.").catch((e) => log.warn("ответ боту:", e.message));
       });

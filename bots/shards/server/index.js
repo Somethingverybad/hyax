@@ -35,6 +35,7 @@ if (!TOKEN && !DEV) {
 await mkdir(DATA, { recursive: true });
 const notifier = createNotifier({
   token: TOKEN, api: process.env.HYAX_API, ws: process.env.HYAX_WS, appUrl: APP_URL, file: join(DATA, "chats.json"),
+  reply: process.env.BOT_REPLY !== "0",
 });
 
 // ---------- комнаты ----------

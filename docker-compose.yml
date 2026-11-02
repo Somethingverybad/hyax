@@ -179,6 +179,8 @@ services:
       HYAX_WS: ws://api:8000/ws
       HYAX_BOT_TOKEN: ${SHARDS_BOT_TOKEN:-}
       APP_URL: https://hyax.ru/shards/
+      # @heroesIII открывает «Ретро-ПК»: на сообщения боту «Осколки» не отвечают
+      BOT_REPLY: "0"
     volumes:
       # Партии и личные чаты с ботом (для уведомлений «ваш ход»).
       - ./bots/shards/data:/data
