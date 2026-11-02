@@ -87,7 +87,7 @@ import { useVideoNoteSlice } from "@/lib/videoNote";
 import { takePendingJump } from "@/lib/jumpTo";
 import { Search as SearchIcon } from "lucide-react";
 import { saveFileToDevice } from "@/lib/saveFile";
-import { takePendingShare } from "@/lib/shareInbox";
+import { SHARE_PENDING_EVENT, takePendingShare, type SharedPayload } from "@/lib/shareInbox";
 import ActionSheet from "@/components/chat/ActionSheet";
 import type { ChatActionInfo } from "@/api/client";
 import { loadStickerIndex, matchStickers, lastToken, noteStickerUsed, loadCustomEmojiIndex, matchCustomEmoji, trailingEmoji, type IndexedSticker, type IndexedEmoji } from "@/lib/stickerIndex";
@@ -1726,6 +1726,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replyTo, active]);
+  // «Поделиться → WYX» в уже открытый чат: эффект открытия не повторится —
+  // забираем присланное по событию (lib/shareInbox). Через ref — свежие
+  // acceptFiles и setDraft, а не те, что были при подписке.
+  const applySharedRef = useRef<(s: SharedPayload) => void>(() => {});
+  applySharedRef.current = (s) => {
+    if (s.files.length) void acceptFiles(s.files);
+    if (s.text) setDraft(s.text);
+  };
+  useEffect(() => {
+    if (!chatId) return;
+    const on = () => { const s = takePendingShare(chatId); if (s) applySharedRef.current(s); };
+    window.addEventListener(SHARE_PENDING_EVENT, on);
+    return () => window.removeEventListener(SHARE_PENDING_EVENT, on);
+  }, [chatId]);
   const setDraft = (text: string, opts?: { keepCustom?: boolean }) => {
     if (!opts?.keepCustom) trackCustomEdit(draftRef.current, text);
     draftRef.current = text;
@@ -1853,13 +1867,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setSelected(null);
     // «Поделиться → WYX» из другого приложения: выбранный чат открыт —
     // подставляем присланные файлы и текст в поле ввода, отправка за человеком.
-    const shared = takePendingShare();
-    if (shared) {
-      setTimeout(() => {
-        if (shared.files.length) void acceptFiles(shared.files);
-        if (shared.text) setDraft(shared.text);
-      }, 0);
-    }
+    const shared = takePendingShare(chatId);
+    if (shared) setTimeout(() => applySharedRef.current(shared), 0);
 
     (async () => {
       // Секретный чат уже открывали в этой сессии — лента готова в памяти.

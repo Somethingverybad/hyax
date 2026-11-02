@@ -46,7 +46,7 @@ import { currentTrack, playQueue, toggle as togglePlay, usePlayer, type Track } 
 import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
-import { takePendingShare } from "@/lib/shareInbox";
+import { SHARE_PENDING_EVENT, takePendingShare, type SharedPayload } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
@@ -920,6 +920,20 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [attachOpen]);
 
+  // «Поделиться → WYX» в уже открытый канал или Стену — по событию
+  // (lib/shareInbox): эффект открытия ленты не повторится.
+  const applySharedRef = useRef<(s: SharedPayload) => void>(() => {});
+  applySharedRef.current = (s) => {
+    if (s.text) setText(s.text);
+    if (s.files.length) void acceptFiles(s.files);
+    if (wall) { setComposeOpen(true); setComposeOpts(false); }
+  };
+  useEffect(() => {
+    const on = () => { const s = takePendingShare(wall ? "wall" : channelId); if (s) applySharedRef.current(s); };
+    window.addEventListener(SHARE_PENDING_EVENT, on);
+    return () => window.removeEventListener(SHARE_PENDING_EVENT, on);
+  }, [wall, channelId]);
+
   useEffect(() => {
     let alive = true;
     // Лента из памяти приложения — в первом же кадре (без паузы на IndexedDB и
@@ -933,14 +947,8 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     syncedAtRef.current = memo?.syncedAt ?? null;
     viewedRef.current = new Set();
     // «Поделиться → WYX»: в канал — в строку композера, на Стену — в шторку поста.
-    const shared = takePendingShare();
-    if (shared) {
-      setTimeout(() => {
-        if (shared.text) setText(shared.text);
-        if (shared.files.length) void acceptFiles(shared.files);
-        if (wall) { setComposeOpen(true); setComposeOpts(false); }
-      }, 0);
-    }
+    const shared = takePendingShare(wall ? "wall" : channelId);
+    if (shared) setTimeout(() => applySharedRef.current(shared), 0);
     (async () => {
       const cached = memo ? null : await readPosts(channelId);
       if (!alive) return;

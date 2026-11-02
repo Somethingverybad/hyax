@@ -282,7 +282,7 @@ const ShareInboxSheet = () => {
       text={payload.text}
       onClose={() => setPayload(null)}
       onPick={(chatId, chatTitle, kind) => {
-        setPendingShare(payload);
+        setPendingShare(payload, kind === "wall" ? "wall" : chatId);
         setPayload(null);
         if (kind === "wall") { navigate("/wall"); return; }
         navigate("/chat", { state: { chatId, title: chatTitle, kind: kind === "channel" ? "channel" : undefined } });

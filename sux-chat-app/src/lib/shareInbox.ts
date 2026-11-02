@@ -41,8 +41,22 @@ export async function takeSharedItems(): Promise<SharedPayload | null> {
   }
 }
 
-let pending: SharedPayload | null = null;
-/** Отложить до открытия выбранного чата. */
-export const setPendingShare = (p: SharedPayload | null) => { pending = p; };
-/** Забрать отложенное (один раз). */
-export const takePendingShare = (): SharedPayload | null => { const p = pending; pending = null; return p; };
+/** Присланное отложено — уже открытый чат забирает его сразу (ниже). */
+export const SHARE_PENDING_EVENT = "hyax:share-pending";
+let pending: { payload: SharedPayload; target: string | null } | null = null;
+/** Отложить до открытия выбранного чата (target — его id, «wall» — Стена).
+ *  Событие — для чата, который уже открыт: эффект открытия у него не
+ *  повторится, и присланное лежало бы невостребованным — поле ввода
+ *  оставалось пустым, если делились в ту же переписку, где был человек
+ *  (баг-репорт 75189134; с холодного старта чат открывался заново). */
+export const setPendingShare = (p: SharedPayload | null, target: string | null = null) => {
+  pending = p ? { payload: p, target } : null;
+  if (p) window.dispatchEvent(new Event(SHARE_PENDING_EVENT));
+};
+/** Забрать отложенное (один раз), если оно для этого чата. */
+export const takePendingShare = (chatId: string): SharedPayload | null => {
+  if (!pending || (pending.target && pending.target !== chatId)) return null;
+  const p = pending.payload;
+  pending = null;
+  return p;
+};
