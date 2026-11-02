@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Осколки Короны</title>
+<meta name="description" content="Пошаговая стратегия на 2–4 игрока: герои, замки и бои на гексах — мини-приложение WYX">
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<!-- Копия sux-chat-app/public/wyx-webapp.js: своя, чтобы игра открывалась и при недоступном основном домене -->
+<script src="wyx-webapp.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- Лобби -->
+  <section id="lobby" class="screen">
+    <header class="hero-head">
+      <div class="crest">👑</div>
+      <h1>Осколки Короны</h1>
+      <p class="tag">Герои, замки и бои на гексах. Пошагово, до четырёх игроков.</p>
+    </header>
+    <div class="row gap">
+      <button class="btn primary grow" id="btnNew">⚔️ Новая партия</button>
+      <button class="btn grow" id="btnCode">🔑 По коду</button>
+    </div>
+    <h2>Ваши партии</h2>
+    <div id="mine" class="list"></div>
+    <h2>Ждут игроков</h2>
+    <div id="open" class="list"></div>
+    <details class="howto">
+      <summary>Как играть</summary>
+      <p>Каждый ходит по очереди. Герой тратит очки хода на шаги: зелёные точки — дойдёт сегодня, жёлтые — завтра. Нажмите на клетку — увидите путь, нажмите ещё раз — герой пойдёт.</p>
+      <p>Собирайте ресурсы, захватывайте шахты, стройте жилища и нанимайте войска в городе. Раз в неделю жилища пополняются.</p>
+      <p>Бой — на шестиугольниках: отряды ходят по скорости. Нажмите на врага — отряд подойдёт и ударит (стрелки стреляют). Герой может колдовать раз в раунд.</p>
+      <p>Побеждает тот, у кого останутся города или герои.</p>
+    </details>
+  </section>
+
+  <!-- Ожидание игроков -->
+  <section id="room" class="screen hidden">
+    <div class="topbar">
+      <button class="icon" id="roomBack" aria-label="Назад">←</button>
+      <div class="grow"><b id="roomName"></b><div class="muted small" id="roomMeta"></div></div>
+    </div>
+    <div class="code-card">
+      <div class="muted small">Код партии — отправьте его друзьям</div>
+      <div class="code" id="roomCode"></div>
+      <button class="btn small" id="copyCode">Скопировать</button>
+    </div>
+    <div id="seats" class="list"></div>
+    <div class="row gap">
+      <button class="btn grow" id="addAi">🤖 Добавить компьютер</button>
+    </div>
+    <button class="btn primary wide" id="startGame">Начать партию</button>
+    <button class="btn danger wide" id="leaveRoom">Выйти из партии</button>
+    <div class="chat" id="roomChat"></div>
+  </section>
+
+  <!-- Партия -->
+  <section id="game" class="screen hidden">
+    <div class="hud">
+      <button class="icon" id="menuBtn" aria-label="Меню">☰</button>
+      <div id="resbar" class="resbar"></div>
+      <div id="daybar" class="daybar"></div>
+    </div>
+    <canvas id="map"></canvas>
+    <div id="info" class="info hidden"></div>
+    <div class="dock">
+      <div id="heroes" class="chips"></div>
+      <div id="towns" class="chips"></div>
+      <button class="btn primary" id="endTurn">Ход ▶</button>
+    </div>
+    <div id="waitbar" class="waitbar hidden"></div>
+  </section>
+
+  <!-- Бой -->
+  <section id="battle" class="screen hidden">
+    <div class="bhead">
+      <div id="bTitle" class="grow"></div>
+      <div id="bRound" class="muted small"></div>
+    </div>
+    <div id="bQueue" class="queue"></div>
+    <canvas id="bfield"></canvas>
+    <div id="bInfo" class="binfo"></div>
+    <div class="bctl">
+      <button class="btn" id="bWait">⏳ Ждать</button>
+      <button class="btn" id="bDef">🛡️ Защита</button>
+      <button class="btn" id="bSpell">✨ Магия</button>
+      <button class="btn" id="bAuto">🤖 Авто</button>
+    </div>
+  </section>
+</div>
+
+<!-- Окна поверх -->
+<div id="sheet" class="sheet hidden"><div class="sheet-box"><button class="icon close" id="sheetClose" aria-label="Закрыть">✕</button><div id="sheetBody"></div></div></div>
+<div id="toast" class="toast hidden"></div>
+<div id="conn" class="conn hidden">Нет связи с сервером — переподключаюсь…</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

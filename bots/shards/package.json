@@ -1,0 +1,14 @@
+{
+  "name": "shards",
+  "private": true,
+  "type": "module",
+  "description": "Осколки Короны — пошаговая стратегия, мини-приложение WYX",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "DEV=1 node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
