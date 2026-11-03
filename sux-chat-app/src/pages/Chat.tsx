@@ -168,6 +168,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     runNav(dimRef.current, [{ opacity: 0 }, { opacity: UNDER_DIM }]);
     const done = () => { setListCovered(true); dropNavAnims(); };
     if (a) a.onfinish = done; else done();
+    // Страховка: переход прервали (свайп, новый переход) — onfinish не придёт,
+    // а список под перепиской должен спрятаться.
+    window.setTimeout(() => { if (selectedChatIdRef.current && !dragRef.current) setListCovered(true); }, NAV_MS + 200);
   };
   const layerRef = (id: string) => (el: HTMLDivElement | null) => {
     if (!el) { chatLayersRef.current.delete(id); return; }
@@ -1046,8 +1049,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             <div className="flex-1 min-w-0 min-h-0 relative"
               onTouchStart={onEdgeStart} onTouchMove={onEdgeMove} onTouchEnd={onEdgeEnd} onTouchCancel={onEdgeEnd}>
               {/* Список — всегда смонтирован; виден, когда переписка не открыта. */}
+              {/* isolate (iPhone): «стеклянная» шапка списка со своим z-index не
+                  вылезает поверх переписки, пока список под ней (баг-репорт 29f00ae7). */}
               <div ref={listLayerRef} className={`absolute inset-0 flex min-h-0 ${slideNav
-                ? selectedChatId ? listCovered ? "invisible pointer-events-none" : "pointer-events-none" : ""
+                ? selectedChatId ? listCovered ? "isolate invisible pointer-events-none" : "isolate pointer-events-none" : "isolate"
                 : selectedChatId ? "invisible pointer-events-none" : hadChatOpenRef.current ? "screen-pop" : ""}`}
                 aria-hidden={!!selectedChatId} {...(selectedChatId ? { inert: "" as unknown as boolean } : {})}>
           <MemoSidebar
