@@ -27,7 +27,7 @@ import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
 import { rovOn, rovOff, onRovState } from "@/lib/rov";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
-import { isMutedNow } from "@/lib/chatMute";
+import { isMutedNow, CHAT_MUTED_EVENT, type ChatMutedDetail } from "@/lib/chatMute";
 import { toast } from "sonner";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
@@ -101,6 +101,16 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     return () => window.removeEventListener("hyax:profile-patch", on);
   }, []);
   const [chats, setChats] = useState<ChatType[]>(() => readCache<ChatType[]>("chats") || []);
+  // Уведомления чата поменяли (меню списка, профиль собеседника) — баннеры и
+  // звук на компьютере слушаются сразу, не дожидаясь обновления списка.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<ChatMutedDetail>).detail;
+      setChats((prev) => prev.map((c) => (c.id === d.chatId ? { ...c, muted: d.muted, muted_until: d.muted_until } : c)));
+    };
+    window.addEventListener(CHAT_MUTED_EVENT, on);
+    return () => window.removeEventListener(CHAT_MUTED_EVENT, on);
+  }, []);
   // Вкладки «Избранное» и «Стена» (на широком окне) открываются сразу с нужным
   // чатом из кеша: раньше его подставлял эффект после первой отрисовки, и
   // каждый переход на вкладку мелькал «Загрузка…» / «Выберите чат»

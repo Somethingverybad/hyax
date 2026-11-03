@@ -3,7 +3,10 @@ import { writeClipboard } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare, LayoutGrid } from "lucide-react";
+import { X, Phone, Share2, Copy, ChevronRight, Flag, Ban, MessageSquare, LayoutGrid, Bell, BellOff } from "lucide-react";
+import MuteSheet from "@/components/MuteSheet";
+import { applyMute, isMutedNow, CHAT_MUTED_EVENT, type ChatMutedDetail, type MuteState } from "@/lib/chatMute";
+import { readCache } from "@/lib/session-cache";
 import { openMiniApp } from "@/lib/miniapp";
 import ReportSheet from "@/components/ReportSheet";
 import SavedGallery, { SavedTile, pluralPhotos } from "@/components/SavedGallery";
@@ -67,6 +70,18 @@ const UserProfileModal = ({
   const mint = useMint();
   const [mediaTab, setMediaTab] = useState<MediaKind | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Уведомления переписки с ним (lib/chatMute): кнопка «звук» → шторка сроков.
+  const [mute, setMute] = useState<MuteState>(() => {
+    const c = chatId ? readCache<({ id: string } & MuteState)[]>("chats")?.find((x) => x.id === chatId) : undefined;
+    return { muted: c?.muted, muted_until: c?.muted_until };
+  });
+  const [muteOpen, setMuteOpen] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<ChatMutedDetail>).detail; if (d.chatId === chatId) setMute(d); };
+    window.addEventListener(CHAT_MUTED_EVENT, on);
+    return () => window.removeEventListener(CHAT_MUTED_EVENT, on);
+  }, [chatId]);
+  const muted = isMutedNow(mute);
   const navigate = useNavigate();
   // Свайп вниз по шторке закрывает её — и мы снова там, откуда открыли профиль.
   const swipe = useSwipeDismiss(onClose);
@@ -164,6 +179,10 @@ const UserProfileModal = ({
       {reportOpen && (
         <ReportSheet target={{ type: "user", id: userId }} title={profile?.username ? t("Жалоба на {name}", { name: profile.username }) : t("Жалоба на пользователя")} onClose={() => setReportOpen(false)} />
       )}
+      {muteOpen && chatId && profile && (
+        <MuteSheet name={profile.username} state={mute} onClose={() => setMuteOpen(false)}
+          onPick={(span) => { setMuteOpen(false); void applyMute(chatId, span).then((r) => { if (r) setMute(r); }); }} />
+      )}
       {mediaTab && chatId && profile && (
         <ChatMediaSheet chatId={chatId} title={profile.username} initialTab={mediaTab}
           onClose={() => setMediaTab(null)} onJump={(id) => { setMediaTab(null); onClose(); onJump?.(id); }} />
@@ -174,12 +193,13 @@ const UserProfileModal = ({
   if (mint) {
     // Кнопки под именем (макет: 65×55, тёмно-зелёные, значок и подпись).
     // В шапке чата — «звонок» и «поиск» по переписке; вне чата первая — «написать».
-    const acts: { key: string; icon: MintIconName; label: string; onClick: () => void; disabled?: boolean }[] = [
+    const acts: { key: string; icon?: MintIconName; node?: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }[] = [
       // Открыт из этой же переписки — «написать» просто возвращает в неё.
       { key: "write", icon: "navChat", label: writing ? t("Открываю…") : isBot ? t("Начать") : t("написать"),
         onClick: onSearch ? onClose : () => void write(), disabled: writing },
       ...(onCall ? [{ key: "call", icon: "actCall" as MintIconName, label: t("позвонить"), onClick: () => { onCall(); onClose(); } }] : []),
       ...(onSearch ? [{ key: "search", icon: "actSearch" as MintIconName, label: t("поиск"), onClick: () => { onClose(); onSearch(); } }] : []),
+      ...(chatId ? [{ key: "mute", node: muted ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />, label: muted ? t("без звука") : t("звук"), onClick: () => setMuteOpen(true) }] : []),
       { key: "report", icon: "actReport" as MintIconName, label: t("жалоба"), onClick: () => setReportOpen(true) },
       { key: "more", icon: "actMore" as MintIconName, label: t("ещё"), onClick: () => setMoreOpen((v) => !v) },
     ];
@@ -233,7 +253,7 @@ const UserProfileModal = ({
                   {/* Значок — в рамке 20 px: точки «ещё» тоньше остальных значков, и без
                       рамки подпись под ними вставала выше, чем у соседей. */}
                   <span className="h-[20px] flex items-center justify-center">
-                    <MintIcon name={a.icon} size={a.icon === "actMore" ? [28, 6] : a.icon === "navChat" ? [25, 18] : [20, 20]} />
+                    {a.node ?? <MintIcon name={a.icon!} size={a.icon === "actMore" ? [28, 6] : a.icon === "navChat" ? [25, 18] : [20, 20]} />}
                   </span>
                   <span className="text-[11px] leading-[13px] max-w-full truncate">{a.label}</span>
                 </button>
@@ -382,6 +402,7 @@ const UserProfileModal = ({
                   key: "app", onClick: () => { const pr = profile!; onClose(); void openMiniApp({ botId: pr.id, botName: pr.username }); }, primary: false,
                   icon: <LayoutGrid className="w-5 h-5 md:w-4 md:h-4" />, label: (profile as { webapp_title?: string }).webapp_title || t("Приложение") }] : []),
                 ...(onCall ? [{ key: "call", onClick: () => { onCall(); onClose(); }, primary: true, icon: <Phone className="w-5 h-5 md:w-4 md:h-4" />, label: t("Позвонить") }] : []),
+                ...(chatId ? [{ key: "mute", onClick: () => setMuteOpen(true), primary: false, icon: muted ? <BellOff className="w-5 h-5 md:w-4 md:h-4" /> : <Bell className="w-5 h-5 md:w-4 md:h-4" />, label: muted ? t("Без звука") : t("Уведомления") }] : []),
                 { key: "share", onClick: () => setShareOpen(true), primary: false, icon: <Share2 className="w-5 h-5 md:w-4 md:h-4" />, label: t("Поделиться") },
                 { key: "report", onClick: () => setReportOpen(true), primary: false, icon: <Flag className="w-5 h-5 md:w-4 md:h-4" />, label: t("Пожаловаться") },
                 { key: "block", onClick: toggleBlock, disabled: blocked === null, primary: false, accent: true, icon: <Ban className="w-5 h-5 md:w-4 md:h-4" />,

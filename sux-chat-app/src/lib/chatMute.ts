@@ -1,4 +1,7 @@
+import { toast } from "sonner";
+import { api } from "@/api/client";
 import { t } from "@/lib/i18n";
+import { readCache, writeCache } from "@/lib/session-cache";
 
 /**
  * Уведомления чата выключены у меня, как в Telegram: навсегда или на 1, 4,
@@ -32,4 +35,23 @@ export function muteLabel(c?: MuteState | null): string {
   return d.toDateString() === new Date().toDateString()
     ? t("Без уведомлений до {time}", { time })
     : t("Без уведомлений до завтра, {time}", { time });
+}
+
+/** Уведомления чата поменялись — список чатов и баннеры подхватывают сразу. */
+export const CHAT_MUTED_EVENT = "hyax:chat-muted";
+export type ChatMutedDetail = { chatId: string } & MuteState;
+
+/** Выключить или включить уведомления чата: запрос, кеш списка, событие, тост. */
+export async function applyMute(chatId: string, span: MuteSpan): Promise<MuteState | null> {
+  try {
+    const r = await api.muteChat(chatId, span);
+    const chats = readCache<{ id: string }[]>("chats");
+    if (chats) writeCache("chats", chats.map((c) => (c.id === chatId ? { ...c, muted: r.muted, muted_until: r.muted_until } : c)));
+    window.dispatchEvent(new CustomEvent<ChatMutedDetail>(CHAT_MUTED_EVENT, { detail: { chatId, ...r } }));
+    toast(muteLabel(r));
+    return r;
+  } catch (e) {
+    toast.error((e as Error)?.message || t("Не получилось"));
+    return null;
+  }
 }
