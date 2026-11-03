@@ -1216,9 +1216,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const avatarUrl = channel?.avatar_url ? mediaUrl(channel.avatar_url) : null;
 
   // Соседние посты одного альбома рисуем одной сеткой на первом из них.
+  // Только посты с файлами: текст, голосовое, стикер и видео-«треугольник» из
+  // пакета пересылки — отдельными постами, иначе тексты пакета пропадали, а
+  // голосовое рисовало альбом у себя ещё раз (баг-репорт 9af03165).
   const albumsById = new Map<string, Post[]>();
   for (const p of posts) {
-    if (!p.album_id) continue;
+    const extra = p as { voice_url?: string | null; sticker?: { file_url?: string | null } | null };
+    if (!p.album_id || !p.file_url || extra.voice_url || p.video_url || extra.sticker?.file_url) continue;
     const list = albumsById.get(p.album_id) || [];
     list.push(p);
     albumsById.set(p.album_id, list);
@@ -1417,7 +1421,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                     : stationLinkId(link) ? <StationLinkCard url={link} text={post.content} />
                     : playlistLinkToken(link) ? <PlaylistLinkCard url={link} /> : <PackLinkCard url={link} />;
                 })()}
-                <PostMedia post={post} album={post.album_id ? albumsById.get(post.album_id) : undefined}
+                <PostMedia post={post} album={post.album_id && albumsById.get(post.album_id)?.[0]?.id === post.id ? albumsById.get(post.album_id) : undefined}
                   onOpenImage={(_url, p) => openViewer(p.id)}
                   onPlayAudio={playAudioFrom}
                   onAddAudio={(list) => setPlaylistFor(list.map((p) => ({ key: p.id, message: p.id, title: fileTitle(p.file_name) })))} />

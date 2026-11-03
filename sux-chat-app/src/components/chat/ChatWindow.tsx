@@ -4391,7 +4391,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               : (message.content || "");
             // Альбом: несколько фото/видео одной отправки склеены в сетку —
             // рисуем их на первом сообщении группы, остальные пропущены выше.
-            const album = message.album_id ? albumsById.get(message.album_id) : undefined;
+            // Только у первого сообщения группы: голосовое, стикер или видео-
+            // «треугольник» из того же пакета пересылки в группу не входят, но
+            // album_id у них тот же — раньше они рисовали весь альбом у себя, и
+            // пересланный пакет показывался дважды (баг-репорт 9af03165).
+            const albumList = message.album_id ? albumsById.get(message.album_id) : undefined;
+            const album = albumList && albumList[0]?.id === message.id ? albumList : undefined;
             const isAlbum = !!album && album.length > 1;
             // В альбоме может быть что угодно: картинки и видео идут сеткой,
             // музыка и файлы — строками под ней, всё в одном пузыре.
