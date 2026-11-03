@@ -4076,10 +4076,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 </>
   );
   return (
-    // isolate: обои (-z-10) — всегда внутри переписки, над её фоном; раньше
-    // они жили в контексте наложения где-то выше и «прыгали», когда слой
-    // переписки анимировался (баг «жидкого стекла» в чатах с обоями).
-    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative isolate" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    // Без isolate: изолированный корень запирал внутри себя меню сообщения и
+    // панель выбора, и в «Избранном» остров навигации ложился поверх них.
+    // Обои при iOS-переходе держит слой переписки (pages/Chat.tsx, isolate).
+    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {dragOver && (
         <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
           <div className="text-center">
@@ -5083,7 +5083,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       {/* Режим выбора: панель действий поверх поля ввода. Поле не размонтируем —
           в нём живёт черновик. */}
       {selected && (
-        <div className="absolute bottom-0 inset-x-0 z-30 bg-surface-2 border-t border-border px-3 pt-2 pb-[calc(var(--sab)+8px)] flex items-center gap-2">
+        // В «Избранном» снизу остров навигации — панель над ним, как поле ввода.
+        <div className="absolute bottom-0 inset-x-0 z-30 bg-surface-2 border-t border-border px-3 pt-2 pb-[calc(var(--sab)+8px)] flex items-center gap-2"
+          style={{ marginBottom: "var(--mint-nav-space, 0px)" }}>
           <button type="button" onClick={() => setSelected(null)} className="p-2 -ml-2" aria-label={tr("Отменить выбор")}><X className="w-5 h-5" /></button>
           <span className="text-body font-medium flex-1">{selected.size ? tr("Выбрано: {n}", { n: selected.size }) : tr("Выберите сообщения")}</span>
           {!saved && (
