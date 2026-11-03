@@ -18,6 +18,7 @@ import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { DELETE_VARIANT_LABELS, getDeleteAnimChoice, setDeleteAnimChoice, type DeleteVariant } from "@/lib/deleteAnim";
 import { RAIL_POS, RAIL_POS_LABELS, setRailPos, useRailPos, type RailPos } from "@/lib/railPos";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { navSlideEnabled, navSlideTrialVisible, setNavSlide } from "@/lib/navSlide";
 import DockEditor from "@/components/DockEditor";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
@@ -174,6 +175,7 @@ const ProfileAppearance = () => {
 const ThemeSyncCard = () => {
   const on = useThemeSync();
   const [boot, setBoot] = useState(isBootAnimOn);
+  const [slide, setSlide] = useState(navSlideEnabled);
   return (
     <>
       <SettingsTitle>{tr("На этом устройстве")}</SettingsTitle>
@@ -193,6 +195,16 @@ const ThemeSyncCard = () => {
             trailing={
               <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr("Анимация при запуске")}
                 checked={boot} onChange={(e) => { setBootAnimOn(e.target.checked); setBoot(e.target.checked); }} />
+            }
+          />
+        )}
+        {navSlideTrialVisible() && (
+          <SettingsRow
+            label={tr("Переходы как в iOS (проба)")}
+            hint={tr("Переписка въезжает справа, назад — свайпом от края. Только на этом телефоне")}
+            trailing={
+              <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr("Переходы как в iOS (проба)")}
+                checked={slide} onChange={(e) => { setNavSlide(e.target.checked); setSlide(e.target.checked); }} />
             }
           />
         )}

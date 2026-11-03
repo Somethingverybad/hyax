@@ -2394,5 +2394,7 @@ const en: Record<string, string> = {
   "Выключить уведомления": "Mute notifications",
   "Включить уведомления": "Unmute notifications",
   "Не удалось изменить уведомления": "Couldn't change notifications",
+  "Переходы как в iOS (проба)": "iOS-style transitions (trial)",
+  "Переписка въезжает справа, назад — свайпом от края. Только на этом телефоне": "Chats slide in from the right, swipe from the edge to go back. This phone only",
 };
 export default en;
