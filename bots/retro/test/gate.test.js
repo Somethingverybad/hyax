@@ -1,0 +1,67 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const BOT = "test-bot-token";
+const dir = mkdtempSync(join(tmpdir(), "retro-"));
+writeFileSync(join(dir, "allow.txt"), "# владелец\n@Owner\nid-friend\n");
+process.env.HYAX_BOT_TOKEN = BOT;
+process.env.DATA_DIR = dir;
+
+const { server, issuePass, checkPass } = await import("../server/index.js");
+const { signInitData } = await import("../server/auth.js");
+let base;
+
+before(() => new Promise((ok) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
+after(() => server.close());
+
+const session = (initData) => fetch(`${base}/api/session`, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initData }),
+});
+
+test("страница открыта, эмулятор без пропуска — нет", async () => {
+  assert.equal((await fetch(`${base}/`)).status, 200);
+  assert.equal((await fetch(`${base}/gate.js`)).status, 200);
+  assert.equal((await fetch(`${base}/app.js`)).status, 404);
+  assert.equal((await fetch(`${base}/v86/v86.wasm`)).status, 404);
+  assert.equal((await fetch(`${base}/s/forged.sig/app.js`)).status, 403);
+});
+
+test("без WYX и с поддельной подписью пропуска нет", async () => {
+  assert.equal((await session("")).status, 401);
+  const forged = signInitData({ id: "x", username: "Owner" }, "other-token");
+  assert.equal((await session(forged)).status, 401);
+});
+
+test("чужому — отказ с его именем", async () => {
+  const r = await session(signInitData({ id: "stranger", username: "guest" }, BOT));
+  assert.equal(r.status, 403);
+  assert.equal((await r.json()).username, "guest");
+});
+
+test("из списка — по имени (без учёта регистра) и по id; пропуск открывает эмулятор", async () => {
+  for (const user of [{ id: "u1", username: "owner" }, { id: "id-friend", username: "f" }]) {
+    const r = await session(signInitData(user, BOT));
+    assert.equal(r.status, 200);
+    const { pass } = await r.json();
+    const app = await fetch(`${base}/s/${pass}/app.js`);
+    assert.equal(app.status, 200);
+    assert.match(app.headers.get("content-type"), /javascript/);
+    const wasm = await fetch(`${base}/s/${pass}/v86/v86.wasm`);
+    assert.equal(wasm.headers.get("content-type"), "application/wasm");
+    assert.equal((await fetch(`${base}/s/${pass}/..%2fserver%2findex.js`)).status, 404);
+  }
+});
+
+test("пропуск: подделка, срок и вычеркнутый из списка", () => {
+  const pass = issuePass({ id: "u1", username: "owner" });
+  assert.ok(checkPass(pass));
+  const [data, s] = pass.split(".");
+  const other = Buffer.from(JSON.stringify({ u: "u2", n: "owner", e: 9e9 })).toString("base64url");
+  assert.equal(checkPass(`${other}.${s}`), null);
+  assert.equal(checkPass(pass, Date.now() / 1000 + 3 * 86400), null);
+  assert.equal(checkPass(issuePass({ id: "u3", username: "gone" })), null);
+  assert.ok(data);
+});

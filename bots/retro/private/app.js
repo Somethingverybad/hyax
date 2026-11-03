@@ -179,9 +179,10 @@ function boot(state, stateRam) {
   $("status").textContent = state ? "Восстанавливаю машину…" : "Включаю…";
   WA?.BackButton.show();
   emu = new V86({
-    wasm_path: "v86/v86.wasm",
-    bios: { url: "v86/seabios.bin" },
-    vga_bios: { url: "v86/vgabios.bin" },
+    // От адреса модуля, а не страницы: файлы лежат за пропуском (s/<пропуск>/).
+    wasm_path: new URL("v86/v86.wasm", import.meta.url).href,
+    bios: { url: new URL("v86/seabios.bin", import.meta.url).href },
+    vga_bios: { url: new URL("v86/vgabios.bin", import.meta.url).href },
     memory_size: ram * MB,
     vga_memory_size: 8 * MB,
     screen: { container: $("screen") },
