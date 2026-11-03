@@ -2555,6 +2555,14 @@ export const api = {
 
 
   /** Закрепить чат вверху списка или открепить. Закрепление личное. */
+  /** Уведомления чата у себя: на время, навсегда или включить (lib/chatMute). */
+  muteChat: async (chatId: string, span: "1h" | "4h" | "8h" | "forever" | "off"): Promise<{ muted: boolean; muted_until: string | null }> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/mute/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ for: span }),
+    });
+    if (!res.ok) throw new LError("Не удалось изменить уведомления");
+    return res.json();
+  },
   pinChat: async (chatId: string, pinned: boolean): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/pin/`, {
       method: pinned ? "POST" : "DELETE", headers: authHeaders(),

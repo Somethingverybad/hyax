@@ -393,6 +393,51 @@ def theme_body(**over):
     return body
 
 
+class ChatMuteTests(TestCase):
+    """Уведомления чата выключены у себя: навсегда или на 1, 4, 8 часов (как в Telegram)."""
+    def setUp(self):
+        from .models import Chat, ChatParticipant
+        self.me, self.peer = make_user("me"), make_user("peer")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+
+    def mute(self, span):
+        return client_for(self.me).post(f"/api/chats/{self.chat.id}/mute/", {"for": span}, format="json")
+
+    def test_mute_for_hours_then_expires(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import ChatParticipant
+        from .views import muted_ids
+        r = self.mute("4h")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data["muted"])
+        self.assertIsNotNone(r.data["muted_until"])
+        self.assertIn(self.me.id, set(muted_ids(self.chat.id)))
+        row = client_for(self.me).get("/api/chats/").data
+        row = next(c for c in (row["results"] if isinstance(row, dict) else row) if c["id"] == str(self.chat.id))
+        self.assertTrue(row["muted"])
+        # Срок вышел — снова со звуком, и в списке тоже.
+        ChatParticipant.objects.filter(chat=self.chat, user=self.me).update(muted_until=timezone.now() - timedelta(minutes=1))
+        self.assertNotIn(self.me.id, set(muted_ids(self.chat.id)))
+
+    def test_forever_and_off(self):
+        from .views import muted_ids
+        self.assertTrue(self.mute("forever").data["muted"])
+        self.assertIn(self.me.id, set(muted_ids(self.chat.id)))
+        self.assertNotIn(self.peer.id, set(muted_ids(self.chat.id)))
+        r = self.mute("off")
+        self.assertFalse(r.data["muted"])
+        self.assertNotIn(self.me.id, set(muted_ids(self.chat.id)))
+        self.assertEqual(self.mute("2h").status_code, 400)
+
+    def test_not_participant(self):
+        stranger = make_user("stranger")
+        r = client_for(stranger).post(f"/api/chats/{self.chat.id}/mute/", {"for": "1h"}, format="json")
+        self.assertIn(r.status_code, (403, 404))
+
+
 class UnreadCountTests(TestCase):
     """Счётчик непрочитанных — только то, что видно в ленте (баг-репорт 76b414b8)."""
     def test_hidden_messages_not_counted(self):

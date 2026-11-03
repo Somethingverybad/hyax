@@ -251,6 +251,9 @@ class ChatViewSet(viewsets.ModelViewSet):
                     last_id_a=Subquery(last.values('id')[:1]),
                     # Моё закрепление: у каждого участника своё.
                     my_pinned_at=Subquery(mine.values('pinned_at')[:1]),
+                    # Мои уведомления этого чата (ChatSerializer.get_muted).
+                    my_muted=Subquery(mine.values('muted')[:1]),
+                    my_muted_until=Subquery(mine.values('muted_until')[:1]),
                     # Мои личные обои (см. ChatSerializer.get_my_wallpaper).
                     my_wp_kind=Subquery(mine.values('wallpaper_kind')[:1]),
                     my_wp_url=Subquery(mine.values('wallpaper_url')[:1]),
@@ -326,6 +329,32 @@ class ChatViewSet(viewsets.ModelViewSet):
         row.pinned_at = timezone.now() if request.method == 'POST' else None
         row.save(update_fields=['pinned_at'])
         return Response({"ok": True, "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None})
+
+    MUTE_HOURS = {"1h": 1, "4h": 4, "8h": 8}
+
+    @action(detail=True, methods=['post'])
+    def mute(self, request, pk=None):
+        """POST {for: "1h"|"4h"|"8h"|"forever"|"off"} — выключить уведомления
+        этого чата у себя на время, навсегда или включить снова (как в
+        Telegram). Сообщения приходят и в открытом чате звучат; пушей и
+        системных уведомлений нет. Ответ: {muted, muted_until}."""
+        profile = getattr(request.user, 'profile', None)
+        if not profile:
+            return Response({"error": "Profile not found"}, status=400)
+        row = ChatParticipant.objects.filter(chat_id=pk, user=profile).first()
+        if not row:
+            return Response({"error": "Вы не участник этого чата"}, status=404)
+        span = str(request.data.get("for") or "")
+        if span == "forever":
+            row.muted, row.muted_until = True, None
+        elif span in self.MUTE_HOURS:
+            row.muted, row.muted_until = False, timezone.now() + timedelta(hours=self.MUTE_HOURS[span])
+        elif span == "off":
+            row.muted, row.muted_until = False, None
+        else:
+            return Response({"error": "for: 1h, 4h, 8h, forever или off"}, status=400)
+        row.save(update_fields=['muted', 'muted_until'])
+        return Response({"muted": row.muted or bool(row.muted_until), "muted_until": row.muted_until.isoformat() if row.muted_until else None})
 
     @action(detail=True, methods=['post'])
     def accept_request(self, request, pk=None):
@@ -1059,6 +1088,9 @@ def _push_reaction(message, reactor, emoji):
             return
         if str(author.id) in viewers(message.chat_id):
             return
+        # Уведомления чата выключены — и о реакциях тоже.
+        if author.id in set(muted_ids(message.chat_id)):
+            return
         from .formatting import mask_preview
         from .i18n import L, clip
         preview = mask_preview(message.content or "", getattr(message, "entities", None)).strip()
@@ -1120,11 +1152,17 @@ def _notify_reactions(message):
         logger.exception("реакции: рассылка не удалась")
 
 
+def muted_ids(chat_id):
+    """Кто выключил уведомления этого чата — навсегда или пока не вышел срок."""
+    return ChatParticipant.objects.filter(chat_id=chat_id).filter(
+        Q(muted=True) | Q(muted_until__gt=timezone.now())
+    ).values_list("user_id", flat=True)
+
+
 def _without_muted(chat, recipients):
-    """Убрать тех, кто выключил уведомления этого чата (ChatParticipant.muted):
-    сообщение они увидят в ленте, пуш и звук им не нужны."""
-    muted_ids = ChatParticipant.objects.filter(chat=chat, muted=True).values_list("user_id", flat=True)
-    return recipients.exclude(id__in=muted_ids)
+    """Убрать тех, кто выключил уведомления этого чата (ChatParticipant.muted,
+    muted_until): сообщение они увидят в ленте, пуш и звук им не нужны."""
+    return recipients.exclude(id__in=muted_ids(chat.id))
 
 
 def _can_see_chat(chat, profile):
@@ -4896,7 +4934,8 @@ class ChannelMuteView(APIView):
         if not cp:
             return Response({"error": "Вы не подписаны на канал"}, status=400)
         cp.muted = bool(request.data.get("muted", True))
-        cp.save(update_fields=["muted"])
+        cp.muted_until = None
+        cp.save(update_fields=["muted", "muted_until"])
         return Response(ChannelSerializer(ch, context={"request": request}).data)
 
 

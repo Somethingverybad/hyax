@@ -307,7 +307,11 @@ class ChatParticipant(models.Model):
     # Роль: owner · admin · subscriber (каналы) / member (группы, личка).
     # Постить в канал могут только owner/admin.
     role = models.CharField(max_length=12, default="member")
-    muted = models.BooleanField(default=False)  # подписчик отключил пуши канала
+    # Уведомления чата выключены у меня (как в Telegram): muted — навсегда,
+    # muted_until — до этого времени (на 1, 4, 8 часов). Сообщения приходят,
+    # в открытом чате звучат, но пушей и системных уведомлений нет.
+    muted = models.BooleanField(default=False)
+    muted_until = models.DateTimeField(blank=True, null=True)
     # Автоперевод в личке (chat/translate.py): translate_out — мои сообщения
     # переводить на язык собеседника, translate_in — его сообщения на мой.
     translate_in = models.BooleanField(null=True, blank=True, default=None)

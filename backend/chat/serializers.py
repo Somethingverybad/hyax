@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers, exceptions
 from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -271,6 +272,10 @@ class ChatSerializer(serializers.ModelSerializer):
     # Когда я закрепил этот чат (аннотация my_pinned_at из get_queryset).
     # null — не закреплён. Закрепление личное, у собеседника своё.
     pinned_at = serializers.SerializerMethodField()
+    # Мои уведомления этого чата: muted — выключены сейчас (навсегда или до
+    # muted_until), muted_until — до какого времени (null — навсегда или включены).
+    muted = serializers.SerializerMethodField()
+    muted_until = serializers.SerializerMethodField()
     # Время последнего сообщения — по нему клиент сортирует список. updated_at
     # у чата меняется и от переименования, и от смены аватара.
     last_message_at = serializers.SerializerMethodField()
@@ -309,11 +314,19 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'pending_for', 'pet_limit']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'muted', 'muted_until', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'pending_for', 'pet_limit']
 
     def get_pinned_at(self, obj):
         v = getattr(obj, 'my_pinned_at', None)
         return v.isoformat() if v else None
+
+    def get_muted(self, obj):
+        until = getattr(obj, 'my_muted_until', None)
+        return bool(getattr(obj, 'my_muted', False)) or bool(until and until > timezone.now())
+
+    def get_muted_until(self, obj):
+        until = getattr(obj, 'my_muted_until', None)
+        return until.isoformat() if until and until > timezone.now() else None
 
     def get_last_message_at(self, obj):
         v = getattr(obj, 'last_at_a', None)
@@ -907,7 +920,7 @@ class ChannelSerializer(serializers.ModelSerializer):
 
     def get_muted(self, obj):
         cp = self._my_cp(obj)
-        return bool(cp and cp.muted)
+        return bool(cp and (cp.muted or (cp.muted_until and cp.muted_until > timezone.now())))
 
 
 class PostCommentSerializer(serializers.ModelSerializer):

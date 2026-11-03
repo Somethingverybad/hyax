@@ -2384,5 +2384,15 @@ const en: Record<string, string> = {
   "Не переслано: {list}": "Not forwarded: {list}",
   "Рамка треугольников": "Video triangle frame",
   "Шкала и хорошее настроение": "Bar and good mood",
+  "На 1 час": "For 1 hour",
+  "На 4 часа": "For 4 hours",
+  "На 8 часов": "For 8 hours",
+  "Навсегда": "Forever",
+  "Без уведомлений": "Muted",
+  "Без уведомлений до {time}": "Muted until {time}",
+  "Без уведомлений до завтра, {time}": "Muted until tomorrow, {time}",
+  "Выключить уведомления": "Mute notifications",
+  "Включить уведомления": "Unmute notifications",
+  "Не удалось изменить уведомления": "Couldn't change notifications",
 };
 export default en;

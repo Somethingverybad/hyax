@@ -26,6 +26,7 @@ import { requestMediaPermissionsOnce } from "@/lib/permissions";
 import { playSfx } from "@/lib/sfx";
 import { rovOn, rovOff, onRovState } from "@/lib/rov";
 import { ensureNotifyPermission, showDesktopNotification } from "@/lib/desktopNotify";
+import { isMutedNow } from "@/lib/chatMute";
 import { toast } from "sonner";
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
@@ -42,6 +43,8 @@ interface ChatType {
   participants?: ProfileType[];
   /** Закрепление (личное) и время последнего сообщения — порядок списка. */
   pinned_at?: string | null;
+  muted?: boolean;
+  muted_until?: string | null;
   last_message_at?: string | null;
   last_message?: { text: string; sender_id: string; read?: boolean } | null;
   unread_count?: number;
@@ -588,7 +591,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         // Пинг — всем смонтированным окнам (открытое, пул недавних, Избранное):
         // каждое синхронизируется, только если пинг про его чат (pingChatId).
         if (chatId) window.dispatchEvent(new CustomEvent("hyax:ping", { detail: { chat_id: String(chatId) } }));
-        if (m && senderId && senderId !== user.id && !active) {
+        // Уведомления чата выключены у меня (lib/chatMute) — ни баннера, ни
+        // звука; в открытом чате звук свой (ChatWindow), он остаётся.
+        const mutedNow = isMutedNow(chatsRef.current.find((c) => String(c.id) === String(chatId)));
+        if (m && senderId && senderId !== user.id && !active && !mutedNow) {
           const preview =
             (m.content || "").trim() ||
             (m.sticker ? tr("Стикер") :

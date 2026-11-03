@@ -7,7 +7,8 @@ import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
 import { useEscape } from "@/lib/escape";
-import { RefreshCw, Share2, Pin, Lock, Lightbulb, Newspaper, EyeOff, PawPrint, Music2 } from "lucide-react";
+import { RefreshCw, Share2, Pin, PinOff, Lock, Lightbulb, Newspaper, EyeOff, PawPrint, Music2, Bell, BellOff, ChevronLeft } from "lucide-react";
+import { isMutedNow, muteLabel, MUTE_SPANS, type MuteSpan, type MuteState } from "@/lib/chatMute";
 import { useNavigate } from "react-router-dom";
 import { useNavTabs, type NavTab } from "@/lib/navTabs";
 import { usePetChats, usePetsAvailable } from "@/lib/pets";
@@ -64,6 +65,8 @@ interface Chat {
   created_at?: string;
   /** Когда я закрепил чат; null — не закреплён. Закрепление личное. */
   pinned_at?: string | null;
+  muted?: boolean;
+  muted_until?: string | null;
   /** Время последнего сообщения — по нему сортируется список. */
   last_message_at?: string | null;
   /** direct · group · channel · saved · system… и прочее, что сервер отдаёт о чате. */
@@ -386,6 +389,23 @@ const ChatSidebar = ({
   // прыгает вверх с задержкой в полсекунды. При ошибке откатываем.
   const [pinOverride, setPinOverride] = useState<Record<string, string | null>>({});
   const pinnedAt = (c: Chat) => (c.id in pinOverride ? pinOverride[c.id] : c.pinned_at ?? null);
+  // Уведомления чата у меня (lib/chatMute): ответ сервера — сразу, до обновления списка.
+  const [muteOverride, setMuteOverride] = useState<Record<string, MuteState>>({});
+  const muteOf = (c: Chat): MuteState => (c.id in muteOverride ? muteOverride[c.id] : c);
+  // Меню чата: второй уровень — на сколько выключить уведомления.
+  const [muteMenu, setMuteMenu] = useState(false);
+  useEffect(() => { if (!chatMenu) setMuteMenu(false); }, [chatMenu]);
+  const setMute = async (chatId: string, span: MuteSpan) => {
+    setChatMenu(null);
+    try {
+      const r = await api.muteChat(chatId, span);
+      setMuteOverride((m) => ({ ...m, [chatId]: r }));
+      toast(muteLabel(r));
+      void onRefresh?.();
+    } catch (e: any) {
+      toast.error(e?.message || t("Не получилось"));
+    }
+  };
 
   // Лапка у чата, где сейчас чей-то питомец (свой или собеседника).
   const petsOn = usePetsAvailable();
@@ -1315,6 +1335,7 @@ const ChatSidebar = ({
                             {isChannel && !isWall && <Radio className="w-3.5 h-3.5 text-primary shrink-0" />}
                             {(chat as any).kind === "secret" && <Lock className="w-3.5 h-3.5 text-online shrink-0" aria-label={t("Секретный чат")} />}
                             <span className="truncate">{chatTitle}</span>
+                            {isMutedNow(muteOf(chat)) && <BellOff className="w-3.5 h-3.5 text-subtle shrink-0" aria-label={t("Без уведомлений")} />}
                             {petChats.has(chat.id) && <PawPrint className="w-3.5 h-3.5 text-primary shrink-0" aria-label={t("Здесь питомец")} />}
                           </p>
                           {mint && editMode ? (
@@ -1391,7 +1412,8 @@ const ChatSidebar = ({
                           )}
                           {/* Бейдж без text-caption: в «Мяте» подписи строки красятся в приглушённый цвет, и цифры бледнели. */}
                           {!!chat.unread_count && chat.unread_count > 0 && (
-                            <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-[12px] leading-none font-semibold flex items-center justify-center">
+                            // Без уведомлений — счётчик серый, как в Telegram.
+                            <span className={`shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full text-[12px] leading-none font-semibold flex items-center justify-center ${isMutedNow(muteOf(chat)) ? "bg-subtle text-background" : "bg-primary text-primary-foreground"}`}>
                               {chat.unread_count > 99 ? "99+" : chat.unread_count}
                             </span>
                           )}
@@ -1496,33 +1518,71 @@ const ChatSidebar = ({
           </div>
         </div>
       )}
-      {chatMenu && (
-        <div
-          className="fixed inset-0 z-[80]"
-          onClick={() => setChatMenu(null)}
-          onContextMenu={(e) => { e.preventDefault(); setChatMenu(null); }}
-        >
+      {chatMenu && (() => {
+        const c = chats.find((x) => x.id === chatMenu.chatId) as (Chat & { kind?: string; is_group?: boolean; creator?: string | null }) | undefined;
+        const owner = String(c?.creator ?? "") === String(currentUser?.id ?? "");
+        const muted = c ? isMutedNow(muteOf(c)) : false;
+        // Закрепить и уведомления — не для Стены и не для «Избранного».
+        const canPin = !!c && c.kind !== "wall";
+        const canMute = !!c && c.kind !== "wall" && c.kind !== "saved";
+        const item = "w-full px-4 py-2.5 text-left text-sm hover:bg-secondary active:bg-secondary flex items-center gap-2";
+        const rows = muteMenu ? MUTE_SPANS.length + 1 : 1 + (canPin ? 1 : 0) + (canMute ? 1 : 0);
+        return (
           <div
-            className="fixed min-w-[170px] bg-card border-2 border-border shadow-xl py-1"
-            style={{
-              left: Math.max(8, Math.min(chatMenu.x, window.innerWidth - 188)),
-              top: Math.max(8, Math.min(chatMenu.y, window.innerHeight - 60)),
-            }}
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[80]"
+            onClick={() => { setChatMenu(null); setMuteMenu(false); }}
+            onContextMenu={(e) => { e.preventDefault(); setChatMenu(null); setMuteMenu(false); }}
           >
-            <button
-              type="button"
-              onClick={() => deleteChat(chatMenu.chatId, chatMenu.title)}
-              className="w-full px-4 py-2 text-left text-sm text-destructive hover:bg-secondary flex items-center gap-2"
+            <div
+              className="fixed min-w-[200px] bg-card border-2 border-border shadow-xl py-1"
+              style={{
+                left: Math.max(8, Math.min(chatMenu.x, window.innerWidth - 216)),
+                top: Math.max(8, Math.min(chatMenu.y, window.innerHeight - rows * 42 - 16)),
+              }}
+              onClick={(e) => e.stopPropagation()}
             >
-              <Trash2 className="w-4 h-4" />{(() => {
-                const c = chats.find((x) => x.id === chatMenu.chatId) as (Chat & { kind?: string; is_group?: boolean; creator?: string | null }) | undefined;
-                const owner = String(c?.creator ?? "") === String(currentUser?.id ?? "");
-                return c?.kind === "channel" && !owner ? t("Отписаться") : c?.is_group && !owner ? t("Выйти из группы") : t("Удалить чат");
-              })()}</button>
+              {muteMenu ? (
+                <>
+                  <button type="button" onClick={() => setMuteMenu(false)} className={`${item} text-subtle`}>
+                    <ChevronLeft className="w-4 h-4" />{t("Выключить уведомления")}</button>
+                  {MUTE_SPANS.map(({ span, label }) => (
+                    <button key={span} type="button" onClick={() => { setMuteMenu(false); void setMute(chatMenu.chatId, span); }} className={`${item} pl-10`}>
+                      {t(label)}</button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {canPin && c && (
+                    <button type="button" onClick={() => { setChatMenu(null); void togglePin(c); }} className={item}>
+                      {pinnedAt(c) ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                      {pinnedAt(c) ? t("Открепить") : t("Закрепить")}</button>
+                  )}
+                  {canMute && (
+                    muted ? (
+                      <button type="button" onClick={() => void setMute(chatMenu.chatId, "off")} className={item}>
+                        <Bell className="w-4 h-4" />
+                        <span className="flex-1 min-w-0">
+                          <span className="block">{t("Включить уведомления")}</span>
+                          <span className="block text-caption text-subtle">{c ? muteLabel(muteOf(c)) : ""}</span>
+                        </span>
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => setMuteMenu(true)} className={item}>
+                        <BellOff className="w-4 h-4" />{t("Выключить уведомления")}</button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteChat(chatMenu.chatId, chatMenu.title)}
+                    className={`${item} text-destructive`}
+                  >
+                    <Trash2 className="w-4 h-4" />{c?.kind === "channel" && !owner ? t("Отписаться") : c?.is_group && !owner ? t("Выйти из группы") : t("Удалить чат")}</button>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
