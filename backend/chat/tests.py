@@ -1665,16 +1665,44 @@ class ForwardManyTests(TestCase):
     def fwd(self, who, ids, chat=None):
         return client_for(who).post("/api/messages/forward_many/", {"message_ids": [str(i) for i in ids], "chat_id": str((chat or self.dst).id)}, format="json")
 
-    def test_batch_shares_album_and_keeps_order(self):
+    def test_batch_keeps_order_without_shared_album(self):
+        # Как в Telegram (03.11): каждое пересланное — своим сообщением; общий
+        # альбом пакету больше не даём (лента теряла голосовые и подписи).
         r = self.fwd(self.me, [self.m3.id, self.m1.id, self.m2.id])
         self.assertEqual(r.status_code, 201)
         rows = r.data["messages"]
         self.assertEqual([m["content"] for m in rows], ["раз", "два", "три"])
-        albums = {m["album_id"] for m in rows}
-        self.assertEqual(len(albums), 1)
-        self.assertIsNotNone(albums.pop())
+        self.assertEqual({m["album_id"] for m in rows}, {None})
         self.assertEqual(rows[0]["forwarded_title"], "friend")
         self.assertEqual(rows[1]["forwarded_title"], "me")
+
+    def test_pack_keeps_shapes(self):
+        import uuid
+        from .models import Chat, ChatParticipant, Message, NotificationSound
+        me, peer = make_user("fwd_me"), make_user("fwd_peer")
+        src = Chat.objects.create(kind="direct")
+        dst = Chat.objects.create(kind="direct")
+        for c in (src, dst):
+            for p in (me, peer):
+                ChatParticipant.objects.create(chat=c, user=p)
+        snd = NotificationSound.objects.create(slug="fwd-ding", name="Динь", caf_url="x")
+        album = uuid.uuid4()
+        ids = [
+            Message.objects.create(chat=src, sender=me, voice_url="/v.m4a", voice_duration=3).id,
+            Message.objects.create(chat=src, sender=me, content="текст").id,
+            Message.objects.create(chat=src, sender=me, sound=snd).id,
+            Message.objects.create(chat=src, sender=me, file_url="/a.png", file_name="a.png", content="подпись", album_id=album).id,
+            Message.objects.create(chat=src, sender=me, file_url="/b.png", file_name="b.png", album_id=album).id,
+        ]
+        r = client_for(me).post("/api/messages/forward_many/", {"message_ids": [str(i) for i in ids], "chat_id": str(dst.id)}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        copies = list(Message.objects.filter(chat=dst).order_by("created_at"))
+        self.assertEqual(len(copies), 5)
+        self.assertEqual([bool(c.album_id) for c in copies], [False, False, False, True, True])
+        self.assertEqual(copies[3].album_id, copies[4].album_id)
+        self.assertNotEqual(copies[3].album_id, album)  # у копий свой альбом
+        self.assertEqual(copies[2].sound_id, snd.id)
+        self.assertEqual(copies[3].content, "подпись")
 
     def test_single_has_no_album(self):
         r = self.fwd(self.me, [self.m1.id])

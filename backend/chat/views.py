@@ -860,6 +860,9 @@ def _forward_copy(src, target, profile, album_id=None):
         poster_url=getattr(src, 'poster_url', None),
         sticker=src.sticker,
         sticker_file=getattr(src, 'sticker_file', "") or (src.sticker.file_url if src.sticker_id else ""),
+        # Аудио-стикер (звук без текста): без него копия была пустым сообщением
+        # и в ленте пропадала.
+        sound=getattr(src, 'sound', None),
         voice_url=src.voice_url,
         voice_duration=src.voice_duration,
         video_url=src.video_url,
@@ -1655,8 +1658,16 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response({"error": "Секретные сообщения не пересылаются"}, status=403)
         if target.kind == 'secret':
             return Response({"error": "В секретный чат не пересылается"}, status=403)
-        album = uuid.uuid4() if len(sources) > 1 else None
-        created = [_forward_copy(src, target, profile, album_id=album) for src in sources]
+        # Как в Telegram: каждое пересланное — своим сообщением; общий album_id
+        # только у тех, что и в источнике были одним альбомом (фото одной
+        # отправки). Раньше весь пакет склеивался в один «альбом», и лента
+        # теряла то голосовые, то подписи к картинкам (баг-репорты 9af03165,
+        # dc05d953).
+        albums = {}
+        created = [
+            _forward_copy(src, target, profile, album_id=albums.setdefault(src.album_id, uuid.uuid4()) if src.album_id else None)
+            for src in sources
+        ]
         Chat.objects.filter(id=target.id).update(updated_at=timezone.now())
         # Уведомление — одно на пакет, по последнему сообщению: иначе получатель
         # ловил бы по пушу на каждое. В сокет чата остальные уходят отдельно,

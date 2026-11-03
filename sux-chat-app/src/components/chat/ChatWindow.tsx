@@ -4402,8 +4402,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             // музыка и файлы — строками под ней, всё в одном пузыре.
             const albumMedia = isAlbum ? album!.filter((m) => !m.download_only && (isImageFile(m.file_name, m.file_url) || isVideoFile(m.file_name, m.file_url)) && !isAudioFile(m.file_name, m.file_url)) : [];
             const albumAudio = isAlbum ? album!.filter((m) => isAudioFile(m.file_name, m.file_url)) : [];
-            // Пересланный пакет: текстовые сообщения — абзацами в одном пузыре.
-            const albumText = isAlbum ? album!.filter((m) => !m.file_url && (m.content || "").trim()) : [];
+            // Тексты группы — абзацами в одном пузыре: и текстовые сообщения
+            // пересланного пакета, и подписи к картинкам (раньше подпись не
+            // первой картинки терялась — в ленте оставалась одна картинка,
+            // хотя в списке чатов был её текст; баг-репорт dc05d953).
+            const albumText = isAlbum ? album!.filter((m) => (m.content || "").trim()) : [];
             const albumRest = isAlbum ? album!.filter((m) => !!m.file_url && !albumMedia.includes(m) && !albumAudio.includes(m)) : [];
             // Если авторы в пакете разные — подписываем каждый элемент.
             const originOf = (m: Message) => m.forwarded_from?.username || m.forwarded_title || "";
