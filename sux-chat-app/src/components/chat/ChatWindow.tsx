@@ -4438,6 +4438,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const username = message.sender?.username || tr("Неизвестный");
             // Серия одного автора идёт плотно (8 px), смена автора или даты — 16 px.
             const sameAuthor = !!previousMessage && !showDate && previousMessage.sender?.id === message.sender?.id;
+            // Пересланные подряд одним пакетом (тот же отправитель и источник,
+            // созданы в одну пересылку) — одним блоком: подпись «Переслано от»
+            // только у первого, пузыри вплотную. Сами сообщения — отдельные,
+            // каждое рисуется по-своему (голосовое, звук, картинка, текст).
+            const fwdKey = (m: Message | null) => (m && (m.forwarded_title || m.forwarded_from)
+              ? `${m.sender?.id}|${m.forwarded_chat?.id || m.forwarded_from?.id || m.forwarded_title}` : "");
+            const sameForward = sameAuthor && !!fwdKey(message) && fwdKey(previousMessage) === fwdKey(message)
+              && Math.abs(Date.parse(message.created_at) - Date.parse(previousMessage!.created_at)) < 5000;
             // Хвостик — только у последнего сообщения в серии, как в Telegram.
             const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
             const lastInGroup = !nextMessage || nextMessage.sender?.id !== message.sender?.id || shouldShowDate(nextMessage, message);
@@ -4501,7 +4509,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 key={message._key ?? message.id}
                 id={`msg-${message.id}`}
                 data-sender-id={message.sender?.id}
-                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", message._key ? "msg-in-own" : freshIds.has(message.id) && "msg-in", foundId === message.id && "msg-found", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
+                className={cn("space-y-2", !sameAuthor && index > 0 && "!mt-4", sameForward && "!mt-[3px]", message._key ? "msg-in-own" : freshIds.has(message.id) && "msg-in", foundId === message.id && "msg-found", eatingIds.has(message.id) && "msg-eaten", collapsingIds.has(message.id) && "msg-collapsing")}
               >
                 {/* Разделитель с датой */}
                 {showDate && (
@@ -4658,7 +4666,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     )}>
                       {/* Цитируемое сообщение (реплай). */}
                       {/* Пересланное: от кого пришло изначально. */}
-                      {(message.forwarded_title || message.forwarded_from) && (
+                      {(message.forwarded_title || message.forwarded_from) && !sameForward && (
                         <div
                           role={!mixedOrigins && (message.forwarded_from || message.forwarded_chat) ? "button" : undefined}
                           onClick={(e) => { if (mixedOrigins || !(message.forwarded_from || message.forwarded_chat)) return; e.stopPropagation(); openForwardOrigin(message); }}
