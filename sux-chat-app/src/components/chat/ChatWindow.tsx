@@ -23,6 +23,7 @@ import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack, EDGE_PX as SWIPE_BACK_EDGE } from "@/hooks/use-swipe-back";
+import { navSlideEnabled } from "@/lib/navSlide";
 const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
@@ -328,7 +329,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях. Только у окна
   // на экране: окна из пула недавних переписок слушали жест тоже.
-  useSwipeBack(onBack, active);
+  // iPhone: свайп назад ведёт Chat.tsx — за пальцем (lib/navSlide).
+  useSwipeBack(onBack, active && !navSlideEnabled());
   const mintTheme = useMint();
   const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.
@@ -4074,7 +4076,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 </>
   );
   return (
-    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    // isolate: обои (-z-10) — всегда внутри переписки, над её фоном; раньше
+    // они жили в контексте наложения где-то выше и «прыгали», когда слой
+    // переписки анимировался (баг «жидкого стекла» в чатах с обоями).
+    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative isolate" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {dragOver && (
         <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
           <div className="text-center">
