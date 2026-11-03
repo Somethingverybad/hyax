@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, memo, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, memo, lazy, Suspense } from "react";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { setOtaRestoreState } from "@/lib/ota";
@@ -124,18 +124,6 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // запуске приложения он просто на месте.
   const hadChatOpenRef = useRef(false);
   useEffect(() => { if (selectedChatId) hadChatOpenRef.current = true; }, [selectedChatId]);
-  // iPhone, «жидкое стекло» (index.css): закрытая переписка ещё ~0,35 с видна —
-  // растворяется и уменьшается, пока список возвращается из глубины. Layout-
-  // эффект: класс встаёт до кадра, иначе слой на кадр пропал бы и мигнул.
-  const [leavingId, setLeavingId] = useState<string | null>(null);
-  const prevSelectedRef = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const prev = prevSelectedRef.current;
-    prevSelectedRef.current = selectedChatId;
-    if (!prev || prev === selectedChatId || document.documentElement.dataset.platform !== "ios") return;
-    setLeavingId(prev);
-    window.setTimeout(() => setLeavingId((x) => (x === prev ? null : x)), 450);
-  }, [selectedChatId]);
 
   // Чат «Избранное» — узнаём у сервера один раз; в списке chats его нет.
   // Из кеша он берётся сразу, поэтому вкладка открывается с сообщениями, а не
@@ -919,7 +907,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           {layer("chat", tab === "chat", (
             <div className="flex-1 min-w-0 min-h-0 relative">
               {/* Список — всегда смонтирован; виден, когда переписка не открыта. */}
-              <div className={`absolute inset-0 flex min-h-0 ${selectedChatId ? "invisible pointer-events-none glass-recede" : hadChatOpenRef.current ? "screen-pop" : ""}`}
+              <div className={`absolute inset-0 flex min-h-0 ${selectedChatId ? "invisible pointer-events-none" : hadChatOpenRef.current ? "screen-pop" : ""}`}
                 aria-hidden={!!selectedChatId} {...(selectedChatId ? { inert: "" as unknown as boolean } : {})}>
           <MemoSidebar
             ideabox={ideaboxChat ? { id: ideaboxChat.id, unread: (ideaboxChat as any).unread_count || 0, avatar_url: ideaboxChat.participants?.find((p) => (p as { is_bot?: boolean }).is_bot)?.avatar_url } : null}
@@ -957,7 +945,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                 const c = chats.find((x) => x.id === id);
                 const p = c?.is_group ? null : c?.participants?.find((x) => x.id !== user.id) || null;
                 return (
-                  <div key={id} className={`absolute inset-0 flex min-h-0 ${activeChat ? "screen-push" : `invisible pointer-events-none${id === leavingId ? " glass-out" : ""}`}`}
+                  <div key={id} className={`absolute inset-0 flex min-h-0 ${activeChat ? "screen-push" : "invisible pointer-events-none"}`}
                     aria-hidden={!activeChat} {...(activeChat ? {} : { inert: "" as unknown as boolean })}>
                     <Suspense fallback={null}><ChatWindow
                       chatId={id}
