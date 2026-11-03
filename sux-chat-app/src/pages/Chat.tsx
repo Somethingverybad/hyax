@@ -464,9 +464,13 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     );
     // И при уходе из чата: всё, что пришло, пока он был открыт, тоже прочитано.
     // Несколько секунд считаем его прочитанным и в списке (см. mergeUnread),
-    // пока сервер не применил отметку, — иначе бейдж мигал бы.
+    // пока сервер не применил отметку, — иначе бейдж мигал бы. Но только до
+    // последнего сообщения на момент выхода (lastAt): написали уже после —
+    // это новое непрочитанное.
     return () => {
-      leftChatRef.current = { id: selectedChatId, until: Date.now() + 8000 };
+      const row = chatsRef.current.find((c) => c.id === selectedChatId);
+      const lastAt = Math.max(ts(row?.last_message_at), ts(latestRef.current[selectedChatId]?.created_at));
+      leftChatRef.current = { id: selectedChatId, until: Date.now() + 8000, lastAt };
       api.markChatAsRead(selectedChatId).catch(() => {});
     };
   }, [selectedChatId]);
@@ -886,13 +890,20 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       const openId = selectedChatIdRef.current;
       // Только что закрытый чат тоже прочитан: отметка «прочитано» уходит при
       // выходе, и ответ счётчика, собранный до неё, на миг вернул бы бейдж.
+      // Кроме случая, когда после выхода туда написали: тогда непрочитанное
+      // настоящее — с бейджем и уведомлением. Раньше 8 с после выхода такие
+      // сообщения считались прочитанными, и sweepReadNotifications стирал их
+      // уведомления с экрана сразу по приходе (баг-репорт 763bedfb).
       const left = leftChatRef.current;
       const leftId = left && Date.now() < left.until ? left.id : null;
-      return list.map((c) => ({
-        ...c,
-        unread_count: c.id === openId || c.id === leftId ? 0 : (u.unread_by_chat?.[c.id] || 0),
-        unread_mention: c.id === openId || c.id === leftId ? false : !!u.mention_by_chat?.[c.id],
-      }));
+      return list.map((c) => {
+        const read = c.id === openId || (c.id === leftId && ts(c.last_message_at) <= left!.lastAt);
+        return {
+          ...c,
+          unread_count: read ? 0 : (u.unread_by_chat?.[c.id] || 0),
+          unread_mention: read ? false : !!u.mention_by_chat?.[c.id],
+        };
+      });
     } catch {
       return list;
     }
@@ -901,7 +912,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // Последнее сообщение, которое уже видела открытая переписка: ответ опроса
   // /chats/, отправленный раньше, не должен откатывать строку назад.
   const latestRef = useRef<Record<string, LatestMessage>>({});
-  const leftChatRef = useRef<{ id: string; until: number } | null>(null);
+  const leftChatRef = useRef<{ id: string; until: number; lastAt: number } | null>(null);
 
   const withLatest = (list: ChatType[]): ChatType[] => list.map((c) => {
     const l = latestRef.current[c.id];
