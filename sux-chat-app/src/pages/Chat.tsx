@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, memo, lazy, Suspense } from "react";
 import { navAnim, NAV_ANIM_EVENT, NAV_STYLES, restFrame, UNDER_SHIFT, EDGE_PX, type NavAnim } from "@/lib/navAnim";
 import { ESC_BACK } from "@/lib/escape";
+import { appOnScreen, onScreenChange } from "@/lib/onScreen";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { setOtaRestoreState } from "@/lib/ota";
 import { petsAvailable } from "@/lib/pets";
@@ -386,7 +387,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     if (viewingTimerRef.current) clearInterval(viewingTimerRef.current);
     if (selectedChatId) {
       viewingTimerRef.current = setInterval(() => {
-        if (document.visibilityState === "visible") tell(selectedChatIdRef.current);
+        if (appOnScreen()) tell(selectedChatIdRef.current);
       }, 10000);
     }
     return () => {
@@ -394,16 +395,16 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     };
   }, [selectedChatId]);
 
-  // Свернули приложение или вкладку — чат больше не «открыт», пуши снова нужны.
-  useEffect(() => {
-    const onVisible = () => {
-      const visible = document.visibilityState === "visible";
-      sendViewing(visible ? selectedChatIdRef.current : null);
-      // «В сети» по сворачиванию сообщает сам сокет (lib/userSocket) — на любом экране.
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, []);
+  // Свернули приложение или вкладку (на компьютере — ушли из окна) — чат
+  // больше не «открыт», пуши снова нужны. «В сети» по сворачиванию сообщает
+  // сам сокет (lib/userSocket) — на любом экране.
+  const shownRef = useRef(appOnScreen());
+  useEffect(() => onScreenChange(() => {
+    const on = appOnScreen();
+    if (on === shownRef.current) return;
+    shownRef.current = on;
+    sendViewing(on ? selectedChatIdRef.current : null);
+  }), []);
 
   const rovTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sendRov = useStable((on: boolean) => {
@@ -751,7 +752,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         if (m?.effect === "burst" && m?.sticker?.file_url && senderId && senderId !== user?.id) {
           window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url, id: m.id } }));
         }
-        const active = document.visibilityState === "visible" &&
+        // На компьютере окно без фокуса — не «на экране»: баннер и звук нужны.
+        const active = appOnScreen() &&
           chatId && String(chatId) === selectedChatIdRef.current;
         // Пинг — всем смонтированным окнам (открытое, пул недавних, Избранное):
         // каждое синхронизируется, только если пинг про его чат (pingChatId).

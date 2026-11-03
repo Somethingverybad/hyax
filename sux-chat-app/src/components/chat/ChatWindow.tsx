@@ -96,6 +96,7 @@ import GroupSettingsModal from "@/components/chat/GroupSettingsModal";
 import type { ChatInfo } from "@/api/client";
 import { LivePreview, GlassTriangle, MessageImage, MessageVideoFile, MessageAudioFile, AudioAddAll, MessageFile, VideoNote, AlbumGrid, AttachVideoPreview, isImageFile, isAudioFile, isVideoFile, previewSize, dimsOf } from "@/components/chat/media";
 import { readMessages, writeMessages } from "@/lib/messageCache";
+import { appOnScreen, onScreenChange } from "@/lib/onScreen";
 import type { ViewerItem } from "@/components/ImageViewer";
 const ImageViewer = lazy(() => import("@/components/ImageViewer"));
 import StickerView from "@/components/chat/StickerView";
@@ -1994,7 +1995,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const withSound = primedRef.current
       ? newMessages.find(m => m.sender?.id !== userId && m.sound?.url)
       : null;
-    if (withSound?.sound?.url && activeRef.current) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
+    // Окно не в фокусе — звук сыграет уведомление (Chat.tsx), второй не нужен.
+    if (withSound?.sound?.url && activeRef.current && appOnScreen()) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
 
     const incoming = newMessages.filter(m => m.sender?.id !== userId);
     if (primedRef.current && incoming.length) setFreshIds(new Set(incoming.map(m => m.id)));
@@ -2226,9 +2228,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         const by = new Map(r.authors.map((a) => [a.id, a]));
         setMessages((prev) => prev.map((m: any) => (m.sender && by.has(m.sender.id) ? { ...m, sender: { ...m.sender, ...by.get(m.sender.id)! } } : m)));
       }
-      // Чужие сообщения, пришедшие в открытый и видимый чат, — прочитаны.
+      // Чужие сообщения, пришедшие в открытый чат на экране, — прочитаны.
       // Иначе бейдж в списке чатов оставался, хотя человек всё видел и ответил.
-      if (activeRef.current && r.messages.some((m) => m.sender?.id !== userId) && (typeof document === "undefined" || document.visibilityState === "visible")) {
+      // На компьютере — только в окне с фокусом (lib/onScreen).
+      if (activeRef.current && r.messages.some((m) => m.sender?.id !== userId) && appOnScreen()) {
         clearTimeout(markReadTimerRef.current);
         markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 400);
       }
@@ -3306,18 +3309,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
-  // Вернулись в приложение с открытой перепиской — то, что на экране,
-  // прочитано: пока приложение было в фоне, syncSince отметку не ставил.
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState !== "visible" || !chatId || !activeRef.current) return;
-      const id = chatId;
-      clearTimeout(markReadTimerRef.current);
-      markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [chatId]);
+  // Вернулись в приложение (на компьютере — в окно) с открытой перепиской —
+  // то, что на экране, прочитано: пока его не было, syncSince отметку не ставил.
+  useEffect(() => onScreenChange(() => {
+    if (!appOnScreen() || !chatId || !activeRef.current) return;
+    const id = chatId;
+    clearTimeout(markReadTimerRef.current);
+    markReadTimerRef.current = setTimeout(() => { api.markChatAsRead(id).catch(() => {}); }, 600);
+  }), [chatId]);
 
   // Собеседник прочитал (событие «read» из Chat.tsx): свои сообщения до
   // этого момента получают вторую галочку без перезагрузки ленты.
