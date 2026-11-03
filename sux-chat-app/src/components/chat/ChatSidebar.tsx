@@ -1,4 +1,5 @@
 import { confirmDialog } from "@/lib/confirm";
+import { Capacitor } from "@capacitor/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { allDrafts } from "@/lib/drafts";
 import { activityLabel, useAllActivity } from "@/lib/chatActivity";
@@ -8,7 +9,7 @@ import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
 import { useEscape } from "@/lib/escape";
 import { RefreshCw, Share2, Pin, PinOff, Lock, Lightbulb, Newspaper, EyeOff, PawPrint, Music2, Bell, BellOff, ChevronLeft } from "lucide-react";
-import { isMutedNow, muteLabel, MUTE_SPANS, type MuteSpan, type MuteState } from "@/lib/chatMute";
+import { applyMute, isMutedNow, muteLabel, CHAT_MUTED_EVENT, MUTE_SPANS, type ChatMutedDetail, type MuteSpan, type MuteState } from "@/lib/chatMute";
 import { useNavigate } from "react-router-dom";
 import { useNavTabs, type NavTab } from "@/lib/navTabs";
 import { usePetChats, usePetsAvailable } from "@/lib/pets";
@@ -397,15 +398,14 @@ const ChatSidebar = ({
   useEffect(() => { if (!chatMenu) setMuteMenu(false); }, [chatMenu]);
   const setMute = async (chatId: string, span: MuteSpan) => {
     setChatMenu(null);
-    try {
-      const r = await api.muteChat(chatId, span);
-      setMuteOverride((m) => ({ ...m, [chatId]: r }));
-      toast(muteLabel(r));
-      void onRefresh?.();
-    } catch (e: any) {
-      toast.error(e?.message || t("Не получилось"));
-    }
+    if (await applyMute(chatId, span)) void onRefresh?.();
   };
+  // Выключили в профиле собеседника (MuteSheet) — значок в списке сразу.
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<ChatMutedDetail>).detail; setMuteOverride((m) => ({ ...m, [d.chatId]: d })); };
+    window.addEventListener(CHAT_MUTED_EVENT, on);
+    return () => window.removeEventListener(CHAT_MUTED_EVENT, on);
+  }, []);
 
   // Лапка у чата, где сейчас чей-то питомец (свой или собеседника).
   const petsOn = usePetsAvailable();
@@ -425,6 +425,10 @@ const ChatSidebar = ({
     }
   };
   const swipeStartRef = useRef<{ x: number; y: number; id: string } | null>(null);
+  // Долгое нажатие на телефоне — меню чата (закрепить, уведомления, удалить):
+  // WKWebView на iPhone contextmenu по удержанию не присылает.
+  const pressTimerRef = useRef(0);
+  const cancelPress = () => { window.clearTimeout(pressTimerRef.current); pressTimerRef.current = 0; };
   // После свайпа по строке тап не считается ещё ~0.4 с: click приходит следом за
   // touchend, когда состояние уже «закрыто», и открывал диалог вместо того,
   // чтобы просто вернуть плитку на место (баг-репорт da0707c0, iPhone). Та же
@@ -1236,7 +1240,7 @@ const ChatSidebar = ({
 
                   {/* Содержимое строки: ездит по свайпу, правый клик → меню */}
                   <div
-                    className={`chat-row-card group relative pl-3 pr-4 py-3 md:py-2.5 md:mr-1 md:rounded-r-lg flex items-center gap-3.5 md:gap-3 transition-transform border-l-4 ${
+                    className={`chat-row-card group relative pl-3 pr-4 py-3 md:py-2.5 md:mr-1 md:rounded-r-lg flex items-center gap-3.5 md:gap-3 transition-transform border-l-4 select-none [-webkit-touch-callout:none] ${
                       selectedChatId === chat.id ? "bg-surface-3 border-primary" : "bg-background border-transparent active:bg-surface-2 md:hover:bg-surface-2"
                     } ${isDeleting ? "opacity-50 pointer-events-none" : ""} ${
                       ""
@@ -1247,9 +1251,27 @@ const ChatSidebar = ({
                       setChatMenu({ x: e.clientX, y: e.clientY, chatId: chat.id, title: chatTitle });
                     }}
                     onTouchStart={(e) => {
-                      swipeStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, id: chat.id };
+                      const x = e.touches[0].clientX, y = e.touches[0].clientY;
+                      swipeStartRef.current = { x, y, id: chat.id };
+                      cancelPress();
+                      if (e.touches.length !== 1) return;
+                      pressTimerRef.current = window.setTimeout(() => {
+                        pressTimerRef.current = 0;
+                        swipeStartRef.current = null;
+                        // click после отпускания пальца чат не открывает.
+                        swipeLockRef.current = Date.now() + 800;
+                        if (Capacitor.isNativePlatform()) void import("@capacitor/haptics").then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Light })).catch(() => {});
+                        setChatMenu({ x, y, chatId: chat.id, title: chatTitle });
+                      }, 450);
                     }}
+                    onTouchMove={(e) => {
+                      const s = swipeStartRef.current;
+                      const t = e.touches[0];
+                      if (pressTimerRef.current && (!s || Math.abs(t.clientX - s.x) > 10 || Math.abs(t.clientY - s.y) > 10)) cancelPress();
+                    }}
+                    onTouchCancel={cancelPress}
                     onTouchEnd={(e) => {
+                      cancelPress();
                       const s = swipeStartRef.current;
                       swipeStartRef.current = null;
                       if (!s || s.id !== chat.id) return;
