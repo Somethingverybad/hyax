@@ -28,11 +28,14 @@ export function WallpaperLayer({ info }: { info?: { wallpaper?: ChatWallpaper | 
   }, []);
   if (!wallpaper || !(src || poster)) return null;
   return (
-    <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden>
+    // Свой слой композиции: кадры видео-обоев (на iOS — анимированный WebP во
+    // весь экран) перерисовывают только его, а не всю переписку — и в переходе
+    // между экранами тоже (баг-репорт 2dd6c250: тормоза на чатах с обоями).
+    <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none" style={{ willChange: "transform" }} aria-hidden>
       {wallpaper.kind === "video" && anim && src ? (
         <WallpaperVideo src={src} poster={poster} anim={animSrc || null} />
       ) : (
-        <img src={(wallpaper.kind === "video" ? poster : src) || src || undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={(wallpaper.kind === "video" ? poster : src) || src || undefined} alt="" decoding="async" className="absolute inset-0 w-full h-full object-cover" />
       )}
       <div className="absolute inset-0 bg-black/20" />
     </div>

@@ -23,7 +23,7 @@ import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack, EDGE_PX as SWIPE_BACK_EDGE } from "@/hooks/use-swipe-back";
-import { navAnim } from "@/lib/navAnim";
+import { navAnim, FEED_READY_EVENT } from "@/lib/navAnim";
 const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
@@ -2511,13 +2511,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     logFeed(`restore ${pinnedRef.current ? "bottom" : "kept"}`);
     return true;
   };
+  // Лента встала — переход на телефоне может ехать (lib/navAnim, Chat.tsx).
+  const feedReady = (id: string | null | undefined) => {
+    if (id) window.dispatchEvent(new CustomEvent(FEED_READY_EVENT, { detail: { chatId: id } }));
+  };
   const openPosition = async (id: string) => {
     const r = await restoreChatPos(id);
     setTimeout(() => logTail("position"), 1500);
-    if (r === true) { unreadOpenRef.current = 0; setAnchoring(false); return; }
+    if (r === true) { unreadOpenRef.current = 0; setAnchoring(false); feedReady(id); return; }
     // Запомненного места в ленте уже нет (история ушла дальше) — как раньше.
     if (r === false && unreadOpenRef.current === 0) { pinnedRef.current = true; goBottom(false); }
-    void anchorUnread(id);
+    void anchorUnread(id).finally(() => feedReady(id));
   };
   // Ушли из чата (другой чат, назад к списку) — место запоминаем. Layout-
   // эффект: его уборка идёт, пока лента ещё в документе.
@@ -2537,7 +2541,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Дальше низ удерживает ResizeObserver (см. выше), пока лента прижата.
     pinnedRef.current = true;
     const snap = () => { const el = scrollRef.current; if (el && pinnedRef.current) el.scrollTop = el.scrollHeight; };
-    requestAnimationFrame(() => { snap(); requestAnimationFrame(() => { snap(); logFeed("snap"); }); });
+    requestAnimationFrame(() => { snap(); requestAnimationFrame(() => { snap(); logFeed("snap"); feedReady(chatIdRef.current); }); });
     setTimeout(() => logTail("open"), 1500);
   };
 

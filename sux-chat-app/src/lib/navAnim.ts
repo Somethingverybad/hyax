@@ -90,6 +90,14 @@ export const NAV_STYLES: Partial<Record<NavAnim, NavStyle>> = {
   sheet: { ms: 420, ease: IOS_EASE, chat: { transform: "translateY(100%)" }, list: { transform: "scale(0.94)" }, dim: 0.3 },
 };
 
+/** Лента новой переписки встала на место (ChatWindow, detail.chatId): с этого
+ *  кадра её можно двигать. Раньше первый кадр новой переписки на телефоне
+ *  собирался 0,3–0,5 с, анимация к нему уже проходила, и «Глубина» (0,3 с) не
+ *  была видна совсем (баг-репорт 2dd6c250). */
+export const FEED_READY_EVENT = "hyax:feed-ready";
+/** Дольше ленту не ждём (нет кэша, медленная сеть) — едем с тем, что есть. */
+export const NAV_WAIT_MS = 450;
+
 /** Кадр «на месте» для тех же свойств. */
 export const restFrame = (f: Keyframe): Keyframe =>
   Object.fromEntries(Object.keys(f).map((k) => [k, k === "opacity" ? 1 : "none"]));

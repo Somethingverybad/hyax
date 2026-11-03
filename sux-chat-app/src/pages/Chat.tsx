@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, memo, lazy, Suspense } from "react";
-import { navAnim, NAV_ANIM_EVENT, NAV_STYLES, restFrame, UNDER_SHIFT, EDGE_PX, type NavAnim } from "@/lib/navAnim";
+import { navAnim, NAV_ANIM_EVENT, NAV_STYLES, restFrame, UNDER_SHIFT, EDGE_PX, FEED_READY_EVENT, NAV_WAIT_MS, type NavAnim } from "@/lib/navAnim";
 import { ESC_BACK } from "@/lib/escape";
 import { appOnScreen, onScreenChange } from "@/lib/onScreen";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
@@ -180,26 +180,63 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     const drop = () => list.forEach((a) => a.cancel());
     if (later) requestAnimationFrame(() => requestAnimationFrame(drop)); else drop();
   };
+  /** Запустить подготовленные (на паузе) анимации перехода со следующего
+   *  кадра. Время старта анимации ставится в начале кадра: запусти её в кадре,
+   *  который долго собирается (новая переписка, проявившийся список), — она
+   *  пройдёт, пока его не видно. Отменили, пока ждали, — не запускаем. */
+  const playNav = (anims: Animation[], frames: 1 | 2, then?: () => void) => {
+    const go = () => {
+      if (!anims.length || !anims.every((x) => x.playState === "paused")) return;
+      anims.forEach((x) => x.play());
+      then?.();
+    };
+    requestAnimationFrame(() => (frames === 2 ? requestAnimationFrame(go) : go()));
+  };
+  // Переписки пула, чья лента уже стояла: им ждать нечего.
+  const readyIdsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const on = (e: Event) => { const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId; if (id) readyIdsRef.current.add(String(id)); };
+    window.addEventListener(FEED_READY_EVENT, on);
+    return () => window.removeEventListener(FEED_READY_EVENT, on);
+  }, []);
   // Открыли: переписка въезжает, список уходит под неё; спрятать по приезде.
   // Слоя новой переписки может ещё не быть (пул пополняется следующим
   // рендером) — тогда переход стартует, когда слой появится (ref ниже).
+  // Новая переписка стоит в начальном положении, пока её лента не встанет
+  // (FEED_READY_EVENT), — не дольше NAV_WAIT_MS.
   const pendingOpenRef = useRef<string | null>(null);
-  const startOpen = (el: HTMLElement) => {
+  const startOpen = (el: HTMLElement, id: string) => {
     const st = navStyleRef.current;
     if (!st) return;
     const a = runNav(el, [st.chat, restFrame(st.chat)]);
-    if (st.list) runNav(listLayerRef.current, [restFrame(st.list), st.list]);
-    if (st.dim) runNav(dimRef.current, [{ opacity: 0 }, { opacity: st.dim }]);
+    const anims = [a,
+      st.list ? runNav(listLayerRef.current, [restFrame(st.list), st.list]) : null,
+      st.dim ? runNav(dimRef.current, [{ opacity: 0 }, { opacity: st.dim }]) : null,
+    ].filter((x): x is Animation => !!x);
+    anims.forEach((x) => x.pause());
     const done = () => { setListCovered(true); dropNavAnims(); };
     if (a) a.onfinish = done; else done();
-    // Страховка: переход прервали (свайп, новый переход) — onfinish не придёт,
-    // а список под перепиской должен спрятаться.
-    window.setTimeout(() => { if (selectedChatIdRef.current && !dragRef.current) setListCovered(true); }, st.ms + 200);
+    let waiting = true;
+    const go = () => {
+      if (!waiting) return;
+      waiting = false;
+      window.removeEventListener(FEED_READY_EVENT, onReady);
+      window.clearTimeout(cap);
+      // Страховка: переход прервали (свайп, новый переход) — onfinish не
+      // придёт, а список под перепиской должен спрятаться.
+      playNav(anims, 1, () => window.setTimeout(() => { if (selectedChatIdRef.current && !dragRef.current) setListCovered(true); }, st.ms + 200));
+    };
+    const onReady = (e: Event) => { if (String((e as CustomEvent<{ chatId?: string }>).detail?.chatId) === id) go(); };
+    window.addEventListener(FEED_READY_EVENT, onReady);
+    // Готова — только переписка, что уже была в пуле со своей лентой; канал
+    // и новая в пуле монтируются сейчас.
+    const warm = readyIdsRef.current.has(id) && recentChatsRef.current.includes(id);
+    const cap = window.setTimeout(go, warm ? 0 : NAV_WAIT_MS);
   };
   const layerRef = (id: string) => (el: HTMLDivElement | null) => {
     if (!el) { chatLayersRef.current.delete(id); return; }
     chatLayersRef.current.set(id, el);
-    if (pendingOpenRef.current === id) { pendingOpenRef.current = null; startOpen(el); }
+    if (pendingOpenRef.current === id) { pendingOpenRef.current = null; startOpen(el, id); }
   };
   useLayoutEffect(() => {
     const prev = navPrevRef.current, cur = selectedChatId;
@@ -212,7 +249,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       setLeavingId(null);
       setListCovered(false);
       const el = layerOf(cur);
-      if (el) startOpen(el); else pendingOpenRef.current = cur;
+      if (el) startOpen(el, cur); else pendingOpenRef.current = cur;
       return;
     }
     if (!cur && prev) {
@@ -223,8 +260,13 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       setLeavingId(prev);
       const ms = st.close?.ms ?? st.ms, ease = st.close?.ease ?? st.ease;
       const a = runNav(layerOf(prev), [restFrame(st.chat), st.chat], ms, ease);
-      if (st.list) runNav(listLayerRef.current, [st.list, restFrame(st.list)], ms, ease);
-      if (st.dim) runNav(dimRef.current, [{ opacity: st.dim }, { opacity: 0 }], ms, ease);
+      const anims = [a,
+        st.list ? runNav(listLayerRef.current, [st.list, restFrame(st.list)], ms, ease) : null,
+        st.dim ? runNav(dimRef.current, [{ opacity: st.dim }, { opacity: 0 }], ms, ease) : null,
+      ].filter((x): x is Animation => !!x);
+      // Список был спрятан — его первый кадр снова собирается; едем после него.
+      anims.forEach((x) => x.pause());
+      playNav(anims, 2);
       const done = () => { setLeavingId((x) => (x === prev ? null : x)); dropNavAnims(true); };
       if (a) a.onfinish = done; else done();
       return;
@@ -332,11 +374,18 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   // строит окно заново (PERF_PLAN.md, п. 4). Каналы и Стена — не в пуле.
   const POOL_SIZE = 3;
   const [recentChats, setRecentChats] = useState<string[]>([]);
+  const recentChatsRef = useRef(recentChats);
+  recentChatsRef.current = recentChats;
   useEffect(() => {
     if (!isMobile || !selectedChatId) return;
     const kind = selectedKind || (chatsRef.current.find((c) => c.id === selectedChatId) as { kind?: string } | undefined)?.kind;
     if (kind === "channel" || kind === "wall" || kind === "saved") return;
-    setRecentChats((prev) => [...prev.filter((id) => id !== selectedChatId), selectedChatId].slice(-POOL_SIZE));
+    setRecentChats((prev) => {
+      const next = [...prev.filter((id) => id !== selectedChatId), selectedChatId].slice(-POOL_SIZE);
+      // Ушла из пула — её лента пересоберётся заново, переходу снова ждать.
+      prev.filter((id) => !next.includes(id)).forEach((id) => readyIdsRef.current.delete(id));
+      return next;
+    });
   }, [selectedChatId, selectedKind, isMobile]);
   // Чат удалили или его нет в списке — из пула долой.
   useEffect(() => {

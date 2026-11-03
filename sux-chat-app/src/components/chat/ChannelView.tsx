@@ -46,6 +46,7 @@ import { currentTrack, playQueue, toggle as togglePlay, usePlayer, type Track } 
 import SoundPickerSheet from "@/components/SoundPicker";
 import { compressImage } from "@/lib/compressImage";
 import { readPosts, writePosts } from "@/lib/messageCache";
+import { FEED_READY_EVENT } from "@/lib/navAnim";
 import { SHARE_PENDING_EVENT, takePendingShare, type SharedPayload } from "@/lib/shareInbox";
 import { readCache, writeCache } from "@/lib/session-cache";
 import { scriptLang } from "@/lib/textLang";
@@ -840,7 +841,10 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     el.scrollTo({ top: el.scrollHeight, behavior: far ? "auto" : "smooth" });
   };
   /** Вход в ленту: на запомненное место, если ушли не снизу, иначе — вниз. */
+  // Лента встала — переход на телефоне может ехать (lib/navAnim, Chat.tsx).
+  const feedReady = () => requestAnimationFrame(() => window.dispatchEvent(new CustomEvent(FEED_READY_EVENT, { detail: { chatId: channelId } })));
   const openFeed = () => {
+    window.setTimeout(feedReady, 70);
     const pos = readFeedPos(posKey);
     if (!pos || pos.bottom) { scrollFeedOnOpen(); return; }
     setTimeout(() => {
@@ -955,7 +959,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       // Запись в кэше есть — рисуем сразу, даже пустую ленту: иначе при каждом
       // переходе на вкладку мелькала «Загрузка…», пока сервер не ответит.
       const fromCache = !!memo || !!cached;
-      if (memo) { if (restoredSyncRef.current !== channelId) openFeed(); }
+      if (memo) { if (restoredSyncRef.current !== channelId) openFeed(); else feedReady(); }
       else if (cached) {
         syncedAtRef.current = cached!.syncedAt;
         setHasMore(cached!.hasMore);
