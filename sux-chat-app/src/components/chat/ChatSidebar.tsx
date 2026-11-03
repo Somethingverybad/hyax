@@ -1,5 +1,7 @@
 import { confirmDialog } from "@/lib/confirm";
 import { Capacitor } from "@capacitor/core";
+import { createPortal } from "react-dom";
+import ChatRowMenu from "@/components/chat/ChatRowMenu";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { allDrafts } from "@/lib/drafts";
 import { activityLabel, useAllActivity } from "@/lib/chatActivity";
@@ -294,7 +296,8 @@ const ChatSidebar = ({
   const [deletingChats, setDeletingChats] = useState<{[chatId: string]: boolean}>({});
   // Удаление чата: десктоп — меню по правому клику у курсора; телефон —
   // свайп влево открывает красную кнопку.
-  const [chatMenu, setChatMenu] = useState<{ x: number; y: number; chatId: string; title: string } | null>(null);
+  // anchor — строка чата: с телефона (удержание) меню как у сообщения (ChatRowMenu).
+  const [chatMenu, setChatMenu] = useState<{ x: number; y: number; chatId: string; title: string; anchor?: HTMLElement } | null>(null);
   // Стену и «Долгий ящик» можно скрыть: правый клик или долгое нажатие по
   // строке → «Скрыть»; вернуть — «Внешний вид» → «Разделы».
   const sections = useSections();
@@ -1252,6 +1255,7 @@ const ChatSidebar = ({
                     }}
                     onTouchStart={(e) => {
                       const x = e.touches[0].clientX, y = e.touches[0].clientY;
+                      const rowEl = e.currentTarget as HTMLElement;
                       swipeStartRef.current = { x, y, id: chat.id };
                       cancelPress();
                       if (e.touches.length !== 1) return;
@@ -1261,7 +1265,7 @@ const ChatSidebar = ({
                         // click после отпускания пальца чат не открывает.
                         swipeLockRef.current = Date.now() + 800;
                         if (Capacitor.isNativePlatform()) void import("@capacitor/haptics").then(({ Haptics, ImpactStyle }) => Haptics.impact({ style: ImpactStyle.Light })).catch(() => {});
-                        setChatMenu({ x, y, chatId: chat.id, title: chatTitle });
+                        setChatMenu({ x, y, chatId: chat.id, title: chatTitle, anchor: rowEl });
                       }, 450);
                     }}
                     onTouchMove={(e) => {
@@ -1549,9 +1553,28 @@ const ChatSidebar = ({
         const canMute = !!c && c.kind !== "wall" && c.kind !== "saved";
         const item = "w-full px-4 py-2.5 text-left text-sm hover:bg-secondary active:bg-secondary flex items-center gap-2";
         const rows = muteMenu ? MUTE_SPANS.length + 1 : 1 + (canPin ? 1 : 0) + (canMute ? 1 : 0);
-        return (
+        const deleteLabel = c?.kind === "channel" && !owner ? t("Отписаться") : c?.is_group && !owner ? t("Выйти из группы") : t("Удалить чат");
+        // Телефон: как меню сообщения — список размыт, строка и меню над ним.
+        if (chatMenu.anchor) {
+          return (
+            <ChatRowMenu
+              anchor={chatMenu.anchor}
+              onClose={() => setChatMenu(null)}
+              items={[
+                ...(canPin && c ? [{ label: pinnedAt(c) ? t("Открепить") : t("Закрепить"), icon: pinnedAt(c) ? <PinOff className="w-5 h-5" /> : <Pin className="w-5 h-5" />, onClick: () => { setChatMenu(null); void togglePin(c); } }] : []),
+                ...(canMute ? [muted
+                  ? { label: t("Включить уведомления"), hint: c ? muteLabel(muteOf(c)) : undefined, icon: <Bell className="w-5 h-5" />, onClick: () => void setMute(chatMenu.chatId, "off") }
+                  : { label: t("Выключить уведомления"), icon: <BellOff className="w-5 h-5" />, sub: MUTE_SPANS.map(({ span, label }) => ({ label: t(label), onClick: () => void setMute(chatMenu.chatId, span) })) }] : []),
+                { label: deleteLabel, icon: <Trash2 className="w-5 h-5" />, danger: true, onClick: () => deleteChat(chatMenu.chatId, chatMenu.title) },
+              ]}
+            />
+          );
+        }
+        // Компьютер (правый клик) — компактное меню у курсора; порталом —
+        // поверх слоёв экрана и острова навигации.
+        return createPortal(
           <div
-            className="fixed inset-0 z-[80]"
+            className="fixed inset-0 z-[90]"
             onClick={() => { setChatMenu(null); setMuteMenu(false); }}
             onContextMenu={(e) => { e.preventDefault(); setChatMenu(null); setMuteMenu(false); }}
           >
@@ -1598,11 +1621,12 @@ const ChatSidebar = ({
                     onClick={() => deleteChat(chatMenu.chatId, chatMenu.title)}
                     className={`${item} text-destructive`}
                   >
-                    <Trash2 className="w-4 h-4" />{c?.kind === "channel" && !owner ? t("Отписаться") : c?.is_group && !owner ? t("Выйти из группы") : t("Удалить чат")}</button>
+                    <Trash2 className="w-4 h-4" />{deleteLabel}</button>
                 </>
               )}
             </div>
-          </div>
+          </div>,
+          document.body,
         );
       })()}
     </div>
