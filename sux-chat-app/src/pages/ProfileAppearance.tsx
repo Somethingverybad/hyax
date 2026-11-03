@@ -18,7 +18,7 @@ import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { DELETE_VARIANT_LABELS, getDeleteAnimChoice, setDeleteAnimChoice, type DeleteVariant } from "@/lib/deleteAnim";
 import { RAIL_POS, RAIL_POS_LABELS, setRailPos, useRailPos, type RailPos } from "@/lib/railPos";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { navSlideEnabled, navSlideTrialVisible, setNavSlide } from "@/lib/navSlide";
+import { getNavAnimChoice, navAnimTrialVisible, reducedMotion, setNavAnim, NAV_ANIMS, NAV_ANIM_LABELS, NAV_TRIAL, type NavAnim } from "@/lib/navAnim";
 import DockEditor from "@/components/DockEditor";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
@@ -175,7 +175,10 @@ const ProfileAppearance = () => {
 const ThemeSyncCard = () => {
   const on = useThemeSync();
   const [boot, setBoot] = useState(isBootAnimOn);
-  const [slide, setSlide] = useState(navSlideEnabled);
+  const isMobile = useIsMobile();
+  const [nav, setNav] = useState(getNavAnimChoice);
+  // Пробные — админу; выбранный раньше вариант остаётся в списке.
+  const navOptions = NAV_ANIMS.filter((k) => !NAV_TRIAL.has(k) || navAnimTrialVisible() || k === nav);
   return (
     <>
       <SettingsTitle>{tr("На этом устройстве")}</SettingsTitle>
@@ -198,13 +201,23 @@ const ThemeSyncCard = () => {
             }
           />
         )}
-        {navSlideTrialVisible() && (
+        {isMobile && (
           <SettingsRow
-            label={tr("Переходы как в iOS (проба)")}
-            hint={tr("Переписка въезжает справа, назад — свайпом от края. Только на этом телефоне")}
+            label={tr("Переходы между экранами")}
+            hint={reducedMotion() ? tr("В системе включено «Уменьшить движение» — переходы без анимации")
+              : nav === "slide" ? tr("Назад — свайпом от левого края")
+              : tr("На слабом телефоне — «Без анимации»: экраны меняются сразу")}
             trailing={
-              <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr("Переходы как в iOS (проба)")}
-                checked={slide} onChange={(e) => { setNavSlide(e.target.checked); setSlide(e.target.checked); }} />
+              <select
+                value={nav}
+                onChange={(e) => { const v = e.target.value as NavAnim; setNavAnim(v); setNav(v); }}
+                aria-label={tr("Переходы между экранами")}
+                className="h-9 max-w-[52%] rounded-md border border-border bg-surface-3 px-2 text-small text-foreground"
+              >
+                {navOptions.map((k) => (
+                  <option key={k} value={k}>{tr(NAV_ANIM_LABELS[k])}{NAV_TRIAL.has(k) ? ` · ${tr("проба")}` : ""}</option>
+                ))}
+              </select>
             }
           />
         )}

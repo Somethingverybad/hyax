@@ -6,6 +6,7 @@ import App from "./App.tsx";
 import RootBoundary from "./components/RootBoundary";
 import "./index.css";
 import { initTheme } from "./lib/theme";
+import { applyNavAnimAttr } from "./lib/navAnim";
 import { installAppLog, applog } from "./lib/applog";
 import { installBugHotkey } from "./lib/bugHotkey";
 import { installNativePaste } from "./lib/nativePaste";
@@ -23,6 +24,8 @@ installBugHotkey();
 installNativePaste();
 // Тему ставим до первой отрисовки: иначе светлая тема моргнёт тёмным кадром.
 initTheme();
+// «Без анимации» (lib/navAnim) — до первого кадра, чтобы не сыграл и первый переход.
+applyNavAnimAttr();
 
 // Обновление по воздуху (lib/ota.ts): скачан новый бандл — переключаемся на
 // него до отрисовки, тогда этот не рисуем. Переключение не случилось — рисуем;

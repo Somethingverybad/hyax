@@ -473,6 +473,8 @@ textarea,
 @media (prefers-reduced-motion: reduce) {
   .route-transition, .screen-push, .screen-pop { animation: none !important; }
 }
+/* «Без анимации» во «Внешнем виде» (lib/navAnim) — для слабых телефонов. */
+[data-nav="off"] .route-transition, [data-nav="off"] .screen-push, [data-nav="off"] .screen-pop { animation: none !important; }
 
 /* ── Стекло ────────────────────────────────────────────────────────────────
    data-shape="glass" — поверхности полупрозрачные, фон за ними размыт, акцент

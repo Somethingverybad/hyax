@@ -23,7 +23,7 @@ import MessageContextMenu from "./MessageContextMenu";
 import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack, EDGE_PX as SWIPE_BACK_EDGE } from "@/hooks/use-swipe-back";
-import { navSlideEnabled } from "@/lib/navSlide";
+import { navAnim } from "@/lib/navAnim";
 const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
@@ -329,8 +329,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Возврат к списку — жестом от левого края. Кнопку в шапке убрали:
   // на телефоне привычнее свайп, как в нативных приложениях. Только у окна
   // на экране: окна из пула недавних переписок слушали жест тоже.
-  // iPhone: свайп назад ведёт Chat.tsx — за пальцем (lib/navSlide).
-  useSwipeBack(onBack, active && !navSlideEnabled());
+  // «Сдвиг» (lib/navAnim): свайп назад ведёт Chat.tsx — за пальцем.
+  useSwipeBack(onBack, active && navAnim() !== "slide");
   const mintTheme = useMint();
   const isMobile = useIsMobile();
   // Панель стикеров: выезжает над полем ввода, как в мессенджерах.

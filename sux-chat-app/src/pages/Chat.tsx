@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, memo, lazy, Suspense } from "react";
-import { navSlideEnabled, NAV_EASE, NAV_MS, UNDER_SHIFT, UNDER_DIM, EDGE_PX } from "@/lib/navSlide";
+import { navAnim, NAV_ANIM_EVENT, NAV_STYLES, restFrame, UNDER_SHIFT, EDGE_PX, type NavAnim } from "@/lib/navAnim";
 import { ESC_BACK } from "@/lib/escape";
 import { startUserSocket, onUserMessage, userSocket, sendViewing } from "@/lib/userSocket";
 import { setOtaRestoreState } from "@/lib/ota";
@@ -139,11 +139,21 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const hadChatOpenRef = useRef(false);
   useEffect(() => { if (selectedChatId) hadChatOpenRef.current = true; }, [selectedChatId]);
 
-  // iPhone: «список ↔ переписка» сдвигом, как в iOS, и свайп назад за пальцем
-  // (lib/navSlide). Анимации — Web Animations на самих слоях. Список прячется
+  // Телефон: переход «список ↔ переписка» на выбор (lib/navAnim). «Обычные» —
+  // CSS (screen-push/pop) у слоёв; остальные ведём здесь Web Animations на
+  // самих слоях, «Сдвиг» — ещё и свайп назад за пальцем. Список прячется
   // (invisible), только когда переписка доехала, а уходящая переписка видна,
   // пока уезжает, — состоянием React, а не видимостью в кадрах анимации.
-  const slideNav = isMobile && navSlideEnabled();
+  const [navMode, setNavMode] = useState<NavAnim>(navAnim);
+  useEffect(() => {
+    const on = () => setNavMode(navAnim());
+    window.addEventListener(NAV_ANIM_EVENT, on);
+    return () => window.removeEventListener(NAV_ANIM_EVENT, on);
+  }, []);
+  const navStyle = isMobile ? NAV_STYLES[navMode] : undefined;
+  const navStyleRef = useRef(navStyle);
+  navStyleRef.current = navStyle;
+  const layerNav = !!navStyle;
   const listLayerRef = useRef<HTMLDivElement>(null);
   const dimRef = useRef<HTMLDivElement>(null);
   const chatLayersRef = useRef(new Map<string, HTMLDivElement>());
@@ -153,10 +163,11 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   const gestureClosedRef = useRef(false);
   const navAnimsRef = useRef<Animation[]>([]);
   const layerOf = (id: string | null) => (id ? chatLayersRef.current.get(id) ?? null : null);
+  // Список под перепиской при свайпе «Сдвига» — за пальцем.
   const underX = (dx = 0) => `translateX(calc(${-UNDER_SHIFT * 100}% + ${dx * UNDER_SHIFT}px))`;
-  const runNav = (el: Element | null | undefined, frames: Keyframe[], ms = NAV_MS) => {
-    if (!el?.animate) return null;
-    const a = el.animate(frames, { duration: ms, easing: NAV_EASE, fill: "both" });
+  const runNav = (el: Element | null | undefined, frames: Keyframe[], ms = navStyleRef.current?.ms ?? 0, ease = navStyleRef.current?.ease) => {
+    if (!el?.animate || !navStyleRef.current) return null;
+    const a = el.animate(frames, { duration: ms, easing: ease, fill: "both" });
     navAnimsRef.current.push(a);
     return a;
   };
@@ -168,19 +179,21 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     const drop = () => list.forEach((a) => a.cancel());
     if (later) requestAnimationFrame(() => requestAnimationFrame(drop)); else drop();
   };
-  // Открыли: переписка справа, список — влево и темнее; спрятать по приезде.
+  // Открыли: переписка въезжает, список уходит под неё; спрятать по приезде.
   // Слоя новой переписки может ещё не быть (пул пополняется следующим
   // рендером) — тогда переход стартует, когда слой появится (ref ниже).
   const pendingOpenRef = useRef<string | null>(null);
   const startOpen = (el: HTMLElement) => {
-    const a = runNav(el, [{ transform: "translateX(100%)" }, { transform: "translateX(0)" }]);
-    runNav(listLayerRef.current, [{ transform: "translateX(0)" }, { transform: underX() }]);
-    runNav(dimRef.current, [{ opacity: 0 }, { opacity: UNDER_DIM }]);
+    const st = navStyleRef.current;
+    if (!st) return;
+    const a = runNav(el, [st.chat, restFrame(st.chat)]);
+    if (st.list) runNav(listLayerRef.current, [restFrame(st.list), st.list]);
+    if (st.dim) runNav(dimRef.current, [{ opacity: 0 }, { opacity: st.dim }]);
     const done = () => { setListCovered(true); dropNavAnims(); };
     if (a) a.onfinish = done; else done();
     // Страховка: переход прервали (свайп, новый переход) — onfinish не придёт,
     // а список под перепиской должен спрятаться.
-    window.setTimeout(() => { if (selectedChatIdRef.current && !dragRef.current) setListCovered(true); }, NAV_MS + 200);
+    window.setTimeout(() => { if (selectedChatIdRef.current && !dragRef.current) setListCovered(true); }, st.ms + 200);
   };
   const layerRef = (id: string) => (el: HTMLDivElement | null) => {
     if (!el) { chatLayersRef.current.delete(id); return; }
@@ -190,7 +203,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   useLayoutEffect(() => {
     const prev = navPrevRef.current, cur = selectedChatId;
     navPrevRef.current = cur;
-    if (!slideNav || prev === cur) return;
+    const st = navStyleRef.current;
+    if (!st || prev === cur) return;
     pendingOpenRef.current = null;
     if (cur && !prev) {
       dropNavAnims();
@@ -206,9 +220,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       dropNavAnims();
       setListCovered(false);
       setLeavingId(prev);
-      const a = runNav(layerOf(prev), [{ transform: "translateX(0)" }, { transform: "translateX(100%)" }]);
-      runNav(listLayerRef.current, [{ transform: underX() }, { transform: "translateX(0)" }]);
-      runNav(dimRef.current, [{ opacity: UNDER_DIM }, { opacity: 0 }]);
+      const ms = st.close?.ms ?? st.ms, ease = st.close?.ease ?? st.ease;
+      const a = runNav(layerOf(prev), [restFrame(st.chat), st.chat], ms, ease);
+      if (st.list) runNav(listLayerRef.current, [st.list, restFrame(st.list)], ms, ease);
+      if (st.dim) runNav(dimRef.current, [{ opacity: st.dim }, { opacity: 0 }], ms, ease);
       const done = () => { setLeavingId((x) => (x === prev ? null : x)); dropNavAnims(true); };
       if (a) a.onfinish = done; else done();
       return;
@@ -217,17 +232,17 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     dropNavAnims();
     setListCovered(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChatId, slideNav]);
-  // Свайп от левого края: переписка едет за пальцем, список выходит из-под неё.
+  }, [selectedChatId, layerNav]);
+  // «Сдвиг»: свайп от левого края — переписка едет за пальцем, список выходит из-под неё.
   const dragRef = useRef<{ x0: number; y0: number; on: boolean; w: number; x: number; t: number; v: number } | null>(null);
   const placeDrag = (dx: number, w: number) => {
     const el = layerOf(selectedChatId), list = listLayerRef.current, dim = dimRef.current;
     if (el) el.style.transform = `translateX(${dx}px)`;
     if (list) list.style.transform = underX(dx);
-    if (dim) dim.style.opacity = String(UNDER_DIM * (1 - dx / w));
+    if (dim) dim.style.opacity = String((navStyleRef.current?.dim ?? 0) * (1 - dx / w));
   };
   const onEdgeStart = (e: React.TouchEvent) => {
-    if (!slideNav || !selectedChatId || e.touches.length !== 1) return;
+    if (!navStyle?.swipe || !selectedChatId || e.touches.length !== 1) return;
     const t = e.touches[0];
     if (t.clientX > EDGE_PX) return;
     dragRef.current = { x0: t.clientX, y0: t.clientY, on: false, w: e.currentTarget.clientWidth || window.innerWidth, x: 0, t: performance.now(), v: 0 };
@@ -258,14 +273,15 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
     // Дотянул дальше трети или смахнул быстро — назад; иначе на место.
     const close = d.x > d.w * 0.35 || d.v > 0.5;
     const left = close ? (d.w - d.x) / d.w : d.x / d.w;
-    const ms = Math.max(160, NAV_MS * left);
-    const fromChat = `translateX(${d.x}px)`, fromList = underX(d.x), fromDim = UNDER_DIM * (1 - d.x / d.w);
+    const dimMax = navStyleRef.current?.dim ?? 0;
+    const ms = Math.max(160, (navStyleRef.current?.ms ?? 0) * left);
+    const fromChat = `translateX(${d.x}px)`, fromList = underX(d.x), fromDim = dimMax * (1 - d.x / d.w);
     if (el) el.style.transform = "";
     if (list) list.style.transform = "";
     if (dim) dim.style.opacity = "0";
     const a = runNav(el, [{ transform: fromChat }, { transform: close ? "translateX(100%)" : "translateX(0)" }], ms);
     runNav(list, [{ transform: fromList }, { transform: close ? "translateX(0)" : underX() }], ms);
-    runNav(dim, [{ opacity: fromDim }, { opacity: close ? 0 : UNDER_DIM }], ms);
+    runNav(dim, [{ opacity: fromDim }, { opacity: close ? 0 : dimMax }], ms);
     const done = () => {
       if (close) { gestureClosedRef.current = true; closeChat(); }
       else { setListCovered(true); dropNavAnims(); }
@@ -1061,7 +1077,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
               {/* Список — всегда смонтирован; виден, когда переписка не открыта. */}
               {/* isolate (iPhone): «стеклянная» шапка списка со своим z-index не
                   вылезает поверх переписки, пока список под ней (баг-репорт 29f00ae7). */}
-              <div ref={listLayerRef} className={`absolute inset-0 flex min-h-0 ${slideNav
+              <div ref={listLayerRef} className={`absolute inset-0 flex min-h-0 ${layerNav
                 ? selectedChatId ? listCovered ? "isolate invisible pointer-events-none" : "isolate pointer-events-none" : "isolate"
                 : selectedChatId ? "invisible pointer-events-none" : hadChatOpenRef.current ? "screen-pop" : ""}`}
                 aria-hidden={!!selectedChatId} {...(selectedChatId ? { inert: "" as unknown as boolean } : {})}>
@@ -1080,12 +1096,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
             onChatCreated={handleChatCreated}
           />
               </div>
-              {/* iPhone (lib/navSlide): затемнение списка под въезжающей перепиской. */}
-              {slideNav && <div ref={dimRef} className="absolute inset-0 bg-black pointer-events-none" style={{ opacity: 0 }} aria-hidden />}
+              {/* Затемнение списка под въезжающей перепиской (lib/navAnim). */}
+              {layerNav && <div ref={dimRef} className="absolute inset-0 bg-black pointer-events-none" style={{ opacity: 0 }} aria-hidden />}
               {/* Канал (не в пуле) — поверх списка, как раньше. */}
               {selectedChatId && (isChannelOpen || isWallOpen) && (
                 <div key={`ch-${selectedChatId}`} ref={layerRef(selectedChatId)}
-                  className={`absolute inset-0 flex min-h-0 ${slideNav ? "isolate bg-background" : "screen-push"}`}>
+                  className={`absolute inset-0 flex min-h-0 ${layerNav ? "isolate bg-background" : "screen-push"}`}>
             <Suspense fallback={null}><MemoChannelView
               key={isWallOpen ? "wall" : selectedChatId}
               channelId={selectedChatId}
@@ -1105,7 +1121,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                 const p = c?.is_group ? null : c?.participants?.find((x) => x.id !== user.id) || null;
                 return (
                   <div key={id} ref={layerRef(id)}
-                    className={`absolute inset-0 flex min-h-0 ${slideNav
+                    className={`absolute inset-0 flex min-h-0 ${layerNav
                       ? activeChat ? "isolate bg-background" : id === leavingId ? "isolate bg-background pointer-events-none" : "invisible pointer-events-none"
                       : activeChat ? "screen-push" : "invisible pointer-events-none"}`}
                     aria-hidden={!activeChat} {...(activeChat ? {} : { inert: "" as unknown as boolean })}>
