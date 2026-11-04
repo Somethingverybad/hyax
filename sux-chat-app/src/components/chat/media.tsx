@@ -241,7 +241,7 @@ export const GlassTriangle = ({ size, rim = 3, flip = false, className, innerCla
 };
 
 /** Живое изображение с камеры во время записи. */
-export const LivePreview = ({ stream, dimmed, facing, flip, onToggleFlip }: { stream: MediaStream | null; dimmed: boolean; facing: "user" | "environment"; flip?: boolean; onToggleFlip?: () => void }) => {
+export const LivePreview = ({ stream, dimmed, facing, flip, onToggleFlip, size = 160 }: { stream: MediaStream | null; dimmed: boolean; facing: "user" | "environment"; flip?: boolean; onToggleFlip?: () => void; size?: number }) => {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (ref.current && stream) {
@@ -250,7 +250,7 @@ export const LivePreview = ({ stream, dimmed, facing, flip, onToggleFlip }: { st
     }
   }, [stream]);
   return (
-    <GlassTriangle size={160} flip={flip} onClick={onToggleFlip}>
+    <GlassTriangle size={size} flip={flip} onClick={onToggleFlip}>
       <video
         ref={ref}
         muted

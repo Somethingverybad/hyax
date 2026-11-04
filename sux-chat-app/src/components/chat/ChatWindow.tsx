@@ -705,6 +705,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   //  starting — удержание распознано, микрофон/камера включаются;
   //  finishing — палец отпущен, запись закрывается перед отправкой.
   const [recPhase, setRecPhase] = useState<"idle" | "starting" | "finishing">("idle");
+  // Запись треугольника на весь экран переписки: размер — сколько влезает
+  // между шапкой и панелью записи (под ним ещё ряд кнопок), до 320 px.
+  const videoRecShown = recordKind === "video" && (recording || recPhase === "starting");
+  const recStageRef = useRef<HTMLDivElement>(null);
+  const [recSize, setRecSize] = useState(240);
+  useLayoutEffect(() => {
+    const el = recStageRef.current;
+    if (!videoRecShown || !el) return;
+    const fit = () => {
+      const cs = getComputedStyle(el);
+      const h = el.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      const w = el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+      // 44 — ряд кнопок, 20 — зазор до него.
+      setRecSize(Math.round(Math.max(140, Math.min(320, w * 0.78, h - 64))));
+    };
+    fit();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [videoRecShown]);
   const [recPressed, setRecPressed] = useState(false);
   // Запись закреплена свайпом вверх: палец отпущен, запись идёт; тап по
   // кнопке — отправить, корзина в плашке — отменить (как в Telegram).
@@ -4242,6 +4262,38 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           переписки и не меняет её высоту — раньше её появление укорачивало
           ленту уже после доводки, и сообщения дёргались. */}
       <div className="relative flex-1 min-h-0 flex flex-col isolate">
+        {/* Запись треугольника — как кружок в Telegram: крупно посередине,
+            переписка за ним затемнена и размыта; под ним — смена камеры и
+            переворот. Панель записи (таймер, замок, отправка) — внизу, над
+            этим слоем; место под неё — отступом --compose-h, как у плашек ниже. */}
+        {videoRecShown && (
+          <div ref={recStageRef}
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-5 px-4 pt-[calc(var(--glass-h,0px)+12px)] pb-[calc(var(--compose-h,0px)+12px)] bg-background/70 backdrop-blur-md animate-in fade-in duration-200">
+            {recording ? (
+              <LivePreview size={recSize} stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={recFacing} flip={noteFlip} onToggleFlip={toggleNoteFlip} />
+            ) : (
+              // Камера ещё просыпается — рамка треугольника на месте сразу.
+              <GlassTriangle size={recSize} flip={noteFlip} onClick={toggleNoteFlip} innerClassName="bg-transparent">
+                <LoadingSkeleton className="absolute inset-0" />
+              </GlassTriangle>
+            )}
+            <div className="flex items-center gap-6">
+              {/* Смена камеры посреди записи (фронтальная ↔ задняя) — если камер больше одной. */}
+              {recording && canSwitchCam && (
+                <button type="button" onClick={() => void switchCamera().then((f) => { if (f) setFacing(f); })} onPointerDown={(e) => e.stopPropagation()}
+                  className="tri-glass w-11 h-11 shrink-0 rounded-full flex items-center justify-center"
+                  aria-label={tr("Переключить камеру")} title={recFacing === "user" ? tr("Камера: фронтальная (нажми — задняя)") : tr("Камера: задняя (нажми — фронтальная)")}>
+                  <SwitchCamera className="w-5 h-5" />
+                </button>
+              )}
+              <button type="button" onClick={toggleNoteFlip} onPointerDown={(e) => e.stopPropagation()}
+                className="tri-glass w-11 h-11 shrink-0 rounded-full flex items-center justify-center"
+                aria-label={noteFlip ? tr("Треугольник вершиной вверх") : tr("Треугольник вершиной вниз")} aria-pressed={noteFlip}>
+                <TriangleIcon className={cn("w-5 h-5 transition-transform duration-300", noteFlip && "rotate-180")} />
+              </button>
+            </div>
+          </div>
+        )}
         {/* Приглашение в секретный чат — на всю ленту, с прокруткой: в панели
             ввода плашка уезжала за край экрана вместе с кнопками. */}
         {reqForMe && (
@@ -5081,7 +5133,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       {/* Кнопка «вниз»: появляется, когда лента отлистана вверх; со счётчиком,
           если за это время пришли новые. Сама лента при этом не двигается. */}
-      {(awayFromBottom || newBelow > 0 || windowed) && (
+      {(awayFromBottom || newBelow > 0 || windowed) && !videoRecShown && (
         <div className="relative h-0 z-10 kb-lift">
           <button
             type="button"
@@ -5425,33 +5477,6 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             </div>
           )}
           
-
-          {recordKind === "video" && (recording || recPhase === "starting") && (
-            <div className="mb-2 flex justify-center items-center gap-3">
-              {/* Слева — смена камеры посреди записи (фронтальная ↔ задняя); нет
-                  второй камеры — распорка того же размера: треугольник по центру. */}
-              {recording && canSwitchCam ? (
-                <button type="button" onClick={() => void switchCamera().then((f) => { if (f) setFacing(f); })} onPointerDown={(e) => e.stopPropagation()}
-                  className="tri-glass w-10 h-10 shrink-0 rounded-full flex items-center justify-center"
-                  aria-label={tr("Переключить камеру")} title={recFacing === "user" ? tr("Камера: фронтальная (нажми — задняя)") : tr("Камера: задняя (нажми — фронтальная)")}>
-                  <SwitchCamera className="w-[18px] h-[18px]" />
-                </button>
-              ) : <span className="w-10 shrink-0" aria-hidden />}
-              {recording ? (
-                <LivePreview stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={recFacing} flip={noteFlip} onToggleFlip={toggleNoteFlip} />
-              ) : (
-                // Камера ещё просыпается — рамка треугольника на месте сразу.
-                <GlassTriangle size={160} flip={noteFlip} onClick={toggleNoteFlip} innerClassName="bg-transparent">
-                  <LoadingSkeleton className="absolute inset-0" />
-                </GlassTriangle>
-              )}
-              <button type="button" onClick={toggleNoteFlip} onPointerDown={(e) => e.stopPropagation()}
-                className="tri-glass w-10 h-10 shrink-0 rounded-full flex items-center justify-center"
-                aria-label={noteFlip ? tr("Треугольник вершиной вверх") : tr("Треугольник вершиной вниз")} aria-pressed={noteFlip}>
-                <TriangleIcon className={cn("w-[18px] h-[18px] transition-transform duration-300", noteFlip && "rotate-180")} />
-              </button>
-            </div>
-          )}
 
           {(recording || recPhase !== "idle") && (
             <div className={cn(
