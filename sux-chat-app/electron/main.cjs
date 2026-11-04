@@ -132,6 +132,34 @@ function createWindow() {
     if (/^https?:/.test(url)) shell.openExternal(url);
   });
 
+  // Процесс окна упал — раньше оставалось мёртвое белое окно. Перезагружаем:
+  // страница при старте увидит оборвавшийся запуск (lib/crashGuard) и
+  // предложит отправить его журнал. Падает раз за разом — не чаще раза в 10 с.
+  let crashReloadAt = 0;
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    logLine('render-process-gone', details?.reason, details?.exitCode);
+    if (!mainWindow || mainWindow.isDestroyed() || details?.reason === 'clean-exit') return;
+    if (Date.now() - crashReloadAt < 10000) return;
+    crashReloadAt = Date.now();
+    mainWindow.reload();
+  });
+  // Зависло — спросить: подождать или перезагрузить (журнал зависшего
+  // запуска crashGuard тоже предложит отправить).
+  let hangAsked = false;
+  mainWindow.on('unresponsive', async () => {
+    logLine('window unresponsive');
+    if (hangAsked || !mainWindow || mainWindow.isDestroyed()) return;
+    hangAsked = true;
+    try {
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'warning', buttons: [tr('Подождать'), tr('Перезагрузить')], defaultId: 1, cancelId: 0,
+        message: tr('WYX не отвечает'), detail: tr('Можно подождать или перезагрузить окно.'),
+      });
+      if (response === 1 && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
+    } finally { hangAsked = false; }
+  });
+  mainWindow.on('responsive', () => logLine('window responsive again'));
+
   attachContextMenu(mainWindow);
 
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -488,6 +516,10 @@ const SHELL_LANGS = ['ru', 'en', 'ko'];
 const SHELL_DICT = {
   ru: {},
   en: {
+    'Подождать': 'Wait',
+    'Перезагрузить': 'Reload',
+    'WYX не отвечает': 'WYX is not responding',
+    'Можно подождать или перезагрузить окно.': 'You can wait or reload the window.',
     'Вид': 'View',
     'Отменить': 'Undo',
     'Повторить': 'Redo',
@@ -512,6 +544,10 @@ const SHELL_DICT = {
     'Перевести скопированное': 'Translate copied text',
   },
   ko: {
+    'Подождать': '기다리기',
+    'Перезагрузить': '새로고침',
+    'WYX не отвечает': 'WYX가 응답하지 않습니다',
+    'Можно подождать или перезагрузить окно.': '기다리거나 창을 새로고침할 수 있습니다.',
     'Вид': '보기',
     'Отменить': '실행 취소',
     'Повторить': '다시 실행',

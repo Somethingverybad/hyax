@@ -30,11 +30,23 @@ function meta() {
   });
 }
 
-async function send(text: string) {
+/** Окошко по умолчанию — лог текущего запуска; crashGuard подставляет свой
+ *  (журнал упавшего прошлого запуска), заголовок и пометку. */
+export interface ReportOptions {
+  title?: string;
+  hint?: string;
+  cancel?: string;
+  log?: string;
+  note?: string;
+  meta?: Record<string, unknown>;
+}
+
+async function send(text: string, o: ReportOptions = {}) {
+  const note = o.note || HOTKEY_NOTE;
   const fd = new FormData();
-  fd.append("description", text.trim() ? `${text.trim()}\n\n${HOTKEY_NOTE}` : HOTKEY_NOTE);
-  fd.append("log", dumpLog());
-  fd.append("meta", meta());
+  fd.append("description", text.trim() ? `${text.trim()}\n\n${note}` : note);
+  fd.append("log", o.log ?? dumpLog());
+  fd.append("meta", o.meta ? JSON.stringify({ ...JSON.parse(meta()), ...o.meta }) : meta());
   await api.sendBugReport(fd);
 }
 
@@ -45,23 +57,23 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, style: string, text?:
   return e;
 }
 
-/** Показать окошко отправки лога (хоткей, экран ошибки RootBoundary). */
-export function showBugReportDialog() { show(); }
+/** Показать окошко отправки лога (хоткей, экран ошибки RootBoundary, crashGuard). */
+export function showBugReportDialog(o?: ReportOptions) { show(o); }
 
-function show() {
+function show(o: ReportOptions = {}) {
   if (open) return;
   open = true;
   const dark = document.documentElement.classList.contains("dark") || matchMedia("(prefers-color-scheme: dark)").matches;
   const bg = dark ? "#1c1f1e" : "#ffffff", fg = dark ? "#e8ece9" : "#111", sub = dark ? "#9aa39e" : "#666";
   const root = el("div", "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font:14px/1.4 -apple-system,system-ui,sans-serif;");
   const box = el("div", `background:${bg};color:${fg};border-radius:14px;padding:18px 18px 14px;width:min(460px,calc(100vw - 32px));box-shadow:0 12px 40px rgba(0,0,0,.35);`);
-  const title = el("div", "font-size:16px;font-weight:600;margin-bottom:6px;", t("Отправить лог разработчику"));
-  const hint = el("div", `color:${sub};margin-bottom:10px;`, t("Уйдёт журнал приложения за эту сессию. Опишите, что случилось (можно пропустить)."));
+  const title = el("div", "font-size:16px;font-weight:600;margin-bottom:6px;", o.title || t("Отправить лог разработчику"));
+  const hint = el("div", `color:${sub};margin-bottom:10px;`, o.hint || t("Уйдёт журнал приложения за эту сессию. Опишите, что случилось (можно пропустить)."));
   const ta = document.createElement("textarea");
   ta.placeholder = t("Что случилось?");
   ta.style.cssText = `width:100%;box-sizing:border-box;min-height:84px;resize:vertical;border:1px solid ${dark ? "#3a3f3d" : "#d8dcd9"};border-radius:10px;padding:8px 10px;background:transparent;color:${fg};font:inherit;outline:none;`;
   const row = el("div", "display:flex;gap:8px;justify-content:flex-end;margin-top:12px;");
-  const cancel = el("button", `height:36px;padding:0 14px;border-radius:9px;border:1px solid ${dark ? "#3a3f3d" : "#d8dcd9"};background:transparent;color:${fg};font:inherit;cursor:pointer;`, t("Отмена"));
+  const cancel = el("button", `height:36px;padding:0 14px;border-radius:9px;border:1px solid ${dark ? "#3a3f3d" : "#d8dcd9"};background:transparent;color:${fg};font:inherit;cursor:pointer;`, o.cancel || t("Отмена"));
   const ok = el("button", "height:36px;padding:0 16px;border-radius:9px;border:0;background:#2f5b53;color:#fff;font:inherit;font-weight:600;cursor:pointer;", t("Отправить"));
   const status = el("div", `color:${sub};margin-top:8px;min-height:18px;`);
   row.append(cancel, ok);
@@ -85,7 +97,7 @@ function show() {
     ok.disabled = true;
     status.textContent = t("Отправляю…");
     try {
-      await send(ta.value);
+      await send(ta.value, o);
       status.textContent = t("Спасибо, репорт ушёл");
       applog.info("bugreport: отправлен хоткеем");
       setTimeout(close, 1200);

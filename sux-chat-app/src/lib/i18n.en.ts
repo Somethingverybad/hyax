@@ -2442,5 +2442,8 @@ const en: Record<string, string> = {
   "Высыплется по всему экрану": "Spills all over the screen",
   "Ливень": "Downpour",
   "Упадёт сверху и соберётся в кучу": "Falls from above and piles up",
+  "Похоже, в прошлый раз WYX упал": "Looks like WYX crashed last time",
+  "Отправить разработчику журнал того запуска? Можно написать, что вы делали перед этим (необязательно).": "Send the log of that session to the developer? You can describe what you were doing (optional).",
+  "Не надо": "No thanks",
 };
 export default en;

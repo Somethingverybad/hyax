@@ -7,9 +7,9 @@
  * паролей, тел запросов и ответов. Лог уезжает на сервер к людям — он должен
  * объяснять, что делало приложение, а не пересказывать переписку.
  *
- * Держим в памяти последние MAX записей; между запусками не сохраняем — баг
- * репортят про текущую сессию, а хранить историю на диске значит хранить
- * лишнее.
+ * Держим в памяти последние MAX записей. Между запусками — только хвост
+ * текущего запуска на устройстве (lib/crashGuard): если приложение упадёт,
+ * при следующем запуске его можно отправить. Историю дольше не храним.
  */
 
 const MAX = 1500;
@@ -29,7 +29,12 @@ export function redact(s: string): string {
     .replace(/([?&](?:token|secret|sig|signature)=)[^&\s]+/gi, "$1***");
 }
 
+let pushed = 0;
+/** Сколько записей добавлено за запуск — чтобы не сохранять хвост без изменений. */
+export const logVersion = () => pushed;
+
 function push(l: Level, m: string) {
+  pushed++;
   buf.push({ t: Date.now(), l, m: redact(String(m)).slice(0, 600) });
   // Дублируем в консоль: в нативной сборке Capacitor пробрасывает её в
   // logcat / Xcode — трассу клавиатуры видно с подключённого устройства или
@@ -55,9 +60,9 @@ export function safePath(url: string): string {
 }
 
 /** Лог как текст для отправки: время от старта, уровень, сообщение. */
-export function dumpLog(): string {
+export function dumpLog(tail?: number): string {
   const pad = (n: number, w: number) => String(n).padStart(w, "0");
-  return buf.map((e) => {
+  return (tail ? buf.slice(-tail) : buf).map((e) => {
     const ms = e.t - startedAt;
     const s = Math.floor(ms / 1000);
     return `+${pad(Math.floor(s / 60), 3)}:${pad(s % 60, 2)}.${pad(ms % 1000, 3)} ${e.l.toUpperCase().padEnd(5)} ${e.m}`;
