@@ -305,8 +305,11 @@ class ChatParticipant(models.Model):
     # выше. Пусто — чат не закреплён.
     pinned_at = models.DateTimeField(blank=True, null=True)
     # Роль: owner · admin · subscriber (каналы) / member (группы, личка).
-    # Постить в канал могут только owner/admin.
+    # Постить в канал могут только owner/admin. В группе владелец — её
+    # создатель (Chat.creator), admin — назначенный админ с правами rights.
     role = models.CharField(max_length=12, default="member")
+    # Права админа группы (chat/grouprights.py): info, add, remove, delete, admins.
+    rights = models.JSONField(default=list, blank=True)
     # Уведомления чата выключены у меня (как в Telegram): muted — навсегда,
     # muted_until — до этого времени (на 1, 4, 8 часов). Сообщения приходят,
     # в открытом чате звучат, но пушей и системных уведомлений нет.

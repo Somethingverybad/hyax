@@ -3682,3 +3682,78 @@ class PetTests(TestCase):
         self.assertEqual(items[0]["kind"], "pet_care")
         self.assertEqual(items[0]["pet"], "Мистер Кот")
         self.assertEqual(items[0]["who"]["username"], "pet_owner")
+
+
+class GroupAdminTests(TestCase):
+    """Админы группы с выбранными правами (chat/grouprights.py)."""
+    def setUp(self):
+        from .models import Chat, ChatParticipant
+        self.owner, self.adm, self.m1, self.m2 = (make_user(n) for n in ("owner", "adm", "m1", "m2"))
+        self.g = Chat.objects.create(kind="group", is_group=True, name="G", creator=self.owner)
+        for p in (self.owner, self.adm, self.m1, self.m2):
+            ChatParticipant.objects.create(chat=self.g, user=p)
+
+    def post(self, who, action, data):
+        return client_for(who).post(f"/api/chats/{self.g.id}/{action}/", data, format="json")
+
+    def make_admin(self, rights, who=None, target=None):
+        return self.post(who or self.owner, "set_admin", {"user_id": str((target or self.adm).id), "rights": rights})
+
+    def test_owner_grants_rights_and_admin_uses_them(self):
+        r = self.make_admin(["info", "bogus"])
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["group_rights"], ["info"])
+        # «Изменять группу» есть — название меняет; добавлять людей — нет.
+        self.assertEqual(self.post(self.adm, "configure", {"name": "Новая"}).status_code, 200)
+        self.assertEqual(self.post(self.adm, "add_participants", {"participants": [str(make_user("x").id)]}).status_code, 403)
+        self.assertEqual(self.post(self.m1, "configure", {"name": "Чужая"}).status_code, 403)
+        # Права видны в списке чатов и в составе группы.
+        rows = client_for(self.adm).get("/api/chats/").data
+        row = next(c for c in (rows["results"] if isinstance(rows, dict) else rows) if c["id"] == str(self.g.id))
+        self.assertEqual(row["my_rights"], ["info"])
+        members = {m["username"]: m for m in client_for(self.m1).get(f"/api/chats/{self.g.id}/participants/").data}
+        self.assertEqual((members["owner"]["group_role"], members["adm"]["group_role"], members["m1"]["group_role"]), ("owner", "admin", "member"))
+        self.assertEqual(members["adm"]["group_rights"], ["info"])
+
+    def test_admin_grants_only_own_rights(self):
+        self.make_admin(["add", "admins"])
+        self.assertEqual(self.make_admin(["add", "remove"], who=self.adm, target=self.m1).status_code, 403)
+        self.assertEqual(self.make_admin(["add"], who=self.adm, target=self.m1).status_code, 200)
+        # Владельца не трогает никто, себе права не меняют, пустой список — нельзя.
+        self.assertEqual(self.make_admin(["add"], who=self.adm, target=self.owner).status_code, 400)
+        self.assertEqual(self.make_admin(["add"], who=self.adm, target=self.adm).status_code, 400)
+        self.assertEqual(self.make_admin([], target=self.m2).status_code, 400)
+        # Без права «Назначать админов» — нельзя.
+        self.assertEqual(self.make_admin(["add"], who=self.m1, target=self.m2).status_code, 403)
+
+    def test_remove_members_and_admins(self):
+        from .models import ChatParticipant
+        self.make_admin(["remove"])
+        self.make_admin(["info"], target=self.m2)
+        self.assertEqual(self.post(self.adm, "remove_participant", {"user_id": str(self.owner.id)}).status_code, 403)
+        self.assertEqual(self.post(self.adm, "remove_participant", {"user_id": str(self.m2.id)}).status_code, 403)  # админ
+        self.assertEqual(self.post(self.adm, "remove_participant", {"user_id": str(self.m1.id)}).status_code, 200)
+        self.assertFalse(ChatParticipant.objects.filter(chat=self.g, user=self.m1).exists())
+        # Снять админа: владелец — да; так снятый удаляется админом с правом.
+        self.assertEqual(self.post(self.owner, "remove_admin", {"user_id": str(self.m2.id)}).status_code, 200)
+        self.assertEqual(self.post(self.adm, "remove_participant", {"user_id": str(self.m2.id)}).status_code, 200)
+
+    def test_delete_others_message(self):
+        from .models import Message
+        msg = Message.objects.create(chat=self.g, sender=self.m1, content="спам")
+        url = f"/api/messages/{msg.id}/remove/"
+        self.assertEqual(client_for(self.adm).post(url, {"scope": "all"}, format="json").status_code, 403)
+        self.make_admin(["delete"])
+        self.assertEqual(client_for(self.adm).post(url, {"scope": "all"}, format="json").status_code, 200)
+        msg.refresh_from_db()
+        self.assertTrue(msg.deleted_for_all)
+
+    def test_owner_leaves_admin_inherits(self):
+        from .models import Chat, ChatParticipant
+        self.make_admin(["info"], target=self.m2)
+        self.assertEqual(client_for(self.owner).post(f"/api/chats/{self.g.id}/leave/").status_code, 200)
+        self.g.refresh_from_db()
+        self.assertEqual(self.g.creator_id, self.m2.id)
+        cp = ChatParticipant.objects.get(chat=self.g, user=self.m2)
+        self.assertEqual((cp.role, cp.rights), ("member", []))
+        self.assertEqual(Chat.objects.get(id=self.g.id).creator_id, self.m2.id)

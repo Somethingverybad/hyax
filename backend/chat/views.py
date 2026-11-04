@@ -254,6 +254,9 @@ class ChatViewSet(viewsets.ModelViewSet):
                     # Мои уведомления этого чата (ChatSerializer.get_muted).
                     my_muted=Subquery(mine.values('muted')[:1]),
                     my_muted_until=Subquery(mine.values('muted_until')[:1]),
+                    # Моя роль и права админа группы (ChatSerializer.get_my_rights).
+                    my_role=Subquery(mine.values('role')[:1]),
+                    my_rights=Subquery(mine.values('rights')[:1]),
                     # Мои личные обои (см. ChatSerializer.get_my_wallpaper).
                     my_wp_kind=Subquery(mine.values('wallpaper_kind')[:1]),
                     my_wp_url=Subquery(mine.values('wallpaper_url')[:1]),
@@ -445,9 +448,11 @@ class ChatViewSet(viewsets.ModelViewSet):
         if not ChatParticipant.objects.filter(chat=chat, user=profile).exists():
             return Response({"error": "Вы не участник этого чата"}, status=403)
 
-        # В существующей группе участников добавляет только админ-создатель.
-        if chat.is_group and chat.creator_id and chat.creator_id != profile.id:
-            return Response({"error": "Добавлять участников может только владелец группы"}, status=403)
+        # В существующей группе участников добавляют владелец и админы с правом
+        # «Добавлять участников» (chat/grouprights.py).
+        from .grouprights import group_rights, is_group_chat
+        if is_group_chat(chat) and "add" not in group_rights(chat, profile):
+            return Response({"error": "Добавлять участников могут владелец и админы с этим правом"}, status=403)
 
         ids = request.data.get('participants') or []
         if isinstance(ids, str):
@@ -475,16 +480,18 @@ class ChatViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def remove_participant(self, request, pk=None):
-        """Удалить человека из группы — только владелец. Удалённому чат
-        пропадает сразу, остальным обновляется состав."""
+        """Удалить человека из группы — владелец или админ с правом «Удалять
+        участников» (владельца — никто, админа — только владелец). Удалённому
+        чат пропадает сразу, остальным обновляется состав."""
         chat = self.get_object()
         me = getattr(request.user, 'profile', None)
         if not me:
             return Response({"error": "Profile not found"}, status=400)
         if not chat.is_group or chat.kind == "channel":
             return Response({"error": "Это не группа"}, status=400)
-        if chat.creator_id != me.id:
-            return Response({"error": "Удалять участников может только владелец группы"}, status=403)
+        from .grouprights import group_rights
+        if "remove" not in group_rights(chat, me):
+            return Response({"error": "Удалять участников могут владелец и админы с этим правом"}, status=403)
         try:
             uid = uuid.UUID(str(request.data.get('user_id') or ''))
         except ValueError:
@@ -494,6 +501,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         cp = ChatParticipant.objects.filter(chat=chat, user_id=uid).first()
         if not cp:
             return Response({"error": "Участник не найден"}, status=404)
+        if chat.creator_id == uid:
+            return Response({"error": "Владельца группы удалить нельзя"}, status=403)
+        if cp.role == "admin" and chat.creator_id != me.id:
+            return Response({"error": "Админа удаляет только владелец группы"}, status=403)
         cp.delete()
         _user_event([uid], {"type": "chat_removed", "chat_id": str(chat.id), "reason": "removed", "by": str(me.id)})
         _user_event(list(ChatParticipant.objects.filter(chat=chat).exclude(user=me).values_list('user_id', flat=True)),
@@ -502,7 +513,8 @@ class ChatViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post', 'patch'])
     def configure(self, request, pk=None):
-        """Настройки группы: название и аватар. Меняет только админ-создатель."""
+        """Настройки группы: название, аватар, звук, питомцы. Меняют владелец и
+        админы с правом «Изменять группу» (chat/grouprights.py)."""
         chat = self.get_object()
         try:
             profile = request.user.profile
@@ -510,8 +522,9 @@ class ChatViewSet(viewsets.ModelViewSet):
             return Response({"error": "Profile not found"}, status=400)
         if not chat.is_group:
             return Response({"error": "Это не группа"}, status=400)
-        if chat.creator_id and chat.creator_id != profile.id:
-            return Response({"error": "Настраивать группу может только владелец"}, status=403)
+        from .grouprights import group_rights
+        if "info" not in group_rights(chat, profile):
+            return Response({"error": "Настраивать группу могут владелец и админы с этим правом"}, status=403)
 
         fields = []
         name = request.data.get('name')
@@ -544,11 +557,84 @@ class ChatViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def participants(self, request, pk=None):
-        """Получить участников конкретного чата"""
+        """Получить участников конкретного чата. У группы — ещё роль каждого
+        (group_role: owner · admin · member) и права админа (group_rights)."""
         chat = self.get_object()
         participants = chat.participants.all()
-        serializer = ProfileSerializer(participants, many=True)
-        return Response(serializer.data)
+        data = ProfileSerializer(participants, many=True).data
+        from .grouprights import clean_rights, is_group_chat
+        if is_group_chat(chat):
+            roles = {str(u): (r, rt) for u, r, rt in ChatParticipant.objects.filter(chat=chat).values_list('user_id', 'role', 'rights')}
+            for row in data:
+                role, rights = roles.get(str(row.get('id')), ("member", []))
+                owner = str(chat.creator_id or "") == str(row.get('id'))
+                row['group_role'] = "owner" if owner else ("admin" if role == "admin" else "member")
+                row['group_rights'] = [] if owner or role != "admin" else clean_rights(rights)
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def set_admin(self, request, pk=None):
+        """Назначить админа группы или поменять его права: {user_id, rights}.
+        Владелец выдаёт любые права; админ с правом «Назначать админов» —
+        только из своих и не владельцу."""
+        chat = self.get_object()
+        me = getattr(request.user, 'profile', None)
+        from .grouprights import clean_rights, group_rights, is_group_chat
+        if not me or not is_group_chat(chat):
+            return Response({"error": "Это не группа"}, status=400)
+        mine = group_rights(chat, me)
+        if "admins" not in mine:
+            return Response({"error": "Назначать админов могут владелец и админы с этим правом"}, status=403)
+        try:
+            uid = uuid.UUID(str(request.data.get('user_id') or ''))
+        except ValueError:
+            return Response({"error": "Участник не найден"}, status=404)
+        if chat.creator_id == uid:
+            return Response({"error": "Владелец группы и так может всё"}, status=400)
+        if uid == me.id:
+            return Response({"error": "Свои права менять нельзя"}, status=400)
+        cp = ChatParticipant.objects.filter(chat=chat, user_id=uid).first()
+        if not cp:
+            return Response({"error": "Участник не найден"}, status=404)
+        rights = clean_rights(request.data.get('rights'))
+        if not rights:
+            return Response({"error": "Выберите хотя бы одно право"}, status=400)
+        owner = chat.creator_id == me.id
+        # Админ не выдаёт того, чего нет у него самого, и не трогает админа с правами шире своих.
+        if not owner and (set(rights) - mine or (cp.role == "admin" and set(clean_rights(cp.rights)) - mine)):
+            return Response({"error": "Можно выдать только те права, что есть у вас"}, status=403)
+        cp.role, cp.rights = "admin", rights
+        cp.save(update_fields=['role', 'rights'])
+        _user_event(list(ChatParticipant.objects.filter(chat=chat).values_list('user_id', flat=True)),
+                    {"type": "group_updated", "chat_id": str(chat.id)})
+        return Response({"user_id": str(uid), "group_role": "admin", "group_rights": rights})
+
+    @action(detail=True, methods=['post'])
+    def remove_admin(self, request, pk=None):
+        """Снять админа группы: {user_id}. Владелец — любого; админ с правом
+        «Назначать админов» — того, чьи права не шире его собственных."""
+        chat = self.get_object()
+        me = getattr(request.user, 'profile', None)
+        from .grouprights import clean_rights, group_rights, is_group_chat
+        if not me or not is_group_chat(chat):
+            return Response({"error": "Это не группа"}, status=400)
+        mine = group_rights(chat, me)
+        if "admins" not in mine:
+            return Response({"error": "Снимать админов могут владелец и админы с этим правом"}, status=403)
+        try:
+            uid = uuid.UUID(str(request.data.get('user_id') or ''))
+        except ValueError:
+            return Response({"error": "Участник не найден"}, status=404)
+        cp = ChatParticipant.objects.filter(chat=chat, user_id=uid, role="admin").first()
+        if not cp:
+            return Response({"error": "Это не админ"}, status=404)
+        if chat.creator_id != me.id and set(clean_rights(cp.rights)) - mine:
+            return Response({"error": "У этого админа прав больше, чем у вас"}, status=403)
+        cp.role, cp.rights = "member", []
+        cp.save(update_fields=['role', 'rights'])
+        _user_event(list(ChatParticipant.objects.filter(chat=chat).values_list('user_id', flat=True)),
+                    {"type": "group_updated", "chat_id": str(chat.id)})
+        return Response({"user_id": str(uid), "group_role": "member", "group_rights": []})
 
     def create(self, request):
         # Добавьте проверку аутентификации в начале метода
@@ -749,8 +835,9 @@ def _chat_changed(chat):
 
 
 def _leave_group(chat, me):
-    """Выйти из группы. Уходит владелец — владельцем становится тот, кто в
-    группе дольше всех; ушёл последний — группа удаляется."""
+    """Выйти из группы. Уходит владелец — владельцем становится админ, что в
+    группе дольше всех, а нет админов — просто тот, кто дольше всех; ушёл
+    последний — группа удаляется."""
     ChatParticipant.objects.filter(chat=chat, user=me).delete()
     rest = ChatParticipant.objects.filter(chat=chat).order_by('joined_at')
     first = rest.first()
@@ -758,7 +845,10 @@ def _leave_group(chat, me):
         chat.delete()
         return
     if not chat.creator_id or chat.creator_id == me.id:
-        Chat.objects.filter(id=chat.id).update(creator_id=first.user_id)
+        heir = rest.filter(role="admin").first() or first
+        Chat.objects.filter(id=chat.id).update(creator_id=heir.user_id)
+        # Владелец может всё — отдельные права ему больше не нужны.
+        ChatParticipant.objects.filter(id=heir.id).update(role="member", rights=[])
     _user_event(list(rest.values_list('user_id', flat=True)), {"type": "group_updated", "chat_id": str(chat.id)})
 
 
@@ -1351,8 +1441,11 @@ class MessageViewSet(viewsets.ModelViewSet):
             # админа или уволенного автора иначе было бы не убрать. Подписчикам
             # удаление доедет обычной синхронизацией — save() двигает updated_at.
             from .serializers import is_admin_profile
+            # В группе — ещё владелец и админы с правом «Удалять чужие сообщения».
+            from .grouprights import group_rights
             if msg.sender_id != profile.id and not (msg.chat.kind == "channel" and _can_post_to(msg.chat, profile)) \
-                    and not (msg.chat.kind == "wall" and is_admin_profile(profile)):
+                    and not (msg.chat.kind == "wall" and is_admin_profile(profile)) \
+                    and "delete" not in group_rights(msg.chat, profile):
                 return Response({"error": "Удалить у всех может только автор"}, status=403)
             msg.deleted_for_all = True
             msg.save(update_fields=['deleted_for_all', 'updated_at'])

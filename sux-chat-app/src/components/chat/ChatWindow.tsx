@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import ReportSheet from "@/components/ReportSheet";
 import { useSwipeBack, EDGE_PX as SWIPE_BACK_EDGE } from "@/hooks/use-swipe-back";
 import { navAnim, FEED_READY_EVENT } from "@/lib/navAnim";
+import { myGroupRights } from "@/lib/groupRights";
 const StickerPicker = lazy(() => import("@/components/chat/StickerPicker"));
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
@@ -606,7 +607,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       } else toast.error(err.message || tr("Не получилось"));
     }
   };
-  const isGroupAdmin = isGroup && group?.creator === userId;
+  // Мои права в группе (lib/groupRights): владелец — все, админ — выданные.
+  const groupRights = isGroup ? myGroupRights(group as { creator?: string | null; my_rights?: string[] } | null, userId) : [];
   // «Печатает…», «записывает голосовое…» собеседника (lib/chatActivity): в группе — с именем.
   const activityText = activityLabel(useChatActivity(chatId), isGroup);
   // Ушли из чата — «печатает» там больше не горит.
@@ -3921,7 +3923,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: tr("Просмотры и реакции"), icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
         { label: tr("Пожаловаться"), icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
         { label: tr("Удалить у себя"), icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
-        { label: tr("Удалить у всех"), icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId, danger: true, onClick: () => startDelete(menuMessage, "all") },
+        // Чужое у всех — владелец группы и админ с правом «Удалять чужие сообщения».
+        { label: tr("Удалить у всех"), icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId || groupRights.includes("delete"), danger: true, onClick: () => startDelete(menuMessage, "all") },
         { label: tr("Выбрать"), icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
       ].filter((i) => i.show)
     : [];
@@ -5901,7 +5904,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <GroupSettingsModal
           chatId={group.id}
           userId={userId}
-          isAdmin={isGroupAdmin}
+          rights={groupRights}
           ownerId={group.creator ?? null}
           initialName={headerTitle || group.name || tr("Группа")}
           initialAvatar={group.avatar_url}

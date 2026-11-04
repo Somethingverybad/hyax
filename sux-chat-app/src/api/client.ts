@@ -648,6 +648,8 @@ export interface ChatInfo {
   participants?: Profile[];
   /** Группа: сколько питомцев одновременно (chat/pets.py); 0 — выключены. */
   pet_limit?: number;
+  /** Мои права в группе (lib/groupRights): владелец — все, админ — выданные. */
+  my_rights?: string[];
 }
 
 /** Живой перевод текста (chat/live.py LiveTextView): исходный язык, язык перевода и сам перевод. */
@@ -2160,6 +2162,18 @@ export const api = {
   },
 
   /** Удалить человека из группы (только владелец). */
+  /** Назначить админа группы или поменять его права (lib/groupRights). */
+  setGroupAdmin: async (chatId: string, userId: string, rights: string[]): Promise<{ group_role: string; group_rights: string[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/set_admin/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId, rights }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не получилось");
+    return body;
+  },
+  /** Снять админа группы. */
+  removeGroupAdmin: async (chatId: string, userId: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/remove_admin/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId }) });
+    if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не получилось");
+  },
   removeGroupMember: async (chatId: string, userId: string): Promise<void> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/remove_participant/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ user_id: userId }) });
     if (!res.ok) throw new LError((await res.json().catch(() => ({})))?.error || "Не получилось");

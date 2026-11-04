@@ -276,6 +276,8 @@ class ChatSerializer(serializers.ModelSerializer):
     # muted_until), muted_until — до какого времени (null — навсегда или включены).
     muted = serializers.SerializerMethodField()
     muted_until = serializers.SerializerMethodField()
+    # Мои права в группе: владелец — все, админ — выданные (chat/grouprights.py).
+    my_rights = serializers.SerializerMethodField()
     # Время последнего сообщения — по нему клиент сортирует список. updated_at
     # у чата меняется и от переименования, и от смены аватара.
     last_message_at = serializers.SerializerMethodField()
@@ -314,7 +316,23 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'muted', 'muted_until', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'pending_for', 'pet_limit']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'muted', 'muted_until', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'pending_for', 'pet_limit', 'my_rights']
+
+    def get_my_rights(self, obj):
+        """Мои права в группе (chat/grouprights.py): владелец — все, админ —
+        выданные. Роль и права — из аннотаций списка, иначе запросом."""
+        from .grouprights import GROUP_RIGHTS, group_rights, is_group_chat, rights_from
+        if not is_group_chat(obj):
+            return []
+        request = self.context.get('request')
+        me = getattr(getattr(request, 'user', None), 'profile', None) if request else None
+        if not me:
+            return []
+        if hasattr(obj, 'my_role'):
+            got = rights_from(obj, me.id, obj.my_role, obj.my_rights)
+        else:
+            got = group_rights(obj, me)
+        return [r for r in GROUP_RIGHTS if r in got]
 
     def get_pinned_at(self, obj):
         v = getattr(obj, 'my_pinned_at', None)

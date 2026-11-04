@@ -1,7 +1,8 @@
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Aura } from "@/components/Aura";
-import { X, Camera, UserPlus, UserMinus, Users, Check, Music2, PawPrint, Minus, Plus } from "lucide-react";
+import { X, Camera, UserPlus, UserMinus, Users, Check, Music2, PawPrint, Minus, Plus, Shield } from "lucide-react";
+import { GROUP_RIGHTS, type GroupRight } from "@/lib/groupRights";
 import { rememberPet, useChatPets, usePetsAvailable } from "@/lib/pets";
 import { confirmDialog } from "@/lib/confirm";
 import SoundPickerSheet from "@/components/SoundPicker";
@@ -13,18 +14,88 @@ import { toast } from "sonner";
 import CachedImg from "@/components/CachedImg";
 import { isAnimatedFile } from "@/lib/animMedia";
 
-interface Person { id: string; username: string; avatar_url?: string | null }
+interface Person {
+  id: string; username: string; avatar_url?: string | null;
+  /** Роль в группе и права админа (сервер — participants, chat/grouprights.py). */
+  group_role?: "owner" | "admin" | "member";
+  group_rights?: GroupRight[];
+}
+
+/** Права админа: галочки, сохранить, снять с админов. Выдать можно только
+ *  свои права (у владельца — все). */
+const AdminRightsSheet = ({ chatId, person, mine, onClose, onSaved }: {
+  chatId: string; person: Person; mine: GroupRight[]; onClose: () => void;
+  onSaved: (role: "admin" | "member", rights: GroupRight[]) => void;
+}) => {
+  const isAdmin = person.group_role === "admin";
+  const [picked, setPicked] = useState<GroupRight[]>(isAdmin ? person.group_rights || [] : mine.filter((r) => r !== "admins"));
+  const [busy, setBusy] = useState(false);
+  const toggle = (r: GroupRight) => setPicked((p) => (p.includes(r) ? p.filter((x) => x !== r) : [...p, r]));
+  const save = async () => {
+    setBusy(true);
+    try {
+      const res = await api.setGroupAdmin(chatId, person.id, picked);
+      onSaved("admin", res.group_rights as GroupRight[]);
+      toast.success(t("{name} — админ группы", { name: person.username }));
+    } catch (err) {
+      toast.error((err as Error)?.message || t("Не получилось"));
+    } finally { setBusy(false); }
+  };
+  const demote = async () => {
+    setBusy(true);
+    try {
+      await api.removeGroupAdmin(chatId, person.id);
+      onSaved("member", []);
+      toast.success(t("{name} больше не админ", { name: person.username }));
+    } catch (err) {
+      toast.error((err as Error)?.message || t("Не получилось"));
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div role="dialog" aria-label={t("Права админа")} className="w-full sm:max-w-sm bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 pb-[calc(var(--sab,0px)+20px)]" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-bold">{t("Права: {name}", { name: person.username })}</h3>
+        <div className="mt-3 space-y-1">
+          {GROUP_RIGHTS.map((r) => {
+            const allowed = mine.includes(r.key);
+            return (
+              <label key={r.key} className={`flex items-start gap-3 py-2 ${allowed ? "" : "opacity-50"}`}>
+                <input type="checkbox" className="mt-0.5 w-5 h-5 accent-primary shrink-0" disabled={!allowed || busy}
+                  checked={picked.includes(r.key)} onChange={() => toggle(r.key)} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{t(r.label)}</span>
+                  {r.hint && <span className="block text-xs text-muted-foreground">{t(r.hint)}</span>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <button type="button" onClick={() => void save()} disabled={busy || !picked.length}
+          className="mt-4 w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold disabled:opacity-50">
+          {isAdmin ? t("Сохранить") : t("Назначить админом")}
+        </button>
+        {isAdmin && (
+          <button type="button" onClick={() => void demote()} disabled={busy}
+            className="mt-2 w-full h-11 rounded-xl text-destructive font-semibold disabled:opacity-50">
+            {t("Снять с админов")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const PET_LIMIT_MAX = 10; // как на сервере (chat/pets.py)
 
 /**
- * Настройки группы. Админ (создатель) меняет название, аватар и добавляет
- * участников; остальные видят состав только на просмотр.
+ * Настройки группы. Что можно менять — по моим правам (lib/groupRights):
+ * владелец может всё, админ — выданное (название и прочее, добавлять,
+ * удалять участников, назначать админов); остальные видят только состав.
  */
 const GroupSettingsModal = ({
   chatId,
   userId,
-  isAdmin,
+  rights,
   ownerId,
   initialName,
   initialAvatar,
@@ -36,7 +107,8 @@ const GroupSettingsModal = ({
   chatId: string;
   /** Свой id — свою строку в списке не открываем карточкой. */
   userId?: string;
-  isAdmin: boolean;
+  /** Мои права в группе (lib/groupRights). */
+  rights: GroupRight[];
   /** Владелец группы (создатель): удаляет участников и меняет настройки. */
   ownerId?: string | null;
   initialName: string;
@@ -48,6 +120,9 @@ const GroupSettingsModal = ({
   onClose: () => void;
   onUpdated: (patch: { name?: string; avatar_url?: string | null }) => void;
 }) => {
+  const canInfo = rights.includes("info"), canAdd = rights.includes("add"), canRemove = rights.includes("remove"), canAdmins = rights.includes("admins");
+  const iOwn = !!userId && String(ownerId ?? "") === String(userId);
+  const [rightsFor, setRightsFor] = useState<Person | null>(null);
   const [name, setName] = useState(initialName);
   const [avatar, setAvatar] = useState<string | null>(initialAvatar ?? null);
   const [members, setMembers] = useState<Person[]>([]);
@@ -94,6 +169,7 @@ const GroupSettingsModal = ({
     return () => window.removeEventListener("hyax:group", on);
   }, [chatId]);
 
+  const rank = (m: Person) => (m.id === ownerId ? 2 : m.group_role === "admin" ? 1 : 0);
   const [removing, setRemoving] = useState<string | null>(null);
   const removeMember = async (m: Person) => {
     if (!(await confirmDialog(t("Удалить {name} из группы? Группа у этого человека пропадёт, вернуть его можно через «Добавить».", { name: m.username })))) return;
@@ -178,8 +254,8 @@ const GroupSettingsModal = ({
         <div className="flex flex-col items-center">
           <button
             type="button"
-            onClick={() => isAdmin && fileRef.current?.click()}
-            disabled={!isAdmin || saving}
+            onClick={() => canInfo && fileRef.current?.click()}
+            disabled={!canInfo || saving}
             className="relative w-24 h-24 rounded-2xl overflow-hidden bg-secondary flex items-center justify-center"
           >
             {avatar ? (
@@ -187,7 +263,7 @@ const GroupSettingsModal = ({
             ) : (
               <Users className="w-10 h-10 text-primary" />
             )}
-            {isAdmin && (
+            {canInfo && (
               <span className="absolute bottom-1 right-1 bg-primary text-primary-foreground p-1 rounded-full">
                 <Camera className="w-3 h-3" />
               </span>
@@ -198,7 +274,7 @@ const GroupSettingsModal = ({
 
         {/* Название */}
         <div className="mt-4">
-          {isAdmin ? (
+          {canInfo ? (
             <div className="flex items-center gap-2">
               <input
                 value={name}
@@ -220,7 +296,7 @@ const GroupSettingsModal = ({
         </div>
 
         {/* Звук группы: с ним все её сообщения приходят у всех участников. */}
-        {isAdmin ? (
+        {canInfo ? (
           <button type="button" onClick={() => setSoundOpen(true)} className="mt-4 w-full flex items-center gap-3 py-2.5 text-left">
             <Music2 className="w-5 h-5 text-primary shrink-0" />
             <span className="min-w-0 flex-1">
@@ -249,7 +325,7 @@ const GroupSettingsModal = ({
                   {petLimit === 0 ? t("Выключены — позвать питомца сюда нельзя") : t("Одновременно — до {n}", { n: petLimit })}
                 </span>
               </span>
-              {isAdmin && (
+              {canInfo && (
                 <span className="shrink-0 flex items-center gap-1">
                   <button type="button" onClick={() => void changePetLimit(petLimit - 1)} disabled={petLimit <= 0}
                     className="w-8 h-8 rounded-full bg-surface-2 grid place-items-center disabled:opacity-40" aria-label={t("Меньше питомцев")}>
@@ -273,7 +349,7 @@ const GroupSettingsModal = ({
                         {p.name || t("питомец {owner}", { owner })}
                         {owner && <span className="text-muted-foreground"> · {owner}</span>}
                       </span>
-                      {isAdmin && (
+                      {canInfo && (
                         <button type="button" onClick={() => void petHome(p.id)} className="shrink-0 text-xs text-primary px-2 py-1">{t("Домой")}</button>
                       )}
                     </div>
@@ -290,14 +366,14 @@ const GroupSettingsModal = ({
             <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               {t("Участники")} · {members.length}
             </span>
-            {isAdmin && (
+            {canAdd && (
               <button type="button" onClick={() => setAddOpen((v) => !v)} className="flex items-center gap-1 text-sm text-primary">
                 <UserPlus className="w-4 h-4" /> {t("Добавить")}
               </button>
             )}
           </div>
 
-          {addOpen && isAdmin && (
+          {addOpen && canAdd && (
             <div className="mb-3">
               <input
                 value={query}
@@ -321,7 +397,8 @@ const GroupSettingsModal = ({
           )}
 
           <div className="space-y-1">
-            {[...members].sort((a, b) => Number(b.id === ownerId) - Number(a.id === ownerId)).map((m) => (
+            {/* Сверху владелец, за ним админы. */}
+            {[...members].sort((a, b) => rank(b) - rank(a)).map((m) => (
               <div key={m.id} className="flex items-center gap-1">
                 <button
                   type="button"
@@ -332,9 +409,22 @@ const GroupSettingsModal = ({
                   <Aura active={!!(m as { is_online?: boolean }).is_online} owner={m as never} size={32}><Identicon id={m.id} avatarUrl={m.avatar_url} className="w-8 h-8" /></Aura>
                   <span className="text-sm truncate flex-1">{m.username}</span>
                   {m.id === ownerId && <span className="text-caption text-primary shrink-0">{t("владелец")}</span>}
+                  {m.id !== ownerId && m.group_role === "admin" && <span className="text-caption text-primary shrink-0">{t("админ")}</span>}
                   {m.id === userId && <span className="text-caption text-subtle shrink-0">{t("вы")}</span>}
                 </button>
-                {isAdmin && m.id !== userId && (
+                {canAdmins && m.id !== userId && m.id !== ownerId && (
+                  <button
+                    type="button"
+                    onClick={() => setRightsFor(m)}
+                    aria-label={m.group_role === "admin" ? t("Права админа") : t("Назначить админом")}
+                    title={m.group_role === "admin" ? t("Права админа") : t("Назначить админом")}
+                    className={`shrink-0 p-2 rounded-md active:bg-surface-3 ${m.group_role === "admin" ? "text-primary" : "text-subtle"}`}
+                  >
+                    <Shield className="w-4 h-4" />
+                  </button>
+                )}
+                {/* Удалить: владельца — никто, админа — только владелец. */}
+                {canRemove && m.id !== userId && m.id !== ownerId && (m.group_role !== "admin" || iOwn) && (
                   <button
                     type="button"
                     disabled={removing === m.id}
@@ -352,6 +442,13 @@ const GroupSettingsModal = ({
       </div>
       {/* Карточка поверх настроек. Клики внутри неё не должны доходить до
           подложки настроек — иначе тап мимо карточки закрыл бы и настройки. */}
+      {rightsFor && (
+        <AdminRightsSheet chatId={chatId} person={rightsFor} mine={rights} onClose={() => setRightsFor(null)}
+          onSaved={(role, r) => {
+            setMembers((prev) => prev.map((x) => (x.id === rightsFor.id ? { ...x, group_role: role, group_rights: r } : x)));
+            setRightsFor(null);
+          }} />
+      )}
       {profileFor && (
         <div onClick={(e) => e.stopPropagation()}>
           <UserProfileModal userId={profileFor} onClose={() => setProfileFor(null)} />
