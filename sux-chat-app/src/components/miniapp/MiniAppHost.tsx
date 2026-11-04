@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { useEscape } from "@/lib/escape";
-import { ArrowLeft, ExternalLink, Loader2, MoreHorizontal, RotateCw, Share2, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, Loader2, MoreHorizontal, RotateCw, Share2, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { shareMiniApp } from "@/lib/share";
 import { toast } from "sonner";
 import { api } from "@/api/client";
 import Identicon from "@/components/Identicon";
-import { closeMiniApp, useMiniApp } from "@/lib/miniapp";
+import { closeMiniApp, minimizeMiniApp, restoreMiniApp, useMiniApp } from "@/lib/miniapp";
 import { openExternal } from "@/lib/linkify";
 import { t as tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,39 @@ const haptic = (type: string, style: string) => {
  */
 const MiniAppHost = () => {
   const req = useMiniApp();
+  const navigate = useNavigate();
+  const minimized = !!req?.minimized;
+  // Свёрнутое — круглая кнопка; её можно утащить (прилипает к ближайшему
+  // краю, место запоминается): в чате она иначе закрывала бы сообщения.
+  const BUBBLE_KEY = "hyax:miniapp-bubble";
+  const [bubble, setBubble] = useState<{ side: "left" | "right"; y: number }>(() => {
+    try { const v = JSON.parse(localStorage.getItem(BUBBLE_KEY) || "null"); if (v && (v.side === "left" || v.side === "right") && Number.isFinite(v.y)) return v; } catch { /* нет памяти */ }
+    return { side: "right", y: window.innerHeight - 260 };
+  });
+  const [dragAt, setDragAt] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ x0: number; y0: number; moved: boolean } | null>(null);
+  const clampY = (y: number) => Math.max(72, Math.min(window.innerHeight - 140, y));
+  const bubbleDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { x0: e.clientX, y0: e.clientY, moved: false };
+  };
+  const bubbleMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 8) return;
+    d.moved = true;
+    setDragAt({ x: e.clientX - 28, y: clampY(e.clientY - 28) });
+  };
+  const bubbleUp = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDragAt(null);
+    if (!d) return;
+    if (!d.moved) { restoreMiniApp(); return; }
+    const next = { side: e.clientX < window.innerWidth / 2 ? "left" as const : "right" as const, y: clampY(e.clientY - 28) };
+    setBubble(next);
+    try { localStorage.setItem(BUBBLE_KEY, JSON.stringify(next)); } catch { /* без памяти — до перезапуска */ }
+  };
   const frame = useRef<HTMLIFrameElement>(null);
   const [launch, setLaunch] = useState<Launch | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +163,17 @@ const MiniAppHost = () => {
         case "showPopup":
           setPopup({ id: Number(p.id) || 0, kind: p.kind === "confirm" ? "confirm" : "alert", message: String(p.message || "").slice(0, 500) });
           break;
+        // Свернуться в кнопку и открыть личку с ботом («Начать» — если ещё не
+        // начинали): страница просит человека что-то сделать в чате с ботом.
+        case "minimize": minimizeMiniApp(); break;
+        case "openBotChat": {
+          minimizeMiniApp();
+          const bot = launch.bot;
+          api.startBot(bot.id)
+            .then((r) => navigate("/chat", { state: { chatId: r.chat_id, title: bot.username } }))
+            .catch((err) => toast.error(err?.message || tr("Не удалось открыть чат")));
+          break;
+        }
         case "sendData": {
           const data = String(p.data ?? "");
           api.webappSendData(launch.bot.id, launch.init_data, data)
@@ -148,13 +193,14 @@ const MiniAppHost = () => {
   const goBack = () => { if (backVisible) send("backButtonClicked"); else closeMiniApp(); };
   const goBackRef = useRef(goBack);
   goBackRef.current = goBack;
-  useEscape(!!req, () => goBackRef.current());
+  // Свёрнутое окно «назад» не перехватывает — оно у экрана под ним.
+  useEscape(!!req && !minimized, () => goBackRef.current());
   useEffect(() => {
-    if (!req || !Capacitor.isNativePlatform()) return;
+    if (!req || minimized || !Capacitor.isNativePlatform()) return;
     let handle: { remove: () => void } | undefined;
     CapApp.addListener("backButton", () => goBackRef.current()).then((h) => { handle = h; });
     return () => { handle?.remove(); };
-  }, [req?.key]);
+  }, [req?.key, minimized]);
 
   // Тема сменилась, пока окно открыто, — сообщаем странице.
   useEffect(() => {
@@ -181,7 +227,27 @@ const MiniAppHost = () => {
   const closePopup = (result: boolean) => { if (popup) send("popupClosed", { id: popup.id, result }); setPopup(null); };
 
   return (
-    <div className="fixed inset-0 z-[96] bg-background flex flex-col" role="dialog" aria-modal="true" aria-label={title}>
+    <>
+    {/* Свёрнуто — круглая кнопка с аватаром бота: тап разворачивает окно как
+        было (страница всё это время работает), крестик закрывает. */}
+    {minimized && (
+      <div className={cn("fixed z-[96] touch-none", !dragAt && "animate-in fade-in zoom-in-90 duration-200 transition-[left,right,top] duration-200")}
+        style={dragAt ? { left: dragAt.x, top: dragAt.y } : { top: clampY(bubble.y), [bubble.side]: 12 }}>
+        <button type="button" aria-label={tr("Развернуть {name}", { name: title })}
+          onPointerDown={bubbleDown} onPointerMove={bubbleMove} onPointerUp={bubbleUp} onPointerCancel={() => { dragRef.current = null; setDragAt(null); }}
+          // С клавиатуры (Enter/пробел) — без жеста: detail у такого клика 0.
+          onClick={(e) => { if (e.detail === 0) restoreMiniApp(); }}
+          className="block w-14 h-14 rounded-full overflow-hidden shadow-xl ring-2 ring-primary/70 bg-surface-2 active:scale-95 transition-transform">
+          <Identicon id={launch?.bot.id || req.botId} avatarUrl={launch?.bot.avatar_url} className="w-full h-full" />
+        </button>
+        <button type="button" onClick={closeMiniApp} onPointerDown={(e) => e.stopPropagation()} aria-label={tr("Закрыть {name}", { name: title })}
+          className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-surface-4 border border-border shadow flex items-center justify-center">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )}
+    <div className={cn("fixed inset-0 z-[96] bg-background flex flex-col", minimized && "invisible pointer-events-none")}
+      role="dialog" aria-modal={!minimized} aria-hidden={minimized} aria-label={title}>
       <div className="shrink-0 px-2 py-2 pad-safe-top border-b border-border min-h-14 flex items-center gap-2 bg-background">
         {backVisible ? (
           <button type="button" onClick={() => send("backButtonClicked")} className="ui-icon-btn p-2" aria-label={tr("Назад")}>
@@ -197,6 +263,10 @@ const MiniAppHost = () => {
           <p className="text-body font-semibold truncate">{title}</p>
           <p className="text-caption text-subtle truncate">@{launch?.bot.username || req.botName} · {tr("мини-приложение")}</p>
         </div>
+        {/* Свернуть в кнопку поверх экрана — приложение продолжит работать. */}
+        <button type="button" onClick={() => { setMenu(false); minimizeMiniApp(); }} className="ui-icon-btn p-2" aria-label={tr("Свернуть")} title={tr("Свернуть")}>
+          <ChevronDown className="w-5 h-5" />
+        </button>
         <div className="relative">
           <button type="button" onClick={() => setMenu((v) => !v)} className="ui-icon-btn p-2" aria-label={tr("Ещё")}>
             <MoreHorizontal className="w-5 h-5" />
@@ -288,6 +358,7 @@ const MiniAppHost = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
 

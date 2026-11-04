@@ -2435,5 +2435,7 @@ const en: Record<string, string> = {
   "У этого админа прав больше, чем у вас": "This admin has more rights than you",
   "Это не админ": "Not an admin",
   "Выберите хотя бы одно право": "Choose at least one right",
+  "Развернуть {name}": "Expand {name}",
+  "Закрыть {name}": "Close {name}",
 };
 export default en;

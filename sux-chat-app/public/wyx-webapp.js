@@ -112,6 +112,10 @@
     sendData: function (data) { post("sendData", { data: String(data == null ? "" : data) }); },
     /** Открыть ссылку в браузере (не внутри мини-приложения). */
     openLink: function (url) { post("openLink", { url: String(url || "") }); },
+    // Свернуть окно в кнопку поверх WYX; openBotChat — свернуть и открыть
+    // личный чат с этим ботом (его «Начать», если ещё не начинали).
+    minimize: function () { post("minimize"); },
+    openBotChat: function () { post("openBotChat"); },
     showAlert: function (message, cb) { popup("alert", message, cb ? function () { cb(); } : null); },
     showConfirm: function (message, cb) { popup("confirm", message, cb); },
     onEvent: on,
