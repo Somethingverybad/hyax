@@ -2066,6 +2066,35 @@ class TrackUploadRepeatTests(TestCase):
         self.assertEqual(a.data["track"]["id"], b.data["track"]["id"])
         self.assertEqual(PlaylistTrack.objects.filter(playlist__owner=me).count(), 1)
 
+    def test_same_file_twice_in_playlist(self):
+        """Тот же файл без метки (бот прислал трек повторно) — не 500, а уже загруженный трек."""
+        import os as _os
+        import shutil as _sh
+        import unittest
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        if not _sh.which("ffprobe"):
+            raise unittest.SkipTest("нет ffprobe")
+        me = make_user("uploader2")
+        pl = client_for(me).post("/api/playlists/", {"name": "Из ВК"}, format="json").data
+        song = _os.path.join(_os.path.dirname(__file__), "..", "..", "sux-chat-app", "public", "sounds", "call.mp3")
+        data = open(song, "rb").read()
+        up = lambda: client_for(me).post(f"/api/playlists/{pl['id']}/tracks/upload/", {"file": SimpleUploadedFile("call.mp3", data, content_type="audio/mpeg")}, format="multipart")
+        a, b = up(), up()
+        self.assertEqual((a.status_code, b.status_code), (201, 200), (a.data, b.data))
+        self.assertEqual(a.data["track"]["id"], b.data["track"]["id"])
+
+
+class BotPlaylistLimitTests(TestCase):
+    """У бота плейлистов больше человеческих 50: @radio собирает их для всех."""
+
+    def test_bot_can_exceed_50(self):
+        from .models import Playlist
+        bot, human = make_user("pl_bot", is_bot=True), make_user("pl_human")
+        for who in (bot, human):
+            Playlist.objects.bulk_create([Playlist(owner=who, name=f"p{i}") for i in range(50)])
+        self.assertEqual(client_for(bot).post("/api/playlists/", {"name": "ещё"}, format="json").status_code, 201)
+        self.assertEqual(client_for(human).post("/api/playlists/", {"name": "ещё"}, format="json").status_code, 409)
+
 
 class ReplyQuoteTests(TestCase):
     """Ответ на выделенный кусок сообщения: цитата хранится и приходит в reply_to."""

@@ -5824,7 +5824,9 @@ class PlaylistsView(APIView):
         # «Моя музыка» должна существовать раньше остальных: иначе у того, кто
         # начал со своего плейлиста, её бы не было вовсе.
         _default_playlist(me)
-        if Playlist.objects.filter(owner=me).count() >= 50:
+        # Бот (@radio) собирает плейлисты для всех своих пользователей — ему
+        # человеческих 50 мало.
+        if Playlist.objects.filter(owner=me).count() >= (5000 if me.is_bot else 50):
             return Response({"error": "Слишком много плейлистов"}, status=409)
         pl = Playlist.objects.create(owner=me, name=name)
         return Response(PlaylistSerializer(pl).data, status=201)
@@ -6296,6 +6298,12 @@ class PlaylistTrackUploadView(APIView):
         title = ((request.data.get("title") or "").strip() or tag_title
                  or re.sub(r"\.[^.]+$", "", f.name or "") or "Без названия")[:200]
         artist = ((request.data.get("artist") or "").strip() or tag_artist)[:200]
+        # Тот же файл уже есть в этом плейлисте (тот же трек загрузили снова,
+        # байты совпали — тот же file_url) — отдаём его: второй строкой он не
+        # встанет (UniqueConstraint), раньше падало 500.
+        same = pl.tracks.filter(file_url=url).first()
+        if same:
+            return Response({"track": PlaylistTrackSerializer(same).data, "playlist": PlaylistSerializer(pl).data, "repeat": True})
         before_playlist_change(pl.id)
         play_next = request.data.get("next") in (True, "true", "1", 1)
         pos = next_position(pl) if play_next else (
