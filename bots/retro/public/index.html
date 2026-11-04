@@ -12,8 +12,15 @@
 </head>
 <body>
 
+<!-- Проверка допуска: эмулятор грузится, только если сервер выдал пропуск -->
+<section id="gate" class="screen gate">
+  <div class="logo">🖥️</div>
+  <h1>Ретро-ПК</h1>
+  <p class="muted" id="gateText">Проверяю доступ…</p>
+</section>
+
 <!-- Подготовка: какие образы вставить -->
-<section id="setup" class="screen">
+<section id="setup" class="screen hidden">
   <header class="head">
     <div class="logo">🖥️</div>
     <h1>Ретро-ПК</h1>
@@ -107,6 +114,6 @@
 </section>
 
 <div id="toast" class="toast hidden"></div>
-<script type="module" src="app.js"></script>
+<script src="gate.js"></script>
 </body>
 </html>

@@ -26,6 +26,9 @@ code { font: 12.5px ui-monospace, Menlo, monospace; background: var(--panel2); p
 
 .screen { position: fixed; inset: 0; display: flex; flex-direction: column; }
 #setup { overflow-y: auto; padding: 16px 16px calc(24px + var(--safe-b)); display: block; max-width: 560px; margin: 0 auto; }
+.gate { align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.gate h1 { margin: 4px 0 6px; font-size: 26px; }
+.gate p { max-width: 360px; margin: 0; }
 .head { text-align: center; padding: 14px 0 10px; }
 .logo { font-size: 44px; }
 .head h1 { margin: 4px 0 6px; font-size: 26px; }
