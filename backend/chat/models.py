@@ -332,6 +332,10 @@ class ChatParticipant(models.Model):
 
 
 # Также добавим поле в модель Message для быстрого доступа
+# Эффекты получения сообщения (Message.effect) — тот же список в клиенте (lib/effects).
+MESSAGE_EFFECTS = ("burst", "rain")
+
+
 class Message(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
@@ -418,8 +422,10 @@ class Message(models.Model):
     # по рядам. Ставит только бот (см. MessageSerializer.validate_buttons):
     # иначе любой мог бы подделать вид сообщения от бота.
     buttons = models.JSONField(default=list, blank=True)
-    # Эффект при получении: "" — нет, "burst" — стикер «высыпается» по экрану
-    # получателя (долгое удержание стикера при отправке).
+    # Эффект при получении (MESSAGE_EFFECTS): "" — нет; "burst" — стикер или
+    # текст «высыпается» по экрану получателя, "rain" — падает сверху и
+    # собирается в кучу внизу. Выбирают в меню по удержанию стикера или
+    # кнопки «Отправить».
     effect = models.CharField(max_length=16, blank=True, default="")
     # Оформление текста: [{"type": "bold", "offset": 0, "length": 5}, …],
     # offset/length в UTF-16 (как в JS). Текст в content остаётся чистым.

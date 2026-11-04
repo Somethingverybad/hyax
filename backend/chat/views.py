@@ -2188,10 +2188,6 @@ class MessageViewSet(viewsets.ModelViewSet):
                 save_kwargs['sticker_file'] = sticker.file_url or ""
             except Sticker.DoesNotExist:
                 return Response({"error": "Sticker not found"}, status=400)
-            # Эффект получения — только у стикеров и только из известного набора.
-            effect = str(request.data.get('effect') or '')
-            if effect in ('burst',):
-                save_kwargs['effect'] = effect
 
         # Аудио-стикер: звук, который прозвучит у получателя.
         sound_id = request.data.get('sound_id')
@@ -2248,6 +2244,15 @@ class MessageViewSet(viewsets.ModelViewSet):
             if poll_error:
                 return Response({"error": poll_error}, status=400)
             save_kwargs['poll'] = create_poll(poll_data)
+
+        # Эффект получения (Message.effect) — у стикера и у текстового
+        # сообщения без файла, только из известного набора.
+        from .models import MESSAGE_EFFECTS
+        effect = str(request.data.get('effect') or '')
+        if effect in MESSAGE_EFFECTS and (save_kwargs.get('sticker') or (
+                str(request.data.get('content') or '').strip() and not save_kwargs.get('file_url')
+                and not save_kwargs.get('poll') and not action_obj and not geo)):
+            save_kwargs['effect'] = effect
 
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)

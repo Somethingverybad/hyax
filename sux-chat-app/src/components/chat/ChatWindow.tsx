@@ -74,7 +74,9 @@ import ChatPets from "@/components/pets/ChatPets";
 import { setBlockedLocal, useBlocked } from "@/lib/blocks";
 import { rememberPet, useMyPet, usePetsAvailable } from "@/lib/pets";
 import { WallpaperVideo } from "./ChatWallpaper";
-import StickerBurst from "./StickerBurst";
+import MessageEffect from "./MessageEffect";
+import EffectMenu from "./EffectMenu";
+import { effectOf, isMessageEffect, textEffect, type EffectPlay, type MessageEffect as MessageEffectKind } from "@/lib/effects";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
 import type { PlaylistTrack } from "@/api/client";
@@ -373,16 +375,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Увеличенный треугольник: рядом с ним кнопку «Аа» не показываем — управление в плашке.
   const bigNoteId = useVideoNoteSlice((st) => (st.mode === "big" ? st.note?.id ?? null : null));
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
-  // «Глюк-стикер»: url стикера, который сейчас высыпается по экрану (и у
-  // отправителя, и у получателя — по событию из сокета, см. Chat.tsx).
-  const [burst, setBurst] = useState<{ url: string; key: number } | null>(null);
+  // Эффект сообщения (lib/effects): что сейчас сыплется по экрану — и у
+  // отправителя, и у получателя (по событию из сокета, см. Chat.tsx).
+  const [burst, setBurst] = useState<(EffectPlay & { key: number }) | null>(null);
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent).detail;
-      if (d?.chat_id !== chatId || !d?.url) return;
+      if (d?.chat_id !== chatId) return;
+      const play = effectOf(d);
+      if (!play) return;
       // Сообщение могло прийти в ленту раньше события — тогда уже сыграло.
       if (d.id && playedBursts.has(String(d.id))) return;
-      setBurst({ url: d.url, key: Date.now() });
+      setBurst({ ...play, key: Date.now() });
       if (d.id) markBurstsSeen([String(d.id)]);
     };
     window.addEventListener("hyax:burst", on);
@@ -1141,11 +1145,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useEffect(() => {
     if (!chatId) return;
     const pending = messages.filter((m) =>
-      m.effect === "burst" && m.sticker?.file_url && m.sender?.id !== userId && !m.pending && !m.effect_seen && !playedBursts.has(m.id));
+      effectOf(m) && m.sender?.id !== userId && !m.pending && !m.effect_seen && !playedBursts.has(m.id));
     if (!pending.length) return;
     markBurstsSeen(pending.map((m) => m.id));
     const last = pending.reduce((a, b) => ((Date.parse(a.created_at) || 0) >= (Date.parse(b.created_at) || 0) ? a : b));
-    setBurst({ url: last.sticker!.file_url, key: Date.now() });
+    const play = effectOf(last);
+    if (play) setBurst({ ...play, key: Date.now() });
   }, [messages, chatId, userId]);
   // Текст поля ввода — в ref, а не в состоянии: иначе каждая клавиша
   // перерисовывала всё окно вместе с лентой из полусотни сообщений (разбор
@@ -2909,9 +2914,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     void sendAction(action);
   };
 
-  const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }, burstMode = false) => {
+  const sendSticker = async (sticker: { id: string; file_url: string; emoji?: string }, effect?: MessageEffectKind) => {
     noteStickerUsed(sticker.id); // частые — первыми в подсказках
-    if (burstMode) setBurst({ url: sticker.file_url, key: Date.now() }); // отправитель видит глюк у себя тоже
+    if (effect) setBurst({ kind: effect, sticker: sticker.file_url, key: Date.now() }); // отправитель видит эффект у себя тоже
     if (!chatId) return;
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: Message = {
@@ -2931,7 +2936,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
     try {
-      const sent = await api.sendMessageWithSticker(chatId, sticker.id, undefined, undefined, burstMode ? "burst" : undefined);
+      const sent = await api.sendMessageWithSticker(chatId, sticker.id, undefined, undefined, effect);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id)
           ? prev.filter((m) => m.id !== tempId)
@@ -3012,7 +3017,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
-  const sendMessage = async () => {
+  // Удержание «Отправить» — меню эффектов: только для обычного текста (не
+  // правка, не вложения, не звук, не секретный чат).
+  const [sendFx, setSendFx] = useState<DOMRect | null>(null);
+  const sendHoldRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
+  const canSendFx = () => !!draftRef.current.trim() && !attachments.length && !editing && !isSecret && !selectedSound && !uploading;
+  const startSendHold = (el: HTMLElement) => {
+    const h = sendHoldRef.current;
+    h.fired = false;
+    if (h.timer) clearTimeout(h.timer);
+    if (!canSendFx()) return;
+    h.timer = setTimeout(() => {
+      h.timer = null;
+      h.fired = true;
+      try { navigator.vibrate?.(10); } catch { /* нет вибрации */ }
+      setSendFx(el.getBoundingClientRect());
+    }, 450);
+  };
+  /** Палец отпустили: true — это было удержание (меню открыто), отправлять не надо. */
+  const endSendHold = () => {
+    const h = sendHoldRef.current;
+    if (h.timer) { clearTimeout(h.timer); h.timer = null; }
+    const fired = h.fired;
+    h.fired = false;
+    return fired;
+  };
+  const sendMessage = async (fx?: MessageEffectKind) => {
+    const effect = isMessageEffect(fx) ? fx : undefined;
     // Звук — самостоятельное сообщение: пузырь с одним аудио-стикером,
     // который получатель может проиграть. Текст для этого не нужен.
     if (!chatId || (!draftRef.current.trim() && !attachments.length && !selectedSound)) return;
@@ -3080,13 +3111,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       };
       setMessages(prev => [...prev, optimistic]);
       setTimeout(() => scrollToBottom(true), 50);
+      // Эффект — у отправителя сразу, у получателя — когда сообщение дойдёт.
+      const play = effect ? textEffect(effect, text) : null;
+      if (play) setBurst({ ...play, key: Date.now() });
       try {
         // Секретный чат: на сервер уходит только шифротекст; у себя оставляем
         // открытый текст оптимистичного сообщения.
         const secretText: SecretPayload = { t: text, e: entities, ...(reply?._quote ? { q: reply._quote } : {}) };
         const sent = isSecret
           ? await api.sendSecretMessage(chatId, await encryptPayload(skey!.key, secretText), reply?.id)
-          : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities, reply?._quote ? { reply_quote: reply._quote } : undefined);
+          : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities,
+              (reply?._quote || effect) ? { ...(reply?._quote ? { reply_quote: reply._quote } : {}), ...(effect ? { effect } : {}) } : undefined);
         if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, p: secretText });
         setMessages(prev =>
           prev.some(m => m.id === sent.id)
@@ -5542,7 +5577,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {stickersOpen && !mintM && (
             <div ref={panelRef} className="mb-2 rounded-xl border border-border bg-card overflow-hidden">
               <Suspense fallback={null}><StickerPicker
-                onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
+                onSelect={(sticker, effect) => { setStickersOpen(false); void sendSticker(sticker, effect); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
@@ -5722,8 +5757,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 // на касании отправляем из touchend, а onClick остаётся мыши.
                 onClick={() => { if (Date.now() - touchSentRef.current > 500) sendMessage(); }}
                 onMouseDown={(e) => e.preventDefault()}
-                onTouchStart={(e) => e.preventDefault()}
-                onTouchEnd={(e) => { e.preventDefault(); if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
+                // Удержание — меню эффектов (lib/effects); на компьютере — правый клик.
+                onTouchStart={(e) => { e.preventDefault(); startSendHold(e.currentTarget); }}
+                onTouchEnd={(e) => { e.preventDefault(); if (endSendHold()) return; if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
+                onTouchCancel={() => endSendHold()}
+                onContextMenu={(e) => { e.preventDefault(); if (canSendFx()) setSendFx(e.currentTarget.getBoundingClientRect()); }}
                 disabled={uploading}
                 aria-label={tr("Отправить")}
                 className="ui-compose-send h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
@@ -5795,7 +5833,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           {stickersOpen && mintM && (
             <div ref={panelRef} className="mint-sticker-sheet">
               <Suspense fallback={null}><StickerPicker
-                onSelect={(sticker, burstMode) => { setStickersOpen(false); void sendSticker(sticker, !!burstMode); }}
+                onSelect={(sticker, effect) => { setStickersOpen(false); void sendSticker(sticker, effect); }}
                 sounds={sounds}
                 selectedSoundId={selectedSound?.id ?? null}
                 onSelectSound={(sound) => { setSelectedSound(sound); if (sound) setStickersOpen(false); }}
@@ -5972,7 +6010,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <ChatMediaSheet chatId={chatId} title={title || peer?.username || group?.name || undefined}
           onClose={() => setMediaOpen(false)} onJump={(id) => { setMediaOpen(false); void jumpToMessage(id); }} />
       )}
-      {burst && <StickerBurst key={burst.key} url={burst.url} onDone={() => setBurst(null)} />}
+      {burst && <MessageEffect key={burst.key} play={burst} onDone={() => setBurst(null)} />}
+      {sendFx && (
+        <EffectMenu anchor={sendFx} onClose={() => setSendFx(null)}
+          onPick={(fx) => { setSendFx(null); void sendMessage(fx); }} />
+      )}
       {translateOpen && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={() => setTranslateOpen(false)}>
           <div className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[420px] pad-safe-bottom p-4 space-y-3" onClick={(e) => e.stopPropagation()}>

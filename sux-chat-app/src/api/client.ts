@@ -2476,7 +2476,7 @@ export const api = {
     if (!res.ok) throw new LError("Failed to mark effects");
   },
 
-  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: "burst"): Promise<any> => {
+  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),

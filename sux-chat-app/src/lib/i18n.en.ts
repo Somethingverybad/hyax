@@ -2437,5 +2437,10 @@ const en: Record<string, string> = {
   "Выберите хотя бы одно право": "Choose at least one right",
   "Развернуть {name}": "Expand {name}",
   "Закрыть {name}": "Close {name}",
+  "Отправить с эффектом": "Send with effect",
+  "Глюк": "Glitch",
+  "Высыплется по всему экрану": "Spills all over the screen",
+  "Ливень": "Downpour",
+  "Упадёт сверху и соберётся в кучу": "Falls from above and piles up",
 };
 export default en;

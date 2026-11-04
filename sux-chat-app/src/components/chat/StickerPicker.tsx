@@ -19,6 +19,8 @@ import type { NotificationSoundInfo, ChatActionInfo } from "@/api/client";
 import { ActionGrid } from "@/components/chat/ActionSheet";
 import { isAnimatedFile } from "@/lib/animMedia";
 import { useScrollMemory } from "@/lib/scrollMemory";
+import EffectMenu from "@/components/chat/EffectMenu";
+import type { MessageEffect } from "@/lib/effects";
 
 interface Sticker {
   id: string;
@@ -44,8 +46,9 @@ interface UserStickerPack {
 }
 
 interface StickerPickerProps {
-  /** burst — стикер выбрали долгим удержанием: у получателя он «высыплется» по экрану. */
-  onSelect: (sticker: Sticker, burst?: boolean) => void;
+  /** effect — стикер держали и выбрали эффект в меню (lib/effects): у
+   *  получателя он высыплется, польётся ливнем и т. п. */
+  onSelect: (sticker: Sticker, effect?: MessageEffect) => void;
   /** Аудио-стикеры живут в этой же панели: отдельная кнопка рядом со
    *  стикерами дробила один и тот же сценарий «отправить что-то забавное». */
   sounds?: NotificationSoundInfo[];
@@ -121,9 +124,11 @@ const StickerPicker = ({
     return (saved as PickerTab) || (onInsertEmoji && standardEmoji ? "emoji" : "stickers");
   });
   const setTab = (v: PickerTab) => { setTabState(v); try { localStorage.setItem(TAB_KEY, v); } catch { /* приватный режим */ } };
-  // Долгое удержание стикера (burst): таймер и флаг, чтобы click после него не сработал.
+  // Долгое удержание стикера — меню эффектов (EffectMenu): таймер и флаг,
+  // чтобы click после удержания не отправил стикер без эффекта.
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdFiredRef = useRef(false);
+  const [fxFor, setFxFor] = useState<{ sticker: Sticker; rect: DOMRect } | null>(null);
   const [soundView, setSoundView] = useState<string | null>(() => {
     try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
   });
@@ -851,11 +856,16 @@ const StickerPicker = ({
                 key={s.id}
                 type="button"
                 // Долгое удержание (450 мс) — отправить «глюком»; обычный тап — как всегда.
-                onPointerDown={() => {
+                onPointerDown={(e) => {
                   if (editMode) return;
                   holdFiredRef.current = false;
                   if (holdRef.current) clearTimeout(holdRef.current);
-                  holdRef.current = setTimeout(() => { holdFiredRef.current = true; bumpRecent(s); onSelect(s, true); }, 450);
+                  const el = e.currentTarget;
+                  holdRef.current = setTimeout(() => {
+                    holdFiredRef.current = true;
+                    try { navigator.vibrate?.(10); } catch { /* нет вибрации */ }
+                    setFxFor({ sticker: s, rect: el.getBoundingClientRect() });
+                  }, 450);
                 }}
                 onPointerUp={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
                 onPointerLeave={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
@@ -941,6 +951,10 @@ const StickerPicker = ({
           </div>
         </div>,
         document.body,
+      )}
+      {fxFor && (
+        <EffectMenu anchor={fxFor.rect} onClose={() => setFxFor(null)}
+          onPick={(fx) => { const st = fxFor.sticker; setFxFor(null); bumpRecent(st); onSelect(st, fx); }} />
       )}
     </div>
   );

@@ -3786,3 +3786,27 @@ class GroupAdminTests(TestCase):
         cp = ChatParticipant.objects.get(chat=self.g, user=self.m2)
         self.assertEqual((cp.role, cp.rights), ("member", []))
         self.assertEqual(Chat.objects.get(id=self.g.id).creator_id, self.m2.id)
+
+
+class MessageEffectTests(TestCase):
+    """Эффект получения у текстового сообщения (меню по удержанию «Отправить»)."""
+
+    def setUp(self):
+        from .models import Chat, ChatParticipant
+        self.a, self.b = make_user("fx_a"), make_user("fx_b")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.a, self.b):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+
+    def send(self, **data):
+        return client_for(self.a).post("/api/messages/", {"chat": str(self.chat.id), **data}, format="json")
+
+    def test_text_effects(self):
+        from .models import Message
+        for effect, expect in (("rain", "rain"), ("burst", "burst"), ("boom", "")):
+            r = self.send(content=f"ура {effect}", effect=effect)
+            self.assertEqual(r.status_code, 201, r.data)
+            self.assertEqual(Message.objects.get(id=r.data["id"]).effect, expect)
+            self.assertEqual(r.data.get("effect"), expect)
+        # Пустой текст — эффекту не к чему прицепиться.
+        self.assertNotEqual(self.send(content="", effect="rain").status_code, 500)

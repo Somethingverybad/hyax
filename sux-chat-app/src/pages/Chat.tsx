@@ -797,9 +797,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         const m = msg?.data?.message ?? msg?.message;
         const chatId = msg?.data?.chat_id ?? m?.chat;
         const senderId = m?.sender?.id;
-        // «Глюк-стикер» от собеседника: открытый чат разыграет эффект.
-        if (m?.effect === "burst" && m?.sticker?.file_url && senderId && senderId !== user?.id) {
-          window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), url: m.sticker.file_url, id: m.id } }));
+        // Эффект от собеседника (стикер или текст, lib/effects): открытый чат разыграет его.
+        if (m?.effect && (m?.sticker?.file_url || m?.content) && senderId && senderId !== user?.id) {
+          window.dispatchEvent(new CustomEvent("hyax:burst", { detail: { chat_id: String(chatId), id: m.id, effect: m.effect, sticker: m.sticker, content: m.content } }));
         }
         // На компьютере окно без фокуса — не «на экране»: баннер и звук нужны.
         const active = appOnScreen() &&
