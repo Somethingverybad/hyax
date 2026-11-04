@@ -196,10 +196,15 @@ async function fetchWithFallbackRaw(input: RequestInfo, init?: RequestInit): Pro
       done(null, e); throw e;
     }
     let lastErr: unknown = e;
+    // Адрес запроса — на исходном звене (base); раньше на третьем шаге его
+    // пересчитывали от промежуточного, и запрос уходил по испорченному адресу,
+    // не доходя до сервера (2026-11-04: CDN без CORS → мёртвый запасной домен →
+    // сервер напрямую так и не спрашивали, вход срабатывал со второй попытки).
+    const base = from;
     while (from && next) {
       switchFrom(from, (lastErr as Error)?.name || "network");
       try {
-        const res = await fetch(retarget(url, from, next), init);
+        const res = await fetch(retarget(url, base, next), init);
         done(res);
         return res;
       } catch (e2) {
@@ -1044,11 +1049,23 @@ async function uploadWithProgress(
     const next = from ? nextOrigin(from) : null;
     if (!from || !next || !retryable) throw e;
     // Слишком большой файл или таймаут шлюза — это ограничение CDN, запасной
-    // домен того же CDN упрётся в него же: сразу на сервер. Сеть — по цепочке.
-    const to = (st === 413 || st === 408) && CDN_ORIGINS.includes(from) ? DIRECT_ORIGIN : next;
-    switchFrom(from, `upload ${st || "network"}`, to);
-    onProgress?.(0);
-    return attempt(retarget(url, from, to));
+    // домен того же CDN упрётся в него же: сразу на сервер. Сеть — по цепочке
+    // до конца (запасной тоже может не отвечать), адрес — от исходного звена.
+    let to: string | null = (st === 413 || st === 408) && CDN_ORIGINS.includes(from) ? DIRECT_ORIGIN : next;
+    let prev = from;
+    for (;;) {
+      switchFrom(prev, `upload ${st || "network"}`, to);
+      onProgress?.(0);
+      try {
+        return await attempt(retarget(url, from, to));
+      } catch (e2: any) {
+        const st2 = e2?.status ?? 0;
+        const after = nextOrigin(to);
+        if (!(st2 === 0 || st2 >= 500) || !after) throw e2;
+        prev = to;
+        to = after;
+      }
+    }
   }
 }
 
