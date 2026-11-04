@@ -5635,9 +5635,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 rows={1}
                 // Явно: без этих атрибутов iOS не включал автоисправление и
                 // подсказки в поле сообщения, хотя по умолчанию они должны быть.
+                // На Android проверка орфографии WebView выключена (main.tsx):
+                // её меню по тапу в слово прятало клавиатуру.
                 autoCorrect="on"
                 autoCapitalize="sentences"
-                spellCheck
+                spellCheck={!/Android/i.test(navigator.userAgent)}
                 enterKeyHint={isTouchDevice() ? "enter" : "send"}
                 onPaste={onPasteFile}
                 // Телефон: либо клавиатура, либо панель выбора — тап по полю (или
