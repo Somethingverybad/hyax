@@ -17,6 +17,92 @@ export interface VoiceRecording {
   kind: RecordKind;
 }
 
+type Facing = "user" | "environment";
+
+/** Камера треугольника: снимать больше 360 нет смысла — в чате он 160–280 px,
+ *  файл втрое легче, отправка заметно быстрее. */
+const camera = (facing: Facing): MediaTrackConstraints => ({
+  facingMode: facing,
+  width: { ideal: 360 },
+  height: { ideal: 360 },
+  frameRate: { ideal: 24 },
+});
+
+/** getUserMedia с одной повторной попыткой: NotReadableError/AbortError —
+ *  устройство ещё занято освобождением предыдущей записи (треки .stop()
+ *  отпускаются железом асинхронно). NotAllowedError — настоящий отказ. */
+async function getMedia(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err) {
+    const name = (err as { name?: string } | null)?.name;
+    const transient = name === "NotReadableError" || name === "AbortError";
+    if (!transient) throw err;
+    await new Promise((r) => setTimeout(r, 300));
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  }
+}
+
+/**
+ * Видео треугольника пишется не с камеры напрямую, а с холста, на который
+ * рисуется кадр текущей камеры: так камеру можно сменить посреди записи —
+ * меняется только источник холста, а MediaRecorder и звук идут дальше
+ * (подмена дорожки в записываемом потоке обрывает запись).
+ */
+interface CameraMix {
+  stream: MediaStream;
+  setSource: (cam: MediaStream) => void;
+  stop: () => void;
+}
+
+async function mixCamera(cam: MediaStream): Promise<CameraMix | null> {
+  const canvas = document.createElement("canvas");
+  if (typeof canvas.captureStream !== "function") return null;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  // Кадры видео без DOM на iOS не обновляются — держим его в документе невидимым.
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1";
+  document.body.appendChild(video);
+  const show = async (s: MediaStream) => {
+    video.srcObject = new MediaStream(s.getVideoTracks());
+    await video.play().catch(() => {});
+  };
+  await show(cam);
+  // Размер записи — как у первой камеры; другая вписывается в него с обрезкой.
+  const st = cam.getVideoTracks()[0]?.getSettings?.() || {};
+  canvas.width = (st.width || video.videoWidth || 360) & ~1;
+  canvas.height = (st.height || video.videoHeight || 360) & ~1;
+  let alive = true;
+  let timer = 0;
+  const draw = () => {
+    if (!alive) return;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (vw && vh && video.readyState >= 2) {
+      const k = Math.max(canvas.width / vw, canvas.height / vh);
+      const sw = canvas.width / k, sh = canvas.height / k;
+      ctx.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+    }
+    timer = window.setTimeout(draw, 1000 / 24);
+  };
+  draw();
+  const out = canvas.captureStream(24);
+  return {
+    stream: new MediaStream([...out.getVideoTracks(), ...cam.getAudioTracks()]),
+    setSource: (s) => { void show(s); },
+    stop: () => {
+      alive = false;
+      window.clearTimeout(timer);
+      out.getTracks().forEach((t) => t.stop());
+      video.srcObject = null;
+      video.remove();
+    },
+  };
+}
+
 /** Пределы записи. Треугольник (видео) — минута: он тяжёлый (~5 МБ).
  *  Голосовое — полторы минуты; дошли до предела — запись уходит сама. */
 const MAX_VIDEO_SECONDS = 60;
@@ -35,6 +121,13 @@ export function useMediaRecorder() {
   }, [recording]);
   const [seconds, setSeconds] = useState(0);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  // Камера, что снимает сейчас (могли сменить посреди записи), и можно ли менять.
+  const [facing, setFacing] = useState<Facing>("user");
+  const [canSwitch, setCanSwitch] = useState(false);
+  const facingRef = useRef<Facing>("user");
+  const mixRef = useRef<CameraMix | null>(null);
+  const camRef = useRef<MediaStream | null>(null);
+  const switchingRef = useRef(false);
   const kindRef = useRef<RecordKind>("audio");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -52,44 +145,23 @@ export function useMediaRecorder() {
     timerRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    camRef.current?.getTracks().forEach((t) => t.stop());
+    camRef.current = null;
+    mixRef.current?.stop();
+    mixRef.current = null;
     recorderRef.current = null;
     setStream(null);
+    setCanSwitch(false);
     setRecording(false);
     setSeconds(0);
   }, []);
 
-  const acquire = async (kind: RecordKind, facing: "user" | "environment"): Promise<MediaStream> => {
-    const constraints =
-      kind === "video"
-        ? {
-            audio: true,
-            // Треугольник в чате — 160–280 px, снимать больше 360 нет смысла:
-            // файл втрое легче, отправка заметно быстрее.
-            video: {
-              facingMode: facing,
-              width: { ideal: 360 },
-              height: { ideal: 360 },
-              frameRate: { ideal: 24 },
-            },
-          }
-        : { audio: true };
-    try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err: any) {
-      // NotReadableError/AbortError — устройство ещё занято освобождением
-      // предыдущей записи (треки .stop() отпускаются железом асинхронно).
-      // Одна повторная попытка после паузы почти всегда срабатывает; а вот
-      // NotAllowedError — это настоящий отказ в доступе, его пробрасываем.
-      const transient = err?.name === "NotReadableError" || err?.name === "AbortError";
-      if (!transient) throw err;
-      await new Promise((r) => setTimeout(r, 300));
-      return await navigator.mediaDevices.getUserMedia(constraints);
-    }
-  };
+  const acquire = (kind: RecordKind, facing: Facing): Promise<MediaStream> =>
+    getMedia(kind === "video" ? { audio: true, video: camera(facing) } : { audio: true });
 
   const start = useCallback(async (
     kind: RecordKind = "audio",
-    facing: "user" | "environment" = "user",
+    facing: Facing = "user",
     onAutoStop?: (r: VoiceRecording | null) => void,
   ): Promise<boolean> => {
     if (recorderRef.current) return false;
@@ -112,9 +184,24 @@ export function useMediaRecorder() {
         ? { videoBitsPerSecond: 700_000, audioBitsPerSecond: 64_000 }
         : { audioBitsPerSecond: 48_000 };
       if (mime) options.mimeType = mime;
+      // Видео — через холст (mixCamera), чтобы камеру можно было сменить на
+      // ходу. Не вышло собрать — пишем камеру напрямую, как раньше, без смены.
+      let mix: CameraMix | null = null;
+      if (kind === "video") {
+        try { mix = await mixCamera(media); } catch { mix = null; }
+      }
+      const make = (src: MediaStream) => {
+        try { return new MediaRecorder(src, options); }
+        catch { return mime ? new MediaRecorder(src, { mimeType: mime }) : new MediaRecorder(src); }
+      };
       let recorder: MediaRecorder;
-      try { recorder = new MediaRecorder(media, options); }
-      catch { recorder = mime ? new MediaRecorder(media, { mimeType: mime }) : new MediaRecorder(media); }
+      if (mix) {
+        // Движок не пишет поток с холста — пишем камеру напрямую.
+        try { recorder = make(mix.stream); }
+        catch { mix.stop(); mix = null; recorder = make(media); }
+      } else {
+        recorder = make(media);
+      }
       const stream = media;
 
       chunksRef.current = [];
@@ -148,6 +235,15 @@ export function useMediaRecorder() {
       };
 
       streamRef.current = stream;
+      mixRef.current = mix;
+      facingRef.current = facing;
+      setFacing(facing);
+      // Кнопка смены — если есть что менять: вторая камера на устройстве.
+      if (mix) {
+        void navigator.mediaDevices.enumerateDevices?.()
+          .then((d) => { if (mixRef.current === mix) setCanSwitch(d.filter((x) => x.kind === "videoinput").length > 1); })
+          .catch(() => {});
+      }
       recorderRef.current = recorder;
       startedAtRef.current = Date.now();
       recorder.start();
@@ -188,7 +284,45 @@ export function useMediaRecorder() {
     });
   }, [cleanup]);
 
+  /** Сменить камеру посреди записи треугольника (фронтальная ↔ задняя).
+   *  Вернёт камеру, что снимает теперь, или null — не вышло. */
+  const switchCamera = useCallback(async (): Promise<Facing | null> => {
+    const mix = mixRef.current;
+    if (!mix || switchingRef.current) return null;
+    switchingRef.current = true;
+    const prev = facingRef.current;
+    const next: Facing = prev === "user" ? "environment" : "user";
+    // iPhone держит одну камеру: прежнюю отпускаем до запроса новой. На это
+    // время холст держит последний кадр, запись и звук идут дальше.
+    const stopVideo = () => {
+      streamRef.current?.getVideoTracks().forEach((t) => t.stop());
+      camRef.current?.getTracks().forEach((t) => t.stop());
+      camRef.current = null;
+    };
+    const take = async (f: Facing) => {
+      const cam = await getMedia({ video: camera(f) });
+      // Запись успела закончиться, пока камера просыпалась, — она не нужна.
+      if (mixRef.current !== mix) { cam.getTracks().forEach((t) => t.stop()); return false; }
+      camRef.current = cam;
+      mix.setSource(cam);
+      facingRef.current = f;
+      setFacing(f);
+      setStream(cam);
+      return true;
+    };
+    try {
+      stopVideo();
+      return (await take(next)) ? next : null;
+    } catch {
+      // Новая не открылась — возвращаем прежнюю.
+      try { await take(prev); } catch { /* останется последний кадр */ }
+      return null;
+    } finally {
+      switchingRef.current = false;
+    }
+  }, []);
+
   useEffect(() => cleanup, [cleanup]);
 
-  return { recording, seconds, stream, start, stop };
+  return { recording, seconds, stream, start, stop, facing, canSwitch, switchCamera };
 }

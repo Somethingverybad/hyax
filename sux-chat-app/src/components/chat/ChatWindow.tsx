@@ -637,6 +637,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     recording,
     seconds: recSeconds,
     stream: recStream,
+    facing: recFacing,
+    canSwitch: canSwitchCam,
+    switchCamera,
     start: startRec,
     stop: stopRec,
   } = useMediaRecorder();
@@ -5422,10 +5425,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
           {recordKind === "video" && (recording || recPhase === "starting") && (
             <div className="mb-2 flex justify-center items-center gap-3">
-              {/* Распорка того же размера, что и кнопка справа: треугольник — по центру. */}
-              <span className="w-10 shrink-0" aria-hidden />
+              {/* Слева — смена камеры посреди записи (фронтальная ↔ задняя); нет
+                  второй камеры — распорка того же размера: треугольник по центру. */}
+              {recording && canSwitchCam ? (
+                <button type="button" onClick={() => void switchCamera().then((f) => { if (f) setFacing(f); })} onPointerDown={(e) => e.stopPropagation()}
+                  className="tri-glass w-10 h-10 shrink-0 rounded-full flex items-center justify-center"
+                  aria-label={tr("Переключить камеру")} title={recFacing === "user" ? tr("Камера: фронтальная (нажми — задняя)") : tr("Камера: задняя (нажми — фронтальная)")}>
+                  <SwitchCamera className="w-[18px] h-[18px]" />
+                </button>
+              ) : <span className="w-10 shrink-0" aria-hidden />}
               {recording ? (
-                <LivePreview stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={facing} flip={noteFlip} onToggleFlip={toggleNoteFlip} />
+                <LivePreview stream={recStream} dimmed={cancelArmed || recPhase === "finishing"} facing={recFacing} flip={noteFlip} onToggleFlip={toggleNoteFlip} />
               ) : (
                 // Камера ещё просыпается — рамка треугольника на месте сразу.
                 <GlassTriangle size={160} flip={noteFlip} onClick={toggleNoteFlip} innerClassName="bg-transparent">
