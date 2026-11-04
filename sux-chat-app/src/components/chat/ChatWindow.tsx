@@ -2133,7 +2133,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         + (k.id.startsWith("msg-pending-") ? " pend" : "");
     }).join(" | ");
     const ta = textareaRef.current;
-    const vars = `pb=${getComputedStyle(n).paddingBottom} h=${n.style.getPropertyValue("--compose-h") || "-"} extra=${n.style.getPropertyValue("--compose-extra") || "-"} csH=${cs?.offsetHeight ?? -1} mt=${cs?.style.marginTop || "0"} ta=${ta?.offsetHeight ?? -1} reply=${replyToRef.current ? 1 : 0}`;
+    const vars = `pb=${getComputedStyle(n).paddingBottom} h=${getComputedStyle(n).getPropertyValue("--compose-h").trim() || "-"} extra=${n.style.getPropertyValue("--compose-extra") || "-"} csH=${cs?.offsetHeight ?? -1} mt=${cs?.style.marginTop || "0"} ta=${ta?.offsetHeight ?? -1} reply=${replyToRef.current ? 1 : 0}`;
     applog.info(`feedtail ${why} gap=${gap} dist=${Math.round(n.scrollHeight - n.scrollTop - n.clientHeight)} ch=${n.clientHeight} cs=${cs ? Math.round(cs.getBoundingClientRect().top) : -1} msgs=${messagesRef.current} ${vars} [${tail}]`);
   };
   useEffect(() => {
@@ -3963,14 +3963,18 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Высота панели плавает (ответ, стикеры, запись), поэтому меряем её;
   // рост поля ввода уже учтён в --compose-extra (fitTextarea) — вычитаем.
   const composeMeasureRef = useRef<(() => void) | null>(null);
+  // --compose-h ставим на корень переписки: его читают и лента (отступ), и
+  // кнопка «вниз» — она лежит рядом с лентой, не внутри, и с переменной на
+  // ленте стояла в самом низу под панелью ввода (не видна).
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Панель — та, что сейчас на экране: секретный чат открылся без ключа,
     // ключ перенесли — панель появилась, и наблюдатель должен начать мерить
     // её. Раньше он брал панель один раз при открытии чата, без неё молчал,
     // и лента не отводила места под появившуюся панель — переписка уезжала
     // под неё и за край экрана (баг-репорт c7ed0f2e).
-    const cs = composeEl, sc = scrollRef.current;
-    if (!mintM || !cs || !sc || typeof ResizeObserver === "undefined") return;
+    const cs = composeEl, sc = scrollRef.current, host = rootRef.current;
+    if (!mintM || !cs || !sc || !host || typeof ResizeObserver === "undefined") return;
     let last = -1;
     const set = () => {
       // Окно в пуле недавних переписок скрыто, и его панель стоит над нижней
@@ -3986,7 +3990,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       const h = Math.round(cs.offsetHeight + nav - extra) + 20;
       if (h === last) return;
       last = h;
-      sc.style.setProperty("--compose-h", `${h}px`);
+      host.style.setProperty("--compose-h", `${h}px`);
       // Панель подросла — прижатая лента остаётся прижатой (и повтор кадром
       // позже: WebKit на iOS применяет scrollTop асинхронно).
       if (pinnedRef.current) { sc.scrollTop = sc.scrollHeight; requestAnimationFrame(() => { if (pinnedRef.current) sc.scrollTop = sc.scrollHeight; }); }
@@ -4011,7 +4015,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     window.visualViewport?.addEventListener("resize", onKb);
     return () => {
       composeMeasureRef.current = null;
-      ro.disconnect(); sc.style.removeProperty("--compose-h");
+      ro.disconnect(); host.style.removeProperty("--compose-h");
       window.removeEventListener("hyax:keyboard", onKb);
       window.removeEventListener("hyax:nav-space", set);
       window.visualViewport?.removeEventListener("resize", onKb);
@@ -4082,7 +4086,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // Без isolate: изолированный корень запирал внутри себя меню сообщения и
     // панель выбора, и в «Избранном» остров навигации ложился поверх них.
     // Обои при iOS-переходе держит слой переписки (pages/Chat.tsx, isolate).
-    <div className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div ref={rootRef} className="flex-1 flex flex-col bg-background min-w-0 min-h-0 relative" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {dragOver && (
         <div className="absolute inset-2 z-40 rounded-xl border-2 border-dashed border-primary bg-background/80 flex items-center justify-center pointer-events-none">
           <div className="text-center">
