@@ -28,13 +28,20 @@ const cssPx = (name: string) => {
  * размывается, строка чата остаётся чёткой на своём месте (копия поверх
  * размытия), под ней — меню. Порталом на body: поверх острова навигации и
  * слоёв экрана. Строку у нижнего края поднимаем, чтобы меню влезло.
+ * peek — мини-окно переписки под строкой (как в Telegram): строка становится
+ * его шапкой, тап по окну — открыть чат (onOpen).
  */
-const ChatRowMenu = ({ anchor, items, onClose }: { anchor: HTMLElement; items: RowMenuItem[]; onClose: () => void }) => {
+const PEEK_MAX = 380;
+const PEEK_MIN = 140;
+
+const ChatRowMenu = ({ anchor, items, onClose, peek, onOpen }: {
+  anchor: HTMLElement; items: RowMenuItem[]; onClose: () => void; peek?: React.ReactNode; onOpen?: () => void;
+}) => {
   const openedAt = useRef(Date.now());
   const rowRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<RowMenuItem | null>(null);
-  const [geo, setGeo] = useState<{ from: number; top: number; left: number; width: number; height: number; menuLeft: number; menuW: number } | null>(null);
+  const [geo, setGeo] = useState<{ from: number; top: number; left: number; width: number; height: number; peekH: number; menuLeft: number; menuW: number } | null>(null);
   const [shown, setShown] = useState(false);
 
   useLayoutEffect(() => {
@@ -43,10 +50,13 @@ const ChatRowMenu = ({ anchor, items, onClose }: { anchor: HTMLElement; items: R
     const sat = cssPx("--sat"), sab = cssPx("--sab");
     // Место под самый длинный уровень меню: подменю бывает выше основного.
     const tallest = Math.max(items.length, ...items.map((i) => (i.sub ? i.sub.length + 1 : 0))) * ITEM_H + 12 + 28;
-    const maxTop = vh - sab - EDGE - tallest - GAP - rect.height;
+    // Мини-окно — сколько влезает между строкой и меню; меньше PEEK_MIN — без него.
+    const room = vh - sab - sat - EDGE * 2 - tallest - GAP - rect.height;
+    const peekH = peek && room >= PEEK_MIN ? Math.min(PEEK_MAX, room) : 0;
+    const maxTop = vh - sab - EDGE - tallest - GAP - rect.height - peekH;
     const top = Math.max(sat + EDGE, Math.min(rect.top, maxTop));
     const menuW = Math.min(300, vw - EDGE * 2);
-    setGeo({ from: rect.top, top, left: rect.left, width: rect.width, height: rect.height, menuLeft: Math.max(EDGE, Math.min(rect.left + 12, vw - EDGE - menuW)), menuW });
+    setGeo({ from: rect.top, top, left: rect.left, width: rect.width, height: rect.height, peekH, menuLeft: Math.max(EDGE, Math.min(rect.left + 12, vw - EDGE - menuW)), menuW });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor]);
 
@@ -106,16 +116,24 @@ const ChatRowMenu = ({ anchor, items, onClose }: { anchor: HTMLElement; items: R
     >
       {geo && (
         <>
-          {/* Копия строки чата: с места в списке — туда, где под ней влезет меню. */}
+          {/* Копия строки чата: с места в списке — туда, где под ней влезет меню.
+              С мини-окном строка — его шапка, а тап по карточке открывает чат. */}
           <div
-            ref={rowRef}
-            className="fixed pointer-events-none overflow-hidden rounded-2xl bg-background shadow-xl"
-            style={{ left: geo.left, width: geo.width, height: geo.height, top: shown ? geo.top : geo.from, transition: "top 220ms cubic-bezier(0.2, 0.8, 0.2, 1)" }}
-          />
+            className={cn("fixed overflow-hidden rounded-2xl bg-background shadow-xl", geo.peekH && onOpen ? "cursor-pointer" : "pointer-events-none")}
+            style={{ left: geo.left, width: geo.width, height: geo.height + geo.peekH, top: shown ? geo.top : geo.from, transition: "top 220ms cubic-bezier(0.2, 0.8, 0.2, 1)" }}
+            onClick={geo.peekH && onOpen ? (e) => { e.stopPropagation(); onOpen(); } : undefined}
+          >
+            <div ref={rowRef} className="pointer-events-none" style={{ height: geo.height }} />
+            {geo.peekH > 0 && (
+              <div className="pointer-events-none border-t border-border/60 transition-opacity duration-200" style={{ height: geo.peekH, opacity: shown ? 1 : 0 }}>
+                {peek}
+              </div>
+            )}
+          </div>
           <div
             className="ui-card fixed rounded-2xl bg-surface-2/95 py-1.5 shadow-xl overflow-hidden"
             style={{
-              left: geo.menuLeft, width: geo.menuW, top: geo.top + geo.height + GAP,
+              left: geo.menuLeft, width: geo.menuW, top: geo.top + geo.height + geo.peekH + GAP,
               transformOrigin: "left top",
               transform: shown ? "scale(1)" : "scale(0.7)",
               opacity: shown ? 1 : 0,

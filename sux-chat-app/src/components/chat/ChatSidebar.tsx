@@ -2,6 +2,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { Capacitor } from "@capacitor/core";
 import { createPortal } from "react-dom";
 import ChatRowMenu from "@/components/chat/ChatRowMenu";
+import ChatPeek from "@/components/chat/ChatPeek";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { allDrafts } from "@/lib/drafts";
 import { activityLabel, useAllActivity } from "@/lib/chatActivity";
@@ -1560,6 +1561,11 @@ const ChatSidebar = ({
             <ChatRowMenu
               anchor={chatMenu.anchor}
               onClose={() => setChatMenu(null)}
+              // Мини-окно с последними сообщениями (как в Telegram) — у лички и
+              // групп; у канала и Стены вместо сообщений посты, там только меню.
+              peek={c && c.kind !== "channel" && c.kind !== "wall" && currentUser?.id
+                ? <ChatPeek chatId={chatMenu.chatId} myId={String(currentUser.id)} group={!!c.is_group} /> : undefined}
+              onOpen={() => { const m = chatMenu; setChatMenu(null); handleSelectChat(m.chatId, m.title, c?.kind); }}
               items={[
                 ...(canPin && c ? [{ label: pinnedAt(c) ? t("Открепить") : t("Закрепить"), icon: pinnedAt(c) ? <PinOff className="w-5 h-5" /> : <Pin className="w-5 h-5" />, onClick: () => { setChatMenu(null); void togglePin(c); } }] : []),
                 ...(canMute ? [muted
