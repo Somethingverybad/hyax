@@ -1,32 +1,48 @@
 import type { AnimationItem } from "lottie-web";
+import type { DotLottie } from "@lottiefiles/dotlottie-web";
 
 /**
  * Анимированные стикеры и эмодзи .tgs (Lottie в gzip) — не больше, чем
- * выдержит память. Живая анимация lottie-web стоит ~70 байт кучи на байт
- * JSON: стикер пака «Kolobki» (~3000 фигур) — 35–100 МБ, весь пак из 50
- * разом — 2,6 ГБ и 4 кадра в секунду. Раньше каждый .tgs заводил анимацию
- * сразу при появлении в разметке (и в ленте на 400 сообщений, и в сетке
- * пака), на паузу ставились только невидимые — память не возвращалась:
- * открыл пак — окно компьютера падало (баг-репорт b3103cc9), WebView
- * iPhone убивала система (59841892).
+ * выдержит память.
  *
- * Теперь:
+ * Движок — ThorVG (@lottiefiles/dotlottie-web, WebAssembly), как rlottie у
+ * Telegram. lottie-web строит из JSON дерево объектов в куче JS — ~70 байт
+ * на байт JSON: стикер пака «Kolobki» (~3000 фигур) стоил 35–100 МБ, весь
+ * пак из 50 разом — 2,6 ГБ кучи и 4 кадра в секунду. Открыл пак — окно
+ * компьютера падало (баг-репорт b3103cc9), WebView iPhone убивала система
+ * (59841892). ThorVG на тех же 50 — ~11 МБ на стикер и 44 кадра в секунду.
+ * lottie-web остался для перекрашиваемых эмодзи (им нужен svg: цвет текста
+ * задаёт CSS) и про запас — если WebAssembly не завёлся.
+ *
+ * Память WebAssembly назад системе не отдаётся, поэтому и с ThorVG:
  *  • анимация живёт, только пока стикер на экране (общий IntersectionObserver);
  *    ушёл с экрана — уничтожается, остаётся застывший кадр;
  *  • живые вместе весят не больше бюджета (длина JSON; на телефоне меньше);
- *    не влезли — ждут в очереди с застывшим кадром, а играющие по кругу
- *    уступают место после каждого проигрыша — анимируются все, по очереди;
- *  • застывший кадр ждущим рисуется заранее, по одному за раз, и
- *    кэшируется; разобранные .tgs — тоже, но не больше TGS_CACHE_MAX.
+ *    не влезли — ждут в очереди с застывшим кадром, а играющие уступают место
+ *    после каждого круга — анимируются все, по очереди;
+ *  • застывший кадр ждущим рисуется заранее, по одному за раз, и кэшируется;
+ *    тексты .tgs — тоже, но не больше TGS_CACHE_MAX.
  */
 export const loadLottie = () => import("lottie-web").then((m) => m.default);
 
-const TGS_CACHE_MAX = 40;
-const tgsCache = new Map<string, Promise<object>>();
-/** Длина JSON разобранной анимации — её «вес» для бюджета. */
-const tgsWeight = new WeakMap<object, number>();
+let thorPromise: Promise<typeof DotLottie> | null = null;
+/** ThorVG и его wasm — со своего сайта, а не с CDN пакета (jsdelivr из России
+ *  открывается не всегда). Грузится при первом .tgs. */
+const loadThor = () => (thorPromise = thorPromise || Promise.all([
+  import("@lottiefiles/dotlottie-web"),
+  import("@lottiefiles/dotlottie-web/dotlottie-player.wasm?url"),
+]).then(([m, wasm]) => {
+  m.DotLottie.setWasmUrl(wasm.default);
+  return m.DotLottie;
+}));
+/** null — ещё не пробовали; false — WebAssembly не завёлся, рисуем lottie-web. */
+let thorOk: boolean | null = typeof WebAssembly === "object" ? null : false;
 
-export const loadTgs = (url: string) => {
+const TGS_CACHE_MAX = 40;
+const tgsCache = new Map<string, Promise<string>>();
+
+/** Текст JSON анимации (gzip распакован). */
+const loadTgsText = (url: string) => {
   let p = tgsCache.get(url);
   if (p) {
     // Свежий — в конец: выбрасываем самые давние.
@@ -35,23 +51,24 @@ export const loadTgs = (url: string) => {
     return p;
   }
   p = Promise.all([fetch(url).then((r) => r.arrayBuffer()), import("pako")])
-    .then(([buf, { inflate }]) => {
-      const text = new TextDecoder().decode(inflate(new Uint8Array(buf)));
-      const data = JSON.parse(text);
-      tgsWeight.set(data, text.length);
-      return data;
-    });
+    .then(([buf, { inflate }]) => new TextDecoder().decode(inflate(new Uint8Array(buf))));
   p.catch(() => tgsCache.delete(url));
   tgsCache.set(url, p);
   while (tgsCache.size > TGS_CACHE_MAX) tgsCache.delete(tgsCache.keys().next().value as string);
   return p;
 };
+/** Разобранная анимация — для lottie-web. */
+export const loadTgs = (url: string): Promise<object> => loadTgsText(url).then((t) => JSON.parse(t));
 
 const PHONE = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
-/** Сумма длин JSON живых анимаций: ~200 МБ кучи на телефоне, ~400 МБ на компьютере.
- *  Обычный стикер Telegram — 100–300 КБ JSON, их влезает с десяток и больше. */
-const LIVE_BUDGET = PHONE ? 3_000_000 : 6_000_000;
-const LIVE_MAX = PHONE ? 12 : 24;
+/** Сумма длин JSON живых анимаций (~15 байт памяти ThorVG на байт): ~150 МБ на
+ *  телефоне, ~300 МБ на компьютере. Обычный стикер Telegram — 100–300 КБ JSON. */
+const LIVE_BUDGET = PHONE ? 10_000_000 : 20_000_000;
+const LIVE_MAX = PHONE ? 16 : 40;
+/** lottie-web на тот же JSON тратит памяти впятеро больше. */
+const LOTTIE_WEIGHT = 5;
+/** Плотнее 2× стикер не рисуем: на экране 3× разницы не видно, а кадр вдвое дороже. */
+const dpr = () => Math.min(2, window.devicePixelRatio || 1);
 
 type Poster = { url: string; w: number };
 const POSTER_MAX = 300;
@@ -85,17 +102,15 @@ function pump() {
   schedulePosters();
 }
 
-let posterTimer: ReturnType<typeof setTimeout> | null = null;
-/** Застывший кадр ждущим — по одному за задачу: собрать анимацию тяжёлого
- *  стикера — десятки миллисекунд. */
+let posterBusy = false;
+/** Застывший кадр ждущим — по одному за раз. */
 function schedulePosters() {
-  if (posterTimer) return;
+  if (posterBusy) return;
   const next = queue.find((p) => p.needsPoster());
   if (!next) return;
-  posterTimer = setTimeout(() => {
-    posterTimer = null;
-    if (next.state === "waiting" && next.needsPoster()) next.drawPoster();
-    schedulePosters();
+  posterBusy = true;
+  setTimeout(() => {
+    void next.drawPoster().finally(() => { posterBusy = false; schedulePosters(); });
   }, 16);
 }
 
@@ -110,24 +125,41 @@ const observe = (el: Element, p: Player) => {
 };
 const unobserve = (el: Element) => { byEl.delete(el); io?.unobserve(el); };
 
+/** Холст для ThorVG — во всю площадь стикера, как у lottie-web. */
+const canvasIn = (el: HTMLElement) => {
+  const c = document.createElement("canvas");
+  c.style.cssText = "width:100%;height:100%;display:block";
+  el.appendChild(c);
+  return c;
+};
+
+const thorConfig = (canvas: HTMLCanvasElement, data: string, loop: boolean, autoplay: boolean) => ({
+  canvas, data, loop, autoplay,
+  // Видимость ведём сами (общий наблюдатель выше), свой ему не нужен.
+  renderConfig: { freezeOnOffscreen: false, autoResize: false, devicePixelRatio: dpr() },
+});
+
 type Renderer = "canvas" | "svg";
 
 class Player {
   state: "idle" | "waiting" | "live" | "done" = "idle";
   weight = 0;
-  private anim: AnimationItem | null = null;
-  private data: object | null = null;
+  /** Снять живую анимацию (любым движком). */
+  private kill: (() => void) | null = null;
+  private text: string | null = null;
   private visible = false;
   private disposed = false;
   private loading = false;
   // Застывший кадр пробовали рисовать — второй раз не пытаемся.
   private posterTried = false;
+  private posterJob: Promise<void> | null = null;
 
   constructor(private el: HTMLElement, private src: string, private loop: boolean, private renderer: Renderer, private onError: () => void) {
     observe(el, this);
   }
 
-  private width() { return Math.round((this.el.clientWidth || 64) * (window.devicePixelRatio || 1)); }
+  private thor() { return this.renderer === "canvas" && thorOk !== false; }
+  private width() { return Math.round((this.el.clientWidth || 64) * dpr()); }
 
   setVisible(v: boolean) {
     if (this.disposed || this.visible === v) return;
@@ -140,13 +172,16 @@ class Player {
     if (this.state !== "idle" || this.loading) return;
     const cached = this.renderer === "canvas" ? posterFor(this.src, this.width()) : null;
     if (cached) this.showPoster(cached.url);
-    if (this.data) { this.enqueue(); return; }
     this.loading = true;
-    Promise.all([loadLottie(), loadTgs(this.src)]).then(([, data]) => {
+    // Не загрузился сам ThorVG — дальше всё через lottie-web.
+    const engine = this.thor()
+      ? loadThor().then(() => {}, () => { thorOk = false; return loadLottie().then(() => {}); })
+      : loadLottie().then(() => {});
+    Promise.all([engine, loadTgsText(this.src)]).then(([, text]) => {
       this.loading = false;
       if (this.disposed || !this.visible || this.state !== "idle") return;
-      this.data = data;
-      this.weight = tgsWeight.get(data) || 200_000;
+      this.text = text;
+      this.weight = text.length * (this.thor() ? 1 : LOTTIE_WEIGHT);
       this.enqueue();
     }).catch(() => {
       this.loading = false;
@@ -170,38 +205,96 @@ class Player {
       this.state = "idle";
       pump();
     }
-    // Разобранное держит кэш (если ещё не вытеснено) — не держим сами.
-    if (this.state === "idle") this.data = null;
+    // Текст держит кэш (если ещё не вытеснен) — не держим сами.
+    if (this.state === "idle") this.text = null;
   }
 
-  needsPoster() { return this.renderer === "canvas" && !this.posterTried && !!this.data && !posterFor(this.src, this.width()); }
+  needsPoster() { return this.renderer === "canvas" && !this.posterTried && this.text != null && !posterFor(this.src, this.width()); }
 
   /** Первый кадр — временной анимацией: собрать, снять, уничтожить. */
-  drawPoster() {
+  drawPoster(): Promise<void> {
     this.posterTried = true;
-    void loadLottie().then((lottie) => {
-      if (this.state !== "waiting" || !this.data) return;
-      try {
-        const a = lottie.loadAnimation({ container: this.el, renderer: "canvas", loop: false, autoplay: false, animationData: this.data });
-        // Без шрифтов и картинок (как у .tgs) lottie собирается сразу; иначе холст пуст.
-        if (a.isLoaded) { a.goToAndStop(0, true); this.snapshot(); }
-        a.destroy();
-      } catch { /* не нарисовалось — подождёт без кадра */ }
-    });
+    if (this.state !== "waiting" || this.text == null) return Promise.resolve();
+    const text = this.text;
+    const job = this.thor()
+      ? loadThor().then((DL) => new Promise<void>((done) => {
+          const c = canvasIn(this.el);
+          const a = new DL(thorConfig(c, text, false, false));
+          let over = false;
+          const finish = (ok: boolean) => {
+            if (over) return;
+            over = true;
+            if (ok) { thorOk = true; this.snapshot(); }
+            a.destroy();
+            c.remove();
+            done();
+          };
+          a.addEventListener("load", () => a.setFrame(0));
+          a.addEventListener("render", () => finish(true));
+          a.addEventListener("loadError", () => finish(false));
+          setTimeout(() => finish(false), 3000);
+        }))
+      : loadLottie().then((lottie) => {
+          const a = lottie.loadAnimation({ container: this.el, renderer: "canvas", loop: false, autoplay: false, animationData: JSON.parse(text) });
+          // Без шрифтов и картинок (как у .tgs) lottie собирается сразу; иначе холст пуст.
+          if (a.isLoaded) { a.goToAndStop(0, true); this.snapshot(); }
+          a.destroy();
+        });
+    this.posterJob = job.catch(() => {}).finally(() => { this.posterJob = null; });
+    return this.posterJob;
   }
 
   start() {
     this.state = "live";
     live.add(this);
     liveWeight += this.weight;
-    void loadLottie().then((lottie) => {
-      if (this.state !== "live" || !this.data) return;
-      const a = lottie.loadAnimation({ container: this.el, renderer: this.renderer, loop: this.loop, autoplay: true, animationData: this.data });
-      this.anim = a;
+    // Пока рисуется застывший кадр, его холст ещё в стикере — дождаться.
+    const go = () => {
+      if (this.state !== "live" || this.text == null) return;
+      if (this.thor()) this.startThor(this.text); else this.startLottie(this.text);
+    };
+    if (this.posterJob) void this.posterJob.then(go); else go();
+  }
+
+  private startThor(text: string) {
+    void loadThor().then((DL) => {
+      if (this.state !== "live" || this.kill) return;
+      const c = canvasIn(this.el);
+      const a = new DL(thorConfig(c, text, this.loop, true));
+      this.kill = () => { a.destroy(); c.remove(); };
       // Первый кадр нарисован — застывший больше не нужен (иначе просвечивает).
+      const first = () => { a.removeEventListener("render", first); thorOk = true; this.hidePoster(); };
+      a.addEventListener("render", first);
+      a.addEventListener(this.loop ? "loop" : "complete", () => setTimeout(() => this.cycled(), 0));
+      a.addEventListener("loadError", () => setTimeout(() => this.thorFailed(), 0));
+    });
+  }
+
+  /** ThorVG не справился: ни разу не работал — значит, движок (дальше
+   *  lottie-web), иначе — сам файл. */
+  private thorFailed() {
+    if (this.state !== "live") return;
+    this.kill?.();
+    this.kill = null;
+    if (thorOk === null) {
+      thorOk = false;
+      if (this.text != null) this.startLottie(this.text);
+    } else {
+      this.stopLive(false);
+      this.state = "done";
+      this.onError();
+      pump();
+    }
+  }
+
+  private startLottie(text: string) {
+    void loadLottie().then((lottie) => {
+      if (this.state !== "live" || this.kill) return;
+      const a: AnimationItem = lottie.loadAnimation({ container: this.el, renderer: this.renderer, loop: this.loop, autoplay: true, animationData: JSON.parse(text) });
+      this.kill = () => a.destroy();
       if (a.isLoaded) this.hidePoster(); else a.addEventListener("DOMLoaded", () => this.hidePoster());
       a.addEventListener(this.loop ? "loopComplete" : "complete", () => setTimeout(() => this.cycled(), 0));
-    });
+    }).catch(() => { if (this.state === "live") { this.stopLive(false); this.state = "done"; this.onError(); pump(); } });
   }
 
   /** Проиграл круг: другие ждут — уступить место и встать в конец очереди. */
@@ -221,8 +314,8 @@ class Player {
 
   private stopLive(keepFrame: boolean) {
     if (keepFrame) this.snapshot();
-    this.anim?.destroy();
-    this.anim = null;
+    this.kill?.();
+    this.kill = null;
     if (live.delete(this)) liveWeight -= this.weight;
   }
 
@@ -255,7 +348,7 @@ class Player {
     const wasLive = this.state === "live";
     this.stopLive(false);
     this.state = "idle";
-    this.data = null;
+    this.text = null;
     if (wasLive || i >= 0) pump();
   }
 }
@@ -266,5 +359,5 @@ export function mountTgs(el: HTMLElement, src: string, opts: { loop?: boolean; r
   return () => p.dispose();
 }
 
-/** Для проверок: сколько живых и сколько ждут. */
-export const tgsStats = () => ({ live: live.size, weight: liveWeight, waiting: queue.length, cached: tgsCache.size, posters: posters.size });
+/** Для проверок: сколько живых и сколько ждут, каким движком. */
+export const tgsStats = () => ({ live: live.size, weight: liveWeight, waiting: queue.length, cached: tgsCache.size, posters: posters.size, engine: thorOk === false ? "lottie-web" : thorOk ? "thorvg" : "?" });
