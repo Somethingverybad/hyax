@@ -1,12 +1,15 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const BOT = "test-bot-token";
 const dir = mkdtempSync(join(tmpdir(), "retro-"));
 writeFileSync(join(dir, "allow.txt"), "# владелец\n@Owner\nid-friend\n");
+mkdirSync(join(dir, "machines", "game"), { recursive: true });
+writeFileSync(join(dir, "machines", "game", "machine.json"), JSON.stringify({ title: "Игра", ram: 128, hda: "disk.img", cdrom: "../../allow.txt" }));
+writeFileSync(join(dir, "machines", "game", "disk.img"), Buffer.from(Array.from({ length: 4096 }, (_, i) => i & 255)));
 process.env.HYAX_BOT_TOKEN = BOT;
 process.env.DATA_DIR = dir;
 
@@ -64,4 +67,22 @@ test("пропуск: подделка, срок и вычеркнутый из 
   assert.equal(checkPass(pass, Date.now() / 1000 + 3 * 86400), null);
   assert.equal(checkPass(issuePass({ id: "u3", username: "gone" })), null);
   assert.ok(data);
+});
+
+test("готовые машины: список и диск кусками — только по пропуску", async () => {
+  const pass = issuePass({ id: "u1", username: "owner" });
+  const list = await (await fetch(`${base}/s/${pass}/machines.json`)).json();
+  // cdrom с путём наружу отброшен, остался только диск
+  assert.deepEqual(list, [{ id: "game", title: "Игра", ram: 128, hda: { size: 4096 } }]);
+  const r = await fetch(`${base}/s/${pass}/m/game/hda`, { headers: { Range: "bytes=256-511" } });
+  assert.equal(r.status, 206);
+  assert.equal(r.headers.get("content-range"), "bytes 256-511/4096");
+  const buf = new Uint8Array(await r.arrayBuffer());
+  assert.equal(buf.length, 256);
+  assert.equal(buf[0], 0);
+  assert.equal(buf[255], 255);
+  assert.equal((await fetch(`${base}/s/${pass}/m/game/hda`, { headers: { Range: "bytes=5000-6000" } })).status, 416);
+  assert.equal((await fetch(`${base}/s/${pass}/m/game/cdrom`)).status, 404);
+  assert.equal((await fetch(`${base}/s/${pass}/m/..%2f..%2fallow.txt/hda`)).status, 404);
+  assert.equal((await fetch(`${base}/s/forged.x/m/game/hda`)).status, 403);
 });

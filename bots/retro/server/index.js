@@ -1,11 +1,13 @@
 // Ретро-ПК: страница открыта всем, а сам эмулятор (app.js, v86, BIOS) — только
 // по пропуску. Пропуск выдаётся тем, кто открыл мини-приложение из WYX и есть
-// в списке допуска (DATA_DIR/allow.txt). Образы дисков сюда не попадают никогда.
+// в списке допуска (DATA_DIR/allow.txt). Свои образы пользователь выбирает на
+// устройстве; готовые машины владельца (DATA_DIR/machines/) отдаются тоже только
+// по пропуску и кусками — v86 читает диск с сервера по мере надобности.
 
 import { createServer } from "node:http";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFileSync, statSync, createReadStream } from "node:fs";
+import { readFile, readdir, stat, mkdir } from "node:fs/promises";
 import { join, dirname, extname, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkInitData } from "./auth.js";
@@ -18,6 +20,7 @@ const DEV = process.env.DEV === "1";
 const TOKEN = process.env.HYAX_BOT_TOKEN || "";
 const DATA = process.env.DATA_DIR || join(ROOT, "data");
 const ALLOW_FILE = join(DATA, "allow.txt");
+const MACHINES = join(DATA, "machines");
 const DAY = 86400;
 
 if (!TOKEN && !DEV) console.error("Нет HYAX_BOT_TOKEN — пропуска не выдаются. Для проверки без WYX: DEV=1 npm start");
@@ -86,6 +89,59 @@ export function checkPass(pass, now = Date.now() / 1000) {
   return allowed(user) ? user : null;
 }
 
+// ---------- готовые машины ----------
+// machines/<id>/machine.json: {"title", "ram", "hda": "файл", "cdrom": "файл"} —
+// файлы образов лежат рядом. Кладёт владелец сервера, из приложения не меняются.
+
+const DRIVES = ["hda", "cdrom"];
+
+async function readMachine(id) {
+  if (!/^[\w-]{1,40}$/.test(id)) return null;
+  let m;
+  try { m = JSON.parse(await readFile(join(MACHINES, id, "machine.json"), "utf8")); } catch { return null; }
+  const out = { id, title: String(m.title || id), ram: Number(m.ram) || 128, files: {} };
+  for (const d of DRIVES) {
+    if (!m[d] || /[\/\\]/.test(m[d])) continue;
+    const file = join(MACHINES, id, m[d]);
+    try { out[d] = { size: (await stat(file)).size }; out.files[d] = file; } catch { /* файла нет — без этого диска */ }
+  }
+  return out.hda || out.cdrom ? out : null;
+}
+
+export async function listMachines() {
+  let ids = [];
+  try { ids = await readdir(MACHINES); } catch { /* папки нет — машин нет */ }
+  const list = [];
+  for (const id of ids.sort()) {
+    const m = await readMachine(id);
+    if (m) list.push({ id: m.id, title: m.title, ram: m.ram, hda: m.hda, cdrom: m.cdrom });
+  }
+  return list;
+}
+
+/** Образ диска: только запрошенный кусок (Range), потоком — целиком в память не читается. */
+async function serveDrive(req, res, id, drive) {
+  const m = DRIVES.includes(drive) && await readMachine(id);
+  if (!m?.files[drive]) return send(res, 404, "Нет такого диска");
+  const size = m[drive].size;
+  const headers = { "Accept-Ranges": "bytes", "Cache-Control": "private, max-age=86400" };
+  const r = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+  let start = 0, end = size - 1, code = 200;
+  if (r) {
+    start = r[1] ? Number(r[1]) : Math.max(0, size - Number(r[2]));
+    end = r[1] && r[2] ? Math.min(Number(r[2]), size - 1) : size - 1;
+    if (start > end || start >= size) return send(res, 416, "", undefined, { "Content-Range": `bytes */${size}` });
+    code = 206;
+    headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+  }
+  res.writeHead(code, { "Content-Type": "application/octet-stream", "Content-Length": end - start + 1, "Content-Security-Policy": FRAME, ...headers });
+  if (req.method === "HEAD") return res.end();
+  const stream = createReadStream(m.files[drive], { start, end });
+  stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+}
+
 // ---------- HTTP ----------
 
 function send(res, code, body, type = "text/plain; charset=utf-8", extra = {}) {
@@ -135,6 +191,9 @@ async function handle(req, res) {
   const m = path.match(/^\/s\/([^/]+)\/(.+)$/);
   if (m) {
     if (!checkPass(m[1])) return send(res, 403, "Нет доступа");
+    if (m[2] === "machines.json") return send(res, 200, JSON.stringify(await listMachines()), MIME[".json"]);
+    const d = m[2].match(/^m\/([^/]+)\/([^/]+)$/);
+    if (d) return serveDrive(req, res, d[1], d[2]);
     // v86 и BIOS меняются только с версией — пусть лежат в кэше; app.js — свежий.
     return serveFile(res, PRIVATE, m[2], m[2].startsWith("v86/") ? "private, max-age=86400" : "no-cache");
   }

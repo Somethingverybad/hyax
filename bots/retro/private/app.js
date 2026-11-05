@@ -76,9 +76,12 @@ async function storageInfo() {
 
 const drives = { hda: null, cd: null, fd: null };
 const noOpfs = !navigator.storage?.getDirectory;
+/** Готовая машина с сервера, если включили её, а не свои образы. */
+let preset = null;
 
 /** Ключ сохранения — по диску: другое железо с этим сохранением не запустится. */
-const stateKey = () => drives.hda ? `state:${drives.hda.name}:${drives.hda.size}` : drives.fd ? `state:fd:${drives.fd.name}:${drives.fd.size}` : null;
+const stateKey = (m = preset) => m ? `state:srv:${m.id}:${m.hda?.size || 0}:${m.cdrom?.size || 0}`
+  : drives.hda ? `state:${drives.hda.name}:${drives.hda.size}` : drives.fd ? `state:fd:${drives.fd.name}:${drives.fd.size}` : null;
 const stateFileName = (key) => `${key.replace(/[^\w.-]+/g, "_")}.bin`;
 
 function renderSetup() {
@@ -89,7 +92,8 @@ function renderSetup() {
   }
   $("rememberRow").classList.toggle("hidden", noOpfs || !drives.hda || drives.hda.fromDevice);
   $("boot").disabled = !drives.hda && !drives.cd && !drives.fd;
-  const key = stateKey();
+  renderMachines();
+  const key = stateKey(null);
   const meta = key && store.get(key);
   $("resume").classList.toggle("hidden", !meta);
   if (meta) $("resume").textContent = `⏯ Продолжить с сохранения · ${new Date(meta.at).toLocaleString("ru", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;
@@ -145,6 +149,52 @@ async function loadRemembered() {
   renderSetup();
 }
 
+// ================= готовые машины =================
+
+let machines = [];
+const fmtDate = (t) => new Date(t).toLocaleString("ru", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function renderMachines() {
+  const box = $("machines");
+  box.classList.toggle("hidden", !machines.length);
+  $("ownLabel").classList.toggle("hidden", !machines.length);
+  box.replaceChildren(...machines.map((m) => {
+    const meta = store.get(stateKey(m));
+    const row = document.createElement("div");
+    row.className = "drive";
+    row.innerHTML = '<div class="ic">🎮</div><div class="grow"><b></b><div class="muted small"></div></div><div class="btns"></div>';
+    row.querySelector("b").textContent = m.title;
+    row.querySelector(".small").textContent = meta ? `сохранено ${fmtDate(meta.at)}` : `${fmtSize((m.hda?.size || 0) + (m.cdrom?.size || 0))} · с сервера`;
+    const btn = (text, cls, fn) => {
+      const b = document.createElement("button");
+      b.className = `btn small ${cls}`;
+      b.textContent = text;
+      b.onclick = fn;
+      row.querySelector(".btns").append(b);
+    };
+    if (meta) btn("⏯ Продолжить", "primary", () => resumeFrom(m));
+    btn(meta ? "▶ Заново" : "▶ Включить", meta ? "" : "primary", () => {
+      if (meta && !confirm("Включить заново? Сохранение останется — к нему можно вернуться кнопкой «Продолжить».")) return;
+      preset = m;
+      boot(null, m.ram);
+    });
+    return row;
+  }));
+}
+
+async function loadMachines() {
+  try {
+    const r = await fetch(new URL("machines.json", import.meta.url));
+    if (r.ok) machines = await r.json();
+  } catch { /* нет связи — только свои образы */ }
+  renderMachines();
+}
+
+/** Ссылка на диск машины: v86 читает его кусками через Range, целиком не качает. */
+const remote = (m, d) => m[d] && {
+  url: new URL(`m/${m.id}/${d}`, import.meta.url).href, size: m[d].size, async: true, fixed_chunk_size: 256 * 1024,
+};
+
 // ================= машина =================
 
 let emu = null;
@@ -155,19 +205,22 @@ let fitTimer = null;
 $("ram").value = String(store.get("ram") || 128);
 $("ram").onchange = () => store.set("ram", Number($("ram").value));
 
-$("boot").onclick = () => boot(null);
-$("resume").onclick = async () => {
-  const key = stateKey();
+$("boot").onclick = () => { preset = null; boot(null); };
+$("resume").onclick = () => resumeFrom(null);
+async function resumeFrom(m) {
+  const key = stateKey(m);
   const meta = store.get(key);
   const f = meta && await opfsRead(stateFileName(key));
   if (!f) { store.del(key); renderSetup(); return toast("Сохранение не найдено на устройстве"); }
+  preset = m;
   boot(await f.arrayBuffer(), meta.ram);
-};
+}
 $("stateFile").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
   if (!drives.hda && !drives.fd && !drives.cd) return toast("Сначала выберите те же образы дисков, с которыми делалось сохранение", 4000);
+  preset = null;
   boot(await f.arrayBuffer(), Number($("ram").value));
 });
 
@@ -186,16 +239,16 @@ function boot(state, stateRam) {
     memory_size: ram * MB,
     vga_memory_size: 8 * MB,
     screen: { container: $("screen") },
-    hda: img(drives.hda),
-    cdrom: img(drives.cd),
-    fda: img(drives.fd),
+    hda: preset ? remote(preset, "hda") : img(drives.hda),
+    cdrom: preset ? remote(preset, "cdrom") : img(drives.cd),
+    fda: preset ? undefined : img(drives.fd),
     initial_state: state ? { buffer: state } : undefined,
     acpi: false,
     autostart: true,
   });
   emu.add_listener("emulator-started", () => { fit(); showHint(); });
   emu.add_listener("screen-set-size", () => requestAnimationFrame(fit));
-  emu.add_listener("download-error", () => toast("Не удалось загрузить BIOS — проверьте связь", 4000));
+  emu.add_listener("download-error", () => toast(preset ? "Не удалось загрузить диск с сервера — проверьте связь" : "Не удалось загрузить BIOS — проверьте связь", 4000));
   let last = 0, lastT = performance.now();
   statsTimer = setInterval(() => {
     if (!emu?.is_running()) { $("status").textContent = "Пауза"; return; }
@@ -244,7 +297,7 @@ $("saveBtn").onclick = async () => {
       // Памяти устройства нет (или мало) — отдаём файлом.
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([buf]));
-      a.download = `${(drives.hda?.name || "machine").replace(/\.\w+$/, "")}.v86state`;
+      a.download = `${(preset?.id || drives.hda?.name || "machine").replace(/\.\w+$/, "")}.v86state`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
       where = "в файл (память устройства недоступна)";
@@ -478,6 +531,7 @@ if (matchMedia("(pointer: fine)").matches) $("keys").classList.add("hidden");
 
 renderSetup();
 loadRemembered();
+loadMachines();
 storageInfo();
 if (noOpfs) {
   $("remember").checked = false;
