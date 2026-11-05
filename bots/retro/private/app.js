@@ -567,14 +567,21 @@ async function putFiles(list) {
   const total = list.reduce((n, f) => n + f.size, 0);
   if (total > ISO_MAX) return toast(`На диск влезает до ${fmtSize(ISO_MAX)} — выберите поменьше`, 4000);
   cdBusy = true;
-  toast("Собираю диск…", 60000);
+  // Один образ компакт-диска (.iso) — в привод как есть: так вставляется,
+  // например, диск Windows 98, который просит установка драйвера.
+  const asIs = list.length === 1 && /\.iso$/i.test(list[0].name);
+  toast(asIs ? "Вставляю диск…" : "Собираю диск…", 60000);
   try {
-    const { buildIso } = await import("./iso.js");
-    const iso = await buildIso(list.map((f) => ({ path: f.webkitRelativePath || f.name, file: f })), "WYX");
+    let iso;
+    if (asIs) iso = await list[0].arrayBuffer();
+    else {
+      const { buildIso } = await import("./iso.js");
+      iso = await buildIso(list.map((f) => ({ path: f.webkitRelativePath || f.name, file: f })), "WYX");
+    }
     await emu.set_cdrom({ buffer: iso });
     cdFromFiles = true;
     $("filesSheet").classList.add("hidden");
-    toast(`Диск вставлен: ${nFiles(list.length)}, ${fmtSize(total)}. В Windows — «Мой компьютер» → CD-диск`, 5000);
+    toast(asIs ? `Диск ${list[0].name} вставлен в привод` : `Диск вставлен: ${nFiles(list.length)}, ${fmtSize(total)}. В Windows — «Мой компьютер» → CD-диск`, 5000);
     WA?.HapticFeedback.notificationOccurred("success");
   } catch (e) {
     toast(`Не удалось собрать диск: ${e.message || e}`, 4000);
