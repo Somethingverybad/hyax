@@ -589,6 +589,20 @@ export interface PlaylistTrack {
   playlist_name?: string;
 }
 
+/** Отложенное сообщение (сервер chat/scheduled.py): уйдёт само в send_at. */
+export interface ScheduledItem {
+  id: string;
+  chat: string;
+  send_at: string;
+  content: string;
+  entities?: { type: string; offset: number; length: number }[];
+  reply_to_id?: string | null;
+  effect?: string;
+  silent?: boolean;
+  /** Не ушло — почему (остаётся в списке, пока автор не решит). */
+  error?: string;
+}
+
 export interface PinnedInfo {
   id: string;
   sender_username: string;
@@ -2192,6 +2206,35 @@ export const api = {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { const e: any = new LError(body?.error || `HTTP ${res.status}`); e.body = body; throw e; }
     return body;
+  },
+
+  // ===== ОТЛОЖЕННЫЕ =====
+  listScheduled: async (chatId: string): Promise<ScheduledItem[]> => {
+    const res = await fetchWithAuth(`${API_URL}/scheduled/?chat=${chatId}`, { method: "GET", headers: authHeaders() });
+    if (!res.ok) return [];
+    return (await res.json()).scheduled || [];
+  },
+  scheduleMessage: async (body: { chat: string; send_at: string; content: string; entities?: unknown[]; reply_to_id?: string; reply_quote?: string; silent?: boolean }): Promise<ScheduledItem> => {
+    const res = await fetchWithAuth(`${API_URL}/scheduled/`, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось отложить сообщение");
+    return data;
+  },
+  rescheduleMessage: async (id: string, sendAt: string): Promise<ScheduledItem> => {
+    const res = await fetchWithAuth(`${API_URL}/scheduled/${id}/`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ send_at: sendAt }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось перенести");
+    return data;
+  },
+  deleteScheduled: async (id: string): Promise<void> => {
+    const res = await fetchWithAuth(`${API_URL}/scheduled/${id}/`, { method: "DELETE", headers: authHeaders() });
+    if (!res.ok && res.status !== 204) throw new LError((await res.json().catch(() => ({})))?.error || "Не удалось удалить");
+  },
+  sendScheduledNow: async (id: string): Promise<{ ok: boolean; message_id: string }> => {
+    const res = await fetchWithAuth(`${API_URL}/scheduled/${id}/send/`, { method: "POST", headers: authHeaders(), body: "{}" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось отправить");
+    return data;
   },
 
   // ===== MESSAGE READ STATUS =====

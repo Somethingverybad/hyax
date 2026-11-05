@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MESSAGE_EFFECTS, type MessageEffect } from "@/lib/effects";
 import { t as tr } from "@/lib/i18n";
@@ -17,7 +17,16 @@ import { t as tr } from "@/lib/i18n";
  * поля ввода, и клавиатура не сворачивается.
  */
 const ECHO_MS = 700;
-const EffectMenu = ({ anchor, onPick, onClose }: { anchor: DOMRect; onPick: (e: MessageEffect) => void; onClose: () => void }) => {
+/** Пункт над эффектами: «Без звука», «Отложить» (удержание «Отправить»). */
+export type SendAction = { key: string; icon: ReactNode; label: string; hint?: string; onPick: () => void };
+const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true }: {
+  anchor: DOMRect;
+  onPick: (e: MessageEffect) => void;
+  onClose: () => void;
+  actions?: SendAction[];
+  /** Показывать эффекты (их нет у вложений). */
+  effects?: boolean;
+}) => {
   const ref = useRef<HTMLDivElement>(null);
   const openedAt = useRef(Date.now());
   // Последнее отпускание пальца где угодно: click в ближайшие ECHO_MS — эхо касания.
@@ -43,12 +52,24 @@ const EffectMenu = ({ anchor, onPick, onClose }: { anchor: DOMRect; onPick: (e: 
     <div className="fixed inset-0 z-[90]" onMouseDown={keepFocus} onTouchEnd={viaTouch(onClose)} onClick={viaClick(onClose)}
       // Android после удержания сам шлёт contextmenu — первую секунду не закрываем.
       onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) onClose(); }}>
-      <div ref={ref} role="menu" aria-label={tr("Отправить с эффектом")}
+      <div ref={ref} role="menu" aria-label={tr(actions?.length ? "Как отправить" : "Отправить с эффектом")}
         className="fixed w-60 rounded-2xl bg-surface-2/95 border border-border shadow-xl py-1.5 animate-in fade-in zoom-in-95 duration-150"
         style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
         onClick={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
-        <p className="px-4 pt-1 pb-1.5 text-caption text-subtle">{tr("Отправить с эффектом")}</p>
-        {MESSAGE_EFFECTS.map((fx) => (
+        {actions?.map((a) => (
+          <button key={a.key} type="button" role="menuitem"
+            onMouseDown={keepFocus} onTouchEnd={viaTouch(a.onPick)} onClick={viaClick(a.onPick)}
+            className="w-full px-4 py-2 flex items-center gap-3 text-left active:bg-foreground/10">
+            <span className="w-7 flex justify-center shrink-0 text-primary" aria-hidden>{a.icon}</span>
+            <span className="min-w-0">
+              <span className="block text-body font-medium">{a.label}</span>
+              {a.hint && <span className="block text-caption text-subtle">{a.hint}</span>}
+            </span>
+          </button>
+        ))}
+        {effects && !!actions?.length && <div className="my-1 border-t border-border" />}
+        {effects && <p className="px-4 pt-1 pb-1.5 text-caption text-subtle">{tr(actions?.length ? "С эффектом" : "Отправить с эффектом")}</p>}
+        {effects && MESSAGE_EFFECTS.map((fx) => (
           <button key={fx.key} type="button" role="menuitem"
             onMouseDown={keepFocus} onTouchEnd={viaTouch(() => onPick(fx.key))} onClick={viaClick(() => onPick(fx.key))}
             className="w-full px-4 py-2 flex items-center gap-3 text-left active:bg-foreground/10">

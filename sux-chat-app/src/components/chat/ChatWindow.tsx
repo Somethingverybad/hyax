@@ -15,7 +15,7 @@ import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import { actionTemplate, type ActionView } from "@/lib/actionText";
 import type { ChatTranslate } from "@/api/client";
-import { Brush, Languages, Quote, TextSelect, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid, PawPrint } from "lucide-react";
+import { Brush, Languages, Quote, TextSelect, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid, PawPrint, BellOff } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
 import type { GeoFix } from "@/lib/geo";
 import ViewersSheet from "./ViewersSheet";
@@ -39,7 +39,8 @@ import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { api, isUploadCancelled, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
+import { api, isUploadCancelled, mediaUrl, NotificationSoundInfo, type PinnedInfo, type ScheduledItem } from "@/api/client";
+import { fmtWhen, ScheduledList, SchedulePicker } from "@/components/chat/ScheduleSheets";
 import { cn } from "@/lib/utils";
 import { quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { dateOf, dayKey, timeOf } from "@/lib/timeFormat";
@@ -215,6 +216,8 @@ interface Message {
   _failed?: boolean;
   /** Отправку отменили крестиком — «Отменено» вместо «Не отправлено». */
   _cancelled?: boolean;
+  /** Отправлено «без звука»: у получателя не звенит (и приложенный звук тоже). */
+  silent?: boolean;
   _rec?: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string };
   /** Вложение, которое не доехало, — для кнопки «Повторить». */
   _att?: Attach;
@@ -2040,7 +2043,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // До первой синхронизации молчим: то, что пришло, пока чат был закрыт, —
     // не «прямо сейчас».
     const withSound = primedRef.current
-      ? newMessages.find(m => m.sender?.id !== userId && m.sound?.url)
+      ? newMessages.find(m => m.sender?.id !== userId && m.sound?.url && !m.silent)
       : null;
     // Окно не в фокусе — звук сыграет уведомление (Chat.tsx), второй не нужен.
     if (withSound?.sound?.url && activeRef.current && appOnScreen()) void playSfx(mediaUrl(withSound.sound.url), { volume: 0.6 });
@@ -3040,16 +3043,20 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
-  // Удержание «Отправить» — меню эффектов: только для обычного текста (не
-  // правка, не вложения, не звук, не секретный чат).
+  // Удержание «Отправить» — меню: «Без звука» (и со вложениями), «Отложить» и
+  // эффекты — только для обычного текста (не правка, не вложения, не звук,
+  // не секретный чат).
   const [sendFx, setSendFx] = useState<DOMRect | null>(null);
   const sendHoldRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
   const canSendFx = () => !!draftRef.current.trim() && !attachments.length && !editing && !isSecret && !selectedSound && !uploading;
+  const canHoldSend = () => (!!draftRef.current.trim() || attachments.length > 0 || !!selectedSound) && !editing && !isSecret && !uploading;
+  // Отложить — текст в личку, группу или «Избранное» (сервер: chat/scheduled.py).
+  const canSchedule = () => canSendFx() && (!!saved || ["direct", "group", "saved"].includes(chatInfo?.kind || ""));
   const startSendHold = (el: HTMLElement) => {
     const h = sendHoldRef.current;
     h.fired = false;
     if (h.timer) clearTimeout(h.timer);
-    if (!canSendFx()) return;
+    if (!canHoldSend()) return;
     h.timer = setTimeout(() => {
       h.timer = null;
       h.fired = true;
@@ -3065,8 +3072,92 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     h.fired = false;
     return fired;
   };
-  const sendMessage = async (fx?: MessageEffectKind) => {
+
+  // Отложенные сообщения этого чата (мои): полоса над полем ввода и список.
+  // Уходят сами в срок (сервер), в ленту приходят обычным путём.
+  const [scheduled, setScheduled] = useState<ScheduledItem[]>([]);
+  const [schedulePick, setSchedulePick] = useState<{ silent: boolean } | null>(null);
+  const [scheduledOpen, setScheduledOpen] = useState(false);
+  const [moveFor, setMoveFor] = useState<ScheduledItem | null>(null);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  useEffect(() => {
+    setScheduled([]);
+    if (!chatId || isSecret) return;
+    let alive = true;
+    void api.listScheduled(chatId).then((l) => { if (alive) setScheduled(l); });
+    return () => { alive = false; };
+  }, [chatId, isSecret]);
+  // Ближайшее уйдёт — перечитать список (сервер шлёт с шагом 10 с).
+  useEffect(() => {
+    if (!chatId) return;
+    const next = scheduled.filter((x) => !x.error).map((x) => Date.parse(x.send_at)).sort((a, b) => a - b)[0];
+    if (!next) return;
+    const t = setTimeout(() => void api.listScheduled(chatId).then(setScheduled),
+      Math.min(24 * 3600 * 1000, Math.max(3000, next - Date.now() + 12000)));
+    return () => clearTimeout(t);
+  }, [scheduled, chatId]);
+  /** Отложить текст из поля ввода: уйдёт в when, поле очищаем как при отправке. */
+  const scheduleSend = async (when: Date, silent: boolean) => {
+    if (!chatId || scheduleBusy) return;
+    const rawText = draftRef.current.trim();
+    if (!rawText) { setSchedulePick(null); return; }
+    const { text, entities } = parseMarkupWithEmoji(rawText, customForTrimmed());
+    const reply = replyTo;
+    setScheduleBusy(true);
+    try {
+      const item = await api.scheduleMessage({
+        chat: chatId, send_at: when.toISOString(), content: text, entities,
+        ...(reply?.id ? { reply_to_id: reply.id } : {}), ...(reply?._quote ? { reply_quote: reply._quote } : {}),
+        ...(silent ? { silent: true } : {}),
+      });
+      setSchedulePick(null);
+      setDraft("");
+      setReplyTo(null);
+      reportActivity(chatId, "stop");
+      setScheduled((prev) => [...prev, item].sort((a, b) => Date.parse(a.send_at) - Date.parse(b.send_at)));
+      toast.success(tr("Отправится {when}", { when: fmtWhen(when) }));
+    } catch (e: any) {
+      toast.error(e?.message || tr("Не удалось отложить сообщение"));
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  const moveScheduled = async (item: ScheduledItem, when: Date) => {
+    setScheduleBusy(true);
+    try {
+      const upd = await api.rescheduleMessage(item.id, when.toISOString());
+      setScheduled((prev) => prev.map((x) => (x.id === item.id ? upd : x)).sort((a, b) => Date.parse(a.send_at) - Date.parse(b.send_at)));
+      setMoveFor(null);
+      toast.success(tr("Отправится {when}", { when: fmtWhen(when) }));
+    } catch (e: any) {
+      toast.error(e?.message || tr("Не удалось перенести"));
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  const sendScheduledNow = async (item: ScheduledItem) => {
+    try {
+      await api.sendScheduledNow(item.id);
+      setScheduled((prev) => prev.filter((x) => x.id !== item.id));
+      syncSince();
+    } catch (e: any) {
+      toast.error(e?.message || tr("Не удалось отправить"));
+      if (chatId) void api.listScheduled(chatId).then(setScheduled);
+    }
+  };
+  const deleteScheduled = async (item: ScheduledItem) => {
+    if (!(await confirmDialog(tr("Не отправлять это сообщение?"), { ok: tr("Удалить") }))) return;
+    try {
+      await api.deleteScheduled(item.id);
+      setScheduled((prev) => prev.filter((x) => x.id !== item.id));
+    } catch (e: any) {
+      toast.error(e?.message || tr("Не удалось удалить"));
+    }
+  };
+  const sendMessage = async (fx?: MessageEffectKind, opts: { silent?: boolean } = {}) => {
     const effect = isMessageEffect(fx) ? fx : undefined;
+    // «Без звука»: пуш у получателей без звука (Message.silent).
+    const silent = !!opts.silent && !isSecret;
     // Звук — самостоятельное сообщение: пузырь с одним аудио-стикером,
     // который получатель может проиграть. Текст для этого не нужен.
     if (!chatId || (!draftRef.current.trim() && !attachments.length && !selectedSound)) return;
@@ -3144,7 +3235,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         const sent = isSecret
           ? await api.sendSecretMessage(chatId, await encryptPayload(skey!.key, secretText), reply?.id)
           : await api.sendMessage(chatId, text || null, sound?.id, reply?.id, entities,
-              (reply?._quote || effect) ? { ...(reply?._quote ? { reply_quote: reply._quote } : {}), ...(effect ? { effect } : {}) } : undefined);
+              (reply?._quote || effect || silent) ? { ...(reply?._quote ? { reply_quote: reply._quote } : {}), ...(effect ? { effect } : {}), ...(silent ? { silent: true } : {}) } : undefined);
         if (isSecret) plainRef.current.set(sent.id, { cipher: sent.cipher, p: secretText });
         setMessages(prev =>
           prev.some(m => m.id === sent.id)
@@ -3197,6 +3288,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         // альбоме стояло на «0%», пока грузилось первое, — выглядело зависшим.
         _progress: -1,
         _att: att,
+        // Для «Повторить»: отправка без звука остаётся без звука.
+        silent: silent || undefined,
       };
       return { tempId, att, optimistic, content: first ? text : "", entities: first ? entities : undefined, soundId: first ? sound?.id : undefined, replyId: first ? reply?.id : undefined, replyQuote: first ? reply?._quote : undefined, albumId };
       });
@@ -3210,7 +3303,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => scrollToBottom(true), 50);
 
     for (const j of jobs) {
-      await sendAttachment(j.tempId, j.att, { content: j.content, entities: j.entities, soundId: j.soundId, replyId: j.replyId, replyQuote: j.replyQuote, albumId: j.albumId });
+      await sendAttachment(j.tempId, j.att, { content: j.content, entities: j.entities, soundId: j.soundId, replyId: j.replyId, replyQuote: j.replyQuote, albumId: j.albumId, silent });
     }
   };
 
@@ -3218,7 +3311,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const sendAttachment = async (
     tempId: string,
     att: Attach,
-    opts: { content?: string; entities?: TextEntity[]; soundId?: string; replyId?: string; replyQuote?: string; albumId?: string | null } = {},
+    opts: { content?: string; entities?: TextEntity[]; soundId?: string; replyId?: string; replyQuote?: string; albumId?: string | null; silent?: boolean } = {},
   ) => {
     if (!chatId) return;
     // Чат запоминаем на старте: пока идёт загрузка, человек мог перейти в
@@ -3252,7 +3345,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         file_preview: uploadResult.preview ?? null,
         album_id: opts.albumId ?? null,
         entities: opts.entities,
-      }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file", opts.replyQuote ? { reply_quote: opts.replyQuote } : undefined);
+      }, opts.content || undefined, opts.soundId, opts.replyId, att.mode === "file",
+        (opts.replyQuote || opts.silent) ? { ...(opts.replyQuote ? { reply_quote: opts.replyQuote } : {}), ...(opts.silent ? { silent: true } : {}) } : undefined);
       // Подменяем временное сообщение настоящим, сохранив ключ рендера и
       // размеры — DOM не перемонтируется, картинка не мигает. Если
       // синхронизация уже принесла это сообщение по сокету/опросу — просто
@@ -5113,7 +5207,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           {failedGroup.some((m) => m._att) && (
                             <button type="button" onClick={(e) => {
                               e.stopPropagation();
-                              void (async () => { for (const m of failedGroup) if (m._att) await sendAttachment(m.id, m._att, { content: m.content || undefined, entities: m.entities || undefined, albumId: m.album_id }); })();
+                              void (async () => { for (const m of failedGroup) if (m._att) await sendAttachment(m.id, m._att, { content: m.content || undefined, entities: m.entities || undefined, albumId: m.album_id, silent: !!m.silent }); })();
                             }} className="underline">{tr("Повторить")}</button>
                           )}
                           <button type="button" onClick={(e) => { e.stopPropagation(); failedGroup.forEach(discardFailed); }} className="underline opacity-80">{tr("Удалить")}</button>
@@ -5539,6 +5633,16 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
               ))}
             </div>
           )}
+          {scheduled.length > 0 && (
+            <button type="button" onClick={() => setScheduledOpen(true)}
+              className="mb-2 w-full flex items-center gap-2 rounded-lg bg-surface-4 px-3 py-2 text-small text-left active:opacity-80">
+              <Clock className="w-4 h-4 text-primary shrink-0" />
+              <span className="flex-1 min-w-0 truncate">
+                {tr("Отложенные: {n}", { n: scheduled.length })} · {fmtWhen(new Date(scheduled[0].send_at))}
+              </span>
+              {scheduled.some((x) => x.error) && <span className="text-caption text-destructive shrink-0">{tr("не ушло")}</span>}
+            </button>
+          )}
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
               <span className="text-sm">{undoBar.ids.length > 1 ? tr("Удалено сообщений: {n}", { n: undoBar.ids.length }) : tr("Сообщение удалено")}</span>
@@ -5830,7 +5934,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onTouchStart={(e) => { e.preventDefault(); startSendHold(e.currentTarget); }}
                 onTouchEnd={(e) => { e.preventDefault(); if (endSendHold()) return; if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
                 onTouchCancel={() => endSendHold()}
-                onContextMenu={(e) => { e.preventDefault(); if (canSendFx()) setSendFx(e.currentTarget.getBoundingClientRect()); }}
+                onContextMenu={(e) => { e.preventDefault(); if (canHoldSend()) setSendFx(e.currentTarget.getBoundingClientRect()); }}
                 disabled={uploading}
                 aria-label={tr("Отправить")}
                 className="ui-compose-send h-11 w-11 p-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
@@ -6080,8 +6184,26 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onClose={() => setMediaOpen(false)} onJump={(id) => { setMediaOpen(false); void jumpToMessage(id); }} />
       )}
       {burst && <MessageEffect key={burst.key} play={burst} onDone={() => setBurst(null)} />}
+      {schedulePick && (
+        <SchedulePicker title={tr("Отложенная отправка")} busy={scheduleBusy}
+          onClose={() => setSchedulePick(null)} onPick={(d) => void scheduleSend(d, schedulePick.silent)} />
+      )}
+      {moveFor && (
+        <SchedulePicker title={tr("Перенести отправку")} initial={new Date(moveFor.send_at)} busy={scheduleBusy}
+          onClose={() => setMoveFor(null)} onPick={(d) => void moveScheduled(moveFor, d)} />
+      )}
+      {scheduledOpen && (
+        <ScheduledList items={scheduled} onClose={() => setScheduledOpen(false)}
+          onSendNow={(x) => void sendScheduledNow(x)} onMove={(x) => setMoveFor(x)} onDelete={(x) => void deleteScheduled(x)} />
+      )}
       {sendFx && (
-        <EffectMenu anchor={sendFx} onClose={() => setSendFx(null)}
+        <EffectMenu anchor={sendFx} onClose={() => setSendFx(null)} effects={canSendFx()}
+          actions={[
+            { key: "silent", icon: <BellOff className="w-5 h-5" />, label: tr("Без звука"), hint: tr("Уведомление придёт без звука"),
+              onPick: () => { setSendFx(null); void sendMessage(undefined, { silent: true }); } },
+            ...(canSchedule() ? [{ key: "later", icon: <Clock className="w-5 h-5" />, label: tr("Отложить"), hint: tr("Отправится в выбранное время"),
+              onPick: () => { setSendFx(null); setSchedulePick({ silent: false }); } }] : []),
+          ]}
           onPick={(fx) => { setSendFx(null); void sendMessage(fx); }} />
       )}
       {translateOpen && (

@@ -1101,7 +1101,8 @@ def _notify_new_message(message, profile, request):
                                 body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
                                 extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
                                 sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
-                                       else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None))
+                                       else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None),
+                                force_silent=bool(getattr(message, "silent", False)))
             recipients = recipients.exclude(id=message.action_target_id)
             # Остальным в группе — «Вася подмигивает Пете» на их языке.
             _who, _whom = profile.username, message.action_target.username
@@ -1131,6 +1132,8 @@ def _notify_new_message(message, profile, request):
             # Звук приложили к сообщению специально — играет и у тех, кто
             # выключил звук уведомлений.
             keep_sound=bool(message.sound_id),
+            # Отправили «без звука» — без звука у всех, поверх всего.
+            force_silent=bool(getattr(message, "silent", False)),
         )
     except Exception:
         logger.exception("push: не удалось поставить отправку")
@@ -2253,6 +2256,9 @@ class MessageViewSet(viewsets.ModelViewSet):
                 str(request.data.get('content') or '').strip() and not save_kwargs.get('file_url')
                 and not save_kwargs.get('poll') and not action_obj and not geo)):
             save_kwargs['effect'] = effect
+        # «Без звука»: пуш без звука у всех получателей (_notify_new_message).
+        if request.data.get('silent') in (True, 'true', '1', 1):
+            save_kwargs['silent'] = True
 
         # Сохраняем с данными
         message = serializer.save(**save_kwargs)

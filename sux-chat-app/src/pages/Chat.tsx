@@ -830,7 +830,9 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           const channelAvatar = d.chat_avatar || (chatRow as { avatar_url?: string | null } | undefined)?.avatar_url || "";
           // «Звук входящих» выключен: обычные сообщения — без звука, играет
           // только звук, приложенный к сообщению специально.
-          const silent = !!readCache<{ notify_silent?: boolean }>("user")?.notify_silent;
+          // Отправили «без звука» (Message.silent) — молчит всё, и приложенный звук тоже.
+          const quiet = !!(m as { silent?: boolean }).silent;
+          const silent = quiet || !!readCache<{ notify_silent?: boolean }>("user")?.notify_silent;
           showDesktopNotification({
             silent,
             title: fromChannel ? channelName : fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
@@ -842,7 +844,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
           // этом же сообщении звенит пуш, дублировать его в приложении не надо.
           // Порядок: аудио-стикер сообщения → «мой звук» отправителя → receive.
-          if (!Capacitor.isNativePlatform()) {
+          if (!Capacitor.isNativePlatform() && !quiet) {
             try {
               const custom = m.sound?.url || (silent ? null : (chatsRef.current.find((c) => String(c.id) === String(chatId)) as { notify_sound?: { url?: string } | null } | undefined)?.notify_sound?.url || m.sender?.notify_sound?.url);
               if (custom || !silent) void playSfx(custom ? mediaUrl(custom) : "/sounds/receive.mp3", { volume: 0.6 });

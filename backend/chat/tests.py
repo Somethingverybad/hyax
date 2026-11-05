@@ -3919,3 +3919,118 @@ class PlaylistEditTests(TestCase):
         # Владелец убрал обложку — у копии она осталась.
         client_for(self.me).delete(f"/api/playlists/{self.pl.id}/cover/")
         self.assertTrue(os.path.isfile(os.path.join(settings.MEDIA_ROOT, copy["cover_url"][len("/media/"):])))
+
+
+class SilentAndScheduledTests(TestCase):
+    """«Отправить без звука» и «Отложенная отправка» (меню по удержанию «Отправить»)."""
+
+    def setUp(self):
+        from unittest import mock
+        self.a, self.b, self.c = make_user("sc_a"), make_user("sc_b"), make_user("sc_c")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.a, self.b):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.pushes = []
+        patcher = mock.patch("chat.fcm.notify_profiles", side_effect=lambda *a, **kw: self.pushes.append(kw))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def schedule(self, who=None, **data):
+        from datetime import timedelta
+        from django.utils import timezone
+        body = {"chat": str(self.chat.id), "content": "привет из будущего",
+                "send_at": (timezone.now() + timedelta(hours=1)).isoformat(), **data}
+        return client_for(who or self.a).post("/api/scheduled/", body, format="json")
+
+    def test_silent_message_push_without_sound(self):
+        r = client_for(self.a).post("/api/messages/", {"chat": str(self.chat.id), "content": "тихо", "silent": True}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data["silent"])
+        self.assertTrue(Message.objects.get(id=r.data["id"]).silent)
+        self.assertTrue(self.pushes and self.pushes[-1].get("force_silent"))
+        r = client_for(self.a).post("/api/messages/", {"chat": str(self.chat.id), "content": "громко"}, format="json")
+        self.assertFalse(r.data["silent"])
+        self.assertFalse(self.pushes[-1].get("force_silent"))
+
+    def test_schedule_list_and_deliver(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import ScheduledMessage
+        from .scheduled import deliver_due
+        r = self.schedule(silent=True, effect="rain")
+        self.assertEqual(r.status_code, 201, r.data)
+        lst = client_for(self.a).get(f"/api/scheduled/?chat={self.chat.id}").data["scheduled"]
+        self.assertEqual([(x["content"], x["silent"]) for x in lst], [("привет из будущего", True)])
+        # Собеседник отложенного не видит — ни в списке, ни в ленте.
+        self.assertEqual(client_for(self.b).get(f"/api/scheduled/?chat={self.chat.id}").data["scheduled"], [])
+        self.assertFalse(Message.objects.filter(chat=self.chat).exists())
+        self.assertEqual(deliver_due(), 0)  # ещё рано
+        self.assertEqual(deliver_due(now=timezone.now() + timedelta(hours=2)), 1)
+        m = Message.objects.get(chat=self.chat)
+        self.assertEqual((m.content, m.sender_id, m.silent, m.effect), ("привет из будущего", self.a.id, True, "rain"))
+        self.assertFalse(ScheduledMessage.objects.exists())
+        self.assertTrue(self.pushes[-1].get("force_silent"))
+        # Второй проход ничего не шлёт повторно.
+        self.assertEqual(deliver_due(now=timezone.now() + timedelta(hours=2)), 0)
+        self.assertEqual(Message.objects.filter(chat=self.chat).count(), 1)
+
+    def test_schedule_checks(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        past = (timezone.now() - timedelta(minutes=1)).isoformat()
+        self.assertEqual(self.schedule(send_at=past).status_code, 400)
+        self.assertEqual(self.schedule(send_at="завтра").status_code, 400)
+        self.assertEqual(self.schedule(send_at=(timezone.now() + timedelta(days=400)).isoformat()).status_code, 400)
+        self.assertEqual(self.schedule(content="  ").status_code, 400)
+        self.assertEqual(self.schedule(who=self.c).status_code, 403)  # не участник
+        secret = Chat.objects.create(kind="secret")
+        ChatParticipant.objects.create(chat=secret, user=self.a)
+        self.assertEqual(self.schedule(chat=str(secret.id)).status_code, 403)
+        ch = Chat.objects.create(kind="channel", name="К")
+        ChatParticipant.objects.create(chat=ch, user=self.a, role="member")
+        self.assertEqual(self.schedule(chat=str(ch.id)).status_code, 403)
+        ChatParticipant.objects.filter(chat=ch, user=self.a).update(role="owner")
+        self.assertEqual(self.schedule(chat=str(ch.id)).status_code, 201)
+
+    def test_move_delete_send_now(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import ScheduledMessage
+        sid = self.schedule().data["id"]
+        later = (timezone.now() + timedelta(days=1)).isoformat()
+        self.assertEqual(client_for(self.b).patch(f"/api/scheduled/{sid}/", {"send_at": later}, format="json").status_code, 404)
+        r = client_for(self.a).patch(f"/api/scheduled/{sid}/", {"send_at": later}, format="json")
+        self.assertEqual(r.status_code, 200)
+        r = client_for(self.a).post(f"/api/scheduled/{sid}/send/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(Message.objects.filter(id=r.data["message_id"], chat=self.chat).exists())
+        self.assertFalse(ScheduledMessage.objects.filter(id=sid).exists())
+        sid2 = self.schedule().data["id"]
+        self.assertEqual(client_for(self.a).delete(f"/api/scheduled/{sid2}/").status_code, 204)
+        self.assertFalse(ScheduledMessage.objects.filter(id=sid2).exists())
+
+    def test_failed_delivery_kept_with_error(self):
+        """Автора убрали из чата до срока — не ушло, остаётся с ошибкой и не повторяется."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import ScheduledMessage
+        from .scheduled import deliver_due
+        sid = self.schedule().data["id"]
+        ChatParticipant.objects.filter(chat=self.chat, user=self.a).delete()
+        self.assertEqual(deliver_due(now=timezone.now() + timedelta(hours=2)), 0)
+        s = ScheduledMessage.objects.get(id=sid)
+        self.assertTrue(s.error)
+        self.assertIsNone(s.claimed_at)
+        self.assertFalse(Message.objects.filter(chat=self.chat).exists())
+        self.assertEqual(deliver_due(now=timezone.now() + timedelta(hours=3)), 0)
+
+    def test_claimed_elsewhere_not_sent_twice(self):
+        """Строку уже взял другой процесс — этот её не трогает."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import ScheduledMessage
+        from .scheduled import deliver_due
+        sid = self.schedule().data["id"]
+        ScheduledMessage.objects.filter(id=sid).update(claimed_at=timezone.now())
+        self.assertEqual(deliver_due(now=timezone.now() + timedelta(hours=2)), 0)
+        self.assertFalse(Message.objects.filter(chat=self.chat).exists())

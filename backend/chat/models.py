@@ -427,6 +427,10 @@ class Message(models.Model):
     # собирается в кучу внизу. Выбирают в меню по удержанию стикера или
     # кнопки «Отправить».
     effect = models.CharField(max_length=16, blank=True, default="")
+    # «Отправить без звука» (меню по удержанию «Отправить»): пуш у получателей
+    # приходит без звука — у всех и даже с приложенным аудио-стикером, —
+    # приложение у них тоже не звенит.
+    silent = models.BooleanField(default=False, db_default=False)
     # Оформление текста: [{"type": "bold", "offset": 0, "length": 5}, …],
     # offset/length в UTF-16 (как в JS). Текст в content остаётся чистым.
     # Типы и проверка — chat/formatting.py.
@@ -491,6 +495,28 @@ class MessageReadStatus(models.Model):
     
     class Meta:
         unique_together = ['message', 'user']  # Один статус на сообщение для каждого пользователя
+
+
+class ScheduledMessage(models.Model):
+    """Отложенное сообщение («Отложенная отправка» по удержанию «Отправить»).
+
+    payload — тело POST /api/messages/ (content, entities, reply_to_id, effect,
+    silent). В send_at фоновый цикл (chat/scheduled.py) отправляет его от
+    имени автора обычным путём — с пушами, упоминаниями и проверкой прав на
+    тот момент. Ушло — строка удаляется; не ушло — остаётся с error, автор
+    видит это в списке отложенных и решает сам."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="scheduled")
+    sender = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="scheduled")
+    send_at = models.DateTimeField(db_index=True)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+    # Взято на отправку (одним из процессов api) — второй не возьмёт.
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    error = models.CharField(max_length=300, blank=True, default="")
+
+    class Meta:
+        ordering = ["send_at"]
 
 
 class MessageEffectSeen(models.Model):

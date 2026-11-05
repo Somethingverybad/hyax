@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
+from .scheduled import ScheduledItemView, ScheduledListView, ScheduledSendView
 from .radio import StationsView, StationView, StationControlView, StationListenView
 from .webapp import WebAppInitView, WebAppDataView, WebAppCatalogView, wyx_user_page, wyx_link_page
 from .obs import ObsKeyView
@@ -113,6 +114,9 @@ urlpatterns = [
     path('radio/<uuid:pk>/listen/', StationListenView.as_view(), name='radio-listen'),
     path('playlists/tracks/upload/', PlaylistTrackUploadView.as_view(), name='playlist-upload-default'),
     path('playlists/<uuid:pk>/tracks/upload/', PlaylistTrackUploadView.as_view(), name='playlist-upload'),
+    path('scheduled/', ScheduledListView.as_view(), name='scheduled'),
+    path('scheduled/<uuid:pk>/', ScheduledItemView.as_view(), name='scheduled-item'),
+    path('scheduled/<uuid:pk>/send/', ScheduledSendView.as_view(), name='scheduled-send'),
     path('playlists/<uuid:pk>/tracks/reorder/', PlaylistReorderView.as_view(), name='playlist-reorder'),
     path('playlists/<uuid:pk>/cover/', PlaylistCoverView.as_view(), name='playlist-cover'),
     path('playlists/<uuid:pk>/tracks/', PlaylistTracksView.as_view(), name='playlist-tracks'),

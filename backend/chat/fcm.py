@@ -201,7 +201,7 @@ def _fcm_tokens(profiles, platforms=None, exclude_device=None):
 
 def notify_profiles(profiles, title, body, extra: dict | None = None,
                     sound: str | None = None, platforms=None, hide_body_for=None,
-                    keep_sound: bool = False, skip_devices=None):
+                    keep_sound: bool = False, skip_devices=None, force_silent: bool = False):
     """Пуш всем активным устройствам перечисленных профилей. Уходит в фоне.
     platforms — ограничить платформы (например, только android, если iOS
     уже получил VoIP-пуш о звонке). hide_body_for — id профилей, которым
@@ -235,7 +235,8 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
     # к уже загруженным объектам, база в фоне им не нужна.
     groups = {}
     for r in rows:
-        silent = bool(r[5]) and not keep_sound
+        # force_silent — сообщение отправили «без звука»: молчит у всех.
+        silent = force_silent or (bool(r[5]) and not keep_sound)
         groups.setdefault((norm(r[4]), r[3] in hide, silent), []).append(r)
     batches = []
     for (lang, hidden, silent), group in groups.items():

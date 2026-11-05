@@ -29,6 +29,10 @@ def get_websocket_urlpatterns():
 # онлайн живёт в его памяти (chat/presence.py). Только здесь, не в manage.py.
 from chat.metrics import start_sampler  # noqa: E402
 start_sampler()
+# Отложенные сообщения (chat/scheduled.py): по потоку на процесс, сообщение
+# захватывает один.
+from chat.scheduled import start_scheduler  # noqa: E402
+start_scheduler()
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
