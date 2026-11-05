@@ -6,18 +6,21 @@ import { EMOJI_SEQ } from "@/lib/notoEmoji";
  * разыгрываются у получателя один раз (и у отправителя сразу).
  *   • burst — «Глюк»: копии высыпаются по экрану всё быстрее, потом тают;
  *   • rain  — «Ливень»: копии разного размера падают сверху и собираются в
- *             кучу внизу, потом тают.
+ *             кучу внизу, потом тают;
+ *   • scream — «Скример»: одна копия резко выскакивает во весь экран,
+ *             трясётся с вибрацией и пропадает.
  * У стикера сыплется сам стикер, у текста — эмодзи из него, а без эмодзи —
  * сам текст пузырьками.
  */
-export type MessageEffect = "burst" | "rain";
+export type MessageEffect = "burst" | "rain" | "scream";
 
 export const MESSAGE_EFFECTS: { key: MessageEffect; label: string; hint: string; icon: string }[] = [
   { key: "burst", label: "Глюк", hint: "Высыплется по всему экрану", icon: "💥" },
   { key: "rain", label: "Ливень", hint: "Упадёт сверху и соберётся в кучу", icon: "🌧️" },
+  { key: "scream", label: "Скример", hint: "Выскочит во весь экран и затрясётся", icon: "😱" },
 ];
 
-export const isMessageEffect = (v: unknown): v is MessageEffect => v === "burst" || v === "rain";
+export const isMessageEffect = (v: unknown): v is MessageEffect => v === "burst" || v === "rain" || v === "scream";
 
 /** Что разыграть: стикер, эмодзи или текст. */
 export type EffectPlay = { kind: MessageEffect; sticker?: string; emoji?: string[]; text?: string };

@@ -18,6 +18,22 @@ import { applog } from "@/lib/applog";
  * поля ввода, и клавиатура не сворачивается.
  */
 const ECHO_MS = 700;
+
+/** Касания меню, открытого удержанием (см. выше): пункт — по touchend, click
+ *  сразу после любого касания — эхо iOS, mousedown не отнимает фокус. */
+export function useMenuTaps() {
+  const openedAt = useRef(Date.now());
+  const touchEndAt = useRef(0);
+  useEffect(() => {
+    const on = () => { touchEndAt.current = Date.now(); };
+    document.addEventListener("touchend", on, true);
+    return () => document.removeEventListener("touchend", on, true);
+  }, []);
+  const viaTouch = (fn: () => void) => (e: React.TouchEvent) => { e.stopPropagation(); fn(); };
+  const viaClick = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); if (Date.now() - touchEndAt.current > ECHO_MS) fn(); };
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault();
+  return { openedAt, viaTouch, viaClick, keepFocus };
+}
 /** Пункт над эффектами: «Без звука», «Отложить» (удержание «Отправить»). */
 export type SendAction = { key: string; icon: ReactNode; label: string; hint?: string; onPick: () => void };
 const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true }: {

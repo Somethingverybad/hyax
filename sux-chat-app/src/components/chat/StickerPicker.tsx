@@ -19,7 +19,7 @@ import type { NotificationSoundInfo, ChatActionInfo } from "@/api/client";
 import { ActionGrid } from "@/components/chat/ActionSheet";
 import { isAnimatedFile } from "@/lib/animMedia";
 import { useScrollMemory } from "@/lib/scrollMemory";
-import EffectMenu from "@/components/chat/EffectMenu";
+import StickerFxMenu from "@/components/chat/StickerFxMenu";
 import { applog } from "@/lib/applog";
 import type { MessageEffect } from "@/lib/effects";
 
@@ -975,7 +975,7 @@ const StickerPicker = ({
         document.body,
       )}
       {fxFor && (
-        <EffectMenu anchor={fxFor.rect} onClose={() => setFxFor(null)}
+        <StickerFxMenu url={fxFor.sticker.file_url} onClose={() => setFxFor(null)}
           onPick={(fx) => { const st = fxFor.sticker; applog.info(`sticker effect выбран: ${fx}`); setFxFor(null); bumpRecent(st); onSelect(st, fx); }} />
       )}
     </div>

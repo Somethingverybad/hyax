@@ -502,6 +502,8 @@ const en: Record<string, string> = {
   "ищу…": "searching…",
   "Стикеры по макросу": "Stickers for this keyword",
   "Сообщение удалено": "Message deleted",
+  "Скример": "Screamer",
+  "Выскочит во весь экран и затрясётся": "Jumps out full-screen and shakes",
   "Как отправить": "How to send",
   "С эффектом": "With effect",
   "Уведомление придёт без звука": "The notification arrives silently",

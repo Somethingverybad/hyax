@@ -3803,7 +3803,7 @@ class MessageEffectTests(TestCase):
 
     def test_text_effects(self):
         from .models import Message
-        for effect, expect in (("rain", "rain"), ("burst", "burst"), ("boom", "")):
+        for effect, expect in (("rain", "rain"), ("burst", "burst"), ("scream", "scream"), ("boom", "")):
             r = self.send(content=f"ура {effect}", effect=effect)
             self.assertEqual(r.status_code, 201, r.data)
             self.assertEqual(Message.objects.get(id=r.data["id"]).effect, expect)

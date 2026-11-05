@@ -89,6 +89,23 @@ const keepPoster = (src: string, p: Poster) => {
 const live = new Set<Player>();
 let liveWeight = 0;
 const queue: Player[] = [];
+/** Поставленные на паузу pauseTgs(true) — их и снимет pauseTgs(false). */
+const held = new Set<Player>();
+
+/**
+ * Пауза всех живых анимаций на экране — пока открыто меню эффектов стикера:
+ * под размытием они только грузили бы телефон, и меню выезжало рывками (баг-
+ * репорт e09e591f). Анимации, запущенные после, не трогаем.
+ */
+export function pauseTgs(on: boolean) {
+  if (on) {
+    for (const p of live) if (p.hold(true)) held.add(p);
+  } else {
+    for (const p of held) p.hold(false);
+    held.clear();
+    schedulePosters();
+  }
+}
 
 /** Выдать места ждущим (строго по очереди), остальным — застывший кадр. */
 function pump() {
@@ -103,9 +120,9 @@ function pump() {
 }
 
 let posterBusy = false;
-/** Застывший кадр ждущим — по одному за раз. */
+/** Застывший кадр ждущим — по одному за раз (на паузе — нет). */
 function schedulePosters() {
-  if (posterBusy) return;
+  if (posterBusy || held.size) return;
   const next = queue.find((p) => p.needsPoster());
   if (!next) return;
   posterBusy = true;
@@ -153,6 +170,8 @@ class Player {
   // Застывший кадр пробовали рисовать — второй раз не пытаемся.
   private posterTried = false;
   private posterJob: Promise<void> | null = null;
+  /** Пауза и продолжение живой анимации (любым движком). */
+  private pauser: ((on: boolean) => void) | null = null;
 
   constructor(private el: HTMLElement, private src: string, private loop: boolean, private renderer: Renderer, private onError: () => void) {
     observe(el, this);
@@ -209,6 +228,13 @@ class Player {
     if (this.state === "idle") this.text = null;
   }
 
+  /** Пауза (pauseTgs); true — было что ставить на паузу. */
+  hold(on: boolean): boolean {
+    if (!this.pauser) return false;
+    try { this.pauser(on); } catch { /* уже уничтожена */ }
+    return true;
+  }
+
   needsPoster() { return this.renderer === "canvas" && !this.posterTried && this.text != null && !posterFor(this.src, this.width()); }
 
   /** Первый кадр — временной анимацией: собрать, снять, уничтожить. */
@@ -262,6 +288,7 @@ class Player {
       const c = canvasIn(this.el);
       const a = new DL(thorConfig(c, text, this.loop, true));
       this.kill = () => { a.destroy(); c.remove(); };
+      this.pauser = (on) => (on ? a.pause() : a.play());
       // Первый кадр нарисован — застывший больше не нужен (иначе просвечивает).
       const first = () => { a.removeEventListener("render", first); thorOk = true; this.hidePoster(); };
       a.addEventListener("render", first);
@@ -292,6 +319,7 @@ class Player {
       if (this.state !== "live" || this.kill) return;
       const a: AnimationItem = lottie.loadAnimation({ container: this.el, renderer: this.renderer, loop: this.loop, autoplay: true, animationData: JSON.parse(text) });
       this.kill = () => a.destroy();
+      this.pauser = (on) => (on ? a.pause() : a.play());
       if (a.isLoaded) this.hidePoster(); else a.addEventListener("DOMLoaded", () => this.hidePoster());
       a.addEventListener(this.loop ? "loopComplete" : "complete", () => setTimeout(() => this.cycled(), 0));
     }).catch(() => { if (this.state === "live") { this.stopLive(false); this.state = "done"; this.onError(); pump(); } });
@@ -316,6 +344,8 @@ class Player {
     if (keepFrame) this.snapshot();
     this.kill?.();
     this.kill = null;
+    this.pauser = null;
+    held.delete(this);
     if (live.delete(this)) liveWeight -= this.weight;
   }
 
@@ -351,6 +381,39 @@ class Player {
     this.text = null;
     if (wasLive || i >= 0) pump();
   }
+}
+
+/** Своя анимация .tgs вне бюджета (один крупный стикер): элемент size×size с
+ *  холстом. Крупный стикер в меню эффектов и источник для копий в эффекте
+ *  (MessageEffect рисует её кадр в каждую копию — одна анимация на все). */
+export type TgsSource = { el: HTMLElement; canvas: HTMLCanvasElement; destroy: () => void };
+export async function tgsSource(src: string, size: number): Promise<TgsSource> {
+  const text = await loadTgsText(src);
+  const box = document.createElement("div");
+  // Пока не поставили на место — вне экрана, но с размером: по нему движок
+  // выставляет холст.
+  box.style.cssText = `position:fixed;left:-10000px;top:0;width:${size}px;height:${size}px;pointer-events:none`;
+  document.body.appendChild(box);
+  if (thorOk !== false) {
+    try {
+      const DL = await loadThor();
+      const c = canvasIn(box);
+      const a = new DL(thorConfig(c, text, true, true));
+      const ok = await new Promise<boolean>((res) => {
+        const first = () => { a.removeEventListener("render", first); res(true); };
+        a.addEventListener("render", first);
+        a.addEventListener("loadError", () => res(false));
+        setTimeout(() => res(false), 4000);
+      });
+      if (ok) { thorOk = true; return { el: box, canvas: c, destroy: () => { a.destroy(); box.remove(); } }; }
+      a.destroy();
+      c.remove();
+      if (thorOk === null) thorOk = false;
+    } catch { if (thorOk === null) thorOk = false; }
+  }
+  const lottie = await loadLottie();
+  const a = lottie.loadAnimation({ container: box, renderer: "canvas", loop: true, autoplay: true, animationData: JSON.parse(text) });
+  return { el: box, canvas: box.querySelector("canvas") as HTMLCanvasElement, destroy: () => { a.destroy(); box.remove(); } };
 }
 
 /** Проигрывать .tgs в элементе под присмотром бюджета; вернуть — снять. */

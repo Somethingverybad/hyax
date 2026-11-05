@@ -333,7 +333,7 @@ class ChatParticipant(models.Model):
 
 # Также добавим поле в модель Message для быстрого доступа
 # Эффекты получения сообщения (Message.effect) — тот же список в клиенте (lib/effects).
-MESSAGE_EFFECTS = ("burst", "rain")
+MESSAGE_EFFECTS = ("burst", "rain", "scream")
 
 
 class Message(models.Model):
