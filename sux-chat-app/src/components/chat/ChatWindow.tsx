@@ -324,6 +324,18 @@ const dateLocale = () => LOCALE[getLang()] || "ru-RU";
 const SERVER_PREVIEWS = new Set(["Стикер", "Видео-сообщение", "Голосовое сообщение", "Файл", "Сообщение", "📍 Геопозиция", "Зашифрованное сообщение"]);
 const serverPreview = (s: string | null | undefined) => (s && SERVER_PREVIEWS.has(s) ? tr(s) : s);
 
+/** Удаление на сервере: по одному запросу на сообщение, не больше четырёх
+ *  разом — пачка из режима выбора не забивает сеть. Ошибки молча, как раньше:
+ *  не удалилось — сообщение вернётся со следующей синхронизацией. */
+function removeMessages(ids: string[], scope: "me" | "all") {
+  const queue = [...ids];
+  const next = (): Promise<void> => {
+    const id = queue.shift();
+    return id ? api.removeMessage(id, scope).catch(() => {}).then(next) : Promise.resolve();
+  };
+  for (let i = 0; i < Math.min(4, queue.length); i++) void next();
+}
+
 /** Вторая галочка: сообщение прочитал кто-то кроме автора (в группе — хоть один). */
 const readByOthers = (m: Message) => (m.read_by || []).some((r) => r.id !== (m.sender?.id || m.sender_id));
 
@@ -579,12 +591,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setCollapsingIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
     }, EAT_MS);
   };
-  const [undoBar, setUndoBar] = useState<{ id: string; scope: "me" | "all"; message: Message } | null>(null);
+  // Отложенное удаление — одно сообщение из меню или пачка из режима выбора.
+  const [undoBar, setUndoBar] = useState<{ ids: string[]; scope: "me" | "all" } | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Отложенное удаление (5 с на «Отменить»): что именно, — чтобы при уходе из
    *  чата раньше срока удалить сразу, а не потерять (баг-репорты 4c10b648, b2c04526:
    *  «не удаляется из избранного» — удалили и сразу вышли, таймер снимался). */
-  const pendingDeleteRef = useRef<{ id: string; scope: "me" | "all" } | null>(null);
+  const pendingDeleteRef = useRef<{ ids: string[]; scope: "me" | "all" } | null>(null);
   // Настройки группы (клик по названию группы). Заголовок держим локально,
   // чтобы переименование отражалось сразу.
   const [groupOpen, setGroupOpen] = useState(false);
@@ -797,6 +810,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return n;
   });
   const selectedMessages = () => (selected ? messages.filter((m) => selected.has(m.id) && !m.pending) : []);
+  // Шторка «Удалить N сообщений?» из режима выбора.
+  const [deleteAsk, setDeleteAsk] = useState<Message[] | null>(null);
 
   const loadPinned = async () => {
     if (!chatId) return;
@@ -2757,22 +2772,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setSwipe(null);
   };
 
-  const commitDelete = (id: string, scope: "me" | "all") => {
-    if (pendingDeleteRef.current?.id === id) pendingDeleteRef.current = null;
-    api.removeMessage(id, scope).catch(() => {});
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-    setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  const commitDelete = (ids: string[], scope: "me" | "all") => {
+    if (pendingDeleteRef.current?.ids === ids) pendingDeleteRef.current = null;
+    removeMessages(ids, scope);
+    const gone = new Set(ids);
+    setMessages((prev) => prev.filter((m) => !gone.has(m.id)));
+    setHiddenIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
   };
-  const startDelete = (message: Message, scope: "me" | "all") => {
+  /** Удалить одно сообщение (меню) или пачку (режим выбора): сразу «съедаем»
+   *  из ленты, на сервер — через 5 с, пока можно нажать «Отменить». */
+  const startDelete = (list: Message[], scope: "me" | "all") => {
     closeMenu();
+    const ids = list.map((m) => m.id);
+    if (!ids.length) return;
     // Если уже есть отложенное удаление — закоммитим его сразу.
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
-    if (undoBar) commitDelete(undoBar.id, undoBar.scope);
-    eatThenHide([message.id]);
-    setUndoBar({ id: message.id, scope, message });
-    pendingDeleteRef.current = { id: message.id, scope };
+    if (undoBar) commitDelete(undoBar.ids, undoBar.scope);
+    eatThenHide(ids);
+    setUndoBar({ ids, scope });
+    pendingDeleteRef.current = { ids, scope };
     deleteTimerRef.current = setTimeout(() => {
-      commitDelete(message.id, scope);
+      commitDelete(ids, scope);
       setUndoBar(null);
       deleteTimerRef.current = null;
     }, 5000);
@@ -2781,13 +2801,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
     pendingDeleteRef.current = null;
     if (undoBar) {
-      setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
-      // Отменили, пока пузырь ещё «съедают», — вернуть его как был.
-      if (eatingIds.has(undoBar.id)) {
-        undoneRef.current.add(undoBar.id);
-        resetDeleteAnimation(rowOf(undoBar.id));
-        setEatingIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
-        setCollapsingIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
+      const ids = undoBar.ids;
+      setHiddenIds((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
+      // Отменили, пока пузыри ещё «съедают», — вернуть их как были.
+      const eating = ids.filter((i) => eatingIds.has(i));
+      if (eating.length) {
+        eating.forEach((i) => { undoneRef.current.add(i); resetDeleteAnimation(rowOf(i)); });
+        setEatingIds((prev) => { const n = new Set(prev); eating.forEach((i) => n.delete(i)); return n; });
+        setCollapsingIds((prev) => { const n = new Set(prev); eating.forEach((i) => n.delete(i)); return n; });
       }
     }
     setUndoBar(null);
@@ -3826,10 +3847,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         const pd = pendingDeleteRef.current;
         pendingDeleteRef.current = null;
         if (pd) {
-          api.removeMessage(pd.id, pd.scope).catch(() => {});
-          // И из кэша ленты — иначе при следующем входе оно показалось бы снова.
+          removeMessages(pd.ids, pd.scope);
+          // И из кэша ленты — иначе при следующем входе они показались бы снова.
           const cid = chatIdRef.current;
-          if (cid) void readMessages(cid).then((c) => c && writeMessages(cid, c.messages.filter((m: { id: string }) => m.id !== pd.id), c.syncedAt, c.hasMore));
+          const gone = new Set(pd.ids);
+          if (cid) void readMessages(cid).then((c) => c && writeMessages(cid, c.messages.filter((m: { id: string }) => !gone.has(m.id)), c.syncedAt, c.hasMore));
         }
       }
       soundStopRef.current?.();
@@ -3977,9 +3999,9 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         { label: tr("В плейлист"), icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && menuAudio.length > 0, onClick: () => { const list = menuAudio; closeMenu(); setPlaylistFor(list); } },
         { label: tr("Просмотры и реакции"), icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
         { label: tr("Пожаловаться"), icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
-        { label: tr("Удалить у себя"), icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete(menuMessage, "me") },
+        { label: tr("Удалить у себя"), icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete([menuMessage], "me") },
         // Чужое у всех — владелец группы и админ с правом «Удалять чужие сообщения».
-        { label: tr("Удалить у всех"), icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId || groupRights.includes("delete"), danger: true, onClick: () => startDelete(menuMessage, "all") },
+        { label: tr("Удалить у всех"), icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId || groupRights.includes("delete"), danger: true, onClick: () => startDelete([menuMessage], "all") },
         { label: tr("Выбрать"), icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
       ].filter((i) => i.show)
     : [];
@@ -5195,23 +5217,35 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         <div className="absolute bottom-0 inset-x-0 z-30 bg-surface-2 border-t border-border px-3 pt-2 pb-[calc(var(--sab)+8px)] flex items-center gap-2"
           style={{ marginBottom: "var(--mint-nav-space, 0px)" }}>
           <button type="button" onClick={() => setSelected(null)} className="p-2 -ml-2" aria-label={tr("Отменить выбор")}><X className="w-5 h-5" /></button>
-          <span className="text-body font-medium flex-1">{selected.size ? tr("Выбрано: {n}", { n: selected.size }) : tr("Выберите сообщения")}</span>
+          <span className="text-body font-medium flex-1 min-w-0 truncate">{selected.size ? tr("Выбрано: {n}", { n: selected.size }) : tr("Выберите сообщения")}</span>
+          <button
+            type="button"
+            disabled={!selected.size}
+            onClick={() => { const list = selectedMessages(); if (list.length) setDeleteAsk(list); }}
+            className="h-10 w-10 shrink-0 rounded-md bg-surface-4 text-destructive flex items-center justify-center disabled:opacity-40"
+            aria-label={tr("Удалить")} title={tr("Удалить")}
+          >
+            <Trash2 className="w-5 h-5" /></button>
           {!saved && (
+            // Значком, как «Удалить»: с подписями на узком экране не оставалось места для «Выбрано: N».
             <button
               type="button"
               disabled={!selected.size}
               onClick={() => void selectionToSaved()}
-              className="h-10 px-3 rounded-md bg-surface-4 text-body flex items-center gap-1.5 disabled:opacity-40"
+              className="h-10 w-10 shrink-0 rounded-md bg-surface-4 flex items-center justify-center disabled:opacity-40"
+              aria-label={tr("В избранное")} title={tr("В избранное")}
             >
-              <Bookmark className="w-4 h-4" />{tr("В избранное")}</button>
+              <Bookmark className="w-5 h-5" /></button>
           )}
           <button
             type="button"
             disabled={!selected.size}
             onClick={() => { const list = selectedMessages(); if (list.length) { setForwardFor(list); } }}
-            className="h-10 px-3 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center gap-1.5 disabled:opacity-40"
+            className="h-10 min-w-10 px-2.5 shrink-0 rounded-md bg-primary text-primary-foreground text-body font-semibold flex items-center justify-center gap-1.5 disabled:opacity-40"
+            aria-label={tr("Переслать")}
           >
-            <Forward className="w-4 h-4" />{tr("Переслать")}</button>
+            {/* Уже 390 px подпись не влезает рядом с «Выбрано: N» — только значок. */}
+            <Forward className="w-4 h-4" /><span className="wide-only">{tr("Переслать")}</span></button>
         </div>
       )}
 
@@ -5472,7 +5506,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           )}
           {undoBar && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-foreground text-background px-3 py-2">
-              <span className="text-sm">{tr("Сообщение удалено")}</span>
+              <span className="text-sm">{undoBar.ids.length > 1 ? tr("Удалено сообщений: {n}", { n: undoBar.ids.length }) : tr("Сообщение удалено")}</span>
               <button type="button" onClick={undoDelete} className="text-sm font-semibold underline">{tr("Отменить")}</button>
             </div>
           )}
@@ -6078,6 +6112,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
 
       {/* Пересылка: выбрать чат. Список приходит из Chat.tsx (там он уже есть),
           «Избранное» — первой строкой. */}
+      {/* «Удалить N сообщений?» из режима выбора: у себя — всегда, у всех —
+          если все свои или есть право группы «Удалять чужие сообщения». */}
+      {deleteAsk && (() => {
+        const n = deleteAsk.length;
+        const canAll = groupRights.includes("delete") || deleteAsk.every((m) => m.sender?.id === userId);
+        const go = (scope: "me" | "all") => { const list = deleteAsk; setDeleteAsk(null); setSelected(null); startDelete(list, scope); };
+        return (
+          <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={() => setDeleteAsk(null)}>
+            <div role="alertdialog" aria-modal="true"
+              className="bg-card border-t-2 md:border-2 border-border md:rounded-lg w-full md:w-[380px] p-4 pad-safe-bottom space-y-2"
+              onClick={(e) => e.stopPropagation()}>
+              <p className="text-body font-semibold pb-1">{n > 1 ? tr("Удалить сообщения: {n}?", { n }) : tr("Удалить сообщение?")}</p>
+              {canAll && (
+                <button type="button" onClick={() => go("all")}
+                  className="w-full h-11 rounded-md bg-destructive text-white text-small font-medium flex items-center justify-center gap-2 active:opacity-80">
+                  <Trash2 className="w-4 h-4" />{tr("Удалить у всех")}</button>
+              )}
+              <button type="button" onClick={() => go("me")}
+                className={cn("w-full h-11 rounded-md text-small font-medium flex items-center justify-center gap-2 active:opacity-80",
+                  canAll ? "bg-surface-4 text-foreground" : "bg-destructive text-white")}>
+                <Trash2 className="w-4 h-4" />{tr("Удалить у себя")}</button>
+              <button type="button" onClick={() => setDeleteAsk(null)}
+                className="w-full h-11 rounded-md bg-surface-4 text-foreground text-small font-medium active:opacity-80">{tr("Отмена")}</button>
+            </div>
+          </div>
+        );
+      })()}
       {actionFor && (
         <ActionSheet title={tr("Действие для {name}", { name: actionFor.username })} onClose={() => setActionFor(null)}
           onPick={(a) => { const t = actionFor; setActionFor(null); void sendAction(a, t.id); }} />

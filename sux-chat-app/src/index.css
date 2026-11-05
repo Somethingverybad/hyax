@@ -218,6 +218,18 @@ html, body, #root {
     background: hsl(var(--background) / 0.8);
     backdrop-filter: blur(10px);
   }
+
+  /* Подпись кнопки только на экране от 390 px. Вариант Tailwind min-[390px]:
+     не работает: экран md задан сырым запросом (tailwind.config), и тогда
+     min-[…]/max-[…] не генерируются. */
+  .wide-only {
+    display: none;
+  }
+  @media (min-width: 390px) {
+    .wide-only {
+      display: inline;
+    }
+  }
 }
 
 /* Адаптивные улучшения для мобильных устройств */
