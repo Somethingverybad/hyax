@@ -106,7 +106,7 @@ const activePackIdInit = (): string | null => {
 
 const StickerPicker = ({
   onSelect,
-  sounds = [],
+  sounds: catalog = [],
   selectedSoundId = null,
   onSelectSound,
   onSelectAction,
@@ -485,7 +485,12 @@ const StickerPicker = ({
   );
 
 
-  // Паки аудио-стикеров и их содержимое.
+  // Паки аудио-стикеров и их содержимое — только свои и добавленные, как в
+  // выборе звука уведомлений (SoundPicker): каталог /api/sounds/ отдаёт и все
+  // публичные паки, но лишь затем, чтобы телефон заранее скачал звуки друзей
+  // для пушей. Без этого в панели появлялись чужие паки, которые человек не добавлял.
+  const allowAdult = !!readCache<{ allow_adult?: boolean }>("user")?.allow_adult;
+  const sounds = catalog.filter((s) => (s.pack_mine ?? true) && (!s.pack_adult || allowAdult));
   // «Разное» — служебное имя для звуков без пака (его же отдаёт сервер): переводим только его.
   const packLabel = (n: string) => (n === "Разное" ? t("Разное") : n);
   const soundPackNames = Array.from(new Set(sounds.map((s) => s.pack_name || "Разное")));
