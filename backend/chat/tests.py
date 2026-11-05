@@ -4034,3 +4034,18 @@ class SilentAndScheduledTests(TestCase):
         ScheduledMessage.objects.filter(id=sid).update(claimed_at=timezone.now())
         self.assertEqual(deliver_due(now=timezone.now() + timedelta(hours=2)), 0)
         self.assertFalse(Message.objects.filter(chat=self.chat).exists())
+
+
+class EmailPromptOffTests(TestCase):
+    """«Больше не показывать» у предложения привязать почту — настройка аккаунта."""
+
+    def test_flag_saved_and_returned(self):
+        me = make_user("ep_me")
+        r = client_for(me).get("/api/profiles/current/")
+        self.assertIs(r.data["email_prompt_off"], False)
+        r = client_for(me).patch(f"/api/profiles/{me.id}/", {"email_prompt_off": True}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIs(client_for(me).get("/api/profiles/current/").data["email_prompt_off"], True)
+        # Чужому профилю не поставить.
+        other = make_user("ep_other")
+        self.assertNotEqual(client_for(other).patch(f"/api/profiles/{me.id}/", {"email_prompt_off": False}, format="json").status_code, 200)

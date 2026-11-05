@@ -14,6 +14,7 @@ import AuthQuote from "@/components/AuthQuote";
 import SuprematistBackdrop from "@/components/SuprematistBackdrop";
 import ForgotPassword from "@/components/ForgotPassword";
 import { onboardingDone, applyPendingAura } from "@/lib/onboarding";
+import { resetEmailPromptForLogin } from "@/lib/emailPrompt";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -56,11 +57,6 @@ const Auth = () => {
   // Пока токен есть, форму не показываем: иначе она успевала мелькнуть до
   // того, как проверка сессии уведёт в чат, и вход выглядел не бесшовным.
   const [checking, setChecking] = useState(!!localStorage.getItem("access_token"));
-  // Первый запуск на устройстве — сначала онбординг (язык, тема, аура).
-  useEffect(() => {
-    if (!localStorage.getItem("access_token") && !onboardingDone()) navigate("/onboarding", { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   // Пришли по ссылке на профиль (/u/<ник>) без сессии — после входа
   // возвращаем туда же, а не в общий список чатов. Только свои пути.
   const [params] = useSearchParams();
@@ -112,7 +108,10 @@ const Auth = () => {
 
       toast.success(t("Ого! Заработало"));
       await applyPendingAura();
-      navigate(next, { replace: true });
+      // Новый вход — предложение привязать почту можно показать снова.
+      resetEmailPromptForLogin();
+      // Первый вход на устройстве — сначала онбординг (язык, тема, аура, почта).
+      navigate(onboardingDone() ? next : `/onboarding?next=${encodeURIComponent(next)}`, { replace: true });
     } catch (error: any) {
       // Сервер отвечает подробностями в теле — показываем их, а не «Login failed 401».
       let text = error?.message || t("Произошла ошибка");

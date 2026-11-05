@@ -11,6 +11,7 @@ import { startCall as startCallGlobal } from "@/lib/calls";
 import { dismissChatNotifications, sweepReadNotifications } from "@/lib/chatNotifications";
 import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import BottomNav from "@/components/BottomNav";
+import EmailPrompt from "@/components/EmailPrompt";
 import { applog } from "@/lib/applog";
 import { t as tr } from "@/lib/i18n";
 import { clearMessageCache } from "@/lib/messageCache";
@@ -1214,6 +1215,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
         {/* Панель вкладок — только над списком и вкладками: при открытой переписке
             или канале она закрывала поле ввода (баг-репорт 94e2ce74). */}
         {!(tab === "chat" && selectedChatId) && <BottomNav />}
+        <EmailPrompt />
       </div>
     );
   }
@@ -1287,6 +1289,8 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       )}
       </div>
       <BottomNav />
+      {/* Почта для восстановления — тем, у кого её нет (раз за вход, lib/emailPrompt). */}
+      <EmailPrompt />
     </div>
   );
 };

@@ -357,6 +357,8 @@ export interface Profile {
   /** Почта для восстановления пароля (только свой профиль); verified — подтверждена кодом. */
   email?: string;
   email_verified?: boolean;
+  /** «Больше не показывать» у предложения привязать почту (lib/emailPrompt). */
+  email_prompt_off?: boolean;
   /** Когда менялись ник, аватар или аура — по нему устройства понимают, что кеш устарел. */
   identity_updated_at?: string;
   /** Только в своём профиле: видит админские разделы (мониторинг). */
@@ -2892,7 +2894,7 @@ export const api = {
   },
 
   // ===== ПРОФИЛЬ =====
-  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; notify_pet?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; quick_reaction?: { key: string; emoji?: string; custom?: { url: string; repaint?: boolean } } | null; language?: string; translate_in_default?: boolean; translate_out_default?: boolean; nav_tabs?: string[] | null }): Promise<any> => {
+  updateProfile: async (profileId: string, data: { username?: string; bio?: string; push_preview?: boolean; notify_silent?: boolean; notify_wall?: boolean; notify_pet?: boolean; rov_enabled?: boolean; allow_adult?: boolean; ringtone?: string; hide_online?: boolean; show_last_seen?: boolean; confirm_chats?: boolean; hide_from_search?: boolean; wall_enabled?: boolean; ideabox_enabled?: boolean; saved_visibility?: "all" | "selected" | "none"; notify_sound_id?: string | null; aura_color?: string; aura_text?: string; aura_presets?: { color: string; text: string }[]; aura_anim?: boolean; quick_reaction?: { key: string; emoji?: string; custom?: { url: string; repaint?: boolean } } | null; language?: string; translate_in_default?: boolean; translate_out_default?: boolean; nav_tabs?: string[] | null; email_prompt_off?: boolean }): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/profiles/${profileId}/`, {
       method: "PATCH",
       headers: authHeaders(),

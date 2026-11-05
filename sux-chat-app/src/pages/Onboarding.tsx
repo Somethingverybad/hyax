@@ -1,40 +1,60 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Aura, AURA_SWATCHES, DEFAULT_AURA } from "@/components/Aura";
 import Identicon from "@/components/Identicon";
 import { BUILTIN_THEMES, setTheme, useTheme } from "@/lib/theme";
 import { getLang, setLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
-import { markOnboarded, setPendingAura } from "@/lib/onboarding";
+import { applyPendingAura, markOnboarded, setPendingAura } from "@/lib/onboarding";
+import { emailPromptOff, emailPromptWanted, markEmailPromptShown } from "@/lib/emailPrompt";
+import EmailBindForm from "@/components/EmailBindForm";
+import { api, type Profile } from "@/api/client";
+import { readCache } from "@/lib/session-cache";
 import logo from "@/assets/logo.png";
 
 /**
- * Онбординг первого запуска: язык → тема → аура. Каждый шаг можно пропустить.
- * Язык и тема применяются сразу (ещё до входа), аура запоминается и уходит в
- * профиль после входа (lib/onboarding.ts). Показывается один раз на устройстве.
+ * Онбординг — сразу после первого входа или регистрации на устройстве (раньше
+ * был до входа): язык → тема → аура → почта для восстановления пароля (если её
+ * нет и не отказались насовсем, lib/emailPrompt). Каждый шаг можно пропустить.
+ * Язык и тема применяются сразу, аура уходит в профиль по «Готово».
+ * Показывается один раз на устройстве.
  */
 const Onboarding = () => {
   const navigate = useNavigate();
   const t = useT();
   const theme = useTheme();
+  const [params] = useSearchParams();
+  const nextRaw = params.get("next") || "";
+  const after = nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/chat";
   const [step, setStep] = useState(0);
   const [aura, setAura] = useState<string>("");
+  // Шаг почты — только тем, у кого её нет (профиль свежий — с сервера).
+  const [me, setMe] = useState<Profile | null>(() => readCache<Profile>("user"));
+  useEffect(() => {
+    if (!localStorage.getItem("access_token")) { navigate("/auth", { replace: true }); return; }
+    void api.getProfile().then((p) => setMe(p)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const withEmail = emailPromptWanted(me) || step === 3;
+  const last = withEmail ? 3 : 2;
+  useEffect(() => { if (step === 3) markEmailPromptShown(); }, [step]);
 
-  const finish = () => { markOnboarded(); navigate("/auth", { replace: true }); };
-  const next = () => { if (step >= 2) finish(); else setStep(step + 1); };
+  const finish = () => { markOnboarded(); void applyPendingAura(); navigate(after, { replace: true }); };
+  const next = () => { if (step >= last) finish(); else setStep(step + 1); };
 
-  const titles = [t("Выберите язык"), t("Выберите тему"), t("Выберите ауру")];
+  const titles = [t("Выберите язык"), t("Выберите тему"), t("Выберите ауру"), t("Почта для восстановления")];
   const hints = [
     t("Язык интерфейса. Поменять можно в профиле."),
     t("Как выглядит приложение. Темы можно менять и устанавливать чужие."),
     t("Цвет ауры видят собеседники, пока вы в сети."),
+    t("Если забудете пароль, код для входа придёт на эту почту. Это необязательно — привязать её можно и позже: Профиль → Конфиденциальность → Почта для восстановления."),
   ];
 
   return (
     <div className="h-screen flex flex-col bg-background pad-safe-top pad-safe-bottom">
       <div className="flex items-center justify-between px-4 pt-3">
-        <div className="flex gap-1.5">{[0, 1, 2].map((i) => <span key={i} className={`h-1.5 w-6 rounded-full ${i <= step ? "bg-primary" : "bg-surface-4"}`} />)}</div>
+        <div className="flex gap-1.5">{Array.from({ length: last + 1 }, (_, i) => <span key={i} className={`h-1.5 w-6 rounded-full ${i <= step ? "bg-primary" : "bg-surface-4"}`} />)}</div>
         <button type="button" onClick={next} className="text-small text-subtle px-2 py-1">{t("Пропустить")}</button>
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-6 max-w-md w-full mx-auto">
@@ -69,6 +89,8 @@ const Onboarding = () => {
           </div>
         )}
 
+        {step === 3 && <EmailBindForm autoFocus onBound={finish} />}
+
         {step === 2 && (
           <div className="space-y-5">
             <div className="flex justify-center py-2">
@@ -85,9 +107,17 @@ const Onboarding = () => {
           </div>
         )}
       </div>
-      <div className="px-5 pb-4 max-w-md w-full mx-auto">
-        <Button type="button" className="w-full h-12" onClick={next}>{step >= 2 ? t("Готово") : t("Далее")}</Button>
-      </div>
+      {step === 3 ? (
+        // Как в окне EmailPrompt: главная кнопка одна — «Отправить код», эти — текстом.
+        <div className="px-5 pb-4 max-w-md w-full mx-auto flex gap-2">
+          <Button type="button" variant="ghost" className="flex-1 h-11 font-medium" onClick={finish}>{t("Позже")}</Button>
+          <Button type="button" variant="ghost" className="flex-1 h-11 text-subtle" onClick={() => { void emailPromptOff(me); finish(); }}>{t("Больше не показывать")}</Button>
+        </div>
+      ) : (
+        <div className="px-5 pb-4 max-w-md w-full mx-auto">
+          <Button type="button" className="w-full h-12" onClick={next}>{step >= last ? t("Готово") : t("Далее")}</Button>
+        </div>
+      )}
     </div>
   );
 };
