@@ -417,11 +417,12 @@ function boot(state, stateRam) {
     acpi: false,
     autostart: true,
   });
-  emu.add_listener("emulator-started", () => { fit(); showHint(); });
+  emu.add_listener("emulator-started", () => { fit(); showHint(); keepSoundChoice(); });
   emu.add_listener("screen-set-size", () => requestAnimationFrame(fit));
   emu.add_listener("download-error", () => toast(preset ? "Не удалось загрузить диск с сервера — проверьте связь" : "Не удалось загрузить BIOS — проверьте связь", 4000));
   let last = 0, lastT = performance.now();
   statsTimer = setInterval(() => {
+    renderSound();
     if (!emu?.is_running()) { $("status").textContent = "Пауза"; return; }
     const n = emu.get_instruction_counter(), t = performance.now();
     const mips = (n - last) / (t - lastT) / 1000;
@@ -482,6 +483,48 @@ $("saveBtn").onclick = async () => {
   }
   $("saveBtn").disabled = false;
   storageInfo();
+};
+
+// ================= звук =================
+// v86 заводит звук (динамик и Sound Blaster 16) при включении машины, а браузер —
+// особенно на iPhone — пускает его, только если его запустили прямо по касанию.
+// Машину же часто включают после загрузки диска или снимка, уже не в касании, —
+// и звук молчал. Будим его первым касанием или клавишей; 🔊/🔇 — выключить и
+// включить (выбор запоминается). Чтобы звук не глушил переключатель «Без звука»
+// на iPhone — сеанс звука «воспроизведение», где движок это умеет.
+let soundOff = store.get("soundOff") === true;
+const audioCtx = () => emu?.speaker_adapter?.audio_context || null;
+try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch { /* нет такого API */ }
+function renderSound() {
+  const c = audioCtx();
+  const on = !!c && c.state === "running" && !soundOff;
+  $("soundBtn").textContent = on ? "🔊" : "🔇";
+  $("soundBtn").classList.toggle("on", on);
+}
+function wakeSound() {
+  const c = audioCtx();
+  if (!c || soundOff || c.state === "running") return;
+  void c.resume().then(renderSound, () => {});
+  // iPhone: короткий беззвучный звук внутри касания окончательно «открывает» звук.
+  try {
+    const s = c.createBufferSource();
+    s.buffer = c.createBuffer(1, 1, 22050);
+    s.connect(c.destination);
+    s.start(0);
+  } catch { /* не вышло — не страшно */ }
+}
+/** v86 сам включает звук при старте и после паузы — выключенный пусть молчит. */
+function keepSoundChoice() {
+  if (soundOff) void audioCtx()?.suspend();
+  setTimeout(renderSound, 200);
+}
+for (const ev of ["touchend", "pointerup", "keydown"]) document.addEventListener(ev, wakeSound, true);
+$("soundBtn").onclick = () => {
+  soundOff = !soundOff;
+  store.set("soundOff", soundOff);
+  if (soundOff) void audioCtx()?.suspend(); else wakeSound();
+  toast(soundOff ? "Звук выключен" : "Звук включён", 1500);
+  setTimeout(renderSound, 200);
 };
 
 // ================= файлы в машину =================
