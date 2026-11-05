@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { AnimationItem } from "lottie-web";
 import { mediaUrl } from "@/api/client";
-import { isTgs, loadLottie, loadTgs } from "@/components/chat/StickerView";
+import { isTgs } from "@/components/chat/StickerView";
+import { mountTgs } from "@/lib/tgsPlayer";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,18 +27,8 @@ const CustomEmoji = ({ url, alt, pack, repaint, loop = true, className, style }:
 
   useEffect(() => {
     if (!tgs || !box.current) return;
-    const el = box.current;
-    let anim: AnimationItem | null = null;
-    let io: IntersectionObserver | null = null;
-    let alive = true;
-    Promise.all([loadLottie(), loadTgs(src)]).then(([lottie, data]) => {
-      if (!alive) return;
-      // Перекраска — через svg: заливку его путей переопределяет CSS (.cemoji-repaint).
-      anim = lottie.loadAnimation({ container: el, renderer: repaint ? "svg" : "canvas", loop, autoplay: false, animationData: data });
-      io = new IntersectionObserver(([e]) => { if (anim) { if (e.isIntersecting) anim.play(); else anim.pause(); } }, { threshold: 0.1 });
-      io.observe(el);
-    }).catch(() => alive && setFailed(true));
-    return () => { alive = false; io?.disconnect(); anim?.destroy(); };
+    // Перекраска — через svg: заливку его путей переопределяет CSS (.cemoji-repaint).
+    return mountTgs(box.current, src, { loop, renderer: repaint ? "svg" : "canvas", onError: () => setFailed(true) });
   }, [src, tgs, loop, repaint]);
 
   const open = pack ? (e: React.MouseEvent) => {

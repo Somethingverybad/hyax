@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AnimationItem } from "lottie-web";
 import { mediaUrl } from "@/api/client";
+import { mountTgs } from "@/lib/tgsPlayer";
 import { useCachedImage } from "@/lib/imageCache";
 import { animVideo } from "@/lib/animMedia";
 import LoopVideo from "@/components/LoopVideo";
@@ -8,24 +8,15 @@ import LoopVideo from "@/components/LoopVideo";
 /**
  * Стикер любого формата: .webp/.png/.gif — картинка; .webm — видео
  * (телеграмовские видеостикеры); .tgs — анимация Lottie в gzip (телеграмовские
- * анимированные), распаковываем pako и крутим lottie-web на canvas.
- * Анимация играет только пока стикер на экране — в пикере их десятки.
+ * анимированные), распаковываем pako и крутим lottie-web на canvas — под
+ * присмотром lib/tgsPlayer: живая анимация только на экране и в пределах
+ * бюджета памяти, остальные — застывшим кадром.
  *
  * lottie-web и pako подгружаются при первом .tgs, а не при старте: вместе они
  * тянули на треть главного бандла, а нужны только тем, у кого есть
  * анимированные стикеры.
  */
-export const loadLottie = () => import("lottie-web").then((m) => m.default);
-const tgsCache = new Map<string, Promise<object>>();
-export const loadTgs = (url: string) => {
-  let p = tgsCache.get(url);
-  if (!p) {
-    p = Promise.all([fetch(url).then((r) => r.arrayBuffer()), import("pako")])
-      .then(([buf, { inflate }]) => JSON.parse(new TextDecoder().decode(inflate(new Uint8Array(buf)))));
-    tgsCache.set(url, p);
-  }
-  return p;
-};
+export { loadLottie, loadTgs } from "@/lib/tgsPlayer";
 
 export const isTgs = (u?: string | null) => !!u && /\.tgs(\?|$)/i.test(u);
 export const isWebm = (u?: string | null) => !!u && /\.webm(\?|$)/i.test(u);
@@ -38,21 +29,7 @@ const StickerView = ({ url, alt, className, loop = true }: { url: string; alt?: 
 
   useEffect(() => {
     if (!isTgs(src) || !box.current) return;
-    let anim: AnimationItem | null = null;
-    let alive = true;
-    const el = box.current;
-    Promise.all([loadLottie(), loadTgs(src)]).then(([lottie, data]) => {
-      if (!alive) return;
-      anim = lottie.loadAnimation({ container: el, renderer: "canvas", loop, autoplay: false, animationData: data });
-      const io = new IntersectionObserver(([e]) => { if (!anim) return; e.isIntersecting ? anim.play() : anim.pause(); }, { threshold: 0.1 });
-      io.observe(el);
-      (el as any).__io = io;
-    }).catch(() => alive && setError(true));
-    return () => {
-      alive = false;
-      (el as any).__io?.disconnect();
-      anim?.destroy();
-    };
+    return mountTgs(box.current, src, { loop, onError: () => setError(true) });
   }, [src, loop]);
 
   if (isTgs(src)) {
