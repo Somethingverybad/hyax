@@ -2963,6 +2963,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
     try {
       const sent = await api.sendMessageWithSticker(chatId, sticker.id, undefined, undefined, effect);
+      if (effect) applog.info(`sticker send effect=${effect} → сервер ${sent?.effect || "без эффекта"}`);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id)
           ? prev.filter((m) => m.id !== tempId)

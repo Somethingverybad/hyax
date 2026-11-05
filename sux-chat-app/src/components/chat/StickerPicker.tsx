@@ -20,6 +20,7 @@ import { ActionGrid } from "@/components/chat/ActionSheet";
 import { isAnimatedFile } from "@/lib/animMedia";
 import { useScrollMemory } from "@/lib/scrollMemory";
 import EffectMenu from "@/components/chat/EffectMenu";
+import { applog } from "@/lib/applog";
 import type { MessageEffect } from "@/lib/effects";
 
 interface Sticker {
@@ -128,6 +129,16 @@ const StickerPicker = ({
   // чтобы click после удержания не отправил стикер без эффекта.
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdFiredRef = useRef(false);
+  // Для журнала: когда и чем началось удержание — на iPhone эффекты у
+  // стикеров «не работают», а повторить это на стенде не выходит.
+  const holdStartRef = useRef<{ at: number; type: string }>({ at: 0, type: "" });
+  const holdBroke = (why: string) => {
+    if (!holdRef.current) return;
+    clearTimeout(holdRef.current);
+    holdRef.current = null;
+    const ms = Math.round(performance.now() - holdStartRef.current.at);
+    if (ms > 150) applog.info(`sticker hold сорвался: ${why} через ${ms} мс (${holdStartRef.current.type})`);
+  };
   const [fxFor, setFxFor] = useState<{ sticker: Sticker; rect: DOMRect } | null>(null);
   const [soundView, setSoundView] = useState<string | null>(() => {
     try { return localStorage.getItem("sound_pack") || null; } catch { return null; }
@@ -866,17 +877,23 @@ const StickerPicker = ({
                   holdFiredRef.current = false;
                   if (holdRef.current) clearTimeout(holdRef.current);
                   const el = e.currentTarget;
+                  holdStartRef.current = { at: performance.now(), type: e.pointerType };
                   holdRef.current = setTimeout(() => {
+                    holdRef.current = null;
                     holdFiredRef.current = true;
                     try { navigator.vibrate?.(10); } catch { /* нет вибрации */ }
+                    applog.info(`sticker hold: меню эффектов (${holdStartRef.current.type})`);
                     setFxFor({ sticker: s, rect: el.getBoundingClientRect() });
                   }, 450);
                 }}
-                onPointerUp={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
-                onPointerLeave={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
-                onPointerCancel={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+                onPointerUp={() => holdBroke("pointerup")}
+                onPointerLeave={() => holdBroke("pointerleave")}
+                onPointerCancel={() => holdBroke("pointercancel")}
                 onContextMenu={(e) => e.preventDefault()}
-                onClick={() => { if (holdFiredRef.current) { holdFiredRef.current = false; return; } if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else { bumpRecent(s); onSelect(s); } }}
+                onClick={() => {
+                  if (holdFiredRef.current) { holdFiredRef.current = false; applog.info("sticker hold: click после удержания пропущен"); return; }
+                  if (editMode && isAuthor) { setEditing(s); setEditKeyword(s.keyword || ""); } else { bumpRecent(s); onSelect(s); }
+                }}
                 style={{ touchAction: "pan-y" }}
                 className={cn("relative aspect-square rounded-lg p-1 active:scale-90 transition-transform select-none", editMode && isAuthor && "ring-1 ring-primary/50")}
               >
@@ -959,7 +976,7 @@ const StickerPicker = ({
       )}
       {fxFor && (
         <EffectMenu anchor={fxFor.rect} onClose={() => setFxFor(null)}
-          onPick={(fx) => { const st = fxFor.sticker; setFxFor(null); bumpRecent(st); onSelect(st, fx); }} />
+          onPick={(fx) => { const st = fxFor.sticker; applog.info(`sticker effect выбран: ${fx}`); setFxFor(null); bumpRecent(st); onSelect(st, fx); }} />
       )}
     </div>
   );

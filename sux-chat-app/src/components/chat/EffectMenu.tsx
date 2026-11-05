@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { createPortal } from "react-dom";
 import { MESSAGE_EFFECTS, type MessageEffect } from "@/lib/effects";
 import { t as tr } from "@/lib/i18n";
+import { applog } from "@/lib/applog";
 
 /**
  * Меню эффектов по удержанию стикера или кнопки «Отправить» (lib/effects):
@@ -39,6 +40,8 @@ const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true }: {
   const viaTouch = (fn: () => void) => (e: React.TouchEvent) => { e.stopPropagation(); fn(); };
   const viaClick = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); if (Date.now() - touchEndAt.current > ECHO_MS) fn(); };
   const keepFocus = (e: React.MouseEvent) => e.preventDefault();
+  // В журнал — чем закрыли мимо и через сколько после открытия (iPhone: «эффекты не работают»).
+  const closeBy = (how: string) => { applog.info(`effect menu закрыто мимо: ${how} через ${Date.now() - openedAt.current} мс`); onClose(); };
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -49,9 +52,14 @@ const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true }: {
     setPos({ left, top });
   }, [anchor]);
   return createPortal(
-    <div className="fixed inset-0 z-[90]" onMouseDown={keepFocus} onTouchEnd={viaTouch(onClose)} onClick={viaClick(onClose)}
+    // data-keep-panel: меню стикера рисуется вне панели стикеров, и касание по
+    // нему ChatWindow считал «тапом мимо» — панель закрывалась вместе с меню
+    // раньше, чем доходил выбор, стикер не уходил вовсе («эффекты у стикеров
+    // не работают»).
+    <div data-keep-panel className="fixed inset-0 z-[90]" onMouseDown={keepFocus}
+      onTouchEnd={viaTouch(() => closeBy("touchend"))} onClick={viaClick(() => closeBy("click"))}
       // Android после удержания сам шлёт contextmenu — первую секунду не закрываем.
-      onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) onClose(); }}>
+      onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) closeBy("contextmenu"); }}>
       <div ref={ref} role="menu" aria-label={tr(actions?.length ? "Как отправить" : "Отправить с эффектом")}
         className="fixed w-60 rounded-2xl bg-surface-2/95 border border-border shadow-xl py-1.5 animate-in fade-in zoom-in-95 duration-150"
         style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
