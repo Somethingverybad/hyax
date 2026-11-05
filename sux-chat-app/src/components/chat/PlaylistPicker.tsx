@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Check, ListMusic, Music2, Plus } from "lucide-react";
+import PlaylistCover from "@/components/music/PlaylistCover";
 import { api, type Playlist } from "@/api/client";
 import { cn } from "@/lib/utils";
 
@@ -152,7 +153,9 @@ const PlaylistPicker = ({ tracks, onClose }: {
                 onClick={() => void add(pl.id, plName(pl))}
                 className="w-full min-h-12 px-3 rounded-md flex items-center gap-3 text-left bg-surface-4 active:opacity-70 disabled:opacity-50"
               >
-                {pl.is_default ? <Music2 className="w-5 h-5 text-primary shrink-0" /> : <ListMusic className="w-5 h-5 text-primary shrink-0" />}
+                {pl.cover_url
+                  ? <PlaylistCover url={pl.cover_url} className="w-8 h-8 rounded" />
+                  : pl.is_default ? <Music2 className="w-5 h-5 text-primary shrink-0" /> : <ListMusic className="w-5 h-5 text-primary shrink-0" />}
                 <span className="flex-1 text-body truncate">{plName(pl)}</span>
                 <span className="text-small text-subtle">{pl.tracks_count ?? 0}</span>
               </button>

@@ -336,6 +336,7 @@ def _station_info(st, me, now, tracks=None, idx=None):
         "id": str(st.id),
         "name": st.playlist.name,
         "is_default": st.playlist.is_default,
+        "cover_url": st.playlist.cover_url or None,
         "playlist_id": str(st.playlist_id),
         "owner": _brief(st.owner),
         "channel": ({"id": str(st.channel.id), "name": st.channel.name, "avatar_url": st.channel.avatar_url}

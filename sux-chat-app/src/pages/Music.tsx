@@ -24,6 +24,8 @@ import ResumeButton from "@/components/music/ResumeButton";
 import ShareTrackButton from "@/components/music/ShareTrackButton";
 import PlaylistPicker, { type PickTrack } from "@/components/chat/PlaylistPicker";
 import { playPlaylist, resumeTrack } from "@/lib/playlistResume";
+import PlaylistCover from "@/components/music/PlaylistCover";
+import PlaylistEditor from "@/components/music/PlaylistEditor";
 
 /**
  * Музыка: плейлисты из того, что присылали в переписке.
@@ -199,6 +201,8 @@ const Music = () => {
   const [dragOver, setDragOver] = useState(false);
   const [open, setOpen] = useState<Playlist | null>(null);
   const [tracks, setTracks] = useState<PlaylistTrack[] | null>(null);
+  // Редактирование открытого плейлиста: обложка, название, порядок, подписи.
+  const [editing, setEditing] = useState(false);
   const cachedTracks = (id: string) =>
     (readCache<Record<string, PlaylistTrack[]>>("playlistTracks") || {})[id] || null;
   const rememberTracks = (id: string, rows: PlaylistTrack[]) => {
@@ -243,6 +247,7 @@ const Music = () => {
   };
 
   const openList = async (pl: Playlist) => {
+    setEditing(false);
     setOpen(pl);
     setTracks(cachedTracks(pl.id));  // из кеша — мгновенно, дальше обновим
     try {
@@ -266,14 +271,6 @@ const Music = () => {
     } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
   };
 
-  const rename = async (pl: Playlist) => {
-    const value = prompt(tr("Название плейлиста"), pl.name)?.trim();
-    if (!value || value === pl.name) return;
-    try {
-      const next = await api.renamePlaylist(pl.id, value);
-      setOpen(next); load();
-    } catch (e: any) { toast.error(e?.message || tr("Не получилось")); }
-  };
 
   const remove = async (pl: Playlist) => {
     if (!(await confirmDialog(tr("Удалить плейлист «{name}»? Сама музыка в переписке останется.", { name: playlistName(pl) })))) return;
@@ -502,7 +499,8 @@ const Music = () => {
           >
             <Share2 className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => rename(open)} className="ui-icon-btn p-2 text-muted-foreground" aria-label={tr("Переименовать")}>
+          <button type="button" onClick={() => setEditing(true)} disabled={tracks === null}
+            className="ui-icon-btn p-2 text-muted-foreground" aria-label={tr("Изменить плейлист")}>
             <Pencil className="w-4 h-4" />
           </button>
           {!open.is_default && (
@@ -521,6 +519,11 @@ const Music = () => {
             </div>
           ) : (
             <>
+            {open.cover_url && (
+              <div className="flex justify-center pb-1">
+                <PlaylistCover url={open.cover_url} isDefault={open.is_default} className="w-40 h-40 rounded-xl shadow-md" iconClass="w-12 h-12" />
+              </div>
+            )}
             {/* Прослушивания и лайки — от других; у личного плейлиста их нет, строку не показываем. */}
             {(open.is_public || !!open.share_token || !!open.plays || !!open.likes) && (
               <PlaylistStatsBar id={open.id} own plays={open.plays} likes={open.likes} className="px-1" />
@@ -633,6 +636,12 @@ const Music = () => {
         </div>
         <PlayerPanel onLive={openLive} />
         <BottomNav />
+        {editing && tracks && (
+          <PlaylistEditor playlist={open} tracks={tracks} title={playlistName(open)}
+            onCover={(pl) => { setOpen((o) => (o && o.id === pl.id ? { ...o, cover_url: pl.cover_url } : o)); load(); }}
+            onDone={(pl, rows) => { setEditing(false); setOpen(pl); setTracks(rows); rememberTracks(pl.id, rows); load(); }}
+            onCancel={() => setEditing(false)} />
+        )}
         {shareSheet && (
           <div className="fixed inset-0 z-[75] flex items-end" onClick={() => setShareSheet(false)}>
             <div className="absolute inset-0 bg-black/40" />
@@ -795,7 +804,9 @@ const Music = () => {
                     key={st.id}
                     leading={
                       <span className="relative shrink-0">
-                        <Identicon id={src.id} avatarUrl={src.avatar} className="w-9 h-9 rounded-md" />
+                        {st.cover_url
+                          ? <PlaylistCover url={st.cover_url} className="w-9 h-9 rounded-md" />
+                          : <Identicon id={src.id} avatarUrl={src.avatar} className="w-9 h-9 rounded-md" />}
                         <span className={cn("absolute -right-1 -bottom-1 w-4 h-4 rounded-full ring-2 ring-background flex items-center justify-center",
                           st.paused ? "bg-surface-4" : "bg-destructive")}>
                           <Radio className="w-2.5 h-2.5 text-white" />
@@ -820,7 +831,7 @@ const Music = () => {
             {lists.map((pl) => (
               <SettingsRow
                 key={pl.id}
-                icon={pl.is_default ? Music2 : ListMusic}
+                leading={<PlaylistCover url={pl.cover_url} isDefault={pl.is_default} className="w-9 h-9 rounded-md" />}
                 label={playlistName(pl)}
                 hint={[pl.is_public ? tr("Видят собеседники") : null, playsHint(pl.plays, pl.likes)].filter(Boolean).join(" · ") || undefined}
                 value={pluralTracks(pl.tracks_count || 0)}
@@ -846,7 +857,9 @@ const Music = () => {
             {shared.map((pl) => (
               <SettingsRow
                 key={pl.id}
-                leading={<Identicon id={pl.owner.id} avatarUrl={pl.owner.avatar_url} className="w-9 h-9 rounded-md shrink-0" />}
+                leading={pl.cover_url
+                  ? <PlaylistCover url={pl.cover_url} className="w-9 h-9 rounded-md" />
+                  : <Identicon id={pl.owner.id} avatarUrl={pl.owner.avatar_url} className="w-9 h-9 rounded-md shrink-0" />}
                 label={pl.is_default ? tr(pl.name) : pl.name}
                 hint={[pl.owner.username, playsHint(pl.plays, pl.likes)].filter(Boolean).join(" · ")}
                 value={pluralTracks(pl.tracks_count || 0)}

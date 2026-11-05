@@ -5880,8 +5880,108 @@ class PlaylistView(APIView):
             return Response({"error": "Плейлист не найден"}, status=404)
         if pl.is_default:
             return Response({"error": "«Моя музыка» не удаляется"}, status=400)
+        _drop_playlist_cover(pl)
         pl.delete()
         return Response(status=204)
+
+
+def _drop_playlist_cover(pl):
+    """Файл обложки — с диска (у копий плейлиста свой файл, см. _copy_playlist)."""
+    if not pl.cover_url or not pl.cover_url.startswith('/media/playlists/'):
+        return
+    path = os.path.join(settings.MEDIA_ROOT, pl.cover_url[len('/media/'):])
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+    except OSError:
+        logger.warning("Обложка плейлиста: не удалился файл %s", path)
+
+
+class PlaylistCoverView(APIView):
+    """POST /playlists/<pk>/cover/ — обложка (multipart, поле file; клиент
+    заранее ужимает до квадрата), DELETE — убрать. Только владелец."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        pl = Playlist.objects.filter(id=pk, owner=_prof(request)).first()
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        f = request.FILES.get('file')
+        if not f:
+            return Response({"error": "Файл не передан"}, status=400)
+        if f.size > 5 * 1024 * 1024:
+            return Response({"error": "Файл больше 5 МБ"}, status=400)
+        ext = os.path.splitext(f.name)[1].lower()
+        if ext not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
+            return Response({"error": "Только картинки"}, status=400)
+        target = os.path.join(settings.MEDIA_ROOT, 'playlists')
+        os.makedirs(target, exist_ok=True)
+        _drop_playlist_cover(pl)
+        # Случайный суффикс: при постоянном имени клиенты и CDN показывали бы прежнюю.
+        rel = os.path.join('playlists', f"pl_{pl.id}_{uuid.uuid4().hex[:8]}{ext}")
+        with open(os.path.join(settings.MEDIA_ROOT, rel), 'wb+') as dst:
+            for chunk in f.chunks():
+                dst.write(chunk)
+        pl.cover_url = f'/media/{rel}'
+        pl.save(update_fields=['cover_url', 'updated_at'])
+        return Response(PlaylistSerializer(pl).data)
+
+    def delete(self, request, pk):
+        pl = Playlist.objects.filter(id=pk, owner=_prof(request)).first()
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        _drop_playlist_cover(pl)
+        pl.cover_url = ""
+        pl.save(update_fields=['cover_url', 'updated_at'])
+        return Response(PlaylistSerializer(pl).data)
+
+
+class PlaylistReorderView(APIView):
+    """POST /playlists/<pk>/tracks/reorder/ {ids: [...]} — новый порядок треков.
+    Не названные (добавились, пока человек переставлял) идут следом в прежнем
+    порядке. Эфир этого плейлиста играет дальше тот же трек (chat/radio.py)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        pl = Playlist.objects.filter(id=pk, owner=_prof(request)).first()
+        if not pl:
+            return Response({"error": "Плейлист не найден"}, status=404)
+        ids = request.data.get('ids')
+        if not isinstance(ids, list) or len(ids) > 5000:
+            return Response({"error": "Нужен список ids"}, status=400)
+        from django.db import transaction
+        from .radio import before_playlist_change
+        with transaction.atomic():
+            before_playlist_change(pl.id)
+            rows = list(pl.tracks.select_for_update().order_by("position", "added_at"))
+            by_id = {str(t.id): t for t in rows}
+            order, seen = [], set()
+            for i in ids:
+                t = by_id.get(str(i))
+                if t and t.id not in seen:
+                    order.append(t)
+                    seen.add(t.id)
+            order += [t for t in rows if t.id not in seen]
+            changed = []
+            for n, t in enumerate(order, start=1):
+                if t.position != n:
+                    t.position = n
+                    changed.append(t)
+            if changed:
+                PlaylistTrack.objects.bulk_update(changed, ["position"])
+            # Якорь эфира — на новое место того же трека.
+            from .models import Station
+            for st in Station.objects.filter(playlist=pl, anchor_track__isnull=False):
+                pos = next((t.position for t in order if t.id == st.anchor_track_id), None)
+                if pos is not None and st.anchor_position != pos:
+                    st.anchor_position = pos
+                    st.save(update_fields=["anchor_position"])
+            pl.save(update_fields=["updated_at"])
+        return Response({
+            "playlist": PlaylistSerializer(pl, context={"me": pl.owner}).data,
+            "tracks": PlaylistTrackSerializer(pl.tracks.all(), many=True).data,
+        })
 
 
 class PlaylistShareView(APIView):
@@ -5952,6 +6052,16 @@ def _copy_playlist(pl, me):
         return Response({"error": "Слишком много плейлистов"}, status=409)
     name = pl.owner.username if pl.is_default else pl.name
     copy = Playlist.objects.create(owner=me, name=name[:60])
+    # Обложку — своим файлом: владелец оригинала может её сменить или удалить.
+    if pl.cover_url.startswith('/media/playlists/'):
+        src = os.path.join(settings.MEDIA_ROOT, pl.cover_url[len('/media/'):])
+        rel = os.path.join('playlists', f"pl_{copy.id}_{uuid.uuid4().hex[:8]}{os.path.splitext(src)[1]}")
+        try:
+            shutil.copyfile(src, os.path.join(settings.MEDIA_ROOT, rel))
+            copy.cover_url = f'/media/{rel}'
+            copy.save(update_fields=['cover_url'])
+        except OSError:
+            pass
     rows = [
         PlaylistTrack(playlist=copy, source=t.source, file_url=t.file_url,
                       title=t.title, artist=t.artist, duration=t.duration, position=t.position)
@@ -6013,7 +6123,7 @@ class PublicPlaylistsView(APIView):
             .order_by("-last")[:200]
         )
         return Response({"playlists": [
-            {"id": str(pl.id), "name": pl.name, "is_default": pl.is_default,
+            {"id": str(pl.id), "name": pl.name, "is_default": pl.is_default, "cover_url": pl.cover_url or None,
              "tracks_count": pl.n, "updated_at": pl.last, "owner": _owner_brief(pl.owner),
              "plays": pl.plays, "likes": pl.likes.count()}
             for pl in rows
@@ -6213,6 +6323,27 @@ class PlaylistTracksView(APIView):
              "already": not created},
             status=201 if created else 200,
         )
+
+    def patch(self, request, pk=None, track=None):
+        """{title?, artist?} — поправить подпись трека (только в своём плейлисте)."""
+        me = _prof(request)
+        row = PlaylistTrack.objects.filter(id=track, playlist_id=pk, playlist__owner=me).first()
+        if not row:
+            return Response({"error": "Трек не найден"}, status=404)
+        fields = []
+        if "title" in request.data:
+            title = str(request.data.get("title") or "").strip()[:200]
+            if not title:
+                return Response({"error": "Название пустое"}, status=400)
+            row.title = title
+            fields.append("title")
+        if "artist" in request.data:
+            row.artist = str(request.data.get("artist") or "").strip()[:200]
+            fields.append("artist")
+        if not fields:
+            return Response({"error": "Нечего менять"}, status=400)
+        row.save(update_fields=fields)
+        return Response(PlaylistTrackSerializer(row).data)
 
     def delete(self, request, pk=None, track=None):
         me = _prof(request)

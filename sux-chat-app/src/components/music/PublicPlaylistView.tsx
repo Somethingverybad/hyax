@@ -5,6 +5,7 @@ import { Check, ChevronLeft, Download, Flag, Pause, Play, Plus } from "lucide-re
 import ReportSheet from "@/components/ReportSheet";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
+import PlaylistCover from "@/components/music/PlaylistCover";
 import { api, type Playlist, type PlaylistTrack, type PublicPlaylist } from "@/api/client";
 import { playQueue, usePlayer, currentTrack, fmtTime, type Track } from "@/lib/player";
 import { cn } from "@/lib/utils";
@@ -74,6 +75,11 @@ const PublicPlaylistView = ({ item, onBack, onSaved }: {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
+        {item.cover_url && (
+          <div className="flex justify-center pb-1">
+            <PlaylistCover url={item.cover_url} className="w-40 h-40 rounded-xl shadow-md" iconClass="w-12 h-12" />
+          </div>
+        )}
         <div className="flex items-center gap-3 px-1">
           <Identicon id={item.owner.id} avatarUrl={item.owner.avatar_url} className="w-9 h-9 rounded-md shrink-0" />
           <p className="text-small text-subtle min-w-0 truncate">

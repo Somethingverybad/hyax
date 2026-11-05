@@ -6,6 +6,7 @@ import ShareToChat from "@/components/ShareToChat";
 import { shareStationLink, stationLink } from "@/lib/share";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import Identicon from "@/components/Identicon";
+import PlaylistCover from "@/components/music/PlaylistCover";
 import ReportSheet from "@/components/ReportSheet";
 import { api, type PlaylistTrack, type StationInfo } from "@/api/client";
 import { confirmDialog } from "@/lib/confirm";
@@ -120,7 +121,9 @@ const StationView = ({ item, onBack }: { item: StationInfo; onBack: () => void }
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ paddingBottom: "calc(16px + var(--mint-nav-space, 0px))" }}>
         <div className="flex items-center gap-3 px-1">
-          <Identicon id={src.id} avatarUrl={src.avatar} className="w-9 h-9 rounded-md shrink-0" />
+          {info.cover_url
+            ? <PlaylistCover url={info.cover_url} className="w-9 h-9 rounded-md" />
+            : <Identicon id={src.id} avatarUrl={src.avatar} className="w-9 h-9 rounded-md shrink-0" />}
           <div className="min-w-0 flex-1">
             <p className="text-small truncate"><b>{src.name}</b></p>
             <p className="text-caption text-subtle">

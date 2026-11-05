@@ -3810,3 +3810,112 @@ class MessageEffectTests(TestCase):
             self.assertEqual(r.data.get("effect"), expect)
         # Пустой текст — эффекту не к чему прицепиться.
         self.assertNotEqual(self.send(content="", effect="rain").status_code, 500)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PlaylistEditTests(TestCase):
+    """Редактирование плейлиста: порядок треков, подпись трека, обложка."""
+
+    def setUp(self):
+        from unittest import mock
+        patcher = mock.patch("chat.radio.fill_durations_later")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.me = make_user("dj")
+        self.fan = make_user("fan")
+        ch = Chat.objects.create(kind="direct")
+        for p in (self.me, self.fan):
+            ChatParticipant.objects.create(chat=ch, user=p)
+        self.pl = Playlist.objects.create(owner=self.me, name="Сет")
+        self.t = [PlaylistTrack.objects.create(playlist=self.pl, file_url=f"/media/music/{i}.mp3", title=f"T{i}",
+                                               position=i + 1, duration=100) for i in range(4)]
+
+    def order(self):
+        return [t.title for t in self.pl.tracks.order_by("position")]
+
+    def image(self, name="c.png"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(name, b"\x89PNG\r\n\x1a\n" + b"0" * 64, content_type="image/png")
+
+    def test_reorder(self):
+        ids = [str(self.t[i].id) for i in (2, 0, 3, 1)]
+        r = client_for(self.me).post(f"/api/playlists/{self.pl.id}/tracks/reorder/", {"ids": ids}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([t["title"] for t in r.data["tracks"]], ["T2", "T0", "T3", "T1"])
+        self.assertEqual(self.order(), ["T2", "T0", "T3", "T1"])
+
+    def test_reorder_partial_and_unknown_ids(self):
+        """Не названные идут следом в прежнем порядке, чужие id — мимо."""
+        ids = [str(self.t[3].id), "00000000-0000-0000-0000-000000000000", str(self.t[3].id)]
+        r = client_for(self.me).post(f"/api/playlists/{self.pl.id}/tracks/reorder/", {"ids": ids}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.order(), ["T3", "T0", "T1", "T2"])
+
+    def test_reorder_only_owner(self):
+        r = client_for(self.fan).post(f"/api/playlists/{self.pl.id}/tracks/reorder/", {"ids": []}, format="json")
+        self.assertEqual(r.status_code, 404)
+        r = client_for(self.me).post(f"/api/playlists/{self.pl.id}/tracks/reorder/", {"ids": "x"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_reorder_keeps_station_on_current_track(self):
+        """Плейлист в эфире: перестановка не сбивает играющий трек, дальше — новый порядок."""
+        r = client_for(self.me).post("/api/radio/", {"playlist_id": str(self.pl.id)}, format="json")
+        sid = r.data["station"]["id"]
+        ids = [str(self.t[i].id) for i in (3, 2, 1, 0)]
+        client_for(self.me).post(f"/api/playlists/{self.pl.id}/tracks/reorder/", {"ids": ids}, format="json")
+        st = client_for(self.fan).post(f"/api/radio/{sid}/listen/", {}, format="json").data
+        self.assertEqual(st["now"]["track"]["id"], str(self.t[0].id))
+        # T0 теперь последний — дальше по кругу снова с начала: T3, T2, T1.
+        self.assertEqual([n["track"]["title"] for n in st["next"]][:3], ["T3", "T2", "T1"])
+
+    def test_edit_track_title_artist(self):
+        url = f"/api/playlists/{self.pl.id}/tracks/{self.t[0].id}/"
+        r = client_for(self.me).patch(url, {"title": "  Новое  ", "artist": "Кто-то"}, format="json")
+        self.assertEqual((r.status_code, r.data["title"], r.data["artist"]), (200, "Новое", "Кто-то"))
+        self.assertEqual(client_for(self.me).patch(url, {"title": " "}, format="json").status_code, 400)
+        self.assertEqual(client_for(self.fan).patch(url, {"title": "x"}, format="json").status_code, 404)
+
+    def test_cover_upload_replace_delete(self):
+        import os
+        from django.conf import settings
+        url = f"/api/playlists/{self.pl.id}/cover/"
+        r = client_for(self.me).post(url, {"file": self.image()}, format="multipart")
+        self.assertEqual(r.status_code, 200)
+        first = r.data["cover_url"]
+        self.assertTrue(first.startswith("/media/playlists/"))
+        path1 = os.path.join(settings.MEDIA_ROOT, first[len("/media/"):])
+        self.assertTrue(os.path.isfile(path1))
+        # Новая обложка — новое имя, старый файл удалён.
+        second = client_for(self.me).post(url, {"file": self.image()}, format="multipart").data["cover_url"]
+        self.assertNotEqual(first, second)
+        self.assertFalse(os.path.isfile(path1))
+        # В списке плейлистов и в эфире обложка видна.
+        lst = client_for(self.me).get("/api/playlists/").data["playlists"]
+        self.assertIn(second, [p.get("cover_url") for p in lst])
+        r = client_for(self.me).delete(url)
+        self.assertEqual(r.data["cover_url"], "")
+        self.assertFalse(os.path.isfile(os.path.join(settings.MEDIA_ROOT, second[len("/media/"):])))
+
+    def test_cover_checks(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = f"/api/playlists/{self.pl.id}/cover/"
+        self.assertEqual(client_for(self.fan).post(url, {"file": self.image()}, format="multipart").status_code, 404)
+        doc = SimpleUploadedFile("x.pdf", b"%PDF", content_type="application/pdf")
+        self.assertEqual(client_for(self.me).post(url, {"file": doc}, format="multipart").status_code, 400)
+
+    def test_saved_copy_gets_own_cover_file(self):
+        """Сохранили открытый плейлист себе — у копии свой файл обложки."""
+        import os
+        from django.conf import settings
+        client_for(self.me).post(f"/api/playlists/{self.pl.id}/cover/", {"file": self.image()}, format="multipart")
+        self.pl.refresh_from_db()
+        self.pl.is_public = True
+        self.pl.save()
+        r = client_for(self.fan).post(f"/api/playlists/public/{self.pl.id}/", {}, format="json")
+        self.assertEqual(r.status_code, 201)
+        copy = r.data["playlist"]
+        self.assertTrue(copy["cover_url"].startswith("/media/playlists/"))
+        self.assertNotEqual(copy["cover_url"], self.pl.cover_url)
+        # Владелец убрал обложку — у копии она осталась.
+        client_for(self.me).delete(f"/api/playlists/{self.pl.id}/cover/")
+        self.assertTrue(os.path.isfile(os.path.join(settings.MEDIA_ROOT, copy["cover_url"][len("/media/"):])))

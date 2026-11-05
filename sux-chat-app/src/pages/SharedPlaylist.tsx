@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Download, Music2, Pause, Play } from "lucide-react";
+import PlaylistCover from "@/components/music/PlaylistCover";
 import { SettingsCard, SettingsRow } from "@/components/settings";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
 import { playQueue, usePlayer, currentTrack, fmtTime, type Track } from "@/lib/player";
@@ -71,6 +72,11 @@ const SharedPlaylist = () => {
         )}
         {state === "ok" && data && (
           <>
+            {data.playlist.cover_url && (
+              <div className="flex justify-center pb-1">
+                <PlaylistCover url={data.playlist.cover_url} isDefault={data.playlist.is_default} className="w-40 h-40 rounded-xl shadow-md" iconClass="w-12 h-12" />
+              </div>
+            )}
             <p className="px-1 text-small text-subtle">
               {/* Имя владельца — жирным: шаблон делим по {owner}, порядок слов задаёт перевод. */}
               {(() => { const [before, after = ""] = tr("Плейлист {owner}").split("{owner}"); return <>{before}<b>{data.owner}</b>{after}</>; })()}

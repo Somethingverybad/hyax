@@ -513,6 +513,8 @@ export interface Playlist {
   liked?: boolean;
   /** Где я остановился: трек и секунда (lib/playlistResume). */
   resume?: { track_id: string; position: number } | null;
+  /** Обложка владельца (/media/playlists/…); пусто — плитка со значком. */
+  cover_url?: string | null;
 }
 
 /** Прослушивания и лайки плейлиста (ответ play/like). */
@@ -524,6 +526,8 @@ export interface StationInfo {
   name: string;
   is_default: boolean;
   playlist_id: string;
+  /** Обложка плейлиста эфира. */
+  cover_url?: string | null;
   owner: { id: string; username: string; avatar_url?: string | null };
   /** Эфир от имени канала — его видят подписчики. */
   channel: { id: string; name: string; avatar_url?: string | null } | null;
@@ -568,6 +572,7 @@ export interface PublicPlaylist {
   owner: { id: string; username: string; avatar_url?: string | null };
   plays?: number;
   likes?: number;
+  cover_url?: string | null;
 }
 
 export interface PlaylistTrack {
@@ -2986,6 +2991,41 @@ export const api = {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(data?.error || "Не удалось добавить");
+    return data;
+  },
+
+  /** Новый порядок треков (все id плейлиста по порядку). */
+  reorderPlaylist: async (id: string, ids: string[]): Promise<{ playlist: Playlist; tracks: PlaylistTrack[] }> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${id}/tracks/reorder/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ ids }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось сохранить порядок");
+    return data;
+  },
+
+  /** Подпись трека в своём плейлисте. */
+  editTrack: async (playlistId: string, trackId: string, patch: { title?: string; artist?: string }): Promise<PlaylistTrack> => {
+    const res = await fetchWithAuth(`${API_URL}/playlists/${playlistId}/tracks/${trackId}/`, {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify(patch),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось сохранить");
+    return data;
+  },
+
+  /** Обложка плейлиста (уже ужатая клиентом картинка); null — убрать. */
+  setPlaylistCover: async (id: string, image: Blob | null): Promise<Playlist> => {
+    let res: Response;
+    if (image) {
+      const fd = new FormData();
+      fd.append("file", image, image.type === "image/png" ? "cover.png" : "cover.jpg");
+      res = await fetchWithAuthMultipart(`${API_URL}/playlists/${id}/cover/`, { method: "POST", body: fd });
+    } else {
+      res = await fetchWithAuth(`${API_URL}/playlists/${id}/cover/`, { method: "DELETE", headers: authHeaders() });
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(data?.error || "Не удалось сменить обложку");
     return data;
   },
 

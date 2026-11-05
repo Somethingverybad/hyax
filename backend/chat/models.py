@@ -933,6 +933,9 @@ class Playlist(models.Model):
     # плейлиста, по ссылке, из карточки в чате, в эфире. Повтор одним
     # человеком в течение получаса не считается (chat/playlist_stats.py).
     plays = models.PositiveIntegerField(default=0, db_default=0)
+    # Обложка — картинка владельца (/media/playlists/…, PlaylistCoverView);
+    # пусто — клиент рисует плитку сам.
+    cover_url = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

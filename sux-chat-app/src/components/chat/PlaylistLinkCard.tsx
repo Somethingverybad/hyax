@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, ChevronDown, ListMusic, Pause, Play, Plus } from "lucide-react";
+import PlaylistCover from "@/components/music/PlaylistCover";
 import { api, type Playlist, type PlaylistTrack } from "@/api/client";
 import { playlistLinkToken } from "@/lib/linkify";
 import { currentTrack, playQueue, toggle, usePlayer, type Track } from "@/lib/player";
@@ -103,9 +104,13 @@ const PlaylistLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
   return (
     <div className={box} onClick={(e) => e.stopPropagation()}>
       <button type="button" onClick={() => navigate(`/pl/${token}`)} className="w-full px-2.5 py-2 flex items-center gap-2.5 text-left">
-        <span className="w-10 h-10 shrink-0 rounded-md bg-surface-3 flex items-center justify-center">
-          <ListMusic className="w-5 h-5 text-primary" />
-        </span>
+        {data?.playlist.cover_url
+          ? <PlaylistCover url={data.playlist.cover_url} className="w-10 h-10 rounded-md" />
+          : (
+            <span className="w-10 h-10 shrink-0 rounded-md bg-surface-3 flex items-center justify-center">
+              <ListMusic className="w-5 h-5 text-primary" />
+            </span>
+          )}
         <span className="min-w-0 flex-1">
           <span className="block text-small font-medium truncate">{name}</span>
           <span className="block text-caption opacity-70 truncate">
