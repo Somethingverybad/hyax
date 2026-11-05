@@ -90,10 +90,12 @@ export function checkPass(pass, now = Date.now() / 1000) {
 }
 
 // ---------- готовые машины ----------
-// machines/<id>/machine.json: {"title", "ram", "hda": "файл", "cdrom": "файл"} —
-// файлы образов лежат рядом. Кладёт владелец сервера, из приложения не меняются.
+// machines/<id>/machine.json: {"title", "ram", "hda": "файл", "cdrom": "файл",
+// "start": "файл.gz"} — файлы лежат рядом. start — снимок уже включённой машины
+// (save_state v86, сжатый gzip): с него машина стартует сразу, без загрузки
+// системы. Кладёт владелец сервера, из приложения не меняются.
 
-const DRIVES = ["hda", "cdrom"];
+const DRIVES = ["hda", "cdrom", "start"];
 
 async function readMachine(id) {
   if (!/^[\w-]{1,40}$/.test(id)) return null;
@@ -103,7 +105,8 @@ async function readMachine(id) {
   for (const d of DRIVES) {
     if (!m[d] || /[\/\\]/.test(m[d])) continue;
     const file = join(MACHINES, id, m[d]);
-    try { out[d] = { size: (await stat(file)).size }; out.files[d] = file; } catch { /* файла нет — без этого диска */ }
+    // v — время изменения: образ заменили — куски, сохранённые на устройствах, не подойдут.
+    try { const st = await stat(file); out[d] = { size: st.size, v: Math.floor(st.mtimeMs) }; out.files[d] = file; } catch { /* файла нет — без этого диска */ }
   }
   return out.hda || out.cdrom ? out : null;
 }
@@ -114,7 +117,7 @@ export async function listMachines() {
   const list = [];
   for (const id of ids.sort()) {
     const m = await readMachine(id);
-    if (m) list.push({ id: m.id, title: m.title, ram: m.ram, hda: m.hda, cdrom: m.cdrom });
+    if (m) list.push({ id: m.id, title: m.title, ram: m.ram, hda: m.hda, cdrom: m.cdrom, start: m.start });
   }
   return list;
 }
@@ -125,7 +128,9 @@ async function serveDrive(req, res, id, drive) {
   if (!m?.files[drive]) return send(res, 404, "Нет такого диска");
   const size = m[drive].size;
   const headers = { "Accept-Ranges": "bytes", "Cache-Control": "private, max-age=86400" };
-  const r = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+  // Снимок отдаётся целиком, сжатым: браузер разожмёт его сам.
+  if (drive === "start") { delete headers["Accept-Ranges"]; if (m.files.start.endsWith(".gz")) headers["Content-Encoding"] = "gzip"; }
+  const r = drive !== "start" && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
   let start = 0, end = size - 1, code = 200;
   if (r) {
     start = r[1] ? Number(r[1]) : Math.max(0, size - Number(r[2]));

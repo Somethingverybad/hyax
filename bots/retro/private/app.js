@@ -176,10 +176,50 @@ function renderMachines() {
     btn(meta ? "▶ Заново" : "▶ Включить", meta ? "" : "primary", () => {
       if (meta && !confirm("Включить заново? Сохранение останется — к нему можно вернуться кнопкой «Продолжить».")) return;
       preset = m;
-      boot(null, m.ram);
+      if (!m.start) return boot(null, m.ram);
+      startFrom(m);
     });
     return row;
   }));
+}
+
+/** Снимок уже включённой машины: Windows не грузится заново. Скачивается один раз, потом лежит на устройстве. */
+async function startFrom(m) {
+  if (!$("startProgress").classList.contains("hidden")) return; // уже грузится
+  const name = `start-${m.id}.bin`, ver = `${m.start.size}:${m.start.v}`;
+  let state = store.get(`start:${m.id}`) === ver && await opfsRead(name);
+  if (state) return boot(await state.arrayBuffer(), m.ram);
+  const bar = $("startProgress");
+  const show = (text, p) => { bar.querySelector("i").style.width = `${Math.round(p * 100)}%`; bar.querySelector("span").textContent = text; };
+  bar.classList.remove("hidden");
+  show("Загружаю машину…", 0);
+  try {
+    const r = await fetch(new URL(`m/${m.id}/start`, import.meta.url));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    // Сжатый размер известен, разжатый — нет: полоса идёт по сжатому с запасом.
+    const reader = r.body.getReader(), parts = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      got += value.length;
+      show(`Загружаю машину… ${fmtSize(got)}`, Math.min(0.95, got / (m.start.size * 3)));
+    }
+    const buf = new Uint8Array(got);
+    let at = 0;
+    for (const p of parts) { buf.set(p, at); at += p.length; }
+    bar.classList.add("hidden");
+    try {
+      await opfsWrite(name, buf.buffer);
+      store.set(`start:${m.id}`, ver);
+    } catch { /* места нет — в другой раз скачается снова */ }
+    boot(buf.buffer, m.ram);
+  } catch (e) {
+    bar.classList.add("hidden");
+    toast(`Не удалось загрузить машину: ${e.message || e}. Включаю с нуля.`, 4000);
+    boot(null, m.ram);
+  }
 }
 
 async function loadMachines() {
@@ -190,10 +230,141 @@ async function loadMachines() {
   renderMachines();
 }
 
-/** Ссылка на диск машины: v86 читает его кусками через Range, целиком не качает. */
-const remote = (m, d) => m[d] && {
-  url: new URL(`m/${m.id}/${d}`, import.meta.url).href, size: m[d].size, async: true, fixed_chunk_size: 256 * 1024,
-};
+// ================= диск с сервера =================
+// Читается кусками по 256 КБ (Range). Скачанный кусок остаётся в IndexedDB —
+// в следующий раз диск читается с устройства, без ожидания сети. Записанное
+// машиной живёт в памяти блоками по 256 байт и уходит в 💾 — в том же виде, что
+// у дисков v86, так что прежние сохранения подходят.
+
+const CHUNK = 256 * 1024, BLOCK = 256;
+const MEM_CHUNKS = 160; // ~40 МБ кусков в памяти, остальное — из IndexedDB
+
+let idb = null;
+function chunkDb() {
+  idb ||= new Promise((ok) => {
+    try {
+      const r = indexedDB.open("retro-disk", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("chunks");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => ok(null);
+    } catch { ok(null); }
+  });
+  return idb;
+}
+async function chunkGet(key) {
+  const db = await chunkDb();
+  if (!db) return null;
+  return new Promise((ok) => {
+    try {
+      const r = db.transaction("chunks").objectStore("chunks").get(key);
+      r.onsuccess = () => ok(r.result || null);
+      r.onerror = () => ok(null);
+    } catch { ok(null); }
+  });
+}
+async function chunkPut(key, data) {
+  const db = await chunkDb();
+  try { db?.transaction("chunks", "readwrite").objectStore("chunks").put(data, key); } catch { /* места нет — скачаем снова */ }
+}
+
+class NetDisk {
+  constructor(url, size, key) {
+    this.url = url;
+    this.byteLength = size;
+    this.key = key;
+    this.mem = new Map();     // кусок → данные, по давности обращения
+    this.pending = new Map(); // кусок → обещание загрузки
+    this.written = new Map(); // блок → данные, записанные машиной
+    this.last = -2;
+    this.onload = this.onprogress = undefined;
+  }
+  load() { this.onload?.(Object.create(null)); }
+
+  chunk(i) {
+    const c = this.mem.get(i);
+    if (c) { this.mem.delete(i); this.mem.set(i, c); return c; }
+    let p = this.pending.get(i);
+    if (!p) {
+      p = this.fetchChunk(i).then((data) => {
+        this.mem.set(i, data);
+        if (this.mem.size > MEM_CHUNKS) this.mem.delete(this.mem.keys().next().value);
+        return data;
+      }).finally(() => this.pending.delete(i));
+      this.pending.set(i, p);
+    }
+    return p;
+  }
+
+  async fetchChunk(i) {
+    const key = `${this.key}:${i}`;
+    const saved = await chunkGet(key);
+    if (saved) return saved;
+    const start = i * CHUNK, end = Math.min(start + CHUNK, this.byteLength) - 1;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetch(this.url, { headers: { Range: `bytes=${start}-${end}` } });
+        if (r.status !== 206) throw new Error(`HTTP ${r.status}`);
+        const data = new Uint8Array(await r.arrayBuffer());
+        chunkPut(key, data);
+        return data;
+      } catch (e) {
+        // Мобильная сеть моргнула — машина подождёт, но не сломается.
+        if (attempt === 2) toast("Связь с сервером плохая — диск читается медленно", 4000);
+        await new Promise((ok) => setTimeout(ok, Math.min(1000 * 2 ** attempt, 15000)));
+      }
+    }
+  }
+
+  get(offset, len, cb) {
+    const first = Math.floor(offset / CHUNK), last = Math.floor((offset + len - 1) / CHUNK);
+    // Чтение подряд — подкачиваем следующие куски заранее, пока машина занята этим.
+    if (first === this.last || first === this.last + 1) {
+      for (let i = last + 1; i <= last + 2 && i * CHUNK < this.byteLength; i++) this.chunk(i);
+    }
+    this.last = last;
+    const parts = [];
+    for (let i = first; i <= last; i++) parts.push(this.chunk(i));
+    if (parts.every((p) => p instanceof Uint8Array)) cb(this.assemble(offset, len, parts));
+    else Promise.all(parts).then((chunks) => cb(this.assemble(offset, len, chunks)));
+  }
+  get_and_cache(offset, len, cb) { this.get(offset, len, cb); }
+  /** Без ожидания: v86 так читает таблицу разделов — она уже в памяти после get_and_cache. */
+  get_from_cache(offset, len) {
+    const chunks = [];
+    for (let i = Math.floor(offset / CHUNK); i * CHUNK < offset + len; i++) {
+      const c = this.mem.get(i);
+      if (!c) return undefined;
+      chunks.push(c);
+    }
+    return this.assemble(offset, len, chunks);
+  }
+  assemble(offset, len, chunks) {
+    const out = new Uint8Array(len), first = Math.floor(offset / CHUNK);
+    chunks.forEach((c, n) => {
+      const base = (first + n) * CHUNK;
+      const from = Math.max(offset, base), to = Math.min(offset + len, base + c.length);
+      out.set(c.subarray(from - base, to - base), from - offset);
+    });
+    if (this.written.size) {
+      for (let b = offset / BLOCK, n = 0; n < len / BLOCK; b++, n++) {
+        const w = this.written.get(b);
+        if (w) out.set(w, n * BLOCK);
+      }
+    }
+    return out;
+  }
+
+  set(offset, data, cb) {
+    for (let b = offset / BLOCK, n = 0; n < data.length / BLOCK; b++, n++) this.written.set(b, data.slice(n * BLOCK, (n + 1) * BLOCK));
+    cb();
+  }
+  get_buffer(cb) { cb(); }
+  get_state() { return [[...this.written]]; }
+  set_state(s) { this.written = new Map(s[0]); }
+}
+
+/** Диск машины: целиком не качается, кусок читается, когда он понадобился. */
+const remote = (m, d) => m[d] && new NetDisk(new URL(`m/${m.id}/${d}`, import.meta.url).href, m[d].size, `${m.id}:${d}:${m[d].size}:${m[d].v || 0}`);
 
 // ================= машина =================
 

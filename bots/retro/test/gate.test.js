@@ -3,13 +3,15 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 
 const BOT = "test-bot-token";
 const dir = mkdtempSync(join(tmpdir(), "retro-"));
 writeFileSync(join(dir, "allow.txt"), "# владелец\n@Owner\nid-friend\n");
 mkdirSync(join(dir, "machines", "game"), { recursive: true });
-writeFileSync(join(dir, "machines", "game", "machine.json"), JSON.stringify({ title: "Игра", ram: 128, hda: "disk.img", cdrom: "../../allow.txt" }));
+writeFileSync(join(dir, "machines", "game", "machine.json"), JSON.stringify({ title: "Игра", ram: 128, hda: "disk.img", cdrom: "../../allow.txt", start: "start.bin.gz" }));
 writeFileSync(join(dir, "machines", "game", "disk.img"), Buffer.from(Array.from({ length: 4096 }, (_, i) => i & 255)));
+writeFileSync(join(dir, "machines", "game", "start.bin.gz"), gzipSync(Buffer.alloc(100000, 7)));
 process.env.HYAX_BOT_TOKEN = BOT;
 process.env.DATA_DIR = dir;
 
@@ -73,7 +75,15 @@ test("готовые машины: список и диск кусками — �
   const pass = issuePass({ id: "u1", username: "owner" });
   const list = await (await fetch(`${base}/s/${pass}/machines.json`)).json();
   // cdrom с путём наружу отброшен, остался только диск
-  assert.deepEqual(list, [{ id: "game", title: "Игра", ram: 128, hda: { size: 4096 } }]);
+  assert.equal(list.length, 1);
+  const { hda, start, ...m } = list[0];
+  assert.deepEqual(m, { id: "game", title: "Игра", ram: 128 });
+  assert.equal(hda.size, 4096);
+  assert.ok(hda.v > 0 && start.size < 1000);
+  // Снимок — сжатым целиком, fetch разжимает сам
+  const st = await fetch(`${base}/s/${pass}/m/game/start`);
+  assert.equal(st.headers.get("content-encoding"), "gzip");
+  assert.equal((await st.arrayBuffer()).byteLength, 100000);
   const r = await fetch(`${base}/s/${pass}/m/game/hda`, { headers: { Range: "bytes=256-511" } });
   assert.equal(r.status, 206);
   assert.equal(r.headers.get("content-range"), "bytes 256-511/4096");
