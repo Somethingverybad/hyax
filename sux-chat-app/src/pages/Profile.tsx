@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { writeClipboard } from "@/lib/clipboard";
 import { App } from "@capacitor/app";
 import { APP_VERSION, APP_BUILD } from "@/lib/appVersion";
-import { otaApplyNow, otaCheck, otaInfo, otaPending } from "@/lib/ota";
+import { otaApplyNow, otaCheck, otaEnabled, otaInfo, otaPending, otaTestChannel, setOtaTestChannel } from "@/lib/ota";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
@@ -195,6 +195,8 @@ const ProfilePage = () => {
   // Скачан новый интерфейс, ещё не применён — «Обновить сейчас».
   const [otaReady, setOtaReady] = useState(false);
   const [otaApplying, setOtaApplying] = useState(false);
+  // Админ: получать новый интерфейс раньше всех (тестовый канал по воздуху).
+  const [otaTest, setOtaTest] = useState(otaTestChannel);
   useEffect(() => {
     const check = () => void otaPending().then(setOtaReady);
     check();
@@ -567,6 +569,27 @@ const ProfilePage = () => {
                 hint={t("«Подмигнуть», «обнять»… — добавить, поправить, 18+")}
                 onClick={() => navigate("/profile/actions")}
               />
+              {/* Только телефон: компьютер берёт обновления своим main-процессом. */}
+              {otaEnabled() && (
+                <SettingsRow
+                  icon={CloudDownload}
+                  label={t("Тестовый канал обновлений")}
+                  hint={otaTest ? t("Новый интерфейс приходит сюда раньше, чем остальным") : t("Обновления — вместе со всеми")}
+                  trailing={
+                    <input
+                      type="checkbox"
+                      className="w-5 h-5 accent-primary shrink-0"
+                      aria-label={t("Тестовый канал обновлений")}
+                      checked={otaTest}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setOtaTest(on);
+                        void setOtaTestChannel(on).then(() => otaPending().then(setOtaReady));
+                      }}
+                    />
+                  }
+                />
+              )}
             </SettingsCard>
           )}
 

@@ -36,9 +36,12 @@ import { playerState } from "@/lib/player";
  */
 
 const BASE = "https://storage.yandexcloud.net/hyax-public/ota/";
-/** Канал: тестовые сборки (VITE_OTA_CHANNEL=test) читают свой манифест. */
-const CHANNEL = (import.meta.env.VITE_OTA_CHANNEL as string | undefined) || "";
-const MANIFEST_URL = `${BASE}${CHANNEL ? `manifest-${CHANNEL}` : "manifest"}.json`;
+/** Канал, зашитый в сборку: отладочные (VITE_OTA_CHANNEL=test) читают свой манифест. */
+const BUILT_CHANNEL = (import.meta.env.VITE_OTA_CHANNEL as string | undefined) || "";
+/** Тестовый канал на обычной сборке (TestFlight, APK) — флажок админа в
+ *  профиле: новый интерфейс приходит ему раньше всех (ota-publish --channel test). */
+const TEST_CHANNEL_KEY = "hyax:ota-test-channel";
+const manifestUrl = (channel: string) => `${BASE}${channel ? `manifest-${channel}` : "manifest"}.json`;
 
 /** Версия этого бандла — так он зовётся у плагина и в манифесте. */
 export const BUNDLE_VERSION = `${APP_VERSION}-${APP_BUILD}`;
@@ -65,6 +68,22 @@ interface Manifest {
 /** Скачан и ждёт запуска: build — по нему узнаём, что переключились (у
  *  встроенного бандла id «builtin»), tried — уже пробовали переключиться. */
 interface Pending { id: string; version: string; build: number; tried?: boolean }
+
+/** Читает ли устройство тестовый канал. Решает флажок, если его трогали:
+ *  бандлы тестового канала собраны с зашитым «test», и без этого телефон,
+ *  раз взявший такой бандл, уже не вернулся бы в общий канал. Не трогали —
+ *  как зашито в сборку (отладочные — тестовый). */
+export const otaTestChannel = () => {
+  const flag = read<boolean>(TEST_CHANNEL_KEY);
+  return typeof flag === "boolean" ? flag : BUILT_CHANNEL === "test";
+};
+/** Флажок «Тестовый канал обновлений»: сразу проверить. Выключили — при
+ *  проверке вернётся общий бандл, даже если он старее тестового. */
+export function setOtaTestChannel(on: boolean): Promise<void> {
+  write(TEST_CHANNEL_KEY, on);
+  applog.info(`ota: тестовый канал ${on ? "включён" : "выключен"}`);
+  return otaCheck(true);
+}
 
 const read = <T,>(key: string): T | null => {
   try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : null; } catch { return null; }
@@ -147,11 +166,20 @@ async function builtinBuild(native: number): Promise<number> {
   return saved?.native === native ? saved.build : 0;
 }
 
+/** Манифест канала устройства. Тестовый канал берёт более новый из тестового
+ *  и общего: в тестовом мог остаться старый бандл, а общий уже ушёл дальше. */
 async function fetchManifest(): Promise<Manifest | null> {
+  if (!otaTestChannel()) return fetchManifestAt(manifestUrl(""));
+  const [test, main] = await Promise.all([fetchManifestAt(manifestUrl("test")), fetchManifestAt(manifestUrl(""))]);
+  if (test && main) return test.build >= main.build ? test : main;
+  return test || main;
+}
+
+async function fetchManifestAt(url: string): Promise<Manifest | null> {
   const ctl = new AbortController();
   const timer = window.setTimeout(() => ctl.abort(), 8000);
   try {
-    const res = await fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: "no-store", signal: ctl.signal });
+    const res = await fetch(`${url}?t=${Date.now()}`, { cache: "no-store", signal: ctl.signal });
     if (!res.ok) return null;
     const m = (await res.json()) as Manifest;
     const ok = m && typeof m.version === "string" && typeof m.build === "number"
