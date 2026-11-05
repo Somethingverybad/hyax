@@ -9,6 +9,28 @@ WA?.ready();
 const $ = (id) => document.getElementById(id);
 const MB = 1024 * 1024;
 
+/**
+ * Своё окно «да/нет» вместо confirm(): в рамке мини-приложения WYX (sandbox без
+ * allow-modals) confirm молча отвечает «нет» — ни выключить машину, ни вставить
+ * диск с файлами было нельзя, ничего не происходило.
+ */
+function ask(text, ok = "Да") {
+  return new Promise((resolve) => {
+    const sheet = $("askSheet");
+    $("askText").textContent = text;
+    $("askOk").textContent = ok;
+    sheet.classList.remove("hidden");
+    const done = (v) => {
+      sheet.classList.add("hidden");
+      $("askOk").onclick = $("askNo").onclick = sheet.onclick = null;
+      resolve(v);
+    };
+    $("askOk").onclick = () => done(true);
+    $("askNo").onclick = () => done(false);
+    sheet.onclick = (e) => { if (e.target === sheet) done(false); };
+  });
+}
+
 let toastTimer = null;
 function toast(text, ms = 2800) {
   const t = $("toast");
@@ -110,7 +132,7 @@ function bindPick(k) {
   });
   $(`${k}Clear`).onclick = async () => {
     if (k === "hda" && drives.hda?.fromDevice) {
-      if (!confirm("Удалить запомненный диск с устройства? Сохранения машины для него тоже станут бесполезны.")) return;
+      if (!(await ask("Удалить запомненный диск с устройства? Сохранения машины для него тоже станут бесполезны.", "Удалить"))) return;
       await opfsRemove("hda.img");
       store.del("hda");
       storageInfo();
@@ -173,8 +195,8 @@ function renderMachines() {
       row.querySelector(".btns").append(b);
     };
     if (meta) btn("⏯ Продолжить", "primary", () => resumeFrom(m));
-    btn(meta ? "▶ Заново" : "▶ Включить", meta ? "" : "primary", () => {
-      if (meta && !confirm("Включить заново? Сохранение останется — к нему можно вернуться кнопкой «Продолжить».")) return;
+    btn(meta ? "▶ Заново" : "▶ Включить", meta ? "" : "primary", async () => {
+      if (meta && !(await ask("Включить заново? Сохранение останется — к нему можно вернуться кнопкой «Продолжить».", "Включить"))) return;
       preset = m;
       if (!m.start) return boot(null, m.ram);
       startFrom(m);
@@ -436,7 +458,7 @@ function boot(state, stateRam) {
 
 async function powerOff() {
   if (!emu) return;
-  if (!confirm("Выключить машину? Несохранённое пропадёт — сначала нажмите 💾, если хотите продолжить потом.")) return;
+  if (!(await ask("Выключить машину? Несохранённое пропадёт — сначала нажмите 💾, если хотите продолжить потом.", "Выключить"))) return;
   shutdown();
 }
 function shutdown() {
@@ -544,8 +566,6 @@ async function putFiles(list) {
   if (!emu || !list.length || cdBusy) return;
   const total = list.reduce((n, f) => n + f.size, 0);
   if (total > ISO_MAX) return toast(`На диск влезает до ${fmtSize(ISO_MAX)} — выберите поменьше`, 4000);
-  const hadCd = cdFromFiles || !!(preset ? preset.cdrom : drives.cd);
-  if (hadCd && !cdFromFiles && !confirm("В приводе уже есть диск. Заменить его диском с этими файлами? Прежний вернётся, если выключить и снова включить машину.")) return;
   cdBusy = true;
   toast("Собираю диск…", 60000);
   try {
@@ -561,7 +581,11 @@ async function putFiles(list) {
   }
   cdBusy = false;
 }
-$("filesBtn").onclick = () => $("filesSheet").classList.remove("hidden");
+$("filesBtn").onclick = () => {
+  // Диск игры в приводе заменится — предупреждаем в самом окне, без лишнего вопроса.
+  $("filesReplace").classList.toggle("hidden", cdFromFiles || !(preset ? preset.cdrom : drives.cd));
+  $("filesSheet").classList.remove("hidden");
+};
 $("filesClose").onclick = () => $("filesSheet").classList.add("hidden");
 $("filesSheet").onclick = (e) => { if (e.target === $("filesSheet")) $("filesSheet").classList.add("hidden"); };
 for (const id of ["putFiles", "putFolder"]) {
