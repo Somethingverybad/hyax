@@ -439,6 +439,8 @@ async function powerOff() {
   shutdown();
 }
 function shutdown() {
+  cdFromFiles = false;
+  $("filesSheet").classList.add("hidden");
   clearInterval(statsTimer);
   clearInterval(fitTimer);
   try { emu?.destroy(); } catch { /* уже остановлен */ }
@@ -481,6 +483,54 @@ $("saveBtn").onclick = async () => {
   $("saveBtn").disabled = false;
   storageInfo();
 };
+
+// ================= файлы в машину =================
+// Файлы с устройства — CD-диском в привод работающей машины (private/iso.js):
+// так в Windows 95/98 попадают установщики, драйверы, игры без сети и без
+// пересборки образа диска. Вставляется на лету (emu.set_cdrom).
+
+const ISO_MAX = 700 * MB;
+/** В приводе уже диск из файлов (сбрасывается при выключении). */
+let cdFromFiles = false;
+let cdBusy = false;
+const nFiles = (n) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? "файл" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "файла" : "файлов"}`;
+// Выбор папки — где браузер его умеет (на iPhone нет).
+if (!("webkitdirectory" in HTMLInputElement.prototype) || /iPhone|iPad|iPod/.test(navigator.userAgent)) $("putFolderBtn").classList.add("hidden");
+
+async function putFiles(list) {
+  if (!emu || !list.length || cdBusy) return;
+  const total = list.reduce((n, f) => n + f.size, 0);
+  if (total > ISO_MAX) return toast(`На диск влезает до ${fmtSize(ISO_MAX)} — выберите поменьше`, 4000);
+  const hadCd = cdFromFiles || !!(preset ? preset.cdrom : drives.cd);
+  if (hadCd && !cdFromFiles && !confirm("В приводе уже есть диск. Заменить его диском с этими файлами? Прежний вернётся, если выключить и снова включить машину.")) return;
+  cdBusy = true;
+  toast("Собираю диск…", 60000);
+  try {
+    const { buildIso } = await import("./iso.js");
+    const iso = await buildIso(list.map((f) => ({ path: f.webkitRelativePath || f.name, file: f })), "WYX");
+    await emu.set_cdrom({ buffer: iso });
+    cdFromFiles = true;
+    $("filesSheet").classList.add("hidden");
+    toast(`Диск вставлен: ${nFiles(list.length)}, ${fmtSize(total)}. В Windows — «Мой компьютер» → CD-диск`, 5000);
+    WA?.HapticFeedback.notificationOccurred("success");
+  } catch (e) {
+    toast(`Не удалось собрать диск: ${e.message || e}`, 4000);
+  }
+  cdBusy = false;
+}
+$("filesBtn").onclick = () => $("filesSheet").classList.remove("hidden");
+$("filesClose").onclick = () => $("filesSheet").classList.add("hidden");
+$("filesSheet").onclick = (e) => { if (e.target === $("filesSheet")) $("filesSheet").classList.add("hidden"); };
+for (const id of ["putFiles", "putFolder"]) {
+  $(id).onchange = (e) => { const l = [...e.target.files]; e.target.value = ""; void putFiles(l); };
+}
+// На компьютере — просто перетащить файлы на экран машины.
+$("stage").addEventListener("dragover", (e) => { if (emu) e.preventDefault(); });
+$("stage").addEventListener("drop", (e) => {
+  if (!emu) return;
+  e.preventDefault();
+  void putFiles([...(e.dataTransfer?.files || [])]);
+});
 
 $("fullBtn").onclick = () => {
   const el = document.documentElement;

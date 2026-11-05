@@ -14,6 +14,11 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
 body { font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+/* Долгое нажатие на iPhone — жест (мышь, удержание кнопки), а не выделение:
+   iOS выделял весь экран машины и показывал лупу с «Скопировать». Поля ввода
+   (системная клавиатура для машины) — как обычно. */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea { -webkit-user-select: text; user-select: text; }
 button, select { font: inherit; color: inherit; }
 a { color: var(--accent); }
 code { font: 12.5px ui-monospace, Menlo, monospace; background: var(--panel2); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
@@ -91,3 +96,9 @@ select { background: var(--panel2); border: 1px solid var(--line); border-radius
   position: fixed; left: 50%; bottom: calc(90px + var(--safe-b)); transform: translateX(-50%); z-index: 10; max-width: calc(100% - 32px);
   background: #2a2e38; border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; font-size: 14px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
+
+/* Окно «Файлы в машину» — снизу поверх экрана машины. */
+.sheet { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .55); display: flex; align-items: flex-end; justify-content: center; padding: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.sheet .card { width: 100%; max-width: 440px; margin: 0; }
+.sheet p { margin: 6px 0 12px; }
+

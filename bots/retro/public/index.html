@@ -93,6 +93,7 @@
   <div class="bar">
     <button class="icon" id="powerOff" aria-label="Выключить">⏏</button>
     <div class="grow status" id="status">Загрузка…</div>
+    <button class="icon" id="filesBtn" aria-label="Файлы в машину" title="Файлы в машину">📁</button>
     <button class="icon" id="saveBtn" aria-label="Сохранить машину" title="Сохранить машину">💾</button>
     <button class="icon" id="mouseBtn" aria-label="Режим мыши" title="Режим мыши">🖱️</button>
     <button class="icon" id="kbdBtn" aria-label="Клавиатура" title="Клавиатура">⌨️</button>
@@ -117,6 +118,20 @@
   </div>
   <input id="kbd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Ввод текста">
 </section>
+
+<!-- Файлы в машину: CD-диск из файлов с устройства (private/iso.js) -->
+<div class="sheet hidden" id="filesSheet">
+  <div class="card">
+    <b>Файлы в машину</b>
+    <p class="small muted">Выбранные файлы станут CD-диском в приводе работающей машины — в Windows это «Мой компьютер» → CD-диск (обычно D:). Длинные и русские имена и папки сохраняются. На сервер ничего не уходит. Диск пропадёт, если выключить машину, — нужное скопируйте на C:.</p>
+    <div class="row">
+      <label class="btn small">Выбрать файлы<input type="file" id="putFiles" multiple hidden></label>
+      <label class="btn small" id="putFolderBtn">Папку<input type="file" id="putFolder" webkitdirectory multiple hidden></label>
+      <div class="grow"></div>
+      <button class="btn small" id="filesClose">Закрыть</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast" class="toast hidden"></div>
 <script src="gate.js"></script>
