@@ -786,18 +786,25 @@
     var pack=curPack;
     editQueue(files, function(results){
       if(!results.length) return;
-      var fd=new FormData();
-      results.forEach(function(r){ fd.append("files", r.file); fd.append("names", r.name); });
+      // Частями по 20 — как при создании пака (больше 100 файлов разом сервер не берёт).
+      var parts=[], failed=[];
+      for(var k=0;k<results.length;k+=20) parts.push(results.slice(k,k+20));
       var box=el("spSounds"); box.classList.add("spin");
-      authUpload("/api/sounds/pack/"+pack.id+"/sounds/", fd, null).then(function(x){
-        box.classList.remove("spin");
-        if(x.ok && x.data.pack){
-          var fresh=x.data.pack; soundPacks=(soundPacks||[]).map(function(q){ return q.id===fresh.id?fresh:q; });
-          if(curPack && curPack.id===fresh.id) renderSoundPack(fresh);
-          var fail=(x.data.failed||[]);
-          if(fail.length) alert("Не обработаны: "+fail.map(function(f){return f.name;}).join(", "));
-        } else alert((x.data&&x.data.error)||"Ошибка");
-      }).catch(function(){ box.classList.remove("spin"); alert("Сеть недоступна."); });
+      function send(i){
+        var fd=new FormData();
+        parts[i].forEach(function(r){ fd.append("files", r.file); fd.append("names", r.name); });
+        return authUpload("/api/sounds/pack/"+pack.id+"/sounds/", fd, null).then(function(x){
+          if(x.ok && x.data.pack){
+            var fresh=x.data.pack; soundPacks=(soundPacks||[]).map(function(q){ return q.id===fresh.id?fresh:q; });
+            if(curPack && curPack.id===fresh.id) renderSoundPack(fresh);
+            failed=failed.concat(x.data.failed||[]);
+          } else failed=failed.concat(parts[i].map(function(r){ return {name:r.name}; }));
+          if(i+1<parts.length) return send(i+1);
+          box.classList.remove("spin");
+          if(failed.length) alert("Не обработаны: "+failed.map(function(f){return f.name;}).join(", "));
+        });
+      }
+      send(0).catch(function(){ box.classList.remove("spin"); alert("Сеть недоступна."); });
     });
   });
 
@@ -876,24 +883,38 @@
     var btn=this, packName=el("packName").value.trim(); el("result").className="result";
     if(!packName){ showRes("err","Введите название пака."); return; }
     if(!drafts.length){ showRes("err","Добавьте хотя бы один звук."); return; }
-    var fd=new FormData(); fd.append("pack_name",packName);
-    drafts.forEach(function(d){ fd.append("files", d.file); fd.append("names", (d.name||"").trim()||"звук"); });
-    var prog=el("prog"), bar=prog.querySelector("i");
+    // Частями по BATCH звуков: пак создаёт первая часть, остальные досылаются в
+    // него. Одним запросом больше 100 файлов сервер не принимает (400,
+    // TooManyFilesSent), а перекодирование сотни звуков разом упиралось бы в
+    // таймаут — большой пак не сохранялся вовсе.
+    var BATCH=20, list=drafts.slice(), parts=[];
+    for(var k=0;k<list.length;k+=BATCH) parts.push(list.slice(k,k+BATCH));
+    var prog=el("prog"), bar=prog.querySelector("i"), failed=[], packId=null;
     prog.style.display="block"; bar.style.width="0%"; btn.disabled=true; btn.textContent="Загрузка…"; stopAudio();
-    authUpload(CREATE_URL, fd, function(e){ if(e.lengthComputable) bar.style.width=Math.round(e.loaded/e.total*90)+"%"; })
-      .then(function(x){
-        bar.style.width="100%"; btn.disabled=false; btn.textContent="Создать пак";
-        setTimeout(function(){prog.style.display="none";},600);
-        if(x.ok){
-          var fail=(x.data.failed||[]);
+    function done(){ btn.disabled=false; btn.textContent="Создать пак"; setTimeout(function(){prog.style.display="none";},600); }
+    function send(i){
+      var fd=new FormData();
+      if(i===0) fd.append("pack_name",packName);
+      parts[i].forEach(function(d){ fd.append("files", d.file); fd.append("names", (d.name||"").trim()||"звук"); });
+      var url=i===0?CREATE_URL:"/api/sounds/pack/"+packId+"/sounds/";
+      if(parts.length>1) btn.textContent="Загрузка "+(i+1)+" из "+parts.length+"…";
+      return authUpload(url, fd, function(e){ if(e.lengthComputable) bar.style.width=Math.round((i+e.loaded/e.total)/parts.length*95)+"%"; })
+        .then(function(x){
+          if(x.ok){
+            failed=failed.concat(x.data.failed||[]);
+            if(i===0) packId=x.data.pack&&x.data.pack.id;
+          } else if(i===0) { done(); showRes("err",esc(x.data.error||("Ошибка "+x.status))); return; }
+          // Часть не прошла целиком — её звуки в «не обработаны», пак остаётся.
+          else failed=failed.concat(parts[i].map(function(d){ return {name:(d.name||"").trim()||"звук"}; }));
+          if(i+1<parts.length) return send(i+1);
+          bar.style.width="100%"; done();
           drafts.forEach(function(d){ URL.revokeObjectURL(d.url); }); drafts=[]; el("packName").value="";
-          var id=x.data.pack&&x.data.pack.id;
-          if(fail.length) alert("Не обработаны: "+fail.map(function(f){return f.name;}).join(", "));
+          if(failed.length) alert("Не обработаны: "+failed.map(function(f){return f.name;}).join(", "));
           soundPacks=null;
-          go(id?"#/sp/"+id:"#/");
-        } else showRes("err",esc(x.data.error||("Ошибка "+x.status)));
-      })
-      .catch(function(e){ btn.disabled=false; btn.textContent="Создать пак"; prog.style.display="none"; if(!(e&&e.auth)) showRes("err","Сеть недоступна."); });
+          go(packId?"#/sp/"+packId:"#/");
+        });
+    }
+    send(0).catch(function(e){ done(); prog.style.display="none"; if(!(e&&e.auth)) showRes("err", packId ? "Сеть оборвалась — пак создан не полностью, догрузите звуки в нём." : "Сеть недоступна."); });
   });
 
   // ── стикерпак ──

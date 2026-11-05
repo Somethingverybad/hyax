@@ -3156,19 +3156,37 @@ export const api = {
 
   /** Создать свой пак звуков: название и файлы с их названиями. */
   createSoundPack: async (name: string, items: { file: File; title: string }[]): Promise<SoundPackInfo> => {
-    const fd = new FormData();
-    fd.append("pack_name", name);
-    for (const it of items) { fd.append("files", it.file); fd.append("names", it.title); }
-    const res = await fetchWithAuthMultipart(`${uploadBase()}/sounds/pack/`, { method: "POST", body: fd });
-    if (!res.ok) {
-      let msg = "Не удалось создать пак";
-      try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
-      throw new LError(msg);
+    // Частями по BATCH звуков: пак создаёт первая часть, остальные досылаются в
+    // него. Одним запросом больше 100 файлов сервер не принимает (400,
+    // TooManyFilesSent), а сотня звуков разом перекодировалась бы дольше
+    // таймаута — большой пак не сохранялся вовсе.
+    const BATCH = 20;
+    const send = async (url: string, part: typeof items, withName: boolean) => {
+      const fd = new FormData();
+      if (withName) fd.append("pack_name", name);
+      for (const it of part) { fd.append("files", it.file); fd.append("names", it.title); }
+      const res = await fetchWithAuthMultipart(url, { method: "POST", body: fd });
+      if (!res.ok) {
+        let msg = "Не удалось создать пак";
+        try { msg = (await res.json()).error || msg; } catch { /* тело не JSON */ }
+        throw new LError(msg);
+      }
+      // Студийная ручка отвечает {pack, created, failed}.
+      return res.json() as Promise<{ pack: SoundPackInfo; failed?: unknown[] }>;
+    };
+    const first = await send(`${uploadBase()}/sounds/pack/`, items.slice(0, BATCH), true);
+    let pack = first.pack;
+    let failed = first.failed?.length || 0;
+    for (let i = BATCH; i < items.length; i += BATCH) {
+      const part = items.slice(i, i + BATCH);
+      try {
+        const r = await send(`${uploadBase()}/sounds/pack/${pack.id}/sounds/`, part, false);
+        pack = r.pack || pack;
+        failed += r.failed?.length || 0;
+      } catch { failed += part.length; }
     }
-    const data = await res.json();
-    // Студийная ручка отвечает {pack, created, failed}.
-    if (data?.failed?.length) throw new LError(tr("Не обработано звуков: {n}", { n: data.failed.length }));
-    return data.pack;
+    if (failed) throw new LError(tr("Не обработано звуков: {n}", { n: failed }));
+    return pack;
   },
 
   /** Обложка пака: загрузить или убрать (только владелец). */
