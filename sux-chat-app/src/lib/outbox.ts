@@ -39,6 +39,26 @@ export const outbox = {
   },
 };
 
+/** Идущие загрузки вложений — чтобы их можно было отменить крестиком у
+ *  полоски (и из другого экрана: загрузка живёт дольше окна чата). */
+const uploads = new Map<string, AbortController>();
+export const uploadCtl = {
+  /** Начать загрузку временного сообщения; прежняя (если была) отменяется. */
+  start(tempId: string): AbortSignal {
+    uploads.get(tempId)?.abort();
+    const c = new AbortController();
+    uploads.set(tempId, c);
+    return c.signal;
+  },
+  cancel(tempId: string) {
+    uploads.get(tempId)?.abort();
+    uploads.delete(tempId);
+  },
+  done(tempId: string, signal: AbortSignal) {
+    if (uploads.get(tempId)?.signal === signal) uploads.delete(tempId);
+  },
+};
+
 /** Подмешать временные сообщения очереди к ленте: обновить уже показанные,
  *  добавить недостающие в конец. Порядок и ключи рендера сохраняются. */
 export function mergePending<T extends { id: string }>(list: T[], pending: Pending[]): T[] {

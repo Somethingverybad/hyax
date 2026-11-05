@@ -1,4 +1,5 @@
 import { applog, safePath } from "@/lib/applog";
+import { keepScreenAwake } from "@/lib/screenAwake";
 import { t as tr } from "@/lib/i18n";
 
 /** Ошибка API на языке интерфейса: и свои подписи, и русские тексты сервера
@@ -891,107 +892,212 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
 // не доходило. Очередь общая: следующая загрузка ждёт конца предыдущей.
 let chunkQueue: Promise<unknown> = Promise.resolve();
 
+/** Загрузку отменил человек (крестик у полоски) — не ошибка сети, не повторяем. */
+export const isUploadCancelled = (e: unknown) => !!(e as { cancelled?: boolean } | null)?.cancelled;
+const cancelled = () => Object.assign(new LError("Загрузка отменена"), { cancelled: true });
+
+/**
+ * Возврат на экран после блокировки или фона. iOS, усыпив WebView, рвёт
+ * соединения, а запрос куска при этом мог так и не завершиться — загрузка
+ * стояла «навсегда» (баг: «не факт, что возобновится»). Вернулись спустя
+ * пару секунд — повисший кусок шлём заново сразу, паузы между попытками
+ * обрываем, неудачи за время сна не считаем.
+ */
+const resumeKicks = new Set<() => void>();
+let hiddenAt = 0;
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+    const slept = hiddenAt && Date.now() - hiddenAt > 3000;
+    hiddenAt = 0;
+    if (slept && resumeKicks.size) {
+      applog.info(`upload: вернулись на экран — повисшие куски заново (${resumeKicks.size})`);
+      [...resumeKicks].forEach((k) => k());
+    }
+  });
+}
+
+/** Пауза, которую обрывают отмена и возврат на экран. */
+const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((res) => {
+  const done = () => { clearTimeout(t); resumeKicks.delete(done); signal?.removeEventListener("abort", done); res(); };
+  const t = setTimeout(done, ms);
+  resumeKicks.add(done);
+  signal?.addEventListener("abort", done, { once: true });
+});
+
+/** Докуда дошла загрузка файла: «Повторить» с тем же файлом продолжает с
+ *  первого недошедшего куска — сервер держит принятые куски 12 часов. */
+const chunkProgress = new WeakMap<Blob, { id: string; next: number; total: number; key: string }>();
+
 function uploadInChunks(
   file: File,
   extra: Record<string, string>,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<any> {
-  const run = chunkQueue.then(() => uploadInChunksNow(file, extra, onProgress));
-  // Очередь не должна вставать из-за чужой ошибки.
-  chunkQueue = run.catch(() => undefined);
-  return run;
+  const turn = chunkQueue.then(() => (signal?.aborted ? Promise.reject(cancelled()) : uploadInChunksNow(file, extra, onProgress, signal)));
+  // Очередь не должна вставать из-за чужой ошибки; следующая ждёт, пока эта
+  // действительно остановится.
+  chunkQueue = turn.catch(() => undefined);
+  if (!signal) return turn;
+  // Отменили, пока ждали очереди, — сразу, не дожидаясь чужой загрузки.
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(cancelled());
+    if (signal.aborted) { onAbort(); return; }
+    signal.addEventListener("abort", onAbort, { once: true });
+    turn.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }
 
 async function uploadInChunksNow(
   file: File,
   extra: Record<string, string>,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<any> {
-  onProgress?.(0); // очередь дошла — загрузка началась
   const token = await getFreshAccessToken();
-  const uploadId = (crypto.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/[^0-9a-f]/gi, "").slice(0, 32).padEnd(32, "0").toLowerCase();
   const total = Math.ceil(file.size / CHUNK_SIZE);
-  applog.info(`upload chunked start ${Math.round(file.size / 1024)}KB кусков=${total}`);
+  const key = `${file.size}|${total}|${JSON.stringify(extra)}`;
+  let st = chunkProgress.get(file);
+  if (!st || st.key !== key) {
+    const id = (crypto.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/[^0-9a-f]/gi, "").slice(0, 32).padEnd(32, "0").toLowerCase();
+    st = { id, next: 0, total, key };
+    chunkProgress.set(file, st);
+  }
+  const state = st;
+  const uploadId = state.id;
+  onProgress?.(Math.round((state.next / total) * 100)); // очередь дошла — загрузка началась
+  applog.info(state.next
+    ? `upload chunked продолжаю ${Math.round(file.size / 1024)}KB с куска ${state.next + 1}/${total}`
+    : `upload chunked start ${Math.round(file.size / 1024)}KB кусков=${total}`);
   const started = performance.now();
-
-  for (let i = 0; i < total; i++) {
-    const last = i === total - 1;
-    const body = new FormData();
-    body.append("upload_id", uploadId);
-    body.append("index", String(i));
-    body.append("total", String(total));
-    body.append("chunk", file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE), "part");
-    if (last) {
-      body.append("file_name", file.name);
-      for (const [k, v] of Object.entries(extra)) body.append(k, v);
-    }
-    let lastErr: unknown = null;
-    // Мобильная сеть рвётся надолго — ждём дольше и пробуем больше раз:
-    // паузы 0,5 · 1 · 2 · 4 · 6 · 8 с, всего около 20 с на кусок.
-    const PAUSES = [500, 1000, 2000, 4000, 6000, 8000];
-    for (let attempt = 0; attempt <= PAUSES.length; attempt++) {
-      try {
-        const res = await fetch(`${uploadBase()}/upload/chunk/`, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          body,
-        });
-        if (!res.ok) {
-          let msg = tr("Кусок {i} из {n}: ошибка {code}", { i: i + 1, n: total, code: res.status });
-          try { msg = (await res.json()).error || msg; } catch { /* не JSON */ }
-          // Отказ сервера по сути (не сеть, не перегрузка) повторять бессмысленно.
-          const fatal = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429 && res.status !== 409;
-          throw Object.assign(new LError(msg), { fatal });
-        }
-        // Последний кусок: сервер склеил файл и обрабатывает его в фоне
-        // (сжатие видео, хранилище) — держим 99%, пока не придёт итог.
-        onProgress?.(last ? 99 : Math.round(((i + 1) / total) * 100));
-        if (last) {
-          let done = await res.json();
-          if (done?.processing) {
-            // -2 — «обработка на сервере»: файл уже залит, сервер сжимает
-            // видео. На голых 99% это выглядело зависанием.
-            onProgress?.(-2);
-            done = await waitUploadDone(uploadId, token);
+  // Пока файл уходит, экран не гаснет: с блокировкой WebView засыпает и
+  // загрузка встаёт (на телефоне экран гаснет сам, если его не трогать).
+  const awake = `upload:${uploadId}`;
+  keepScreenAwake(awake, true);
+  // Самый долгий удачный кусок — от него таймаут попытки: на медленной сети
+  // кусок честно идёт минуту, а повисший не должен держать загрузку вечно.
+  let slowest = 0;
+  try {
+    for (let i = state.next; i < total; i++) {
+      const last = i === total - 1;
+      const body = new FormData();
+      body.append("upload_id", uploadId);
+      body.append("index", String(i));
+      body.append("total", String(total));
+      body.append("chunk", file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE), "part");
+      if (last) {
+        body.append("file_name", file.name);
+        for (const [k, v] of Object.entries(extra)) body.append(k, v);
+      }
+      let lastErr: unknown = null;
+      let jumpTo: number | null = null;
+      // Мобильная сеть рвётся надолго — ждём дольше и пробуем больше раз:
+      // паузы 0,5 · 1 · 2 · 4 · 6 · 8 с, всего около 20 с на кусок.
+      const PAUSES = [500, 1000, 2000, 4000, 6000, 8000];
+      for (let attempt = 0; attempt <= PAUSES.length; attempt++) {
+        if (signal?.aborted) throw cancelled();
+        const ctrl = new AbortController();
+        const onCancel = () => ctrl.abort();
+        signal?.addEventListener("abort", onCancel, { once: true });
+        // Вернулись на экран — эта попытка, скорее всего, мертва: заново, и не в счёт.
+        let kicked = false;
+        const kick = () => { kicked = true; ctrl.abort(); };
+        resumeKicks.add(kick);
+        const limit = Math.max(60_000, slowest * 4);
+        const timer = setTimeout(() => ctrl.abort(), limit);
+        const t0 = performance.now();
+        try {
+          const res = await fetch(`${uploadBase()}/upload/chunk/`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            body,
+            signal: ctrl.signal,
+          });
+          if (res.status === 409 && last) {
+            // Сервер не досчитался кусков (не дошли раньше) — дошлём их и снова последний.
+            const d = await res.json().catch(() => ({}));
+            const missing = Array.isArray(d?.missing) ? (d.missing as number[]).filter((n) => Number.isInteger(n) && n >= 0 && n < i) : [];
+            if (missing.length) { jumpTo = Math.min(...missing); lastErr = null; break; }
           }
-          onProgress?.(100);
-          applog.info(`upload chunked ok ${Math.round(file.size / 1024)}KB ${Math.round(performance.now() - started)}ms`);
-          return done;
+          if (!res.ok) {
+            let msg = tr("Кусок {i} из {n}: ошибка {code}", { i: i + 1, n: total, code: res.status });
+            try { msg = (await res.json()).error || msg; } catch { /* не JSON */ }
+            // Отказ сервера по сути (не сеть, не перегрузка) повторять бессмысленно.
+            const fatal = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429 && res.status !== 409;
+            throw Object.assign(new LError(msg), { fatal });
+          }
+          slowest = Math.max(slowest, performance.now() - t0);
+          // Последний кусок: сервер склеил файл и обрабатывает его в фоне
+          // (сжатие видео, хранилище) — держим 99%, пока не придёт итог.
+          onProgress?.(last ? 99 : Math.round(((i + 1) / total) * 100));
+          if (last) {
+            let done = await res.json();
+            if (done?.processing) {
+              // -2 — «обработка на сервере»: файл уже залит, сервер сжимает
+              // видео. На голых 99% это выглядело зависанием.
+              onProgress?.(-2);
+              done = await waitUploadDone(uploadId, token, signal);
+            }
+            chunkProgress.delete(file);
+            onProgress?.(100);
+            applog.info(`upload chunked ok ${Math.round(file.size / 1024)}KB ${Math.round(performance.now() - started)}ms`);
+            return done;
+          }
+          state.next = i + 1;
+          lastErr = null;
+          break;
+        } catch (e) {
+          if (signal?.aborted || isUploadCancelled(e)) throw cancelled();
+          lastErr = e;
+          if ((e as any)?.fatal) break;
+          if (kicked) { attempt = -1; continue; }
+          if (attempt >= PAUSES.length) break;
+          applog.warn(`upload кусок ${i + 1}/${total} не прошёл${ctrl.signal.aborted ? ` (нет ответа ${Math.round(limit / 1000)} с)` : ""}, попытка ${attempt + 1}`);
+          await pause(PAUSES[attempt], signal);
+        } finally {
+          clearTimeout(timer);
+          resumeKicks.delete(kick);
+          signal?.removeEventListener("abort", onCancel);
         }
-        lastErr = null;
-        break;
-      } catch (e) {
-        lastErr = e;
-        if ((e as any)?.fatal || attempt >= PAUSES.length) break;
-        applog.warn(`upload кусок ${i + 1}/${total} не прошёл, попытка ${attempt + 1}`);
-        await new Promise((r) => setTimeout(r, PAUSES[attempt]));
+      }
+      if (jumpTo != null) {
+        applog.warn(`upload: сервер не досчитался кусков — дошлю с ${jumpTo + 1}/${total}`);
+        state.next = jumpTo;
+        i = jumpTo - 1;
+        continue;
+      }
+      if (lastErr) {
+        applog.error(`upload chunked ✗ на куске ${i + 1}/${total}`);
+        throw lastErr;
       }
     }
-    if (lastErr) {
-      applog.error(`upload chunked ✗ на куске ${i + 1}/${total}`);
-      throw lastErr;
-    }
+    throw new LError("Загрузка не завершилась");
+  } finally {
+    keepScreenAwake(awake, false);
   }
-  throw new LError("Загрузка не завершилась");
 }
 
 /** Ждём, пока сервер обработает склеенный файл. Опросы короткие — каждый
  *  укладывается в таймаут CDN; сжатие большого видео занимает до пары минут. */
-async function waitUploadDone(uploadId: string, token?: string): Promise<any> {
+async function waitUploadDone(uploadId: string, token?: string, signal?: AbortSignal): Promise<any> {
   const deadline = Date.now() + 6 * 60_000;
   let delay = 1200;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, delay));
+    await pause(delay, signal);
+    if (signal?.aborted) throw cancelled();
     delay = Math.min(4000, Math.round(delay * 1.3));
     try {
       const res = await fetch(`${uploadBase()}/upload/chunk/${uploadId}/`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal,
       });
       if (res.status === 202) continue;
       const data = await res.json().catch(() => ({}));
       if (res.ok) return data;
       throw new LError(data?.error || tr("Обработка не удалась ({code})", { code: res.status }));
     } catch (e) {
+      if (signal?.aborted) throw cancelled();
       // Сетевой сбой посреди ожидания — не повод терять уже залитый файл.
       if (e instanceof TypeError) continue;
       throw e;
@@ -1004,7 +1110,9 @@ async function uploadWithProgress(
   url: string,
   formData: FormData,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<any> {
+  if (signal?.aborted) throw cancelled();
   const token = await getFreshAccessToken();
   const started = performance.now();
   const size = (() => { let n = 0; formData.forEach((v) => { if (v instanceof Blob) n += v.size; }); return Math.round(n / 1024); })();
@@ -1038,11 +1146,18 @@ async function uploadWithProgress(
       applog.error(`upload ✗ ${safePath(target)} ${size}KB таймаут`);
       reject(Object.assign(new LError("Загрузка не уложилась во время"), { status: 408 }));
     };
+    const onCancel = () => xhr.abort();
+    xhr.onabort = () => reject(cancelled());
+    xhr.onloadend = () => signal?.removeEventListener("abort", onCancel);
+    signal?.addEventListener("abort", onCancel, { once: true });
     xhr.send(formData);
   });
+  const awake = `upload:${Math.random().toString(36).slice(2)}`;
+  keepScreenAwake(awake, true);
   try {
     return await attempt(url);
   } catch (e: any) {
+    if (isUploadCancelled(e)) throw e;
     const st = e?.status ?? 0;
     const retryable = st === 0 || st === 413 || st === 408 || st >= 500;
     const from = originOf(url);
@@ -1059,6 +1174,7 @@ async function uploadWithProgress(
       try {
         return await attempt(retarget(url, from, to));
       } catch (e2: any) {
+        if (isUploadCancelled(e2)) throw e2;
         const st2 = e2?.status ?? 0;
         const after = nextOrigin(to);
         if (!(st2 === 0 || st2 >= 500) || !after) throw e2;
@@ -1066,6 +1182,8 @@ async function uploadWithProgress(
         to = after;
       }
     }
+  } finally {
+    keepScreenAwake(awake, false);
   }
 }
 
@@ -2230,21 +2348,23 @@ export const api = {
     compress?: string,
     onProgress?: (percent: number) => void,
     local?: boolean,
+    /** Отмена (крестик у полоски загрузки) — промис отклоняется, isUploadCancelled. */
+    signal?: AbortSignal,
   ): Promise<{ file_url: string; file_name: string; file_size: number; width?: number | null; height?: number | null; poster_url?: string | null; preview?: string | null }> => {
     // Большой файл — кусками: одним запросом его обрывает шлюз CDN.
     if (file.size > CHUNK_MIN) {
       const extra: Record<string, string> = {};
       if (compress) extra.compress = compress;
       if (local) extra.local = '1';
-      return uploadInChunks(file, extra, onProgress);
+      return uploadInChunks(file, extra, onProgress, signal);
     }
 
     const formData = new FormData();
     formData.append('file', file);
     if (compress) formData.append('compress', compress);
     if (local) formData.append('local', '1');
-    if (onProgress) {
-      return uploadWithProgress(`${uploadBase()}/upload/`, formData, onProgress);
+    if (onProgress || signal) {
+      return uploadWithProgress(`${uploadBase()}/upload/`, formData, onProgress, signal);
     }
 
     const res = await fetchWithAuthMultipart(`${uploadBase()}/upload/`, {

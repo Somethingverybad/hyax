@@ -4,7 +4,7 @@ import { getDraftText, saveDraftText } from "@/lib/drafts";
 import CachedImg from "@/components/CachedImg";
 import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
-import { outbox, mergePending } from "@/lib/outbox";
+import { outbox, mergePending, uploadCtl } from "@/lib/outbox";
 import { MAX_VOICE_SECONDS, useMediaRecorder, type RecordKind, type VoiceRecording } from "@/hooks/use-media-recorder"
 import SelectTextSheet from "@/components/chat/SelectTextSheet"
 import { activityLabel, reportActivity, useChatActivity } from "@/lib/chatActivity"
@@ -39,7 +39,7 @@ import { useMint, MintIcon } from "@/themes/mint";
 import { useGlassHeight } from "@/themes/mint/glass";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { api, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
+import { api, isUploadCancelled, mediaUrl, NotificationSoundInfo, type PinnedInfo } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
 import { dateOf, dayKey, timeOf } from "@/lib/timeFormat";
@@ -213,6 +213,8 @@ interface Message {
    *  запись (голос/кружок) лежит в _rec — раньше пузырь просто исчезал и
    *  снятое пропадало. */
   _failed?: boolean;
+  /** Отправку отменили крестиком — «Отменено» вместо «Не отправлено». */
+  _cancelled?: boolean;
   _rec?: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string };
   /** Вложение, которое не доехало, — для кнопки «Повторить». */
   _att?: Attach;
@@ -3224,12 +3226,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const forChat = chatId;
     // «В очереди», пока загрузка реально не началась: большие файлы ждут
     // общей очереди (api.uploadFile), и 0% в это время выглядел зависанием.
-    outbox.patch(forChat, tempId, { _failed: false, _progress: -1 });
-    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _progress: -1 } : m)));
+    outbox.patch(forChat, tempId, { _failed: false, _cancelled: false, _progress: -1 });
+    setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: false, _cancelled: false, _progress: -1 } : m)));
+    // Крестик у полоски отменяет загрузку (uploadCtl.cancel); «Повторить» с
+    // тем же файлом продолжает большой файл с недошедшего куска.
+    const signal = uploadCtl.start(tempId);
     try {
       const compress = att.mode === "video" ? "video" : undefined;
       applog.info(`attach upload start ${att.mode} ${Math.round(att.file.size / 1024)}KB`);
-      const uploadResult = await api.uploadFile(att.file, compress, (p) => setProgressFor(tempId, p, forChat));
+      const uploadResult = await api.uploadFile(att.file, compress, (p) => { if (!signal.aborted) setProgressFor(tempId, p, forChat); }, undefined, signal);
+      // Отменили в последний миг — файл уже на сервере, но сообщение не шлём.
+      if (signal.aborted) throw Object.assign(new Error("cancelled"), { cancelled: true });
       applog.info(`attach upload ok ${att.mode} → ${uploadResult.file_url ? "url" : "no url"}`);
       setProgressFor(tempId, 100, forChat);
       // Свою картинку рисуем из локального файла и после подтверждения —
@@ -3257,11 +3264,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           : prev.map(m => (m.id === tempId ? { ...m, ...sent, pending: false, _key: tempId, _dims: att.dims ?? null, _progress: null, _att: undefined } : m))
       );
     } catch (error: any) {
-      console.error("Error sending attachment:", error);
-      // Пузырь остаётся с «Повторить» — выбранный файл не теряется.
-      toast.error(tr("Не удалось отправить — нажми «Повторить»"));
-      outbox.patch(forChat, tempId, { _failed: true, _progress: null });
-      setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: true, _progress: null } : m)));
+      const stopped = isUploadCancelled(error);
+      if (stopped) applog.info(`attach upload отменена ${att.mode}`);
+      else {
+        console.error("Error sending attachment:", error);
+        // Пузырь остаётся с «Повторить» — выбранный файл не теряется.
+        toast.error(tr("Не удалось отправить — нажми «Повторить»"));
+      }
+      outbox.patch(forChat, tempId, { _failed: true, _cancelled: stopped, _progress: null });
+      setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: true, _cancelled: stopped, _progress: null } : m)));
+    } finally {
+      uploadCtl.done(tempId, signal);
     }
   };
 
@@ -4520,6 +4533,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             const albumList = message.album_id ? albumsById.get(message.album_id) : undefined;
             const album = albumList && albumList[0]?.id === message.id ? albumList : undefined;
             const isAlbum = !!album && album.length > 1;
+            // Временные вложения этого пузыря (у альбома — все его): идут или не ушли.
+            const ownGroup = isAlbum ? album! : [message];
+            const uploadingGroup = ownGroup.filter((m) => m.pending && !m._failed && m._progress != null && !!m._att);
+            const failedGroup = ownGroup.filter((m) => m.pending && m._failed);
             // В альбоме может быть что угодно: картинки и видео идут сеткой,
             // музыка и файлы — строками под ней, всё в одном пузыре.
             const albumMedia = isAlbum ? album!.filter((m) => !m.download_only && (isImageFile(m.file_name, m.file_url) || isVideoFile(m.file_name, m.file_url)) && !isAudioFile(m.file_name, m.file_url)) : [];
@@ -5085,29 +5102,47 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                           )}
                         </div>
                       )}
-                      {/* Не ушло: запись на месте, можно повторить или убрать. */}
-                      {message.pending && message._failed && (
+                      {/* Не ушло (или отменили): запись на месте, можно повторить или
+                          убрать. У альбома — сразу за все его не ушедшие вложения. */}
+                      {failedGroup.length > 0 && (
                         <div className={cn("mt-1.5 flex items-center gap-3 text-caption", isOwn && !bareBubble ? "opacity-80" : "text-subtle")}>
-                          <span className="text-destructive font-medium">{tr("Не отправлено")}</span>
-                          {message._rec && (
+                          <span className="text-destructive font-medium">{failedGroup.every((m) => m._cancelled) ? tr("Отменено") : tr("Не отправлено")}</span>
+                          {message._failed && message._rec && (
                             <button type="button" onClick={(e) => { e.stopPropagation(); void sendRecording(message.id, message._rec!); }} className="underline">{tr("Повторить")}</button>
                           )}
-                          {message._att && (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); void sendAttachment(message.id, message._att!, { content: message.content || undefined, entities: message.entities || undefined, albumId: message.album_id }); }} className="underline">{tr("Повторить")}</button>
+                          {failedGroup.some((m) => m._att) && (
+                            <button type="button" onClick={(e) => {
+                              e.stopPropagation();
+                              void (async () => { for (const m of failedGroup) if (m._att) await sendAttachment(m.id, m._att, { content: m.content || undefined, entities: m.entities || undefined, albumId: m.album_id }); })();
+                            }} className="underline">{tr("Повторить")}</button>
                           )}
-                          <button type="button" onClick={(e) => { e.stopPropagation(); discardFailed(message); }} className="underline opacity-80">{tr("Удалить")}</button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); failedGroup.forEach(discardFailed); }} className="underline opacity-80">{tr("Удалить")}</button>
                         </div>
                       )}
-                      {/* Загрузка вложения: полоска и проценты прямо в пузыре. */}
-                      {message.pending && !message._failed && message._progress != null && (
-                        <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[96px]", isOwn && !bareBubble ? "opacity-70" : "text-subtle")}>
-                          <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
-                            <div
-                              className={cn("h-full bg-current transition-[width] duration-150", message._progress === -2 && "animate-pulse")}
-                              style={{ width: `${uploadBarWidth(message._progress)}%` }}
-                            />
-                          </div>
-                          <span className="tabular-nums shrink-0">{uploadLabel(message._progress)}</span>
+                      {/* Загрузка вложения: полоска и проценты прямо в пузыре; крестик —
+                          отменить (у альбома — все его ещё не ушедшие вложения). */}
+                      {(uploadingGroup.length > 0 || (message.pending && !message._failed && message._progress != null)) && (
+                        <div className={cn("mt-1.5 flex items-center gap-2 text-caption min-w-[120px]", isOwn && !bareBubble ? "opacity-70" : "text-subtle")}>
+                          {message.pending && !message._failed && message._progress != null ? (
+                            <>
+                              <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden">
+                                <div
+                                  className={cn("h-full bg-current transition-[width] duration-150", message._progress === -2 && "animate-pulse")}
+                                  style={{ width: `${uploadBarWidth(message._progress)}%` }}
+                                />
+                              </div>
+                              <span className="tabular-nums shrink-0">{uploadLabel(message._progress)}</span>
+                            </>
+                          ) : (
+                            <span className="flex-1">{tr("Загружается: {n}", { n: uploadingGroup.length })}</span>
+                          )}
+                          {uploadingGroup.length > 0 && (
+                            <button type="button" aria-label={tr("Отменить загрузку")} title={tr("Отменить загрузку")}
+                              onClick={(e) => { e.stopPropagation(); uploadingGroup.forEach((m) => uploadCtl.cancel(m.id)); }}
+                              className="-my-1.5 -mr-1.5 p-1.5 shrink-0 rounded-full active:bg-black/10">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
