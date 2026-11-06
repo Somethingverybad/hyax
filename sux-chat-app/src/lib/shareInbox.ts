@@ -1,4 +1,6 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { applog } from "@/lib/applog";
+import { crashMark, crashUnmark } from "@/lib/crashGuard";
 
 /**
  * «Поделиться → WYX» из других приложений (iOS Share Extension).
@@ -10,7 +12,8 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
  * очередь и подставляет файлы в поле ввода как обычные вложения.
  */
 interface ShareInboxPlugin {
-  take(): Promise<{ items: { path: string; name: string; type: string }[]; text: string }>;
+  /** scaledFrom — большое фото iOS уже ужал (ShareInboxPlugin.swift): исходный размер «ШxВ». */
+  take(): Promise<{ items: { path: string; name: string; type: string; scaledFrom?: string }[]; text: string }>;
   clear(): Promise<void>;
 }
 const plugin = registerPlugin<ShareInboxPlugin>("ShareInbox");
@@ -24,13 +27,16 @@ export async function takeSharedItems(): Promise<SharedPayload | null> {
     const r = await plugin.take();
     if (!r.items.length && !r.text) return null;
     const files: File[] = [];
+    crashMark(`«Поделиться»: чтение ${r.items.length} файл(ов) ${r.items.map((it) => it.type).join(", ")}`);
     for (const it of r.items) {
       try {
         const res = await fetch(Capacitor.convertFileSrc(it.path));
         const blob = await res.blob();
         files.push(new File([blob], it.name, { type: it.type || blob.type || "application/octet-stream" }));
-      } catch { /* файл не прочитался — пропускаем, остальное отправим */ }
+        applog.info(`share take ${it.type || blob.type || "?"} ${Math.round(blob.size / 1024)}KB${it.scaledFrom ? ` (ужато из ${it.scaledFrom})` : ""}`);
+      } catch { applog.warn(`share take: не прочитался ${it.type}`); /* пропускаем, остальное отправим */ }
     }
+    crashUnmark();
     // Файлы уже в памяти — контейнер можно чистить.
     plugin.clear().catch(() => {});
     if (!files.length && !r.text) return null;

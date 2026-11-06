@@ -1,3 +1,6 @@
+import { applog } from "@/lib/applog";
+import { crashMark, crashUnmark } from "@/lib/crashGuard";
+
 /**
  * Сжатие фото перед отправкой: ужимаем разрешение и пережимаем в JPEG, чтобы
  * не захламлять диск полноразмерными снимками с камеры. Если результат не
@@ -9,8 +12,12 @@ export async function compressImage(
   quality = 0.82,
 ): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
+  // Распаковка снимка целиком — самое тяжёлое по памяти место вложений:
+  // упадёт WebView посреди неё — это будет видно в автоотчёте (lib/crashGuard).
+  crashMark(`распаковка фото ${file.type} ${Math.round(file.size / 1024)} КБ`);
   try {
     const bitmap = await createImageBitmap(file);
+    applog.info(`photo ${bitmap.width}x${bitmap.height} ${Math.round(file.size / 1024)}KB`);
     const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
     const w = Math.round(bitmap.width * scale);
     const h = Math.round(bitmap.height * scale);
@@ -29,5 +36,7 @@ export async function compressImage(
     return new File([blob], name, { type: "image/jpeg" });
   } catch {
     return file;
+  } finally {
+    crashUnmark();
   }
 }

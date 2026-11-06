@@ -34,7 +34,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MusicUploadPlugin.class);
         registerPlugin(ScreenAwakePlugin.class);
         registerPlugin(MediaPlaybackPlugin.class);
+        registerPlugin(WebDiagPlugin.class);
         super.onCreate(savedInstanceState);
+        // Гибель процесса отрисовки WebView — в диагностику (WebDiagPlugin).
+        if (getBridge() != null) getBridge().addWebViewListener(WebDiagPlugin.listener(this));
         MessageChannels.ensure(this);
         handleCallIntent(getIntent());
         // Холодный старт из «Поделиться»: JS заберёт очередь сам после загрузки.

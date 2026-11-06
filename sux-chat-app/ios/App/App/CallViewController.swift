@@ -14,9 +14,19 @@ class CallViewController: CAPBridgeViewController {
         }
     }
 
+    /// Перехват гибели процесса WebView для диагностики (WebDiagPlugin).
+    private var webProcessWatch: WebProcessWatch?
+
     override open func capacitorDidLoad() {
         // Клавиатура прячется жестом вниз, как в мессенджерах.
         webView?.scrollView.keyboardDismissMode = .interactive
+        WebDiag.startObserving()
+        if let wv = webView, let original = wv.navigationDelegate as? (NSObject & WKNavigationDelegate) {
+            let watch = WebProcessWatch(original)
+            webProcessWatch = watch
+            wv.navigationDelegate = watch
+        }
+        bridge?.registerPluginInstance(WebDiagPlugin())
         bridge?.registerPluginInstance(VoipPlugin())
         bridge?.registerPluginInstance(NativeCallPlugin())
         bridge?.registerPluginInstance(PushSecretPlugin())
