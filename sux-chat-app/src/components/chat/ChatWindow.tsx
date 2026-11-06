@@ -1846,10 +1846,34 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   useLayoutEffect(() => () => flushDraft(), []);
   // Поле могло появиться позже текста (загрузка, плашка секретного чата) —
   // подставляем в него текущий черновик.
+  // Только в поле не в фокусе: в нём человек печатает, и запись value посреди
+  // набора слога (корейский, японский, китайский — IME) рвёт композицию —
+  // курсор уезжал в конец, буквы дублировались и вставлялись пробелы
+  // (баг-репорт 7e8f7cb6, iPad с клавиатурой). Черновик, сменённый кодом,
+  // в поле и так кладёт setDraft.
   useEffect(() => {
     const el = textareaRef.current;
-    if (el && el.value !== draftRef.current) { el.value = draftRef.current; fitTextarea(); }
+    if (el && document.activeElement !== el && el.value !== draftRef.current) { el.value = draftRef.current; fitTextarea(); }
   });
+  // Журнал баг-репорта: как набирался текст (без самого текста) — типы ввода
+  // по счёту и были ли композиции IME; сводка — когда поле теряет фокус.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const kinds = new Map<string, number>();
+    let comps = 0;
+    const onInput = (e: Event) => { const k = (e as InputEvent).inputType || "?"; kinds.set(k, (kinds.get(k) || 0) + 1); };
+    const onComp = () => { comps++; };
+    const onBlur = () => {
+      if (!kinds.size) return;
+      applog.info(`compose input ${[...kinds].map(([k, n]) => `${k}×${n}`).join(" ")}${comps ? ` ime×${comps}` : ""}`);
+      kinds.clear(); comps = 0;
+    };
+    el.addEventListener("input", onInput);
+    el.addEventListener("compositionstart", onComp);
+    el.addEventListener("blur", onBlur);
+    return () => { onBlur(); el.removeEventListener("input", onInput); el.removeEventListener("compositionstart", onComp); el.removeEventListener("blur", onBlur); };
+  }, [chatId]);
 
   // Панель форматирования: видна, пока в поле выделен текст. Кнопки
   // оборачивают выделение разметкой (или снимают её), выделение остаётся на
