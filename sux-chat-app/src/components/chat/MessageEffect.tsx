@@ -8,6 +8,8 @@ import { notoCode, notoSvgUrl } from "@/lib/notoEmoji";
 import { reducedMotion } from "@/lib/navAnim";
 import type { EffectPlay } from "@/lib/effects";
 import { tgsSource } from "@/lib/tgsPlayer";
+import { useCachedImage } from "@/lib/imageCache";
+import { applog } from "@/lib/applog";
 
 /**
  * Эффект получения сообщения (lib/effects) поверх всего экрана, тапы
@@ -26,6 +28,12 @@ import { tgsSource } from "@/lib/tgsPlayer";
  * рисуется картинка источника. Раньше каждая из двадцати копий была своим
  * стикером: у тяжёлого .tgs это двадцать анимаций и столько же застывших
  * кадров, у видео — двадцать декодеров, и эффект шёл рывками.
+ *
+ * Эффект начинается, когда то, что он показывает, готово: картинка стикера —
+ * из кэша картинок (стикер только что был в панели), анимация или видео —
+ * первый кадр источника, эмодзи — его картинка; ждём не дольше MEDIA_WAIT.
+ * Раньше копии грузили картинку из сети заново, и на медленной сети
+ * «Скример» (1,6 с) успевал закончиться невидимым (баг-репорт c0eed388).
  */
 type Piece = { id: number; x: number; y: number; w: number; h: number; rot: number; font?: number };
 
@@ -67,6 +75,9 @@ function useStickerMirror(mode: "tgs" | "video" | "img" | "none", src: string | 
   const canvases = useRef(new Set<HTMLCanvasElement>());
   // Источник не завёлся — копии картинкой (у видео в адресе первый кадр).
   const [failed, setFailed] = useState(false);
+  // Первый кадр источника готов — можно начинать эффект.
+  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
   useEffect(() => {
     if ((mode !== "tgs" && mode !== "video") || !src) return;
     let alive = true;
@@ -97,6 +108,7 @@ function useStickerMirror(mode: "tgs" | "video" | "img" | "none", src: string | 
     }
     const tick = () => {
       if (source && ready()) {
+        if (!readyRef.current) { readyRef.current = true; setReady(true); }
         for (const c of canvases.current) {
           if (!c.isConnected) { canvases.current.delete(c); continue; }
           drawInto(c, source);
@@ -108,7 +120,7 @@ function useStickerMirror(mode: "tgs" | "video" | "img" | "none", src: string | 
     return () => { alive = false; cancelAnimationFrame(raf); destroy(); canvases.current.clear(); };
   }, [mode, src, video]);
   const register = useCallback((c: HTMLCanvasElement | null) => { if (c) canvases.current.add(c); }, []);
-  return { register, failed };
+  return { register, failed, ready };
 }
 
 /** Эмодзи картинкой Noto; картинки нет (зеркало недоступно) — системным символом. */
@@ -131,6 +143,8 @@ const screamHaptics = (at: (ms: number, fn: () => void) => void) => {
   }
 };
 
+/** Дольше этого готовности картинки не ждём — начинаем как есть. */
+const MEDIA_WAIT = 2500;
 const BURST_COUNT = 20;
 const BURST_DELAYS = [0, 1000, 520, 360, 270, 210, 170, 140, 120, 105, 95, 85];
 const RAIN_COUNT = 24;
@@ -145,9 +159,33 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
   const video = src ? (isWebm(src) ? src : animVideo(src) || (isMp4(src) ? src : null)) : null;
   const mode = !src ? "none" : isTgs(src) ? "tgs" : video ? "video" : "img";
   const mirror = useStickerMirror(mode, src, video);
+  // Картинка стикера — из кэша картинок (у видео — его первый кадр, если видео не завелось).
+  const imgSrc = useCachedImage(mode === "img" || mirror.failed ? src : null);
+  // Картинка эмодзи (Noto) — заранее, чтобы копии не появлялись пустыми.
+  const [emojiReady, setEmojiReady] = useState(!play.emoji?.length);
+  useEffect(() => {
+    const e = play.emoji?.[0];
+    const code = e ? notoCode(e) : null;
+    if (!code) { setEmojiReady(true); return; }
+    const im = new Image();
+    im.onload = im.onerror = () => setEmojiReady(true);
+    im.src = notoSvgUrl(code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const mediaReady = mode === "none" ? emojiReady : mode === "img" || mirror.failed ? !!imgSrc : mirror.ready;
+  const [waited, setWaited] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setWaited(true), MEDIA_WAIT); return () => clearTimeout(t); }, []);
+  const go = mediaReady || waited;
+  const bornAt = useRef(performance.now());
 
   useEffect(() => {
-    if (reducedMotion()) { onDone(); return; }
+    if (!go) return;
+    if (reducedMotion()) {
+      applog.info(`effect ${play.kind}: пропущен — в системе включено «Уменьшить движение»`);
+      onDone();
+      return;
+    }
+    applog.info(`effect ${play.kind} (${mode}${mediaReady ? "" : ", не дождались картинки"}) через ${Math.round(performance.now() - bornAt.current)} мс`);
     const vw = window.innerWidth, vh = window.innerHeight;
     const at = (ms: number, fn: () => void) => { timers.current.push(setTimeout(fn, ms)); };
     // Размер копии: текст — пузырёк по кеглю, остальное — квадрат.
@@ -208,7 +246,7 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
     at(t + 1000, onDone);
     return () => { timers.current.forEach(clearTimeout); timers.current = []; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [go]);
 
   // «Ливень»: падение с ускорением, отскок и доворот; «Скример»: рывок и
   // тряска — Web Animations на копии.
@@ -258,7 +296,7 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
         const k = pxRatio();
         return <canvas ref={mirror.register} width={Math.round(p.w * k)} height={Math.round(p.h * k)} className="w-full h-full" />;
       }
-      return <img src={src} alt="" draggable={false} className="w-full h-full object-contain drop-shadow-lg" />;
+      return <img src={imgSrc || src} alt="" draggable={false} className="w-full h-full object-contain drop-shadow-lg" />;
     }
     if (play.emoji?.length) return <EmojiPiece e={play.emoji[p.id % play.emoji.length]} />;
     return (
