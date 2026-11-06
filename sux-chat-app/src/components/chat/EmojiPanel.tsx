@@ -5,12 +5,26 @@ import { toast } from "sonner";
 import { api } from "@/api/client";
 import CustomEmoji from "@/components/chat/CustomEmoji";
 import { confirmDialog } from "@/lib/confirm";
+import { cachedImage, rememberImage } from "@/lib/imageCache";
 import { notoSvgUrl } from "@/lib/notoEmoji";
 import { readCache } from "@/lib/session-cache";
 import { shareEmojiPack } from "@/lib/share";
 import { invalidateCustomEmojiIndex, trailingEmoji } from "@/lib/stickerIndex";
 import { getLang, t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+
+/** Картинка эмодзи панели: показанная раньше — из кэша картинок (lib/imageCache),
+ *  сразу и без сети; новая — лениво, по прокрутке, и после загрузки
+ *  запоминается. Раньше панель всякий раз шла за каждой картинкой на сервер. */
+const NotoImg = ({ code, alt, className }: { code: string; alt: string; className?: string }) => {
+  const url = notoSvgUrl(code);
+  const hit = cachedImage(url);
+  return hit
+    ? <img src={hit} alt={alt} draggable={false} className={className} />
+    // crossOrigin — тот же режим, что у fetch кэша: запрос за байтами после
+    // показа берёт ответ из HTTP-кэша, а не идёт на сервер второй раз.
+    : <img src={url} alt={alt} loading="lazy" crossOrigin="anonymous" draggable={false} className={className} onLoad={() => rememberImage(url)} />;
+};
 
 type Group = { group: string; items: [string, string, string, string][] };
 type PanelEmoji = { id: string; file_url: string; emoji?: string | null; repaint?: boolean };
@@ -217,7 +231,7 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
   const cell = (code: string) => (
     <button key={code} type="button" onClick={() => pick(code)} title={emojiFromCode(code)}
       className="w-10 h-10 rounded-md flex items-center justify-center hover:bg-surface-4 active:scale-95 transition-transform">
-      <img src={notoSvgUrl(code)} alt={emojiFromCode(code)} loading="lazy" draggable={false} className="w-7 h-7" />
+      <NotoImg code={code} alt={emojiFromCode(code)} className="w-7 h-7" />
     </button>
   );
 
@@ -286,7 +300,7 @@ const EmojiPanel = ({ onPick, standard = true, className }: {
           {(groups || []).map((g) => (
             <button key={g.group} type="button" onClick={() => jump(g.group)} title={t(GROUP_NAME[g.group] || g.group)}
               className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center hover:bg-surface-4">
-              <img src={notoSvgUrl(GROUP_ICON[g.group] || g.items[0]?.[0])} alt="" className="w-5 h-5 opacity-80" draggable={false} />
+              <NotoImg code={GROUP_ICON[g.group] || g.items[0]?.[0]} alt="" className="w-5 h-5 opacity-80" />
             </button>
           ))}
         </div>

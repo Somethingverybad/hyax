@@ -11,6 +11,7 @@ import { installAppLog, applog } from "./lib/applog";
 import { installBugHotkey } from "./lib/bugHotkey";
 import { installCrashGuard } from "./lib/crashGuard";
 import { installNativePaste } from "./lib/nativePaste";
+import { warmImages } from "./lib/imageCache";
 import { otaBoot, otaRestoreRoute, startOtaAutoApply, startOtaChecks } from "./lib/ota";
 // Мини-плеер и кнопки плеера в оболочке компьютера (electron/playerWidget.cjs).
 import "./lib/desktopPlayer";
@@ -25,6 +26,9 @@ installBugHotkey();
 installCrashGuard();
 // Картинки из клавиатуры Android (буфер Gboard) — во вставку поля (lib/nativePaste).
 installNativePaste();
+// Эмодзи Noto, что уже видели, — из IndexedDB в память одним запросом, пока
+// встаёт интерфейс: лента и панель покажут их сразу, а не по одному (lib/imageCache).
+void warmImages("/media/noto/").then((n) => { if (n) applog.info(`noto warm ${n}`); });
 // Тему ставим до первой отрисовки: иначе светлая тема моргнёт тёмным кадром.
 initTheme();
 // «Без анимации» (lib/navAnim) — до первого кадра, чтобы не сыграл и первый переход.
