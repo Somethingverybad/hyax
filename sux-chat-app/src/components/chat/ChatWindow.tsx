@@ -2087,6 +2087,42 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     return () => ro.disconnect();
   }, [chatId]);
 
+  // Отлистали вверх — то, что на экране, стоит на месте, даже если выше
+  // догрузилась картинка или видео. Штатное якорение браузера у ленты выключено
+  // (.chat-scroll, overflow-anchor: none — спорило с прижимом к низу), и при
+  // прокрутке вверх лента «прыгала» на тысячи пикселей (баг-репорт 3a6097a1:
+  // высота 656 сообщений росла с 8 до 25 тысяч по мере догрузки). Якорь — строка
+  // у верхней трети экрана; выросло содержимое — возвращаем её туда, где была.
+  useEffect(() => {
+    const el = scrollRef.current, feed = feedRef.current;
+    if (!el || !feed || typeof ResizeObserver === "undefined") return;
+    let anchor: { row: HTMLElement; top: number } | null = null;
+    const pick = () => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * 0.35);
+      const row = hit?.closest<HTMLElement>('[id^="msg-"]');
+      anchor = row && el.contains(row) ? { row, top: row.getBoundingClientRect().top } : null;
+    };
+    let raf = 0;
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; pick(); }); };
+    let lastLogged = 0;
+    const ro = new ResizeObserver(() => {
+      // Прижатую к низу ленту держит соседний наблюдатель; свой доезд — не трогаем.
+      if (pinnedRef.current || Date.now() <= jumpingRef.current || !anchor?.row.isConnected) { pick(); return; }
+      const drift = anchor.row.getBoundingClientRect().top - anchor.top;
+      if (Math.abs(drift) > 1) {
+        el.scrollTop += drift;
+        if (Date.now() - lastLogged > 1000) { lastLogged = Date.now(); logFeed(`hold ${drift > 0 ? "+" : ""}${Math.round(drift)}`); }
+      }
+      pick();
+    });
+    ro.observe(feed);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    pick();
+    return () => { ro.disconnect(); el.removeEventListener("scroll", onScroll); cancelAnimationFrame(raf); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
   // Подгрузили страницу сверху — удерживаем то, что было на экране, на месте:
   // до перерисовки высоту ленты запомнили в scrollAdjustRef.
   useLayoutEffect(() => {
