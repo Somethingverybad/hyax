@@ -5937,6 +5937,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 }}
                 onSelect={() => { if (mentionHints.length || mentionAtRef.current) updateMentions(); }}
                 onKeyDown={(e) => {
+                  // Идёт набор слога (корейский, японский, китайский — IME):
+                  // клавиши его, не наши. Enter тут подтверждает слог — раньше
+                  // он же отправлял сообщение, поле очищалось, и IME дописывал
+                  // последний слог в пустое поле — он уходил ещё раз (баг-репорт
+                  // ce7c7c23, Chrome на Mac). 229 — Safari: у подтверждающего
+                  // Enter isComposing уже false.
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                   if (mentionHints.length) {
                     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                       e.preventDefault();
