@@ -44,7 +44,7 @@ function makeChannel(sock, onText) {
   return ch;
 }
 
-const ERRORS = { no_wyx: "Откройте из WYX", denied: "Ваш аккаунт не в списке допуска", no_room: "Такой комнаты нет", busy: "Сервер занят: все машины заняты, попробуйте позже", vm_failed: "Машина не запустилась" };
+const ERRORS = { no_wyx: WA?.initData ? "Сервер не принял данные запуска: проверьте токен бота на сервере" : "Откройте из WYX", denied: "Ваш аккаунт не в списке допуска", no_room: "Такой комнаты нет", busy: "Сервер занят: все машины заняты, попробуйте позже", vm_failed: "Машина не запустилась" };
 
 function connect(room) {
   if (!WA?.initData && !store.get("cloudDevInit")) return toast("Герои по сети открываются только из WYX");

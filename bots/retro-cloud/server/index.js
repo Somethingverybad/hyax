@@ -172,7 +172,7 @@ wss.on("connection", (ws, req) => {
       let m; try { m = JSON.parse(String(d)); } catch { return; }
       vm.run(async () => {
         switch (m.t) {
-          case "move": await vm.moveTo(m.x, m.y); break;
+          case "move": if (Date.now() - (vm.sizedAt || 0) > 10000) { await vm.probeSize(); vm.sizedAt = Date.now(); } await vm.moveTo(m.x, m.y); break;
           case "rel": await vm.moveBy(m.dx, m.dy); break;
           case "btn": await vm.button(m.b || "left", !!m.down); break;
           case "click": await vm.click(m.b || "left", Math.min(3, m.n || 1)); break;
