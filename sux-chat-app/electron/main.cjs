@@ -230,8 +230,10 @@ function attachContextMenu(win) {
 
 // Микрофон/камера для звонков и уведомления — разрешаем без лишних вопросов
 // от Chromium (системный запрос macOS всё равно покажется один раз).
+// pointerLock — захват мыши в мини-приложениях (Ретро-ПК): без него Chromium
+// молча отклоняет requestPointerLock, и курсор уходит за экран машины.
 function allowMediaPermissions() {
-  const allowed = new Set(['media', 'notifications', 'clipboard-read', 'clipboard-sanitized-write', 'geolocation']);
+  const allowed = new Set(['media', 'notifications', 'clipboard-read', 'clipboard-sanitized-write', 'geolocation', 'pointerLock', 'fullscreen']);
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(allowed.has(permission));
   });
