@@ -12,7 +12,7 @@ const store = { get: (k) => { try { return JSON.parse(localStorage.getItem("retr
 // Адрес сервиса: по умолчанию crystal через milf.hyax.ru; для проверки можно подменить в localStorage (retro.cloudWs).
 const CLOUD_WS = store.get("cloudWs") || "wss://milf.hyax.ru/retro-cloud/ws";
 
-let ws = null, rfb = null, size = { w: 1280, h: 1024 }, view = { x: 0, y: 0, w: 0, h: 0, k: 1 }, sizeWatch = null;
+let ws = null, rfb = null, size = { w: 1280, h: 1024 }, view = { x: 0, y: 0, w: 0, h: 0, k: 1 }, sizeWatch = null, fitTimer = null;
 let mouseMode = store.get("mouse") || "rel"; // как в app.js: rel — тачпад, abs — указатель
 const send = (o) => ws?.readyState === 1 && ws.send(JSON.stringify(o));
 const toast = (text, ms = 2800) => { const t = $("toast"); t.textContent = text; t.classList.remove("hidden"); clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.add("hidden"), ms); };
@@ -76,7 +76,9 @@ function connect(room) {
       $("status").textContent = `Комната ${m.room}`;
       rfb = new RFB($("screen"), ch, { shared: true });
       rfb.viewOnly = true; rfb.scaleViewport = false; rfb.showDotCursor = false; rfb.background = "#000";
-      rfb.addEventListener("connect", () => { $("status").textContent = `Комната ${m.room} · подключено`; requestAnimationFrame(fit); setTimeout(fit, 1500); showHint(); });
+      rfb.addEventListener("connect", () => { $("status").textContent = `Комната ${m.room} · подключено`; requestAnimationFrame(fit); showHint(); });
+      // Надёжнее наблюдателя: раз в полсекунды сверяем размер холста с масштабом (дёшево).
+      clearInterval(fitTimer); fitTimer = setInterval(fit, 500);
       rfb.addEventListener("desktopname", () => setTimeout(fit, 100));
       // Размер экрана машины известен только когда noVNC выставит размер своего холста
       // (новый холст — 300×150, по нему нельзя считать масштаб): следим за атрибутами.
@@ -97,6 +99,7 @@ function connect(room) {
 }
 
 function disconnect() {
+  clearInterval(fitTimer); fitTimer = null;
   try { rfb?.disconnect(); } catch { /* уже */ }
   rfb = null;
   if (ws) { const s = ws; ws = null; try { s.close(); } catch { /* уже */ } }
@@ -119,7 +122,8 @@ function fit() {
   const w = size.w, h = size.h;
   const k = Math.min(stage.clientWidth / w, stage.clientHeight / h);
   const x = (stage.clientWidth - w * k) / 2, y = (stage.clientHeight - h * k) / 2;
-  scr.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
+  const t = `translate(${x}px, ${y}px) scale(${k})`;
+  if (scr.style.transform !== t) scr.style.transform = t;
   view = { x, y, w: w * k, h: h * k, k };
 }
 addEventListener("resize", () => requestAnimationFrame(fit));
