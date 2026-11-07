@@ -14,11 +14,11 @@
 
 import { createServer } from "node:http";
 import { createConnection } from "node:net";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, writeFile, stat } from "node:fs/promises";
 import { readFileSync, statSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { checkInitData, signInitData } from "./auth.js";
 import { Vm, SCREEN, KEYS } from "./vm.js";
@@ -34,6 +34,22 @@ const RAM = Number(process.env.VM_RAM || 128);
 const IDLE_MIN = Number(process.env.IDLE_MIN || 10);
 const MAX_VMS = Number(process.env.MAX_VMS || 6);
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+// ALLOW_URL — откуда брать список допуска (bots/retro на diwatch: https://hyax.ru/retro/api/allow);
+// ключ считаем от того же токена бота. Файл data/allow.txt тогда перезаписывается раз в минуту.
+const ALLOW_URL = process.env.ALLOW_URL || "";
+async function syncAllow() {
+  if (!ALLOW_URL || !TOKEN) return;
+  try {
+    const key = createHmac("sha256", "retro-allow").update(TOKEN).digest("hex");
+    const r = await fetch(`${ALLOW_URL}${ALLOW_URL.includes("?") ? "&" : "?"}key=${key}`, { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`http ${r.status}`);
+    const text = await r.text();
+    const f = join(DATA, "allow.txt");
+    let old = ""; try { old = await readFile(f, "utf8"); } catch { /* нет */ }
+    if (text.trim() && text !== old) { await writeFile(f, text); log("список допуска обновлён:", text.split("\n").filter((l) => l.trim() && !l.startsWith("#")).length, "записей"); }
+  } catch (e) { log("список допуска не получен:", e.message); }
+}
+setInterval(syncAllow, 60000); syncAllow();
 
 // ---------- допуск ----------
 let allow = { mtime: -1, ids: new Set(), names: new Set() };
@@ -170,13 +186,29 @@ wss.on("connection", (ws, req) => {
     broadcastRoom(room);
 
     const vm = entry.vm;
+    // Движения мыши склеиваем: пока очередь ввода занята, сдвиги суммируются, а из
+    // «подвести в точку» остаётся только последняя цель — иначе быстрый жест
+    // превращается в сотни событий и ввод отстаёт на секунды.
+    const acc = { dx: 0, dy: 0, job: false, target: null, moveJob: false };
     ws.on("message", (d, bin) => {
       if (bin) { vnc.write(d); return; }
       let m; try { m = JSON.parse(String(d)); } catch { return; }
+      if (m.t === "rel") {
+        acc.dx += Number(m.dx) || 0; acc.dy += Number(m.dy) || 0;
+        if (acc.job) return;
+        acc.job = true;
+        vm.run(async () => { acc.job = false; const dx = acc.dx, dy = acc.dy; acc.dx = acc.dy = 0; await vm.moveBy(dx, dy); }).catch((e) => { acc.job = false; log("ввод:", e.message); });
+        return;
+      }
+      if (m.t === "move") {
+        acc.target = { x: m.x, y: m.y };
+        if (acc.moveJob) return;
+        acc.moveJob = true;
+        vm.run(async () => { acc.moveJob = false; const t = acc.target; acc.target = null; if (!t) return; if (Date.now() - (vm.sizedAt || 0) > 10000) { await vm.probeSize(); vm.sizedAt = Date.now(); } await vm.moveTo(t.x, t.y); }).catch((e) => { acc.moveJob = false; log("ввод:", e.message); });
+        return;
+      }
       vm.run(async () => {
         switch (m.t) {
-          case "move": if (Date.now() - (vm.sizedAt || 0) > 10000) { await vm.probeSize(); vm.sizedAt = Date.now(); } await vm.moveTo(m.x, m.y); break;
-          case "rel": await vm.moveBy(m.dx, m.dy); break;
           case "btn": await vm.button(m.b || "left", !!m.down); break;
           case "click": await vm.click(m.b || "left", Math.min(3, m.n || 1)); break;
           case "key": { const q = KEYS[m.k] || m.k; if (/^[\w-]{1,24}$/.test(q)) await vm.key(q, !!m.down); break; }

@@ -100,6 +100,7 @@ function connect(room) {
 
 function disconnect() {
   clearInterval(fitTimer); fitTimer = null;
+  if (locked()) document.exitPointerLock();
   try { rfb?.disconnect(); } catch { /* уже */ }
   rfb = null;
   if (ws) { const s = ws; ws = null; try { s.close(); } catch { /* уже */ } }
@@ -148,12 +149,29 @@ const fingers = new Map();
 let gesture = null, lastTapAt = 0;
 const btn = (b, down) => send({ t: "btn", b, down });
 const click = (b) => send({ t: "click", b });
+// Сдвиги копим и шлём раз в кадр: иначе на каждое движение мыши — сообщение.
+let relAcc = { dx: 0, dy: 0 }, relRaf = 0;
+function sendRel(dx, dy) {
+  relAcc.dx += dx; relAcc.dy += dy;
+  if (relRaf) return;
+  relRaf = requestAnimationFrame(() => { relRaf = 0; const a = relAcc; relAcc = { dx: 0, dy: 0 }; if (a.dx || a.dy) send({ t: "rel", dx: a.dx, dy: a.dy }); });
+}
+// Захват указателя на компьютере (режим «тачпад»): курсор не выходит из окна,
+// отпустить — Ctrl+G или Cmd+G (Esc тоже отпускает, так устроен браузер).
+const locked = () => document.pointerLockElement === touch;
+function lockPointer() {
+  if (locked() || !touch.requestPointerLock) return;
+  try { const r = touch.requestPointerLock({ unadjustedMovement: true }); r?.catch?.(() => touch.requestPointerLock()); } catch { try { touch.requestPointerLock(); } catch { /* не дают */ } }
+}
+document.addEventListener("pointerlockchange", () => { if (locked()) toast("Указатель захвачен. Отпустить: Ctrl+G или Cmd+G", 3500); });
+document.addEventListener("pointerlockerror", () => { if (!lockPointer.warned) { lockPointer.warned = true; toast("Захват мыши не разрешён в этом окне — курсор может выходить за экран", 4000); } });
 
 touch.addEventListener("pointerdown", (e) => {
   if (!ws) return;
   if (e.pointerType === "mouse") {
     const b = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
     if (mouseMode === "abs") { const p = at(e); send({ t: "move", x: p.x, y: p.y }); }
+    else lockPointer(); // захват, если рамка разрешает; без него мышь всё равно работает, пока курсор в окне
     btn(b, true); return;
   }
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -169,7 +187,7 @@ touch.addEventListener("pointermove", (e) => {
   if (!ws) return;
   if (e.pointerType === "mouse") {
     if (mouseMode === "abs") { if (e.buttons) { const p = at(e); send({ t: "move", x: p.x, y: p.y }); } }
-    else send({ t: "rel", dx: e.movementX / view.k, dy: e.movementY / view.k });
+    else sendRel(e.movementX / view.k, e.movementY / view.k);
     return;
   }
   const f = fingers.get(e.pointerId);
@@ -183,7 +201,7 @@ touch.addEventListener("pointermove", (e) => {
     if (gesture.moved >= 10 && !gesture.drag && !gesture.long) { clearTimeout(gesture.timer); gesture.drag = true; btn("left", true); }
   } else {
     const k = (1 / view.k) * (0.8 + Math.min(1.2, Math.hypot(dx, dy) / 25));
-    send({ t: "rel", dx: dx * k, dy: dy * k });
+    sendRel(dx * k, dy * k);
   }
 });
 function endPointer(e) {
@@ -236,7 +254,11 @@ function qcode(e) {
   m = /^F(\d{1,2})$/.exec(e.code); if (m) return "f" + m[1];
   return null;
 }
-addEventListener("keydown", (e) => { if (!ws || document.activeElement === kbd) return; const q = qcode(e); if (q) { e.preventDefault(); send({ t: "key", k: q, down: true }); } });
+addEventListener("keydown", (e) => {
+  if (!ws || document.activeElement === kbd) return;
+  if ((e.ctrlKey || e.metaKey) && e.code === "KeyG") { e.preventDefault(); if (locked()) document.exitPointerLock(); else lockPointer(); return; }
+  const q = qcode(e); if (q) { e.preventDefault(); send({ t: "key", k: q, down: true }); }
+});
 addEventListener("keyup", (e) => { if (!ws || document.activeElement === kbd) return; const q = qcode(e); if (q) { e.preventDefault(); send({ t: "key", k: q, down: false }); } });
 
 // ---------- выход ----------

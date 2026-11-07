@@ -19,8 +19,8 @@ export const SCREEN = { w: 1280, h: 1024 }; // разрешение рабоче
 // Шаг курсора за одно событие. Windows 98 удваивает сдвиг больше порога, если ускорение
 // включено; в образе оно выключено, но шаг держим умеренным (MOUSE_STEP), пауза — чтобы
 // каждое событие ушло отдельным пакетом PS/2.
-const STEP = Number(process.env.MOUSE_STEP || 50);
-const PAUSE = Number(process.env.MOUSE_PAUSE || 25); // мс между событиями: быстрее — Windows склеивает два пакета в один и удваивает
+const STEP = Number(process.env.MOUSE_STEP || 100);
+const PAUSE = Number(process.env.MOUSE_PAUSE || 4); // мс между событиями; ускорение в образе выключено (CLOUD.REG), склейка пакетов не страшна
 
 // ---------- QMP ----------
 class Qmp {
