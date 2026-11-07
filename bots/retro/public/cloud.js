@@ -39,7 +39,9 @@ function makeChannel(sock, onText) {
   const ch = {
     binaryType: "arraybuffer", protocol: "", onopen: null, onclose: null, onerror: null,
     get onmessage() { return handler; },
-    set onmessage(fn) { handler = fn; if (fn) while (pending.length) fn(pending.shift()); },
+    // Отдаём накопленное не сразу: noVNC вешает onmessage в attach(), а состояние
+    // рукопожатия выставляет чуть позже (_socketOpen) — иначе «Unknown init state».
+    set onmessage(fn) { handler = fn; if (fn && pending.length) setTimeout(() => { while (pending.length && handler) handler(pending.shift()); }, 0); },
     get readyState() { return ["connecting", "open", "closing", "closed"][sock.readyState]; },
     send: (d) => sock.send(d), close: () => sock.close(),
   };
