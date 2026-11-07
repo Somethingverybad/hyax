@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ретро-ПК на сервере — проверка</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px system-ui; }
+  #bar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; flex-wrap: wrap; }
+  #bar input { width: 70px; }
+  #stage { position: relative; width: 100vw; height: calc(100vh - 40px); overflow: hidden; }
+  #screen { position: absolute; left: 0; top: 0; }
+  #screen canvas { display: block; }
+  #touch { position: absolute; inset: 0; cursor: crosshair; }
+  #log { position: fixed; right: 0; bottom: 0; max-width: 40vw; max-height: 30vh; overflow: auto; font: 11px monospace; background: #0008; padding: 4px; white-space: pre-wrap; }
+</style>
+<div id="bar">
+  <input id="room" placeholder="комната"> <input id="uid" value="1001" title="id пользователя (DEV)">
+  <button id="connect">Подключиться</button>
+  <button data-tap="ctrl-alt-delete">Ctrl+Alt+Del</button><button data-tap="esc">Esc</button><button data-tap="ret">Enter</button>
+  <button id="park">Курсор в угол</button>
+  <label><input type="checkbox" id="relMode"> тачпад</label>
+  <span id="status">—</span>
+</div>
+<div id="stage"><div id="screen"></div><div id="touch" tabindex="0"></div></div>
+<div id="log"></div>
+<script type="module">
+import RFB from "./novnc/core/rfb.js";
+
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("log").textContent = (s + "\n" + $("log").textContent).slice(0, 4000); };
+let ws, rfb, size = { w: 1280, h: 1024 }, scale = 1;
+
+// Канал для noVNC поверх нашего WebSocket: двоичные кадры — VNC, текстовые — наши.
+function makeChannel(sock, onText) {
+  const ch = {
+    binaryType: "arraybuffer", protocol: "", onmessage: null, onopen: null, onclose: null, onerror: null,
+    get readyState() { return ["connecting", "open", "closing", "closed"][sock.readyState]; },
+    send: (d) => sock.send(d), close: () => sock.close(),
+  };
+  sock.onmessage = (e) => { if (typeof e.data === "string") onText(JSON.parse(e.data)); else ch.onmessage?.(e); };
+  sock.onclose = (e) => ch.onclose?.(e);
+  sock.onerror = (e) => ch.onerror?.(e);
+  return ch;
+}
+const send = (o) => ws?.readyState === 1 && ws.send(JSON.stringify(o));
+
+async function connect() {
+  const initData = await (await fetch(`init?id=${encodeURIComponent($("uid").value)}&name=dev${$("uid").value}`)).text();
+  ws = new WebSocket(location.origin.replace(/^http/, "ws") + "/ws");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { $("status").textContent = "жду машину…"; ws.send(JSON.stringify({ t: "hello", initData, room: $("room").value.trim() })); };
+  const ch = makeChannel(ws, (m) => {
+    if (m.t === "ready") {
+      size = { w: m.w, h: m.h }; $("room").value = m.room; $("status").textContent = `комната ${m.room}, сеть ${m.mcast}`;
+      rfb = new RFB($("screen"), ch, { shared: true });
+      rfb.viewOnly = true; rfb.scaleViewport = false; rfb.showDotCursor = false;
+      rfb.addEventListener("connect", () => { log("VNC подключён"); fit(); });
+      rfb.addEventListener("disconnect", (e) => log("VNC отключён " + JSON.stringify(e.detail)));
+    } else if (m.t === "room") log("комната " + m.code + ": " + m.players.map((p) => p.username).join(", "));
+    else if (m.t === "error") { $("status").textContent = "ошибка: " + m.m; log("ошибка " + m.m); }
+    else log(JSON.stringify(m));
+  });
+  ws.onclose = (e) => { log("WS закрыт " + e.code); $("status").textContent = "отключено"; };
+}
+$("connect").onclick = connect;
+
+function fit() {
+  const st = $("stage"), k = Math.min(st.clientWidth / size.w, st.clientHeight / size.h);
+  scale = k;
+  $("screen").style.transform = `scale(${k})`; $("screen").style.transformOrigin = "0 0";
+}
+addEventListener("resize", fit);
+
+// Мышь: клик — подвести и нажать; тачпад — относительные сдвиги.
+const touch = $("touch");
+let last = null;
+touch.addEventListener("contextmenu", (e) => e.preventDefault());
+touch.addEventListener("pointerdown", (e) => {
+  touch.focus();
+  const x = e.offsetX / scale, y = e.offsetY / scale;
+  const b = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
+  if ($("relMode").checked) { last = { x: e.clientX, y: e.clientY }; send({ t: "btn", b, down: true }); return; }
+  send({ t: "move", x, y }); send({ t: "btn", b, down: true });
+});
+touch.addEventListener("pointermove", (e) => {
+  if ($("relMode").checked) { if (last) { send({ t: "rel", dx: (e.clientX - last.x) / scale, dy: (e.clientY - last.y) / scale }); last = { x: e.clientX, y: e.clientY }; } return; }
+  if (e.buttons) send({ t: "move", x: e.offsetX / scale, y: e.offsetY / scale });
+});
+touch.addEventListener("pointerup", (e) => { last = null; send({ t: "btn", b: e.button === 2 ? "right" : e.button === 1 ? "middle" : "left", down: false }); });
+touch.addEventListener("wheel", (e) => { e.preventDefault(); send({ t: "btn", b: e.deltaY > 0 ? "wheel-down" : "wheel-up", down: true }); send({ t: "btn", b: e.deltaY > 0 ? "wheel-down" : "wheel-up", down: false }); }, { passive: false });
+
+// Клавиатура: code браузера → qcode QEMU.
+const CODES = { Enter: "ret", Escape: "esc", Backspace: "backspace", Tab: "tab", Space: "spc", Delete: "delete", Insert: "insert", Home: "home", End: "end", PageUp: "pgup", PageDown: "pgdn",
+  ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", ControlLeft: "ctrl", ControlRight: "ctrl_r", AltLeft: "alt", AltRight: "alt_r", ShiftLeft: "shift", ShiftRight: "shift_r",
+  MetaLeft: "meta_l", MetaRight: "meta_r", CapsLock: "caps_lock", Minus: "minus", Equal: "equal", BracketLeft: "bracket_left", BracketRight: "bracket_right", Semicolon: "semicolon", Quote: "apostrophe",
+  Backquote: "grave_accent", Backslash: "backslash", Comma: "comma", Period: "dot", Slash: "slash" };
+function qcode(e) {
+  if (CODES[e.code]) return CODES[e.code];
+  let m = /^Key([A-Z])$/.exec(e.code); if (m) return m[1].toLowerCase();
+  m = /^Digit(\d)$/.exec(e.code); if (m) return m[1];
+  m = /^F(\d{1,2})$/.exec(e.code); if (m) return "f" + m[1];
+  return null;
+}
+touch.addEventListener("keydown", (e) => { const q = qcode(e); if (q) { e.preventDefault(); send({ t: "key", k: q, down: true }); } });
+touch.addEventListener("keyup", (e) => { const q = qcode(e); if (q) { e.preventDefault(); send({ t: "key", k: q, down: false }); } });
+for (const b of document.querySelectorAll("[data-tap]")) b.onclick = () => send({ t: "tap", k: b.dataset.tap });
+$("park").onclick = () => send({ t: "park" });
+</script>

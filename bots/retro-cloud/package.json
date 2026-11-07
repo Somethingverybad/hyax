@@ -1,0 +1,8 @@
+{
+  "name": "retro-cloud",
+  "private": true,
+  "type": "module",
+  "description": "Ретро-ПК на сервере: Windows 98 в QEMU/KVM, экран в браузер по VNC, ввод через QMP, комнаты с общей сетью для игр",
+  "scripts": { "start": "node server/index.js", "test": "node --test test/" },
+  "dependencies": { "ws": "^8.18.0" }
+}
