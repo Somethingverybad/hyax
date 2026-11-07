@@ -98,11 +98,11 @@ export class Vm {
     } catch { return false; }
   }
 
-  async start() {
+  async start(allowResume = true) {
     if (this.proc) return;
     await this.ensureDisk();
     await rm(this.vnc, { force: true }); await rm(this.qmpPath, { force: true });
-    const resume = await this.hasSnapshot();
+    const resume = allowResume && await this.hasSnapshot();
     const args = [
       "-enable-kvm", "-m", String(this.ram), "-M", "pc,acpi=off,hpet=off", "-cpu", "pentium2",
       "-drive", `file=${this.disk},format=qcow2,if=ide,index=0`,
@@ -120,7 +120,16 @@ export class Vm {
     this.exited = new Promise((r) => this.proc.on("exit", (code) => { this.log(`qemu вышел (${code})`); this.proc = null; this.qmp = null; r(code); }));
     for (let i = 0; i < 100; i++) {
       await sleep(100);
-      try { await stat(this.qmpPath); break; } catch { if (!this.proc) throw new Error("qemu не запустился"); }
+      try { await stat(this.qmpPath); break; } catch {
+        if (!this.proc) {
+          if (resume) { // снимок не подошёл (другая конфигурация машины) — забыть его и грузиться с нуля
+            this.log("снимок не загрузился — холодный старт");
+            try { await execFileP("qemu-img", ["snapshot", "-d", "idle", this.disk]); } catch { /* уже нет */ }
+            return this.start(false);
+          }
+          throw new Error("qemu не запустился");
+        }
+      }
     }
     this.qmp = new Qmp(this.qmpPath);
     await this.qmp.connect();
