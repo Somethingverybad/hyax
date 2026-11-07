@@ -1,4 +1,6 @@
 import { t } from "@/lib/i18n";
+import { useKeyboardHeight } from "@/lib/useKeyboardHeight";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { Aura } from "@/components/Aura";
 import { X, Camera, UserPlus, UserMinus, Users, Check, Music2, PawPrint, Minus, Plus, Shield } from "lucide-react";
@@ -128,6 +130,20 @@ const GroupSettingsModal = ({
   const [members, setMembers] = useState<Person[]>([]);
   const [saving, setSaving] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const kb = useKeyboardHeight();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  // Поиск открыли — сразу в поле (клавиатура выезжает по этому касанию) и
+  // поле — к верху окна, чтобы найденные были видны над клавиатурой.
+  useEffect(() => {
+    if (!addOpen) return;
+    addInputRef.current?.focus();
+  }, [addOpen]);
+  useEffect(() => {
+    if (!addOpen || kb <= 0) return;
+    const t = window.setTimeout(() => addInputRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 60);
+    return () => window.clearTimeout(t);
+  }, [addOpen, kb]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Person[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -241,9 +257,14 @@ const GroupSettingsModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+    // Клавиатура открыта (поиск «Добавить») — окно прижато к верху и не ниже
+    // её кромки, прокрутка внутри: иначе поле поиска и найденные уходили под
+    // клавиатуру, и добавить человека было нельзя («закрывает клавиатура»).
+    <div className={cn("fixed inset-0 z-50 bg-black/70 flex justify-center p-4", kb > 0 ? "items-start pt-3" : "items-center")} onClick={onClose}>
       <div
-        className="w-full max-w-sm max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl p-5 relative"
+        ref={boxRef}
+        className="w-full max-w-sm overflow-y-auto bg-card border border-border rounded-2xl p-5 relative"
+        style={{ maxHeight: kb > 0 ? `calc(100dvh - ${kb}px - 24px)` : "85vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={onClose} className="absolute top-3 right-3 p-2 text-muted-foreground hover:text-foreground" aria-label={t("Закрыть")}>
@@ -376,6 +397,7 @@ const GroupSettingsModal = ({
           {addOpen && canAdd && (
             <div className="mb-3">
               <input
+                ref={addInputRef}
                 value={query}
                 onChange={(e) => search(e.target.value)}
                 placeholder={t("Поиск по нику…")}
