@@ -4215,3 +4215,40 @@ class PerChatSoundTests(TestCase):
         # Чужой чат — 404.
         r = client_for(self.lera).post(f"/api/chats/{self.c2.id}/my_sound/", {"notify_sound_id": str(a.id)}, format="json")
         self.assertEqual(r.status_code, 404)
+
+
+class SilentSoundTests(TestCase):
+    """«Без звука» (slug silent) в профиле или для чата — мои сообщения приходят беззвучно."""
+
+    def setUp(self):
+        from unittest import mock
+        from django.core.cache import cache
+        cache.clear()
+        self.me, self.peer = make_user("ss_me"), make_user("ss_peer")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.me, self.peer):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        NotificationSound.objects.bulk_create([NotificationSound(slug="silent", name="Без звука", file="sounds/silent.mp3")])
+        self.pushes = []
+        patcher = mock.patch("chat.fcm.notify_profiles", side_effect=lambda *a, **kw: self.pushes.append(kw))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def send(self):
+        r = client_for(self.me).post("/api/messages/", {"chat": str(self.chat.id), "content": "тсс"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        return self.pushes[-1]
+
+    def test_profile_and_chat_silent(self):
+        silent = NotificationSound.objects.get(slug="silent")
+        self.me.notify_sound = silent
+        self.me.save(update_fields=["notify_sound"])
+        kw = self.send()
+        self.assertIsNone(kw.get("sound"))
+        self.assertTrue(kw.get("force_silent"))
+        # Профиль — обычный, но в этом чате «Без звука».
+        self.me.notify_sound = None
+        self.me.save(update_fields=["notify_sound"])
+        self.assertFalse(self.send().get("force_silent"))
+        client_for(self.me).post(f"/api/chats/{self.chat.id}/my_sound/", {"notify_sound_id": str(silent.id)}, format="json")
+        self.assertTrue(self.send().get("force_silent"))

@@ -2528,6 +2528,9 @@ const en: Record<string, string> = {
   "Как в профиле": "Same as in profile",
   "Здесь ваши сообщения звучат как «{name}»": "Here your messages sound like “{name}”",
   "Здесь — как в профиле": "Here — same as in profile",
+  "Здесь ваши сообщения придут без звука": "Here your messages will arrive silently",
+  "Теперь твои сообщения приходят без звука": "Your messages now arrive silently",
+  "С этим звуком собеседники услышат ваши сообщения. Для отдельного чата — в его меню: «Мой звук в этом чате».": "Others will hear your messages with this sound. For a single chat — in its menu: “My sound in this chat”.",
   "Не удалось сохранить звук": "Couldn't save the sound",
 };
 export default en;

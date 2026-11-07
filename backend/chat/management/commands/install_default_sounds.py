@@ -15,7 +15,9 @@ from django.core.management.base import BaseCommand
 
 from chat.models import NotificationSound, SoundPack
 
-SOUNDS = [("uved", "Уведомление", "uved.mp3")]
+# silent — «Без звука»: беззвучный файл, чтобы и старые версии приложения,
+# скачав его, играли тишину; сервер такие пуши шлёт вовсе без звука (views).
+SOUNDS = [("uved", "Уведомление", "uved.mp3"), ("silent", "Без звука", "silent.mp3")]
 
 
 class Command(BaseCommand):

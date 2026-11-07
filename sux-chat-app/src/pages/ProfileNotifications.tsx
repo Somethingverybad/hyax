@@ -287,6 +287,9 @@ const ProfileNotifications = () => {
       {pickerOpen && profile && (
         <SoundPicker
           title={t("Мой звук уведомлений")}
+          hint={t("С этим звуком собеседники услышат ваши сообщения. Для отдельного чата — в его меню: «Мой звук в этом чате».")}
+          own
+          noneLabel={false}
           current={profile.notify_sound?.id || null}
           onClose={() => setPickerOpen(false)}
           onPick={async (s) => {
@@ -296,7 +299,8 @@ const ProfileNotifications = () => {
               { ...profile, notify_sound: s },
               profile,
             );
-            if (ok) toast.success(s ? t("Теперь твои сообщения звучат как «{name}»", { name: s.name }) : t("Обычный звук"));
+            if (ok) toast.success(s?.slug === "silent" ? t("Теперь твои сообщения приходят без звука")
+              : s ? t("Теперь твои сообщения звучат как «{name}»", { name: s.name }) : t("Обычный звук"));
           }}
         />
       )}

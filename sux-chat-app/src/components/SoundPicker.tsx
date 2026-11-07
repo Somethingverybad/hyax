@@ -50,16 +50,22 @@ const SoundRow = ({ sound, selected, onPick, label }: {
   );
 };
 
-/** Стандартный звук уведомления — есть у всех (backend: install_default_sounds). */
+/** Стандартный звук уведомления и «Без звука» — есть у всех
+ *  (backend: install_default_sounds; «Без звука» — беззвучный файл, сервер
+ *  шлёт такие пуши вовсе без звука). */
 const STANDARD_SLUG = "uved";
+const SILENT_SLUG = "silent";
 
-const SoundPicker = ({ title, current, onPick, onClose, hint, noneLabel }: {
+const SoundPicker = ({ title, current, onPick, onClose, hint, noneLabel, own }: {
   /** Заголовок шторки: у профиля и у канала он разный. */
   title: string;
   /** Пояснение под заголовком: чей это звук и кто его услышит. */
   hint?: string;
-  /** Подпись строки «без выбора» (по умолчанию «Без звука»). */
-  noneLabel?: string;
+  /** Подпись строки «без выбора» (по умолчанию «Без звука»); false — без неё. */
+  noneLabel?: string | false;
+  /** «Мой звук» (профиль, чат): сверху «Без звука» (настоящая тишина) и
+   *  «Стандартный»; в профиле «ничего не выбрано» — это и есть стандартный. */
+  own?: boolean;
   current: string | null;
   onPick: (s: NotificationSoundInfo | null) => void;
   onClose: () => void;
@@ -92,6 +98,7 @@ const SoundPicker = ({ title, current, onPick, onClose, hint, noneLabel }: {
 
   const q = query.trim().toLowerCase();
   const standard = (sounds || []).find((x) => x.slug === STANDARD_SLUG) || null;
+  const silent = (sounds || []).find((x) => x.slug === SILENT_SLUG) || null;
   // Не добавленные паки просто не показываем: ставить себе можно звуки вне
   // паков, из стандартного и из своих или добавленных; 18+ — только с
   // «Показывать 18+». Остальной каталог нужен лишь для входящих от друзей.
@@ -101,7 +108,7 @@ const SoundPicker = ({ title, current, onPick, onClose, hint, noneLabel }: {
     s.id === current || ((s.pack_mine ?? true) && (!s.pack_adult || allowAdult));
   const groups = useMemo(() => {
     // Стандартный — отдельной строкой сверху, в паке его не повторяем.
-    const list = (sounds || []).filter(pickable).filter((s) => s.slug !== STANDARD_SLUG).filter((s) =>
+    const list = (sounds || []).filter(pickable).filter((s) => !own || (s.slug !== STANDARD_SLUG && s.slug !== SILENT_SLUG)).filter((s) =>
       !q || s.name.toLowerCase().includes(q) || (s.pack_name || "").toLowerCase().includes(q));
     const by = new Map<string, NotificationSoundInfo[]>();
     for (const s of list) {
@@ -144,13 +151,16 @@ const SoundPicker = ({ title, current, onPick, onClose, hint, noneLabel }: {
         </div>
 
         <div className="overflow-y-auto">
-          {!q && <SoundRow sound={null} selected={!current} onPick={() => onPick(null)} label={noneLabel} />}
-          {/* Стандартный — следом за «без выбора»: он есть у всех. */}
-          {standard && (!q || t("Стандартный").toLowerCase().includes(q) || standard.name.toLowerCase().includes(q)) && (
-            <SoundRow sound={standard} selected={current === standard.id} onPick={() => onPick(standard)} label={t("Стандартный")} />
+          {!q && noneLabel !== false && <SoundRow sound={null} selected={!current} onPick={() => onPick(null)} label={noneLabel} />}
+          {/* «Мой звук»: «Без звука» — сообщения придут беззвучно, «Стандартный» — есть у всех. */}
+          {own && !q && silent && (
+            <SoundRow sound={null} selected={current === silent.id} onPick={() => onPick(silent)} label={t("Без звука")} />
+          )}
+          {own && standard && (!q || t("Стандартный").toLowerCase().includes(q) || standard.name.toLowerCase().includes(q)) && (
+            <SoundRow sound={standard} selected={current === standard.id || (noneLabel === false && !current)} onPick={() => onPick(standard)} label={t("Стандартный")} />
           )}
           {sounds === null && <p className="px-4 py-6 text-small text-subtle text-center">{t("Загрузка…")}</p>}
-          {sounds && !found && (
+          {sounds && !found && (q || !(own && (standard || silent))) && (
             <p className="px-4 py-6 text-small text-subtle text-center">
               {q ? t("Ничего не нашлось") : t("Каталог звуков пуст")}
             </p>

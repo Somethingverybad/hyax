@@ -6289,6 +6289,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           hint={(peer ? tr("С этим звуком {name} услышит ваши сообщения", { name: peer.username }) : tr("С этим звуком участники услышат ваши сообщения"))
             + (isGroup && chatInfo?.notify_sound ? ` ${tr("Но в группе есть общий звук от админа — он важнее.")}` : "")}
           noneLabel={tr("Как в профиле")}
+          own
           current={chatInfo?.my_sound?.id || null}
           onClose={() => setMySoundOpen(false)}
           onPick={async (s) => {
@@ -6296,7 +6297,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             try {
               const saved = await api.setChatMySound(chatId, s ? s.id : null);
               setChatInfo((ci) => { if (!ci) return ci; const next = { ...ci, my_sound: saved }; chatInfoCache.set(chatId, next); return next; });
-              toast.success(saved ? tr("Здесь ваши сообщения звучат как «{name}»", { name: saved.name }) : tr("Здесь — как в профиле"));
+              toast.success(!saved ? tr("Здесь — как в профиле") : saved.slug === "silent" ? tr("Здесь ваши сообщения придут без звука")
+                : tr("Здесь ваши сообщения звучат как «{name}»", { name: saved.name }));
             } catch (e) {
               toast.error((e as Error)?.message || tr("Не удалось сохранить звук"));
             }

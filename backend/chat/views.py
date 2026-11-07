@@ -1056,6 +1056,21 @@ def _message_push_sound(message, profile):
     return _default_notify_sound()
 
 
+# «Без звука» — выбор отправителя (в профиле или для этого чата): его
+# сообщения приходят беззвучно. Беззвучный файл в каталоге — для старых
+# версий приложения; пуш с ним шлём вовсе без звука (force_silent).
+SILENT_SLUG = "silent"
+
+
+def _push_sound_silent(message, profile):
+    return _message_push_sound(message, profile) == SILENT_SLUG
+
+
+def _push_sound_or_none(message, profile):
+    slug = _message_push_sound(message, profile)
+    return None if slug == SILENT_SLUG else slug
+
+
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
     # Стена: подписчиков нет, читают все по запросу; пуш — только собеседникам
@@ -1153,8 +1168,8 @@ def _notify_new_message(message, profile, request):
                 notify_profiles(Profile.objects.filter(id=_t.id), title=push_title,
                                 body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
                                 extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
-                                sound=_message_push_sound(message, profile),
-                                force_silent=bool(getattr(message, "silent", False)))
+                                sound=_push_sound_or_none(message, profile),
+                                force_silent=bool(getattr(message, "silent", False)) or _push_sound_silent(message, profile))
             recipients = recipients.exclude(id=message.action_target_id)
             # Остальным в группе — «Вася подмигивает Пете» на их языке.
             _who, _whom = profile.username, message.action_target.username
@@ -1176,14 +1191,14 @@ def _notify_new_message(message, profile, request):
             extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
             # Звук: аудио-стикер, звук канала или группы, «мой звук в этом
             # чате» отправителя, его «мой звук» — по порядку (_message_push_sound).
-            sound=_message_push_sound(message, profile),
+            sound=_push_sound_or_none(message, profile),
             # Кому выключено превью — «Новое сообщение» вместо текста.
             hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
             # Звук приложили к сообщению специально — играет и у тех, кто
             # выключил звук уведомлений.
             keep_sound=bool(message.sound_id),
             # Отправили «без звука» — без звука у всех, поверх всего.
-            force_silent=bool(getattr(message, "silent", False)),
+            force_silent=bool(getattr(message, "silent", False)) or _push_sound_silent(message, profile),
         )
     except Exception:
         logger.exception("push: не удалось поставить отправку")
