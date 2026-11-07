@@ -8,13 +8,15 @@ import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type IdeaItem } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { useSections, setSection } from "@/lib/sections";
 
 /**
  * Профиль → Долгий ящик. Идеи всех людей (без имён авторов): топ, «Бездна» —
  * все от новых к старым, реализованные и свои. Голос за чужую идею — один,
  * +5 к вайбометру; лайк приносит автору +10. Админ отмечает «Реализовано»
  * и убирает мусор. Сервер — chat/ideabox.py. Чат с ботом «Долгий ящик» — для
- * старых версий приложения.
+ * старых версий приложения. Галочка «Показывать в списке чатов» — та же
+ * настройка, что «Внешний вид» → «Разделы» (lib/sections, ideabox_enabled).
  */
 type Tab = "top" | "new" | "done" | "mine";
 // Подписи — русские ключи словаря, переводятся при показе (tr() здесь,
@@ -65,6 +67,7 @@ export default function ProfileIdeas() {
   const [vibe, setVibe] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState("");
+  const sections = useSections();
   const [sending, setSending] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const reqRef = useRef(0);
@@ -178,6 +181,16 @@ export default function ProfileIdeas() {
               </button>
             </div>
           </section>
+
+          <label className="ui-card rounded-lg bg-surface-2 border border-border px-4 py-3 flex items-center gap-3 cursor-pointer">
+            <span className="flex-1 min-w-0">
+              <span className="block text-body">{tr("Показывать в списке чатов")}</span>
+              <span className="block text-caption text-subtle leading-snug">{tr("Строка «Долгий ящик» над чатами")}</span>
+            </span>
+            <input type="checkbox" className="w-5 h-5 accent-primary shrink-0"
+              checked={sections.ideabox}
+              onChange={async (e) => { if (!(await setSection("ideabox", e.target.checked))) toast.error(tr("Не удалось сохранить")); }} />
+          </label>
 
           <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
               {TABS.map((t) => (
