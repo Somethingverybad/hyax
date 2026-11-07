@@ -81,6 +81,7 @@ import EffectMenu from "./EffectMenu";
 import { EFFECT_TEXT_MAX, effectOf, effectsFit, isMessageEffect, textEffect, type EffectPlay, type MessageEffect as MessageEffectKind } from "@/lib/effects";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
+import SoundPicker from "@/components/SoundPicker";
 import type { PlaylistTrack } from "@/api/client";
 import { currentTrack, isCurrent, playQueue, playerState, seek as playerSeek, setOpenChat, setRate as playerSetRate, subscribePlayer, toggle as playerToggle, usePlayerSlice, type Track } from "@/lib/player";
 import { loadWaveform } from "@/lib/waveform";
@@ -393,6 +394,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Увеличенный треугольник: рядом с ним кнопку «Аа» не показываем — управление в плашке.
   const bigNoteId = useVideoNoteSlice((st) => (st.mode === "big" ? st.note?.id ?? null : null));
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
+  // «Мой звук в этом чате» (SoundPicker): с ним собеседник слышит мои сообщения.
+  const [mySoundOpen, setMySoundOpen] = useState(false);
   // Эффект сообщения (lib/effects): что сейчас сыплется по экрану — и у
   // отправителя, и у получателя (по событию из сокета, см. Chat.tsx).
   const [burst, setBurst] = useState<(EffectPlay & { key: number }) | null>(null);
@@ -4378,6 +4381,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     )}
                     <button type="button" onClick={() => { setHeaderMenuOpen(false); setWallpaperOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                       <ImageIcon className="w-5 h-5 text-foreground/80" />{tr("Обои чата")}</button>
+                    {/* Свой звук для этого чата: с ним собеседник слышит мои сообщения. */}
+                    {!saved && !reqPending && ((peer && !peer.is_bot) || isGroup) && (
+                      <button type="button" onClick={() => { setHeaderMenuOpen(false); setMySoundOpen(true); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
+                        <Music2 className="w-5 h-5 text-foreground/80" />{tr("Мой звук в этом чате")}</button>
+                    )}
                     {myPet && !reqPending && !(isGroup && group?.pet_limit === 0 && !petHereMine) && (
                       <button type="button" onClick={() => { setHeaderMenuOpen(false); void togglePet(); }} className="h-11 px-4 text-left text-body flex items-center gap-3 active:bg-surface-3">
                         <PawPrint className="w-5 h-5 text-foreground/80" />{petHereMine ? tr("Отправить питомца домой") : tr("Позвать питомца")}</button>
@@ -6274,6 +6282,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           />
         );
       })()}
+
+      {mySoundOpen && chatId && (
+        <SoundPicker
+          title={tr("Мой звук в этом чате")}
+          hint={(peer ? tr("С этим звуком {name} услышит ваши сообщения", { name: peer.username }) : tr("С этим звуком участники услышат ваши сообщения"))
+            + (isGroup && chatInfo?.notify_sound ? ` ${tr("Но в группе есть общий звук от админа — он важнее.")}` : "")}
+          noneLabel={tr("Как в профиле")}
+          current={chatInfo?.my_sound?.id || null}
+          onClose={() => setMySoundOpen(false)}
+          onPick={async (s) => {
+            setMySoundOpen(false);
+            try {
+              const saved = await api.setChatMySound(chatId, s ? s.id : null);
+              setChatInfo((ci) => { if (!ci) return ci; const next = { ...ci, my_sound: saved }; chatInfoCache.set(chatId, next); return next; });
+              toast.success(saved ? tr("Здесь ваши сообщения звучат как «{name}»", { name: saved.name }) : tr("Здесь — как в профиле"));
+            } catch (e) {
+              toast.error((e as Error)?.message || tr("Не удалось сохранить звук"));
+            }
+          }}
+        />
+      )}
 
       {groupOpen && group && (
         <GroupSettingsModal

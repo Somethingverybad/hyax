@@ -254,6 +254,8 @@ class ChatViewSet(viewsets.ModelViewSet):
                     # Мои уведомления этого чата (ChatSerializer.get_muted).
                     my_muted=Subquery(mine.values('muted')[:1]),
                     my_muted_until=Subquery(mine.values('muted_until')[:1]),
+                    # «Мой звук в этом чате» (ChatSerializer.get_my_sound).
+                    my_sound_id=Subquery(mine.values('notify_sound_id')[:1]),
                     # Моя роль и права админа группы (ChatSerializer.get_my_rights).
                     my_role=Subquery(mine.values('role')[:1]),
                     my_rights=Subquery(mine.values('rights')[:1]),
@@ -358,6 +360,28 @@ class ChatViewSet(viewsets.ModelViewSet):
             return Response({"error": "for: 1h, 4h, 8h, forever или off"}, status=400)
         row.save(update_fields=['muted', 'muted_until'])
         return Response({"muted": row.muted or bool(row.muted_until), "muted_until": row.muted_until.isoformat() if row.muted_until else None})
+
+    @action(detail=True, methods=['post'])
+    def my_sound(self, request, pk=None):
+        """POST {notify_sound_id: id | null} — «мой звук в этом чате»: с ним
+        собеседники этого чата слышат мои сообщения; null — как в профиле.
+        Ответ: {my_sound}."""
+        profile = getattr(request.user, 'profile', None)
+        if not profile:
+            return Response({"error": "Profile not found"}, status=400)
+        row = ChatParticipant.objects.filter(chat_id=pk, user=profile).first()
+        if not row:
+            return Response({"error": "Вы не участник этого чата"}, status=404)
+        sid = request.data.get('notify_sound_id')
+        snd = None
+        if sid:
+            snd = NotificationSound.objects.filter(id=sid, is_active=True).first()
+            if not snd:
+                return Response({"error": "Звук не найден"}, status=404)
+        row.notify_sound = snd
+        row.save(update_fields=['notify_sound'])
+        from .serializers import NotificationSoundSerializer
+        return Response({"my_sound": NotificationSoundSerializer(snd).data if snd else None})
 
     @action(detail=True, methods=['post'])
     def accept_request(self, request, pk=None):
@@ -1014,6 +1038,24 @@ def _default_notify_sound():
     return slug or None
 
 
+def _message_push_sound(message, profile):
+    """Звук пуша о сообщении: аудио-стикер сообщения → звук канала или группы
+    (его ставит админ, один на всех) → «мой звук в этом чате» отправителя
+    (ChatParticipant.notify_sound: Лере один, другому другой) → «мой звук»
+    из профиля → «Уведомление» по умолчанию."""
+    if message.sound_id:
+        return message.sound.slug
+    if getattr(message.chat, 'notify_sound_id', None):
+        return message.chat.notify_sound.slug
+    own = ChatParticipant.objects.filter(chat_id=message.chat_id, user=profile, notify_sound__is_active=True) \
+        .values_list('notify_sound__slug', flat=True).first()
+    if own:
+        return own
+    if getattr(profile, 'notify_sound_id', None):
+        return profile.notify_sound.slug
+    return _default_notify_sound()
+
+
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
     # Стена: подписчиков нет, читают все по запросу; пуш — только собеседникам
@@ -1111,8 +1153,7 @@ def _notify_new_message(message, profile, request):
                 notify_profiles(Profile.objects.filter(id=_t.id), title=push_title,
                                 body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
                                 extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
-                                sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
-                                       else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else _default_notify_sound()),
+                                sound=_message_push_sound(message, profile),
                                 force_silent=bool(getattr(message, "silent", False)))
             recipients = recipients.exclude(id=message.action_target_id)
             # Остальным в группе — «Вася подмигивает Пете» на их языке.
@@ -1133,11 +1174,9 @@ def _notify_new_message(message, profile, request):
             body=clip(preview, 150),
             # message_id — удалят сообщение, телефон уберёт именно его уведомление.
             extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
-            # Звук: аудио-стикер поста, иначе звук канала, иначе «мой звук»
-            # отправителя. У канала свой — подписчики узнают его по звуку.
-            sound=(message.sound.slug if message.sound_id
-                   else message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
-                   else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else _default_notify_sound()),
+            # Звук: аудио-стикер, звук канала или группы, «мой звук в этом
+            # чате» отправителя, его «мой звук» — по порядку (_message_push_sound).
+            sound=_message_push_sound(message, profile),
             # Кому выключено превью — «Новое сообщение» вместо текста.
             hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
             # Звук приложили к сообщению специально — играет и у тех, кто
@@ -1154,6 +1193,11 @@ def _notify_new_message(message, profile, request):
     # обновляют список чатов и показывают системный баннер. Шлём всегда,
     # а не только при сбое пуша — иначе десктоп «молчит».
     if channel_layer:
+        # «Мой звук в этом чате» отправителя — веб и компьютер играют его сами
+        # (pages/Chat.tsx), пуша у них нет.
+        _own = ChatParticipant.objects.filter(chat_id=message.chat_id, user=profile, notify_sound__is_active=True) \
+            .select_related('notify_sound').first()
+        sender_chat_sound = {"url": _own.notify_sound.file.url, "name": _own.notify_sound.name} if _own and _own.notify_sound_id and _own.notify_sound.file else None
         # Отправителю тоже — ради его других устройств: написал с телефона в
         # Избранное или в чат — на компьютере сообщение появляется сразу, а не
         # на следующем опросе (у Избранного участник один, и без этого событие
@@ -1173,6 +1217,7 @@ def _notify_new_message(message, profile, request):
                         'chat_name': message.chat.name or "",
                         'chat_avatar': message.chat.avatar_url or "",
                         'message': message_data,
+                        'sender_chat_sound': sender_chat_sound,
                     },
                 }
             )

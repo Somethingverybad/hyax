@@ -21,8 +21,10 @@ const NO_PACK = "Отдельные звуки";
 /** Подпись пака: служебные имена (NO_PACK и серверное «Разное») — переводим, имена паков — как есть. */
 const packLabel = (name: string) => (name === NO_PACK || name === "Разное" ? t(name) : name);
 
-const SoundRow = ({ sound, selected, onPick }: {
+const SoundRow = ({ sound, selected, onPick, label }: {
   sound: NotificationSoundInfo | null; selected: boolean; onPick: () => void;
+  /** Подпись вместо названия звука («Стандартный», «Как в профиле»). */
+  label?: string;
 }) => {
   const stopRef = useRef<(() => void) | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -41,16 +43,23 @@ const SoundRow = ({ sound, selected, onPick }: {
         {playing ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </button>
       <button type="button" onClick={onPick} className="flex-1 min-w-0 text-left">
-        <span className="block text-body truncate">{sound ? sound.name : t("Без звука")}</span>
+        <span className="block text-body truncate">{label ?? (sound ? sound.name : t("Без звука"))}</span>
       </button>
       {selected && <Check className="w-4 h-4 text-primary shrink-0" />}
     </div>
   );
 };
 
-const SoundPicker = ({ title, current, onPick, onClose }: {
+/** Стандартный звук уведомления — есть у всех (backend: install_default_sounds). */
+const STANDARD_SLUG = "uved";
+
+const SoundPicker = ({ title, current, onPick, onClose, hint, noneLabel }: {
   /** Заголовок шторки: у профиля и у канала он разный. */
   title: string;
+  /** Пояснение под заголовком: чей это звук и кто его услышит. */
+  hint?: string;
+  /** Подпись строки «без выбора» (по умолчанию «Без звука»). */
+  noneLabel?: string;
   current: string | null;
   onPick: (s: NotificationSoundInfo | null) => void;
   onClose: () => void;
@@ -82,6 +91,7 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
   }, [sounds, current]);
 
   const q = query.trim().toLowerCase();
+  const standard = (sounds || []).find((x) => x.slug === STANDARD_SLUG) || null;
   // Не добавленные паки просто не показываем: ставить себе можно звуки вне
   // паков, из стандартного и из своих или добавленных; 18+ — только с
   // «Показывать 18+». Остальной каталог нужен лишь для входящих от друзей.
@@ -90,7 +100,8 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
   const pickable = (s: NotificationSoundInfo) =>
     s.id === current || ((s.pack_mine ?? true) && (!s.pack_adult || allowAdult));
   const groups = useMemo(() => {
-    const list = (sounds || []).filter(pickable).filter((s) =>
+    // Стандартный — отдельной строкой сверху, в паке его не повторяем.
+    const list = (sounds || []).filter(pickable).filter((s) => s.slug !== STANDARD_SLUG).filter((s) =>
       !q || s.name.toLowerCase().includes(q) || (s.pack_name || "").toLowerCase().includes(q));
     const by = new Map<string, NotificationSoundInfo[]>();
     for (const s of list) {
@@ -111,6 +122,7 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
           <span className="text-h2 flex-1 truncate">{title}</span>
           <button type="button" onClick={onClose} className="p-1.5 text-subtle" aria-label={t("Закрыть")}><X className="w-4 h-4" /></button>
         </div>
+        {hint && <p className="px-4 -mt-2 pb-2 text-small text-subtle">{hint}</p>}
 
         <div className="px-3 pb-2 shrink-0">
           <div className="flex items-center gap-2 h-10 px-3 rounded-lg bg-surface-4">
@@ -132,7 +144,11 @@ const SoundPicker = ({ title, current, onPick, onClose }: {
         </div>
 
         <div className="overflow-y-auto">
-          {!q && <SoundRow sound={null} selected={!current} onPick={() => onPick(null)} />}
+          {!q && <SoundRow sound={null} selected={!current} onPick={() => onPick(null)} label={noneLabel} />}
+          {/* Стандартный — следом за «без выбора»: он есть у всех. */}
+          {standard && (!q || t("Стандартный").toLowerCase().includes(q) || standard.name.toLowerCase().includes(q)) && (
+            <SoundRow sound={standard} selected={current === standard.id} onPick={() => onPick(standard)} label={t("Стандартный")} />
+          )}
           {sounds === null && <p className="px-4 py-6 text-small text-subtle text-center">{t("Загрузка…")}</p>}
           {sounds && !found && (
             <p className="px-4 py-6 text-small text-subtle text-center">

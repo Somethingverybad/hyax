@@ -328,6 +328,10 @@ class ChatParticipant(models.Model):
     wallpaper_kind = models.CharField(max_length=8, blank=True, default="")
     wallpaper_poster = models.TextField(blank=True, null=True)
     wallpaper_anim = models.TextField(blank=True, null=True)
+    # «Мой звук в этом чате»: с ним собеседники этого чата слышат МОИ
+    # сообщения (пуш и звук в приложении) — Лере один, другому другой. Пусто —
+    # как в профиле (Profile.notify_sound). Звук группы от админа важнее.
+    notify_sound = models.ForeignKey('NotificationSound', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     class Meta:
         unique_together = ("chat", "user")

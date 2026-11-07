@@ -4165,3 +4165,53 @@ class DefaultNotifySoundTests(TestCase):
         self.a.notify_sound = NotificationSound.objects.get(slug="mine")
         self.a.save(update_fields=["notify_sound"])
         self.assertEqual(self.send(), "mine")
+
+
+class PerChatSoundTests(TestCase):
+    """«Мой звук в этом чате»: Лере — один, другому — другой; группа от админа важнее."""
+
+    def setUp(self):
+        from unittest import mock
+        from django.core.cache import cache
+        cache.clear()
+        self.me, self.lera, self.other = make_user("pc_me"), make_user("pc_lera"), make_user("pc_other")
+        self.c1, self.c2 = Chat.objects.create(kind="direct"), Chat.objects.create(kind="direct")
+        for c, peer in ((self.c1, self.lera), (self.c2, self.other)):
+            for p in (self.me, peer):
+                ChatParticipant.objects.create(chat=c, user=p)
+        NotificationSound.objects.bulk_create([
+            NotificationSound(slug="pc-a", name="А", file="sounds/a.mp3"),
+            NotificationSound(slug="pc-b", name="Б", file="sounds/b.mp3"),
+            NotificationSound(slug="pc-g", name="Группа", file="sounds/g.mp3"),
+        ])
+        self.pushes = []
+        patcher = mock.patch("chat.fcm.notify_profiles", side_effect=lambda *a, **kw: self.pushes.append(kw))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def send(self, chat):
+        r = client_for(self.me).post("/api/messages/", {"chat": str(chat.id), "content": "привет"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        return self.pushes[-1].get("sound")
+
+    def test_per_chat(self):
+        a, b = NotificationSound.objects.get(slug="pc-a"), NotificationSound.objects.get(slug="pc-b")
+        r = client_for(self.me).post(f"/api/chats/{self.c1.id}/my_sound/", {"notify_sound_id": str(a.id)}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["my_sound"]["slug"], "pc-a")
+        client_for(self.me).post(f"/api/chats/{self.c2.id}/my_sound/", {"notify_sound_id": str(b.id)}, format="json")
+        self.assertEqual(self.send(self.c1), "pc-a")
+        self.assertEqual(self.send(self.c2), "pc-b")
+        # В списке чатов — мой звук этого чата.
+        rows = {str(c["id"]): c for c in client_for(self.me).get("/api/chats/").data}
+        self.assertEqual(rows[str(self.c1.id)]["my_sound"]["slug"], "pc-a")
+        # Сброс — как в профиле.
+        client_for(self.me).post(f"/api/chats/{self.c1.id}/my_sound/", {"notify_sound_id": None}, format="json")
+        self.assertNotEqual(self.send(self.c1), "pc-a")
+        # Звук группы от админа важнее.
+        self.c2.notify_sound = NotificationSound.objects.get(slug="pc-g")
+        self.c2.save(update_fields=["notify_sound"])
+        self.assertEqual(self.send(self.c2), "pc-g")
+        # Чужой чат — 404.
+        r = client_for(self.lera).post(f"/api/chats/{self.c2.id}/my_sound/", {"notify_sound_id": str(a.id)}, format="json")
+        self.assertEqual(r.status_code, 404)

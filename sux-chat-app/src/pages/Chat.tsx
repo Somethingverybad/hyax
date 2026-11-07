@@ -844,10 +844,13 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           });
           // Звук — только там, где нет пушей (веб/десктоп): на телефоне об
           // этом же сообщении звенит пуш, дублировать его в приложении не надо.
-          // Порядок: аудио-стикер сообщения → «мой звук» отправителя → receive.
+          // Порядок: аудио-стикер сообщения → звук группы → «мой звук в этом
+          // чате» отправителя → его «мой звук» → стандартный (receive).
           if (!Capacitor.isNativePlatform() && !quiet) {
             try {
-              const custom = m.sound?.url || (silent ? null : (chatsRef.current.find((c) => String(c.id) === String(chatId)) as { notify_sound?: { url?: string } | null } | undefined)?.notify_sound?.url || m.sender?.notify_sound?.url);
+              // «Мой звук в этом чате» отправителя — приходит в событии (sender_chat_sound).
+              const chatSound = (msg?.data?.sender_chat_sound || msg?.sender_chat_sound) as { url?: string } | null | undefined;
+              const custom = m.sound?.url || (silent ? null : (chatsRef.current.find((c) => String(c.id) === String(chatId)) as { notify_sound?: { url?: string } | null } | undefined)?.notify_sound?.url || chatSound?.url || m.sender?.notify_sound?.url);
               if (custom || !silent) void playSfx(custom ? mediaUrl(custom) : "/sounds/receive.mp3", { volume: 0.6 });
             } catch { /* без звука не критично */ }
           }

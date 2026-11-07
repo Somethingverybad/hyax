@@ -651,6 +651,10 @@ export interface WallState {
 export interface Chat {
   id: string;
   participants: Profile[];
+  /** «Мой звук в этом чате»: с ним собеседники слышат мои сообщения здесь (null — как в профиле). */
+  my_sound?: NotificationSoundInfo | null;
+  /** Звук группы или канала от админа — один на всех, важнее «моего звука». */
+  notify_sound?: NotificationSoundInfo | null;
   /** Общие обои чата и моя личная замена (kind "none" — скрыть у себя). */
   wallpaper?: ChatWallpaper | null;
   my_wallpaper?: ChatWallpaper | null;
@@ -2759,6 +2763,15 @@ export const api = {
 
   /** Закрепить чат вверху списка или открепить. Закрепление личное. */
   /** Уведомления чата у себя: на время, навсегда или включить (lib/chatMute). */
+  /** «Мой звук в этом чате»: с ним собеседники слышат мои сообщения здесь; null — как в профиле. */
+  setChatMySound: async (chatId: string, soundId: string | null): Promise<NotificationSoundInfo | null> => {
+    const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/my_sound/`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ notify_sound_id: soundId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new LError(body?.error || "Не удалось сохранить звук");
+    return body.my_sound ?? null;
+  },
   muteChat: async (chatId: string, span: "1h" | "4h" | "8h" | "forever" | "off"): Promise<{ muted: boolean; muted_until: string | null }> => {
     const res = await fetchWithAuth(`${API_URL}/chats/${chatId}/mute/`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ for: span }),

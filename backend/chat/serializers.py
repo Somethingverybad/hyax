@@ -259,6 +259,27 @@ class ChatSerializer(serializers.ModelSerializer):
     def get_notify_sound(self, obj):
         return notify_sound_payload(self.context, obj)
 
+    # «Мой звук в этом чате» (ChatParticipant.notify_sound) — с ним
+    # собеседники слышат мои сообщения здесь; null — как в профиле.
+    my_sound = serializers.SerializerMethodField()
+
+    def get_my_sound(self, obj):
+        if hasattr(obj, 'my_sound_id'):
+            sid = obj.my_sound_id
+        else:
+            request = self.context.get('request')
+            me = getattr(getattr(request, 'user', None), 'profile', None) if request else None
+            if not me:
+                return None
+            sid = ChatParticipant.objects.filter(chat=obj, user=me).values_list('notify_sound_id', flat=True).first()
+        if not sid:
+            return None
+        cache = self.context.setdefault('_sounds', {}) if isinstance(self.context, dict) else {}
+        if sid not in cache:
+            snd = NotificationSound.objects.filter(id=sid, is_active=True).first()
+            cache[sid] = NotificationSoundSerializer(snd).data if snd else None
+        return cache[sid]
+
     # Участники отдаются вместе со списком чатов. Раньше клиент запрашивал их
     # отдельно на каждый чат: на экран из десяти чатов уходило одиннадцать
     # запросов, и до их ответа вместо имени показывался идентификатор.
@@ -316,7 +337,7 @@ class ChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Chat
-        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'muted', 'muted_until', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'pending_for', 'pet_limit', 'my_rights']
+        fields = ['id', 'name', 'is_group', 'kind', 'username', 'subscribers_count', 'avatar_url', 'creator', 'created_at', 'updated_at', 'pinned_at', 'muted', 'muted_until', 'last_message_at', 'participants', 'last_message', 'pinned_message', 'wallpaper', 'my_wallpaper', 'secret', 'notify_sound', 'my_sound', 'pending_for', 'pet_limit', 'my_rights']
 
     def get_my_rights(self, obj):
         """Мои права в группе (chat/grouprights.py): владелец — все, админ —

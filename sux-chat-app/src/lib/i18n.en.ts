@@ -2521,5 +2521,13 @@ const en: Record<string, string> = {
   "Объятие: плашку сжимает с боков": "Hug: the bubble is squeezed from the sides",
   "Подмигивание: плашка становится глазом и подмигивает": "Wink: the bubble turns into an eye and winks",
   "Вася": "Alex",
+  "Мой звук в этом чате": "My sound in this chat",
+  "С этим звуком {name} услышит ваши сообщения": "{name} will hear your messages with this sound",
+  "С этим звуком участники услышат ваши сообщения": "Members will hear your messages with this sound",
+  "Но в группе есть общий звук от админа — он важнее.": "But the group has a shared sound set by an admin — it takes priority.",
+  "Как в профиле": "Same as in profile",
+  "Здесь ваши сообщения звучат как «{name}»": "Here your messages sound like “{name}”",
+  "Здесь — как в профиле": "Here — same as in profile",
+  "Не удалось сохранить звук": "Couldn't save the sound",
 };
 export default en;
