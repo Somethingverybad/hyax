@@ -4132,3 +4132,36 @@ class AnonymousBugReportTests(TestCase):
         codes = [c.post("/api/bugreports/", {"description": f"№{i}"}, format="multipart", REMOTE_ADDR="10.0.0.9").status_code for i in range(8)]
         self.assertEqual(codes[:6], [201] * 6)
         self.assertEqual(codes[6:], [429, 429])
+
+
+class DefaultNotifySoundTests(TestCase):
+    """Тем, кто свой звук не выбрал, пуш несёт «Уведомление» (uved); свой — важнее."""
+
+    def setUp(self):
+        from unittest import mock
+        from django.core.cache import cache
+        cache.clear()
+        self.a, self.b = make_user("ds_a"), make_user("ds_b")
+        self.chat = Chat.objects.create(kind="direct")
+        for p in (self.a, self.b):
+            ChatParticipant.objects.create(chat=self.chat, user=p)
+        self.pushes = []
+        patcher = mock.patch("chat.fcm.notify_profiles", side_effect=lambda *a, **kw: self.pushes.append(kw))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def send(self):
+        r = client_for(self.a).post("/api/messages/", {"chat": str(self.chat.id), "content": "привет"}, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        return self.pushes[-1].get("sound")
+
+    def test_default_then_own(self):
+        from django.core.cache import cache
+        self.assertIsNone(self.send())  # звука uved ещё нет — стандартный
+        NotificationSound.objects.bulk_create([NotificationSound(slug="uved", name="Уведомление", file="sounds/uved.mp3", caf_url="/media/sounds/uved.caf")])
+        cache.clear()
+        self.assertEqual(self.send(), "uved")
+        NotificationSound.objects.bulk_create([NotificationSound(slug="mine", name="Мой", file="sounds/mine.mp3")])
+        self.a.notify_sound = NotificationSound.objects.get(slug="mine")
+        self.a.save(update_fields=["notify_sound"])
+        self.assertEqual(self.send(), "mine")

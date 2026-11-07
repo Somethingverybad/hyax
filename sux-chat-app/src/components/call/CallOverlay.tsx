@@ -225,6 +225,19 @@ const CallOverlay = ({
     };
   }, [state]);
 
+  // Гудок у звонящего, пока собеседник не ответил. Не на iPhone: там вызов
+  // ведёт CallKit, а звук из WebView перехватил бы его аудиосессию.
+  useEffect(() => {
+    if (state !== "outgoing" || hasCallKit()) return;
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    void playSfx("/sounds/ringback.mp3", { loop: true, volume: 0.6 }).then((s) => { if (cancelled) s(); else stop = s; });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [state]);
+
   useEffect(() => {
     if (state !== "active") {
       setSeconds(0);

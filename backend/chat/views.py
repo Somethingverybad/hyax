@@ -1003,6 +1003,17 @@ def _push_message_deleted(msg, only_profile=None):
         logger.exception("message_deleted: тихий пуш не ушёл")
 
 
+def _default_notify_sound():
+    """Звук уведомления тем, кто свой не выбрал: «Уведомление» (slug uved,
+    manage.py install_default_sounds). Нет его — стандартный звук пуша."""
+    from django.core.cache import cache
+    slug = cache.get("default-notify-sound")
+    if slug is None:
+        slug = "uved" if NotificationSound.objects.filter(slug="uved", is_active=True).exists() else ""
+        cache.set("default-notify-sound", slug, 300)
+    return slug or None
+
+
 def _notify_new_message(message, profile, request):
     _mark_chat_read_for(message.chat, profile)
     # Стена: подписчиков нет, читают все по запросу; пуш — только собеседникам
@@ -1101,7 +1112,7 @@ def _notify_new_message(message, profile, request):
                                 body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
                                 extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
                                 sound=(message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
-                                       else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None),
+                                       else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else _default_notify_sound()),
                                 force_silent=bool(getattr(message, "silent", False)))
             recipients = recipients.exclude(id=message.action_target_id)
             # Остальным в группе — «Вася подмигивает Пете» на их языке.
@@ -1126,7 +1137,7 @@ def _notify_new_message(message, profile, request):
             # отправителя. У канала свой — подписчики узнают его по звуку.
             sound=(message.sound.slug if message.sound_id
                    else message.chat.notify_sound.slug if getattr(message.chat, 'notify_sound_id', None)
-                   else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else None),
+                   else profile.notify_sound.slug if getattr(profile, 'notify_sound_id', None) else _default_notify_sound()),
             # Кому выключено превью — «Новое сообщение» вместо текста.
             hide_body_for=set(recipients.filter(push_preview=False).values_list("id", flat=True)),
             # Звук приложили к сообщению специально — играет и у тех, кто

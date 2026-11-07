@@ -21,3 +21,5 @@ export async function withBusy<T>(key: string, run: () => Promise<T>): Promise<T
 }
 
 export const isBusy = () => counts.size > 0;
+/** Занято ли именно этим (звонок — «call», запись — «record»). */
+export const isBusyWith = (key: string) => counts.has(key);
