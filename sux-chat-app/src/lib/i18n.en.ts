@@ -2086,6 +2086,7 @@ const en: Record<string, string> = {
   "Выравнивает громкость голоса. Выключите для музыки или если громкость прыгает": "Evens out your voice volume. Turn off for music or if the volume jumps",
   "Микрофон": "Microphone",
   "Обработка звука в звонках": "Sound processing in calls",
+  "Обработка звука в звонках и голосовых": "Sound processing in calls and voice messages",
   "Настройки этого устройства, действуют со следующего звонка. Телефон обрабатывает голос и сам, поэтому шум и эхо приглушаются даже с выключенными настройками.": "These settings are for this device and apply from the next call. The phone also processes your voice itself, so noise and echo are reduced even with these turned off.",
   "Настройки этого устройства. В идущем звонке применяются сразу.": "These settings are for this device. During a call they apply right away.",
   "Устройство": "Device",

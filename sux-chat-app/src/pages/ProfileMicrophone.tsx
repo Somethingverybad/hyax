@@ -108,7 +108,7 @@ const ProfileMicrophone = () => {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader title={t("Микрофон")} />
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <p className="px-1 pb-2 text-small text-subtle">{t("Обработка звука в звонках")}</p>
+        <p className="px-1 pb-2 text-small text-subtle">{t("Обработка звука в звонках и голосовых")}</p>
         <div className="ui-card rounded-lg bg-surface-2 border border-border divide-y divide-border">
           {toggles.map(({ k, label, hint }) => (
             <label key={k} className="flex items-center gap-3 px-4 py-3 cursor-pointer">

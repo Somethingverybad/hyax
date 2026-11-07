@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { applog } from "@/lib/applog";
 import { setBusy } from "@/lib/busy";
 import { keepScreenAwake } from "@/lib/screenAwake";
+import { micConstraints } from "@/lib/micSettings";
 
 /**
  * Запись сообщения удержанием кнопки: голос или короткое видео с фронтальной
@@ -48,13 +49,16 @@ async function getMedia(constraints: MediaStreamConstraints): Promise<MediaStrea
 /**
  * Микрофон начинает отдавать звук не сразу после getUserMedia: на Mac — сотни
  * миллисекунд, с Bluetooth-гарнитурой (AirPods переключаются в режим
- * гарнитуры) — до секунды и больше; всё это время в потоке цифровая тишина.
+ * гарнитуры) — две-три секунды; всё это время в потоке цифровая тишина.
  * Запись и индикатор стартовали сразу — и начало голосового пропадало
  * (баг-репорт afbe1e20, компьютер на Mac). Ждём первого ненулевого отсчёта (не
- * дольше maxMs), и только потом пишем и показываем «идёт запись». Возвращает,
- * сколько ждали; -1 — проверить нечем (запись идёт как раньше).
+ * дольше maxMs; пока ждём — «Включаю микрофон… держите кнопку»), и только
+ * потом пишем и показываем «идёт запись». Сначала ждали 1,5 с — AirPods не
+ * успевали, и секунда тишины оставалась (e4bf89d4: «звук через 1511 мс»).
+ * Возвращает, сколько ждали; -1 — проверить нечем (запись идёт как раньше).
  */
-async function waitMicLive(stream: MediaStream, maxMs = 1500): Promise<number> {
+const MIC_WAIT_MS = 4000;
+async function waitMicLive(stream: MediaStream, maxMs = MIC_WAIT_MS): Promise<number> {
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx || !stream.getAudioTracks().length) return -1;
   const t0 = performance.now();
@@ -193,8 +197,10 @@ export function useMediaRecorder() {
     setSeconds(0);
   }, []);
 
+  // Микрофон — выбранный в настройках (как у звонков, lib/micSettings): раньше
+  // запись брала системный, и с подключёнными AirPods их было не обойти.
   const acquire = (kind: RecordKind, facing: Facing): Promise<MediaStream> =>
-    getMedia(kind === "video" ? { audio: true, video: camera(facing) } : { audio: true });
+    getMedia(kind === "video" ? { audio: micConstraints(), video: camera(facing) } : { audio: micConstraints() });
 
   const start = useCallback(async (
     kind: RecordKind = "audio",
@@ -211,7 +217,7 @@ export function useMediaRecorder() {
       if (Capacitor.getPlatform() !== "ios") {
         const waited = await waitMicLive(media);
         const label = media.getAudioTracks()[0]?.label || "?";
-        applog.info(`rec mic «${label.slice(0, 40)}» ${waited < 0 ? "без проверки" : `звук через ${waited} мс`}`);
+        applog.info(`rec mic «${label.slice(0, 40)}» ${waited < 0 ? "без проверки" : waited >= MIC_WAIT_MS ? `звука нет и через ${waited} мс — пишем как есть` : `звук через ${waited} мс`}`);
       }
       const candidates =
         kind === "video"
