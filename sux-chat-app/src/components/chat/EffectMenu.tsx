@@ -9,8 +9,9 @@ import { FormattedText, type TextEntity } from "@/lib/format";
  * Меню по удержанию кнопки «Отправить» (lib/effects): как меню стикера и меню
  * сообщения — экран размывается, в центре крупно само сообщение (с разметкой),
  * под ним — «Без звука», «Отложить» и эффекты; тап мимо — закрыть. Раньше
- * карточка висела у кнопки «Отправить». Центр — области над клавиатурой
- * (--kb-lift / --kb-height): поле ввода в фокусе, клавиатура не сворачивается.
+ * карточка висела у кнопки «Отправить». Клавиатуру на время меню сворачивает
+ * ChatWindow: выбрали пункт — она не возвращается, закрыли тапом мимо —
+ * возвращается.
  *
  * Касания (баг-репорт 07009208, iPhone): меню открывается, пока палец ещё
  * держит стикер, и iOS после отпускания шлёт click туда, где палец теперь, —
@@ -76,16 +77,18 @@ const EffectMenu = ({ preview, onPick, onClose, actions, effects = true, effects
     // data-keep-panel: касание по меню ChatWindow не считает «тапом мимо» панели.
     <div data-keep-panel className="fixed inset-0 z-[90] touch-none flex flex-col items-center justify-center gap-3 px-6"
       style={{
-        // Центр — над клавиатурой: поле ввода в фокусе, она открыта.
-        paddingBottom: "calc(var(--kb-lift, var(--kb-height, 0px)) + 12px)",
         paddingTop: "max(12px, env(safe-area-inset-top))",
+        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
         background: shown ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0)",
         backdropFilter: shown ? "blur(14px)" : "blur(0px)",
         WebkitBackdropFilter: shown ? "blur(14px)" : "blur(0px)",
         transition: "background 180ms ease-out, backdrop-filter 180ms ease-out, -webkit-backdrop-filter 180ms ease-out",
       }}
       onMouseDown={keepFocus}
-      onTouchEnd={viaTouch(() => closeBy("touchend"))} onClick={viaClick(() => closeBy("click"))}
+      // preventDefault: без него браузер после касания дошлёт mousedown туда,
+      // где было меню, — в ленту, и она отнимет фокус у поля, которому
+      // ChatWindow только что вернул клавиатуру.
+      onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); viaTouch(() => closeBy("touchend"))(e); }} onClick={viaClick(() => closeBy("click"))}
       // Android после удержания сам шлёт contextmenu — первую секунду не закрываем.
       onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) closeBy("contextmenu"); }}>
       {preview?.text && (

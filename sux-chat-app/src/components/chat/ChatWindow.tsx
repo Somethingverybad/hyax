@@ -3122,9 +3122,24 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       h.timer = null;
       h.fired = true;
       try { navigator.vibrate?.(10); } catch { /* нет вибрации */ }
+      // Меню в центре экрана — клавиатуру сворачиваем; закроют тапом мимо —
+      // вернём её (closeSendFx), выберут пункт — нет.
+      const ta = textareaRef.current;
+      sendFxRefocusRef.current = isTouchDevice() && !!ta && document.activeElement === ta;
+      if (sendFxRefocusRef.current) ta?.blur();
       setSendFx(el.getBoundingClientRect());
     }, 450);
   };
+  /** Меню закрыли тапом мимо: клавиатура была — возвращаем (касание — жест
+   *  пользователя, iOS покажет её и на программный focus). */
+  const sendFxRefocusRef = useRef(false);
+  const closeSendFx = () => {
+    setSendFx(null);
+    if (sendFxRefocusRef.current) textareaRef.current?.focus();
+    sendFxRefocusRef.current = false;
+  };
+  /** Выбрали пункт меню: клавиатура остаётся свёрнутой. */
+  const pickSendFx = () => { setSendFx(null); sendFxRefocusRef.current = false; };
   /** Палец отпустили: true — это было удержание (меню открыто), отправлять не надо. */
   const endSendHold = () => {
     const h = sendHoldRef.current;
@@ -3215,7 +3230,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       toast.error(e?.message || tr("Не удалось удалить"));
     }
   };
-  const sendMessage = async (fx?: MessageEffectKind, opts: { silent?: boolean } = {}) => {
+  /** refocus: false — клавиатуру после отправки не возвращать (отправили из меню по удержанию). */
+  const sendMessage = async (fx?: MessageEffectKind, opts: { silent?: boolean; refocus?: boolean } = {}) => {
     const effect = isMessageEffect(fx) ? fx : undefined;
     // «Без звука»: пуш у получателей без звука (Message.silent).
     const silent = !!opts.silent && !isSecret;
@@ -3263,7 +3279,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setSelectedSound(null);
     setReplyTo(null);
     // Клавиатуру после отправки не прячем: фокус остаётся в поле.
-    if (isTouchDevice()) requestAnimationFrame(() => textareaRef.current?.focus());
+    if (isTouchDevice() && opts.refocus !== false) requestAnimationFrame(() => textareaRef.current?.focus());
     lastSendTimeRef.current = Date.now();
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
 
@@ -6265,15 +6281,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onSendNow={(x) => void sendScheduledNow(x)} onMove={(x) => setMoveFor(x)} onDelete={(x) => void deleteScheduled(x)} />
       )}
       {sendFx && (
-        <EffectMenu preview={draftRef.current.trim() ? parseMarkupWithEmoji(draftRef.current, customRef.current) : null} onClose={() => setSendFx(null)} effects={canSendFx() && effectsFit(draftRef.current)}
+        <EffectMenu preview={draftRef.current.trim() ? parseMarkupWithEmoji(draftRef.current, customRef.current) : null} onClose={closeSendFx} effects={canSendFx() && effectsFit(draftRef.current)}
           effectsNote={canSendFx() && !effectsFit(draftRef.current) ? tr("Эффекты — для сообщений до {n} знаков").replace("{n}", String(EFFECT_TEXT_MAX)) : undefined}
           actions={[
             { key: "silent", icon: <BellOff className="w-5 h-5" />, label: tr("Без звука"), hint: tr("Уведомление придёт без звука"),
-              onPick: () => { setSendFx(null); void sendMessage(undefined, { silent: true }); } },
+              onPick: () => { pickSendFx(); void sendMessage(undefined, { silent: true, refocus: false }); } },
             ...(canSchedule() ? [{ key: "later", icon: <Clock className="w-5 h-5" />, label: tr("Отложить"), hint: tr("Отправится в выбранное время"),
-              onPick: () => { setSendFx(null); setSchedulePick({ silent: false }); } }] : []),
+              onPick: () => { pickSendFx(); setSchedulePick({ silent: false }); } }] : []),
           ]}
-          onPick={(fx) => { setSendFx(null); void sendMessage(fx); }} />
+          onPick={(fx) => { pickSendFx(); void sendMessage(fx, { refocus: false }); }} />
       )}
       {translateOpen && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end md:items-center md:justify-center" onClick={() => setTranslateOpen(false)}>
