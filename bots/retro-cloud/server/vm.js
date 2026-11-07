@@ -10,6 +10,7 @@ import { createConnection } from "node:net";
 import { mkdir, stat, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 
 const execFileP = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,7 +77,9 @@ export class Vm {
     this.cursor = { x: 0, y: 0, synced: false };
     this.size = { ...SCREEN }; // уточняется по кадру: Windows может сменить разрешение
     this.queue = Promise.resolve(); // ввод — строго по очереди
-    this.mac = "52:54:00:" + [2, 1, 0].map((i) => ((Number(this.id) >> (8 * i)) & 255).toString(16).padStart(2, "0")).join(":");
+    // MAC из хэша id: id пользователя WYX — UUID, числом не возьмёшь
+    const h = createHash("sha256").update(String(this.id)).digest();
+    this.mac = "52:54:00:" + [h[0], h[1], h[2]].map((b) => b.toString(16).padStart(2, "0")).join(":");
   }
 
   async ensureDisk() {
