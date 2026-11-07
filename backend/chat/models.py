@@ -885,6 +885,8 @@ class PostComment(models.Model):
     file_size = models.BigIntegerField(null=True, blank=True)
     file_width = models.PositiveIntegerField(null=True, blank=True)
     file_height = models.PositiveIntegerField(null=True, blank=True)
+    # Свои эмодзи из наборов в тексте — как Message.entities, только custom_emoji.
+    entities = models.JSONField(default=list, blank=True)
     deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
 

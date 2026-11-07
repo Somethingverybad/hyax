@@ -27,19 +27,21 @@ import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/comp
 import type { ViewerItem } from "@/components/ImageViewer";
 const ImageViewer = lazy(() => import("@/components/ImageViewer"));
 import { toast } from "sonner";
-import { Flag, X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy } from "lucide-react";
+import { Flag, X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy, Smile } from "lucide-react";
 import { writeClipboard } from "@/lib/clipboard";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
 import ShareToChat from "@/components/ShareToChat";
 import { sendToTargets, type ShareTarget } from "@/lib/forward";
 import { Linkify, packLinkKind, profileLinkName, channelLinkRef, playlistLinkToken, stationLinkId } from "@/lib/linkify";
-import { FormattedText, carryCustomEmoji, type TextEntity } from "@/lib/format";
+import { FormattedText, carryCustomEmoji, type CustomEmojiRange, type TextEntity } from "@/lib/format";
+import ComposeMirror from "./ComposeMirror";
 import PackLinkCard from "./PackLinkCard";
 import PlaylistLinkCard from "./PlaylistLinkCard";
 import StationLinkCard from "./StationLinkCard";
 import ChannelLinkCard from "./ChannelLinkCard";
 const PhotoEditor = lazy(() => import("@/components/PhotoEditor"));
+const EmojiPanel = lazy(() => import("@/components/chat/EmojiPanel"));
 import { saveFileToDevice } from "@/lib/saveFile";
 import ProfileLinkCard from "./ProfileLinkCard";
 import { currentTrack, playQueue, toggle as togglePlay, usePlayer, type Track } from "@/lib/player";
@@ -2042,7 +2044,25 @@ interface PostCommentRow {
   deleted?: boolean;
   /** Вложение: фото или музыка (один файл). */
   file_url?: string; file_name?: string; file_kind?: "image" | "audio" | ""; file_width?: number | null; file_height?: number | null;
+  /** Свои эмодзи из наборов в тексте (custom_emoji). */
+  entities?: TextEntity[];
 }
+
+const isTouchDevice = () =>
+  Capacitor.isNativePlatform() || (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+
+/** Кнопка у поля ввода, тап по которой не снимает с поля фокус — клавиатура
+ *  не прячется (на скрепке «сворачивается клавиатура»). Как у «Отправить» в
+ *  чате: на iOS фокус держит только отменённый touchend, а он гасит и click,
+ *  поэтому на касании действие — из touchend, click остаётся мыши. */
+const keepFocusTap = (fn: () => void) => {
+  let touchAt = 0;
+  return {
+    onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+    onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); touchAt = Date.now(); fn(); },
+    onClick: () => { if (Date.now() - touchAt > 500) fn(); },
+  };
+};
 
 /** Фото в комментарии: небольшое превью по пропорциям, тап — на весь экран. */
 const CommentImage = ({ raw, w, h, onOpen }: { raw: string; w?: number | null; h?: number | null; onOpen: (url: string) => void }) => {
@@ -2089,6 +2109,10 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
 }) => {
   const [comments, setComments] = useState<PostCommentRow[]>([]);
   const [text, setText] = useState("");
+  // Свои эмодзи в поле: где стоят; правка текста сдвигает их, задетые — забываются.
+  const [custom, setCustom] = useState<CustomEmojiRange[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const downOnBackdrop = useRef(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<PostCommentRow | null>(null);
@@ -2110,6 +2134,42 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
   const [folds, setFolds] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useAutoGrow(inputRef, text, 112);
+  const onType = (next: string, caret: number | null) => {
+    if (custom.length && next !== text) {
+      const max = Math.min(text.length, next.length);
+      let pre = 0;
+      while (pre < max && text.charCodeAt(pre) === next.charCodeAt(pre)) pre++;
+      let suf = 0;
+      while (suf < max - pre && text.charCodeAt(text.length - 1 - suf) === next.charCodeAt(next.length - 1 - suf)) suf++;
+      if (caret != null) { suf = Math.min(suf, Math.max(0, next.length - caret)); pre = Math.min(pre, text.length - suf, next.length - suf); }
+      const oldEnd = text.length - suf, delta = next.length - text.length;
+      setCustom(custom.filter((r) => r.offset + r.length <= pre || r.offset >= oldEnd)
+        .map((r) => (r.offset >= oldEnd ? { ...r, offset: r.offset + delta } : r)));
+    }
+    setText(next);
+  };
+  /** Эмодзи из панели — в место курсора. На телефоне клавиатуру не зовём:
+   *  панель остаётся, можно выбрать несколько подряд (как в чате). */
+  const insertEmoji = (emoji: string, ce?: { id: string; url?: string }) => {
+    const ta = inputRef.current;
+    const s0 = ta?.selectionStart ?? text.length, e0 = ta?.selectionEnd ?? text.length;
+    const delta = emoji.length - (e0 - s0);
+    const next = custom.filter((r) => r.offset + r.length <= s0 || r.offset >= e0)
+      .map((r) => (r.offset >= e0 ? { ...r, offset: r.offset + delta } : r));
+    if (ce) next.push({ offset: s0, length: emoji.length, emoji_id: ce.id, url: ce.url });
+    setCustom(next);
+    setText(text.slice(0, s0) + emoji + text.slice(e0));
+    const pos = s0 + emoji.length;
+    if (!ta || isTouchDevice()) return;
+    requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(pos, pos); });
+  };
+  const toggleEmoji = () => {
+    if (emojiOpen) { setEmojiOpen(false); if (isTouchDevice()) inputRef.current?.focus(); return; }
+    setAttachMenu(false);
+    // Панель вместо клавиатуры: на телефоне клавиатуру убираем.
+    if (isTouchDevice()) inputRef.current?.blur();
+    setEmojiOpen(true);
+  };
   const apply = useCallback((list: PostCommentRow[]) => {
     setComments(list);
     onCountChange(list.filter((c) => !c.deleted).length); // счётчик под постом — сразу по факту
@@ -2138,6 +2198,9 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
   const add = async () => {
     const body = text.trim();
     if ((!body && !attach) || sending) return;
+    const lead = text.length - text.trimStart().length;
+    const entities = custom.map((r) => ({ type: "custom_emoji" as const, offset: r.offset - lead, length: r.length, emoji_id: r.emoji_id }))
+      .filter((r) => r.offset >= 0 && r.offset + r.length <= body.length);
     setSending(true);
     try {
       let file: Parameters<typeof api.addPostComment>[3];
@@ -2147,13 +2210,14 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
         const up = await api.uploadFile(src, undefined, (p) => setProgress(p));
         file = { file_url: up.file_url, file_name: up.file_name || attach.file.name, file_kind: attach.kind, file_size: up.file_size, file_width: up.width ?? null, file_height: up.height ?? null };
       }
-      await api.addPostComment(post.id, body, replyTo?.id, file);
+      await api.addPostComment(post.id, body, replyTo?.id, file, entities);
       dropAttach();
       // Ответили в свёрнутую ветку — разворачиваем, чтобы ответ было видно.
       if (replyTo) setFolds((f) => ({ ...f, [rootOf(replyTo)]: true }));
       setText("");
+      setCustom([]);
       setReplyTo(null);
-      apply(await api.getPostComments(post.id));
+      apply(await api.getPostComments(post.id, true));
     } catch (e: any) {
       toast.error(e?.message || tr("Не удалось"));
     } finally {
@@ -2165,7 +2229,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
     try {
       await api.deletePostComment(id);
       if (replyTo?.id === id) setReplyTo(null);
-      apply(await api.getPostComments(post.id));
+      apply(await api.getPostComments(post.id, true));
     } catch (e: any) { toast.error(e?.message || tr("Ошибка")); }
   };
   const reply = (c: PostCommentRow) => {
@@ -2197,7 +2261,8 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
                   {depth > COMMENT_MAX_DEPTH && parent?.author && <span className="text-xs text-muted-foreground"> → {parent.author.username}</span>}
                   {" "}<span className="text-xs text-muted-foreground">{fmtTime(c.created_at)}</span>
                 </p>
-                {c.content && <p className="text-sm break-words whitespace-pre-wrap"><Linkify text={c.content} /></p>}
+                {c.content && <p className="text-sm break-words whitespace-pre-wrap">{c.entities?.length
+                  ? <FormattedText text={c.content} entities={c.entities} seed={c.id} /> : <Linkify text={c.content} />}</p>}
                 {c.file_url && c.file_kind === "image" && <CommentImage raw={c.file_url} w={c.file_width} h={c.file_height} onOpen={setViewer} />}
                 {c.file_url && c.file_kind === "audio" && <CommentAudio id={`comment-${c.id}`} raw={c.file_url} name={c.file_name || ""} />}
                 <div className="flex items-center gap-4 mt-0.5 text-xs text-muted-foreground">
@@ -2238,7 +2303,11 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
   // своём слое, и плавающая панель вкладок «Мяты» ложилась поверх поля ввода
   // комментария (баг-репорт 11cfe970).
   return createPortal(
-    <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end" onClick={onClose}>
+    // Закрывает только касание, начатое на фоне: клик, «съехавший» на фон
+    // после перестройки шторки, — нет.
+    <div className="fixed inset-0 z-[80] bg-black/60 flex flex-col justify-end"
+      onPointerDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (e.target === e.currentTarget && downOnBackdrop.current) onClose(); }}>
       <div className="bg-card border-t-2 border-border max-h-[75%] flex flex-col pad-safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
           <MessageCircle className="w-5 h-5 text-primary" />
@@ -2280,7 +2349,7 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
             <input ref={audioRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac" className="hidden" onChange={(e) => pickAttach(e, "audio")} />
             <div className="flex items-end gap-2 px-3 py-2">
               <div className="relative shrink-0">
-                <button type="button" onClick={() => setAttachMenu((v) => !v)} disabled={sending} aria-label={tr("Прикрепить")}
+                <button type="button" {...keepFocusTap(() => { setEmojiOpen(false); setAttachMenu((v) => !v); })} disabled={sending} aria-label={tr("Прикрепить")}
                   className={cn("w-11 h-11 flex items-center justify-center bg-secondary text-muted-foreground disabled:opacity-40", attach && "text-primary")}>
                   <Paperclip className="w-5 h-5" />
                 </button>
@@ -2291,12 +2360,31 @@ const CommentsSheet = ({ post, canComment, bannedText, onAuthor, onClose, onCoun
                   </div>
                 )}
               </div>
-              <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1}
-                placeholder={replyTo ? tr("Ответ…") : attach ? tr("Подпись…") : tr("Комментарий…")} className="flex-1 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28" />
+              <div className="relative flex-1 min-w-0 flex">
+                <textarea ref={inputRef} value={text} onChange={(e) => onType(e.target.value, e.target.selectionStart)} rows={1}
+                  // Тап по полю на телефоне — клавиатура вместо панели. Закрываем
+                  // по фокусу и чуть позже: панель уходит, поле съезжает вниз, и
+                  // клик того же касания попал бы мимо (в фон — шторка закрылась).
+                  onFocus={() => { if (emojiOpen && isTouchDevice()) window.setTimeout(() => setEmojiOpen(false), 150); }}
+                  placeholder={replyTo ? tr("Ответ…") : attach ? tr("Подпись…") : tr("Комментарий…")}
+                  className={cn("flex-1 min-w-0 resize-none bg-secondary px-3 py-2.5 outline-none max-h-28", custom.length > 0 && "compose-has-custom")} />
+                {custom.length > 0 && <ComposeMirror text={text} ranges={custom} target={inputRef} />}
+              </div>
+              <button type="button" {...keepFocusTap(toggleEmoji)} disabled={sending} aria-label={tr("Эмодзи")} aria-pressed={emojiOpen}
+                className={cn("w-11 h-11 shrink-0 flex items-center justify-center bg-secondary text-muted-foreground disabled:opacity-40", emojiOpen && "text-primary")}>
+                <Smile className="w-5 h-5" />
+              </button>
               <button type="button" onClick={() => void add()} disabled={(!text.trim() && !attach) || sending} aria-label={tr("Отправить")} className="w-11 h-11 shrink-0 flex items-center justify-center bg-primary text-primary-foreground disabled:opacity-40">
                 {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </button>
             </div>
+            {emojiOpen && (
+              <div className="h-[280px] max-h-[40vh] border-t border-border flex flex-col">
+                <Suspense fallback={null}>
+                  <EmojiPanel onPick={insertEmoji} standard={!isTouchDevice()} className="flex-1" />
+                </Suspense>
+              </div>
+            )}
           </div>
         ) : (
           <p className="px-4 py-3 text-sm text-muted-foreground border-t border-border">{bannedText || tr("Подпишитесь, чтобы комментировать")}</p>

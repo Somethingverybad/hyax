@@ -1981,6 +1981,25 @@ class WallPostEditDeleteTests(TestCase):
         rows = self.comments().data["comments"]
         self.assertEqual([x["file_kind"] for x in rows], ["image", "audio"])
 
+    def test_comment_custom_emoji(self):
+        """Свои эмодзи из наборов в комментарии: картинка подставляется по
+        emoji_id, разметка и чужие эмодзи отбрасываются."""
+        pack = StickerPack.objects.create(name="эмодзи", author=self.author, kind="emoji")
+        e = Sticker.objects.create(pack=pack, file_url="/media/emoji/cat.webp", emoji="🐱")
+        alien = Sticker.objects.create(pack=pack, file_url="https://evil.example/x.webp", emoji="😈")
+        url = f"/api/posts/{self.post.id}/comments/"
+        body = {"content": "мяу 🐱 😈", "entities": [
+            {"type": "custom_emoji", "offset": 4, "length": 2, "emoji_id": str(e.id)},
+            {"type": "custom_emoji", "offset": 7, "length": 2, "emoji_id": str(alien.id)},
+            {"type": "bold", "offset": 0, "length": 3}]}
+        r = client_for(self.reader).post(url, body, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual([(x["type"], x["offset"], x["url"]) for x in r.data["entities"]], [("custom_emoji", 4, "/media/emoji/cat.webp")])
+        row = self.comments().data["comments"][0]
+        self.assertEqual(row["entities"][0]["emoji_id"], str(e.id))
+        # Без entities — как раньше, пустой список.
+        self.assertEqual(client_for(self.reader).post(url, {"content": "просто"}, format="json").data["entities"], [])
+
     def test_outsider_cannot_read_private_comments(self):
         ch = Chat.objects.create(kind="channel", name="закрытый", is_public=False)
         ChatParticipant.objects.create(chat=ch, user=self.author, role="owner")

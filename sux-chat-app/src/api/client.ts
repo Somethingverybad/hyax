@@ -2148,15 +2148,19 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/react/`, { method: "DELETE", headers: authHeaders() });
     return res.json();
   },
-  getPostComments: async (msgId: string): Promise<any[]> => {
-    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "GET", headers: authHeaders() });
+  /** fresh — сразу после своей правки: мимо общего ответа для одинаковых GET
+   *  (fetchWithFallback держит его 1,5 с), иначе свой комментарий появлялся
+   *  только со следующим опросом, через 5 с. */
+  getPostComments: async (msgId: string, fresh = false): Promise<any[]> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/${fresh ? `?fresh=${Date.now().toString(36)}` : ""}`, { method: "GET", headers: authHeaders() });
     const d = await res.json();
     return d.comments || [];
   },
   /** file — вложение комментария (фото или музыка), загруженное через uploadFile. */
   addPostComment: async (msgId: string, content: string, parent?: string,
-    file?: { file_url: string; file_name: string; file_kind: "image" | "audio"; file_size?: number; file_width?: number | null; file_height?: number | null }): Promise<any> => {
-    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ content, parent, ...(file || {}) }) });
+    file?: { file_url: string; file_name: string; file_kind: "image" | "audio"; file_size?: number; file_width?: number | null; file_height?: number | null },
+    entities?: { type: "custom_emoji"; offset: number; length: number; emoji_id: string }[]): Promise<any> => {
+    const res = await fetchWithAuth(`${API_URL}/posts/${msgId}/comments/`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ content, parent, ...(file || {}), ...(entities?.length ? { entities } : {}) }) });
     const d = await res.json();
     if (!res.ok) throw new LError(d.error || "Ошибка");
     return d;

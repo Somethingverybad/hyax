@@ -5348,7 +5348,12 @@ class PostCommentsView(APIView):
                 parent = None
             if not parent:
                 return Response({"error": "Комментарий, на который вы отвечаете, удалён"}, status=400)
-        c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content[:2000], **file)
+        content = content[:2000]
+        # Свои эмодзи из наборов (custom_emoji): разметки в комментариях нет.
+        from .formatting import clean_entities, resolve_custom_emoji
+        entities = [e for e in clean_entities(request.data.get("entities"), content) if e["type"] == "custom_emoji"]
+        entities = resolve_custom_emoji(entities) if entities else []
+        c = PostComment.objects.create(post=msg, author=me, parent=parent, content=content, entities=entities, **file)
         _touch_post(msg)
         return Response(PostCommentSerializer(c).data, status=201)
 
