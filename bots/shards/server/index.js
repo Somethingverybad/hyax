@@ -4,7 +4,7 @@
 
 import http from "node:http";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import { extname, join, normalize, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomInt } from "node:crypto";
@@ -33,9 +33,45 @@ if (!TOKEN && !DEV) {
 }
 
 await mkdir(DATA, { recursive: true });
+
+// ---------- список допуска Ретро-ПК командами в личке боту ----------
+// RETRO_ALLOW_FILE — allow.txt сервиса bots/retro (@username или id по строке);
+// RETRO_ADMINS — кто может им править: @имена или id через запятую.
+const ALLOW_FILE = process.env.RETRO_ALLOW_FILE || "";
+const ADMINS = new Set((process.env.RETRO_ADMINS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
+const isAdmin = (u) => ADMINS.has("@" + u.username.toLowerCase()) || ADMINS.has(u.uid);
+function readAllow() {
+  try { return readFileSync(ALLOW_FILE, "utf8").split("\n"); } catch { return ["# Кому можно открыть Ретро-ПК: @username или id пользователя WYX, по строке"]; }
+}
+function writeAllow(lines) { writeFileSync(ALLOW_FILE, lines.filter((l, i, a) => l.trim() || i < a.length - 1).join("\n").replace(/\n*$/, "\n")); }
+function allowCommand(u) {
+  if (!ALLOW_FILE) return null;
+  const [cmd, ...args] = u.text.split(/\s+/);
+  const names = args.map((a) => a.replace(/^@/, "").toLowerCase()).filter((a) => /^[\w.-]{1,32}$/.test(a));
+  const lines = readAllow();
+  const entries = () => lines.filter((l) => l.trim() && !l.startsWith("#"));
+  if (cmd === "/start" || cmd === "/help") {
+    return "Ретро-ПК — Windows 98 и «Герои III» прямо в WYX: нажмите «Открыть» в карточке бота."
+      + (isAdmin(u) ? "\n\nКоманды: /allow @имя — впустить, /deny @имя — убрать, /list — кто в списке." : "");
+  }
+  if (!["/allow", "/deny", "/list"].includes(cmd)) return null;
+  if (!isAdmin(u)) return "Эта команда только для владельца бота.";
+  if (cmd === "/list") return entries().length ? "В списке допуска:\n" + entries().join("\n") : "Список допуска пуст.";
+  if (!names.length) return `Кого? Например: ${cmd} @username`;
+  const has = (n) => entries().some((l) => l.toLowerCase() === "@" + n || l === n);
+  if (cmd === "/allow") {
+    const added = names.filter((n) => !has(n)); for (const n of added) lines.push("@" + n);
+    if (added.length) writeAllow(lines);
+    return added.length ? `Впустил: ${added.map((n) => "@" + n).join(", ")}. Пусть откроет бота заново.` : "Уже в списке.";
+  }
+  const before = lines.length; const keep = lines.filter((l) => !names.some((n) => l.toLowerCase() === "@" + n || l === n));
+  if (keep.length !== before) writeAllow(keep);
+  return keep.length !== before ? `Убрал: ${names.map((n) => "@" + n).join(", ")}.` : "Таких в списке нет.";
+}
+
 const notifier = createNotifier({
   token: TOKEN, api: process.env.HYAX_API, ws: process.env.HYAX_WS, appUrl: APP_URL, file: join(DATA, "chats.json"),
-  reply: process.env.BOT_REPLY !== "0",
+  reply: process.env.BOT_REPLY !== "0", onCommand: allowCommand,
 });
 
 // ---------- комнаты ----------

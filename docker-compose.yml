@@ -181,9 +181,13 @@ services:
       APP_URL: https://hyax.ru/shards/
       # @heroesIII открывает «Ретро-ПК»: на сообщения боту «Осколки» не отвечают
       BOT_REPLY: "0"
+      # Список допуска Ретро-ПК правится командами боту (/allow, /deny, /list) — кем:
+      RETRO_ALLOW_FILE: /retro-data/allow.txt
+      RETRO_ADMINS: ${RETRO_ADMINS:-@EvilTree}
     volumes:
       # Партии и личные чаты с ботом (для уведомлений «ваш ход»).
       - ./bots/shards/data:/data
+      - ./bots/retro/data:/retro-data
     depends_on:
       - api
     networks:

@@ -182,6 +182,15 @@ async function handle(req, res) {
   let path;
   try { path = decodeURIComponent(new URL(req.url, "http://x").pathname); } catch { return send(res, 400, ""); }
 
+  // Список допуска для «Героев по сети» (bots/retro-cloud на другом сервере): один
+  // список на оба сервиса. Ключ — HMAC от токена бота, он есть у обоих.
+  if (path === "/api/allow" && req.method === "GET") {
+    const key = new URL(req.url, "http://x").searchParams.get("key") || "";
+    const want = createHmac("sha256", "retro-allow").update(TOKEN || "dev").digest("hex");
+    if (key.length !== want.length || !timingSafeEqual(Buffer.from(key), Buffer.from(want))) return send(res, 403, "");
+    let text = ""; try { text = readFileSync(ALLOW_FILE, "utf8"); } catch { /* пусто */ }
+    return send(res, 200, text);
+  }
   if (path === "/api/session" && req.method === "POST") {
     let body;
     try { body = JSON.parse(await readBody(req)); } catch { return send(res, 400, "{}", MIME[".json"]); }

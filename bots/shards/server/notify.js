@@ -4,7 +4,7 @@
 import WebSocket from "ws";
 import { readFileSync, writeFileSync } from "node:fs";
 
-export function createNotifier({ token, api, ws, appUrl, file, reply = true, log = console }) {
+export function createNotifier({ token, api, ws, appUrl, file, reply = true, log = console, onCommand = null }) {
   // Личные чаты с ботом: id пользователя → id чата. Узнаём из входящих сообщений.
   let chats = {};
   try { chats = JSON.parse(readFileSync(file, "utf8")); } catch { /* первый запуск */ }
@@ -16,6 +16,10 @@ export function createNotifier({ token, api, ws, appUrl, file, reply = true, log
       method: "POST", headers,
       body: JSON.stringify({ chat: chatId, content, buttons: [[{ text, web_app: { url } }]] }),
     });
+    if (!r.ok) throw new Error(`messages: ${r.status}`);
+  }
+  async function sendText(chatId, content) {
+    const r = await fetch(`${api}/messages/`, { method: "POST", headers, body: JSON.stringify({ chat: chatId, content }) });
     if (!r.ok) throw new Error(`messages: ${r.status}`);
   }
 
@@ -37,6 +41,14 @@ export function createNotifier({ token, api, ws, appUrl, file, reply = true, log
         if (!from || !chat || String(from) === String(me.id)) return;
         if (body.chat_kind && body.chat_kind !== "direct") return;
         if (chats[from] !== String(chat)) { chats[from] = String(chat); save(); }
+        // Команды вида «/allow @имя» — тому, кто их обрабатывает (index.js); ответ — текстом.
+        const text = String(m.content || m.text || "").trim();
+        if (onCommand && text.startsWith("/")) {
+          Promise.resolve(onCommand({ uid: String(from), username: String(m.sender?.username || ""), text }))
+            .then((answer) => answer && sendText(chat, answer))
+            .catch((e) => log.warn("команда боту:", e.message));
+          return;
+        }
         // Бот может открывать другое приложение — тогда о партиях только уведомления.
         if (reply) send(chat, "Осколки Короны — пошаговая стратегия на 2–4 игрока: герои, замки, бои на гексах.\n\n"
           + "Создайте партию и позовите друзей кодом комнаты — или сыграйте против компьютера. "
