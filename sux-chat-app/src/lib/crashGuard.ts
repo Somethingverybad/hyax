@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { applog, dumpLog, logVersion } from "@/lib/applog";
 import { APP_BUILD, APP_VERSION } from "@/lib/appVersion";
 import { showBugReportDialog } from "@/lib/bugHotkey";
@@ -38,8 +39,14 @@ function saveLog(force = false) {
   try { localStorage.setItem(LOG_KEY, dumpLog(TAIL)); } catch { /* места нет или приватный режим */ }
 }
 
+/** Приложение активно. В переключателе приложений iPhone страница остаётся
+ *  «видимой», пока приложение не ушло в фон, — смахнули его оттуда, и
+ *  следующий запуск считал это падением (баг-репорты f0a243bf, 34390d1f:
+ *  «он не упал, это я его закрыл»). Неактивное — уже не «на экране». */
+let appActive = true;
+
 function beat(ok = false) {
-  const b: Beat = { t: Date.now(), on: document.visibilityState === "visible", v: version, ...(ok ? { ok: true } : {}) };
+  const b: Beat = { t: Date.now(), on: document.visibilityState === "visible" && appActive, v: version, ...(ok ? { ok: true } : {}) };
   try { localStorage.setItem(BEAT_KEY, JSON.stringify(b)); } catch { /* без памяти — без чёрного ящика */ }
 }
 
@@ -120,6 +127,9 @@ export function installCrashGuard() {
   saveLog(true);
   window.setInterval(() => { if (document.visibilityState === "visible") { beat(); saveLog(); } }, 5000);
   document.addEventListener("visibilitychange", () => { beat(); saveLog(true); });
+  if (Capacitor.isNativePlatform()) {
+    void App.addListener("appStateChange", ({ isActive }) => { appActive = isActive; beat(); saveLog(true); }).catch(() => {});
+  }
   window.addEventListener("pagehide", cleanExit);
   window.addEventListener("beforeunload", cleanExit);
   window.addEventListener("error", () => saveLog(true));
