@@ -170,13 +170,29 @@ wss.on("connection", (ws, req) => {
     broadcastRoom(room);
 
     const vm = entry.vm;
+    // Движения мыши склеиваем: пока очередь ввода занята, сдвиги суммируются, а из
+    // «подвести в точку» остаётся только последняя цель — иначе быстрый жест
+    // превращается в сотни событий и ввод отстаёт на секунды.
+    const acc = { dx: 0, dy: 0, job: false, target: null, moveJob: false };
     ws.on("message", (d, bin) => {
       if (bin) { vnc.write(d); return; }
       let m; try { m = JSON.parse(String(d)); } catch { return; }
+      if (m.t === "rel") {
+        acc.dx += Number(m.dx) || 0; acc.dy += Number(m.dy) || 0;
+        if (acc.job) return;
+        acc.job = true;
+        vm.run(async () => { acc.job = false; const dx = acc.dx, dy = acc.dy; acc.dx = acc.dy = 0; await vm.moveBy(dx, dy); }).catch((e) => { acc.job = false; log("ввод:", e.message); });
+        return;
+      }
+      if (m.t === "move") {
+        acc.target = { x: m.x, y: m.y };
+        if (acc.moveJob) return;
+        acc.moveJob = true;
+        vm.run(async () => { acc.moveJob = false; const t = acc.target; acc.target = null; if (!t) return; if (Date.now() - (vm.sizedAt || 0) > 10000) { await vm.probeSize(); vm.sizedAt = Date.now(); } await vm.moveTo(t.x, t.y); }).catch((e) => { acc.moveJob = false; log("ввод:", e.message); });
+        return;
+      }
       vm.run(async () => {
         switch (m.t) {
-          case "move": if (Date.now() - (vm.sizedAt || 0) > 10000) { await vm.probeSize(); vm.sizedAt = Date.now(); } await vm.moveTo(m.x, m.y); break;
-          case "rel": await vm.moveBy(m.dx, m.dy); break;
           case "btn": await vm.button(m.b || "left", !!m.down); break;
           case "click": await vm.click(m.b || "left", Math.min(3, m.n || 1)); break;
           case "key": { const q = KEYS[m.k] || m.k; if (/^[\w-]{1,24}$/.test(q)) await vm.key(q, !!m.down); break; }
