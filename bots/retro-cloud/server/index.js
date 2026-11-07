@@ -132,6 +132,12 @@ const server = createServer(async (req, res) => {
     const u = { id: url.searchParams.get("id") || "1001", username: url.searchParams.get("name") || "tester" };
     res.writeHead(200, { "Content-Type": "text/plain" }); return res.end(signInitData(u, TOKEN || "dev"));
   }
+  if (DEV && url.pathname.startsWith("/dev/hmp/")) { // команда монитора QEMU (например, вернуть VBE: o /h 0x1ce 4; o /h 0x1cf 0x41)
+    const e = vms.get(url.pathname.slice(9));
+    if (!e?.vm.qmp) { res.writeHead(404); return res.end("машины нет"); }
+    try { const out = await e.vm.qmp.cmd("human-monitor-command", { "command-line": url.searchParams.get("cmd") || "info status" }); res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" }); return res.end(String(out)); }
+    catch (err) { res.writeHead(500); return res.end(err.message); }
+  }
   if (DEV && url.pathname.startsWith("/dev/shot/")) { // кадр машины: QMP пускает одного клиента, поэтому только через сервис
     const e = vms.get(url.pathname.slice(10));
     if (!e?.vm.qmp) { res.writeHead(404); return res.end("машины нет"); }
