@@ -4049,3 +4049,38 @@ class EmailPromptOffTests(TestCase):
         # Чужому профилю не поставить.
         other = make_user("ep_other")
         self.assertNotEqual(client_for(other).patch(f"/api/profiles/{me.id}/", {"email_prompt_off": False}, format="json").status_code, 200)
+
+
+class LazySoundPushTests(TestCase):
+    """Свой звук в пуше — с путями к файлу: телефон докачает его, когда понадобился,
+    а не держит заранее весь каталог публичных паков."""
+
+    def test_sound_fields(self):
+        from .fcm import sound_fields
+        NotificationSound.objects.bulk_create([NotificationSound(slug="lazy-ding", name="Динь", file="sounds/lazy.mp3", caf_url="/media/sounds/lazy-ding.caf")])
+        f = sound_fields("lazy-ding")
+        self.assertEqual(f["snd"], "lazy-ding")
+        self.assertEqual(f["snd_caf"], "/media/sounds/lazy-ding.caf")
+        self.assertTrue(f["snd_src"].endswith("sounds/lazy.mp3"))
+        self.assertEqual(f["snd_name"], "Динь")
+        self.assertTrue(f["snd_v"].isdigit())
+        self.assertEqual(sound_fields(None), {})
+        self.assertEqual(sound_fields("нет-такого"), {})
+
+    def test_silent_push_drops_sound_fields(self):
+        from unittest import mock
+        from . import fcm
+        NotificationSound.objects.bulk_create([NotificationSound(slug="lazy-ding", name="Динь", file="sounds/lazy.mp3", caf_url="/media/sounds/lazy-ding.caf")])
+        me = make_user("lz_me")
+        from .models import PushToken
+        PushToken.objects.create(user=me, token="tok-lz", platform="ios")
+        sent = []
+        with mock.patch.object(fcm, "_firebase_app", return_value=object()), \
+             mock.patch.object(fcm, "_deliver", side_effect=lambda tokens, t, b, data, sound=None, silent=False: sent.append((data, sound, silent))), \
+             mock.patch.object(fcm, "spawn", side_effect=lambda fn: fn()):
+            fcm.notify_profiles(Profile.objects.filter(id=me.id), "t", "b", {"chat_id": "c"}, sound="lazy-ding")
+            fcm.notify_profiles(Profile.objects.filter(id=me.id), "t", "b", {"chat_id": "c"}, sound="lazy-ding", force_silent=True)
+        self.assertEqual(sent[0][0]["snd"], "lazy-ding")
+        self.assertEqual(sent[0][1], "lazy-ding")
+        self.assertNotIn("snd", sent[1][0])
+        self.assertTrue(sent[1][2])

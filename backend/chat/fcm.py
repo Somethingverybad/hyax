@@ -81,6 +81,27 @@ def _encrypt(secret_b64: str, payload: dict) -> str | None:
 SILENT_CHANNEL = "messages_silent"
 
 
+def sound_fields(slug: str | None) -> dict:
+    """Открытые поля пуша, чтобы телефон докачал звук отправителя сам, когда он
+    понадобился (iOS — расширение уведомлений, Android — CallMessagingService),
+    а не держал заранее весь каталог публичных паков: snd — слаг, snd_caf и
+    snd_src — пути к файлам (.caf для iOS, исходник для Android), snd_v —
+    версия файла, snd_name — название канала на Android. Пути без домена:
+    телефон пробует свои адреса по очереди (CDN, напрямую)."""
+    if not slug:
+        return {}
+    from .models import NotificationSound
+    s = NotificationSound.objects.filter(slug=slug, is_active=True).only("slug", "name", "file", "caf_url", "updated_at").first()
+    if not s:
+        return {}
+    out = {"snd": s.slug, "snd_v": str(int(s.updated_at.timestamp())), "snd_name": s.name[:40]}
+    if s.caf_url:
+        out["snd_caf"] = s.caf_url
+    if s.file:
+        out["snd_src"] = s.file.url
+    return out
+
+
 def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | None,
                        placeholder: str = PLACEHOLDER_BODY, silent: bool = False):
     """Пуш с текстом внутри шифрованного блоба. Android — data-only, уведомление
@@ -96,7 +117,9 @@ def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | 
         blob = _encrypt(secret, {"title": title, "body": body, **{k: str(v) for k, v in data.items()}, "sound": sound or ""})
         if not blob:
             continue
-        payload = {"e": blob, "ch": android_channel}
+        # Поля звука — и открыто (sound_fields): расширение iOS докачает файл,
+        # даже если расшифровать не выйдет.
+        payload = {"e": blob, "ch": android_channel, **{k: str(v) for k, v in data.items() if k.startswith("snd")}}
         if platform == "android":
             msg = messaging.Message(token=token, data=payload, android=messaging.AndroidConfig(priority="high"))
         else:
@@ -154,7 +177,8 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
         notification=messaging.Notification(title=title, body=body),
         data={k: str(v) for k, v in data.items()},
         apns=messaging.APNSConfig(
-            payload=messaging.APNSPayload(aps=messaging.Aps(sound=ios_sound))
+            # Свой звук — через расширение уведомлений: оно докачает файл (sound_fields).
+            payload=messaging.APNSPayload(aps=messaging.Aps(sound=ios_sound, mutable_content=bool(sound)))
         ),
         android=messaging.AndroidConfig(
             priority="high",
@@ -230,6 +254,8 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
         return
     hide = set(hide_body_for or ())
     extra = extra or {}
+    if sound:
+        extra = {**extra, **sound_fields(sound)}
 
     # Тексты собираем здесь, а не в потоке: функции-переводы могут обращаться
     # к уже загруженным объектам, база в фоне им не нужна.
@@ -248,10 +274,12 @@ def notify_profiles(profiles, title, body, extra: dict | None = None,
         for group, title_text, body_text, placeholder, silent in batches:
             plain = [r[0] for r in group if not r[1]]
             enc = [(r[0], r[1], r[2]) for r in group if r[1]]
+            # Без звука — и без полей звука: телефону нечего докачивать.
+            data = {k: v for k, v in extra.items() if not k.startswith("snd")} if silent else extra
             if plain:
-                _deliver(plain, title_text, body_text, extra, None if silent else sound, silent=silent)
+                _deliver(plain, title_text, body_text, data, None if silent else sound, silent=silent)
             if enc and _firebase_app() is not None:
-                _deliver_encrypted(enc, title_text, body_text, extra, None if silent else sound, placeholder, silent=silent)
+                _deliver_encrypted(enc, title_text, body_text, data, None if silent else sound, placeholder, silent=silent)
 
     spawn(run)
 

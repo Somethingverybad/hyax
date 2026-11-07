@@ -36,6 +36,9 @@ interface VoipPlugin {
   setSpeaker(o: { enabled: boolean; auto?: boolean }): Promise<{ enabled?: boolean }>;
   /** Android: скачать звуки каталога и завести под них каналы уведомлений. */
   syncSounds(o: { sounds: { slug: string; name: string; url: string }[] }): Promise<void>;
+  /** Сборка докачивает звук уведомления сама, когда его прислали (с 1064 /
+   *  iOS 200); в старых метода нет — промис отклоняется. */
+  lazySounds(): Promise<{ lazy?: boolean; freedKB?: number }>;
   reportConnected(o: { callId: string }): Promise<void>;
   endCall(o: { callId: string }): Promise<void>;
   addListener(
@@ -95,6 +98,9 @@ export const voip = {
   setSpeaker: (enabled: boolean, auto = false) => quiet(() => plugin.setSpeaker({ enabled, auto })),
   syncSounds: (sounds: { slug: string; name: string; url: string }[]) =>
     quiet(() => plugin.syncSounds({ sounds })),
+  /** null — сборка старая, звуки нужно качать заранее. */
+  lazySounds: (): Promise<{ freedKB: number } | null> =>
+    plugin.lazySounds().then((r) => (r?.lazy ? { freedKB: r.freedKB || 0 } : null)).catch(() => null),
   endCall: (callId: string) => quiet(() => plugin.endCall({ callId })),
   on: <E extends "voipToken" | "callAnswered" | "callIncoming" | "callEnded" | "callMuted" | "callSpeaker">(
     event: E,

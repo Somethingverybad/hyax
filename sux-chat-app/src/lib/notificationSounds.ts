@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Preferences } from "@capacitor/preferences";
 import { api, mediaUrl } from "@/api/client";
+import { applog } from "@/lib/applog";
 import { voip } from "@/lib/voip";
 
 /**
@@ -14,6 +15,9 @@ import { voip } from "@/lib/voip";
  *
  * На Android и в вебе файлы не нужны: там звук в самом приложении играется
  * из сети, а пуш-канал использует ресурс APK (см. Chat.tsx).
+ *
+ * Так работают только старые сборки: новые докачивают звук по требованию
+ * (voip.lazySounds), каталог целиком — десятки мегабайт у каждого.
  */
 
 const SYNC_KEY = "notification_sounds_synced";
@@ -33,6 +37,14 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export async function syncNotificationSounds(): Promise<void> {
   const platform = Capacitor.getPlatform();
   if (platform !== "ios" && platform !== "android") return;
+  // Новая сборка докачивает звук сама, когда его прислали (iOS — расширение
+  // уведомлений, Android — сервис пушей; путь к файлу в пуше): весь каталог
+  // заранее не качаем, накачанное раньше она один раз убирает.
+  const lazy = await voip.lazySounds();
+  if (lazy) {
+    if (lazy.freedKB) applog.info(`sounds: каталог убран, освобождено ${Math.round(lazy.freedKB / 1024)} МБ`);
+    return;
+  }
   try {
     const sounds = await api.getNotificationSounds();
 

@@ -70,6 +70,20 @@ public class VoipPlugin extends Plugin {
      * память, под него заводится канал уведомления. Так новые звуки приходят
      * с сервера без пересборки приложения.
      */
+    /**
+     * Звуки уведомлений по требованию (LazySounds): весь каталог заранее
+     * больше не нужен. Есть метод — сборка умеет; веб-часть по нему перестаёт
+     * звать syncSounds (lib/notificationSounds). Один раз убирает накачанное.
+     */
+    @PluginMethod
+    public void lazySounds(PluginCall call) {
+        int freed = LazySounds.cleanupOnce(getContext());
+        JSObject ret = new JSObject();
+        ret.put("lazy", true);
+        ret.put("freedKB", freed);
+        call.resolve(ret);
+    }
+
     @PluginMethod
     public void syncSounds(PluginCall call) {
         JSArray sounds = call.getArray("sounds");

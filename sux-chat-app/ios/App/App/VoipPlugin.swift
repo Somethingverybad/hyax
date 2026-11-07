@@ -318,7 +318,27 @@ public class VoipPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "reportConnected", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setSpeaker", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endCall", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "lazySounds", returnType: CAPPluginReturnPromise),
     ]
+
+    /// Звуки уведомлений по требованию (NotificationService → LazySound): весь
+    /// каталог заранее больше не нужен. Есть метод — сборка умеет; веб-часть
+    /// по нему перестаёт качать каталог (lib/notificationSounds). Один раз
+    /// убираем накачанное раньше в Library/Sounds — десятки мегабайт.
+    @objc func lazySounds(_ call: CAPPluginCall) {
+        let flag = "hyax.lazySounds.cleaned"
+        var freed = 0
+        if !UserDefaults.standard.bool(forKey: flag),
+           let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?.appendingPathComponent("Sounds"),
+           let list = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
+            for f in list where f.pathExtension == "caf" {
+                freed += (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                try? FileManager.default.removeItem(at: f)
+            }
+            UserDefaults.standard.set(true, forKey: flag)
+        }
+        call.resolve(["lazy": true, "freedKB": freed / 1024])
+    }
 
     public override func load() {
         VoipManager.shared.plugin = self

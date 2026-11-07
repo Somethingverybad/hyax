@@ -89,8 +89,12 @@ public class CallMessagingService extends FirebaseMessagingService {
         String messageId = p != null ? p.optString("message_id", "") : "";
         String channel = data.get("ch");
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        // Канал аудио-стикера заводит приложение после скачивания звука; если
-        // его ещё нет — обычный канал сообщений, звук стандартный.
+        // Свой звук отправителя: канала ещё нет — докачиваем звук и заводим
+        // канал прямо сейчас (LazySounds). Не вышло — обычный канал сообщений,
+        // звук стандартный.
+        if (channel != null && channel.startsWith("snd_") && nm.getNotificationChannel(channel) == null) {
+            LazySounds.ensure(getApplicationContext(), data);
+        }
         if (channel == null || nm.getNotificationChannel(channel) == null) channel = MessageChannels.MESSAGES;
 
         // Тап открывает чат: плагин @capacitor-firebase/messaging считает
