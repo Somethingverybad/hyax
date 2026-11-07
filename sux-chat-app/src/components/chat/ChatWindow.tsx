@@ -77,7 +77,7 @@ import { rememberPet, useMyPet, usePetsAvailable } from "@/lib/pets";
 import { WallpaperVideo } from "./ChatWallpaper";
 import MessageEffect from "./MessageEffect";
 import EffectMenu from "./EffectMenu";
-import { effectOf, isMessageEffect, textEffect, type EffectPlay, type MessageEffect as MessageEffectKind } from "@/lib/effects";
+import { EFFECT_TEXT_MAX, effectOf, effectsFit, isMessageEffect, textEffect, type EffectPlay, type MessageEffect as MessageEffectKind } from "@/lib/effects";
 import { getSetting } from "@/lib/settings";
 import type { Chat as ChatFull } from "@/api/client";
 import type { PlaylistTrack } from "@/api/client";
@@ -3287,7 +3287,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       setMessages(prev => [...prev, optimistic]);
       setTimeout(() => scrollToBottom(true), 50);
       // Эффект — у отправителя сразу, у получателя — когда сообщение дойдёт.
-      const play = effect ? textEffect(effect, text) : null;
+      const play = effect ? textEffect(effect, text, entities) : null;
       if (play) setBurst({ ...play, key: Date.now() });
       try {
         // Секретный чат: на сервер уходит только шифротекст; у себя оставляем
@@ -6265,7 +6265,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onSendNow={(x) => void sendScheduledNow(x)} onMove={(x) => setMoveFor(x)} onDelete={(x) => void deleteScheduled(x)} />
       )}
       {sendFx && (
-        <EffectMenu anchor={sendFx} onClose={() => setSendFx(null)} effects={canSendFx()}
+        <EffectMenu anchor={sendFx} onClose={() => setSendFx(null)} effects={canSendFx() && effectsFit(draftRef.current)}
+          effectsNote={canSendFx() && !effectsFit(draftRef.current) ? tr("Эффекты — для сообщений до {n} знаков").replace("{n}", String(EFFECT_TEXT_MAX)) : undefined}
           actions={[
             { key: "silent", icon: <BellOff className="w-5 h-5" />, label: tr("Без звука"), hint: tr("Уведомление придёт без звука"),
               onPick: () => { setSendFx(null); void sendMessage(undefined, { silent: true }); } },

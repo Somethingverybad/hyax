@@ -336,7 +336,10 @@ class ChatParticipant(models.Model):
 
 # Также добавим поле в модель Message для быстрого доступа
 # Эффекты получения сообщения (Message.effect) — тот же список в клиенте (lib/effects).
-MESSAGE_EFFECTS = ("burst", "rain", "scream")
+MESSAGE_EFFECTS = ("burst", "rain", "scream", "rage")
+# Длиннее — эффект у текста не сохраняем: в анимации пузырь целиком не влезет
+# (клиент — lib/effects EFFECT_TEXT_MAX, считает символы так же).
+EFFECT_TEXT_MAX = 100
 
 
 class Message(models.Model):
@@ -427,8 +430,9 @@ class Message(models.Model):
     buttons = models.JSONField(default=list, blank=True)
     # Эффект при получении (MESSAGE_EFFECTS): "" — нет; "burst" — стикер или
     # текст «высыпается» по экрану получателя, "rain" — падает сверху и
-    # собирается в кучу внизу. Выбирают в меню по удержанию стикера или
-    # кнопки «Отправить».
+    # собирается в кучу внизу, "scream" — выскакивает во весь экран, "rage" —
+    # трясётся и краснеет. Выбирают в меню по удержанию стикера или кнопки
+    # «Отправить».
     effect = models.CharField(max_length=16, blank=True, default="")
     # «Отправить без звука» (меню по удержанию «Отправить»): пуш у получателей
     # приходит без звука — у всех и даже с приложенным аудио-стикером, —

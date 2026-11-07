@@ -3803,13 +3803,20 @@ class MessageEffectTests(TestCase):
 
     def test_text_effects(self):
         from .models import Message
-        for effect, expect in (("rain", "rain"), ("burst", "burst"), ("scream", "scream"), ("boom", "")):
+        for effect, expect in (("rain", "rain"), ("burst", "burst"), ("scream", "scream"), ("rage", "rage"), ("boom", "")):
             r = self.send(content=f"ура {effect}", effect=effect)
             self.assertEqual(r.status_code, 201, r.data)
             self.assertEqual(Message.objects.get(id=r.data["id"]).effect, expect)
             self.assertEqual(r.data.get("effect"), expect)
         # Пустой текст — эффекту не к чему прицепиться.
         self.assertNotEqual(self.send(content="", effect="rain").status_code, 500)
+        # Длиннее EFFECT_TEXT_MAX — без эффекта (пузырь в анимации не влезет); ровно 100 — можно.
+        from .models import EFFECT_TEXT_MAX
+        r = self.send(content="я" * (EFFECT_TEXT_MAX + 1), effect="rage")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Message.objects.get(id=r.data["id"]).effect, "")
+        r = self.send(content="😡" * EFFECT_TEXT_MAX, effect="rage")
+        self.assertEqual(Message.objects.get(id=r.data["id"]).effect, "rage")
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

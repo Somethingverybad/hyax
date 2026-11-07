@@ -10,6 +10,7 @@ import type { EffectPlay } from "@/lib/effects";
 import { tgsSource } from "@/lib/tgsPlayer";
 import { useCachedImage } from "@/lib/imageCache";
 import { applog } from "@/lib/applog";
+import { FormattedText } from "@/lib/format";
 
 /**
  * Эффект получения сообщения (lib/effects) поверх всего экрана, тапы
@@ -20,8 +21,16 @@ import { applog } from "@/lib/applog";
  *   • rain — «Ливень»: копии разного размера падают сверху с отскоком и
  *     ложатся друг на друга кучей внизу экрана; упали все — куча тает;
  *   • scream — «Скример»: одна копия рывком выскакивает во весь экран на
- *     тёмной вспышке, трясётся с серией сильных вибраций и пропадает.
+ *     тёмной вспышке, трясётся с серией сильных вибраций и пропадает;
+ *   • rage — «Ярость»: копия в центре трясётся всё сильнее, пузырь снизу
+ *     доверху заливается красным (у стикера — красное свечение), по краям
+ *     экрана пульсирует красное, вибрация нарастает.
  * Двигаем только transform и opacity. Системное «Уменьшить движение» — без эффекта.
+ *
+ * Текст — копией настоящего пузыря: целиком, с разметкой (FormattedText), в
+ * несколько строк. Его размер меряем один раз скрытой копией, а копии в
+ * анимации — тот же пузырь, уменьшенный transform-ом, чтобы влез целиком.
+ * Раньше это была строка до 24 знаков без разметки — длинное обрезалось.
  *
  * Анимированный стикер играет один раз — на все копии: .tgs — одной анимацией
  * (tgsSource), видео — одним <video>; копии — <canvas>, в которые каждый кадр
@@ -35,7 +44,18 @@ import { applog } from "@/lib/applog";
  * Раньше копии грузили картинку из сети заново, и на медленной сети
  * «Скример» (1,6 с) успевал закончиться невидимым (баг-репорт c0eed388).
  */
-type Piece = { id: number; x: number; y: number; w: number; h: number; rot: number; font?: number };
+type Piece = { id: number; x: number; y: number; w: number; h: number; rot: number; k?: number };
+
+/** Ширина пузыря-копии до уменьшения: дальше переносится на строки. */
+const BUBBLE_MAX_W = 280;
+/** Пузырь сообщения для копий: как в ленте, с разметкой. */
+const Bubble = ({ text, entities, rage }: { text: string; entities?: EffectPlay["entities"]; rage?: boolean }) => (
+  <div className="msg-bubble msg-own relative isolate overflow-hidden px-3 py-2 shadow-lg whitespace-pre-wrap"
+    style={{ fontSize: 16, lineHeight: 1.35, width: "max-content", maxWidth: BUBBLE_MAX_W }} data-fx-bubble>
+    {rage && <div data-fx-fill className="absolute inset-0 -z-10" style={{ background: "linear-gradient(0deg, #b90000, #ff2b2b)", clipPath: "inset(100% 0 0 0)" }} />}
+    <FormattedText text={text} entities={entities} seed="fx" />
+  </div>
+);
 
 const haptic = () => {
   if (Capacitor.isNativePlatform()) {
@@ -43,16 +63,6 @@ const haptic = () => {
   } else {
     try { navigator.vibrate?.(12); } catch { /* нет вибрации */ }
   }
-};
-
-/** Ширина пузырька с текстом заданного кегля. */
-let measureCtx: CanvasRenderingContext2D | null = null;
-const chipWidth = (text: string, font: number) => {
-  try {
-    measureCtx = measureCtx || document.createElement("canvas").getContext("2d");
-    if (measureCtx) { measureCtx.font = `${font}px system-ui, sans-serif`; return measureCtx.measureText(text).width + font * 1.6; }
-  } catch { /* без холста — на глаз */ }
-  return text.length * font * 0.6 + font * 1.6;
 };
 
 const pxRatio = () => Math.min(2, window.devicePixelRatio || 1);
@@ -149,6 +159,24 @@ const BURST_COUNT = 20;
 const BURST_DELAYS = [0, 1000, 520, 360, 270, 210, 170, 140, 120, 105, 95, 85];
 const RAIN_COUNT = 24;
 const SCREAM_MS = 1600;
+const RAGE_MS = 2300;
+
+/** «Ярость»: удары всё чаще и сильнее, в конце — длинная вибрация. */
+const rageHaptics = (at: (ms: number, fn: () => void) => void) => {
+  const times: number[] = [];
+  for (let t = 150, gap = 260; t < RAGE_MS - 350; t += gap, gap = Math.max(70, gap * 0.82)) times.push(t);
+  if (Capacitor.isNativePlatform()) {
+    import("@capacitor/haptics").then(({ Haptics, ImpactStyle }) => {
+      times.forEach((t, i) => at(t, () => {
+        const f = i / times.length;
+        void Haptics.impact({ style: f < 0.35 ? ImpactStyle.Light : f < 0.7 ? ImpactStyle.Medium : ImpactStyle.Heavy }).catch(() => {});
+      }));
+      at(RAGE_MS - 350, () => { void Haptics.vibrate({ duration: 350 }).catch(() => {}); });
+    }).catch(() => {});
+  } else {
+    try { navigator.vibrate?.([30, 160, 40, 120, 50, 90, 60, 70, 80, 50, 100, 40, 350]); } catch { /* нет вибрации */ }
+  }
+};
 
 const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void }) => {
   const [pieces, setPieces] = useState<Piece[]>([]);
@@ -177,6 +205,9 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
   useEffect(() => { const t = setTimeout(() => setWaited(true), MEDIA_WAIT); return () => clearTimeout(t); }, []);
   const go = mediaReady || waited;
   const bornAt = useRef(performance.now());
+  // Размер пузыря-копии до уменьшения — по скрытой копии (isText).
+  const measureRef = useRef<HTMLDivElement>(null);
+  const base = useRef({ w: 160, h: 40 });
 
   useEffect(() => {
     if (!go) return;
@@ -188,19 +219,35 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
     applog.info(`effect ${play.kind} (${mode}${mediaReady ? "" : ", не дождались картинки"}) через ${Math.round(performance.now() - bornAt.current)} мс`);
     const vw = window.innerWidth, vh = window.innerHeight;
     const at = (ms: number, fn: () => void) => { timers.current.push(setTimeout(fn, ms)); };
-    // Размер копии: текст — пузырёк по кеглю, остальное — квадрат.
-    const shape = (size: number, fontDiv = 4.2) => {
+    if (isText && measureRef.current) {
+      const r = measureRef.current.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) base.current = { w: r.width, h: r.height };
+    }
+    const { w: bw, h: bh } = base.current;
+    // Пузырь целиком не шире 92 % и не выше 70 % экрана.
+    const fitK = (k: number) => Math.min(k, (vw * 0.92) / bw, (vh * 0.7) / bh);
+    // Размер копии: текст — пузырь, уменьшенный (k) до «размера» копии; остальное — квадрат.
+    const shape = (size: number) => {
       if (!isText) return { w: size, h: size };
-      const font = Math.round(size / fontDiv);
-      return { w: Math.min(vw * 0.85, chipWidth(play.text || "", font)), h: Math.round(font * 2), font };
+      const k = fitK(size / Math.max(bw, 120));
+      return { w: bw * k, h: bh * k, k };
+    };
+    const center = (big: number) => {
+      const { w, h, k } = isText ? (() => { const k = fitK(big); return { w: bw * k, h: bh * k, k }; })()
+        : { w: Math.round(Math.min(vw, vh) * 0.9 * Math.min(1, big / 2.5)), h: Math.round(Math.min(vw, vh) * 0.9 * Math.min(1, big / 2.5)), k: undefined };
+      return { id: 0, x: Math.round((vw - w) / 2), y: Math.round((vh - h) / 2), w, h, k, rot: 0 };
     };
     let t = 0;
     if (play.kind === "scream") {
-      const size = Math.round(Math.min(vw, vh) * 0.9);
-      const { w, h, font } = isText ? (() => { const s = shape(size, 6.5); return { ...s, w: Math.min(vw * 0.94, s.w) }; })() : { w: size, h: size, font: undefined };
-      setPieces([{ id: 0, x: Math.round((vw - w) / 2), y: Math.round((vh - h) / 2), w, h, font, rot: 0 }]);
+      setPieces([center(2.5)]);
       screamHaptics(at);
       at(SCREAM_MS + 100, onDone);
+      return () => { timers.current.forEach(clearTimeout); timers.current = []; };
+    }
+    if (play.kind === "rage") {
+      setPieces([center(1.9)]);
+      rageHaptics(at);
+      at(RAGE_MS + 100, onDone);
       return () => { timers.current.forEach(clearTimeout); timers.current = []; };
     }
     if (play.kind === "rain") {
@@ -212,14 +259,14 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
       for (let i = 0; i < RAIN_COUNT; i++) {
         t += i === 0 ? 0 : Math.max(70, 190 - i * 6);
         at(t, () => {
-          const { w, h, font } = shape(Math.round(40 + Math.random() * 80));
+          const { w, h, k } = shape(Math.round(40 + Math.random() * 80));
           const x = Math.round(Math.random() * Math.max(0, vw - w));
           const c0 = Math.max(0, Math.floor(x / colW)), c1 = Math.min(cols - 1, Math.floor((x + w) / colW));
           let base = 0;
           for (let c = c0; c <= c1; c++) base = Math.max(base, heights[c]);
           const y = Math.max(vh * 0.55, vh - base - h * 0.85);
           for (let c = c0; c <= c1; c++) heights[c] = Math.max(heights[c], vh - y - h * 0.5);
-          setPieces((prev) => [...prev, { id: i, x, y, w, h, font, rot: Math.round(-35 + Math.random() * 70) }]);
+          setPieces((prev) => [...prev, { id: i, x, y, w, h, k, rot: Math.round(-35 + Math.random() * 70) }]);
           if (i % 3 === 0) at(620, haptic);
         });
       }
@@ -230,9 +277,9 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
         t += BURST_DELAYS[Math.min(i, BURST_DELAYS.length - 1)];
         at(t, () => {
           const size = i === giantAt ? Math.round(Math.min(vw, vh) * 0.95) : Math.round(90 + Math.random() * 150);
-          const { w, h, font } = shape(size);
+          const { w, h, k } = shape(size);
           setPieces((prev) => [...prev, {
-            id: i, w, h, font,
+            id: i, w, h, k,
             x: Math.round(Math.random() * Math.max(0, vw - w)),
             y: Math.round(Math.random() * Math.max(0, vh - h)),
             rot: Math.round(-25 + Math.random() * 50),
@@ -279,7 +326,48 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
         { transform: at(0, 0, 1, 0), opacity: 1, offset: 0.86 },
         { transform: at(0, 0, 1.12, 0), opacity: 0, offset: 1 },
       ], { duration: SCREAM_MS, fill: "forwards" });
+    } else if (play.kind === "rage") {
+      // Появилась — и трясётся всё сильнее и чаще; в конце рывок и пропадает.
+      const frames: Keyframe[] = [
+        { transform: at(0, 0, 0.6, 0), opacity: 0, offset: 0 },
+        { transform: at(0, 0, 1.06, 0), opacity: 1, offset: 0.06, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" },
+        { transform: at(0, 0, 1, 0), offset: 0.1 },
+      ];
+      const n = 34;
+      for (let k = 0; k < n; k++) {
+        const a = 0.15 + 0.85 * (k / n) ** 1.4; // нарастает
+        frames.push({
+          transform: at((Math.random() * 2 - 1) * 14 * a, (Math.random() * 2 - 1) * 9 * a, 1 + 0.06 * a * (k % 2 ? 1 : -0.4), (Math.random() * 2 - 1) * 7 * a),
+          offset: 0.1 + (0.76 * (k + 1)) / n,
+        });
+      }
+      frames.push({ transform: at(0, 0, 1.18, 0), opacity: 1, offset: 0.9 }, { transform: at(0, 0, 1.3, 0), opacity: 0, offset: 1 });
+      el.animate(frames, { duration: RAGE_MS, fill: "forwards" });
+      // Пузырь заливается красным снизу вверх, текст белеет; у стикера и
+      // эмодзи — красное свечение и красный оттенок.
+      const fill = el.querySelector<HTMLElement>("[data-fx-fill]");
+      const bubble = el.querySelector<HTMLElement>("[data-fx-bubble]");
+      if (fill && bubble) {
+        fill.animate([{ clipPath: "inset(100% 0 0 0)" }, { clipPath: "inset(0% 0 0 0)", offset: 0.75 }, { clipPath: "inset(0% 0 0 0)" }],
+          { duration: RAGE_MS, easing: "ease-in", fill: "forwards" });
+        bubble.animate([{ color: getComputedStyle(bubble).color }, { color: "#fff", offset: 0.45 }, { color: "#fff" }], { duration: RAGE_MS, fill: "forwards" });
+      } else {
+        el.animate([
+          { filter: "none" },
+          { filter: "drop-shadow(0 0 22px rgba(255,20,20,0.95)) sepia(1) saturate(7) hue-rotate(-45deg)", offset: 0.75 },
+          { filter: "drop-shadow(0 0 28px rgba(255,20,20,1)) sepia(1) saturate(8) hue-rotate(-45deg)" },
+        ], { duration: RAGE_MS, easing: "ease-in", fill: "forwards" });
+      }
     }
+  };
+  // «Ярость»: красное по краям экрана пульсирует всё сильнее.
+  const vignette = (el: HTMLDivElement | null) => {
+    if (!el || el.dataset.played) return;
+    el.dataset.played = "1";
+    el.animate([
+      { opacity: 0 }, { opacity: 0.35, offset: 0.2 }, { opacity: 0.15, offset: 0.3 }, { opacity: 0.6, offset: 0.5 },
+      { opacity: 0.3, offset: 0.6 }, { opacity: 0.85, offset: 0.8 }, { opacity: 0.5, offset: 0.88 }, { opacity: 0 },
+    ], { duration: RAGE_MS, fill: "forwards" });
   };
   // Тёмная вспышка «Скримера» — резко темнеет и отпускает.
   const flash = (el: HTMLDivElement | null) => {
@@ -299,9 +387,11 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
       return <img src={imgSrc || src} alt="" draggable={false} className="w-full h-full object-contain drop-shadow-lg" />;
     }
     if (play.emoji?.length) return <EmojiPiece e={play.emoji[p.id % play.emoji.length]} />;
+    // Пузырь в натуральную величину, уменьшенный до размера копии.
     return (
-      <span className="msg-bubble msg-own w-full h-full flex items-center justify-center whitespace-nowrap overflow-hidden px-[0.8em] shadow-lg"
-        style={{ fontSize: p.font }}>{play.text}</span>
+      <div style={{ width: base.current.w, height: base.current.h, transform: `scale(${p.k ?? 1})`, transformOrigin: "0 0" }}>
+        <Bubble text={play.text || ""} entities={play.entities} rage={play.kind === "rage"} />
+      </div>
     );
   };
 
@@ -312,13 +402,21 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
       aria-hidden
     >
       {play.kind === "scream" && <div ref={flash} className="absolute inset-0 bg-black" style={{ opacity: 0 }} />}
+      {play.kind === "rage" && <div ref={vignette} className="absolute inset-0" style={{ opacity: 0, boxShadow: "inset 0 0 140px 30px rgba(255,0,0,0.75)" }} />}
+      {/* Мерка пузыря: невидимая копия в натуральную величину. */}
+      {isText && (
+        <div ref={measureRef} className="absolute left-0 top-0" style={{ visibility: "hidden" }}>
+          <Bubble text={play.text || ""} entities={play.entities} />
+        </div>
+      )}
       {pieces.map((p) => (
         <div key={p.id} ref={animate(p)} className="absolute left-0 top-0" style={{
           width: p.w, height: p.h, containerType: "size",
           transform: play.kind === "rain" ? `translate(${p.x}px, ${-p.h - 20}px)`
             : play.kind === "scream" ? `translate(${p.x}px, ${p.y}px) scale(0.05)`
+            : play.kind === "rage" ? `translate(${p.x}px, ${p.y}px) scale(0.6)`
             : `translate(${p.x}px, ${p.y}px) rotate(${p.rot}deg)`,
-          opacity: play.kind === "scream" ? 0 : undefined,
+          opacity: play.kind === "scream" || play.kind === "rage" ? 0 : undefined,
         }}>
           {body(p)}
         </div>

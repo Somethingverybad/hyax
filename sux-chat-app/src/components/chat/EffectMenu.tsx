@@ -36,13 +36,15 @@ export function useMenuTaps() {
 }
 /** Пункт над эффектами: «Без звука», «Отложить» (удержание «Отправить»). */
 export type SendAction = { key: string; icon: ReactNode; label: string; hint?: string; onPick: () => void };
-const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true }: {
+const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true, effectsNote }: {
   anchor: DOMRect;
   onPick: (e: MessageEffect) => void;
   onClose: () => void;
   actions?: SendAction[];
   /** Показывать эффекты (их нет у вложений). */
   effects?: boolean;
+  /** Почему эффектов нет (длинное сообщение) — строкой вместо списка. */
+  effectsNote?: string;
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const openedAt = useRef(Date.now());
@@ -91,6 +93,7 @@ const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true }: {
             </span>
           </button>
         ))}
+        {!effects && effectsNote && <p className="px-4 pt-2 pb-1.5 text-caption text-subtle border-t border-border mt-1">{effectsNote}</p>}
         {effects && !!actions?.length && <div className="my-1 border-t border-border" />}
         {effects && <p className="px-4 pt-1 pb-1.5 text-caption text-subtle">{tr(actions?.length ? "С эффектом" : "Отправить с эффектом")}</p>}
         {effects && MESSAGE_EFFECTS.map((fx) => (

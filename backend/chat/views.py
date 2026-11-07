@@ -2250,10 +2250,11 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         # Эффект получения (Message.effect) — у стикера и у текстового
         # сообщения без файла, только из известного набора.
-        from .models import MESSAGE_EFFECTS
+        from .models import EFFECT_TEXT_MAX, MESSAGE_EFFECTS
         effect = str(request.data.get('effect') or '')
+        _fx_text = str(request.data.get('content') or '').strip()
         if effect in MESSAGE_EFFECTS and (save_kwargs.get('sticker') or (
-                str(request.data.get('content') or '').strip() and not save_kwargs.get('file_url')
+                _fx_text and len(_fx_text) <= EFFECT_TEXT_MAX and not save_kwargs.get('file_url')
                 and not save_kwargs.get('poll') and not action_obj and not geo)):
             save_kwargs['effect'] = effect
         # «Без звука»: пуш без звука у всех получателей (_notify_new_message).

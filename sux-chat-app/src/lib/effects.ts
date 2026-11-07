@@ -1,3 +1,4 @@
+import type { TextEntity } from "@/lib/format";
 import { EMOJI_SEQ } from "@/lib/notoEmoji";
 
 /**
@@ -8,35 +9,48 @@ import { EMOJI_SEQ } from "@/lib/notoEmoji";
  *   • rain  — «Ливень»: копии разного размера падают сверху и собираются в
  *             кучу внизу, потом тают;
  *   • scream — «Скример»: одна копия резко выскакивает во весь экран,
- *             трясётся с вибрацией и пропадает.
+ *             трясётся с вибрацией и пропадает;
+ *   • rage   — «Ярость»: сообщение в центре экрана трясётся всё сильнее, а
+ *             пузырь заливается красным, с нарастающей вибрацией.
  * У стикера сыплется сам стикер, у текста — эмодзи из него, а без эмодзи —
- * сам текст пузырьками.
+ * само сообщение пузырьками: целиком и с разметкой, пузырь уменьшается, чтобы
+ * влез. Поэтому длинным сообщениям (больше EFFECT_TEXT_MAX знаков) эффекты
+ * недоступны — сервер у них эффект тоже не сохранит.
  */
-export type MessageEffect = "burst" | "rain" | "scream";
+export type MessageEffect = "burst" | "rain" | "scream" | "rage";
 
 export const MESSAGE_EFFECTS: { key: MessageEffect; label: string; hint: string; icon: string }[] = [
   { key: "burst", label: "Глюк", hint: "Высыплется по всему экрану", icon: "💥" },
   { key: "rain", label: "Ливень", hint: "Упадёт сверху и соберётся в кучу", icon: "🌧️" },
   { key: "scream", label: "Скример", hint: "Выскочит во весь экран и затрясётся", icon: "😱" },
+  { key: "rage", label: "Ярость", hint: "Затрясётся от злости и покраснеет", icon: "😡" },
 ];
 
-export const isMessageEffect = (v: unknown): v is MessageEffect => v === "burst" || v === "rain" || v === "scream";
+export const isMessageEffect = (v: unknown): v is MessageEffect => v === "burst" || v === "rain" || v === "scream" || v === "rage";
 
-/** Что разыграть: стикер, эмодзи или текст. */
-export type EffectPlay = { kind: MessageEffect; sticker?: string; emoji?: string[]; text?: string };
+/** Длиннее — эффекты недоступны: пузырь пришлось бы ужать до нечитаемого.
+ *  То же число на сервере (chat/models.py EFFECT_TEXT_MAX). */
+export const EFFECT_TEXT_MAX = 100;
+/** Текст влезает в эффект (знаки считаем по символам, эмодзи — один). */
+export const effectsFit = (text: string) => Array.from((text || "").trim()).length <= EFFECT_TEXT_MAX;
 
-/** У текстового сообщения сыплются эмодзи из него (до 6 разных), без них — сам текст. */
-export function textEffect(kind: MessageEffect, text: string): EffectPlay | null {
+/** Что разыграть: стикер, эмодзи или сообщение пузырём (с разметкой). */
+export type EffectPlay = { kind: MessageEffect; sticker?: string; emoji?: string[]; text?: string; entities?: TextEntity[] | null };
+
+/** У текстового сообщения сыплются эмодзи из него (до 6 разных), без них —
+ *  само сообщение. «Ярость» — всегда само сообщение: краснеет его пузырь. */
+export function textEffect(kind: MessageEffect, text: string, entities?: TextEntity[] | null): EffectPlay | null {
   const t = (text || "").trim();
-  if (!t) return null;
-  const emoji = [...new Set(t.match(EMOJI_SEQ) || [])].slice(0, 6);
+  if (!t || !effectsFit(t)) return null;
+  const emoji = kind === "rage" ? [] : [...new Set(t.match(EMOJI_SEQ) || [])].slice(0, 6);
   if (emoji.length) return { kind, emoji };
-  return { kind, text: t.length > 24 ? `${t.slice(0, 23)}…` : t };
+  // Разметка считается от начала текста: обрезаем только хвостовые пробелы.
+  return { kind, text: (text || "").trimEnd(), entities };
 }
 
 /** Эффект пришедшего сообщения (null — разыгрывать нечего). */
-export function effectOf(m: { effect?: string | null; content?: string | null; sticker?: { file_url?: string } | null }): EffectPlay | null {
+export function effectOf(m: { effect?: string | null; content?: string | null; entities?: TextEntity[] | null; sticker?: { file_url?: string } | null }): EffectPlay | null {
   if (!isMessageEffect(m.effect)) return null;
   if (m.sticker?.file_url) return { kind: m.effect, sticker: m.sticker.file_url };
-  return textEffect(m.effect, m.content || "");
+  return textEffect(m.effect, m.content || "", m.entities);
 }
