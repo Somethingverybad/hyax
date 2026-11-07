@@ -1,12 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MESSAGE_EFFECTS, type MessageEffect } from "@/lib/effects";
 import { t as tr } from "@/lib/i18n";
 import { applog } from "@/lib/applog";
+import { FormattedText, type TextEntity } from "@/lib/format";
 
 /**
- * Меню эффектов по удержанию стикера или кнопки «Отправить» (lib/effects):
- * карточка над тем, что держали (не влезает — под ним); тап мимо — закрыть.
+ * Меню по удержанию кнопки «Отправить» (lib/effects): как меню стикера и меню
+ * сообщения — экран размывается, в центре крупно само сообщение (с разметкой),
+ * под ним — «Без звука», «Отложить» и эффекты; тап мимо — закрыть. Раньше
+ * карточка висела у кнопки «Отправить». Центр — области над клавиатурой
+ * (--kb-lift / --kb-height): поле ввода в фокусе, клавиатура не сворачивается.
  *
  * Касания (баг-репорт 07009208, iPhone): меню открывается, пока палец ещё
  * держит стикер, и iOS после отпускания шлёт click туда, где палец теперь, —
@@ -36,8 +40,10 @@ export function useMenuTaps() {
 }
 /** Пункт над эффектами: «Без звука», «Отложить» (удержание «Отправить»). */
 export type SendAction = { key: string; icon: ReactNode; label: string; hint?: string; onPick: () => void };
-const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true, effectsNote }: {
-  anchor: DOMRect;
+/** Что отправляем — пузырём, как в ленте; длинное — первые строки. */
+export type SendPreview = { text: string; entities?: TextEntity[] | null };
+const EffectMenu = ({ preview, onPick, onClose, actions, effects = true, effectsNote }: {
+  preview?: SendPreview | null;
   onPick: (e: MessageEffect) => void;
   onClose: () => void;
   actions?: SendAction[];
@@ -60,27 +66,48 @@ const EffectMenu = ({ anchor, onPick, onClose, actions, effects = true, effectsN
   const keepFocus = (e: React.MouseEvent) => e.preventDefault();
   // В журнал — чем закрыли мимо и через сколько после открытия (iPhone: «эффекты не работают»).
   const closeBy = (how: string) => { applog.info(`effect menu закрыто мимо: ${how} через ${Date.now() - openedAt.current} мс`); onClose(); };
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const w = el.offsetWidth, h = el.offsetHeight, vw = window.innerWidth;
-    const left = Math.max(8, Math.min(anchor.left + anchor.width / 2 - w / 2, vw - w - 8));
-    const top = anchor.top - h - 8 >= 8 ? anchor.top - h - 8 : anchor.bottom + 8;
-    setPos({ left, top });
-  }, [anchor]);
+  // Сначала кадр без меню, потом — выезд (как у меню стикера).
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   return createPortal(
-    // data-keep-panel: меню стикера рисуется вне панели стикеров, и касание по
-    // нему ChatWindow считал «тапом мимо» — панель закрывалась вместе с меню
-    // раньше, чем доходил выбор, стикер не уходил вовсе («эффекты у стикеров
-    // не работают»).
-    <div data-keep-panel className="fixed inset-0 z-[90]" onMouseDown={keepFocus}
+    // data-keep-panel: касание по меню ChatWindow не считает «тапом мимо» панели.
+    <div data-keep-panel className="fixed inset-0 z-[90] touch-none flex flex-col items-center justify-center gap-3 px-6"
+      style={{
+        // Центр — над клавиатурой: поле ввода в фокусе, она открыта.
+        paddingBottom: "calc(var(--kb-lift, var(--kb-height, 0px)) + 12px)",
+        paddingTop: "max(12px, env(safe-area-inset-top))",
+        background: shown ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0)",
+        backdropFilter: shown ? "blur(14px)" : "blur(0px)",
+        WebkitBackdropFilter: shown ? "blur(14px)" : "blur(0px)",
+        transition: "background 180ms ease-out, backdrop-filter 180ms ease-out, -webkit-backdrop-filter 180ms ease-out",
+      }}
+      onMouseDown={keepFocus}
       onTouchEnd={viaTouch(() => closeBy("touchend"))} onClick={viaClick(() => closeBy("click"))}
       // Android после удержания сам шлёт contextmenu — первую секунду не закрываем.
       onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) closeBy("contextmenu"); }}>
+      {preview?.text && (
+        <div data-send-preview className="pointer-events-none shrink-0 msg-bubble msg-own px-3 py-2 shadow-xl whitespace-pre-wrap text-body max-w-[min(320px,100%)] overflow-hidden"
+          style={{
+            display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 6,
+            transformOrigin: "center bottom",
+            transform: shown ? "scale(1)" : "scale(0.7)",
+            opacity: shown ? 1 : 0,
+            transition: "transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 150ms ease-out",
+          }}>
+          <FormattedText text={preview.text} entities={preview.entities} seed="send-preview" />
+        </div>
+      )}
       <div ref={ref} role="menu" aria-label={tr(actions?.length ? "Как отправить" : "Отправить с эффектом")}
-        className="fixed w-60 rounded-2xl bg-surface-2/95 border border-border shadow-xl py-1.5 animate-in fade-in zoom-in-95 duration-150"
-        style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
+        className="ui-card w-64 min-h-0 shrink overflow-y-auto touch-pan-y rounded-2xl bg-surface-2/95 shadow-xl py-1.5"
+        style={{
+          transformOrigin: "center top",
+          transform: shown ? "scale(1)" : "scale(0.8)",
+          opacity: shown ? 1 : 0,
+          transition: "transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 160ms ease-out",
+        }}
         onClick={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
         {actions?.map((a) => (
           <button key={a.key} type="button" role="menuitem"

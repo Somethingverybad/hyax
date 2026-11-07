@@ -6265,7 +6265,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onSendNow={(x) => void sendScheduledNow(x)} onMove={(x) => setMoveFor(x)} onDelete={(x) => void deleteScheduled(x)} />
       )}
       {sendFx && (
-        <EffectMenu anchor={sendFx} onClose={() => setSendFx(null)} effects={canSendFx() && effectsFit(draftRef.current)}
+        <EffectMenu preview={draftRef.current.trim() ? parseMarkupWithEmoji(draftRef.current, customRef.current) : null} onClose={() => setSendFx(null)} effects={canSendFx() && effectsFit(draftRef.current)}
           effectsNote={canSendFx() && !effectsFit(draftRef.current) ? tr("Эффекты — для сообщений до {n} знаков").replace("{n}", String(EFFECT_TEXT_MAX)) : undefined}
           actions={[
             { key: "silent", icon: <BellOff className="w-5 h-5" />, label: tr("Без звука"), hint: tr("Уведомление придёт без звука"),
