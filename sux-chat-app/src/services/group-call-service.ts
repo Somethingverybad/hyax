@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { callDiag } from "@/lib/callDiag";
 import { micConstraints, micKey, onMicSettings, swapMicTrack } from "@/lib/micSettings";
 import { t as tr } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
@@ -523,6 +524,7 @@ export class GroupCallService {
       case "webrtc_ice_candidate": {
         if (!from || !data.candidate) return;
         const pc = this.peers.get(from);
+        if (pc) callDiag.remote(from, data.candidate.candidate);
         if (pc) await pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
         break;
       }
@@ -606,6 +608,7 @@ export class GroupCallService {
     await this.ensureMic();
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     this.peers.set(peerId, pc);
+    callDiag.reset(peerId);
     if (!this.peerMedia.has(peerId)) this.peerMedia.set(peerId, emptyPeerMedia());
 
     this.localStream?.getTracks().forEach((t) => pc.addTrack(sendTrack(t), this.localStream as MediaStream));
@@ -641,6 +644,7 @@ export class GroupCallService {
     };
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        callDiag.local(peerId, event.candidate.candidate);
         this.send("webrtc_ice_candidate", { to_user_id: peerId, candidate: event.candidate });
       }
     };
@@ -648,7 +652,9 @@ export class GroupCallService {
     pc.onsignalingstatechange = () => { if (pc.signalingState === "stable") this.ensureScreenTx(peerId); };
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState;
+      callDiag.state(peerId, st);
       if (st === "connected") {
+        void callDiag.path(peerId, pc);
         this.patchPeer(peerId, { connected: true });
         // Камеру и микрофон могли переключить до соединения — повторяем.
         this.sendMediaTo(peerId);

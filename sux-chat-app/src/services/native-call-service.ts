@@ -4,6 +4,7 @@ import { nativeCall, type AudioLevels, type NativeIce, type NativeSdp, type Nati
 import { sdpCanVideo, type CallMedia, type CallState, type IncomingCall } from "@/services/call-service";
 import { emptyPeerMedia, type GroupCallInvite, type GroupCallState, type GroupMedia, type GroupPeerMedia } from "@/services/group-call-service";
 import { myDeviceId } from "./deviceId";
+import { callDiag } from "@/lib/callDiag";
 
 /**
  * Звонки на нативном движке: сигналинг и состояние — здесь, звук — в
@@ -60,6 +61,7 @@ abstract class NativeBase {
       }),
       nativeCall.onIce((d: NativeIce) => {
         if (!this.peers.has(d.peerId)) return;
+        callDiag.local(d.peerId, d.candidate);
         this.send("webrtc_ice_candidate", {
           to_user_id: d.peerId,
           candidate: {
@@ -71,6 +73,7 @@ abstract class NativeBase {
       }),
       nativeCall.onPeerState((d: NativePeerState) => {
         if (!this.peers.has(d.peerId)) return;
+        callDiag.state(d.peerId, d.state);
         this.links.set(d.peerId, d.state);
         this.onPeerState(d.peerId, d.state);
       })
@@ -137,6 +140,7 @@ abstract class NativeBase {
         break;
       case "webrtc_ice_candidate":
         if (this.peers.has(from) && data.candidate) {
+          callDiag.remote(from, data.candidate.candidate);
           await nativeCall.addCandidate(from, data.candidate);
         }
         break;

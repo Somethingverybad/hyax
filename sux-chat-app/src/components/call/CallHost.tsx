@@ -23,6 +23,7 @@ import { ObsRelay, obsLink, type ObsSource, type ObsView } from "@/lib/obsRelay"
 import { getMicSettings, onMicSettings, setMicSettings, MIC_TRACK_EVENT } from "@/lib/micSettings";
 import { autotuneOn, canAutotune, onAutotune, sendTrack, stopAutotune } from "@/lib/autotune";
 import { approxQuality, type CallQuality } from "@/lib/callQuality";
+import { callDiag, type IceSource } from "@/lib/callDiag";
 
 /** Чат из кеша списка (session-cache «chats») — ровно то, что нужно звонку. */
 type CachedChat = {
@@ -38,16 +39,25 @@ const cachedChats = () => readCache<CachedChat[]>("chats") || [];
  *  VoIP-пуш, в фоне запросы стоят) — последние сохранённые через 3 с, чтобы
  *  ответ из CallKit не ждал их бесконечно. */
 const ICE_KEY = "hyax:ice-servers";
-function iceServersFast(): Promise<RTCIceServer[]> {
-  const fresh = api.getIceServers().then((list) => {
-    try { localStorage.setItem(ICE_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
-    return list;
-  });
+type IceList = { list: RTCIceServer[]; source: IceSource };
+const hasTurn = (list: RTCIceServer[]) => list.some((s) => (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u) => /^turns?:/.test(u)));
+const freshIce = () => api.getIceServers().then((list) => {
+  // Запасная копия — только полная, с TURN.
+  if (hasTurn(list)) try { localStorage.setItem(ICE_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+  return list;
+});
+/** Совсем без сервера — хотя бы публичный STUN: в одной сети или без строгого NAT соединит. */
+const FALLBACK_ICE: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+function iceServersFast(): Promise<IceList> {
+  const fresh = freshIce().then((list): IceList => ({ list, source: "server" }));
   let cached: RTCIceServer[] | null = null;
   try { cached = JSON.parse(localStorage.getItem(ICE_KEY) || "null"); } catch { cached = null; }
-  // Без сохранённых и без сети — пустой список: соединение пойдёт напрямую.
-  if (!cached?.length) return fresh.catch(() => []);
-  return Promise.race([fresh.catch(() => cached!), new Promise<RTCIceServer[]>((r) => setTimeout(() => r(cached!), 3000))]);
+  // Сохранённые без TURN — испорчены прежним запасным STUN, не берём.
+  if (cached && !hasTurn(cached)) cached = null;
+  // Без сохранённых и без сети — публичный STUN, а TURN догрузится в фоне.
+  if (!cached?.length) return fresh.catch((): IceList => ({ list: [...FALLBACK_ICE], source: "none" }));
+  const saved: IceList = { list: cached, source: "cached" };
+  return Promise.race([fresh.catch(() => saved), new Promise<IceList>((r) => setTimeout(() => r(saved), 3000))]);
 }
 
 /**
@@ -273,9 +283,26 @@ const CallHost = () => {
     );
 
     (async () => {
-      const iceServers = await iceServersFast();
+      const ice = await iceServersFast();
+      const iceServers = ice.list;
       iceRef.current = iceServers;
+      callDiag.ice(iceServers, ice.source);
       if (disposed || wsRef.current !== ws) return;
+      // Серверы связи берутся один раз на всю сессию — не с сервера (запрос
+      // не прошёл: 401, сеть) — догружаем в фоне, пока не получится. Иначе
+      // все звонки до перезапуска шли бы без TURN (или вовсе без серверов) и
+      // через NAT собеседника не было слышно. Список обновляем на месте: тот же
+      // массив у сервисов звонка, новое соединение возьмёт свежие.
+      if (ice.source !== "server" || !hasTurn(iceServers)) {
+        void (async () => {
+          for (let i = 0; i < 20 && !disposed; i++) {
+            await new Promise((r) => setTimeout(r, Math.min(5000 * 2 ** Math.min(i, 3), 60_000)));
+            if (disposed) return;
+            const list = await freshIce().catch(() => null);
+            if (list && hasTurn(list)) { iceServers.splice(0, iceServers.length, ...list); callDiag.ice(iceServers, "retry"); return; }
+          }
+        })();
+      }
       // В приложении разговор ведёт нативный движок: в WebView звук не
       // уживался с CallKit и умирал при блокировке экрана.
       const CallImpl = hasNativeCalls() ? NativeCallService : OneToOneCallService;

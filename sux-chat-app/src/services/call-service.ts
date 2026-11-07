@@ -1,4 +1,5 @@
 import { WebSocketService } from "@/services/websocket";
+import { callDiag } from "@/lib/callDiag";
 import { getMicSettings, micConstraints, micKey, onMicSettings, setMicSettings, swapMicTrack } from "@/lib/micSettings";
 import { t } from "@/lib/i18n";
 import { openCallCamera } from "@/lib/callCamera";
@@ -806,7 +807,9 @@ export class OneToOneCallService {
       this.setState("active");
     };
 
+    callDiag.reset(this.targetUserId || "");
     this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) callDiag.local(this.targetUserId || "", event.candidate.candidate);
       if (!event.candidate || !this.currentCallId) {
         console.log('ℹ️ [CallService] ICE gathering завершён (пустой кандидат)');
         return;
@@ -827,6 +830,8 @@ export class OneToOneCallService {
     this.peerConnection.onconnectionstatechange = () => {
       const state = this.peerConnection?.connectionState;
       console.log(`🔌 [CallService] Connection state: ${state}`);
+      if (state) callDiag.state(this.targetUserId || "", state);
+      if (state === "connected") void callDiag.path(this.targetUserId || "", this.peerConnection);
       if (state === "connected") {
         this.clearLinkLost();
         this.iceRestarts = 0;
@@ -1054,6 +1059,7 @@ export class OneToOneCallService {
     }
 
     try {
+      callDiag.remote(this.targetUserId || "", candidate.candidate);
       await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       console.log('✅ [CallService.handleIceCandidate] ICE кандидат добавлен');
     } catch (error) {

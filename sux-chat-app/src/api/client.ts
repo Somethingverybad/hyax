@@ -2565,18 +2565,18 @@ export const api = {
   // ===== ЗВОНКИ =====
   // ICE-серверы (STUN + TURN с кредами) приходят с сервера — в сборке ничего
   // секретного, и TURN можно поменять без релиза.
+  // Не получилось — ошибка, а не запасной STUN: раньше любой сбой (401 с
+  // протухшим токеном, сеть) молча давал список без TURN, звонок принимал его
+  // за ответ сервера и сохранял как запасной — и до перезапуска собеседника
+  // через NAT было не слышно. Что делать без сервера, решает звонок (CallHost).
   getIceServers: async (): Promise<RTCIceServer[]> => {
-    try {
-      const res = await fetchWithAuth(`${API_URL}/ice-servers/`, {
-        method: "GET",
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new LError(String(res.status));
-      const data = await res.json();
-      return data.iceServers || [];
-    } catch {
-      return [{ urls: "stun:stun.l.google.com:19302" }];
-    }
+    const res = await fetchWithAuth(`${API_URL}/ice-servers/`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new LError(String(res.status));
+    const data = await res.json();
+    return data.iceServers || [];
   },
 
   /** Ключ трансляции звонка в OBS (lib/obsRelay.ts); renew — новый, старые ссылки перестают работать. */
