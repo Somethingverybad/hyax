@@ -34,7 +34,10 @@ export function useMenuTaps() {
     document.addEventListener("touchend", on, true);
     return () => document.removeEventListener("touchend", on, true);
   }, []);
-  const viaTouch = (fn: () => void) => (e: React.TouchEvent) => { e.stopPropagation(); fn(); };
+  // preventDefault: браузер после касания досылает mousedown/click в ту же
+  // точку — а там уже то, что открыл пункт (окно «Отложить» — его затемнение
+  // закрывало окно сразу), или лента под закрытым меню (отнимала фокус у поля).
+  const viaTouch = (fn: () => void) => (e: React.TouchEvent) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); fn(); };
   const viaClick = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); if (Date.now() - touchEndAt.current > ECHO_MS) fn(); };
   const keepFocus = (e: React.MouseEvent) => e.preventDefault();
   return { openedAt, viaTouch, viaClick, keepFocus };
@@ -62,7 +65,10 @@ const EffectMenu = ({ preview, onPick, onClose, actions, effects = true, effects
     document.addEventListener("touchend", on, true);
     return () => document.removeEventListener("touchend", on, true);
   }, []);
-  const viaTouch = (fn: () => void) => (e: React.TouchEvent) => { e.stopPropagation(); fn(); };
+  // preventDefault: браузер после касания досылает mousedown/click в ту же
+  // точку — а там уже то, что открыл пункт (окно «Отложить» — его затемнение
+  // закрывало окно сразу), или лента под закрытым меню (отнимала фокус у поля).
+  const viaTouch = (fn: () => void) => (e: React.TouchEvent) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); fn(); };
   const viaClick = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); if (Date.now() - touchEndAt.current > ECHO_MS) fn(); };
   const keepFocus = (e: React.MouseEvent) => e.preventDefault();
   // В журнал — чем закрыли мимо и через сколько после открытия (iPhone: «эффекты не работают»).
@@ -85,10 +91,7 @@ const EffectMenu = ({ preview, onPick, onClose, actions, effects = true, effects
         transition: "background 180ms ease-out, backdrop-filter 180ms ease-out, -webkit-backdrop-filter 180ms ease-out",
       }}
       onMouseDown={keepFocus}
-      // preventDefault: без него браузер после касания дошлёт mousedown туда,
-      // где было меню, — в ленту, и она отнимет фокус у поля, которому
-      // ChatWindow только что вернул клавиатуру.
-      onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); viaTouch(() => closeBy("touchend"))(e); }} onClick={viaClick(() => closeBy("click"))}
+      onTouchEnd={viaTouch(() => closeBy("touchend"))} onClick={viaClick(() => closeBy("click"))}
       // Android после удержания сам шлёт contextmenu — первую секунду не закрываем.
       onContextMenu={(e) => { e.preventDefault(); if (Date.now() - openedAt.current > 1000) closeBy("contextmenu"); }}>
       {preview?.text && (
