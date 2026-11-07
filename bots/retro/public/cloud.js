@@ -82,11 +82,11 @@ function connect(room) {
       rfb.addEventListener("desktopname", () => setTimeout(fit, 100));
       // Размер экрана машины известен только когда noVNC выставит размер своего холста
       // (новый холст — 300×150, по нему нельзя считать масштаб): следим за атрибутами.
-      const cv = $("screen").querySelector("div canvas");
+      const cv = $("screen").querySelector(":scope > div > canvas");
       if (cv) { sizeWatch?.disconnect(); sizeWatch = new MutationObserver(() => requestAnimationFrame(fit)); sizeWatch.observe(cv, { attributes: true, attributeFilter: ["width", "height"] }); }
       rfb.addEventListener("disconnect", () => { if (ws) { $("status").textContent = "Связь с машиной потеряна"; } });
       // noVNC кладёт свой холст внутрь #screen; наш слой #touch остаётся сверху.
-      const inner = $("screen").querySelector("div"); if (inner) inner.style.position = "relative";
+      const inner = $("screen").querySelector(":scope > div:not(.text)"); if (inner) inner.style.position = "relative";
     } else if (m.t === "room") {
       const names = m.players.map((p) => "@" + p.username).join(", ");
       $("status").textContent = `Комната ${m.code} · ${names}`;
@@ -108,7 +108,7 @@ function leave() {
   disconnect();
   $("machine").classList.add("hidden"); $("setup").classList.remove("hidden");
   for (const id of ["filesBtn", "saveBtn", "soundBtn"]) $(id).classList.remove("hidden");
-  const old = $("screen").querySelector("div:not(.text)"); if (old) old.remove();
+  const old = $("screen").querySelector(":scope > div:not(.text)"); if (old) old.remove();
 }
 export const cloudActive = () => !!ws;
 
@@ -116,7 +116,7 @@ export const cloudActive = () => !!ws;
 function fit() {
   if (!rfb) return;
   const stage = $("stage"), scr = $("screen");
-  const cv = scr.querySelector("div canvas"); // холст noVNC — его размер и есть экран машины
+  const cv = scr.querySelector(":scope > div > canvas"); // холст noVNC (не «div canvas»: #screen сам div, и так нашёлся бы наш скрытый холст)
   if (!cv || cv.width <= 1 || (cv.width === 300 && cv.height === 150)) return; // ещё не получил размер от сервера
   size = { w: cv.width, h: cv.height };
   const w = size.w, h = size.h;
