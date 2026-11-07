@@ -164,13 +164,14 @@ function lockPointer() {
   try { const r = touch.requestPointerLock({ unadjustedMovement: true }); r?.catch?.(() => touch.requestPointerLock()); } catch { try { touch.requestPointerLock(); } catch { /* не дают */ } }
 }
 document.addEventListener("pointerlockchange", () => { if (locked()) toast("Указатель захвачен. Отпустить: Ctrl+G или Cmd+G", 3500); });
+document.addEventListener("pointerlockerror", () => { if (!lockPointer.warned) { lockPointer.warned = true; toast("Захват мыши не разрешён в этом окне — курсор может выходить за экран", 4000); } });
 
 touch.addEventListener("pointerdown", (e) => {
   if (!ws) return;
   if (e.pointerType === "mouse") {
     const b = e.button === 2 ? "right" : e.button === 1 ? "middle" : "left";
     if (mouseMode === "abs") { const p = at(e); send({ t: "move", x: p.x, y: p.y }); }
-    else if (!locked()) { lockPointer(); return; } // первый клик — только захват, чтобы курсор не «прыгал»
+    else lockPointer(); // захват, если рамка разрешает; без него мышь всё равно работает, пока курсор в окне
     btn(b, true); return;
   }
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -186,7 +187,7 @@ touch.addEventListener("pointermove", (e) => {
   if (!ws) return;
   if (e.pointerType === "mouse") {
     if (mouseMode === "abs") { if (e.buttons) { const p = at(e); send({ t: "move", x: p.x, y: p.y }); } }
-    else if (locked()) sendRel(e.movementX / view.k, e.movementY / view.k);
+    else sendRel(e.movementX / view.k, e.movementY / view.k);
     return;
   }
   const f = fingers.get(e.pointerId);
