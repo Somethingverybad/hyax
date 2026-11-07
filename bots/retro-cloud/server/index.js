@@ -150,7 +150,10 @@ wss.on("connection", (ws, req) => {
     if (!user) return fail("no_wyx");
     if (!allowed(user)) return fail("denied");
     let room = getRoom(String(hello.room || "").trim(), false);
-    if (!room) { if (hello.room) return fail("no_room"); room = getRoom(null, true); }
+    if (!room && hello.room) return fail("no_room");
+    // «Создать» при живой своей машине — остаёмся в её комнате: иначе машину пришлось бы
+    // перезапускать ради новой сети (у каждой комнаты свой мультикаст-порт).
+    if (!room) room = vms.get(user.id)?.room || getRoom(null, true);
     try { entry = await getVm(user, room); } catch (e) { return fail(e.message === "busy" ? "busy" : "vm_failed"); }
     if (ws.readyState !== 1) { scheduleIdle(entry, user); return; }
     room.players.set(user.id, { id: user.id, username: user.username, photo_url: user.photo_url });
