@@ -75,6 +75,7 @@ select { background: var(--panel2); border: 1px solid var(--line); border-radius
 #screen { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 #screen .text { white-space: pre; font: 14px monospace; line-height: 14px; color: #ccc; }
 #screen canvas { display: none; image-rendering: pixelated; }
+#screen div canvas { display: block; } /* холст noVNC («Герои по сети») — внутри своего div */
 #touch { position: absolute; inset: 0; touch-action: none; cursor: default; }
 .hint {
   position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px);

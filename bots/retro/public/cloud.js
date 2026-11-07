@@ -33,12 +33,20 @@ export function renderCloudCard() {
 
 // ---------- канал для noVNC поверх нашего WebSocket ----------
 function makeChannel(sock, onText) {
+  // Приветствие VNC приходит раньше, чем noVNC навесит свой onmessage (он делает это
+  // на следующем тике после конструктора) — двоичные кадры до того копим и отдаём потом.
+  let handler = null; const pending = [];
   const ch = {
-    binaryType: "arraybuffer", protocol: "", onmessage: null, onopen: null, onclose: null, onerror: null,
+    binaryType: "arraybuffer", protocol: "", onopen: null, onclose: null, onerror: null,
+    get onmessage() { return handler; },
+    set onmessage(fn) { handler = fn; if (fn) while (pending.length) fn(pending.shift()); },
     get readyState() { return ["connecting", "open", "closing", "closed"][sock.readyState]; },
     send: (d) => sock.send(d), close: () => sock.close(),
   };
-  sock.onmessage = (e) => { if (typeof e.data === "string") { let m; try { m = JSON.parse(e.data); } catch { return; } onText(m); } else ch.onmessage?.(e); };
+  sock.onmessage = (e) => {
+    if (typeof e.data === "string") { let m; try { m = JSON.parse(e.data); } catch { return; } onText(m); return; }
+    if (handler) handler(e); else pending.push(e);
+  };
   sock.onclose = (e) => ch.onclose?.(e);
   sock.onerror = (e) => ch.onerror?.(e);
   return ch;
