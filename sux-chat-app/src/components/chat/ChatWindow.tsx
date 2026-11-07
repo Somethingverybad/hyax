@@ -2395,13 +2395,17 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     try {
       const r = await api.syncMessages(id, { before: first.created_at, limit: 50 });
       if (id !== chatIdRef.current) return false;
+      // В журнал: в нём запросы истории неотличимы от синхронизации
+      // (адрес без параметров), а «история не подтягивается» иначе не разобрать.
+      applog.info(`feed older +${r.messages.length} (было ${messagesListRef.current.length}), ещё ${r.has_more ? "есть" : "нет"}`);
       const el = scrollRef.current;
       if (el) scrollAdjustRef.current = { height: el.scrollHeight, top: el.scrollTop };
       setHasMore(r.has_more);
       hasMoreRef.current = r.has_more;
       if (r.messages.length) { applyBatch(r.messages, [], "prepend"); setRenderLimit((l) => l + r.messages.length); }
       return r.messages.length > 0;
-    } catch {
+    } catch (e) {
+      applog.warn(`feed older: не загрузилось — ${(e as Error)?.message || e}`);
       return false;
     } finally {
       loadingOlderRef.current = false;
@@ -2459,8 +2463,15 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           setRenderLimit((l) => l + RENDER_STEP);
         }
       } else if (hasMoreRef.current && !loadingOlderRef.current) void loadOlder();
+      else if (!hasMoreRef.current && el.scrollTop < 40 && topLoggedRef.current !== chatIdRef.current) {
+        // Долистали до верха, а старше «нет» — раз на чат в журнал: так видно,
+        // правда это начало переписки или флаг «есть ещё» потерялся.
+        topLoggedRef.current = chatIdRef.current;
+        applog.info(`feed top: старше нет, сообщений ${messagesListRef.current.length}`);
+      }
     }
   };
+  const topLoggedRef = useRef<string | null>(null);
 
   /** Окно вокруг найденного: листаем вниз — тянем страницу новее (sync?after=),
    *  как сверху тянем старые. Дошли до хвоста — окно кончилось, лента обычная.
