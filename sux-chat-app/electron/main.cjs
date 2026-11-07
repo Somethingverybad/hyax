@@ -7,6 +7,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const ota = require('./ota.cjs');
+const report = require('./report.cjs');
 const playerWidget = require('./playerWidget.cjs');
 
 // Каталог данных переименование не задело: Electron берёт его из поля name в
@@ -77,6 +78,8 @@ function serveDist() {
   protocol.handle('app', (request) => {
     const { pathname } = new URL(request.url);
     let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
+    // Аварийная страница отчёта — от оболочки, не из бандла (electron/report.cjs).
+    if (rel === '__report.html') return new Response(report.REPORT_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     // Веб-часть — встроенная или пришедшая по воздуху (electron/ota.cjs).
     const base = ota.root();
     let full = path.join(base, rel);
@@ -161,6 +164,8 @@ function createWindow() {
   mainWindow.on('responsive', () => logLine('window responsive again'));
 
   attachContextMenu(mainWindow);
+  // Ошибки страницы — в журнал оболочки и в аварийный отчёт (electron/report.cjs).
+  report.attach(mainWindow);
 
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
@@ -180,6 +185,11 @@ function installAppMenu() {
       { role: 'togglefullscreen' },
     ] },
     { role: 'windowMenu' },
+    // Работает и при мёртвом окне: горячая клавиша отчёта живёт в странице.
+    { label: tr('Помощь'), role: 'help', submenu: [
+      { label: tr('Отправить отчёт об ошибке…'), click: () => void report.open() },
+      { label: tr('Перезагрузить окно'), click: () => report.reloadMain() },
+    ] },
   ]));
 }
 
@@ -544,6 +554,9 @@ const SHELL_DICT = {
     'Пауза': 'Pause',
     'Стоп': 'Stop',
     'Перевести скопированное': 'Translate copied text',
+    'Помощь': 'Help',
+    'Отправить отчёт об ошибке…': 'Send a bug report…',
+    'Перезагрузить окно': 'Reload window',
   },
   ko: {
     'Подождать': '기다리기',
@@ -572,6 +585,9 @@ const SHELL_DICT = {
     'Пауза': '일시정지',
     'Стоп': '정지',
     'Перевести скопированное': '복사한 텍스트 번역',
+    'Помощь': '도움말',
+    'Отправить отчёт об ошибке…': '오류 보고 보내기…',
+    'Перезагрузить окно': '창 새로고침',
   },
 };
 // app.getLocale() работает только после ready; раньше — без кэша и по-русски.
@@ -622,6 +638,10 @@ function buildTrayMenu() {
     { label: tr('Перевести скопированное'), accelerator: TRANSLATE_SHORTCUT, click: translateClipboard },
     { type: 'separator' },
     { label: tr('Сворачивать в трей при закрытии'), type: 'checkbox', checked: trayEnabled(), click: (item) => writeSettings({ minimizeToTray: item.checked }) },
+    { type: 'separator' },
+    // На Windows строки меню нет — отчёт и перезагрузка окна здесь (electron/report.cjs).
+    { label: tr('Отправить отчёт об ошибке…'), click: () => void report.open() },
+    { label: tr('Перезагрузить окно'), click: () => report.reloadMain() },
     { type: 'separator' },
     { label: tr('Выйти'), click: () => { app.isQuitting = true; app.quit(); } },
   ]);
@@ -721,6 +741,10 @@ if (!gotLock) {
     // Обновление веб-части по воздуху: до первой страницы — решить, из какого
     // бандла её отдавать; проверка нового — в фоне.
     if (!isDev) { ota.init({ dist: DIST, log: logLine }); serveDist(); }
+    report.init({
+      log: logLine, logFile, getMain: () => mainWindow, otaInfo: () => (isDev ? {} : ota.info()),
+      preload: path.join(__dirname, 'preload.cjs'), lang: getShellLang,
+    });
     allowMediaPermissions();
     setupScreenShare();
     createWindow();

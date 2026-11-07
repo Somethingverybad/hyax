@@ -120,4 +120,7 @@ export function installBugHotkey() {
     e.stopPropagation();
     show();
   }, true);
+  // Пункт «Отправить отчёт об ошибке…» в меню оболочки компьютера
+  // (electron/report.cjs): страница жива — то же окно, что по горячей клавише.
+  (window as unknown as { __hyaxReport?: () => void }).__hyaxReport = () => show();
 }

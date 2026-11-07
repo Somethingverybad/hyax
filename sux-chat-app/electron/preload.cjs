@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   otaInfo: () => ipcRenderer.invoke('ota-info'),
   // Применить скачанный бандл сейчас (перезагрузка окна, без перезапуска).
   otaApply: () => ipcRenderer.invoke('ota-apply'),
+  // Аварийный отчёт из меню оболочки (electron/report.cjs): журнал оболочки и
+  // ошибки страницы, перезагрузить главное окно, отметка «отправлен».
+  reportInfo: () => ipcRenderer.invoke('report-info'),
+  reportReloadMain: () => ipcRenderer.send('report-reload-main'),
+  reportSent: (id) => ipcRenderer.send('report-sent', id),
   // Как установлено на Linux: appimage | deb | other; иначе native.
   installKind: () => ipcRenderer.invoke('install-kind'),
   // Язык интерфейса (ru | en | ko) — для трея, меню и диалогов main-процесса.

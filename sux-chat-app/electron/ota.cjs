@@ -23,7 +23,9 @@ const zlib = require('zlib');
 const BASE = 'https://storage.yandexcloud.net/hyax-public/ota/';
 const CHECK_FIRST_MS = 15 * 1000;
 const CHECK_EVERY_MS = 30 * 60 * 1000;
-const READY_TIMEOUT_MS = 20 * 1000;
+// Минута, а не 20 с: окно в фоне и занятый компьютер грузятся медленнее, а
+// ложный откат хуже — он перезагружает окно ещё раз (и оставлял чёрное).
+const READY_TIMEOUT_MS = 60 * 1000;
 
 let DIST = '';
 let ROOT = '';
@@ -101,9 +103,23 @@ function fail() {
 function watch(win) {
   if (!state.trial) return;
   clearTimeout(readyTimer);
-  readyTimer = setTimeout(() => {
+  readyTimer = setTimeout(async () => {
     if (!state.trial) return;
-    log('ota: нет подтверждения за 20 с — откат', state.current && state.current.version);
+    // Сигнала «жив» нет — но, может, интерфейс отрисовался, а сигнал потерялся:
+    // спросить само окно. 07.11 сборка 1093 откатилась «на лету» и оставила
+    // чёрное окно, хотя в проверках та же сборка стартовала за доли секунды.
+    const wc = win && !win.isDestroyed() ? win.webContents : null;
+    let drawn = -1;
+    if (wc && !wc.isCrashed()) {
+      drawn = await Promise.race([
+        wc.executeJavaScript('(document.getElementById("root") || { children: [] }).children.length', true).catch(() => -2),
+        new Promise((r) => setTimeout(() => r(-3), 3000)),
+      ]);
+    }
+    if (!state.trial) return;
+    if (drawn > 0) { log('ota: сигнала не было, но интерфейс отрисован — оставляем', state.current && state.current.version); ready(); return; }
+    log('ota: нет подтверждения за ' + Math.round(READY_TIMEOUT_MS / 1000) + ' с — откат', state.current && state.current.version,
+      { drawn, url: wc ? wc.getURL() : null, loading: wc ? wc.isLoading() : null, crashed: wc ? wc.isCrashed() : null, visible: win && !win.isDestroyed() ? win.isVisible() : null });
     fail();
     if (win && !win.isDestroyed()) win.reload();
   }, READY_TIMEOUT_MS);
