@@ -1,0 +1,27 @@
+# Ретро-ПК на сервере (crystal). Запуск: docker compose up -d --build
+# Сеть — существующая vpn-network, чтобы nginx vpn-web (milf.hyax.ru) видел сервис по имени:
+#   location /retro-cloud/ { proxy_pass http://retro-cloud:8099/; … Upgrade … }
+services:
+  retro-cloud:
+    build: .
+    container_name: retro-cloud
+    restart: unless-stopped
+    devices:
+      - /dev/kvm:/dev/kvm
+    environment:
+      HYAX_BOT_TOKEN: ${HYAX_BOT_TOKEN:-}
+      DEV: ${DEV:-0}
+      IDLE_MIN: ${IDLE_MIN:-10}
+      MAX_VMS: ${MAX_VMS:-6}
+      VM_RAM: ${VM_RAM:-128}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8099:8099"
+    networks:
+      - vpn-network
+    stop_grace_period: 60s
+
+networks:
+  vpn-network:
+    external: true

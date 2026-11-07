@@ -17,6 +17,7 @@
   if (r.ok && body.pass) {
     try {
       await import("./s/" + body.pass + "/app.js");
+      import("./cloud.js").catch(function () { /* сервера «Герои по сети» может не быть — карточка просто не появится */ });
     } catch (e) {
       text.textContent = "Не удалось загрузить эмулятор. Закройте и откройте приложение ещё раз.";
       return;
