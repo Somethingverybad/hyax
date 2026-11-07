@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { applog } from "@/lib/applog";
 import { setBusy } from "@/lib/busy";
 import { keepScreenAwake } from "@/lib/screenAwake";
 
@@ -40,6 +42,41 @@ async function getMedia(constraints: MediaStreamConstraints): Promise<MediaStrea
     if (!transient) throw err;
     await new Promise((r) => setTimeout(r, 300));
     return await navigator.mediaDevices.getUserMedia(constraints);
+  }
+}
+
+/**
+ * Микрофон начинает отдавать звук не сразу после getUserMedia: на Mac — сотни
+ * миллисекунд, с Bluetooth-гарнитурой (AirPods переключаются в режим
+ * гарнитуры) — до секунды и больше; всё это время в потоке цифровая тишина.
+ * Запись и индикатор стартовали сразу — и начало голосового пропадало
+ * (баг-репорт afbe1e20, компьютер на Mac). Ждём первого ненулевого отсчёта (не
+ * дольше maxMs), и только потом пишем и показываем «идёт запись». Возвращает,
+ * сколько ждали; -1 — проверить нечем (запись идёт как раньше).
+ */
+async function waitMicLive(stream: MediaStream, maxMs = 1500): Promise<number> {
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctx || !stream.getAudioTracks().length) return -1;
+  const t0 = performance.now();
+  let ctx: AudioContext | null = null;
+  try {
+    ctx = new Ctx();
+    if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+    if (ctx.state !== "running") return -1;
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    while (performance.now() - t0 < maxMs) {
+      an.getFloatTimeDomainData(buf);
+      if (buf.some((v) => v !== 0)) return Math.round(performance.now() - t0);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return Math.round(performance.now() - t0);
+  } catch {
+    return -1;
+  } finally {
+    void ctx?.close().catch(() => {});
   }
 }
 
@@ -169,6 +206,13 @@ export function useMediaRecorder() {
     autoStopRef.current = onAutoStop ?? null;
     try {
       const media = await acquire(kind, facing);
+      // Ждём, пока микрофон реально зазвучит (waitMicLive). Не на iPhone:
+      // там звук приложения ведёт аудиосессия, лишний AudioContext в неё не тащим.
+      if (Capacitor.getPlatform() !== "ios") {
+        const waited = await waitMicLive(media);
+        const label = media.getAudioTracks()[0]?.label || "?";
+        applog.info(`rec mic «${label.slice(0, 40)}» ${waited < 0 ? "без проверки" : `звук через ${waited} мс`}`);
+      }
       const candidates =
         kind === "video"
           ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]

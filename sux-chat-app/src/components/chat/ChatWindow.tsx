@@ -4073,6 +4073,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         source: "message",
         kind: "voice",
         rate: voiceRate,
+        duration: m.voice_duration || undefined,
         chatId,
       }));
     if (queue.length) void playQueue(queue, 0, { at });
@@ -6548,7 +6549,9 @@ const VoiceBubble = ({ id, url, seconds, play }: { id: string; url: string; seco
   const current = usePlayerSlice(() => isCurrent(id));
   const playing = usePlayerSlice((s) => isCurrent(id) && s.playing);
   const time = usePlayerSlice((s) => (isCurrent(id) ? s.time : 0));
-  const playerDur = usePlayerSlice((s) => (isCurrent(id) && s.duration > 0 ? s.duration : 0));
+  // Infinity (WebM из Chrome/Electron без длительности) — тоже «не знаем»:
+  // иначе 0 × ∞ давал «NaN:NaN» (баг-репорт afbe1e20).
+  const playerDur = usePlayerSlice((s) => (isCurrent(id) && Number.isFinite(s.duration) && s.duration > 0 ? s.duration : 0));
   // Длительность: из файла, а если файл её не знает (запись с MediaRecorder —
   // Infinity) — из сообщения.
   const dur = playerDur || seconds || 0;
@@ -6637,7 +6640,7 @@ const VoiceBubble = ({ id, url, seconds, play }: { id: string; url: string; seco
     else play();
   };
 
-  const fmt = (t: number) => { const v = Math.max(0, Math.round(t)); return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; };
+  const fmt = (t: number) => { const v = Math.max(0, Math.round(Number.isFinite(t) ? t : 0)); return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; };
   // Играет или перемотано — текущее место, иначе — длина.
   const label = current || drag !== null ? fmt(progress * dur) : fmt(seconds);
   const wave = peaks ?? FALLBACK_WAVE;

@@ -28,6 +28,9 @@ export interface Track {
    *  в «Мою музыку» не добавляется, скорость — та, что была в пузыре. */
   kind?: "voice";
   rate?: number;
+  /** Длительность, если известна заранее (голосовое — из сообщения): у WebM
+   *  из Chrome/Electron в файле её нет, el.duration — Infinity. */
+  duration?: number;
   /** Чат, из которого голосовое: пока он открыт, полоску плеера не показываем —
    *  управление в самом пузыре (ChatWindow.VoiceBubble). */
   chatId?: string;
@@ -144,7 +147,16 @@ const updateSession = () => {
 
 const attach = (el: HTMLAudioElement) => {
   el.ontimeupdate = () => { state.time = el.currentTime; emit(); };
-  el.onloadedmetadata = () => { state.duration = el.duration || 0; emit(); };
+  // У WebM, записанного Chrome/Electron, длительности в файле нет — Infinity
+  // (в пузыре было «NaN:NaN», баг-репорт afbe1e20): тогда — известная из
+  // сообщения, а настоящая придёт durationchange, когда файл дочитается.
+  const setDuration = () => {
+    const d = el.duration;
+    state.duration = Number.isFinite(d) && d > 0 ? d : state.queue[state.index]?.duration || 0;
+    emit();
+  };
+  el.onloadedmetadata = setDuration;
+  el.ondurationchange = setDuration;
   // Эфир без звука: файл идёт (следующий трек тоже стартует), но для
   // человека это пауза — кнопки «играть», экран блокировки «на паузе».
   el.onplay = () => { state.playing = !(state.live && state.liveMuted); emit(); updateSession(); };
