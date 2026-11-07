@@ -314,8 +314,9 @@ const MiniAppHost = () => {
             src={src}
             title={title}
             className="absolute inset-0 w-full h-full border-0 bg-background"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
-            allow="clipboard-write; autoplay; fullscreen"
+            // allow-pointer-lock и pointer-lock — захват мыши в мини-приложениях (Ретро-ПК на компьютере)
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-pointer-lock"
+            allow="clipboard-write; autoplay; fullscreen; pointer-lock"
             referrerPolicy="strict-origin"
             // Страница без SDK не скажет «готово» — убираем заставку сами.
             onLoad={() => setTimeout(() => setLoading(false), 600)}
