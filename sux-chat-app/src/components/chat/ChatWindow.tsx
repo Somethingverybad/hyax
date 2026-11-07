@@ -3780,6 +3780,8 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     });
     startingRef.current = false;
     if (!ok) {
+      // Закрепили, пока включался микрофон, — снимаем закрепление.
+      recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false; setLockProgress(0);
       setRecPhase("idle");
       toast.error(kind === "video" ? tr("Нет доступа к камере") : tr("Нет доступа к микрофону"));
       return;
@@ -3849,9 +3851,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const from = holdStartRef.current;
     if (!from || recLockedRef.current) return;
     // Влево — отмена, вверх — закрепить (палец можно отпустить), как в Telegram.
+    // Закрепить можно и пока микрофон включается (startingRef: с AirPods —
+    // до нескольких секунд): раньше жест тогда не срабатывал, отпущенный палец
+    // считался концом записи, и она сбрасывалась. Запись начнётся закреплённой.
     const up = from.y - e.clientY;
-    if (startedRef.current && activeKindRef.current !== "rov") setLockProgress(Math.max(0, Math.min(1, up / 70)));
-    if (up > 70 && startedRef.current && activeKindRef.current !== "rov") {
+    const live = (startedRef.current || startingRef.current) && activeKindRef.current !== "rov";
+    if (live) setLockProgress(Math.max(0, Math.min(1, up / 70)));
+    if (up > 70 && live) {
       recLockedRef.current = true; setRecLocked(true); lockGestureRef.current = true;
       setLockProgress(1);
       cancelArmedRef.current = false; setCancelArmed(false);
@@ -3868,6 +3874,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     if (!recLockedRef.current) return;
     recLockedRef.current = false; setRecLocked(false); lockGestureRef.current = false;
     setLockProgress(0);
+    // Микрофон ещё включается — завершим сразу после старта (как отпущенный палец).
+    if (startingRef.current && !startedRef.current) {
+      stopRequestedRef.current = true;
+      cancelArmedRef.current = cancel; setCancelArmed(false);
+      setRecPhase("finishing");
+      return;
+    }
     startedRef.current = false;
     cancelArmedRef.current = false; setCancelArmed(false);
     if (!cancel) setRecPhase("finishing");
