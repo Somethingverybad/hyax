@@ -18,7 +18,7 @@ import { useSections, setSection, type SectionKey } from "@/lib/sections";
 import { DELETE_VARIANT_LABELS, getDeleteAnimChoice, setDeleteAnimChoice, type DeleteVariant } from "@/lib/deleteAnim";
 import { RAIL_POS, RAIL_POS_LABELS, setRailPos, useRailPos, type RailPos } from "@/lib/railPos";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { getNavAnimChoice, navAnimTrialVisible, reducedMotion, setNavAnim, NAV_ANIMS, NAV_ANIM_LABELS, NAV_TRIAL, type NavAnim } from "@/lib/navAnim";
+import { animationsOn, getNavAnimChoice, navAnimTrialVisible, reducedMotion, setAnimationsOn, setNavAnim, NAV_ANIMS, NAV_ANIM_LABELS, NAV_TRIAL, type NavAnim } from "@/lib/navAnim";
 import DockEditor from "@/components/DockEditor";
 
 /** Образец темы: фон, полоса шапки, акцент и обводка — цветами самой темы. */
@@ -175,6 +175,7 @@ const ProfileAppearance = () => {
 const ThemeSyncCard = () => {
   const on = useThemeSync();
   const [boot, setBoot] = useState(isBootAnimOn);
+  const [motion, setMotion] = useState(animationsOn);
   const isMobile = useIsMobile();
   const [nav, setNav] = useState(getNavAnimChoice);
   // Пробные — админу; выбранный раньше вариант остаётся в списке.
@@ -191,7 +192,19 @@ const ThemeSyncCard = () => {
               checked={on} onChange={(e) => setThemeSync(e.target.checked)} />
           }
         />
-        {hasBootAnim() && (
+        {/* Всё движение разом: эффекты сообщений и действий, переходы,
+            удаление, заставка (lib/navAnim animationsOn). */}
+        <SettingsRow
+          label={tr("Анимации и эффекты")}
+          hint={reducedMotion() ? tr("В системе включено «Уменьшить движение» — без анимаций")
+            : motion ? tr("Эффекты сообщений и действий, переходы между экранами, удаление")
+            : tr("Выключено: всё появляется сразу, без движения и эффектов")}
+          trailing={
+            <input type="checkbox" className="w-5 h-5 accent-primary shrink-0" aria-label={tr("Анимации и эффекты")}
+              checked={motion} onChange={(e) => { setAnimationsOn(e.target.checked); setMotion(e.target.checked); }} />
+          }
+        />
+        {motion && hasBootAnim() && (
           <SettingsRow
             label={tr("Анимация при запуске")}
             hint={tr("Логотип при открытии приложения")}
@@ -201,7 +214,7 @@ const ThemeSyncCard = () => {
             }
           />
         )}
-        {isMobile && (
+        {motion && isMobile && (
           <SettingsRow
             label={tr("Переходы между экранами")}
             hint={reducedMotion() ? tr("В системе включено «Уменьшить движение» — переходы без анимации")

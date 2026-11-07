@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { getLang, t as tr, tn, LANG_NAMES, type Lang } from "@/lib/i18n";
 import { actionName, actionPhrase } from "@/api/client";
 import { actionTemplate, type ActionView } from "@/lib/actionText";
+import ActionEffect, { type ActionPlay } from "@/components/chat/ActionEffect";
 import type { ChatTranslate } from "@/api/client";
 import { Brush, Languages, Quote, TextSelect, Send, Paperclip, X, Check, CheckCheck, Clock, Download, Image as ImageIcon, Smile, MoreVertical, Music2, Phone, Mic, Trash2, Play, Pause, Video, UserPlus, ChevronLeft, SwitchCamera, Reply, FileText, Pin, Forward, Bookmark, Radio, Users, Copy, Vibrate, ArrowDown, Loader2, Pencil, Flag, ListMusic, CheckCircle2, Bot, Eye, Lock, ChevronUp, Square, LockOpen, Bold, Italic, Underline, Strikethrough, Code, EyeOff, Shuffle, KeyRound, MapPin, Triangle as TriangleIcon, Braces, Sparkles, Images, LayoutGrid, PawPrint, BellOff } from "lucide-react";
 import { LocationSheet, GeoCard } from "./LocationSheet";
@@ -149,7 +150,7 @@ interface Message {
   /** Приходит с бэкенда, если сообщение — стикер. */
   sticker?: { id: string; file_url: string; emoji?: string } | null;
   /** Сообщение-жест: «😉 Вася подмигивает Пете» (chat/ChatAction). */
-  action?: { id: number; slug: string; name: string; verb: string; emoji: string; solo?: boolean; phrase_en?: string; phrase_ko?: string;
+  action?: { id: number; slug: string; name: string; verb: string; emoji: string; solo?: boolean; phrase_en?: string; phrase_ko?: string; fx?: string;
     phrase_ru_self?: string; phrase_ru_you?: string; phrase_en_self?: string; phrase_en_you?: string; phrase_ko_self?: string; phrase_ko_you?: string } | null;
   action_target?: { id: string; username: string } | null;
   /** Аудио-стикер: звук, который слышит получатель. */
@@ -1171,6 +1172,33 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     const last = pending.reduce((a, b) => ((Date.parse(a.created_at) || 0) >= (Date.parse(b.created_at) || 0) ? a : b));
     const play = effectOf(last);
     if (play) setBurst({ ...play, key: Date.now() });
+  }, [messages, chatId, userId]);
+  // Действия собеседников («😉 Вася подмигивает вам») — эффектом на весь
+  // экран (ActionEffect). Только свежие и только последнее: пришло несколько
+  // подряд — играет последнее, остальные отмечаются показанными, чтобы жестами
+  // нельзя было заспамить экран; новое во время показа заменяет его.
+  const [actionFx, setActionFx] = useState<(ActionPlay & { key: number }) | null>(null);
+  // Пачка жестов подряд: показ — через ACTION_FX_SETTLE_MS после последнего,
+  // иначе каждый успевал мелькнуть, перебивая предыдущий.
+  const actionFxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (actionFxTimer.current) clearTimeout(actionFxTimer.current); }, [chatId]);
+  useEffect(() => {
+    if (!chatId) return;
+    const now = Date.now();
+    const fresh = messages.filter((m) => m.action && m.sender?.id !== userId && !m.pending && !playedActions.has(m.id)
+      && now - (Date.parse(m.created_at) || 0) < ACTION_FX_FRESH_MS);
+    if (!fresh.length) return;
+    markActionsPlayed(fresh.map((m) => m.id));
+    const last = fresh.reduce((a, b) => ((Date.parse(a.created_at) || 0) >= (Date.parse(b.created_at) || 0) ? a : b));
+    const view: ActionView = last.action_target?.id === userId ? "you" : "third";
+    const who = last.sender?.username || tr("Кто-то");
+    const whom = last.action_target?.username || "";
+    const phrase = actionTemplate(last.action!, myLang, view).split(/(\{who\}|\{whom\})/).filter(Boolean).map((part, i) =>
+      part === "{who}" ? <b key={i}>{who}</b> : part === "{whom}" ? <b key={i}>{whom}</b> : <span key={i}>{part}</span>);
+    const play = { emoji: last.action!.emoji, phrase, fx: last.action!.fx, key: now };
+    if (actionFxTimer.current) clearTimeout(actionFxTimer.current);
+    actionFxTimer.current = setTimeout(() => { actionFxTimer.current = null; setActionFx(play); }, ACTION_FX_SETTLE_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, chatId, userId]);
   // Текст поля ввода — в ref, а не в состоянии: иначе каждая клавиша
   // перерисовывала всё окно вместе с лентой из полусотни сообщений (разбор
@@ -6282,6 +6310,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
           onClose={() => setMediaOpen(false)} onJump={(id) => { setMediaOpen(false); void jumpToMessage(id); }} />
       )}
       {burst && <MessageEffect key={burst.key} play={burst} onDone={() => setBurst(null)} />}
+      {actionFx && <ActionEffect key={actionFx.key} play={actionFx} onDone={() => setActionFx(null)} />}
       {schedulePick && (
         <SchedulePicker title={tr("Отложенная отправка")} busy={scheduleBusy}
           onClose={() => setSchedulePick(null)} onPick={(d) => void scheduleSend(d, schedulePick.silent)} />
@@ -6526,6 +6555,17 @@ function prefillSecret<T extends Message>(m: T): T {
   const f = secretBlobs.get(m.id);
   return f ? { ...base, ...f, _ready: true, _sm: null } : m;
 }
+// Действия, уже показанные эффектом (ActionEffect) на этом устройстве.
+const playedActions = new Set<string>((() => { try { return JSON.parse(localStorage.getItem("hyax:actions-fx") || "[]"); } catch { return []; } })());
+function markActionsPlayed(ids: string[]) {
+  const fresh = ids.filter((id) => !playedActions.has(id));
+  if (!fresh.length) return;
+  fresh.forEach((id) => playedActions.add(id));
+  try { localStorage.setItem("hyax:actions-fx", JSON.stringify([...playedActions].slice(-200))); } catch { /* приватный режим */ }
+}
+/** Действие эффектом — только свежее: старые при открытии чата не играем. */
+const ACTION_FX_FRESH_MS = 2 * 60_000;
+const ACTION_FX_SETTLE_MS = 450;
 // Уже разыгранные «глюк-стикеры» на этом устройстве — до ответа сервера
 // (главная память — effect_seen на сервере, см. markBurstsSeen).
 const playedBursts = new Set<string>((() => { try { return JSON.parse(localStorage.getItem("hyax:bursts") || "[]"); } catch { return []; } })());

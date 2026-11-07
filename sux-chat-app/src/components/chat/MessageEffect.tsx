@@ -5,7 +5,7 @@ import { mediaUrl } from "@/api/client";
 import { isMp4, isTgs, isWebm } from "./StickerView";
 import { animVideo } from "@/lib/animMedia";
 import { notoCode, notoSvgUrl } from "@/lib/notoEmoji";
-import { reducedMotion } from "@/lib/navAnim";
+import { motionOff } from "@/lib/navAnim";
 import type { EffectPlay } from "@/lib/effects";
 import { tgsSource } from "@/lib/tgsPlayer";
 import { useCachedImage } from "@/lib/imageCache";
@@ -25,7 +25,8 @@ import { FormattedText } from "@/lib/format";
  *   • rage — «Ярость»: копия в центре трясётся всё сильнее, пузырь снизу
  *     доверху заливается красным (у стикера — красное свечение), по краям
  *     экрана пульсирует красное, вибрация нарастает.
- * Двигаем только transform и opacity. Системное «Уменьшить движение» — без эффекта.
+ * Двигаем только transform и opacity. Системное «Уменьшить движение» или
+ * выключенные «Анимации и эффекты» (Внешний вид) — без эффекта.
  *
  * Текст — копией настоящего пузыря: целиком, с разметкой (FormattedText), в
  * несколько строк. Его размер меряем один раз скрытой копией, а копии в
@@ -211,8 +212,8 @@ const MessageEffect = ({ play, onDone }: { play: EffectPlay; onDone: () => void 
 
   useEffect(() => {
     if (!go) return;
-    if (reducedMotion()) {
-      applog.info(`effect ${play.kind}: пропущен — в системе включено «Уменьшить движение»`);
+    if (motionOff()) {
+      applog.info(`effect ${play.kind}: пропущен — анимации выключены (настройки или «Уменьшить движение»)`);
       onDone();
       return;
     }

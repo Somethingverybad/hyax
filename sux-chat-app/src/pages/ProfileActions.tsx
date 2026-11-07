@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type ChatActionInfo, type ChatActionDraft } from "@/api/client";
 import { loadActions } from "@/components/chat/ActionSheet";
+import ActionEffect, { ACTION_FX_OPTIONS } from "@/components/chat/ActionEffect";
 import { cn } from "@/lib/utils";
 import { ruSelf, ruYou, trailingPrep } from "@/lib/actionText";
 import { t } from "@/lib/i18n";
@@ -39,6 +40,8 @@ export default function ProfileActions() {
   const [list, setList] = useState<ChatActionInfo[] | null>(null);
   const [edit, setEdit] = useState<{ id: number | null; data: ChatActionDraft } | null>(null);
   const [busy, setBusy] = useState(false);
+  // «Показать»: эффект действия, как его увидит получатель (с черновика).
+  const [preview, setPreview] = useState<{ key: number; emoji: string; verb: string; fx?: string } | null>(null);
   const [q, setQ] = useState("");
   // Высота клавиатуры — из общего события (и iOS, и Android): на iPhone
   // переменные --kb-* на корне не ставятся (подъём там — стилем на самих
@@ -172,6 +175,16 @@ export default function ProfileActions() {
                   <p className="text-caption text-subtle">{t("Остальным")}: «{"{who}"} {d.verb}{d.solo ? "" : ` {whom}`}»</p>
                 </div>
               ) : null}
+              <label className="block">
+                <span className="block text-subtle mb-1">{t("Эффект у получателя")}</span>
+                <div className="flex gap-2">
+                  <select value={d.fx || "pop"} onChange={(e) => set({ fx: e.target.value })} aria-label={t("Эффект у получателя")} className={cn(field, "flex-1 min-w-0")}>
+                    {ACTION_FX_OPTIONS.map((o) => <option key={o.key} value={o.key}>{t(o.label)}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setPreview({ key: Date.now(), emoji: d.emoji || "✨", verb: d.verb || "", fx: d.fx || "pop" })}
+                    className="h-10 px-3 rounded-md bg-surface-3 text-primary font-medium shrink-0 active:opacity-70">{t("Показать")}</button>
+                </div>
+              </label>
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                 <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4 accent-primary" checked={d.is_active !== false} onChange={(e) => set({ is_active: e.target.checked })} />{t("Показывать")}</label>
                 <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4 accent-primary" checked={!!d.solo} onChange={(e) => set({ solo: e.target.checked })} />{t("Про себя, без адресата")}</label>
@@ -207,6 +220,10 @@ export default function ProfileActions() {
             </div>
           </div>
         </div>
+      )}
+      {preview && (
+        <ActionEffect key={preview.key} onDone={() => setPreview(null)}
+          play={{ emoji: preview.emoji, fx: preview.fx, phrase: <><b>{t("Вася")}</b> {preview.verb} <b>{t("вам")}</b></> }} />
       )}
     </div>
   );

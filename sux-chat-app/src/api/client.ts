@@ -618,6 +618,8 @@ export interface ChatWallpaper { url: string | null; kind: "image" | "video" | "
 
 /** Действие в чате: кнопка name, в сообщении — «<emoji> <ник> <verb> <адресат>». */
 export interface ChatActionInfo { id: number; slug: string; name: string; verb: string; emoji: string; premium?: boolean; adult?: boolean; /** «Про себя» — без адресата. */ solo?: boolean; name_en?: string; name_ko?: string; phrase_en?: string; phrase_ko?: string; order?: number; is_active?: boolean;
+  /** Шаблон эффекта у получателя (components/chat/ActionEffect): pop, throw, hug, wink. */
+  fx?: string;
   /** Отправителю («Вы подмигиваете {whom}») и адресату («Вам подмигивает {who}»). */
   phrase_ru_self?: string; phrase_ru_you?: string; phrase_en_self?: string; phrase_en_you?: string; phrase_ko_self?: string; phrase_ko_you?: string }
 /** Поля действия, которые правит админ (пустые переводы заполнит сервер). */

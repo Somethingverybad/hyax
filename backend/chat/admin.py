@@ -367,7 +367,7 @@ class ThemeAdmin(admin.ModelAdmin):
 class ChatActionAdmin(admin.ModelAdmin):
     """Действия в чате («подмигнуть», «обнять»). Добавить новое — строкой здесь;
     verb — форма в сообщении: «<эмодзи> <ник> <verb> <ник адресата>»."""
-    list_display = ("emoji", "name", "verb", "slug", "order", "is_active", "premium")
-    list_editable = ("order", "is_active", "premium")
+    list_display = ("emoji", "name", "verb", "slug", "fx", "order", "is_active", "premium")
+    list_editable = ("fx", "order", "is_active", "premium")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("order",)

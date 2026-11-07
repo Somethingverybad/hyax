@@ -79,7 +79,7 @@
         var MIN_MS = 900;
         var ended = false, ready = false, gone = false, shownAt = Date.now();
         var animOff = false;
-        try { animOff = localStorage.getItem("hyax:boot-anim") === "0"; } catch (e) {}
+        try { animOff = localStorage.getItem("hyax:boot-anim") === "0" || localStorage.getItem("hyax:motion") === "off"; } catch (e) {}
         function done() {
           if (gone || !ready) return;
           var wait = Math.max(0, MIN_MS - (Date.now() - shownAt));

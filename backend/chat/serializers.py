@@ -757,7 +757,9 @@ class MessageSerializer(serializers.ModelSerializer):
                 "phrase_en": a.phrase_en, "phrase_ko": a.phrase_ko,
                 "phrase_ru_self": a.phrase_ru_self, "phrase_ru_you": a.phrase_ru_you,
                 "phrase_en_self": a.phrase_en_self, "phrase_en_you": a.phrase_en_you,
-                "phrase_ko_self": a.phrase_ko_self, "phrase_ko_you": a.phrase_ko_you} if a else None
+                "phrase_ko_self": a.phrase_ko_self, "phrase_ko_you": a.phrase_ko_you,
+                # Шаблон эффекта у получателя (клиент — ActionEffect).
+                "fx": a.fx} if a else None
 
     def get_action_target(self, obj):
         t = obj.action_target
@@ -1002,7 +1004,7 @@ class ChatActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatAction
         fields = ['id', 'slug', 'name', 'verb', 'emoji', 'premium', 'adult', 'solo', 'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
-                  'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you']
+                  'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you', 'fx']
 
 
 class ChatActionAdminSerializer(serializers.ModelSerializer):
@@ -1011,5 +1013,5 @@ class ChatActionAdminSerializer(serializers.ModelSerializer):
         model = ChatAction
         fields = ['id', 'slug', 'name', 'verb', 'emoji', 'order', 'is_active', 'premium', 'adult', 'solo',
                   'name_en', 'name_ko', 'phrase_en', 'phrase_ko',
-                  'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you']
+                  'phrase_ru_self', 'phrase_ru_you', 'phrase_en_self', 'phrase_en_you', 'phrase_ko_self', 'phrase_ko_you', 'fx']
         read_only_fields = ['id', 'slug']

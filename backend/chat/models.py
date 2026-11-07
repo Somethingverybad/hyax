@@ -1501,6 +1501,15 @@ class ChatAction(models.Model):
     phrase_en_you = models.CharField(max_length=120, blank=True, default="")
     phrase_ko_self = models.CharField(max_length=120, blank=True, default="")
     phrase_ko_you = models.CharField(max_length=120, blank=True, default="")
+    # Эффект у получателя (клиент — components/chat/ActionEffect): шаблон на
+    # выбор, новому действию — любой из готовых.
+    FX_CHOICES = [
+        ("pop", "Плашка: качается, вокруг копии эмодзи"),
+        ("throw", "Бросок: эмодзи летит в экран и сползает по стеклу"),
+        ("hug", "Объятие: плашку сжимает с боков"),
+        ("wink", "Подмигивание: плашка становится глазом и подмигивает"),
+    ]
+    fx = models.CharField(max_length=12, choices=FX_CHOICES, default="pop")
 
     class Meta:
         ordering = ["order", "name"]

@@ -50,12 +50,31 @@ export const reducedMotion = () => {
   return !!motionQuery?.matches;
 };
 
+/**
+ * «Анимации и эффекты» (Внешний вид) — одним переключателем всё движение
+ * этого устройства: эффекты сообщений и действий (MessageEffect, ActionEffect),
+ * переходы между экранами, анимация удаления, заставка при запуске
+ * (index.html читает тот же ключ). Системное «Уменьшить движение» — то же.
+ */
+const MOTION_KEY = "hyax:motion";
+export const MOTION_EVENT = "hyax:motion";
+export function animationsOn(): boolean {
+  try { return localStorage.getItem(MOTION_KEY) !== "off"; } catch { return true; }
+}
+export function setAnimationsOn(on: boolean) {
+  try { localStorage.setItem(MOTION_KEY, on ? "on" : "off"); } catch { /* приватный режим */ }
+  applyNavAnimAttr();
+  try { window.dispatchEvent(new Event(MOTION_EVENT)); window.dispatchEvent(new Event(NAV_ANIM_EVENT)); } catch { /* нет DOM */ }
+}
+/** Без движения: выключено в настройках или в системе. */
+export const motionOff = () => reducedMotion() || !animationsOn();
+
 /** Что играть сейчас. */
-export const navAnim = (): NavAnim => (reducedMotion() ? "off" : getNavAnimChoice());
+export const navAnim = (): NavAnim => (motionOff() ? "off" : getNavAnimChoice());
 
 /** html[data-nav] — для CSS (index.css): «Без анимации» гасит и переходы разделов. */
 export function applyNavAnimAttr() {
-  try { document.documentElement.dataset.nav = getNavAnimChoice(); } catch { /* нет DOM */ }
+  try { document.documentElement.dataset.nav = animationsOn() ? getNavAnimChoice() : "off"; } catch { /* нет DOM */ }
 }
 
 export function setNavAnim(v: NavAnim) {

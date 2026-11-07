@@ -35,8 +35,9 @@ export function setDeleteAnimChoice(v: DeleteVariant | "random") {
   try { if (v === "random") localStorage.removeItem(CHOICE_KEY); else localStorage.setItem(CHOICE_KEY, v); } catch { /* приватный режим */ }
 }
 
+// «Уменьшить движение» в системе или «Анимации и эффекты» выключены (lib/navAnim).
 const reduced = () => {
-  try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
+  try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches || localStorage.getItem("hyax:motion") === "off"; } catch { return false; }
 };
 
 // Поколение анимации строки: отложенные шаги старой анимации после отмены

@@ -2511,5 +2511,15 @@ const en: Record<string, string> = {
   "Похоже, в прошлый раз WYX упал": "Looks like WYX crashed last time",
   "Отправить разработчику журнал того запуска? Можно написать, что вы делали перед этим (необязательно).": "Send the log of that session to the developer? You can describe what you were doing (optional).",
   "Не надо": "No thanks",
+  "Анимации и эффекты": "Animations and effects",
+  "В системе включено «Уменьшить движение» — без анимаций": "“Reduce motion” is on in the system — no animations",
+  "Эффекты сообщений и действий, переходы между экранами, удаление": "Message and action effects, screen transitions, deletion",
+  "Выключено: всё появляется сразу, без движения и эффектов": "Off: everything appears instantly, without motion or effects",
+  "Эффект у получателя": "Effect for the recipient",
+  "Плашка: качается, вокруг копии эмодзи": "Bubble: sways, emoji copies around",
+  "Бросок: эмодзи летит в экран и сползает по стеклу": "Throw: emoji flies at the screen and slides down the glass",
+  "Объятие: плашку сжимает с боков": "Hug: the bubble is squeezed from the sides",
+  "Подмигивание: плашка становится глазом и подмигивает": "Wink: the bubble turns into an eye and winks",
+  "Вася": "Alex",
 };
 export default en;
