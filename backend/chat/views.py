@@ -6535,26 +6535,64 @@ class BlockView(APIView):
 
 
 
+from .device_auth import DeviceJWTAuthentication as _DeviceJWT
+
+
+class _BugReportAuth(_DeviceJWT):
+    """Отчёт об ошибке — и с протухшим или отозванным токеном: тогда он просто
+    анонимный, а не 401. Отчёт нужнее всего, когда приложение сломано, и
+    просить сначала войти — значит не получить его вовсе (07.11, отчёт из меню
+    компьютера: «просит вход обязательно, а как войти, если не войдено»)."""
+
+    def authenticate(self, request):
+        try:
+            return super().authenticate(request)
+        except Exception:
+            return None
+
+
 class BugReportView(APIView):
     """POST multipart — сообщение о проблеме: описание, скриншот, лог, meta.
 
     Файлы кладём в MEDIA_ROOT/bugreports/<id>/ — своей папкой на репорт, чтобы
     скриншот и лог лежали рядом и удалялись вместе. Лог принимаем текстом
     (поле log) и сами пишем в файл: клиенту незачем собирать Blob.
+
+    Без входа — тоже (анонимный отчёт, meta.anonymous): не чаще ANON_PER_IP в
+    час с одного адреса и ANON_TOTAL в час всего, чтобы не стать дырой для спама.
     """
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [_BugReportAuth]
+    permission_classes = [permissions.AllowAny]
 
     MAX_LOG = 2 * 1024 * 1024
     MAX_SHOT = 10 * 1024 * 1024
+    ANON_PER_IP = 6
+    ANON_TOTAL = 60
+
+    @staticmethod
+    def _anon_allowed(request) -> bool:
+        from django.core.cache import cache
+        fwd = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+        ip = fwd or request.META.get("REMOTE_ADDR") or "?"
+        for key, limit in ((f"bugreport-anon:{ip}", BugReportView.ANON_PER_IP), ("bugreport-anon:*", BugReportView.ANON_TOTAL)):
+            cache.add(key, 0, 3600)
+            try:
+                n = cache.incr(key)
+            except ValueError:
+                cache.set(key, 1, 3600)
+                n = 1
+            if n > limit:
+                return False
+        return True
 
     def post(self, request):
         import json
         from .moderation import deliver_bug
 
-        me = getattr(request.user, "profile", None)
-        if not me:
-            return Response({"error": "Нет профиля"}, status=403)
+        me = getattr(request.user, "profile", None) if request.user and request.user.is_authenticated else None
+        if not me and not self._anon_allowed(request):
+            return Response({"error": "Слишком много отчётов, попробуйте позже"}, status=429)
 
         description = (request.data.get("description") or "").strip()[:4000]
         log_text = request.data.get("log") or ""
@@ -6573,6 +6611,8 @@ class BugReportView(APIView):
         if shot and os.path.splitext(shot.name)[1].lower() not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
             return Response({"error": "Скриншот должен быть картинкой"}, status=400)
 
+        if not me:
+            meta["anonymous"] = True
         bug = BugReport(reporter=me, description=description, meta=meta)
         folder = os.path.join('bugreports', str(bug.id))
         os.makedirs(os.path.join(settings.MEDIA_ROOT, folder), exist_ok=True)

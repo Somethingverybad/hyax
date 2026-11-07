@@ -4091,3 +4091,44 @@ class LazySoundPushTests(TestCase):
         self.assertEqual(sent[0][1], "lazy-ding")
         self.assertNotIn("snd", sent[1][0])
         self.assertTrue(sent[1][2])
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AnonymousBugReportTests(TestCase):
+    """Отчёт об ошибке без входа и с протухшим токеном: принимается анонимным,
+    а не 401 — иначе из сломанного приложения его не отправить."""
+
+    def setUp(self):
+        from unittest import mock
+        from django.core.cache import cache
+        cache.clear()
+        patcher = mock.patch("chat.moderation.deliver_bug")
+        self.deliver = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_anonymous_and_bad_token(self):
+        from .models import BugReport
+        c = APIClient()
+        r = c.post("/api/bugreports/", {"description": "окно чёрное", "log": "журнал"}, format="multipart")
+        self.assertEqual(r.status_code, 201, r.data)
+        bug = BugReport.objects.get(id=r.data["id"])
+        self.assertIsNone(bug.reporter)
+        self.assertTrue(bug.meta.get("anonymous"))
+        c.credentials(HTTP_AUTHORIZATION="Bearer протухший.токен.совсем")
+        r = c.post("/api/bugreports/", {"description": "ещё раз"}, format="multipart")
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_logged_in_keeps_reporter(self):
+        from .models import BugReport
+        me = make_user("bug_me")
+        r = client_for(me).post("/api/bugreports/", {"description": "с входом"}, format="multipart")
+        self.assertEqual(r.status_code, 201, r.data)
+        b = BugReport.objects.get(id=r.data["id"])
+        self.assertEqual(b.reporter_id, me.id)
+        self.assertFalse(b.meta.get("anonymous"))
+
+    def test_anonymous_rate_limit(self):
+        c = APIClient()
+        codes = [c.post("/api/bugreports/", {"description": f"№{i}"}, format="multipart", REMOTE_ADDR="10.0.0.9").status_code for i in range(8)]
+        self.assertEqual(codes[:6], [201] * 6)
+        self.assertEqual(codes[6:], [429, 429])
