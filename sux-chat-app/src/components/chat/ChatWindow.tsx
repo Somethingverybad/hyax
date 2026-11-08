@@ -220,7 +220,7 @@ interface Message {
   _cancelled?: boolean;
   /** Отправлено «без звука»: у получателя не звенит (и приложенный звук тоже). */
   silent?: boolean;
-  _rec?: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string };
+  _rec?: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string; replyQuote?: string };
   /** Вложение, которое не доехало, — для кнопки «Повторить». */
   _att?: Attach;
   /** Ответ на выделенный кусок («Выделить текст» → «Цитировать»): цитата —
@@ -3046,6 +3046,10 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     noteStickerUsed(sticker.id); // частые — первыми в подсказках
     if (effect) setBurst({ kind: effect, sticker: sticker.file_url, key: Date.now() }); // отправитель видит эффект у себя тоже
     if (!chatId) return;
+    // Ответ стикером: панель ответа уходит вместе с ним (раньше стикер улетал
+    // обычным сообщением, а панель ответа оставалась висеть).
+    const reply = replyTo;
+    setReplyTo(null);
     const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic: Message = {
       id: tempId,
@@ -3056,6 +3060,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       sender: { id: userId } as Profile,
       created_at: new Date().toISOString(),
       sticker: { id: sticker.id, file_url: sticker.file_url, emoji: sticker.emoji },
+      reply_to: optimisticReply(reply, true),
       pending: true,
       _key: tempId,
     };
@@ -3064,7 +3069,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
     try {
-      const sent = await api.sendMessageWithSticker(chatId, sticker.id, undefined, undefined, effect);
+      const sent = await api.sendMessageWithSticker(chatId, sticker.id, undefined, reply?.id, effect, reply?._quote);
       if (effect) applog.info(`sticker send effect=${effect} → сервер ${sent?.effect || "без эффекта"}`);
       setMessages((prev) =>
         prev.some((m) => m.id === sent.id)
@@ -3718,21 +3723,23 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       ...(result.kind === "video"
         ? { video_url: localUrl, video_duration: result.seconds, video_mirror: mirror, video_flip: flip }
         : { voice_url: localUrl, voice_duration: result.seconds }),
-      reply_to: optimisticReply(reply),
+      reply_to: optimisticReply(reply, true),
       pending: true,
       _key: tempId,
       _progress: 0,
-      _rec: { ...result, mirror, flip, replyToId: reply?.id },
+      _rec: { ...result, mirror, flip, replyToId: reply?.id, replyQuote: reply?._quote },
     };
     setMessages(prev => [...prev, optimistic]);
     lastSendTimeRef.current = Date.now();
     setTimeout(() => scrollToBottom(true), 50);
     void playSfx("/sounds/send.mp3", { volume: 0.3 });
-    await sendRecording(tempId, { ...result, mirror, flip });
+    // Ответ — и в первую отправку (раньше только в повтор после ошибки: в ленте
+    // запись была ответом, а с сервера приходила обычной).
+    await sendRecording(tempId, { ...result, mirror, flip, replyToId: reply?.id, replyQuote: reply?._quote });
   };
 
   /** Отправка записи из пузыря tempId; повтор после ошибки — та же функция. */
-  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string }) => {
+  const sendRecording = async (tempId: string, result: VoiceRecording & { mirror: boolean; flip?: boolean; replyToId?: string; replyQuote?: string }) => {
     if (!chatId) return;
     setUploading(true);
     const isVideo = result.kind === "video";
@@ -3746,7 +3753,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         sent = await sendSecretFile(result.file, {
           k: isVideo ? "round" : "voice", mime: result.file.type || (isVideo ? "video/mp4" : "audio/webm"),
           name: isVideo ? "round.mp4" : "voice", dur: result.seconds, mi: mirror, fl: !!result.flip, th: th || undefined,
-        }, null, result.replyToId, (p) => setProgressFor(tempId, p));
+        }, result.replyQuote ? { t: "", e: [], q: result.replyQuote } : null, result.replyToId, (p) => setProgressFor(tempId, p));
         setMessages(prev => {
           const local = prev.find((m) => m.id === tempId);
           const keep: Partial<Message> = isVideo
@@ -3766,11 +3773,12 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
         setProgressFor(tempId, 100);
         // Фронтальная камера снимается в зеркальном (селфи) виде — помечаем,
         // чтобы воспроизведение в чате отразилось так же. Сам файл не меняем.
-        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror, result.replyToId, !!result.flip);
+        sent = await api.sendMessageWithVideo(chatId, uploaded.file_url, result.seconds, mirror, result.replyToId, !!result.flip,
+          result.replyToId && result.replyQuote ? { reply_quote: result.replyQuote } : undefined);
       } else {
         const uploaded = await api.uploadVoice(result.file, (p) => setProgressFor(tempId, p));
         setProgressFor(tempId, 100);
-        sent = await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds, result.replyToId);
+        sent = await api.sendMessageWithVoice(chatId, uploaded.file_url, result.seconds, result.replyToId, result.replyQuote);
       }
       setMessages(prev =>
         prev.some(m => m.id === sent.id)
@@ -6712,7 +6720,14 @@ const VoiceBubble = ({ id, url, seconds, play }: { id: string; url: string; seco
     const r = waveRef.current?.getBoundingClientRect();
     return r && r.width ? Math.min(1, Math.max(0, (x - r.left) / r.width)) : 0;
   };
+  // Касание волны голосового, которое сейчас не в плеере, — пузырю: свайп
+  // «ответить» и удержание — меню (раньше волна забирала любой жест, и на
+  // голосовое нельзя было ответить свайпом). Короткий тап — играть с этого
+  // места. Вести пальцем по волне — когда голосовое уже в плеере; мышь — всегда.
+  const passRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const waveDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (e.pointerType !== "mouse" && !current) { passRef.current = { at: performance.now(), x: e.clientX, y: e.clientY }; return; }
+    passRef.current = null;
     // Не отдаём жест пузырю: там удержание — меню сообщения, свайп — «ответить».
     e.stopPropagation();
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* не все платформы */ }
@@ -6761,7 +6776,13 @@ const VoiceBubble = ({ id, url, seconds, play }: { id: string; url: string; seco
       onPointerMove={waveMove}
       onPointerUp={waveUp}
       onPointerCancel={() => setDrag(null)}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        const p = passRef.current;
+        passRef.current = null;
+        // Тап, а не удержание (меню — с 450 мс) и не свайп.
+        if (p && performance.now() - p.at < 400 && Math.abs(e.clientX - p.x) < 10 && Math.abs(e.clientY - p.y) < 10) seekTo(fracAt(e.clientX));
+      }}
       style={{ touchAction: "pan-y" }}
       className="flex-1 min-w-[4.5rem] flex items-center gap-px h-8 cursor-pointer select-none"
     >

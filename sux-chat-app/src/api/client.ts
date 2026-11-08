@@ -2506,11 +2506,11 @@ export const api = {
     return res.json();
   },
 
-  sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number, replyToId?: string): Promise<any> => {
+  sendMessageWithVoice: async (chatId: string, voiceUrl: string, duration: number, replyToId?: string, replyQuote?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration, reply_to_id: replyToId || undefined }),
+      body: JSON.stringify({ chat: chatId, voice_url: voiceUrl, voice_duration: duration, reply_to_id: replyToId || undefined, reply_quote: (replyToId && replyQuote) || undefined }),
     });
     if (!res.ok) throw new LError("Не удалось отправить голосовое");
     return res.json();
@@ -2673,7 +2673,7 @@ export const api = {
     if (!res.ok) throw new LError("Failed to mark effects");
   },
 
-  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: string): Promise<any> => {
+  sendMessageWithSticker: async (chatId: string, stickerId: string, content?: string, replyToId?: string, effect?: string, replyQuote?: string): Promise<any> => {
     const res = await fetchWithAuth(`${API_URL}/messages/`, {
       method: "POST",
       headers: authHeaders(),
@@ -2682,6 +2682,7 @@ export const api = {
         content: content || null,
         sticker_id: stickerId,
         reply_to_id: replyToId || undefined,
+        reply_quote: (replyToId && replyQuote) || undefined,
         effect: effect || undefined,
       }),
     });
