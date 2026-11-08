@@ -16,6 +16,9 @@ import { t } from "@/lib/i18n";
  * без ухода в фон и без нормального закрытия (pagehide). Смахнуть из списка
  * приложений — это сначала уход в фон, а закрыть окно, перезагрузиться ради
  * обновления (lib/ota) — pagehide; ни то ни другое падением не считается.
+ * На Android приложение в «недавних» бывает живой плиткой и смахивается, не
+ * уйдя в фон, — там спрашиваем у системы, как закончился прошлый процесс
+ * (WebDiag.take → exit, Android 11+): закрыл человек — не падение.
  * Тогда при следующем запуске предлагаем отправить журнал прошлого запуска
  * тем же окошком, что и Ctrl/⌘+Shift+B (lib/bugHotkey) — только с согласия.
  */
@@ -73,15 +76,32 @@ type NativeDiag = {
   memWarnings?: number; lastWarningAgoS?: number; thermal?: string; lowPower?: boolean;
   didCrash?: boolean; priority?: number; lowMemory?: boolean; path?: string; n?: number;
 };
-const webDiag = registerPlugin<{ take(): Promise<{ items: NativeDiag[] }> }>("WebDiag");
+/** Как система закрыла прошлый процесс (Android 11+, ApplicationExitInfo). */
+type NativeExit = { reason: number; t: number; importance?: number; status?: number; desc?: string };
+const webDiag = registerPlugin<{ take(): Promise<{ items: NativeDiag[]; exit?: NativeExit }> }>("WebDiag");
 
-/** null — спросить не у кого (браузер, компьютер, старая сборка без плагина). */
-async function takeNativeDiag(): Promise<NativeDiag[] | null> {
-  if (!Capacitor.isNativePlatform()) return null;
+/** items null — спросить не у кого (браузер, компьютер, старая сборка без плагина). */
+async function takeNativeDiag(): Promise<{ items: NativeDiag[] | null; exit?: NativeExit }> {
+  if (!Capacitor.isNativePlatform()) return { items: null };
   try {
     const r = await Promise.race([webDiag.take(), new Promise<never>((_, no) => setTimeout(() => no(new Error("timeout")), 1500))]);
-    return Array.isArray(r?.items) ? r.items : [];
-  } catch { return null; /* старая нативная сборка без плагина */ }
+    return { items: Array.isArray(r?.items) ? r.items : [], exit: r?.exit };
+  } catch { return { items: null }; /* старая нативная сборка без плагина */ }
+}
+
+const EXIT_NAME: Record<number, string> = {
+  1: "вышло само", 2: "убито сигналом", 3: "мало памяти", 4: "падение", 5: "падение нативного кода", 6: "не отвечало (ANR)",
+  7: "не запустилось", 8: "сменили разрешения", 9: "слишком много ресурсов", 10: "закрыто пользователем", 11: "остановлено пользователем",
+  12: "упала зависимость", 13: "другое", 14: "заморожено", 15: "пакет изменён", 16: "обновление",
+};
+/** Не падение: смахнули из недавних, остановили в настройках, обновили, сменили разрешения. */
+const exitByUser = (e: NativeExit) => [8, 10, 11, 15, 16].includes(e.reason) || /remove task|swipe/i.test(e.desc || "");
+function describeExit(e: NativeExit): string {
+  const parts = [EXIT_NAME[e.reason] ?? `причина ${e.reason}`];
+  if (e.desc) parts.push(e.desc);
+  if (e.importance != null) parts.push(e.importance <= 100 ? "было на экране" : `важность ${e.importance}`);
+  if (e.status) parts.push(`код ${e.status}`);
+  return `${new Date(e.t).toLocaleTimeString("ru-RU")} ${parts.join("; ")}`;
 }
 
 const STATE: Record<string, string> = { active: "на экране", inactive: "на экране, неактивно", background: "в фоне" };
@@ -118,9 +138,10 @@ export function installCrashGuard() {
   try { busy = JSON.parse(localStorage.getItem(BUSY_KEY) || "null"); localStorage.removeItem(BUSY_KEY); } catch { /* нет */ }
   // Записи нативной части — и без автоотчёта в журнал: WebView мог умереть в
   // фоне, тогда это увидит следующий баг-репорт.
-  const native = takeNativeDiag().then((list) => {
-    for (const d of list ?? []) applog.warn(`webdiag: ${describeDiag(d)}`);
-    return list;
+  const native = takeNativeDiag().then((r) => {
+    for (const d of r.items ?? []) applog.warn(`webdiag: ${describeDiag(d)}`);
+    if (r.exit) applog.info(`прошлый процесс: ${describeExit(r.exit)}`);
+    return r;
   });
 
   beat();
@@ -140,18 +161,25 @@ export function installCrashGuard() {
     applog.warn(`crashguard: прошлый запуск (${p.v}) оборвался на экране`);
     if (busy) applog.warn(`crashguard: в момент падения — ${busy.what}`);
     // Пусть сначала встанет интерфейс — окошко поверх готового экрана.
-    window.setTimeout(() => void native.then((list) => {
+    window.setTimeout(() => void native.then(({ items: list, exit }) => {
+      // Запись о выходе — того самого запуска: не раньше его последнего «жив» (раз в 5 с).
+      const ownExit = exit && exit.t >= p.t - 10_000 ? exit : undefined;
+      if (ownExit && exitByUser(ownExit)) {
+        applog.info(`crashguard: не падение — ${describeExit(ownExit)}`);
+        return;
+      }
       const lines = ["Автоотчёт о падении: прошлый запуск оборвался, пока приложение было на экране"];
       if (busy) lines.push(`В момент падения: ${busy.what}`);
       if (list?.length) lines.push(...list.map((d) => `Нативная часть: ${describeDiag(d)}`));
       else if (list) lines.push("Нативная часть: WebView не умирал — закрылось всё приложение или его выгрузила система");
+      if (ownExit) lines.push(`Android: ${describeExit(ownExit)}`);
       showBugReportDialog({
         title: t("Похоже, в прошлый раз WYX упал"),
         hint: t("Отправить разработчику журнал того запуска? Можно написать, что вы делали перед этим (необязательно)."),
         cancel: t("Не надо"),
         log,
         note: lines.join("\n"),
-        meta: { crash: true, crash_version: p.v, crash_at: new Date(p.t).toISOString(), ...(busy ? { crash_busy: busy.what } : {}), ...(list?.length ? { webdiag: list } : {}) },
+        meta: { crash: true, crash_version: p.v, crash_at: new Date(p.t).toISOString(), ...(busy ? { crash_busy: busy.what } : {}), ...(list?.length ? { webdiag: list } : {}), ...(ownExit ? { exit: ownExit } : {}) },
       });
     }), 2500);
   }

@@ -1,6 +1,7 @@
 package com.huyax.app;
 
 import android.app.ActivityManager;
+import android.app.ApplicationExitInfo;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -15,6 +16,7 @@ import com.getcapacitor.WebViewListener;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.util.List;
 
 /**
  * Почему был белый экран: процесс отрисовки WebView умер (упал или его убила
@@ -23,6 +25,12 @@ import org.json.JSONObject;
  * сразу, синхронно (следом система закрывает и приложение), веб-часть после
  * перезапуска забирает её через take() (lib/crashGuard) и прикладывает к
  * автоотчёту о падении.
+ *
+ * take() отдаёт ещё и причину, по которой система закрыла прошлый процесс
+ * приложения (ApplicationExitInfo, Android 11+): смахнули из недавних — это не
+ * падение. На многих лаунчерах приложение в «недавних» остаётся живой плиткой,
+ * не уходя в фон, и веб-часть не успевала узнать, что её закрывают (баг-репорт
+ * 0bfcaf7b: автоотчёт о падении, а человек пишет «всё отлично»).
  */
 @CapacitorPlugin(name = "WebDiag")
 public class WebDiagPlugin extends Plugin {
@@ -85,6 +93,34 @@ public class WebDiagPlugin extends Plugin {
         sp.edit().remove(KEY).apply();
         JSObject ret = new JSObject();
         ret.put("items", items);
+        JSObject exit = lastExit(getContext());
+        if (exit != null) ret.put("exit", exit);
         call.resolve(ret);
+    }
+
+    /** Как закончился прошлый главный процесс приложения; null — до Android 11 или не узнать. */
+    static JSObject lastExit(Context ctx) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null;
+        try {
+            ActivityManager am = (ActivityManager) ctx.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null) return null;
+            String pkg = ctx.getPackageName();
+            List<ApplicationExitInfo> list = am.getHistoricalProcessExitReasons(pkg, 0, 5);
+            for (ApplicationExitInfo e : list) {
+                // Только главный процесс: не «:remote» и прочие служебные.
+                if (!pkg.equals(e.getProcessName())) continue;
+                JSObject o = new JSObject();
+                o.put("reason", e.getReason());
+                o.put("t", e.getTimestamp());
+                o.put("importance", e.getImportance());
+                o.put("status", e.getStatus());
+                String d = e.getDescription();
+                if (d != null) o.put("desc", d.length() > 120 ? d.substring(0, 120) : d);
+                return o;
+            }
+        } catch (Exception ignored) {
+            // Диагностика не должна ронять приложение.
+        }
+        return null;
     }
 }
