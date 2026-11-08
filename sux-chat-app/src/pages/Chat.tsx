@@ -835,7 +835,10 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
           const quiet = !!(m as { silent?: boolean }).silent;
           const silent = quiet || !!readCache<{ notify_silent?: boolean }>("user")?.notify_silent;
           showDesktopNotification({
-            silent,
+            // Баннер всегда без системного звука: звучит само приложение (ниже,
+            // свой звук отправителя или стандартный). Иначе на Mac играли оба
+            // сразу — звук macOS и наш.
+            silent: true,
             title: fromChannel ? channelName : fromGroup ? (chatRow?.name || tr("Группа")) : (m.sender?.username || tr("Новое сообщение")),
             body: (fromGroup && m.sender?.username ? `${m.sender.username}: ${preview}` : preview).slice(0, 150),
             tag: chatId ? String(chatId) : undefined,

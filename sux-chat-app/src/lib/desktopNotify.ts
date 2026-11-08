@@ -57,7 +57,7 @@ export function showDesktopNotification(opts: {
   tag?: string;
   avatar?: string;
   onClick?: () => void;
-  /** Без системного звука («Звук входящих» выключен). */
+  /** Без системного звука — звук играет само приложение (pages/Chat). */
   silent?: boolean;
 }): void {
   // Windows и Linux в Electron: свой тост в углу экрана (как у Telegram), а не
