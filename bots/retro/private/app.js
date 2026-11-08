@@ -445,7 +445,12 @@ function boot(state, stateRam) {
   let last = 0, lastT = performance.now();
   statsTimer = setInterval(() => {
     renderSound();
-    if (!emu?.is_running()) { $("status").textContent = "Пауза"; return; }
+    if (!emu?.is_running()) {
+      // Стоит, хотя окно видно: событие «окно видно» потерялось (на Mac окно, перекрытое
+      // другим, считается скрытым) — будим сами, иначе «Пауза» навсегда.
+      if (!document.hidden) { emu.run(); $("status").textContent = "Продолжаю…"; return; }
+      $("status").textContent = "Пауза — нажмите, чтобы продолжить"; return;
+    }
     const n = emu.get_instruction_counter(), t = performance.now();
     const mips = (n - last) / (t - lastT) / 1000;
     last = n; lastT = t;
@@ -617,6 +622,8 @@ document.addEventListener("visibilitychange", () => {
   if (!emu) return;
   if (document.hidden) emu.stop(); else emu.run();
 });
+// Нажатие на строку состояния снимает паузу вручную.
+$("status").onclick = () => { if (emu && !emu.is_running()) { emu.run(); $("status").textContent = "Продолжаю…"; } };
 
 // ================= экран =================
 

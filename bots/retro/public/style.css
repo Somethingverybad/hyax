@@ -69,7 +69,7 @@ select { background: var(--panel2); border: 1px solid var(--line); border-radius
 /* ---- машина ---- */
 #machine { background: #000; }
 .bar { display: flex; align-items: center; gap: 2px; padding: 4px 6px; background: var(--panel); border-bottom: 1px solid var(--line); }
-.status { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
+.status { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; cursor: default; }
 .icon.on { background: rgba(111, 211, 160, .18); }
 #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #000; }
 #screen { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
