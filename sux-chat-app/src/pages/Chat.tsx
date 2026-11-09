@@ -1113,6 +1113,7 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
                   channelId={wall.id}
                   userId={user.id}
                   wall
+                  active={tab === "wall"}
                   onOpenChannel={openChannelFromWallNav}
                   onWallChanged={refreshWallStable}
                 /></Suspense>

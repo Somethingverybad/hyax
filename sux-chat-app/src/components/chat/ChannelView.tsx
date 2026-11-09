@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { createPortal } from "react-dom";
 import PlaylistPicker, { fileTitle, type PickTrack } from "@/components/chat/PlaylistPicker";
 import { t as tr, tn, getLang } from "@/lib/i18n";
@@ -240,6 +241,8 @@ interface ChannelViewProps {
   onOpenChannel?: (id: string, title?: string) => void;
   /** Состояние Стены изменилось (скрыли из списка) — родитель перечитает. */
   onWallChanged?: () => void;
+  /** Экран сейчас на виду (вкладка Стены на телефоне живёт в слое и не размонтируется). */
+  active?: boolean;
 }
 
 /** Низ экрана на вкладке Стены: под плавающим островом «Мяты» (см. .wall-tab-bottom). */
@@ -249,11 +252,36 @@ const fmtUntil = (iso: string | null) => iso ? new Date(iso).toLocaleString(getL
  *  на вкладку рисуется сразу, сеть потом досинхронизирует (см. эффект загрузки). */
 const postsMemo = new Map<string, { posts: Post[]; syncedAt: string | null; hasMore: boolean }>();
 
-const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged }: ChannelViewProps) => {
+const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpenChannel, onWallChanged, active = true }: ChannelViewProps) => {
   // «Мята»: стеклянная шапка с островком по центру (макет «Стена»), лента уходит под неё.
   const mint = useMint();
   const headRef = useRef<HTMLDivElement>(null);
   useGlassHeight(headRef, mint);
+  // Где кончается шапка: под ней встаёт мини-плеер (--player-top, см. MiniPlayer).
+  // Пишет только экран на виду и только на телефоне: иначе переменную держит
+  // скрытый список чатов со своей высокой шапкой (поиск, фильтры), и на Стене
+  // плеер висел посреди ленты, в 100 px под шапкой (баг-репорт 0866c100).
+  const mobile = useIsMobile() === true;
+  useEffect(() => {
+    if (!active || !mobile) return;
+    const set = () => {
+      const b = headRef.current?.getBoundingClientRect().bottom;
+      if (!b) return;
+      const v = `${Math.round(b)}px`;
+      if (document.documentElement.style.getPropertyValue("--player-top") !== v) document.documentElement.style.setProperty("--player-top", v);
+    };
+    set();
+    const ro = typeof ResizeObserver !== "undefined" && headRef.current ? new ResizeObserver(set) : null;
+    if (ro && headRef.current) ro.observe(headRef.current);
+    window.addEventListener("resize", set);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", set);
+      document.documentElement.style.removeProperty("--player-top");
+      // Список чатов мерит свою шапку заново.
+      window.dispatchEvent(new CustomEvent("hyax:player-top"));
+    };
+  }, [active, mobile, mint, channelId]);
   // Стена: бан, админ ли я, скрытые авторы — приходит с GET /wall/.
   // Состояние Стены — сразу из кэша сессии, сервер потом уточнит.
   const [wallState, setWallState] = useState<WallState | null>(() => (wall ? readCache<WallState>("wall") : null));
@@ -409,9 +437,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
     if (undoBar) setHiddenIds((prev) => { const n = new Set(prev); n.delete(undoBar.id); return n; });
     setUndoBar(null);
   };
-  // Ушли из канала с висящей «Отменить» — удаление доводим до конца.
+  // Ушли из канала с висящей «Отменить» — удаление отменяем, пост остаётся.
+  // Раньше доводили до конца: человек задевал корзину на своём свежем посте,
+  // плашку не замечал, уходил в чат — и пост пропадал молча (баг-репорт 0a8efbc7).
   useEffect(() => () => {
-    if (deleteTimerRef.current && undoBar) { clearTimeout(deleteTimerRef.current); api.removeMessage(undoBar.id, "all").catch(() => {}); }
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
   const [loading, setLoading] = useState(!postsMemo.has(channelId));
@@ -1401,7 +1431,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           </div>
         </div>
       ) : (
-      <div className="flex items-center gap-3 px-3 pad-safe-top py-2 border-b border-border shrink-0">
+      <div ref={headRef} className="flex items-center gap-3 px-3 pad-safe-top py-2 border-b border-border shrink-0">
         {onBack && (
           <button type="button" onClick={onBack} className="p-2 -ml-2" aria-label={tr("Назад")}>
             <ChevronLeft className="w-6 h-6" />

@@ -261,6 +261,9 @@ const ChatSidebar = ({
   useEffect(() => {
     let last = "";
     const set = () => {
+      // Список в скрытом слое (открыта Стена или переписка) — переменную не трогаем:
+      // там её ставит экран на виду (ChannelView, ChatWindow).
+      if (topRef.current && getComputedStyle(topRef.current).visibility === "hidden") return;
       const h = topRef.current?.getBoundingClientRect().bottom;
       if (!h) return;
       const v = `${Math.round(h)}px`;
