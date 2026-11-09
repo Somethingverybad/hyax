@@ -124,6 +124,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
   const saveName = async () => {
     const v = name.trim();
     if (!v) return;
+    if (v === pet.name) { setNaming(false); return; } // меняли только внешность — она уже сохранена
     try { const p = await api.updateMyPet({ name: v }); setPet(p); setNaming(false); }
     catch (e) { toast.error((e as Error).message || t("Не получилось")); }
   };
@@ -173,7 +174,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
         <PawPrint className="w-4 h-4 text-primary shrink-0" />
         <span className="text-h2 flex-1 truncate">{title}</span>
         {own && !naming && (
-          <button type="button" onClick={() => { setName(pet.name); setNaming(true); }} className="p-1 text-subtle" aria-label={t("Переименовать")} title={t("Переименовать")}>
+          <button type="button" onClick={() => { setName(pet.name); setNaming(true); }} className="p-1 text-subtle" aria-label={t("Изменить")} title={t("Изменить")}>
             <Pencil className="w-4 h-4" />
           </button>
         )}
@@ -228,8 +229,10 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
         </div>
       )}
 
+      {/* Пол, украшения и окрас — только в режиме правки (карандаш у клички, «Готово»
+          закрывает): в обычном виде карточка — сам питомец и уход за ним. */}
       {/* Пол: меняет украшения и фразы (позже — и анимации). */}
-      {own && pack?.sexes && pack.sexes.length > 1 && (
+      {own && naming && pack?.sexes && pack.sexes.length > 1 && (
         <div className="mt-3 flex items-center gap-3">
           <span className="flex-1 text-small">{t("Пол")}</span>
           <div className="flex rounded-md bg-surface-2 p-0.5">
@@ -244,7 +247,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
       )}
 
       {/* Украшения своего пола: кнопки-переключатели, одно на место (голова, шея…). */}
-      {own && pack?.accessories && (() => {
+      {own && naming && pack?.accessories && (() => {
         const sex = pet.sex || "m";
         const list = Object.entries(pack.accessories).filter(([, a]) => !a.sex || a.sex.includes(sex));
         if (!list.length) return null;
@@ -278,7 +281,7 @@ export default function PetCard({ profileId, own, onVibe }: { profileId: string;
       )}
 
       {/* Окрас: кружки из пака (manifest.coats), видят все. */}
-      {own && pack?.coats && Object.keys(pack.coats).length > 1 && (
+      {own && naming && pack?.coats && Object.keys(pack.coats).length > 1 && (
         <div className="mt-3">
           <span className="block text-small mb-2">{t("Окрас")}</span>
           <CoatSwatches pack={pack} value={pet.color || pack.defaultCoat || ""} onPick={(id) => void setCoat(id)} />
