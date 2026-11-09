@@ -1771,3 +1771,25 @@ html.native-video .call-layer {
 @keyframes dock-wiggle { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
 .dock-wiggle > div:first-child { animation: dock-wiggle 0.28s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .dock-wiggle > div:first-child { animation: none; } }
+
+/* Стена, «Клипы» (components/chat/WallClips): клип во весь экран, стеклянная
+   шапка Мяты — поверх его верха, а не отступом над лентой (иначе клип короче
+   экрана и снизу выглядывает следующий). */
+[data-shape="soft"] .mint-glass + .overflow-y-auto.clips-feed { padding-top: 0 !important; scroll-padding-top: 0; }
+/* Над клипом под шапкой — лёгкое затемнение, а не светлая дымка стекла. */
+[data-shape="soft"] .mint-glass:has(+ .overflow-y-auto.clips-feed)::before {
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.45), rgb(0 0 0 / 0));
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+/* Сердечко от двойного тапа. */
+.clip-heart { animation: clip-heart 0.9s ease-out forwards; }
+@keyframes clip-heart {
+  0% { transform: scale(0.3) rotate(-12deg); opacity: 0; }
+  15% { transform: scale(1.15) rotate(-12deg); opacity: 1; }
+  30% { transform: scale(0.95) rotate(-12deg); opacity: 1; }
+  100% { transform: translateY(-90px) scale(1.1) rotate(-12deg); opacity: 0; }
+}
+:root[data-nav="off"] .clip-heart { animation: none; opacity: 0.9; }
+@media (prefers-reduced-motion: reduce) { .clip-heart { animation: none; opacity: 0.9; } }
+/* Подпись и кнопки клипа — читаются и на светлом кадре. */
+.clip-rail svg, .clip-rail span, .clip-caption { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.7)); }

@@ -22,12 +22,13 @@ import { markMediaSeen, mediaSeen } from "@/lib/mediaSeen";
 import { timeOf } from "@/lib/timeFormat";
 import { POST_ITEMS, captureFeedPos, lastVisibleId, readFeedPos, restoreFeedPos, saveFeedPos } from "@/lib/feedPosition";
 import { cn } from "@/lib/utils";
-import { type ReactionPick, type ReactionSummary } from "@/lib/reactions";
+import { quickReaction, reactionKey, type ReactionPick, type ReactionSummary } from "@/lib/reactions";
+import WallClips, { type ClipItem, type ClipMedia, type ClipPost } from "./WallClips";
 import { ReactionBar, ReactionPicker, applyReaction, sendReaction } from "@/components/chat/Reactions";
 import type { ViewerItem } from "@/components/ImageViewer";
 const ImageViewer = lazy(() => import("@/components/ImageViewer"));
 import { toast } from "sonner";
-import { Flag, X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy, Smile } from "lucide-react";
+import { Flag, X, Send, Radio, Users, Eye, MessageCircle, Music2, Check, Settings, Trash2, ChevronLeft, UserPlus, Paperclip, Image as ImageIcon, Video, FileText, SwitchCamera, Triangle, Bookmark, Download, Share2, ChevronRight, Bell, BellOff, Pencil, Triangle as TriangleIcon, Newspaper, MoreHorizontal, EyeOff, Ban, ShieldCheck, Plus, SlidersHorizontal, Languages, ArrowDown, ListChecks, Brush, Play, Pause, Loader2, Copy, Smile, Clapperboard, LayoutList } from "lucide-react";
 import { writeClipboard } from "@/lib/clipboard";
 import { playSfx } from "@/lib/sfx";
 import { shareChannel, sharePost, channelLink } from "@/lib/share";
@@ -270,6 +271,15 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   const [composeOpts, setComposeOpts] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Post | null>(null);
+  // Стена: «Лента» (как было) или «Клипы» — посты с фото и видео во весь экран
+  // (components/chat/WallClips). Выбор запоминается на устройстве.
+  const [wallView, setWallView] = useState<"feed" | "clips">(() => {
+    try { return localStorage.getItem("hyax:wall-view") === "clips" ? "clips" : "feed"; } catch { return "feed"; }
+  });
+  const clipsOn = !!wall && wallView === "clips";
+  const [clipStart, setClipStart] = useState<string | null>(null);
+  const clipAtRef = useRef<string | null>(null);
+  const feedTopRef = useRef(0);
   // Музыка поста, для которой выбирают плейлист.
   const [playlistFor, setPlaylistFor] = useState<PickTrack[] | null>(null);
   const [repostFor, setRepostFor] = useState<Post | null>(null);
@@ -1237,6 +1247,97 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   albumsById.forEach((list) => list.slice(1).forEach((p) => albumTail.add(p.id)));
   // Заблокированные авторы — сразу из ленты (lib/blocks.ts), не дожидаясь сверки со Стеной.
   const feedPosts = posts.filter((p) => !albumTail.has(p.id) && !hiddenIds.has(p.id) && wallVisible(p) && !(p.sender?.id && blockedIds.has(p.sender.id)));
+
+  // ---- «Клипы» (Стена) ----
+  /** Фото и видео поста для клипа: альбом — каруселью, файлы и музыка — мимо. */
+  const clipMediaOf = (post: Post): ClipMedia[] => {
+    const list = post.album_id && albumsById.get(post.album_id)?.[0]?.id === post.id ? albumsById.get(post.album_id)! : [post];
+    const out: ClipMedia[] = [];
+    for (const p of list) {
+      if (p.video_url) { out.push({ id: p.id, kind: "video", raw: p.video_url, mirror: p.video_mirror }); continue; }
+      if (!p.file_url || p.download_only || p.file_url.includes("/stickers/graffiti/") || isAudioFile(p.file_name, p.file_url)) continue;
+      if (isImageFile(p.file_name, p.file_url)) out.push({ id: p.id, kind: "image", raw: p.file_url, preview: p.file_preview, w: p.file_width, h: p.file_height });
+      else if (isVideoFile(p.file_name, p.file_url)) out.push({ id: p.id, kind: "video", raw: p.file_url, poster: p.poster_url, w: p.file_width, h: p.file_height });
+    }
+    return out;
+  };
+  // Новые сверху, как в лентах коротких видео; публикующиеся — когда дойдут.
+  const clipItems: ClipItem[] = clipsOn
+    ? feedPosts.filter((p) => !p._pending && !p.poll).map((p) => ({ post: p as ClipPost, media: clipMediaOf(p) })).filter((x) => x.media.length > 0).reverse()
+    : [];
+
+  const switchWallView = (next: "feed" | "clips") => {
+    if (next === wallView) return;
+    try { localStorage.setItem("hyax:wall-view", next); } catch { /* приватный режим */ }
+    if (next === "clips") {
+      // Клипы — с того поста с фото или видео, что был посреди ленты.
+      const box = feedRef.current;
+      feedTopRef.current = box?.scrollTop ?? 0;
+      let start: string | null = null;
+      if (box) {
+        const r = box.getBoundingClientRect();
+        const mid = r.top + r.height / 2;
+        let best = Infinity;
+        box.querySelectorAll<HTMLElement>("[data-post-id]").forEach((el) => {
+          const id = el.dataset.postId!;
+          const post = feedPosts.find((x) => x.id === id);
+          if (!post || !clipMediaOf(post).length) return;
+          const er = el.getBoundingClientRect();
+          const d = Math.abs(er.top + er.height / 2 - mid);
+          if (d < best) { best = d; start = id; }
+        });
+      }
+      setClipStart(start);
+    }
+    setWallView(next);
+  };
+  // Обратно в ленту — к посту, который смотрели в клипах (или туда, где были).
+  useLayoutEffect(() => {
+    if (!wall || wallView !== "feed") return;
+    const box = feedRef.current;
+    const at = clipAtRef.current;
+    if (!box) return;
+    const el = at ? box.querySelector<HTMLElement>(`[data-post-id="${CSS.escape(at)}"]`) : null;
+    if (el) box.scrollTop = Math.max(0, el.offsetTop - (box.clientHeight - el.offsetHeight) / 2);
+    else if (feedTopRef.current) box.scrollTop = feedTopRef.current;
+    clipAtRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallView]);
+
+  /** «Лайк» клипа: нет моей реакции — ставим быструю, есть — снимаем все мои
+   *  (двойной тап только ставит). Число лайков — все реакции поста. */
+  const likeClip = (p: ClipPost, onlyAdd?: true) => {
+    const post = posts.find((x) => x.id === p.id);
+    if (!post) return;
+    const mine = (post.reactions || []).filter((r) => r.mine).map(reactionKey);
+    if (!mine.length) { const q = quickReaction(); react(post, q.key, q); return; }
+    if (onlyAdd) return;
+    const before = post.reactions;
+    const set = (rows: ReactionSummary[] | undefined) =>
+      setPosts((prev) => prev.map((x) => (x.id === post.id ? { ...x, reactions: rows } : x)));
+    set(mine.reduce<ReactionSummary[] | undefined>((rows, k) => applyReaction(rows, k), before));
+    void (async () => {
+      let last: ReactionSummary[] | undefined;
+      let failed = false;
+      for (const k of mine) await sendReaction(post.id, k, (rows) => { last = rows; }, () => { failed = true; });
+      if (last) set(last); else if (failed) set(before);
+    })();
+  };
+  /** Подпись клипа — текст поста; перевод, если он включён, как в ленте. */
+  const clipCaption = (p: ClipPost) => {
+    const post = p as Post;
+    const ts = trState(post);
+    if (!ts.shown) return <FormattedText text={post.content || ""} entities={(post as { entities?: TextEntity[] }).entities} seed={String(post.id)} />;
+    const carried = carryCustomEmoji(post.content || "", (post as { entities?: TextEntity[] }).entities, ts.text!);
+    return carried.length ? <FormattedText text={ts.text!} entities={carried} seed={String(post.id)} /> : <Linkify text={ts.text!} />;
+  };
+  const wallViewButton = wall ? (
+    <button type="button" onClick={() => switchWallView(clipsOn ? "feed" : "clips")}
+      aria-label={clipsOn ? tr("Лента") : tr("Клипы")} title={clipsOn ? tr("Лента") : tr("Клипы")}
+      className={mint ? "mint-pill w-[43px] h-[43px] inline-flex items-center justify-center mint-ink" : "p-1"}>
+      {clipsOn ? <LayoutList className={mint ? "w-[18px] h-[18px]" : "w-5 h-5 text-muted-foreground"} /> : <Clapperboard className={mint ? "w-[18px] h-[18px]" : "w-5 h-5 text-muted-foreground"} />}
+    </button>
+  ) : null;
   // Автоперевод: чужие посты на другом языке (по письменности), по одному,
   // новые первыми. Уже спрошенные в этом сеансе не повторяем.
   useEffect(() => {
@@ -1292,11 +1393,11 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
                 </span>
               </span>
             </button>
-            {channel?.my_role === "owner" ? (
+            {wallViewButton ?? (channel?.my_role === "owner" ? (
               <button type="button" onClick={() => setInfoOpen(true)} aria-label={tr("Настройки")} className="mint-pill w-[43px] h-[43px] inline-flex items-center justify-center mint-ink">
                 <Settings className="w-[18px] h-[18px]" />
               </button>
-            ) : <span className="w-[43px]" />}
+            ) : <span className="w-[43px]" />)}
           </div>
         </div>
       ) : (
@@ -1326,6 +1427,7 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
             </span>
           </span>
         </button>
+        {wallViewButton}
         {channel?.my_role === "owner" && (
           <button type="button" onClick={() => setInfoOpen(true)} className="p-1" aria-label={tr("Настройки")}>
             <Settings className="w-5 h-5 text-muted-foreground" />
@@ -1335,7 +1437,19 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
       )}
 
       {/* Лента */}
-      <div ref={feedRef} onScroll={onFeedScroll} className="flex-1 overflow-y-auto px-3 pt-3 pb-8 space-y-3 md:px-6 [&>*]:md:max-w-[720px]"
+      {clipsOn && (
+        <WallClips items={clipItems} startId={clipStart} hasMore={hasMore} loadingOlder={loadingOlder} onLoadOlder={() => void loadOlder()}
+          onActive={(id) => { clipAtRef.current = id; const p = posts.find((x) => x.id === id); if (p) markViews([p]); }}
+          onLike={likeClip} onPickReaction={(p) => setReactPickFor(p.id)}
+          onComments={(p) => { const post = posts.find((x) => x.id === p.id); if (post) setCommentsFor(post); }}
+          onShare={(p) => { const post = posts.find((x) => x.id === p.id); if (post) setShareFor(post); }}
+          onAuthor={(p) => { const post = posts.find((x) => x.id === p.id); if (post) openAuthor(post); }}
+          onMenu={(p) => { const post = posts.find((x) => x.id === p.id); if (post) setMenuFor(post); }}
+          renderCaption={clipCaption}
+          bottomInset={!onBack ? "calc(var(--mint-nav-space, 0px) + env(safe-area-inset-bottom, 0px))" : "env(safe-area-inset-bottom, 0px)"} />
+      )}
+      {/* В клипах лента остаётся смонтированной (скрыта): обратно — на то же место. */}
+      <div ref={feedRef} onScroll={onFeedScroll} className={cn("flex-1 overflow-y-auto px-3 pt-3 pb-8 space-y-3 md:px-6 [&>*]:md:max-w-[720px]", clipsOn && "hidden")}
         // Стена-вкладка: лента до низа экрана, под остров навигации (как в чате под
         // поле ввода), — отступ, чтобы последний пост можно было докрутить из-под
         // острова и кнопки «+»; низ прикрывает вуаль .wall-veil.
@@ -1546,9 +1660,9 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
           )}
           {/* Вкладка: вуаль над островом навигации — лента под ним растворяется, а не
               обрывается над пустой полосой (баг-репорт 0b0b94d0). Внутри чата — отступ снизу. */}
-          {!onBack ? <div aria-hidden className="wall-veil" /> : <div className="pad-safe-bottom shrink-0" />}
+          {clipsOn ? null : !onBack ? <div aria-hidden className="wall-veil" /> : <div className="pad-safe-bottom shrink-0" />}
           {/* Не внизу — сначала «вниз» со счётчиком пропущенных; досмотрели — «+». */}
-          {wallState && !composeOpen && (
+          {wallState && !composeOpen && !clipsOn && (
             <button type="button"
               onClick={atBottom ? () => { setComposeOpen(true); setComposeOpts(false); } : jumpDown}
               aria-label={atBottom ? tr("Новый пост") : missed > 0 ? tr("Пропущено постов: {n}. Вниз", { n: missed }) : tr("Вниз")}
