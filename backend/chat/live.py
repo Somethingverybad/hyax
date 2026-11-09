@@ -176,17 +176,31 @@ def _engine():
 
 
 def _local(data, lang):
-    """Тот же faster-whisper, что расшифровывает голосовые. Занят дольше
-    нескольких секунд — фразу пропускаем: в живом звонке она уже устарела."""
-    from .transcribe import _run_lock, get_model
+    """Тот же faster-whisper, что расшифровывает голосовые: сначала свой
+    удалённый (WHISPER_URL), потом модель в процессе. Занят дольше нескольких
+    секунд — фразу пропускаем: в живом звонке она уже устарела."""
+    from .transcribe import LocalBusy, _run_lock, get_model, remote_on, remote_transcribe
+    if remote_on():
+        try:
+            body = remote_transcribe(data=data, suffix=".wav", lang=lang, beam=1, vad=False, wait=6, timeout=20)
+            segs = body.get("segments") or []
+            if segs and all((s.get("no_speech_prob") or 0) > 0.6 for s in segs):
+                return "", lang
+            return (body.get("text") or "").strip(), whisper_lang(body.get("language")) or lang
+        except Exception as e:
+            logger.warning("live stt: удалённый распознаватель не ответил (%s), пробую локально", type(e).__name__)
     if not _run_lock.acquire(timeout=6):
         raise SttBusy()
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
             tmp.write(data)
             tmp.flush()
-            segments, info = get_model().transcribe(tmp.name, language=lang or None, beam_size=1,
-                                                    vad_filter=False, condition_on_previous_text=False)
+            try:
+                model = get_model()
+            except LocalBusy:
+                raise SttBusy()
+            segments, info = model.transcribe(tmp.name, language=lang or None, beam_size=1,
+                                              vad_filter=False, condition_on_previous_text=False)
             segs = list(segments)
     finally:
         _run_lock.release()

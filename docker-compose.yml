@@ -77,9 +77,14 @@ services:
       # Картинки с серверов YouTube из Москвы не открываются — chat/linkimage.py
       # качает их через тот же прокси, что и медиа-бот (сервис ytproxy).
       LINK_PROXY: http://ytproxy:8888
-      # Свой LibreTranslate (сервис translate ниже) — запасной бесплатный
-      # переводчик; GEMINI_API_KEY или DEEPL_API_KEY в .env имеют приоритет.
-      LIBRETRANSLATE_URL: http://translate:5000
+      # Распознавание голосовых — на нидерландском сервере (bots/whisper-server):
+      # одна копия модели вместо копии в каждом воркере. Ключ WHISPER_TOKEN — в
+      # .env; не ответил — модель в процессе, но не больше одной на контейнер.
+      WHISPER_URL: https://148.253.213.224:8745/transcribe
+      WHISPER_CA: /app/certs/wyx-relay.pem
+      # LibreTranslate выключен 09.11 (держал 1,2 ГБ ради запасного перевода):
+      # переводит только OpenRouter через ретранслятор. Вернуть — эта строка
+      # (LIBRETRANSLATE_URL: http://translate:5000) и docker compose --profile libre up -d translate.
     expose:
       - "8000"
     depends_on:
@@ -280,9 +285,11 @@ services:
 
   # Перевод сообщений (chat/translate.py): LibreTranslate с моделями ru/en/ko.
   # Наружу не торчит, только в сети compose. Первый старт качает модели.
+  # С 09.11 выключен (профиль libre — без --profile libre не запускается).
   translate:
     image: libretranslate/libretranslate:latest
     container_name: sux_chat_translate
+    profiles: ["libre"]
     restart: unless-stopped
     command: --load-only ru,en,ko --disable-web-ui --threads 2 --host 0.0.0.0 --port 5000
     volumes:

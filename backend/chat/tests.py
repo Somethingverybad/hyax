@@ -2881,6 +2881,74 @@ class IdeaVoiceTests(TestCase):
         self.assertTrue(Message.objects.filter(chat=self.chat, sender=ideabox_bot(), content=VOICE_TOO_LONG).exists())
 
 
+class TranscribeRemoteTests(TestCase):
+    """Расшифровка: сначала свой удалённый распознаватель (WHISPER_URL), при
+    сбое — модель в процессе, но не больше одной копии на контейнер (flock)."""
+
+    def setUp(self):
+        import os, tempfile
+        me = make_user("tr_remote_me")
+        chat = Chat.objects.create(kind="direct")
+        self.msg = Message.objects.create(chat=chat, sender=me, content="", voice_url="s3://voice/x.ogg",
+                                          voice_duration=5, transcript_status="pending")
+        self.lock = os.path.join(tempfile.mkdtemp(), "w.lock")
+
+    def _run(self, remote=None, local=None, env=True):
+        import os
+        from unittest import mock
+        from . import transcribe
+        envs = {"WHISPER_URL": "https://nl.example/transcribe", "WHISPER_TOKEN": "t"} if env else {}
+        with mock.patch.dict(os.environ, envs), \
+             mock.patch("chat.transcribe._audio_source", return_value="https://storage.yandexcloud.net/b/voice/x.ogg?sig=1"), \
+             mock.patch("chat.transcribe.remote_transcribe", side_effect=remote) as r, \
+             mock.patch("chat.transcribe._local_transcribe", side_effect=local) as l, \
+             mock.patch("chat.translate.translate_transcript"):
+            transcribe.transcribe_message(str(self.msg.id))
+        self.msg.refresh_from_db()
+        return r, l
+
+    def test_remote_first(self):
+        r, l = self._run(remote=lambda **kw: {"text": " привет ", "language": "ru", "duration": 5})
+        self.assertEqual((self.msg.transcript_status, self.msg.voice_transcript, self.msg.transcript_lang), ("done", "привет", "ru"))
+        self.assertEqual(r.call_args.kwargs["url"], "https://storage.yandexcloud.net/b/voice/x.ogg?sig=1")  # файл качает он сам
+        l.assert_not_called()
+
+    def test_remote_down_falls_back_to_local(self):
+        def down(**kw):
+            raise ConnectionError("нет связи")
+        r, l = self._run(remote=down, local=lambda src, suffix: ("локально", "ru", 5))
+        self.assertEqual((self.msg.transcript_status, self.msg.voice_transcript), ("done", "локально"))
+
+    def test_remote_down_and_model_in_other_process(self):
+        from .transcribe import LocalBusy
+        def down(**kw):
+            raise ConnectionError("нет связи")
+        def busy(src, suffix):
+            raise LocalBusy("занята")
+        self._run(remote=down, local=busy)
+        self.assertEqual(self.msg.transcript_status, "error")  # можно попросить ещё раз
+
+    def test_without_remote_only_local(self):
+        r, l = self._run(local=lambda src, suffix: ("тут", "ru", 5), env=False)
+        r.assert_not_called()
+        self.assertEqual(self.msg.voice_transcript, "тут")
+
+    def test_single_local_model_per_container(self):
+        import fcntl, os
+        from unittest import mock
+        from . import transcribe
+        with mock.patch.dict(os.environ, {"WHISPER_LOCK": self.lock}), mock.patch.object(transcribe, "_owner_fd", None):
+            self.assertTrue(transcribe._claim_local())
+            self.assertTrue(transcribe._claim_local())  # свой процесс — снова да
+            other = os.open(self.lock, os.O_RDWR)  # «другой воркер»
+            try:
+                with self.assertRaises(OSError):
+                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(other)
+                os.close(transcribe._owner_fd)
+
+
 class HiddenForMeSyncTests(TestCase):
     """«Удалить у себя» доезжает до моих других устройств: sync отдаёт id спрятанного
     в deleted, у собеседника сообщение остаётся (баг-репорты 4c10b648, b2c04526)."""
