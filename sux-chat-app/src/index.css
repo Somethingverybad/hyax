@@ -1793,3 +1793,7 @@ html.native-video .call-layer {
 @media (prefers-reduced-motion: reduce) { .clip-heart { animation: none; opacity: 0.9; } }
 /* Подпись и кнопки клипа — читаются и на светлом кадре. */
 .clip-rail svg, .clip-rail span, .clip-caption { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.7)); }
+/* Щипок в клипе: кнопки и подпись прячутся, остаётся увеличенный кадр. Картинки не перетаскиваются. */
+.clip .clip-ui { transition: opacity 0.15s; }
+.clip.clip-zooming .clip-ui { opacity: 0; pointer-events: none; }
+.clip img, .clip video { -webkit-user-drag: none; user-select: none; }
