@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cachedMediaUrl, resolveMediaUrl } from "@/hooks/use-media-url";
 import { X, MoreVertical, ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -267,7 +268,11 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
     setT(next.s <= 1.02 ? { s: 1, x: 0, y: 0 } : next);
   };
 
-  return (
+  // Портал в body: открытый из ленты канала или переписки просмотрщик иначе
+  // оставался внутри их контекста наложения (isolate) — z-80 действовал только
+  // там, и панель навигации компьютера (z-30) рисовалась поверх фото и
+  // перехватывала нажатия на крестик.
+  return createPortal(
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center"
       style={{
@@ -413,7 +418,8 @@ const ImageViewer = ({ items, index, onIndex, onClose, actions, localMap, onDoub
           </button>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 };
 
