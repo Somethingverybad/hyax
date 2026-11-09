@@ -438,6 +438,9 @@ export interface VibeEvent {
   pet?: string;
   action?: PetAction;
 }
+export interface AdminGraphNode { id: string; username: string; avatar_url: string | null; is_bot: boolean; last_seen: string | null; dialogs: number; messages: number; seed: boolean }
+export interface AdminGraphEdge { a: string; b: string; n: number; last: string | null }
+export interface AdminGraph { nodes: AdminGraphNode[]; edges: AdminGraphEdge[]; matched: number; total_edges: number; total_users: number; truncated: boolean }
 export interface VibeHistory { vibe: number; silent: boolean; items: VibeEvent[] }
 
 /** Результат поиска по сообщениям (chat/views.py, MessageSearchView): text — кусок
@@ -2308,6 +2311,20 @@ export const api = {
   }> => {
     const res = await fetchWithAuth(`${API_URL}/admin/registrations/?from=${from}&to=${to}&tz=${tzOffsetMin}`, { method: "GET", headers: authHeaders() });
     if (!res.ok) throw new LError(res.status === 403 ? "403" : `HTTP ${res.status}`);
+    return res.json();
+  },
+
+  /** Граф связей для мониторинга (backend AdminGraphView): кто с кем в личке. */
+  getAdminGraph: async (p: { q?: string; depth?: number; min?: number; bots?: boolean; limit?: number }): Promise<AdminGraph> => {
+    const qs = new URLSearchParams();
+    if (p.q) qs.set("q", p.q);
+    if (p.depth) qs.set("depth", String(p.depth));
+    if (p.min != null) qs.set("min", String(p.min));
+    if (p.bots) qs.set("bots", "1");
+    if (p.limit) qs.set("limit", String(p.limit));
+    const res = await fetchWithAuth(`${API_URL}/admin/graph/?${qs}`, { method: "GET", headers: authHeaders() });
+    if (res.status === 403) throw new LError("403");
+    if (!res.ok) throw new LError(`HTTP ${res.status}`);
     return res.json();
   },
 

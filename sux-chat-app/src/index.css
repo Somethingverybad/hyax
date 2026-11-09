@@ -779,7 +779,7 @@ textarea,
 [data-shape="soft"] .chat-row-divider { background: hsl(var(--ui-divider)); }
 
 /* Аватары — скруглённые квадраты, как в макете. */
-[data-shape="soft"] .ui-avatar { border-radius: 32%; }
+[data-shape="soft"] .ui-avatar, [data-shape="soft"] .clip-avatar { border-radius: 32%; }
 /* Счётчик на фильтре — цвет темы, а не красный. */
 [data-shape="soft"] .ui-chip-count { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
 /* Строки списка непрозрачны: под ними лежат «закрепить» и «удалить». */

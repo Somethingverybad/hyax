@@ -4271,3 +4271,58 @@ class SilentSoundTests(TestCase):
         self.assertFalse(self.send().get("force_silent"))
         client_for(self.me).post(f"/api/chats/{self.chat.id}/my_sound/", {"notify_sound_id": str(silent.id)}, format="json")
         self.assertTrue(self.send().get("force_silent"))
+
+
+class AdminGraphTests(TestCase):
+    """Граф связей в мониторинге: только админам; рёбра — личные чаты двоих с
+    числом сообщений; без групп, секретных чатов и (по умолчанию) ботов;
+    фильтр по нику — найденные и их собеседники."""
+
+    def setUp(self):
+        self.admin = make_user("graphadmin", role="admin")
+        self.a, self.b, self.c, self.d = (make_user(n) for n in ("ann", "bob", "cat", "dan"))
+        self.bot = make_user("helperbot", is_bot=True)
+
+    def direct(self, x, y, n, kind="direct"):
+        ch = Chat.objects.create(kind=kind, is_group=kind == "group")
+        for u in (x, y):
+            ChatParticipant.objects.create(chat=ch, user=u)
+        for i in range(n):
+            Message.objects.create(chat=ch, sender=x if i % 2 else y, content=f"m{i}")
+        return ch
+
+    def graph(self, who=None, **params):
+        return client_for(who or self.admin).get("/api/admin/graph/", params)
+
+    def test_admin_only(self):
+        self.assertEqual(self.graph(self.a).status_code, 403)
+
+    def test_edges_counts_and_exclusions(self):
+        self.direct(self.a, self.b, 5)
+        self.direct(self.b, self.c, 2)
+        self.direct(self.a, self.d, 0)  # пустой чат — не диалог
+        self.direct(self.c, self.d, 7, kind="secret")
+        self.direct(self.a, self.c, 4, kind="group")
+        self.direct(self.a, self.bot, 3)
+        r = self.graph()
+        self.assertEqual(r.status_code, 200)
+        names = {n["id"]: n["username"] for n in r.data["nodes"]}
+        got = sorted((tuple(sorted((names[e["a"]], names[e["b"]]))), e["n"]) for e in r.data["edges"])
+        self.assertEqual(got, [(("ann", "bob"), 5), (("bob", "cat"), 2)])
+        bob = next(n for n in r.data["nodes"] if n["username"] == "bob")
+        self.assertEqual((bob["dialogs"], bob["messages"]), (2, 7))
+        with_bots = self.graph(bots="1")
+        self.assertIn("helperbot", {n["username"] for n in with_bots.data["nodes"]})
+
+    def test_filter_by_nick_and_depth(self):
+        self.direct(self.a, self.b, 5)
+        self.direct(self.b, self.c, 2)
+        self.direct(self.c, self.d, 1)
+        r = self.graph(q="@AN")  # ann и dan
+        names = {n["username"] for n in r.data["nodes"]}
+        self.assertEqual(names, {"ann", "bob", "dan", "cat"})
+        self.assertEqual({n["username"] for n in r.data["nodes"] if n["seed"]}, {"ann", "dan"})
+        r = self.graph(q="ann")
+        self.assertEqual({n["username"] for n in r.data["nodes"]}, {"ann", "bob"})
+        r = self.graph(q="ann", depth="2")
+        self.assertEqual({n["username"] for n in r.data["nodes"]}, {"ann", "bob", "cat"})

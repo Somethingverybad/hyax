@@ -9,6 +9,8 @@ import { Activity, Cpu, Database, HardDrive, MemoryStick, MessageSquare, Phone, 
 import ScreenHeader from "@/components/ScreenHeader";
 import { api, type AdminMetrics } from "@/api/client";
 import { useVibeLevels, vibeState } from "@/lib/vibeLevels";
+import { useSearchParams } from "react-router-dom";
+import AdminGraph from "./AdminGraph";
 import { t as tr, tn, getLang } from "@/lib/i18n";
 
 /**
@@ -346,6 +348,9 @@ function RegistrationsCard({ pal }: { pal: ReturnType<typeof usePalette> }) {
 
 export default function AdminMetrics() {
   const pal = usePalette();
+  // Вкладки: «Обзор» (графики) и «Связи» (кто с кем в личке, ./AdminGraph); в адресе — ?tab=graph.
+  const [search, setSearch] = useSearchParams();
+  const tab = search.get("tab") === "graph" ? "graph" : "overview";
   const [range, setRange] = useState<Range>("24h");
   const [data, setData] = useState<AdminMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -367,10 +372,11 @@ export default function AdminMetrics() {
   }, []);
 
   useEffect(() => {
+    if (tab !== "overview") return;
     void load(range);
     const id = setInterval(() => { if (document.visibilityState === "visible") void load(range); }, REFRESH_MS);
     return () => clearInterval(id);
-  }, [range, load]);
+  }, [range, load, tab]);
 
   const tFmt = timeFmt(range);
   const live = data?.live;
@@ -389,7 +395,7 @@ export default function AdminMetrics() {
     <div className="h-screen flex flex-col bg-background">
       <ScreenHeader
         title={tr("Мониторинг")}
-        right={
+        right={tab === "graph" ? undefined :
           <button type="button" onClick={() => load(range)} disabled={loading} aria-label={tr("Обновить данные")}
             className="w-10 h-10 shrink-0 inline-flex items-center justify-center text-primary active:opacity-60 disabled:opacity-40">
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
@@ -399,6 +405,16 @@ export default function AdminMetrics() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 space-y-3">
+          <div className="flex border-b border-border" role="tablist" aria-label={tr("Раздел")}>
+            {([["overview", "Обзор"], ["graph", "Связи"]] as const).map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id}
+                onClick={() => setSearch(id === "graph" ? { tab: "graph" } : {}, { replace: true })}
+                className={`px-4 h-10 -mb-px border-b-2 text-small font-medium ${tab === id ? "border-primary text-foreground" : "border-transparent text-subtle hover:text-foreground"}`}>
+                {tr(label)}
+              </button>
+            ))}
+          </div>
+          {tab === "graph" ? <AdminGraph pal={pal} /> : <>
           {/* Фильтр периода — один ряд над графиками; плитки «сейчас» от него не зависят. */}
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label={tr("Период")}>
@@ -565,6 +581,7 @@ export default function AdminMetrics() {
               </p>
             </>
           )}
+          </>}
         </div>
       </div>
     </div>

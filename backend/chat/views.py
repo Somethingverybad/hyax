@@ -6831,6 +6831,104 @@ class AdminMetricsView(APIView):
 
 
 
+class AdminGraphView(APIView):
+    """GET /api/admin/graph/?q=ник1,ник2&depth=1|2&min=1&bots=0&limit=400 —
+    кто с кем переписывается в личке, для мониторинга. Только админам.
+
+    Ребро — личный чат двоих (kind=direct): число сообщений и время последнего,
+    содержимого переписки здесь нет. Секретные чаты, группы и Избранное не
+    показываются, боты — только с bots=1. q — части ников (без учёта регистра,
+    через запятую или пробел): найденные и их собеседники на depth шагов, со
+    связями между ними; без q — самые активные диалоги. Не больше limit рёбер
+    (сначала те, что касаются найденных, потом по числу сообщений)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import re as _re
+        from collections import defaultdict
+        from django.db.models import Count, Max, Q as _Q
+        from .serializers import is_admin_profile
+        if not is_admin_profile(getattr(request.user, 'profile', None)):
+            return Response({"error": "Только для администраторов"}, status=403)
+        qp = request.query_params
+
+        def _int(name, default, lo, hi):
+            try:
+                return max(lo, min(hi, int(qp.get(name) or default)))
+            except ValueError:
+                return default
+        depth = _int('depth', 1, 1, 2)
+        min_n = _int('min', 1, 0, 10_000_000)
+        limit = _int('limit', 400, 10, 2000)
+        with_bots = qp.get('bots') == '1'
+        terms = [t for t in (x.strip().lstrip('@').lower() for x in _re.split(r'[\s,;]+', qp.get('q') or '')) if t][:20]
+
+        members = defaultdict(list)
+        for chat_id, user_id in ChatParticipant.objects.filter(chat__kind='direct').values_list('chat_id', 'user_id'):
+            members[chat_id].append(user_id)
+        stats = {r['chat_id']: (r['n'], r['last']) for r in
+                 Message.objects.filter(chat__kind='direct', deleted_for_all=False)
+                 .values('chat_id').annotate(n=Count('id'), last=Max('created_at'))}
+        bot_ids = set() if with_bots else set(Profile.objects.filter(is_bot=True).values_list('id', flat=True))
+
+        edges = {}
+        for chat_id, users in members.items():
+            if len(users) != 2 or users[0] == users[1] or users[0] in bot_ids or users[1] in bot_ids:
+                continue
+            n, last = stats.get(chat_id, (0, None))
+            a, b = sorted(users, key=str)
+            prev = edges.get((a, b))
+            if prev:  # два личных чата у одной пары — складываем
+                n += prev['n']
+                last = max([x for x in (last, prev['last']) if x], default=None)
+            edges[(a, b)] = {'a': a, 'b': b, 'n': n, 'last': last}
+        edges = {k: e for k, e in edges.items() if e['n'] >= min_n}
+
+        # Сколько у каждого диалогов и сообщений — по всем рёбрам, не только показанным.
+        deg, msgs = defaultdict(int), defaultdict(int)
+        for e in edges.values():
+            for u in (e['a'], e['b']):
+                deg[u] += 1
+                msgs[u] += e['n']
+
+        seeds = set()
+        if terms:
+            cond = _Q()
+            for t in terms:
+                cond |= _Q(username__icontains=t)
+            seeds = set(Profile.objects.filter(cond).values_list('id', flat=True)[:200])
+            keep, frontier = set(seeds), set(seeds)
+            for _ in range(depth):
+                nxt = set()
+                for a, b in edges:
+                    if a in frontier and b not in keep:
+                        nxt.add(b)
+                    elif b in frontier and a not in keep:
+                        nxt.add(a)
+                keep |= nxt
+                frontier = nxt
+            chosen = [e for (a, b), e in edges.items() if a in keep and b in keep]
+            chosen.sort(key=lambda e: (not (e['a'] in seeds or e['b'] in seeds), -e['n']))
+        else:
+            chosen = sorted(edges.values(), key=lambda e: -e['n'])
+        truncated = len(chosen) > limit
+        chosen = chosen[:limit]
+
+        ids = {e['a'] for e in chosen} | {e['b'] for e in chosen} | seeds
+        nodes = [{
+            'id': str(p.id), 'username': p.username, 'avatar_url': p.avatar_url or None, 'is_bot': p.is_bot,
+            'last_seen': p.last_seen, 'dialogs': deg.get(p.id, 0), 'messages': msgs.get(p.id, 0), 'seed': p.id in seeds,
+        } for p in Profile.objects.filter(id__in=ids).only('id', 'username', 'avatar_url', 'is_bot', 'last_seen')]
+        return Response({
+            'nodes': nodes,
+            'edges': [{'a': str(e['a']), 'b': str(e['b']), 'n': e['n'], 'last': e['last']} for e in chosen],
+            'matched': len(seeds),
+            'total_edges': len(edges),
+            'total_users': len(deg),
+            'truncated': truncated,
+        })
+
+
 class AdminRegistrationsView(APIView):
     """GET /api/admin/registrations/?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=<минуты> —
     регистрации за период для мониторинга. Только админам."""

@@ -425,11 +425,12 @@ function Clip({ item, active, near, muted, onSound, bottomInset, lockScroll, onL
 
         {/* Справа: автор, лайк, комментарии, поделиться, ещё. */}
         <div className="clip-ui clip-rail absolute right-2 flex flex-col items-center gap-4 text-white" style={{ bottom: `calc(${bottomInset} + ${media.length > 1 ? 34 : 24}px)` }}>
-          <button type="button" onClick={() => onAuthor(post)} aria-label={author} className="rounded-full ring-2 ring-white/90 active:scale-95 transition-transform">
+          {/* Обводка — по форме аватара (квадрат со скруглением, как везде в приложении). */}
+          <button type="button" onClick={() => onAuthor(post)} aria-label={author} className="clip-avatar rounded-md ring-2 ring-white/90 overflow-hidden active:scale-95 transition-transform">
             {post.forwarded_chat
               ? post.forwarded_chat.avatar_url
-                ? <img src={mediaUrl(post.forwarded_chat.avatar_url)} alt="" className="w-11 h-11 rounded-full object-cover" />
-                : <span className="w-11 h-11 rounded-full bg-black/40 flex items-center justify-center"><Radio className="w-5 h-5" /></span>
+                ? <img src={mediaUrl(post.forwarded_chat.avatar_url)} alt="" className="ui-avatar w-11 h-11 rounded-md object-cover" />
+                : <span className="ui-avatar w-11 h-11 rounded-md bg-black/40 flex items-center justify-center"><Radio className="w-5 h-5" /></span>
               : post.sender && <Identicon id={post.sender.id} avatarUrl={post.sender.avatar_url || undefined} className="w-11 h-11" />}
           </button>
           <button type="button" aria-label={mine ? tr("Убрать реакцию") : tr("Нравится")} aria-pressed={!!mine}
