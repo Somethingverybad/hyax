@@ -51,8 +51,12 @@ const Onboarding = () => {
     t("Если забудете пароль, код для входа придёт на эту почту. Это необязательно — привязать её можно и позже: Профиль → Конфиденциальность → Почта для восстановления."),
   ];
 
+  // Над клавиатурой поднимается только нижняя полоса с кнопками (pad-safe-bottom,
+  // как панель ввода в чате), а не вся страница: на iPhone подъём целой страницы
+  // уводил заголовок и поле почты под строку состояния, а между полем и кнопками
+  // оставалась пустота высотой с клавиатуру.
   return (
-    <div className="h-screen flex flex-col bg-background pad-safe-top pad-safe-bottom">
+    <div className="h-screen flex flex-col bg-background pad-safe-top">
       <div className="flex items-center justify-between px-4 pt-3">
         <div className="flex gap-1.5">{Array.from({ length: last + 1 }, (_, i) => <span key={i} className={`h-1.5 w-6 rounded-full ${i <= step ? "bg-primary" : "bg-surface-4"}`} />)}</div>
         <button type="button" onClick={next} className="text-small text-subtle px-2 py-1">{t("Пропустить")}</button>
@@ -109,13 +113,17 @@ const Onboarding = () => {
       </div>
       {step === 3 ? (
         // Как в окне EmailPrompt: главная кнопка одна — «Отправить код», эти — текстом.
-        <div className="px-5 pb-4 max-w-md w-full mx-auto flex gap-2">
-          <Button type="button" variant="ghost" className="flex-1 h-11 font-medium" onClick={finish}>{t("Позже")}</Button>
-          <Button type="button" variant="ghost" className="flex-1 h-11 text-subtle" onClick={() => { void emailPromptOff(me); finish(); }}>{t("Больше не показывать")}</Button>
+        <div className="pad-safe-bottom relative z-10 bg-background">
+          <div className="px-5 pb-4 max-w-md w-full mx-auto flex gap-2">
+            <Button type="button" variant="ghost" className="flex-1 h-11 font-medium" onClick={finish}>{t("Позже")}</Button>
+            <Button type="button" variant="ghost" className="flex-1 h-11 text-subtle" onClick={() => { void emailPromptOff(me); finish(); }}>{t("Больше не показывать")}</Button>
+          </div>
         </div>
       ) : (
-        <div className="px-5 pb-4 max-w-md w-full mx-auto">
-          <Button type="button" className="w-full h-12" onClick={next}>{step >= last ? t("Готово") : t("Далее")}</Button>
+        <div className="pad-safe-bottom relative z-10 bg-background">
+          <div className="px-5 pb-4 max-w-md w-full mx-auto">
+            <Button type="button" className="w-full h-12" onClick={next}>{step >= last ? t("Готово") : t("Далее")}</Button>
+          </div>
         </div>
       )}
     </div>
