@@ -176,6 +176,27 @@ footer .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6p
 .dl-others .steps { margin-top: 6px; font-size: 13.5px; }
 .dl-others .steps li { margin: 0 0 2px; }
 .dl-others .links { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; flex: none; }
+/* Значок Google Play — официальная картинка как есть (поля обрезаны), отступ
+   вокруг — по правилам Google не меньше четверти высоты значка. */
+.gp { display: inline-flex; border-radius: 8px; line-height: 0; }
+.gp img { display: block; height: 48px; width: auto; }
+.gp:hover { opacity: .88; }
+.dl-others .gp img { height: 40px; }
+.plat p.alt-dl { margin: 4px 0 0; font-size: 13px; color: var(--subtle); }
+.alt-dl a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+/* Крупная карточка Android: значок сразу под описанием, строка про APK — под значком. */
+.dl-main .plat[data-p="android"] { display: flex; flex-direction: column; align-items: flex-start; }
+.dl-main .plat[data-p="android"] .plat-text { display: contents; }
+.dl-main .plat[data-p="android"] p { margin: 0; }
+.dl-main .plat[data-p="android"] .alt-dl { order: 1; margin-top: 14px; }
+footer .tm { margin-top: 6px; font-size: 12px; opacity: .8; }
+/* Узкий список: строки идут столбцом — значок тоже раньше строки про APK. */
+@media (max-width: 520px) {
+  .dl-others .plat[data-p="android"] { gap: 0; }
+  .dl-others .plat[data-p="android"] .plat-text { display: contents; }
+  .dl-others .plat[data-p="android"] .links { margin-top: 10px; }
+  .dl-others .plat[data-p="android"] .alt-dl { order: 1; margin-top: 8px; }
+}
 @media (max-width: 520px) {
   .dl-others .plat { flex-direction: column; align-items: flex-start; gap: 10px; }
   .dl-others .links { justify-content: flex-start; }

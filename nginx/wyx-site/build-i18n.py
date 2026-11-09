@@ -44,7 +44,9 @@ T = {
  "Сообщения секретного чата не попадают в облачный кеш и в резервные копии. Если устройство потеряно, переписка потеряна вместе с ним — это цена того, что её нет больше нигде.": "Secret chat messages never go into the cloud cache or backups. Lose the device and the conversation is gone with it — that's the price of it existing nowhere else.",
  "Шифрование защищает канал, а не само устройство. Если на телефоне стоит программа, читающая экран или клавиатуру, она увидит текст до шифрования. Берегите телефон и не ставьте что попало.": "Encryption protects the channel, not the device itself. If your phone has software reading the screen or keyboard, it sees the text before encryption. Guard your phone and don't install just anything.",
  "Через TestFlight: установите TestFlight, затем откройте приглашение.": "Via TestFlight: install TestFlight, then open the invitation.", "Приглашение": "Invitation",
- "Установочный файл; при установке разрешите источник.": "Install file; allow the source when installing.",
+ "Из Google Play — обновления приходят сами.": "From Google Play — updates install automatically.",
+ "Без Google Play —": "Without Google Play:", "установочный файл APK": "the APK install file",
+ "Google Play и логотип Google Play — товарные знаки Google LLC.": "Google Play and the Google Play logo are trademarks of Google LLC.",
  "Один образ для Intel и Apple Silicon, заверен у Apple.": "One image for Intel and Apple Silicon, notarized by Apple.",
  "Один установщик для x64 и ARM.": "One installer for x64 and ARM.", "Установщик": "Installer",
  "x86_64. Для Debian и Ubuntu — deb, для остальных — AppImage.": "x86_64. deb for Debian and Ubuntu, AppImage for the rest.",
@@ -94,7 +96,9 @@ T = {
  "Сообщения секретного чата не попадают в облачный кеш и в резервные копии. Если устройство потеряно, переписка потеряна вместе с ним — это цена того, что её нет больше нигде.": "비밀 채팅 메시지는 클라우드 캐시나 백업에 들어가지 않아요. 기기를 잃으면 대화도 함께 사라져요. 다른 어디에도 없다는 것의 대가예요.",
  "Шифрование защищает канал, а не само устройство. Если на телефоне стоит программа, читающая экран или клавиатуру, она увидит текст до шифрования. Берегите телефон и не ставьте что попало.": "암호화는 통로를 지키지, 기기 자체를 지키진 않아요. 화면이나 키보드를 읽는 앱이 폰에 있다면 암호화 전의 텍스트를 보게 됩니다. 폰을 잘 지키고 아무거나 설치하지 마세요.",
  "Через TestFlight: установите TestFlight, затем откройте приглашение.": "TestFlight로: TestFlight를 설치한 뒤 초대를 여세요.", "Приглашение": "초대",
- "Установочный файл; при установке разрешите источник.": "설치 파일. 설치할 때 출처를 허용하세요.",
+ "Из Google Play — обновления приходят сами.": "Google Play에서 설치하면 업데이트가 자동으로 설치됩니다.",
+ "Без Google Play —": "Google Play가 없다면:", "установочный файл APK": "APK 설치 파일",
+ "Google Play и логотип Google Play — товарные знаки Google LLC.": "Google Play 및 Google Play 로고는 Google LLC의 상표입니다.",
  "Один образ для Intel и Apple Silicon, заверен у Apple.": "Intel과 Apple Silicon 공용 이미지, Apple 공증 완료.",
  "Один установщик для x64 и ARM.": "x64와 ARM 공용 설치 파일.", "Установщик": "설치 파일",
  "x86_64. Для Debian и Ubuntu — deb, для остальных — AppImage.": "x86_64. Debian과 Ubuntu는 deb, 나머지는 AppImage.",
@@ -111,6 +115,10 @@ T = {
 }
 
 VER = {"en": "Current version", "ko": "현재 버전"}
+# Значок Google Play — официальный, на языке страницы (поля обрезаны, пропорции свои).
+GP = {"en": ("google-play-en.png", "Get it on Google Play", 564, 168),
+      "ko": ("google-play-ko.png", "Google Play에서 다운로드", 646, 192)}
+GP_RU = 'src="/google-play-ru.png" alt="Скачать из Google Play" width="646" height="192"'
 
 SWITCH = '<span class="lang"><a href="/" data-lang="ru"{ru}>RU</a><a href="/en/" data-lang="en"{en}>EN</a><a href="/ko/" data-lang="ko"{ko}>KO</a></span>'
 ALT = '<link rel="alternate" hreflang="ru" href="https://wyx.su/">\n<link rel="alternate" hreflang="en" href="https://wyx.su/en/">\n<link rel="alternate" hreflang="ko" href="https://wyx.su/ko/">\n<link rel="alternate" hreflang="x-default" href="https://wyx.su/">\n'
@@ -148,6 +156,8 @@ def translate(html, lang):
         out = out.replace(f'content="{k}"', f'content="{v}"').replace(f"<title>{k}</title>", f"<title>{v}</title>")
     # Строка версии собирается скриптом страницы — подпись в нём тоже переводим.
     out = out.replace('"Текущая версия "', '"' + VER[lang] + ' "')
+    f, alt, w, h = GP[lang]
+    out = out.replace(GP_RU, f'src="/{f}" alt="{alt}" width="{w}" height="{h}"')
     return out
 
 def with_nav(html, lang):
