@@ -2933,6 +2933,23 @@ class TranscribeRemoteTests(TestCase):
         r.assert_not_called()
         self.assertEqual(self.msg.voice_transcript, "тут")
 
+    def test_next_address_when_first_down(self):
+        import os
+        from unittest import mock
+        import httpx
+        from .transcribe import remote_transcribe
+        seen = []
+        def handler(request):
+            seen.append(request.url.host)
+            if request.url.host == "whisper":
+                raise httpx.ConnectError("нет", request=request)
+            return httpx.Response(200, json={"text": "из запасного", "language": "ru"})
+        real = httpx.Client
+        with mock.patch.dict(os.environ, {"WHISPER_URL": "http://whisper:8745/transcribe, https://nl.example:8745/transcribe", "WHISPER_TOKEN": "t"}), \
+             mock.patch("httpx.Client", lambda **kw: real(transport=httpx.MockTransport(handler), timeout=kw.get("timeout"))):
+            body = remote_transcribe(data=b"x", suffix=".wav")
+        self.assertEqual((seen, body["text"]), (["whisper", "nl.example"], "из запасного"))
+
     def test_single_local_model_per_container(self):
         import fcntl, os
         from unittest import mock

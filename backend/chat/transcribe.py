@@ -1,11 +1,13 @@
 """Расшифровка голосовых — faster-whisper на CPU.
 
 Где распознаём:
-  WHISPER_URL — свой распознаватель на другом сервере (bots/whisper-server,
-                стоит в Нидерландах): одна копия модели на всех, память API не
-                растёт. Ключ — WHISPER_TOKEN, сертификат — WHISPER_CA (свой,
+  WHISPER_URL — свой распознаватель (bots/whisper-server), адреса через запятую,
+                по порядку: сервис whisper рядом с API (одна копия модели на все
+                воркеры) и запасной в Нидерландах (там процессор без AVX-512 VNNI —
+                в 3–5 раз медленнее, поэтому только запасной). Ключ —
+                WHISPER_TOKEN, сертификат для https — WHISPER_CA (свой,
                 самоподписанный, как у ретранслятора перевода).
-  иначе / если он не ответил — локально, в процессе API.
+  никто не ответил — локально, в процессе API.
 
 Локальная модель (~0,7 ГБ в памяти) живёт не больше чем в ОДНОМ процессе на
 контейнер: воркеров gunicorn несколько, и раньше каждый при первом голосовом
@@ -109,9 +111,14 @@ def remote_on() -> bool:
     return bool(os.environ.get("WHISPER_URL"))
 
 
+def _whisper_urls():
+    return [u.strip() for u in os.environ.get("WHISPER_URL", "").split(",") if u.strip()]
+
+
 def remote_transcribe(*, url=None, data=None, suffix=".ogg", lang="", beam=2, vad=True, wait=120, timeout=150):
-    """Распознать на своём удалённом сервере (bots/whisper-server). Ссылку на
-    хранилище он качает сам; локальный файл уходит телом запроса. Ответ —
+    """Распознать своим сервисом (bots/whisper-server): адреса WHISPER_URL по
+    порядку, не ответил или занят — следующий. Ссылку на хранилище сервис
+    качает сам; локальный файл уходит телом запроса. Ответ —
     {text, language, duration, segments: [{no_speech_prob}]}."""
     import httpx
     from .translate import _ssl_for
@@ -119,14 +126,22 @@ def remote_transcribe(*, url=None, data=None, suffix=".ogg", lang="", beam=2, va
     if lang:
         params["lang"] = lang
     headers = {"Authorization": f"Bearer {os.environ.get('WHISPER_TOKEN', '')}"}
-    with httpx.Client(timeout=timeout, verify=_ssl_for(os.environ.get("WHISPER_CA") or "")) as c:
-        if url:
-            r = c.post(os.environ["WHISPER_URL"], params=params, json={"url": url}, headers=headers)
-        else:
-            r = c.post(os.environ["WHISPER_URL"], params=params, content=data,
-                       headers={**headers, "Content-Type": "application/octet-stream"})
-    r.raise_for_status()
-    return r.json()
+    verify = _ssl_for(os.environ.get("WHISPER_CA") or "")
+    last = None
+    for base in _whisper_urls():
+        try:
+            with httpx.Client(timeout=timeout, verify=verify) as c:
+                if url:
+                    r = c.post(base, params=params, json={"url": url}, headers=headers)
+                else:
+                    r = c.post(base, params=params, content=data,
+                               headers={**headers, "Content-Type": "application/octet-stream"})
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            last = e
+            logger.warning("whisper: %s не ответил (%s)", base.split("/")[2], type(e).__name__)
+    raise last or RuntimeError("WHISPER_URL пуст")
 
 
 def _local_transcribe(src: str, suffix: str):
@@ -160,7 +175,7 @@ def transcribe_message(message_id: str):
     suffix = os.path.splitext(url.split("?")[0])[1] or ".ogg"
     try:
         src = _audio_source(url)
-        res = None
+        res, where = None, "сервис"
         if remote_on():
             try:
                 if src.startswith("http"):
@@ -173,13 +188,14 @@ def transcribe_message(message_id: str):
                 logger.warning("whisper: удалённый распознаватель не ответил (%s: %s) — пробую локально",
                                type(e).__name__, str(e)[:120])
         if res is None:
+            where = "в процессе API"
             with _run_lock:
                 res = _local_transcribe(src, suffix)
         text, lang, duration = res
         msg.voice_transcript = text or "(тишина)"
         msg.transcript_status = "done"
         msg.transcript_lang = lang[:8]
-        logger.info("whisper: %s — %s, %.0f с аудио%s", message_id, lang, duration, "" if remote_on() else " (локально)")
+        logger.info("whisper: %s — %s, %.0f с аудио (%s)", message_id, lang, duration, where)
     except LocalBusy:
         logger.warning("whisper: %s — удалённый недоступен, а локальная модель в другом процессе", message_id)
         msg.transcript_status = "error"

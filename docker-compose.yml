@@ -77,10 +77,13 @@ services:
       # Картинки с серверов YouTube из Москвы не открываются — chat/linkimage.py
       # качает их через тот же прокси, что и медиа-бот (сервис ytproxy).
       LINK_PROXY: http://ytproxy:8888
-      # Распознавание голосовых — на нидерландском сервере (bots/whisper-server):
-      # одна копия модели вместо копии в каждом воркере. Ключ WHISPER_TOKEN — в
-      # .env; не ответил — модель в процессе, но не больше одной на контейнер.
-      WHISPER_URL: https://148.253.213.224:8745/transcribe
+      # Распознавание голосовых (bots/whisper-server, chat/transcribe.py): сервис
+      # whisper ниже — одна копия модели на все воркеры (раньше копия была в
+      # каждом, 09.11 ядро убивало их по памяти); запасной — на нидерландском
+      # сервере (процессор там без AVX-512 VNNI, в 3–5 раз медленнее). Ключ
+      # WHISPER_TOKEN — в .env. Никто не ответил — модель в процессе API, но не
+      # больше одной на контейнер.
+      WHISPER_URL: http://whisper:8745/transcribe,https://148.253.213.224:8745/transcribe
       WHISPER_CA: /app/certs/wyx-relay.pem
       # LibreTranslate выключен 09.11 (держал 1,2 ГБ ради запасного перевода):
       # переводит только OpenRouter через ретранслятор. Вернуть — эта строка
@@ -280,6 +283,34 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sux_chat_network
+
+  # Распознаватель речи для api (см. WHISPER_URL там): наружу не торчит. Веса —
+  # те же, что качал api (backend/whisper-models), только чтение, без сети к HF.
+  whisper:
+    build: ./bots/whisper-server
+    image: hyax-whisper
+    container_name: sux_chat_whisper
+    restart: unless-stopped
+    environment:
+      WHISPER_TOKEN: ${WHISPER_TOKEN}
+      WHISPER_MODEL: small
+      WHISPER_THREADS: "3"
+      HF_HUB_OFFLINE: "1"
+      HOME: /tmp
+      HF_HOME: /tmp/hf
+      XDG_CACHE_HOME: /tmp/cache
+    volumes:
+      - ./backend/whisper-models:/models:ro
+    expose:
+      - "8745"
+    mem_limit: 1200m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
     networks:
       - sux_chat_network
 
