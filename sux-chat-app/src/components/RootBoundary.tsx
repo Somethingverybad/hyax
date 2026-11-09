@@ -19,7 +19,10 @@ export default class RootBoundary extends Component<{ children: ReactNode }, Sta
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    applog.error(`render: ${error?.message || error}${info.componentStack ? ` @${info.componentStack.split("\n").filter(Boolean)[0]?.trim()}` : ""}`);
+    // Цепочка компонентов — восемь ближайших, а не один: по одному «at ChannelView»
+    // не понять, чей эффект зациклился (React #185, баг-репорт 2a50a6c9).
+    const stack = info.componentStack?.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 8).join(" < ");
+    applog.error(`render: ${error?.message || error}${stack ? ` @${stack}` : ""}`);
   }
 
   render() {

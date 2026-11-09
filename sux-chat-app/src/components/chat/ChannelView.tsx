@@ -449,7 +449,13 @@ const ChannelView = ({ channelId, userId, onBack, onDeleted, wall = false, onOpe
   // эффекта загрузки и без проверки запомнил бы чужие посты под новым id.
   const postsForRef = useRef<string | null>(channelId);
   useEffect(() => {
-    if (!loading && postsForRef.current === channelId) postsMemo.set(channelId, { posts, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
+    // Без черновиков отправки: их подтверждает только этот экземпляр экрана.
+    // Ушли из канала посреди загрузки (или экран упал) — новый экземпляр взял
+    // бы из памяти «отправляется 0%» навсегда, а настоящий альбом с сервера
+    // прятался за ним как хвост («а в посте одно фото», баг-репорт 2a50a6c9).
+    // Сервер пришлёт готовый пост сам при первой же сверке.
+    const settled = posts.some((p) => p._pending || p._failed) ? posts.filter((p) => !p._pending && !p._failed) : posts;
+    if (!loading && postsForRef.current === channelId) postsMemo.set(channelId, { posts: settled, syncedAt: syncedAtRef.current, hasMore: hasMoreRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, loading, channelId]);
   const [text, setText] = useState("");
