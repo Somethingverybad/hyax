@@ -4473,10 +4473,10 @@ class VpnTests(TestCase):
 
     def test_profile_lists_alive_first_and_signs(self):
         import base64
+        import json
         import os
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-        from .vpn import canonical
         key = Ed25519PrivateKey.generate()
         seed = base64.b64encode(key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())).decode()
         os.environ["VPN_SIGN_KEY"] = seed
@@ -4485,7 +4485,8 @@ class VpnTests(TestCase):
         finally:
             os.environ.pop("VPN_SIGN_KEY", None)
         self.assertEqual(r.status_code, 200)
-        p = r.data["payload"]
+        self.assertIsInstance(r.data["payload"], str)  # подписана строка как есть
+        p = json.loads(r.data["payload"])
         self.assertEqual(p["user"]["uuid"], str(self.acc.uuid))
         self.assertEqual(p["user"]["email"], "wyx-vpn_me")
         # живой первым, хотя у мёртвого вес больше; выключенного нет
@@ -4494,7 +4495,7 @@ class VpnTests(TestCase):
         self.assertEqual(p["nodes"][1]["pbk"], "pbk")
         # подпись сходится с публичным ключом из ответа
         pub = Ed25519PublicKey.from_public_bytes(base64.b64decode(r.data["pub"]))
-        pub.verify(base64.b64decode(r.data["sig"]), canonical(p))
+        pub.verify(base64.b64decode(r.data["sig"]), r.data["payload"].encode())
         self.acc.refresh_from_db()
         self.assertEqual(self.acc.last_app, "ios 1.0")
         self.assertIsNotNone(self.acc.last_seen_at)

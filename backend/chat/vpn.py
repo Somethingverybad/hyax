@@ -10,10 +10,12 @@
   GET  /api/vpn/profile/   — узлы и мой UUID, подпись Ed25519 (VPN_SIGN_KEY)
   POST /api/vpn/report/    — отчёты клиента о подключениях (только здоровье)
 
-Подпись: канонический JSON (sort_keys, без пробелов) поля payload, ключ —
-32 байта seed в base64 в VPN_SIGN_KEY; публичный ключ зашит в клиент. Без
-ключа в окружении ответ без подписи (локальный стенд), клиент в бою такой
-не примет.
+Подпись: поле payload — строка с каноническим JSON (sort_keys, без
+пробелов); подписываются ровно её байты, клиент проверяет строку как есть и
+только потом разбирает (никакой своей канонизации на стороне клиента). Ключ —
+32 байта seed в base64 в VPN_SIGN_KEY; публичный ключ (manage.py vpn_pubkey)
+зашит в клиент. Без ключа в окружении ответ без подписи (локальный стенд),
+клиент в бою такой не примет.
 """
 import base64
 import json
@@ -53,16 +55,18 @@ def canonical(payload) -> bytes:
 
 
 def sign(payload):
-    """Подписанный конверт: {payload, sig, pub}. sig пустой, если ключа нет."""
+    """Подписанный конверт: {payload: str, sig, pub}. sig пустой, если ключа нет."""
+    text = canonical(payload)
     key, pub = _signer()
     if not key:
-        return {"payload": payload, "sig": "", "pub": ""}
-    return {"payload": payload, "sig": base64.b64encode(key.sign(canonical(payload))).decode(), "pub": pub}
+        return {"payload": text.decode(), "sig": "", "pub": ""}
+    return {"payload": text.decode(), "sig": base64.b64encode(key.sign(text)).decode(), "pub": pub}
 
 
 def node_payload(n: VpnNode):
     d = {
         "id": n.slug, "name": n.name, "kind": n.kind, "host": n.host, "port": n.port, "sni": n.sni or n.host,
+        "ips": [x.strip() for x in (n.ips or "").split(",") if x.strip()],
         "weight": n.weight, "ok": n.ok, "rtt_ms": n.rtt_ms,
         "checked_at": n.checked_at.isoformat() if n.checked_at else None,
     }

@@ -1659,6 +1659,9 @@ class VpnNode(models.Model):
     checked_at = models.DateTimeField(null=True, blank=True)
     last_ok_at = models.DateTimeField(null=True, blank=True)
     last_error = models.CharField(max_length=300, blank=True, default="")
+    # Адреса host по DNS из Москвы (пробник, через запятую): клиент ходит по IP,
+    # чтобы внутри туннеля не зависеть от своего DNS
+    ips = models.CharField(max_length=300, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

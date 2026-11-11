@@ -1,0 +1,8 @@
+# Ядро xray — готовая сборка libXray и hev-socks5-tunnel с GitHub, качает Vendor/fetch.sh (300 МБ, в git не кладём)
+Vendor/*.xcframework/
+Vendor/*.zip
+# Проект генерируется из project.yml (xcodegen generate)
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+build/

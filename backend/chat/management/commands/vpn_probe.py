@@ -30,6 +30,19 @@ INTERVAL = 60
 TIMEOUT = 8
 
 
+def resolve(host: str, port: int):
+    """IP-адреса host (IPv4 первыми), как их видит сервер в Москве."""
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return []
+    ips = []
+    for fam, *_rest, sa in sorted(infos, key=lambda i: i[0] != socket.AF_INET):
+        if sa[0] not in ips:
+            ips.append(sa[0])
+    return ips[:6]
+
+
 def probe_reality(n: VpnNode):
     ctx = ssl.create_default_context()
     ctx.set_alpn_protocols(["h2", "http/1.1"])
@@ -79,6 +92,9 @@ def run_once(out=None):
         fields = {"ok": ok, "rtt_ms": rtt, "checked_at": now, "last_error": err}
         if ok:
             fields["last_ok_at"] = now
+        ips = resolve(n.host, n.port)
+        if ips:
+            fields["ips"] = ",".join(ips)
         VpnNode.objects.filter(pk=n.pk).update(**fields)
         if out:
             out.write(f"{'ok ' if ok else 'ERR'} {n.slug:<24} {n.kind:<8} {n.host}:{n.port}  {rtt if ok else err}")
