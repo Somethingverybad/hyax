@@ -86,7 +86,7 @@ services:
       # Порядок: Windows-сервер в Москве (bots/whisper-server/windows, тот же
       # процессор — так же быстро, и память этого сервера не тратится), затем
       # сервис whisper рядом, затем Нидерланды. WHISPER_CA — оба своих сертификата.
-      WHISPER_URL: https://195.58.153.245:8745/transcribe,http://whisper:8745/transcribe,https://148.253.213.224:8745/transcribe
+      WHISPER_URL: https://195.58.153.245:8745/transcribe,http://whisper:8745/transcribe,https://[2a13:d201:1:df::1]:8745/transcribe
       WHISPER_CA: /app/certs/whisper-ca.pem
       # LibreTranslate выключен 09.11 (держал 1,2 ГБ ради запасного перевода):
       # переводит только OpenRouter через ретранслятор. Вернуть — эта строка
@@ -178,6 +178,7 @@ services:
       - ./bots/ytproxy/certs:/certs:ro
     networks:
       - sux_chat_network
+      - tg_v6  # до нидерландского сервера — по IPv6: его IPv4 из России заблокирован (11.11)
 
   # «Осколки Короны» — пошаговая стратегия, мини-приложение бота
   # (bots/shards/README.md). Страница и WebSocket — https://hyax.ru/shards/ (и wyx.su/shards/).
