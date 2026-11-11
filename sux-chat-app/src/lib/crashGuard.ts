@@ -26,6 +26,8 @@ const LOG_KEY = "hyax:crashlog";
 const BEAT_KEY = "hyax:beat";
 /** Тяжёлое дело, начатое и не законченное (crashMark): что делали в момент падения. */
 const BUSY_KEY = "hyax:busy";
+/** sessionStorage: страница уже жила в этом окне (перезагрузка), а не новый запуск приложения. */
+const SESSION_KEY = "hyax:session";
 const TAIL = 300;
 /** Старше — уже не вспомнить, что было; не спрашиваем. */
 const FRESH_MS = 3 * 86400_000;
@@ -133,7 +135,20 @@ export function installCrashGuard() {
     prev = JSON.parse(localStorage.getItem(BEAT_KEY) || "null");
     prevLog = localStorage.getItem(LOG_KEY);
   } catch { /* битая запись — как будто не было */ }
-  const crashed = !!prev && !prev.ok && prev.on && Date.now() - prev.t < FRESH_MS && !!prevLog;
+  // Компьютер: при выходе из приложения отметка «закрыто нормально» (pagehide)
+  // часто не успевает лечь на диск — Electron завершает процесс раньше, чем
+  // сбрасывается localStorage, и после обычного закрытия следующий запуск
+  // видел «оборвался на экране» (баг-репорт 80c64ce8: «каждый раз после
+  // обычного закрытия»). Поэтому на компьютере отметке верим только внутри
+  // одного сеанса окна: sessionStorage переживает перезагрузку и падение
+  // страницы (тогда запись надёжна — процесс приложения жив), но не выход
+  // из приложения. Падение всей оболочки ловит она сама (electron/report.cjs).
+  const desktop = !!(window as { electronAPI?: unknown }).electronAPI;
+  let sameSession = false;
+  try { sameSession = sessionStorage.getItem(SESSION_KEY) === "1"; sessionStorage.setItem(SESSION_KEY, "1"); } catch { /* без него — как новый сеанс */ }
+  const looksCrashed = !!prev && !prev.ok && prev.on && Date.now() - prev.t < FRESH_MS && !!prevLog;
+  const crashed = looksCrashed && (!desktop || sameSession);
+  if (looksCrashed && !crashed) applog.info("crashguard: на компьютере прошлый запуск без отметки о закрытии — это выход из приложения, не падение");
   let busy: Busy | null = null;
   try { busy = JSON.parse(localStorage.getItem(BUSY_KEY) || "null"); localStorage.removeItem(BUSY_KEY); } catch { /* нет */ }
   // Записи нативной части — и без автоотчёта в журнал: WebView мог умереть в

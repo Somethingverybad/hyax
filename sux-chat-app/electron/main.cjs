@@ -773,7 +773,14 @@ if (!gotLock) {
   });
 }
 
-app.on('will-quit', () => { logLine('will-quit'); globalShortcut.unregisterAll(); });
+// Сбросить localStorage на диск до выхода: отметка «закрыто нормально» (src/lib/
+// crashGuard) пишется при закрытии окна и без этого не успевала лечь на диск —
+// следующий запуск звал обычное закрытие падением (баг-репорт 80c64ce8).
+app.on('will-quit', () => {
+  logLine('will-quit');
+  globalShortcut.unregisterAll();
+  try { session.defaultSession.flushStorageData(); } catch (e) { logLine('flushStorageData failed', String(e)); }
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
