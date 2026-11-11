@@ -6,42 +6,46 @@ struct LoginView: View {
     @State private var password = ""
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Image(systemName: "shield.lefthalf.filled")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
-            Text("Сеть WYX").font(.largeTitle.bold())
-            Text("Войдите аккаунтом WYX. Доступ к сети выдаётся отдельно.")
-                .font(.subheadline).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            VStack(spacing: 12) {
-                TextField("Ник или почта", text: $username)
-                    .textContentType(.username)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding().background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                SecureField("Пароль", text: $password)
-                    .textContentType(.password)
-                    .padding().background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-            }
-            if let e = model.error {
-                Text(e).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
-            }
-            Button {
-                Task { await model.login(username: username, password: password) }
-            } label: {
-                HStack {
-                    if model.busy { ProgressView().tint(.white) }
-                    Text("Войти").bold()
+        ZStack {
+            WYX.background.ignoresSafeArea()
+            VStack(spacing: 22) {
+                Spacer()
+                Text("WYX").font(.system(size: 48, weight: .heavy)).tracking(-2).foregroundStyle(WYX.text)
+                Text("Сеть").font(.title3).foregroundStyle(WYX.muted).padding(.top, -18)
+                VStack(spacing: 10) {
+                    TextField("", text: $username, prompt: Text("Ник или почта").foregroundStyle(WYX.muted))
+                        .textContentType(.username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .wyxField()
+                    SecureField("", text: $password, prompt: Text("Пароль").foregroundStyle(WYX.muted))
+                        .textContentType(.password)
+                        .wyxField()
                 }
-                .frame(maxWidth: .infinity).padding()
+                .padding(.top, 12)
+                if let e = model.error {
+                    Text(e).font(.footnote).foregroundStyle(WYX.primary).multilineTextAlignment(.center)
+                }
+                Button {
+                    Task { await model.login(username: username, password: password) }
+                } label: {
+                    HStack {
+                        if model.busy { ProgressView().tint(.white) }
+                        Text("Войти").font(.body.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(WYX.primary, in: RoundedRectangle(cornerRadius: WYX.radius))
+                    .foregroundStyle(.white)
+                }
+                .disabled(username.isEmpty || password.isEmpty || model.busy)
+                .opacity(username.isEmpty || password.isEmpty ? 0.5 : 1)
+                Text("Аккаунт тот же, что в мессенджере. Доступ к сети выдаётся отдельно.")
+                    .font(.footnote).foregroundStyle(WYX.muted).multilineTextAlignment(.center)
+                Spacer()
+                Text("WYX Net \(API.version)").font(.caption2).foregroundStyle(WYX.muted.opacity(0.6))
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(username.isEmpty || password.isEmpty || model.busy)
-            Spacer()
-            Text("WYX Net \(API.version)").font(.caption2).foregroundStyle(.tertiary)
+            .padding(28)
         }
-        .padding(24)
+        .preferredColorScheme(.dark)
     }
 }

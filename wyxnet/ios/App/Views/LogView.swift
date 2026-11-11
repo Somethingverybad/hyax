@@ -26,6 +26,8 @@ struct LogView: View {
                 .onAppear { reload(); proxy.scrollTo("end") }
                 .onReceive(timer) { _ in reload() }
             }
+            .background(WYX.background)
+            .tint(WYX.primary)
             .navigationTitle("Журнал")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

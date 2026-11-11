@@ -22,11 +22,40 @@ struct SettingsView: View {
                     Text("В простое (меньше 300 КБ за 10 минут) трафик уводится на другой живой узел, чтобы не идти всё время в одну точку.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Узел") {
-                    Picker("Выбор", selection: Binding(get: { model.settings.preferredNode ?? "" }, set: { model.settings.preferredNode = $0.isEmpty ? nil : $0 })) {
-                        Text("Автоматически").tag("")
-                        ForEach(model.profile?.nodes ?? []) { Text($0.name).tag($0.id) }
+                Section {
+                    Button {
+                        model.settings.preferredNode = nil
+                    } label: {
+                        HStack {
+                            Text("Автоматически").foregroundStyle(.primary)
+                            Spacer()
+                            if model.settings.preferredNode == nil { Image(systemName: "checkmark").foregroundStyle(WYX.primary) }
+                        }
                     }
+                    ForEach(model.profile?.nodes ?? []) { n in
+                        Button {
+                            Task { await model.select(node: n) }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Circle().fill(n.ok ? WYX.success : WYX.primary).frame(width: 9, height: 9)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(n.name).foregroundStyle(.primary)
+                                    Text("\(n.kind == "reality" ? "Reality" : "XHTTP") · \(n.ok ? (n.rtt_ms.map { "\($0) мс" } ?? "жив") : "не отвечает из Москвы")")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if model.settings.preferredNode == n.id { Image(systemName: "checkmark").foregroundStyle(WYX.primary) }
+                            }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Узел")
+                        Spacer()
+                        Button { Task { await model.refreshProfile(force: true) } } label: { Image(systemName: "arrow.clockwise") }.font(.caption)
+                    }
+                } footer: {
+                    Text("Выбранный узел становится первым; если он не отвечает, приложение всё равно уйдёт на другой.")
                 }
                 Section("Аккаунт") {
                     LabeledContent("Пользователь", value: model.username.map { "@\($0)" } ?? "—")
@@ -40,6 +69,9 @@ struct SettingsView: View {
                     LabeledContent("Подпись профиля", value: Pinned.publicKey == nil ? "не зашита (отладка)" : "проверяется")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(WYX.background)
+            .tint(WYX.primary)
             .navigationTitle("Настройки")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Готово") { dismiss() } } }

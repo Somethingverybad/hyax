@@ -1,54 +1,77 @@
 import NetworkExtension
 import SwiftUI
 
+/// Главный экран: одна большая кнопка и поле состояния. Узлы и прочее — в настройках.
 struct MainView: View {
     @EnvironmentObject var model: AppModel
     @State private var showLog = false
     @State private var showSettings = false
+    @State private var pulse = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    bigButton
-                    details
-                    if let note = model.profileNote { banner(note, color: .orange) }
-                    if let e = model.error { banner(e, color: .red) }
-                    nodes
-                }
-                .padding()
+        ZStack {
+            WYX.background.ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                Spacer()
+                bigButton
+                Spacer()
+                statusBox
             }
-            .navigationTitle("Сеть WYX")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { showLog = true } label: { Image(systemName: "doc.text") }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack {
-                        Button { Task { await model.refreshProfile(force: true) } } label: { Image(systemName: "arrow.clockwise") }
-                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    }
-                }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
+        }
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showLog) { LogView() }
+        .sheet(isPresented: $showSettings) { SettingsView() }
+    }
+
+    private var header: some View {
+        HStack {
+            Button { showLog = true } label: {
+                Image(systemName: "doc.text").font(.title3).foregroundStyle(WYX.muted).frame(width: 44, height: 44)
             }
-            .sheet(isPresented: $showLog) { LogView() }
-            .sheet(isPresented: $showSettings) { SettingsView() }
-            .refreshable { await model.refreshProfile(force: true) }
+            Spacer()
+            Text("WYX").font(.system(size: 22, weight: .heavy)).tracking(-1).foregroundStyle(WYX.text)
+            Spacer()
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape").font(.title3).foregroundStyle(WYX.muted).frame(width: 44, height: 44)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: состояние
+
+    private enum Phase { case off, busy, checking, on, trouble }
+
+    private var phase: Phase {
+        switch model.vpnStatus {
+        case .connected:
+            if model.status.state == .switching { return .busy }
+            if model.status.state == .error || model.status.failures > 0 { return .trouble }
+            return model.status.lastProbeMs == nil ? .checking : .on
+        case .connecting, .reasserting, .disconnecting: return .busy
+        default: return .off
         }
     }
 
-    // MARK: кнопка
+    private var title: String {
+        switch phase {
+        case .off: return "Подключить"
+        case .busy: return model.vpnStatus == .disconnecting ? "Отключаю…" : (model.status.state == .switching ? "Меняю узел…" : "Подключаю…")
+        case .checking: return "Проверяю…"
+        case .on: return "Защищено"
+        case .trouble: return "Нет ответа"
+        }
+    }
 
-    private var phase: (title: String, color: Color, icon: String) {
-        switch model.vpnStatus {
-        case .connected:
-            if model.status.state == .switching { return ("Переключаюсь…", .blue, "arrow.triangle.2.circlepath") }
-            if model.status.state == .error || model.status.failures > 0 { return ("Нет ответа", .orange, "exclamationmark.shield") }
-            if model.status.lastProbeMs == nil { return ("Проверяю…", .blue, "shield") }
-            return ("Защищено", .green, "checkmark.shield.fill")
-        case .connecting: return ("Подключаюсь…", .blue, "shield")
-        case .reasserting: return ("Переподключаюсь…", .blue, "arrow.triangle.2.circlepath")
-        case .disconnecting: return ("Отключаюсь…", .gray, "shield.slash")
-        default: return ("Подключить", .gray, "shield.slash")
+    private var color: Color {
+        switch phase {
+        case .off: return WYX.surface2
+        case .busy, .checking: return WYX.primaryDeep
+        case .on: return WYX.primary
+        case .trouble: return WYX.warning
         }
     }
 
@@ -58,95 +81,75 @@ struct MainView: View {
                 if model.tunnel.isActive { model.disconnect() } else { await model.connect() }
             }
         } label: {
-            VStack(spacing: 10) {
-                Image(systemName: phase.icon).font(.system(size: 56, weight: .medium))
-                Text(phase.title).font(.title3.bold())
+            ZStack {
+                Circle().fill(color.opacity(phase == .off ? 0 : 0.18))
+                    .frame(width: 290, height: 290)
+                    .scaleEffect(pulse && (phase == .busy || phase == .checking) ? 1.06 : 1)
+                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
+                Circle().fill(color)
+                    .frame(width: 230, height: 230)
+                    .overlay(Circle().stroke(Color.white.opacity(phase == .off ? 0.12 : 0.25), lineWidth: 1))
+                    .shadow(color: color.opacity(phase == .off ? 0 : 0.5), radius: 30, y: 10)
+                VStack(spacing: 10) {
+                    Image(systemName: phase == .on ? "checkmark.shield.fill" : "power")
+                        .font(.system(size: 54, weight: .semibold))
+                    Text(title).font(.title3.weight(.semibold))
+                }
+                .foregroundStyle(phase == .off ? WYX.text : .white)
             }
-            .foregroundStyle(.white)
-            .frame(width: 210, height: 210)
-            .background(Circle().fill(phase.color.gradient).shadow(color: phase.color.opacity(0.4), radius: 18, y: 8))
         }
         .buttonStyle(.plain)
         .disabled(model.busy || model.vpnStatus == .connecting || model.vpnStatus == .disconnecting)
-        .padding(.top, 12)
-        .animation(.easeInOut, value: phase.title)
+        .onAppear { pulse = true }
+        .animation(.easeInOut(duration: 0.3), value: title)
     }
 
-    // MARK: подробности
+    // MARK: поле состояния
 
-    private var details: some View {
-        VStack(spacing: 6) {
-            if model.tunnel.isActive {
-                Text(model.status.nodeName ?? "—").font(.headline)
-                HStack(spacing: 16) {
-                    if let ms = model.status.lastProbeMs { Label("\(ms) мс", systemImage: "speedometer") }
-                    Label(bytes(model.status.up), systemImage: "arrow.up")
-                    Label(bytes(model.status.down), systemImage: "arrow.down")
-                }
-                .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-                if let since = model.status.since {
-                    Text("с \(since.formatted(date: .omitted, time: .shortened))" + (model.status.switches > 0 ? " · переключений: \(model.status.switches)" : ""))
-                        .font(.caption).foregroundStyle(.tertiary)
-                }
-                if let e = model.status.lastError, model.status.failures > 0 {
-                    Text(e).font(.caption).foregroundStyle(.orange).multilineTextAlignment(.center)
-                }
-            } else {
-                Text(model.username.map { "@\($0)" } ?? "").font(.headline)
-                Text(model.profile == nil ? "Список узлов не получен" : "Узлов: \(model.profile!.nodes.count), живых: \(model.profile!.nodes.filter(\.ok).count)")
-                    .font(.footnote).foregroundStyle(.secondary)
+    private var statusLines: [String] {
+        var lines: [String] = []
+        if model.tunnel.isActive {
+            lines.append("Узел: \(model.status.nodeName ?? "—")")
+            var l2: [String] = []
+            if let ms = model.status.lastProbeMs { l2.append("задержка \(ms) мс") }
+            l2.append("↑ \(bytes(model.status.up))  ↓ \(bytes(model.status.down))")
+            lines.append(l2.joined(separator: " · "))
+            if let since = model.status.since {
+                lines.append("С \(since.formatted(date: .omitted, time: .shortened))" + (model.status.switches > 0 ? ", переключений: \(model.status.switches)" : ""))
             }
-        }
-    }
-
-    private func banner(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.footnote)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-            .foregroundStyle(color)
-    }
-
-    // MARK: узлы
-
-    private var nodes: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Узлы").font(.headline)
-                Spacer()
-                if model.settings.preferredNode != nil {
-                    Button("Автовыбор") { model.settings.preferredNode = nil }.font(.footnote)
-                }
-            }
+            if let e = model.status.lastError, model.status.failures > 0 { lines.append("Ошибка: \(e)") }
+        } else {
+            lines.append(model.username.map { "Аккаунт @\($0)" } ?? "")
             if let p = model.profile {
-                ForEach(p.nodes) { n in
-                    Button { Task { await model.select(node: n) } } label: { row(n) }
-                        .buttonStyle(.plain)
+                lines.append("Узлов: \(p.nodes.count), живых из Москвы: \(p.nodes.filter(\.ok).count)")
+                if let pref = model.settings.preferredNode, let n = p.nodes.first(where: { $0.id == pref }) {
+                    lines.append("Выбран узел: \(n.name)")
+                } else {
+                    lines.append("Узел выбирается автоматически")
                 }
             } else {
-                Text("Потяните вниз, чтобы обновить.").font(.footnote).foregroundStyle(.secondary)
+                lines.append("Список узлов не получен")
             }
         }
-        .padding(.top, 8)
+        if let note = model.profileNote { lines.append("⚠︎ \(note)") }
+        if let e = model.error { lines.append("⚠︎ \(e)") }
+        return lines.filter { !$0.isEmpty }
     }
 
-    private func row(_ n: VpnNode) -> some View {
-        let isCurrent = model.tunnel.isActive && model.status.nodeId == n.id
-        let isPreferred = model.settings.preferredNode == n.id
-        return HStack(spacing: 12) {
-            Circle().fill(n.ok ? Color.green : Color.red).frame(width: 10, height: 10)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(n.name).font(.body)
-                Text("\(n.kind == "reality" ? "Reality" : "XHTTP") · \(n.ok ? (n.rtt_ms.map { "\($0) мс" } ?? "жив") : "не отвечает из Москвы")")
-                    .font(.caption).foregroundStyle(.secondary)
+    private var statusBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(statusLines.enumerated()), id: \.offset) { i, line in
+                Text(line)
+                    .font(i == 0 ? .body.weight(.medium) : .footnote)
+                    .foregroundStyle(line.hasPrefix("⚠︎") ? WYX.warning : (line.hasPrefix("Ошибка") ? WYX.primary : (i == 0 ? WYX.text : WYX.muted)))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer()
-            if isCurrent { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-            else if isPreferred { Image(systemName: "pin.fill").foregroundStyle(.secondary) }
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+        .background(WYX.surface, in: RoundedRectangle(cornerRadius: WYX.radius))
+        .overlay(RoundedRectangle(cornerRadius: WYX.radius).stroke(WYX.border, lineWidth: 1))
+        .onTapGesture { showLog = true }
     }
 
     private func bytes(_ b: Int) -> String {
