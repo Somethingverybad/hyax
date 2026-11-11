@@ -4449,3 +4449,90 @@ class AdminGraphTests(TestCase):
         self.assertEqual({n["username"] for n in r.data["nodes"]}, {"ann", "bob"})
         r = self.graph(q="ann", depth="2")
         self.assertEqual({n["username"] for n in r.data["nodes"]}, {"ann", "bob", "cat"})
+
+
+class VpnTests(TestCase):
+    """«Сеть WYX» (chat/vpn.py): выдача узлов по доступу, подпись, отчёты, пробник."""
+
+    def setUp(self):
+        from .models import VpnAccess, VpnNode
+        self.me = make_user("vpn_me")
+        self.other = make_user("vpn_other")
+        self.acc = VpnAccess.objects.create(profile=self.me)
+        self.dead = VpnNode.objects.create(slug="dead", name="Мёртвый", kind="reality", host="1.2.3.4", sni="dl.google.com",
+                                           public_key="pbk", short_id="ab", weight=50, ok=False)
+        self.alive = VpnNode.objects.create(slug="alive", name="Живой", kind="xhttp", host="nemilf.example", path="/x",
+                                            weight=10, ok=True, rtt_ms=120)
+        VpnNode.objects.create(slug="off", name="Выключен", kind="reality", host="5.6.7.8", enabled=False)
+
+    def test_no_access_is_403(self):
+        r = client_for(self.other).get("/api/vpn/profile/")
+        self.assertEqual(r.status_code, 403)
+        r = client_for(self.other).post("/api/vpn/report/", {"events": []}, format="json")
+        self.assertEqual(r.status_code, 403)
+
+    def test_profile_lists_alive_first_and_signs(self):
+        import base64
+        import os
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+        from .vpn import canonical
+        key = Ed25519PrivateKey.generate()
+        seed = base64.b64encode(key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())).decode()
+        os.environ["VPN_SIGN_KEY"] = seed
+        try:
+            r = client_for(self.me).get("/api/vpn/profile/", HTTP_X_WYX_APP="ios 1.0")
+        finally:
+            os.environ.pop("VPN_SIGN_KEY", None)
+        self.assertEqual(r.status_code, 200)
+        p = r.data["payload"]
+        self.assertEqual(p["user"]["uuid"], str(self.acc.uuid))
+        self.assertEqual(p["user"]["email"], "wyx-vpn_me")
+        # живой первым, хотя у мёртвого вес больше; выключенного нет
+        self.assertEqual([n["id"] for n in p["nodes"]], ["alive", "dead"])
+        self.assertEqual(p["nodes"][0]["path"], "/x")
+        self.assertEqual(p["nodes"][1]["pbk"], "pbk")
+        # подпись сходится с публичным ключом из ответа
+        pub = Ed25519PublicKey.from_public_bytes(base64.b64decode(r.data["pub"]))
+        pub.verify(base64.b64decode(r.data["sig"]), canonical(p))
+        self.acc.refresh_from_db()
+        self.assertEqual(self.acc.last_app, "ios 1.0")
+        self.assertIsNotNone(self.acc.last_seen_at)
+
+    def test_profile_without_key_is_unsigned(self):
+        r = client_for(self.me).get("/api/vpn/profile/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["sig"], "")
+
+    def test_disabled_access_is_403(self):
+        self.acc.enabled = False
+        self.acc.save()
+        self.assertEqual(client_for(self.me).get("/api/vpn/profile/").status_code, 403)
+
+    def test_report_saves_events(self):
+        from .models import VpnReport
+        body = {"events": [
+            {"node": "alive", "ok": True, "rtt_ms": 95, "net": "cell"},
+            {"node": "nope", "ok": False, "error": "timeout", "rtt_ms": -1},
+            "мусор",
+        ]}
+        r = client_for(self.me).post("/api/vpn/report/", body, format="json", HTTP_X_WYX_APP="android 1.0")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["saved"], 2)
+        rows = list(VpnReport.objects.order_by("id"))
+        self.assertEqual(rows[0].node_id, self.alive.id)
+        self.assertEqual(rows[0].rtt_ms, 95)
+        self.assertIsNone(rows[1].node)
+        self.assertIsNone(rows[1].rtt_ms)
+        self.assertEqual(rows[1].app, "android 1.0")
+        self.assertEqual(client_for(self.me).post("/api/vpn/report/", {"events": "x"}, format="json").status_code, 400)
+
+    def test_probe_updates_nodes(self):
+        from unittest import mock
+        from chat.management.commands import vpn_probe
+        with mock.patch.object(vpn_probe, "probe_reality", return_value=42), \
+             mock.patch.object(vpn_probe, "probe_xhttp", side_effect=RuntimeError("HTTP 502")):
+            vpn_probe.run_once()
+        self.dead.refresh_from_db(); self.alive.refresh_from_db()
+        self.assertTrue(self.dead.ok); self.assertEqual(self.dead.rtt_ms, 42); self.assertIsNotNone(self.dead.last_ok_at)
+        self.assertFalse(self.alive.ok); self.assertIn("502", self.alive.last_error)

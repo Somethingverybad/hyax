@@ -16,6 +16,7 @@ from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeH
 from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
 from .graffiti import GraffitiView
+from .vpn import VpnProfileView, VpnReportView
 from .wall import WallView, WallSeenView, WallPostsView, WallPostsCheckView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
@@ -52,6 +53,9 @@ urlpatterns = [
     path('vibe/<uuid:profile_id>/adjust/', VibeAdjustView.as_view(), name='vibe-adjust'),
     path('vibe-reasons/', VibeReasonsView.as_view(), name='vibe-reasons'),
     path('vibe-levels/', VibeLevelsView.as_view(), name='vibe-levels'),
+    # «Сеть WYX» — свой VPN-клиент (chat/vpn.py)
+    path('vpn/profile/', VpnProfileView.as_view(), name='vpn-profile'),
+    path('vpn/report/', VpnReportView.as_view(), name='vpn-report'),
     # Стена (chat/wall.py)
     path('wall/', WallView.as_view(), name='wall'),
     path('wall/seen/', WallSeenView.as_view(), name='wall-seen'),

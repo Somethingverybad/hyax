@@ -371,3 +371,32 @@ class ChatActionAdmin(admin.ModelAdmin):
     list_editable = ("fx", "order", "is_active", "premium")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("order",)
+
+
+# ---- «Сеть WYX» (chat/vpn.py) ----
+from .models import VpnAccess, VpnNode, VpnReport  # noqa: E402
+
+
+@admin.register(VpnNode)
+class VpnNodeAdmin(admin.ModelAdmin):
+    list_display = ("slug", "name", "kind", "host", "port", "sni", "weight", "enabled", "ok", "rtt_ms", "checked_at", "last_error")
+    list_editable = ("weight", "enabled")
+    readonly_fields = ("ok", "rtt_ms", "checked_at", "last_ok_at", "last_error")
+    search_fields = ("slug", "name", "host")
+
+
+@admin.register(VpnAccess)
+class VpnAccessAdmin(admin.ModelAdmin):
+    list_display = ("profile", "uuid", "enabled", "xui_synced_at", "last_seen_at", "last_app", "created_at")
+    list_editable = ("enabled",)
+    raw_id_fields = ("profile", "created_by")
+    search_fields = ("profile__username",)
+    readonly_fields = ("uuid", "xui_synced_at", "last_seen_at", "last_app")
+
+
+@admin.register(VpnReport)
+class VpnReportAdmin(admin.ModelAdmin):
+    list_display = ("at", "access", "node", "ok", "rtt_ms", "net", "app", "error")
+    list_filter = ("ok", "node", "net")
+    raw_id_fields = ("access",)
+    date_hierarchy = "at"

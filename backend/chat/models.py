@@ -1613,3 +1613,93 @@ class FileBlob(models.Model):
 
     def __str__(self):
         return f"{self.sha256[:12]}… {self.file_url}"
+
+
+# ---------------------------------------------------------------------------
+# «Сеть WYX» — свой VPN-клиент для друзей (chat/vpn.py): узлы, доступ, отчёты.
+# ---------------------------------------------------------------------------
+
+class VpnNode(models.Model):
+    """Узел, к которому подключается клиент. Сам сервер xray живёт отдельно
+    (crystal, панель 3x-ui); здесь — что отдавать клиенту и жив ли путь из России.
+
+    kind: reality — VLESS+Reality (TCP, SNI чужого сайта); xhttp — VLESS+XHTTP
+    за TLS (через мост или CDN). host — куда подключаться (имя или IP), sni —
+    имя в рукопожатии. Пробник (manage.py vpn_probe) из Москвы раз в минуту
+    обновляет ok/rtt_ms; клиентам отдаются все включённые узлы, живые первыми."""
+    KIND_REALITY = "reality"
+    KIND_XHTTP = "xhttp"
+    KINDS = [(KIND_REALITY, "VLESS + Reality"), (KIND_XHTTP, "VLESS + XHTTP (TLS)")]
+
+    slug = models.SlugField(max_length=48, unique=True)
+    name = models.CharField(max_length=80)
+    kind = models.CharField(max_length=16, choices=KINDS, default=KIND_REALITY)
+    host = models.CharField(max_length=200)
+    port = models.PositiveIntegerField(default=443)
+    sni = models.CharField(max_length=200, blank=True, default="")
+    # Reality
+    public_key = models.CharField(max_length=120, blank=True, default="")
+    short_id = models.CharField(max_length=32, blank=True, default="")
+    fingerprint = models.CharField(max_length=32, blank=True, default="chrome")
+    flow = models.CharField(max_length=40, blank=True, default="")
+    # XHTTP
+    path = models.CharField(max_length=200, blank=True, default="")
+    mode = models.CharField(max_length=16, blank=True, default="auto")
+    alpn = models.CharField(max_length=40, blank=True, default="h2", help_text="через запятую")
+    # Чем проверять живость для xhttp: адрес, который должен ответить HTTP (любой код < 500)
+    probe_url = models.CharField(max_length=300, blank=True, default="")
+    # В каких inbound'ах панели 3x-ui заводить клиента (id через запятую)
+    xui_inbounds = models.CharField(max_length=60, blank=True, default="")
+    weight = models.IntegerField(default=10, help_text="больше — предпочтительнее")
+    enabled = models.BooleanField(default=True)
+    note = models.CharField(max_length=300, blank=True, default="")
+    # Состояние от пробника
+    ok = models.BooleanField(default=False)
+    rtt_ms = models.IntegerField(null=True, blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    last_ok_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("-weight", "slug")
+
+    def __str__(self):
+        return f"{self.name} ({self.kind})"
+
+
+class VpnAccess(models.Model):
+    """Кому выдан доступ: свой UUID в xray на каждого человека, чтобы отзывать по одному."""
+    profile = models.OneToOneField(Profile, on_delete=models.CASCADE, related_name="vpn_access")
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
+    enabled = models.BooleanField(default=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    # Клиент заведён в панели 3x-ui (manage.py vpn_xui_sync)
+    xui_synced_at = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    last_app = models.CharField(max_length=80, blank=True, default="")
+    created_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    @property
+    def email(self):
+        """Имя клиента в панели: по нику, чтобы в статистике было видно, кто это."""
+        return f"wyx-{self.profile.username}"
+
+    def __str__(self):
+        return f"VPN {self.profile.username}"
+
+
+class VpnReport(models.Model):
+    """Отчёт клиента о подключении: только здоровье (узел, задержка, ошибка), без трафика."""
+    access = models.ForeignKey(VpnAccess, on_delete=models.CASCADE, related_name="reports")
+    node = models.ForeignKey(VpnNode, on_delete=models.CASCADE, related_name="reports", null=True, blank=True)
+    ok = models.BooleanField()
+    rtt_ms = models.IntegerField(null=True, blank=True)
+    error = models.CharField(max_length=200, blank=True, default="")
+    net = models.CharField(max_length=16, blank=True, default="", help_text="wifi / cell / …")
+    app = models.CharField(max_length=80, blank=True, default="")
+    at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ("-at",)

@@ -182,6 +182,25 @@ services:
 
   # «Осколки Короны» — пошаговая стратегия, мини-приложение бота
   # (bots/shards/README.md). Страница и WebSocket — https://hyax.ru/shards/ (и wyx.su/shards/).
+  # Пробник «Сети WYX» (chat/vpn.py): раз в минуту проверяет узлы VPN из Москвы
+  # и пишет живость в базу — клиентам отдаются живые узлы первыми.
+  vpn_probe:
+    build: ./backend
+    container_name: sux_chat_vpn_probe
+    restart: unless-stopped
+    command: python manage.py vpn_probe
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+    volumes:
+      - ./backend:/app
+    mem_limit: 200m
+    depends_on:
+      - db
+    networks:
+      - sux_chat_network
+
   shards:
     build: ./bots/shards
     container_name: sux_chat_shards
