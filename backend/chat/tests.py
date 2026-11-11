@@ -2966,6 +2966,44 @@ class TranscribeRemoteTests(TestCase):
                 os.close(transcribe._owner_fd)
 
 
+class BackupDbTests(TestCase):
+    """manage.py backup_db: дамп со stdin → закрытое хранилище, старше 7 дней — удаляются."""
+
+    def _run(self, data, objs=()):
+        import datetime as dt, io as _io, sys
+        from unittest import mock
+        from django.core.management import call_command
+        cl = mock.MagicMock()
+        cl.get_paginator.return_value.paginate.return_value = [{"Contents": list(objs)}]
+        stdin = mock.MagicMock(); stdin.buffer = _io.BytesIO(data)
+        out = _io.StringIO()
+        with mock.patch("chat.management.commands.backup_db.s3_enabled", return_value=True), \
+             mock.patch("chat.management.commands.backup_db._cfg", return_value={"bucket": "b"}), \
+             mock.patch("chat.management.commands.backup_db._client", return_value=cl), \
+             mock.patch.object(sys, "stdin", stdin):
+            call_command("backup_db", "--min-bytes", "10", stdout=out)
+        return cl, out.getvalue()
+
+    def test_rejects_not_a_dump_and_tiny(self):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            self._run(b"<html>oops</html>" * 10)
+        with self.assertRaises(CommandError):
+            self._run(b"PGDMP1")  # меньше --min-bytes
+
+    def test_uploads_and_prunes_old(self):
+        import datetime as dt
+        now = dt.datetime.now(dt.timezone.utc)
+        objs = [{"Key": "backups/db/old.dump", "LastModified": now - dt.timedelta(days=8), "Size": 1},
+                {"Key": "backups/db/fresh.dump", "LastModified": now - dt.timedelta(days=1), "Size": 1}]
+        cl, out = self._run(b"PGDMP" + b"x" * 100, objs)
+        key = cl.upload_fileobj.call_args.args[2]
+        self.assertTrue(key.startswith("backups/db/") and key.endswith(".dump"), key)
+        self.assertEqual(cl.upload_fileobj.call_args.args[1], "b")
+        deleted = cl.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        self.assertEqual(deleted, [{"Key": "backups/db/old.dump"}])  # свежая и новая — остаются
+
+
 class HiddenForMeSyncTests(TestCase):
     """«Удалить у себя» доезжает до моих других устройств: sync отдаёт id спрятанного
     в deleted, у собеседника сообщение остаётся (баг-репорты 4c10b648, b2c04526)."""
