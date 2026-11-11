@@ -147,10 +147,13 @@ const NavRail = ({ mint }: { mint: boolean }) => {
           </NavLink>
         ))}
       </nav>
-      {/* Низ колонки: плеер, а во время свёрнутого звонка — он (lib/railSlot). */}
+      {/* Низ колонки: плеер, а во время свёрнутого звонка — он (lib/railSlot).
+          В настройках плеера нет — там он мешает («бейдж музыки можно убирать,
+          когда переходим в настройки»); на чатах, Стене и в Избранном — есть.
+          Место свёрнутого звонка остаётся везде. */}
       <div className="nav-rail-extra">
         <div ref={setRailCallSlot} className={cn(mint && "mint-rail rail-player", "empty:hidden")} />
-        <RailPlayer mint={mint} />
+        {!/^\/profile(\/|$)/.test(pathname) && <RailPlayer mint={mint} />}
       </div>
     </div>
   );
