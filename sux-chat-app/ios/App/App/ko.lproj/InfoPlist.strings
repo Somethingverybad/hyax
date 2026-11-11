@@ -1,8 +1,8 @@
 /* Описания разрешений, которые iOS показывает в системных запросах. 한국어. */
 
-"NSLocationWhenInUseUsageDescription" = "직접 ‘위치’를 선택했을 때만 위치를 확인해 채팅으로 보내요.";
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "WYX는 백그라운드에서 위치를 추적하지 않아요. 위치는 직접 채팅으로 보낼 때 한 번만 확인해요.";
-"NSLocationAlwaysUsageDescription" = "WYX는 백그라운드에서 위치를 추적하지 않아요. 위치는 직접 채팅으로 보낼 때 한 번만 확인해요.";
-"NSCameraUsageDescription" = "영상 통화, 동영상 메시지 녹화, 채팅 사진 촬영에 카메라가 필요해요.";
-"NSMicrophoneUsageDescription" = "통화와 음성 메시지에 마이크가 필요해요.";
-"NSPhotoLibraryUsageDescription" = "메시지에 사진을 첨부하려면 사진 접근 권한이 필요해요.";
+"NSLocationWhenInUseUsageDescription" = "채팅에서 직접 ‘위치’를 누를 때만 현재 위치를 확인해 지도 위 핀으로 채팅 상대에게 보내요. 예: 친구에게 만날 장소를 알려줄 때. 위치는 다른 용도로 쓰이지 않아요.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "WYX는 백그라운드에서 위치를 추적하지 않아요. 채팅에서 직접 ‘위치’를 누를 때 한 번만 확인해 지도 위 핀으로 보내요. 예: 친구에게 만날 장소를 알려줄 때.";
+"NSLocationAlwaysUsageDescription" = "WYX는 백그라운드에서 위치를 추적하지 않아요. 채팅에서 직접 ‘위치’를 누를 때 한 번만 확인해 지도 위 핀으로 보내요. 예: 친구에게 만날 장소를 알려줄 때.";
+"NSCameraUsageDescription" = "영상 통화를 시작하거나 동영상 메시지를 녹화하거나 채팅에 보낼 사진을 찍을 때 카메라를 사용해요. 예: 지금 보고 있는 것을 친구에게 보여줄 때.";
+"NSMicrophoneUsageDescription" = "통화 중이나 음성·동영상 메시지를 녹음할 때 마이크를 사용해요. 예: 글 대신 음성 메시지를 친구에게 보낼 때.";
+"NSPhotoLibraryUsageDescription" = "채팅이나 게시물에 보낼 사진·동영상을 고를 때 사진 보관함을 열어요. 예: 여행 사진을 친구와 공유할 때. 선택한 항목만 전송돼요.";

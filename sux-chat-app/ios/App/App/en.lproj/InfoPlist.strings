@@ -1,8 +1,8 @@
 /* Описания разрешений, которые iOS показывает в системных запросах. English. */
 
-"NSLocationWhenInUseUsageDescription" = "Your location is used only to send it to a chat, and only when you choose “Location” yourself.";
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "WYX doesn't track your location in the background. Your location is determined once, when you send it to a chat yourself.";
-"NSLocationAlwaysUsageDescription" = "WYX doesn't track your location in the background. Your location is determined once, when you send it to a chat yourself.";
-"NSCameraUsageDescription" = "The camera is used for video calls, video messages and photos in chats.";
-"NSMicrophoneUsageDescription" = "The microphone is used for calls and voice messages.";
-"NSPhotoLibraryUsageDescription" = "Photo access lets you attach pictures to messages.";
+"NSLocationWhenInUseUsageDescription" = "WYX uses your location only when you tap “Location” in a chat, to send your current position as a pin on a map to the people in that chat — for example, to show a friend where to meet you. Your location is not used for anything else.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "WYX never tracks your location in the background. It is read once, only when you tap “Location” in a chat to send your position as a pin on a map — for example, to show a friend where to meet you.";
+"NSLocationAlwaysUsageDescription" = "WYX never tracks your location in the background. It is read once, only when you tap “Location” in a chat to send your position as a pin on a map — for example, to show a friend where to meet you.";
+"NSCameraUsageDescription" = "WYX uses the camera when you start a video call, record a video message or take a photo to send in a chat — for example, to show a friend what you are seeing right now.";
+"NSMicrophoneUsageDescription" = "WYX uses the microphone during calls and when you record a voice or video message — for example, to send a friend a voice message instead of typing.";
+"NSPhotoLibraryUsageDescription" = "WYX opens your photo library when you choose photos or videos to send in a chat or a post — for example, to share holiday photos with a friend. Only the items you select are sent.";
