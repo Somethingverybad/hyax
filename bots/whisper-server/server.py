@@ -114,18 +114,26 @@ class Handler(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         if not RUN.acquire(timeout=wait):
             return self._send(503, {"error": "busy"})
+        tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
+            # Файл закрываем до чтения: Windows не даёт открыть ещё не закрытый
+            # временный файл второй раз (на Linux можно было и так).
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp.write(data)
-                tmp.flush()
-                segments, info = MODEL.transcribe(tmp.name, language=lang, beam_size=beam, vad_filter=vad,
-                                                  condition_on_previous_text=False)
-                segs = list(segments)
+                tmp_path = tmp.name
+            segments, info = MODEL.transcribe(tmp_path, language=lang, beam_size=beam, vad_filter=vad,
+                                              condition_on_previous_text=False)
+            segs = list(segments)
         except Exception as e:
             log.exception("распознавание не удалось")
             return self._send(500, {"error": type(e).__name__})
         finally:
             RUN.release()
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
         log.info("%.1f с звука за %.1f с, %s", info.duration or 0, time.monotonic() - t0, info.language)
         self._send(200, {
             "text": " ".join(s.text.strip() for s in segs).strip(),

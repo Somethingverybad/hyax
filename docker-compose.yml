@@ -83,8 +83,11 @@ services:
       # сервере (процессор там без AVX-512 VNNI, в 3–5 раз медленнее). Ключ
       # WHISPER_TOKEN — в .env. Никто не ответил — модель в процессе API, но не
       # больше одной на контейнер.
-      WHISPER_URL: http://whisper:8745/transcribe,https://148.253.213.224:8745/transcribe
-      WHISPER_CA: /app/certs/wyx-relay.pem
+      # Порядок: Windows-сервер в Москве (bots/whisper-server/windows, тот же
+      # процессор — так же быстро, и память этого сервера не тратится), затем
+      # сервис whisper рядом, затем Нидерланды. WHISPER_CA — оба своих сертификата.
+      WHISPER_URL: https://195.58.153.245:8745/transcribe,http://whisper:8745/transcribe,https://148.253.213.224:8745/transcribe
+      WHISPER_CA: /app/certs/whisper-ca.pem
       # LibreTranslate выключен 09.11 (держал 1,2 ГБ ради запасного перевода):
       # переводит только OpenRouter через ретранслятор. Вернуть — эта строка
       # (LIBRETRANSLATE_URL: http://translate:5000) и docker compose --profile libre up -d translate.
