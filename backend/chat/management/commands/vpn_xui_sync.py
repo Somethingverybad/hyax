@@ -61,7 +61,9 @@ class Panel:
         return self.call("/panel/api/clients/list").get("obj", []) or []
 
     def add(self, email, uid, inbound_ids):
-        client = {"email": email, "uuid": uid, "subId": email, "flow": "", "enable": True,
+        # у vless-клиента в 3x-ui ключ зовётся id; поле uuid панель молча игнорирует и
+        # придумывает свой (так было в newuser.py — его UUID никто не использовал)
+        client = {"email": email, "id": uid, "subId": email, "flow": "", "enable": True,
                   "limitIp": 0, "totalGB": 0, "expiryTime": 0, "tgId": 0, "reset": 0}
         return self.call("/panel/api/clients/add", {"client": client, "inboundIds": inbound_ids})
 
@@ -88,7 +90,7 @@ class Command(BaseCommand):
         existing = {c["email"]: c for c in p.clients()}
         if opts["list"]:
             for e, c in sorted(existing.items()):
-                self.stdout.write(f"  {e:<24} {c.get('uuid')}  enable={c.get('enable')}")
+                self.stdout.write(f"  {e:<24} {c.get('id') or c.get('uuid')}  enable={c.get('enable')}")
             return
         inbound_ids = sorted({int(x) for n in VpnNode.objects.filter(enabled=True) for x in n.xui_inbounds.split(",") if x.strip().isdigit()})
         if not inbound_ids:

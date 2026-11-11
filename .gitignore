@@ -20,3 +20,6 @@ backend/private/
 
 # Набор автора питомцев — сборка design/pets/kit/build_kit.py, на сервер копированием
 backend/media/pets/
+
+# реквизиты панели 3x-ui, положены пользователем — не коммитить
+bugpic/vpn.txt
