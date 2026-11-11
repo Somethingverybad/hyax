@@ -4,13 +4,14 @@ import SwiftUI
 /// Главный экран: одна большая кнопка и поле состояния. Узлы и прочее — в настройках.
 struct MainView: View {
     @EnvironmentObject var model: AppModel
+    private var t: Theme { model.theme }
     @State private var showLog = false
     @State private var showSettings = false
     @State private var pulse = false
 
     var body: some View {
         ZStack {
-            WYX.background.ignoresSafeArea()
+            t.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 Spacer()
@@ -21,7 +22,7 @@ struct MainView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(t.scheme)
         .sheet(isPresented: $showLog) { LogView() }
         .sheet(isPresented: $showSettings) { SettingsView() }
     }
@@ -29,13 +30,13 @@ struct MainView: View {
     private var header: some View {
         HStack {
             Button { showLog = true } label: {
-                Image(systemName: "doc.text").font(.title3).foregroundStyle(WYX.muted).frame(width: 44, height: 44)
+                Image(systemName: "doc.text").font(.title3).foregroundStyle(t.muted).frame(width: 44, height: 44)
             }
             Spacer()
-            Text("WYX").font(.system(size: 22, weight: .heavy)).tracking(-1).foregroundStyle(WYX.text)
+            Text("WYX").font(.system(size: 22, weight: .heavy)).tracking(-1).foregroundStyle(t.text)
             Spacer()
             Button { showSettings = true } label: {
-                Image(systemName: "gearshape").font(.title3).foregroundStyle(WYX.muted).frame(width: 44, height: 44)
+                Image(systemName: "gearshape").font(.title3).foregroundStyle(t.muted).frame(width: 44, height: 44)
             }
         }
         .padding(.top, 4)
@@ -68,10 +69,10 @@ struct MainView: View {
 
     private var color: Color {
         switch phase {
-        case .off: return WYX.surface2
-        case .busy, .checking: return WYX.primaryDeep
-        case .on: return WYX.primary
-        case .trouble: return WYX.warning
+        case .off: return t.surface2
+        case .busy, .checking: return t.primaryDeep
+        case .on: return t.primary
+        case .trouble: return t.destructive
         }
     }
 
@@ -95,7 +96,7 @@ struct MainView: View {
                         .font(.system(size: 54, weight: .semibold))
                     Text(title).font(.title3.weight(.semibold))
                 }
-                .foregroundStyle(phase == .off ? WYX.text : .white)
+                .foregroundStyle(phase == .off ? t.text : (phase == .on ? t.primaryForeground : .white))
             }
         }
         .buttonStyle(.plain)
@@ -141,14 +142,14 @@ struct MainView: View {
             ForEach(Array(statusLines.enumerated()), id: \.offset) { i, line in
                 Text(line)
                     .font(i == 0 ? .body.weight(.medium) : .footnote)
-                    .foregroundStyle(line.hasPrefix("⚠︎") ? WYX.warning : (line.hasPrefix("Ошибка") ? WYX.primary : (i == 0 ? WYX.text : WYX.muted)))
+                    .foregroundStyle(line.hasPrefix("⚠︎") ? t.warning : (line.hasPrefix("Ошибка") ? t.destructive : (i == 0 ? t.text : t.muted)))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-        .background(WYX.surface, in: RoundedRectangle(cornerRadius: WYX.radius))
-        .overlay(RoundedRectangle(cornerRadius: WYX.radius).stroke(WYX.border, lineWidth: 1))
+        .background(t.surface, in: RoundedRectangle(cornerRadius: Theme.radius))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(t.border, lineWidth: 1))
         .onTapGesture { showLog = true }
     }
 

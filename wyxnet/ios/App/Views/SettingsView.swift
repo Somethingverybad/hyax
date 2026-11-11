@@ -2,12 +2,19 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
+    private var t: Theme { model.theme }
     @Environment(\.dismiss) private var dismiss
     @State private var confirmLogout = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Оформление") {
+                    Picker("Тема", selection: $model.appearance) {
+                        Text("Мята тёмная").tag("dark")
+                        Text("Мята светлая").tag("light")
+                    }
+                }
                 Section("Переключение") {
                     Toggle("Переключать узел, если не отвечает", isOn: $model.settings.autoSwitch)
                     Toggle("Менять узел в простое", isOn: $model.settings.rotateIdle)
@@ -29,7 +36,7 @@ struct SettingsView: View {
                         HStack {
                             Text("Автоматически").foregroundStyle(.primary)
                             Spacer()
-                            if model.settings.preferredNode == nil { Image(systemName: "checkmark").foregroundStyle(WYX.primary) }
+                            if model.settings.preferredNode == nil { Image(systemName: "checkmark").foregroundStyle(t.primary) }
                         }
                     }
                     ForEach(model.profile?.nodes ?? []) { n in
@@ -37,14 +44,14 @@ struct SettingsView: View {
                             Task { await model.select(node: n) }
                         } label: {
                             HStack(spacing: 10) {
-                                Circle().fill(n.ok ? WYX.success : WYX.primary).frame(width: 9, height: 9)
+                                Circle().fill(n.ok ? t.success : t.destructive).frame(width: 9, height: 9)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(n.name).foregroundStyle(.primary)
                                     Text("\(n.kind == "reality" ? "Reality" : "XHTTP") · \(n.ok ? (n.rtt_ms.map { "\($0) мс" } ?? "жив") : "не отвечает из Москвы")")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if model.settings.preferredNode == n.id { Image(systemName: "checkmark").foregroundStyle(WYX.primary) }
+                                if model.settings.preferredNode == n.id { Image(systemName: "checkmark").foregroundStyle(t.primary) }
                             }
                         }
                     }
@@ -70,8 +77,9 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(WYX.background)
-            .tint(WYX.primary)
+            .background(t.background)
+            .tint(t.scheme == .dark ? t.primary : t.primary)
+            .preferredColorScheme(t.scheme)
             .navigationTitle("Настройки")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Готово") { dismiss() } } }

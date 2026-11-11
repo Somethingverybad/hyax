@@ -1,31 +1,58 @@
-// Цвета WYX (sux-chat-app/src/index.css, тёмная тема): фон почти чёрный, поверхности
-// чуть светлее, акцент — красный, скругление 12.
+// Темы «Мята» из мессенджера (sux-chat-app/src/themes/builtin.ts: mint-dark, mint).
+// По умолчанию тёмная; светлая — в настройках.
 import SwiftUI
 
-enum WYX {
-    static let background = Color(hue: 240 / 360, saturation: 0.03, brightness: 0.06)
-    static let surface = Color(hue: 240 / 360, saturation: 0.02, brightness: 0.10)
-    static let surface2 = Color(hue: 240 / 360, saturation: 0.02, brightness: 0.13)
-    static let border = Color(hue: 240 / 360, saturation: 0.03, brightness: 0.17)
-    static let primary = Color(hue: 4 / 360, saturation: 0.74, brightness: 0.82)      // hsl(4 74% 47%)
-    static let primaryDeep = Color(hue: 2 / 360, saturation: 0.72, brightness: 0.62)  // hsl(2 72% 36%)
-    static let success = Color(hue: 140 / 360, saturation: 0.55, brightness: 0.52)
-    static let warning = Color(hue: 38 / 360, saturation: 0.85, brightness: 0.95)
-    static let text = Color.white
-    static let muted = Color.white.opacity(0.55)
+struct Theme {
+    let scheme: ColorScheme
+    let background: Color
+    let surface: Color
+    let surface2: Color
+    let border: Color
+    let text: Color
+    let muted: Color
+    let primary: Color          // кнопка «Подключить»
+    let primaryForeground: Color
+    let primaryDeep: Color
+    let accent: Color
+    let destructive: Color
+    let success: Color
+    let warning: Color
     static let radius: CGFloat = 12
+
+    static let mintDark = Theme(
+        scheme: .dark,
+        background: Color(hex: 0x222B27), surface: Color(hex: 0x2C3832), surface2: Color(hex: 0x37453D), border: Color(hex: 0x4C5F3A),
+        text: .white, muted: Color(hex: 0x9AA59E),
+        primary: Color(hex: 0xC7F964), primaryForeground: Color(hex: 0x2F5B53), primaryDeep: Color(hex: 0x9FCB45), accent: Color(hex: 0xC7F964),
+        destructive: Color(hex: 0xFF6B5E), success: Color(hex: 0x6FCF7B), warning: Color(hex: 0xFFB10A))
+
+    static let mintLight = Theme(
+        scheme: .light,
+        background: Color(hex: 0xF4F8F1), surface: .white, surface2: Color(hex: 0xEEF4EA), border: Color(hex: 0xE1E8DC),
+        text: Color(hex: 0x23463F), muted: Color(hex: 0x6F7A74),
+        primary: Color(hex: 0x2F5B53), primaryForeground: .white, primaryDeep: Color(hex: 0x24473F), accent: Color(hex: 0xC7F964),
+        destructive: Color(hex: 0xD64545), success: Color(hex: 0x3E8E41), warning: Color(hex: 0xB8860B))
+
+    static func named(_ id: String) -> Theme { id == "light" ? mintLight : mintDark }
 }
 
-struct WYXField: ViewModifier {
+extension Color {
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+struct ThemedField: ViewModifier {
+    let t: Theme
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 14).padding(.vertical, 13)
-            .background(WYX.surface, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(WYX.border, lineWidth: 1))
-            .foregroundStyle(WYX.text)
+            .background(t.surface, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(t.border, lineWidth: 1))
+            .foregroundStyle(t.text)
     }
 }
 
 extension View {
-    func wyxField() -> some View { modifier(WYXField()) }
+    func themedField(_ t: Theme) -> some View { modifier(ThemedField(t: t)) }
 }

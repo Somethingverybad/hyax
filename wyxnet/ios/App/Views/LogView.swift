@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct LogView: View {
+    @EnvironmentObject var model: AppModel
+    private var t: Theme { model.theme }
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var xray = ""
@@ -26,8 +28,9 @@ struct LogView: View {
                 .onAppear { reload(); proxy.scrollTo("end") }
                 .onReceive(timer) { _ in reload() }
             }
-            .background(WYX.background)
-            .tint(WYX.primary)
+            .background(t.background)
+            .tint(t.primary)
+            .preferredColorScheme(t.scheme)
             .navigationTitle("Журнал")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

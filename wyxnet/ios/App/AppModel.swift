@@ -12,6 +12,8 @@ final class AppModel: ObservableObject {
     @Published var settings = TunnelSettings.load() { didSet { settings.save() } }
     @Published var status = TunnelStatus.load() ?? TunnelStatus()
     @Published var busy = false
+    @AppStorage("appearance") var appearance = "dark"
+    var theme: Theme { Theme.named(appearance) }
     @Published var error: String?
     let tunnel = TunnelManager()
     private let log = TunnelLog.shared

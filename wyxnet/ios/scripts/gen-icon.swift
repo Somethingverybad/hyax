@@ -1,34 +1,49 @@
-// Значок приложения: swift scripts/gen-icon.swift App/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+// Значок как у мессенджера WYX (sux-chat-app/.../AppIcon-512@2x.png): тёмно-бирюзовый фон,
+// «X» из двух лаймовых капсул с градиентом сверху вниз; отличие — тонкое кольцо «сети».
+// swift scripts/gen-icon.swift App/Assets.xcassets/AppIcon.appiconset/icon-1024.png
 import AppKit
 
 let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "icon-1024.png"
-let size = 1024.0
-// ровно 1024×1024 без альфы — так требует App Store
+let size: CGFloat = 1024
 let ctx = CGContext(data: nil, width: Int(size), height: Int(size), bitsPerComponent: 8, bytesPerRow: 0,
                     space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-let colors = [NSColor(red: 0.07, green: 0.09, blue: 0.20, alpha: 1).cgColor, NSColor(red: 0.16, green: 0.36, blue: 0.95, alpha: 1).cgColor] as CFArray
-let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
-ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: 0), end: CGPoint(x: size, y: size), options: [])
-// щит
-let shield = NSBezierPath()
-let cx = size / 2, top = size * 0.84, bottom = size * 0.14, half = size * 0.30
-shield.move(to: NSPoint(x: cx - half, y: top - size * 0.06))
-shield.line(to: NSPoint(x: cx, y: top))
-shield.line(to: NSPoint(x: cx + half, y: top - size * 0.06))
-shield.line(to: NSPoint(x: cx + half, y: size * 0.46))
-shield.curve(to: NSPoint(x: cx, y: bottom), controlPoint1: NSPoint(x: cx + half, y: size * 0.25), controlPoint2: NSPoint(x: cx + half * 0.5, y: bottom + size * 0.03))
-shield.curve(to: NSPoint(x: cx - half, y: size * 0.46), controlPoint1: NSPoint(x: cx - half * 0.5, y: bottom + size * 0.03), controlPoint2: NSPoint(x: cx - half, y: size * 0.25))
-shield.close()
-NSColor(white: 1, alpha: 0.14).setFill(); shield.fill()
-NSColor(white: 1, alpha: 0.9).setStroke(); shield.lineWidth = 22; shield.stroke()
-// надпись
-let para = NSMutableParagraphStyle(); para.alignment = .center
-let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 250, weight: .heavy), .foregroundColor: NSColor.white, .paragraphStyle: para, .kern: -6]
-NSAttributedString(string: "WYX", attributes: attrs).draw(in: NSRect(x: 0, y: size * 0.36, width: size, height: 300))
-NSGraphicsContext.restoreGraphicsState()
+func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
+    CGColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: a)
+}
+// фон
+ctx.setFillColor(rgb(0x345B56))
+ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
+// кольцо сети
+ctx.setStrokeColor(rgb(0xC5F068, 0.13))
+ctx.setLineWidth(26)
+ctx.strokeEllipse(in: CGRect(x: 72, y: 72, width: size - 144, height: size - 144))
+// две капсулы под ±45°
+let c = CGPoint(x: size / 2, y: size / 2)
+let length: CGFloat = 690, thick: CGFloat = 190
+let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                      colors: [rgb(0xC8F56A, 0.96), rgb(0xA6D862, 0.96), rgb(0x6E9E5C, 0.96)] as CFArray, locations: [0, 0.5, 1])!
+for angle in [CGFloat.pi / 4, -CGFloat.pi / 4] {
+    ctx.saveGState()
+    ctx.translateBy(x: c.x, y: c.y)
+    ctx.rotate(by: angle)
+    let r = CGRect(x: -length / 2, y: -thick / 2, width: length, height: thick)
+    let path = CGPath(roundedRect: r, cornerWidth: thick / 2, cornerHeight: thick / 2, transform: nil)
+    ctx.addPath(path)
+    ctx.clip()
+    // градиент сверху вниз в координатах холста
+    ctx.rotate(by: -angle)
+    ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: length / 2), end: CGPoint(x: 0, y: -length / 2), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    ctx.restoreGState()
+    // стеклянная кайма
+    ctx.saveGState()
+    ctx.translateBy(x: c.x, y: c.y)
+    ctx.rotate(by: angle)
+    ctx.addPath(CGPath(roundedRect: CGRect(x: -length / 2, y: -thick / 2, width: length, height: thick), cornerWidth: thick / 2, cornerHeight: thick / 2, transform: nil))
+    ctx.setStrokeColor(rgb(0xFFFFFF, 0.28))
+    ctx.setLineWidth(5)
+    ctx.strokePath()
+    ctx.restoreGState()
+}
 let rep = NSBitmapImageRep(cgImage: ctx.makeImage()!)
-let png = rep.representation(using: .png, properties: [:])!
-try! png.write(to: URL(fileURLWithPath: out))
+try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
 print("ok", out)
