@@ -107,7 +107,8 @@ def sync_pending(restart=False, out=None, force_all=False):
                 VpnAccess.objects.filter(pk=acc.pk).update(xui_synced_at=timezone.now())
                 changed += 1
         elif acc.enabled and email in existing:
-            if str(existing[email].get("id") or existing[email].get("uuid")) != str(acc.uuid):
+            # в /clients/list поле id — номер строки, UUID клиента лежит в uuid
+            if str(existing[email].get("uuid") or "") != str(acc.uuid):
                 p.delete(email)
                 r = p.add(email, str(acc.uuid), ids)
                 (out or log.info)(f"~ {email}: UUID исправлен ({'ок' if r.get('success') else r})")

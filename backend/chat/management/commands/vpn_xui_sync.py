@@ -25,7 +25,7 @@ class Command(BaseCommand):
             p = Panel()
             p.login()
             for c in sorted(p.clients(), key=lambda c: c.get("email") or ""):
-                self.stdout.write(f"  {c.get('email'):<24} {c.get('id') or c.get('uuid')}  enable={c.get('enable')}")
+                self.stdout.write(f"  {c.get('email'):<24} {c.get('uuid')}  enable={c.get('enable')}")
             return
         n = sync_pending(restart=opts["restart"], out=self.stdout.write, force_all=opts["all"])
         self.stdout.write(f"изменений: {n}")
