@@ -77,7 +77,7 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(t.background)
+            .background(GlassBackground(t: t, active: false))
             .tint(t.scheme == .dark ? t.primary : t.primary)
             .preferredColorScheme(t.scheme)
             .navigationTitle("Настройки")

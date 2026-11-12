@@ -28,7 +28,7 @@ struct LogView: View {
                 .onAppear { reload(); proxy.scrollTo("end") }
                 .onReceive(timer) { _ in reload() }
             }
-            .background(t.background)
+            .background(GlassBackground(t: t, active: false))
             .tint(t.primary)
             .preferredColorScheme(t.scheme)
             .navigationTitle("Журнал")

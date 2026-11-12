@@ -47,8 +47,8 @@ struct ThemedField: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 14).padding(.vertical, 13)
-            .background(t.surface, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(t.border, lineWidth: 1))
+            .background(t.surface.opacity(t.scheme == .dark ? 0.6 : 0.9), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(t.scheme == .dark ? 0.12 : 0.9), lineWidth: 1))
             .foregroundStyle(t.text)
     }
 }
