@@ -1,0 +1,602 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		176600024229185BDCDEE581 /* WYXNetTunnel.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7B4673E880F37D1155CCB417 /* WYXNetTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		252BF137C19130D53FB0480B /* TunnelStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86AE11CD1A485AAA061C1106 /* TunnelStatus.swift */; };
+		277749467CA0DC600D589767 /* Signature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 612390435AD1CD9EEEB1293A /* Signature.swift */; };
+		2C0A07942DA306CB6FF18711 /* Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A1A979B0AB67B9625F1326 /* Profile.swift */; };
+		2CD987A39260751EC23C4137 /* Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A1A979B0AB67B9625F1326 /* Profile.swift */; };
+		51610D1C7EFCF1F059D0B2FC /* XrayConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E94A77E4E780C00FE6F1A9 /* XrayConfig.swift */; };
+		545614E7BA6BB83DB945AEC4 /* Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39257E7059B22338F9FF58D5 /* Health.swift */; };
+		588595BC122765D879A8DD84 /* TunnelStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86AE11CD1A485AAA061C1106 /* TunnelStatus.swift */; };
+		636089A7B1F44E40929DCC0C /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A7F742B3DB4834A6412C66 /* API.swift */; };
+		735BBB604A11F1B14E85EB50 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AD718AFD252B4F735B45B28 /* SettingsView.swift */; };
+		79673D1793D6564D5D65ECA4 /* Tun2Socks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2795CD9B290BF4CACA05AACF /* Tun2Socks.swift */; };
+		7AA18750A32F9AE84F21A30C /* TunnelLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245B2AB9EE125AD166A82EED /* TunnelLog.swift */; };
+		7B9DD11004C907E43BF3D5C1 /* TunnelLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245B2AB9EE125AD166A82EED /* TunnelLog.swift */; };
+		7CB45C5A855BB7CABC6976CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 01394AC228DD2A334FCB5039 /* Assets.xcassets */; };
+		7F6AF52D7AEA7FD2FB745A7A /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED31A907E2DDFAC9B2FFC49 /* LoginView.swift */; };
+		87444582214FC1D3378D3D36 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162C910A5BD98F34F8371AD8 /* Glass.swift */; };
+		92DC566D0F0D0513A8193407 /* WYXNetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E87C2D1028A76175D23DB0 /* WYXNetApp.swift */; };
+		AB88665B07F69026F758F0E0 /* TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38A116341A0D422F315A597 /* TunnelManager.swift */; };
+		ABD591D09BC487756D5C81CF /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0992838B06BF764EA9664C48 /* PacketTunnelProvider.swift */; };
+		B429FC60A759E17E2F1C8C1E /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D834CEB6D8807BA90D0BE7 /* LogView.swift */; };
+		BC8D8B3130BB9A2BCAE33887 /* XrayCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3508269E14B36F24EE65E4F9 /* XrayCore.swift */; };
+		BFBA47856CA98AE4E5510222 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DE8728705DEB3033A4D269 /* MainView.swift */; };
+		D04ADC88CC6A2884317841E4 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB33FD883C9C10C8BC832052 /* AppModel.swift */; };
+		D5C7091FAA451C28F70F3352 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBA3BC06C0DE2A6FCE62C48 /* Theme.swift */; };
+		E0F8016CFC12418A5FF154FC /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 741C0A65A4E4897DE2637976 /* AppGroup.swift */; };
+		E1ECE20386E358D922C43762 /* XrayConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E94A77E4E780C00FE6F1A9 /* XrayConfig.swift */; };
+		F07D6E0A9C1900CD1AD40E79 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E94F5C777BE8B74DDD62192 /* Keychain.swift */; };
+		FC1D10B8D5F9E20920100B50 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 741C0A65A4E4897DE2637976 /* AppGroup.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		75A848BBA400F10C67D49360 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A15C9F045C5814E2D47BCCC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 27B4E175E9C645B38E58C9F0;
+			remoteInfo = WYXNetTunnel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		223A131E86EC5EA1AE08976E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				176600024229185BDCDEE581 /* WYXNetTunnel.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		01394AC228DD2A334FCB5039 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		0992838B06BF764EA9664C48 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		0AD718AFD252B4F735B45B28 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		162C910A5BD98F34F8371AD8 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+		245B2AB9EE125AD166A82EED /* TunnelLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelLog.swift; sourceTree = "<group>"; };
+		2795CD9B290BF4CACA05AACF /* Tun2Socks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tun2Socks.swift; sourceTree = "<group>"; };
+		3508269E14B36F24EE65E4F9 /* XrayCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XrayCore.swift; sourceTree = "<group>"; };
+		379908CC55D06B3A51954C96 /* WYXNet.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WYXNet.entitlements; sourceTree = "<group>"; };
+		39257E7059B22338F9FF58D5 /* Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Health.swift; sourceTree = "<group>"; };
+		39E219C695D1F3600D1E6AF1 /* WYXNet.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WYXNet.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		40A1A979B0AB67B9625F1326 /* Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profile.swift; sourceTree = "<group>"; };
+		5AFC638C35EEAF6E35BD43DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		612390435AD1CD9EEEB1293A /* Signature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Signature.swift; sourceTree = "<group>"; };
+		63E87C2D1028A76175D23DB0 /* WYXNetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WYXNetApp.swift; sourceTree = "<group>"; };
+		741C0A65A4E4897DE2637976 /* AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroup.swift; sourceTree = "<group>"; };
+		74DE8728705DEB3033A4D269 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		7B4673E880F37D1155CCB417 /* WYXNetTunnel.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WYXNetTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7CBA3BC06C0DE2A6FCE62C48 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		7ED31A907E2DDFAC9B2FFC49 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		86AE11CD1A485AAA061C1106 /* TunnelStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelStatus.swift; sourceTree = "<group>"; };
+		89E94A77E4E780C00FE6F1A9 /* XrayConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XrayConfig.swift; sourceTree = "<group>"; };
+		8E94F5C777BE8B74DDD62192 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		A1D834CEB6D8807BA90D0BE7 /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
+		C45FEE9047EB593EB4474C7C /* Tunnel-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Tunnel-Bridging-Header.h"; sourceTree = "<group>"; };
+		D081F8EF7584DB6A906C8A05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D38A116341A0D422F315A597 /* TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelManager.swift; sourceTree = "<group>"; };
+		DB33FD883C9C10C8BC832052 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		E73CE997EABC0B3680B83368 /* WYXNetTunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WYXNetTunnel.entitlements; sourceTree = "<group>"; };
+		F3A7F742B3DB4834A6412C66 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1166E236EDE0D812DA1EB846 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				162C910A5BD98F34F8371AD8 /* Glass.swift */,
+				7ED31A907E2DDFAC9B2FFC49 /* LoginView.swift */,
+				A1D834CEB6D8807BA90D0BE7 /* LogView.swift */,
+				74DE8728705DEB3033A4D269 /* MainView.swift */,
+				0AD718AFD252B4F735B45B28 /* SettingsView.swift */,
+				7CBA3BC06C0DE2A6FCE62C48 /* Theme.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		26E5E333EEAC6C2417D287FB /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F3A7F742B3DB4834A6412C66 /* API.swift */,
+				DB33FD883C9C10C8BC832052 /* AppModel.swift */,
+				01394AC228DD2A334FCB5039 /* Assets.xcassets */,
+				5AFC638C35EEAF6E35BD43DD /* Info.plist */,
+				8E94F5C777BE8B74DDD62192 /* Keychain.swift */,
+				612390435AD1CD9EEEB1293A /* Signature.swift */,
+				D38A116341A0D422F315A597 /* TunnelManager.swift */,
+				379908CC55D06B3A51954C96 /* WYXNet.entitlements */,
+				63E87C2D1028A76175D23DB0 /* WYXNetApp.swift */,
+				1166E236EDE0D812DA1EB846 /* Views */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		2B3D3F859FB718F3296506C2 /* Tunnel */ = {
+			isa = PBXGroup;
+			children = (
+				39257E7059B22338F9FF58D5 /* Health.swift */,
+				D081F8EF7584DB6A906C8A05 /* Info.plist */,
+				0992838B06BF764EA9664C48 /* PacketTunnelProvider.swift */,
+				2795CD9B290BF4CACA05AACF /* Tun2Socks.swift */,
+				C45FEE9047EB593EB4474C7C /* Tunnel-Bridging-Header.h */,
+				E73CE997EABC0B3680B83368 /* WYXNetTunnel.entitlements */,
+				3508269E14B36F24EE65E4F9 /* XrayCore.swift */,
+			);
+			path = Tunnel;
+			sourceTree = "<group>";
+		};
+		3B18DF5E6208E2293FC5CBA4 = {
+			isa = PBXGroup;
+			children = (
+				26E5E333EEAC6C2417D287FB /* App */,
+				FF107A12105C11C36949A93B /* Shared */,
+				2B3D3F859FB718F3296506C2 /* Tunnel */,
+				E5DF70A6A826DF740BAA3D7F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E5DF70A6A826DF740BAA3D7F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				39E219C695D1F3600D1E6AF1 /* WYXNet.app */,
+				7B4673E880F37D1155CCB417 /* WYXNetTunnel.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FF107A12105C11C36949A93B /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				741C0A65A4E4897DE2637976 /* AppGroup.swift */,
+				40A1A979B0AB67B9625F1326 /* Profile.swift */,
+				245B2AB9EE125AD166A82EED /* TunnelLog.swift */,
+				86AE11CD1A485AAA061C1106 /* TunnelStatus.swift */,
+				89E94A77E4E780C00FE6F1A9 /* XrayConfig.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		27B4E175E9C645B38E58C9F0 /* WYXNetTunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BF225E26B8500136D8900414 /* Build configuration list for PBXNativeTarget "WYXNetTunnel" */;
+			buildPhases = (
+				0F2E286DE5DA09646F832CBF /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WYXNetTunnel;
+			packageProductDependencies = (
+			);
+			productName = WYXNetTunnel;
+			productReference = 7B4673E880F37D1155CCB417 /* WYXNetTunnel.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		CBC868C1604E55A385999025 /* WYXNet */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 172BE7AA97827686F1D17604 /* Build configuration list for PBXNativeTarget "WYXNet" */;
+			buildPhases = (
+				4E1FE912F0D20D84CEF8FF65 /* Sources */,
+				49E4224D86852362938792BE /* Resources */,
+				223A131E86EC5EA1AE08976E /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B5F66D988A8FA4DCB4FB9629 /* PBXTargetDependency */,
+			);
+			name = WYXNet;
+			packageProductDependencies = (
+			);
+			productName = WYXNet;
+			productReference = 39E219C695D1F3600D1E6AF1 /* WYXNet.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5A15C9F045C5814E2D47BCCC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					27B4E175E9C645B38E58C9F0 = {
+						DevelopmentTeam = BTQ69VVHX6;
+						ProvisioningStyle = Automatic;
+					};
+					CBC868C1604E55A385999025 = {
+						DevelopmentTeam = BTQ69VVHX6;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 60AB59A8570C2A71B3CEB39B /* Build configuration list for PBXProject "WYXNet" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 3B18DF5E6208E2293FC5CBA4;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E5DF70A6A826DF740BAA3D7F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CBC868C1604E55A385999025 /* WYXNet */,
+				27B4E175E9C645B38E58C9F0 /* WYXNetTunnel */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		49E4224D86852362938792BE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7CB45C5A855BB7CABC6976CD /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0F2E286DE5DA09646F832CBF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FC1D10B8D5F9E20920100B50 /* AppGroup.swift in Sources */,
+				545614E7BA6BB83DB945AEC4 /* Health.swift in Sources */,
+				ABD591D09BC487756D5C81CF /* PacketTunnelProvider.swift in Sources */,
+				2CD987A39260751EC23C4137 /* Profile.swift in Sources */,
+				79673D1793D6564D5D65ECA4 /* Tun2Socks.swift in Sources */,
+				7B9DD11004C907E43BF3D5C1 /* TunnelLog.swift in Sources */,
+				588595BC122765D879A8DD84 /* TunnelStatus.swift in Sources */,
+				E1ECE20386E358D922C43762 /* XrayConfig.swift in Sources */,
+				BC8D8B3130BB9A2BCAE33887 /* XrayCore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E1FE912F0D20D84CEF8FF65 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				636089A7B1F44E40929DCC0C /* API.swift in Sources */,
+				E0F8016CFC12418A5FF154FC /* AppGroup.swift in Sources */,
+				D04ADC88CC6A2884317841E4 /* AppModel.swift in Sources */,
+				87444582214FC1D3378D3D36 /* Glass.swift in Sources */,
+				F07D6E0A9C1900CD1AD40E79 /* Keychain.swift in Sources */,
+				B429FC60A759E17E2F1C8C1E /* LogView.swift in Sources */,
+				7F6AF52D7AEA7FD2FB745A7A /* LoginView.swift in Sources */,
+				BFBA47856CA98AE4E5510222 /* MainView.swift in Sources */,
+				2C0A07942DA306CB6FF18711 /* Profile.swift in Sources */,
+				735BBB604A11F1B14E85EB50 /* SettingsView.swift in Sources */,
+				277749467CA0DC600D589767 /* Signature.swift in Sources */,
+				D5C7091FAA451C28F70F3352 /* Theme.swift in Sources */,
+				7AA18750A32F9AE84F21A30C /* TunnelLog.swift in Sources */,
+				AB88665B07F69026F758F0E0 /* TunnelManager.swift in Sources */,
+				252BF137C19130D53FB0480B /* TunnelStatus.swift in Sources */,
+				92DC566D0F0D0513A8193407 /* WYXNetApp.swift in Sources */,
+				51610D1C7EFCF1F059D0B2FC /* XrayConfig.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B5F66D988A8FA4DCB4FB9629 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 27B4E175E9C645B38E58C9F0 /* WYXNetTunnel */;
+			targetProxy = 75A848BBA400F10C67D49360 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		00824B6C1D3E17598273EB3C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = App/WYXNet.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "WYX Net";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.wyxnet;
+				PRODUCT_NAME = WYXNet;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		12F3AC6D0D14F022D2BBA702 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Tunnel/WYXNetTunnel.entitlements;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/LibXray.xcframework/ios-arm64/Headers",
+					"$(SRCROOT)/Vendor/HevSocks5Tunnel.xcframework/ios-arm64/Headers",
+				);
+				INFOPLIST_FILE = Tunnel/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/LibXray.xcframework/ios-arm64",
+					"$(SRCROOT)/Vendor/HevSocks5Tunnel.xcframework/ios-arm64",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/LibXray.xcframework/ios-arm64_x86_64-simulator",
+					"$(SRCROOT)/Vendor/HevSocks5Tunnel.xcframework/ios-arm64_x86_64-simulator",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lresolv",
+					"-lXray",
+					"-lhev-socks5-tunnel",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.wyxnet.tunnel;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "Tunnel/Tunnel-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1CC46218CD7B53CCDE7FC997 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = BTQ69VVHX6;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		3C6AB4EAD85D28D04332340B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Tunnel/WYXNetTunnel.entitlements;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/LibXray.xcframework/ios-arm64/Headers",
+					"$(SRCROOT)/Vendor/HevSocks5Tunnel.xcframework/ios-arm64/Headers",
+				);
+				INFOPLIST_FILE = Tunnel/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/LibXray.xcframework/ios-arm64",
+					"$(SRCROOT)/Vendor/HevSocks5Tunnel.xcframework/ios-arm64",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/LibXray.xcframework/ios-arm64_x86_64-simulator",
+					"$(SRCROOT)/Vendor/HevSocks5Tunnel.xcframework/ios-arm64_x86_64-simulator",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lresolv",
+					"-lXray",
+					"-lhev-socks5-tunnel",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.wyxnet.tunnel;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "Tunnel/Tunnel-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3EA936AEE33F401B608FF130 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = App/WYXNet.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "WYX Net";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyax.wyxnet;
+				PRODUCT_NAME = WYXNet;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E081FB45E78DCDDA68899639 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = BTQ69VVHX6;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.10;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		172BE7AA97827686F1D17604 /* Build configuration list for PBXNativeTarget "WYXNet" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00824B6C1D3E17598273EB3C /* Debug */,
+				3EA936AEE33F401B608FF130 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		60AB59A8570C2A71B3CEB39B /* Build configuration list for PBXProject "WYXNet" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E081FB45E78DCDDA68899639 /* Debug */,
+				1CC46218CD7B53CCDE7FC997 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BF225E26B8500136D8900414 /* Build configuration list for PBXNativeTarget "WYXNetTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				12F3AC6D0D14F022D2BBA702 /* Debug */,
+				3C6AB4EAD85D28D04332340B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5A15C9F045C5814E2D47BCCC /* Project object */;
+}
