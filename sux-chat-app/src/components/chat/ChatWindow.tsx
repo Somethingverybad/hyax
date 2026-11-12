@@ -1587,6 +1587,29 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   const lastSendTimeRef = useRef<number>(0);
   // Момент отправки касанием — чтобы возможный click вслед за touchend не отправил второй раз.
   const touchSentRef = useRef<number>(0);
+  /** Касание кнопки «Отправить»: когда началось, откуда, насколько ушёл палец;
+   *  watchdog — «касание без конца» в журнал (баг-репорт e6ef3d0b: «кнопка
+   *  отправить не срабатывала, пока я не переставил курсор»). */
+  const sendTouchRef = useRef<{ t: number; x: number; y: number; moved: number; watchdog: ReturnType<typeof setTimeout> | null }>({ t: 0, x: 0, y: 0, moved: 0, watchdog: null });
+  const sendTouchState = () => {
+    const ta = textareaRef.current;
+    return `focus=${document.activeElement === ta ? 1 : 0} sel=${ta ? ta.selectionEnd - ta.selectionStart : -1} len=${draftRef.current.length}`;
+  };
+  const sendTouchStart = (e: React.TouchEvent) => {
+    const st = sendTouchRef.current, p = e.touches[0];
+    st.t = Date.now(); st.x = p?.clientX ?? 0; st.y = p?.clientY ?? 0; st.moved = 0;
+    if (st.watchdog) clearTimeout(st.watchdog);
+    st.watchdog = setTimeout(() => { st.watchdog = null; applog.warn(`send: касание без конца (нет touchend/touchcancel) ${sendTouchState()}`); }, 2000);
+  };
+  const sendTouchMove = (e: React.TouchEvent) => {
+    const st = sendTouchRef.current, p = e.touches[0];
+    if (p) st.moved = Math.max(st.moved, Math.hypot(p.clientX - st.x, p.clientY - st.y));
+  };
+  const sendTouchDone = () => {
+    const st = sendTouchRef.current;
+    if (st.watchdog) { clearTimeout(st.watchdog); st.watchdog = null; }
+    return { ms: Date.now() - st.t, moved: Math.round(st.moved) };
+  };
 
   const shouldScrollRef = useRef<boolean>(true); // По умолчанию true для первоначальной прокрутки
 
@@ -6084,9 +6107,27 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                 onClick={() => { if (Date.now() - touchSentRef.current > 500) sendMessage(); }}
                 onMouseDown={(e) => e.preventDefault()}
                 // Удержание — меню эффектов (lib/effects); на компьютере — правый клик.
-                onTouchStart={(e) => { e.preventDefault(); startSendHold(e.currentTarget); }}
-                onTouchEnd={(e) => { e.preventDefault(); if (endSendHold()) return; if (uploading) return; touchSentRef.current = Date.now(); sendMessage(); }}
-                onTouchCancel={() => endSendHold()}
+                onTouchStart={(e) => { e.preventDefault(); sendTouchStart(e); startSendHold(e.currentTarget); }}
+                onTouchMove={sendTouchMove}
+                onTouchEnd={(e) => {
+                  e.preventDefault(); sendTouchDone();
+                  if (endSendHold()) return;
+                  if (uploading) return;
+                  if (!draftRef.current.trim() && !attachments.length && !selectedSound) applog.warn(`send: нажатие, но отправлять нечего ${sendTouchState()}`);
+                  touchSentRef.current = Date.now(); sendMessage();
+                }}
+                // iOS иногда забирает касание себе (убрать подсказку или меню над
+                // полем) — тогда вместо touchend приходит touchcancel, и нажатие
+                // пропадало: «не срабатывала, пока не переставил курсор». Короткое
+                // касание почти без движения — это нажатие: отправляем. Прокрутка
+                // или смахивание, начатые на кнопке, — с движением, их не трогаем.
+                onTouchCancel={() => {
+                  const { ms, moved } = sendTouchDone();
+                  const held = endSendHold();
+                  applog.warn(`send: касание отменено системой через ${ms} мс, сдвиг ${moved}px${held ? ", было удержание" : ""} ${sendTouchState()}`);
+                  if (held || uploading || ms > 300 || moved > 10) return;
+                  touchSentRef.current = Date.now(); sendMessage();
+                }}
                 onContextMenu={(e) => { e.preventDefault(); if (canHoldSend()) setSendFx(e.currentTarget.getBoundingClientRect()); }}
                 disabled={uploading}
                 aria-label={tr("Отправить")}
