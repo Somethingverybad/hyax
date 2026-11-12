@@ -4465,11 +4465,29 @@ class VpnTests(TestCase):
                                             weight=10, ok=True, rtt_ms=120)
         VpnNode.objects.create(slug="off", name="Выключен", kind="reality", host="5.6.7.8", enabled=False)
 
-    def test_no_access_is_403(self):
+    def test_no_access_is_403_when_auto_off(self):
+        import os
+        os.environ["VPN_AUTO_ACCESS"] = "0"
+        try:
+            r = client_for(self.other).get("/api/vpn/profile/")
+            self.assertEqual(r.status_code, 403)
+            r = client_for(self.other).post("/api/vpn/report/", {"events": []}, format="json")
+            self.assertEqual(r.status_code, 403)
+        finally:
+            os.environ.pop("VPN_AUTO_ACCESS", None)
+
+    def test_access_is_granted_automatically(self):
+        from .models import VpnAccess
         r = client_for(self.other).get("/api/vpn/profile/")
-        self.assertEqual(r.status_code, 403)
-        r = client_for(self.other).post("/api/vpn/report/", {"events": []}, format="json")
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 200)
+        acc = VpnAccess.objects.get(profile=self.other)
+        self.assertTrue(acc.enabled)
+        self.assertIsNone(acc.xui_synced_at)  # панель не настроена — заведётся пробником позже
+        self.assertIn(str(acc.uuid), r.data["payload"])
+        # отозванный руками — 403, автоматически не возвращается
+        acc.enabled = False
+        acc.save()
+        self.assertEqual(client_for(self.other).get("/api/vpn/profile/").status_code, 403)
 
     def test_profile_lists_alive_first_and_signs(self):
         import base64

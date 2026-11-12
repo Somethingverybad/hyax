@@ -77,11 +77,26 @@ def node_payload(n: VpnNode):
     return d
 
 
+def auto_access() -> bool:
+    """Доступ всем зарегистрированным («пусть автоматом будут у всех, кто в WYX регается»);
+    VPN_AUTO_ACCESS=0 — только выданные руками."""
+    return os.getenv("VPN_AUTO_ACCESS", "1").strip() not in ("0", "false", "no")
+
+
 def access_for(request):
-    try:
-        acc = request.user.profile.vpn_access
-    except (VpnAccess.DoesNotExist, AttributeError):
+    profile = getattr(request.user, "profile", None)
+    if profile is None:
         return None
+    try:
+        acc = profile.vpn_access
+    except VpnAccess.DoesNotExist:
+        if not auto_access():
+            return None
+        acc, created = VpnAccess.objects.get_or_create(profile=profile)
+        if created:
+            log.info("vpn: доступ выдан автоматически: %s", profile.username)
+            from .vpn_xui import sync_soon
+            sync_soon()
     return acc if acc.enabled else None
 
 
