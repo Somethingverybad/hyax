@@ -18,7 +18,8 @@ import { t } from "@/lib/i18n";
  * обновления (lib/ota) — pagehide; ни то ни другое падением не считается.
  * На Android приложение в «недавних» бывает живой плиткой и смахивается, не
  * уйдя в фон, — там спрашиваем у системы, как закончился прошлый процесс
- * (WebDiag.take → exit, Android 11+): закрыл человек — не падение.
+ * (WebDiag.take → exit, Android 11+): закрыл человек или система выгрузила
+ * уже фоновый процесс (exitInBackground) — не падение.
  * Тогда при следующем запуске предлагаем отправить журнал прошлого запуска
  * тем же окошком, что и Ctrl/⌘+Shift+B (lib/bugHotkey) — только с согласия.
  */
@@ -98,6 +99,15 @@ const EXIT_NAME: Record<number, string> = {
 };
 /** Не падение: смахнули из недавних, остановили в настройках, обновили, сменили разрешения. */
 const exitByUser = (e: NativeExit) => [8, 10, 11, 15, 16].includes(e.reason) || /remove task|swipe/i.test(e.desc || "");
+/** Не падение: система выгрузила процесс, когда приложения на экране уже не
+ *  было (важность ≥ 300 — служба или кэш фоновых, на экране — 100…230), и не
+ *  из-за сбоя (падение, падение нативного кода, ANR — 4, 5, 6 — отчёт нужен
+ *  и в фоне). Отметка «на экране» тогда — устаревшая: страницу заморозили
+ *  сразу после ухода в фон, и отметка об уходе не успела лечь в localStorage
+ *  (баг-репорт fff19955, Honor: журнал кончается на «visibility visible»,
+ *  а система — «другое; empty for too long; важность 400»: окна уже нет,
+ *  пустой процесс выгружен по сроку). */
+const exitInBackground = (e: NativeExit) => e.importance != null && e.importance >= 300 && ![4, 5, 6].includes(e.reason);
 function describeExit(e: NativeExit): string {
   const parts = [EXIT_NAME[e.reason] ?? `причина ${e.reason}`];
   if (e.desc) parts.push(e.desc);
@@ -181,6 +191,11 @@ export function installCrashGuard() {
       const ownExit = exit && exit.t >= p.t - 10_000 ? exit : undefined;
       if (ownExit && exitByUser(ownExit)) {
         applog.info(`crashguard: не падение — ${describeExit(ownExit)}`);
+        return;
+      }
+      // WebView при этом не умирал (иначе это его гибель — сообщаем как раньше).
+      if (ownExit && !list?.length && exitInBackground(ownExit)) {
+        applog.info(`crashguard: не падение — система выгрузила приложение в фоне: ${describeExit(ownExit)}`);
         return;
       }
       const lines = ["Автоотчёт о падении: прошлый запуск оборвался, пока приложение было на экране"];
