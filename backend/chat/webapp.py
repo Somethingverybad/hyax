@@ -40,6 +40,19 @@ DATA_MAX = 4096
 WYX_ORIGIN = os.getenv("WYX_ORIGIN", "https://wyx.su").rstrip("/")
 
 
+#: Текст отказа, пока мини-приложения выключены.
+OFF_TEXT = "Мини-приложения временно отключены"
+
+
+def webapps_on() -> bool:
+    """Мини-приложения временно выключены (с 14.11.2026). Код остаётся, но
+    сервер их не открывает, каталог пуст, адрес у бота не поставить, кнопки
+    web_app в сообщениях не принимаются. Включить — WEBAPPS_ENABLED=1 в .env
+    и MINI_APPS_ON в клиенте (lib/miniapp.ts). Пока приложение в App Store,
+    каждое мини-приложение нужно вносить в список для App Review (4.7.4)."""
+    return os.getenv("WEBAPPS_ENABLED", "0") == "1"
+
+
 def valid_app_url(url: str) -> bool:
     """Только https: страница получает данные пользователя. В отладке —
     ещё http://localhost и 127.0.0.1 (проверка на своей машине)."""
@@ -116,6 +129,8 @@ class WebAppInitView(APIView):
 
     def post(self, request):
         from .moderation import blocked_either_way
+        if not webapps_on():
+            return Response({"error": OFF_TEXT}, status=404)
         me = getattr(request.user, "profile", None)
         if not me or me.is_bot:
             return Response({"error": "Нет профиля"}, status=403)
@@ -146,6 +161,8 @@ class WebAppDataView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        if not webapps_on():
+            return Response({"error": OFF_TEXT}, status=404)
         me = getattr(request.user, "profile", None)
         bot = _bot(request.data.get("bot_id"))
         if not me or not bot:
@@ -192,6 +209,8 @@ class WebAppCatalogView(APIView):
         from django.db.models import Count, OuterRef, Q, Subquery, IntegerField
         from django.db.models.functions import Coalesce
         from .moderation import blocked_ids
+        if not webapps_on():
+            return Response({"apps": []})
         me = getattr(request.user, "profile", None)
         users = (ChatParticipant.objects
                  .filter(user=OuterRef("pk"), chat__kind="direct", chat__bot_started=True)
@@ -297,9 +316,10 @@ def wyx_user_page(request, username):
         p = None  # приватный бот — снаружи его как будто нет
     if not p:
         return _wyx_card(lang, title=T["missing"], desc=T["missing_hint"])
-    want_app = "app" in request.GET and bool(p.webapp_url)
+    has_app = bool(p.webapp_url) and webapps_on()
+    want_app = "app" in request.GET and has_app
     sub = T["bot"] if p.is_bot else ""
-    if p.is_bot and p.webapp_url:
+    if p.is_bot and has_app:
         sub = T["app"].format(t=p.webapp_title or p.username)
     path = f"/u/{quote(p.username)}" + ("?app" if want_app else "")
     return _wyx_card(lang, title=p.username, sub=sub, desc=(p.bio or "").strip()[:300],

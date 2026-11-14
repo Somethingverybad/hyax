@@ -7,6 +7,11 @@ import { t as tr } from "@/lib/i18n";
  * всё приложение, как плеер и звонок). Открывают кнопка в чате с ботом,
  * карточка бота и кнопки web_app под его сообщениями.
  */
+/** Мини-приложения временно выключены (с 14.11.2026): пункта в настройках
+ *  нет, открыть нельзя. Сервер их тоже не отдаёт (backend chat/webapp.py,
+ *  webapps_on); включать — вместе с WEBAPPS_ENABLED=1 на сервере. */
+export const MINI_APPS_ON = false;
+
 export interface MiniAppRequest {
   botId: string;
   botName: string;
@@ -29,6 +34,7 @@ const OK_KEY = (botId: string) => `hyax:webapp-ok:${botId}`;
 /** Открыть мини-приложение. В первый раз для бота — спросить: страница
  *  узнает ник и аватар (требование 4.7.3 — данные только с согласия). */
 export async function openMiniApp(r: MiniAppRequest) {
+  if (!MINI_APPS_ON) return;
   // То же приложение уже свёрнуто — разворачиваем его, а не запускаем заново.
   if (current?.minimized && current.botId === r.botId && !r.url && !r.startParam) { restoreMiniApp(); return; }
   let agreed = false;

@@ -1,4 +1,5 @@
 from django.db import models
+import os
 import tempfile
 import time
 from datetime import timedelta
@@ -4555,3 +4556,52 @@ class VpnTests(TestCase):
         self.dead.refresh_from_db(); self.alive.refresh_from_db()
         self.assertTrue(self.dead.ok); self.assertEqual(self.dead.rtt_ms, 42); self.assertIsNotNone(self.dead.last_ok_at)
         self.assertFalse(self.alive.ok); self.assertIn("502", self.alive.last_error)
+
+
+class WebAppsOffTests(TestCase):
+    """Мини-приложения временно выключены (chat/webapp.webapps_on, WEBAPPS_ENABLED):
+    адрес бота не отдаём, не открываем, каталог пуст, новый адрес не поставить."""
+
+    def setUp(self):
+        self.owner = make_user("wa_owner")
+        self.bot = make_user("wa_bot", is_bot=True, bot_owner=self.owner,
+                             webapp_url="https://app.example/", webapp_title="Игра")
+        self.me = make_user("wa_me")
+
+    def _all(self, on):
+        from unittest import mock
+        env = {"WEBAPPS_ENABLED": "1" if on else "0"}
+        with mock.patch.dict(os.environ, env):
+            c = client_for(self.me)
+            card = c.get(f"/api/profiles/by-username/{self.bot.username}/").json()
+            init = c.post("/api/webapp/init/", {"bot_id": str(self.bot.id)}, format="json")
+            apps = c.get("/api/webapps/").json()["apps"]
+            patch = client_for(self.owner).patch(f"/api/bots/{self.bot.id}/", {"webapp_url": "https://other.example/"}, format="json")
+            from chat.serializers import MessageSerializer
+            from rest_framework import serializers as drf
+            try:
+                from types import SimpleNamespace
+                ctx = {"request": SimpleNamespace(user=SimpleNamespace(profile=self.bot))}
+                MessageSerializer(context=ctx).validate_buttons([[{"text": "Открыть", "web_app": {"url": "https://app.example/"}}]])
+                button_ok = True
+            except drf.ValidationError:
+                button_ok = False
+        return card, init, apps, patch, button_ok
+
+    def test_off_by_default_everywhere(self):
+        card, init, apps, patch, button_ok = self._all(on=False)
+        self.assertEqual(card.get("webapp_url"), "")
+        self.assertEqual(init.status_code, 404)
+        self.assertEqual(apps, [])
+        self.assertEqual(patch.status_code, 400)
+        self.assertFalse(button_ok)
+        self.bot.refresh_from_db()
+        self.assertEqual(self.bot.webapp_url, "https://app.example/")  # адрес не стёрт — только скрыт
+
+    def test_switch_brings_it_back(self):
+        card, init, apps, patch, button_ok = self._all(on=True)
+        self.assertEqual(card.get("webapp_url"), "https://app.example/")
+        self.assertEqual(init.status_code, 200)
+        self.assertEqual([a["bot"]["username"] for a in apps], ["wa_bot"])
+        self.assertEqual(patch.status_code, 200)
+        self.assertTrue(button_ok)

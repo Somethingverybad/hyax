@@ -4357,7 +4357,7 @@ class BotDetailView(APIView):
     def patch(self, request, pk):
         """{bio?, webapp_url?, webapp_title?} — описание и мини-приложение
         (адрес https; пустой — убрать). Токен в ответе — только владельцу."""
-        from .webapp import valid_app_url
+        from .webapp import OFF_TEXT, valid_app_url, webapps_on
         bot, err = self._owned(request, pk, allow_self=True)
         if err:
             return err
@@ -4367,6 +4367,8 @@ class BotDetailView(APIView):
             fields.append("bio")
         if "webapp_url" in request.data:
             url = (request.data.get("webapp_url") or "").strip()
+            if url and not webapps_on():
+                return Response({"error": OFF_TEXT}, status=400)
             if url and not valid_app_url(url):
                 return Response({"error": "Адрес мини-приложения — https://…"}, status=400)
             bot.webapp_url = url

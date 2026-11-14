@@ -31,6 +31,7 @@ import { takeSharedItems, setPendingShare, type SharedPayload } from "@/lib/shar
 
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { getTheme } from "@/lib/theme";
+import { MINI_APPS_ON } from "@/lib/miniapp";
 
 // Звонки — не в стартовом наборе (~100 КБ): хост монтируется сразу после
 // первого кадра (DeferredCallHost), до этого lib/calls ждёт его регистрации.
@@ -417,7 +418,7 @@ const App = () => {
                 <Route path="/profile/vibe-levels" element={<ProfileVibeLevels />} />
                 <Route path="/profile/actions" element={<ProfileActions />} />
                 <Route path="/profile/reactions" element={<ProfileQuickReaction />} />
-                <Route path="/profile/apps" element={<MiniApps />} />
+                <Route path="/profile/apps" element={MINI_APPS_ON ? <MiniApps /> : <Navigate to="/profile" replace />} />
                 <Route path="/profile/soundpacks" element={<ProfileSoundPacks />} />
                 {/* Свой пак звуков — прямо в приложении, без студии на сайте. */}
                 <Route path="/profile/soundpacks/new" element={<SoundPackNew />} />

@@ -13,6 +13,7 @@ import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
 import { Globe, Wand2, LayoutGrid, Cloud, CloudDownload } from "lucide-react";
+import { MINI_APPS_ON } from "@/lib/miniapp";
 import { ReactionGlyph, useQuickReaction } from "@/components/chat/Reactions";
 import BottomNav from "@/components/BottomNav";
 import { toast } from "sonner";
@@ -492,12 +493,14 @@ const ProfilePage = () => {
               hint={t("Свои наборы и добавление по ссылке")}
               onClick={() => navigate("/profile/stickerpacks")}
             />
-            <SettingsRow
-              icon={LayoutGrid}
-              label={t("Мини-приложения")}
-              hint={t("Приложения ботов внутри WYX")}
-              onClick={() => navigate("/profile/apps")}
-            />
+            {MINI_APPS_ON && (
+              <SettingsRow
+                icon={LayoutGrid}
+                label={t("Мини-приложения")}
+                hint={t("Приложения ботов внутри WYX")}
+                onClick={() => navigate("/profile/apps")}
+              />
+            )}
             <SettingsRow
               icon={Lock}
               label={t("Конфиденциальность")}

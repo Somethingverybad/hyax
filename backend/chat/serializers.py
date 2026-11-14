@@ -27,9 +27,22 @@ def notify_sound_payload(context, obj):
     return data
 
 
+def _hide_webapp(data):
+    """Пока мини-приложения выключены (chat/webapp.webapps_on), адрес бота не
+    отдаём — клиент не покажет кнопку «Открыть приложение»."""
+    from .webapp import webapps_on
+    if data.get("webapp_url") and not webapps_on():
+        data["webapp_url"] = ""
+        data["webapp_title"] = ""
+    return data
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     # Владелец бота (id) — только у ботов: бот узнаёт, чьи команды слушать.
     bot_owner = serializers.SerializerMethodField()
+
+    def to_representation(self, instance):
+        return _hide_webapp(super().to_representation(instance))
 
     def get_bot_owner(self, obj):
         return str(obj.bot_owner_id) if getattr(obj, "is_bot", False) and obj.bot_owner_id else None
@@ -233,6 +246,9 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     # Видны ли смотрящему сохранёнки владельца: клиент по этому флагу прячет
     # раздел целиком, не делая лишнего запроса.
     saved_visible = serializers.SerializerMethodField()
+
+    def to_representation(self, instance):
+        return _hide_webapp(super().to_representation(instance))
 
     def get_saved_visible(self, obj):
         from .moderation import can_see_saved
@@ -725,7 +741,9 @@ class MessageSerializer(serializers.ModelSerializer):
                 # страницу внутри WYX (chat/webapp.py), боту ничего не шлёт.
                 web_app = btn.get("web_app")
                 if web_app is not None:
-                    from .webapp import valid_app_url
+                    from .webapp import OFF_TEXT, valid_app_url, webapps_on
+                    if not webapps_on():
+                        raise serializers.ValidationError(OFF_TEXT)
                     url = (web_app.get("url") if isinstance(web_app, dict) else web_app) or ""
                     url = str(url).strip()
                     if not text or not valid_app_url(url):
