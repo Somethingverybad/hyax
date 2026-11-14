@@ -12,6 +12,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // причиной самого запуска, и его нужно принять до загрузки WebView.
         VoipManager.shared.start()
         indexForSpotlight()
+        // Кнопка «Ответить» под пушами — категорию надо знать до первого пуша.
+        PushReply.registerCategories()
         return true
     }
 

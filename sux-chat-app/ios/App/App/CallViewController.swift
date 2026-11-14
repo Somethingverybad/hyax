@@ -37,6 +37,8 @@ class CallViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(MusicUploadPlugin())
         bridge?.registerPluginInstance(ScreenAwakePlugin())
         bridge?.registerPluginInstance(NativeSocketPlugin())
+        // «Ответить» под пушем — перед обработчиком Firebase (PushSecretPlugin.swift).
+        if let router = bridge?.notificationRouter { PushReply.install(router) }
         webView?.configuration.userContentController.add(ComposeSelectionHandler(owner: self), name: "hyaxComposeSel")
     }
 

@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import *
 from .scheduled import ScheduledItemView, ScheduledListView, ScheduledSendView
 from .radio import StationsView, StationView, StationControlView, StationListenView
+from .push_reply import PushReplyView
 from .webapp import WebAppInitView, WebAppDataView, WebAppCatalogView, wyx_user_page, wyx_link_page
 from .obs import ObsKeyView
 from .account import AcceptTermsView, DeleteAccountView, EmailView, EmailConfirmView, PasswordForgotView, PasswordResetView
@@ -128,6 +129,7 @@ urlpatterns = [
     path('playlists/<uuid:pk>/tracks/<uuid:track>/', PlaylistTracksView.as_view(), name='playlist-track'),
     path('bugreports/', BugReportView.as_view(), name='bugreports'),
     path('push/register/', PushRegisterView.as_view(), name='push-register'),
+    path('push/reply/', PushReplyView.as_view(), name='push-reply'),
     path('saved-images/', SavedImagesView.as_view(), name='saved-images'),
     path('sticker-packs/import-telegram/', TelegramStickerImportView.as_view(), name='sticker-import-telegram'),
     path('sticker-packs/import-telegram/<uuid:pk>/', TelegramStickerImportView.as_view(), name='sticker-import-telegram-status'),

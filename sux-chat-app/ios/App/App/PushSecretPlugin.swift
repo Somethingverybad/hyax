@@ -2,6 +2,9 @@ import Foundation
 import Capacitor
 import Security
 import UserNotifications
+import UIKit
+import CryptoKit
+import FirebaseMessaging
 
 /// Ключ шифрования пушей: 32 случайных байта, живут в Keychain в группе,
 /// общей с расширением уведомлений (оно расшифровывает текст пуша до показа).
@@ -109,6 +112,117 @@ public class ChatNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func list(_ call: CAPPluginCall) {
         UNUserNotificationCenter.current().getDeliveredNotifications { list in
             call.resolve(["chatIds": Array(Set(list.compactMap { ChatNotifs.chatId($0) }))])
+        }
+    }
+}
+
+/// Ответ прямо из уведомления: кнопка «Ответить» под пушем лички и группы.
+/// Категорию MSG пушу ставит сервер (fcm.py, поле reply=1). Текст уходит на
+/// сервер отсюда, без страницы: приложение могло быть выгружено, и токена
+/// входа у нативной части нет. Подпись — ключом пушей этого устройства
+/// (PushSecret), сервер знает его только для него (backend chat/push_reply.py).
+enum PushReply {
+    static let category = "MSG"
+    static let action = "REPLY"
+    /// Прямо на сервер, мимо CDN: POST он не кэширует, но и ждать его незачем.
+    static let hosts = ["https://huyax.e-tree.su", "https://hyax.ru"]
+    /// Роутер Capacitor держит обработчик слабой ссылкой — держим сами.
+    private static var handler: PushReplyHandler?
+
+    /// Кнопки уведомлений — на языке приложения; при смене языка — заново.
+    static func registerCategories() {
+        let reply = UNTextInputNotificationAction(
+            identifier: action,
+            title: AppLang.t("push.reply", "Ответить"),
+            options: [],
+            textInputButtonTitle: AppLang.t("push.reply.send", "Отправить"),
+            textInputPlaceholder: AppLang.t("push.reply.placeholder", "Сообщение"))
+        let cat = UNNotificationCategory(identifier: category, actions: [reply], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([cat])
+    }
+
+    /// Встать перед обработчиком пушей Firebase: «Ответить» разбираем сами,
+    /// остальное (тап по уведомлению — открыть чат) отдаём ему как было.
+    /// Зовётся из capacitorDidLoad — плагины к этому времени уже загружены.
+    static func install(_ router: NotificationRouter) {
+        if router.pushNotificationHandler is PushReplyHandler { return }
+        let h = PushReplyHandler(inner: router.pushNotificationHandler)
+        handler = h
+        router.pushNotificationHandler = h
+    }
+
+    static func send(chatId: String, text: String, completion: @escaping (Bool) -> Void) {
+        guard let secret = PushSecret.read(), let token = Messaging.messaging().fcmToken, !token.isEmpty else {
+            completion(false); return
+        }
+        let ts = Int(Date().timeIntervalSince1970)
+        let mac = HMAC<SHA256>.authenticationCode(for: Data("\(token)\n\(chatId)\n\(ts)\n\(text)".utf8),
+                                                  using: SymmetricKey(data: secret))
+        let body: [String: Any] = ["token": token, "chat_id": chatId, "text": text, "ts": ts,
+                                   "sig": Data(mac).base64EncodedString()]
+        guard let json = try? JSONSerialization.data(withJSONObject: body) else { completion(false); return }
+        post(json, host: 0, completion: completion)
+    }
+
+    private static func post(_ json: Data, host i: Int, completion: @escaping (Bool) -> Void) {
+        guard i < hosts.count, let url = URL(string: hosts[i] + "/api/push/reply/") else { completion(false); return }
+        var req = URLRequest(url: url, timeoutInterval: 12)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = json
+        URLSession.shared.dataTask(with: req) { _, resp, err in
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            // 409 — эта подпись уже принята: первый запрос дошёл, ответ потерялся.
+            if code == 201 || code == 409 { completion(true); return }
+            // Сеть или сервер — пробуем следующий адрес; отказ (4xx) — нет смысла.
+            if err != nil || code == 0 || code >= 500 { post(json, host: i + 1, completion: completion); return }
+            completion(false)
+        }.resume()
+    }
+
+    /// Не ушло — сказать об этом и оставить текст, чтобы не пропал.
+    static func notifyFailed(_ text: String, chatId: String) {
+        let c = UNMutableNotificationContent()
+        c.title = AppLang.t("push.reply.failed", "Ответ не отправлен")
+        c.body = text
+        c.userInfo = ["chat_id": chatId]
+        c.threadIdentifier = chatId
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "reply-failed-\(UUID().uuidString)", content: c, trigger: nil))
+    }
+}
+
+final class PushReplyHandler: NSObject, NotificationHandlerProtocol {
+    private let inner: NotificationHandlerProtocol?
+    init(inner: NotificationHandlerProtocol?) { self.inner = inner }
+
+    func willPresent(notification: UNNotification) -> UNNotificationPresentationOptions {
+        return inner?.willPresent(notification: notification) ?? []
+    }
+
+    func didReceive(response: UNNotificationResponse) {
+        guard response.actionIdentifier == PushReply.action, let r = response as? UNTextInputNotificationResponse else {
+            inner?.didReceive(response: response)
+            return
+        }
+        let text = r.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let chat = ChatNotifs.chatId(response.notification) else { return }
+        // Приложение разбудили в фоне ради ответа: держим его, пока запрос не дойдёт.
+        var task = UIBackgroundTaskIdentifier.invalid
+        let finish = {
+            if task != .invalid { UIApplication.shared.endBackgroundTask(task); task = .invalid }
+        }
+        task = UIApplication.shared.beginBackgroundTask(withName: "push-reply") { finish() }
+        PushReply.send(chatId: chat, text: text) { ok in
+            DispatchQueue.main.async {
+                if ok {
+                    // Ответил — значит, прочитал: остальные уведомления этого чата долой.
+                    ChatNotifs.remove([chat]) { DispatchQueue.main.async(execute: finish) }
+                } else {
+                    PushReply.notifyFailed(text, chatId: chat)
+                    finish()
+                }
+            }
         }
     }
 }

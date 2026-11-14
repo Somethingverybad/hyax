@@ -23,6 +23,7 @@ public class NativeLangPlugin: CAPPlugin, CAPBridgedPlugin {
             // Карточка в Spotlight — с описанием на новом языке.
             DispatchQueue.main.async {
                 (UIApplication.shared.delegate as? AppDelegate)?.indexForSpotlight()
+                PushReply.registerCategories()
             }
         }
         call.resolve()

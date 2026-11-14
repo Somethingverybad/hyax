@@ -29,3 +29,7 @@
 "push.file" = "Файл";
 "push.location" = "📍 Геопозиция";
 "push.group" = "Группа";
+"push.reply" = "Ответить";
+"push.reply.send" = "Отправить";
+"push.reply.placeholder" = "Сообщение";
+"push.reply.failed" = "Ответ не отправлен";

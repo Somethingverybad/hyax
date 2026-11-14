@@ -4605,3 +4605,70 @@ class WebAppsOffTests(TestCase):
         self.assertEqual([a["bot"]["username"] for a in apps], ["wa_bot"])
         self.assertEqual(patch.status_code, 200)
         self.assertTrue(button_ok)
+
+
+class PushReplyTests(TestCase):
+    """Ответ из уведомления iPhone: подпись ключом пушей устройства (chat/push_reply.py)."""
+
+    def setUp(self):
+        import base64
+        from chat.models import Chat, ChatParticipant, PushToken
+        self.a, self.b = make_user("pr_a"), make_user("pr_b")
+        self.chat = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=self.chat, user=self.a)
+        ChatParticipant.objects.create(chat=self.chat, user=self.b)
+        self.secret = base64.b64encode(b"k" * 32).decode()
+        PushToken.objects.create(user=self.a, token="fcm-a", platform="ios", secret=self.secret)
+
+    def _post(self, text="Привет из пуша", chat=None, ts=None, sig=None, token="fcm-a"):
+        from chat.push_reply import sign
+        chat_id = str((chat or self.chat).id)
+        ts = int(time.time()) if ts is None else ts
+        body = {"token": token, "chat_id": chat_id, "text": text, "ts": ts,
+                "sig": sig or sign(self.secret, token, chat_id, ts, text)}
+        return APIClient().post("/api/push/reply/", body, format="json"), body
+
+    def test_reply_sends_message_once(self):
+        from unittest import mock
+        from chat.models import Message
+        with mock.patch("chat.fcm.notify_profiles"), mock.patch("chat.fcm.notify_data"):
+            r, body = self._post()
+            self.assertEqual(r.status_code, 201, r.content)
+            m = Message.objects.get(chat=self.chat)
+            self.assertEqual((m.sender_id, m.content), (self.a.id, "Привет из пуша"))
+            again = APIClient().post("/api/push/reply/", body, format="json")
+            self.assertEqual(again.status_code, 409)
+        self.assertEqual(Message.objects.filter(chat=self.chat).count(), 1)
+
+    def test_rejects_bad_signature_old_ts_and_foreign_chat(self):
+        from chat.models import Chat, ChatParticipant, Message
+        self.assertEqual(self._post(sig="AAAA")[0].status_code, 403)
+        self.assertEqual(self._post(ts=int(time.time()) - 3600)[0].status_code, 403)
+        self.assertEqual(self._post(token="nope")[0].status_code, 403)
+        other = Chat.objects.create(kind="direct")
+        ChatParticipant.objects.create(chat=other, user=self.b)
+        self.assertEqual(self._post(chat=other)[0].status_code, 403)
+        chan = Chat.objects.create(kind="channel", name="c")
+        ChatParticipant.objects.create(chat=chan, user=self.a)
+        self.assertEqual(self._post(chat=chan)[0].status_code, 403)
+        self.assertFalse(Message.objects.exists())
+
+    def test_reply_clears_phone_notifications(self):
+        """Ответил (с компьютера или из пуша) — тихий chat_read на телефоны,
+        если пуш по чату был; раньше его слал только mark_chat_as_read."""
+        from unittest import mock
+        from chat.models import Message
+        from chat.presence import note_pushed
+        from chat.views import _mark_chat_read_for
+        note_pushed([self.a.id], self.chat.id)
+        with mock.patch("chat.fcm.notify_data") as nd:
+            _mark_chat_read_for(self.chat, self.a)
+            _mark_chat_read_for(self.chat, self.a)  # второй раз — пуша уже нет
+        self.assertEqual(nd.call_count, 1)
+        self.assertEqual(nd.call_args[0][1], {"type": "chat_read", "chat_id": str(self.chat.id)})
+
+    def test_reply_flag_only_for_direct_and_group(self):
+        from chat.models import Chat
+        from chat.push_reply import can_reply
+        self.assertEqual([can_reply(Chat(kind=k)) for k in ("direct", "group", "channel", "secret", "saved")],
+                         [True, True, False, False, False])

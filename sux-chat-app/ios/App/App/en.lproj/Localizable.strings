@@ -29,3 +29,7 @@
 "push.file" = "File";
 "push.location" = "📍 Location";
 "push.group" = "Group";
+"push.reply" = "Reply";
+"push.reply.send" = "Send";
+"push.reply.placeholder" = "Message";
+"push.reply.failed" = "Reply not sent";

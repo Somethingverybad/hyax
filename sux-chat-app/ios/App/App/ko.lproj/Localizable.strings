@@ -29,3 +29,7 @@
 "push.file" = "파일";
 "push.location" = "📍 위치";
 "push.group" = "그룹";
+"push.reply" = "답장";
+"push.reply.send" = "보내기";
+"push.reply.placeholder" = "메시지";
+"push.reply.failed" = "답장을 보내지 못했습니다";

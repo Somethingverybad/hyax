@@ -102,6 +102,15 @@ def sound_fields(slug: str | None) -> dict:
     return out
 
 
+#: Категория уведомления iPhone с кнопкой «Ответить» (регистрирует приложение,
+#: PushSecretPlugin.swift → PushReply). Старая сборка категорию не знает — кнопки нет.
+REPLY_CATEGORY = "MSG"
+
+
+def _category(data: dict) -> str | None:
+    return REPLY_CATEGORY if str(data.get("reply", "")) == "1" else None
+
+
 def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | None,
                        placeholder: str = PLACEHOLDER_BODY, silent: bool = False):
     """Пуш с текстом внутри шифрованного блоба. Android — data-only, уведомление
@@ -129,7 +138,7 @@ def _deliver_encrypted(entries, title: str, body: str, data: dict, sound: str | 
                 apns=messaging.APNSConfig(
                     payload=messaging.APNSPayload(aps=messaging.Aps(
                         alert=messaging.ApsAlert(title=PLACEHOLDER_TITLE, body=placeholder),
-                        sound=ios_sound, mutable_content=True,
+                        sound=ios_sound, mutable_content=True, category=_category(data),
                     ))
                 ),
             )
@@ -178,7 +187,7 @@ def _deliver(tokens, title: str, body: str, data: dict, sound: str | None = None
         data={k: str(v) for k, v in data.items()},
         apns=messaging.APNSConfig(
             # Свой звук — через расширение уведомлений: оно докачает файл (sound_fields).
-            payload=messaging.APNSPayload(aps=messaging.Aps(sound=ios_sound, mutable_content=bool(sound)))
+            payload=messaging.APNSPayload(aps=messaging.Aps(sound=ios_sound, mutable_content=bool(sound), category=_category(data)))
         ),
         android=messaging.AndroidConfig(
             priority="high",

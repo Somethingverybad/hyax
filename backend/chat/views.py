@@ -927,6 +927,16 @@ def _mark_chat_read_for(chat, profile):
             broadcast_read(chat.id, profile)
     except Exception:
         logger.exception("mark_chat_read_for failed")
+    # Ответил с компьютера — уведомления этого чата на телефоне больше не
+    # нужны, как и после «прочитал» (mark_chat_as_read): тихий пуш chat_read.
+    # Раньше ответ помечал прочитанным, но пуш не слал — уведомление висело.
+    try:
+        from .presence import take_pushed
+        if take_pushed(profile.id, chat.id):
+            from .fcm import notify_data
+            notify_data(Profile.objects.filter(id=profile.id), {"type": "chat_read", "chat_id": str(chat.id)})
+    except Exception:
+        logger.exception("chat_read после ответа: тихий пуш не ушёл")
 
 
 def unread_messages(profile):
@@ -1157,6 +1167,10 @@ def _notify_new_message(message, profile, request):
             if not message.action_id:
                 _pv, _who = preview, profile.username
                 preview = lambda lang: f"{_who}: {render(_pv, lang)}"
+        # reply=1 — под пушем кнопка «Ответить» (iPhone, chat/push_reply.py).
+        from .push_reply import can_reply
+        _push_extra = {"chat_id": str(message.chat.id), "message_id": str(message.id),
+                       **({"reply": "1"} if can_reply(message.chat) else {})}
         # Действие: адресату — «подмигивает вам», остальным в группе — «подмигивает Имя».
         if message.action_id and message.action_target_id:
             _act = message.action
@@ -1165,9 +1179,11 @@ def _notify_new_message(message, profile, request):
                 # Адресату — на его языке: «подмигивает вам» / «winks at you» / «…당신에게…».
                 _lang = (getattr(_t, "language", "") or "")[:2]
                 _you = {"en": "you", "ko": "당신"}.get(_lang, "вам")
+                from .presence import note_pushed as _note
+                _note([_t.id], message.chat.id)
                 notify_profiles(Profile.objects.filter(id=_t.id), title=push_title,
                                 body=f"{_act.emoji} {_act.phrase(_lang, profile.username, _you, view='you')}"[:150],
-                                extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
+                                extra=_push_extra,
                                 sound=_push_sound_or_none(message, profile),
                                 force_silent=bool(getattr(message, "silent", False)) or _push_sound_silent(message, profile))
             recipients = recipients.exclude(id=message.action_target_id)
@@ -1188,7 +1204,7 @@ def _notify_new_message(message, profile, request):
             title=push_title,
             body=clip(preview, 150),
             # message_id — удалят сообщение, телефон уберёт именно его уведомление.
-            extra={"chat_id": str(message.chat.id), "message_id": str(message.id)},
+            extra=_push_extra,
             # Звук: аудио-стикер, звук канала или группы, «мой звук в этом
             # чате» отправителя, его «мой звук» — по порядку (_message_push_sound).
             sound=_push_sound_or_none(message, profile),
