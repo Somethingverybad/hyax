@@ -813,9 +813,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
   // Режим выбора: несколько сообщений — переслать или в избранное одним
   // пакетом. null — обычный режим. Входим из меню сообщения («Выбрать»).
   const [selected, setSelected] = useState<Set<string> | null>(null);
-  const toggleSelected = (id: string) => setSelected((prev) => {
+  /** Отметка строки ленты; у альбома — всех его сообщений разом (пузырь один). */
+  const toggleSelected = (ids: string[]) => setSelected((prev) => {
     const n = new Set(prev || []);
-    n.has(id) ? n.delete(id) : n.add(id);
+    const on = !n.has(ids[0]);
+    ids.forEach((id) => (on ? n.add(id) : n.delete(id)));
     return n;
   });
   const selectedMessages = () => (selected ? messages.filter((m) => selected.has(m.id) && !m.pending) : []);
@@ -981,13 +983,13 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     }
   };
 
-  const toSaved = async (m: Message) => {
+  const toSaved = async (list: Message[]) => {
     closeMenu();
     let id = savedChatId;
     if (!id) {
       try { id = (await api.getSavedChat()).id; } catch { toast.error(tr("Избранное недоступно")); return; }
     }
-    await forwardTo([m], id, tr("Добавлено в избранное"));
+    await forwardTo(list, id, list.length > 1 ? tr("В избранное: {n}", { n: list.length }) : tr("Добавлено в избранное"));
   };
   /** Пакет из режима выбора — в избранное. */
   const selectionToSaved = async () => {
@@ -4254,7 +4256,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             else void translateVoice(m);
           } },
         { label: pinned?.id === menuMessage.id ? tr("Открепить") : tr("Закрепить"), icon: <Pin className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => togglePin(menuMessage, pinned?.id !== menuMessage.id) },
-        { label: tr("Переслать"), icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor([menuMessage]); closeMenu(); } },
+        { label: tr("Переслать"), icon: <Forward className="w-5 h-5" />, show: !menuMessage.pending && !isSecret, onClick: () => { setForwardFor(albumOf(menuMessage).filter((x) => !x.pending)); closeMenu(); } },
         // Видео — сохранить на устройство (как файл); в секретном чате файл зашифрован — там нет.
         { label: tr("Скачать видео"), icon: <Download className="w-5 h-5" />,
           show: !menuMessage.pending && !isSecret && (!!menuMessage.video_url || (!!menuMessage.file_url && isVideoFile(menuMessage.file_name, menuMessage.file_url))),
@@ -4266,14 +4268,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
             resolveMediaUrl(raw).then((u) => handleSaveFile(u, name)).catch(() => toast.error(tr("Не удалось скачать файл")));
           } },
         { label: tr("Редактировать"), icon: <Pencil className="w-5 h-5" />, show: menuMessage.sender?.id === userId && !!menuMessage.content?.trim(), onClick: () => startEdit(menuMessage) },
-        { label: tr("В избранное"), icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(menuMessage) },
+        { label: tr("В избранное"), icon: <Bookmark className="w-5 h-5" />, show: !saved && !menuMessage.pending, onClick: () => toSaved(albumOf(menuMessage).filter((x) => !x.pending)) },
         { label: tr("В плейлист"), icon: <ListMusic className="w-5 h-5" />, show: !menuMessage.pending && menuAudio.length > 0, onClick: () => { const list = menuAudio; closeMenu(); setPlaylistFor(list); } },
         { label: tr("Просмотры и реакции"), icon: <Eye className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); setViewersFor(m.id); } },
         { label: tr("Пожаловаться"), icon: <Flag className="w-5 h-5" />, show: menuMessage.sender?.id !== userId && !menuMessage.pending, onClick: () => { setReportFor(menuMessage); closeMenu(); } },
         { label: tr("Удалить у себя"), icon: <Trash2 className="w-5 h-5" />, show: true, onClick: () => startDelete([menuMessage], "me") },
         // Чужое у всех — владелец группы и админ с правом «Удалять чужие сообщения».
         { label: tr("Удалить у всех"), icon: <Trash2 className="w-5 h-5" />, show: menuMessage.sender?.id === userId || groupRights.includes("delete"), danger: true, onClick: () => startDelete([menuMessage], "all") },
-        { label: tr("Выбрать"), icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set([m.id])); } },
+        { label: tr("Выбрать"), icon: <CheckCircle2 className="w-5 h-5" />, show: !menuMessage.pending, onClick: () => { const m = menuMessage; closeMenu(); hideKeyboard(); setSelected(new Set(albumOf(m).map((x) => x.id))); } },
       ].filter((i) => i.show)
     : [];
 
@@ -4302,6 +4304,14 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     albumsById.forEach((list) => list.slice(1).forEach((m) => albumTail.add(m.id)));
     return { albumsById, feedRows: visible.filter((m) => !albumTail.has(m.id)) };
   }, [messages, hiddenIds, isSecret, blockedIds]);
+  /** Все сообщения пузыря: у альбома (фото и видео одной отправки) их
+   *  несколько, а меню открывается на первом. Пересылка, «В избранное» и
+   *  выбор берут альбом целиком — раньше из двух видео пересылалось одно
+   *  (баг-репорт c4fa989f). Голосовое или стикер с тем же album_id — сами по себе. */
+  const albumOf = (m: Message): Message[] => {
+    const list = m.album_id ? albumsById.get(m.album_id) : undefined;
+    return list?.some((x) => x.id === m.id) ? list : [m];
+  };
   const hiddenRows = Math.max(0, feedRows.length - renderLimit);
   hiddenRowsRef.current = hiddenRows;
   const shownRows = hiddenRows ? feedRows.slice(hiddenRows) : feedRows;
@@ -4958,7 +4968,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
                     <button
                       type="button"
                       aria-label={selected.has(message.id) ? tr("Снять выбор") : tr("Выбрать сообщение")}
-                      onClick={() => toggleSelected(message.id)}
+                      onClick={() => toggleSelected(albumOf(message).map((x) => x.id))}
                       className="absolute inset-0 z-10 rounded-lg"
                     >
                       <span className={cn(
