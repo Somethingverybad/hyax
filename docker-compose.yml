@@ -86,7 +86,7 @@ services:
       # Порядок: Windows-сервер в Москве (bots/whisper-server/windows, тот же
       # процессор — так же быстро, и память этого сервера не тратится), затем
       # сервис whisper рядом, затем Нидерланды. WHISPER_CA — оба своих сертификата.
-      WHISPER_URL: https://195.58.153.245:8745/transcribe,http://whisper:8745/transcribe,https://[2a13:d201:1:df::1]:8745/transcribe
+      WHISPER_URL: https://194.164.245.54:8745/transcribe,http://whisper:8745/transcribe,https://[2a13:d201:1:df::1]:8745/transcribe
       WHISPER_CA: /app/certs/whisper-ca.pem
       # LibreTranslate выключен 09.11 (держал 1,2 ГБ ради запасного перевода):
       # переводит только OpenRouter через ретранслятор. Вернуть — эта строка

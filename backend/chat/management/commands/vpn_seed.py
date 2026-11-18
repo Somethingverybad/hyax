@@ -12,7 +12,7 @@ NODES = [
     dict(slug="msk-bridge-reality", name="Москва → NL · Reality", kind=VpnNode.KIND_REALITY,
          host="nemilf.hyax.ru", port=443, sni="dl.google.com",
          public_key="RGIRo2jp-XSIn4JnwQhovW-18UrUG4l_sE17da1uFVk", short_id="0123abcd", fingerprint="chrome", flow="",
-         xui_inbounds="5", weight=20, note="inbound reality-new-users (8443) через мост 195.58.153.245"),
+         xui_inbounds="5", weight=20, note="inbound reality-new-users (8443) через мост nemilf.hyax.ru (Windows 194.164.245.54)"),
     dict(slug="msk-bridge-xhttp", name="Москва → NL · XHTTP", kind=VpnNode.KIND_XHTTP,
          host="nemilf.hyax.ru", port=443, sni="nemilf.hyax.ru", path="/vless-xhttp", mode="auto", alpn="h2",
          probe_url="https://nemilf.hyax.ru/retro-cloud/health",
