@@ -2440,7 +2440,11 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
     // события scroll, а оно приходит и от роста ленты: пока грузились картинки,
     // лента «отцеплялась» и уезжала от последнего сообщения при каждом входе
     // в чат.
-    const byUser = Date.now() - userScrollRef.current < 900;
+    const byUser = feedTouchRef.current || Date.now() - userScrollRef.current < 1800;
+    // На iOS инерция продолжается после touchend. Пока она отдаляет ленту от
+    // низа, продлеваем окно жеста: иначе очередной scroll принимался за
+    // самопроизвольный сдвиг WebKit и возвращал человека вниз.
+    if (byUser && dist > 12) userScrollRef.current = Date.now();
     // WebKit на iOS при наборе текста сам откатывает прокрутку ленты к
     // позиции первого нажатия всякий раз, когда меняется высота содержимого
     // (растёт поле ввода) — без единого вызова из нашего кода. Прокрутка не
@@ -2451,7 +2455,7 @@ const ChatWindow = ({ chatId, userId, onBack, title, peer, onCall, group, onGrou
       logFeed("repin-webkit");
       return;
     }
-    if (dist < 80 && !jumping && !windowedRef.current) {
+    if (dist < 12 && !jumping && !windowedRef.current) {
       if (!pinnedRef.current) logFeed("repin");
       pinnedRef.current = true;
       if (newBelow) setNewBelow(0);
