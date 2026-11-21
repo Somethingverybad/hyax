@@ -4519,6 +4519,30 @@ class VpnTests(TestCase):
         self.assertEqual(self.acc.last_app, "ios 1.0")
         self.assertIsNotNone(self.acc.last_seen_at)
 
+    def test_profile_lists_direct_hosts(self):
+        """Адреса WYX — в профиле, чтобы клиент пускал их мимо узла; DNS подменён, в сеть не ходим."""
+        import json
+        import os
+        import socket
+        from unittest import mock
+        from chat import vpn
+        vpn._direct_cache.update(at=None, value=None)
+        fake = lambda host, *a, **k: [(socket.AF_INET, 0, 0, "", ("194.164.245.144", 443)),
+                                      (socket.AF_INET, 0, 0, "", ("10.0.0.5", 443))] if host == "hyax.ru" else []
+        os.environ["VPN_DIRECT_DOMAINS"] = "hyax.ru,wyx.su"
+        os.environ["VPN_DIRECT_CIDRS"] = "203.0.113.0/24"
+        try:
+            with mock.patch("socket.getaddrinfo", side_effect=fake):
+                r = client_for(self.me).get("/api/vpn/profile/")
+        finally:
+            os.environ.pop("VPN_DIRECT_DOMAINS", None)
+            os.environ.pop("VPN_DIRECT_CIDRS", None)
+            vpn._direct_cache.update(at=None, value=None)
+        d = json.loads(r.data["payload"])["direct"]
+        self.assertEqual(d["domains"], ["hyax.ru", "wyx.su"])
+        # частный адрес не берём — он и так идёт напрямую
+        self.assertEqual(d["cidrs"], ["194.164.245.144/32", "203.0.113.0/24"])
+
     def test_profile_without_key_is_unsigned(self):
         r = client_for(self.me).get("/api/vpn/profile/")
         self.assertEqual(r.status_code, 200)

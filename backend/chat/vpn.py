@@ -77,6 +77,50 @@ def node_payload(n: VpnNode):
     return d
 
 
+# Куда ходить напрямую, мимо узла: сам WYX и его хранилища — они в России, через
+# Нидерланды и обратно только медленнее (и профиль не должен зависеть от живого узла).
+# Домены — правилом ядра (по SNI/Host), адреса — исключением из туннеля на уровне системы.
+DIRECT_DOMAINS_DEFAULT = (
+    "hyax.ru,wyx.su,huyax.e-tree.su,storage.yandexcloud.net,"
+    "43fb9b03-c74c-45ab-b258-7872345451b3.selcdn.net"
+)
+_direct_cache = {"at": None, "value": None}
+
+
+def direct_domains():
+    raw = os.getenv("VPN_DIRECT_DOMAINS", DIRECT_DOMAINS_DEFAULT)
+    return [d.strip().lower().strip(".") for d in raw.split(",") if d.strip()]
+
+
+def direct_payload():
+    """{domains, cidrs}: домены и их адреса, как их видит DNS из Москвы (кэш 10 минут)."""
+    now = timezone.now()
+    c = _direct_cache
+    if c["value"] is not None and c["at"] and now - c["at"] < timedelta(minutes=10):
+        return c["value"]
+    import ipaddress
+    import socket
+    domains = direct_domains()
+    cidrs = set()
+    for extra in os.getenv("VPN_DIRECT_CIDRS", "").split(","):
+        if extra.strip():
+            try:
+                cidrs.add(str(ipaddress.ip_network(extra.strip(), strict=False)))
+            except ValueError:
+                pass
+    for d in domains:
+        try:
+            for fam, _, _, _, sa in socket.getaddrinfo(d, 443, proto=socket.IPPROTO_TCP):
+                ip = ipaddress.ip_address(sa[0])
+                if ip.is_global:
+                    cidrs.add(f"{ip}/{32 if ip.version == 4 else 128}")
+        except OSError:
+            pass
+    value = {"domains": domains, "cidrs": sorted(cidrs)}
+    c["at"], c["value"] = now, value
+    return value
+
+
 def auto_access() -> bool:
     """Доступ всем зарегистрированным («пусть автоматом будут у всех, кто в WYX регается»);
     VPN_AUTO_ACCESS=0 — только выданные руками."""
@@ -120,6 +164,7 @@ class VpnProfileView(APIView):
             "ttl": PROFILE_TTL,
             "user": {"id": str(acc.profile_id), "username": acc.profile.username, "uuid": str(acc.uuid), "email": acc.email},
             "nodes": [node_payload(n) for n in nodes],
+            "direct": direct_payload(),
         }
         return Response(sign(payload))
 
