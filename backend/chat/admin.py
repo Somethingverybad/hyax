@@ -374,7 +374,7 @@ class ChatActionAdmin(admin.ModelAdmin):
 
 
 # ---- «Сеть WYX» (chat/vpn.py) ----
-from .models import VpnAccess, VpnNode, VpnReport  # noqa: E402
+from .models import VpnAccess, VpnLogin, VpnNode, VpnReport  # noqa: E402
 
 
 @admin.register(VpnNode)
@@ -400,3 +400,12 @@ class VpnReportAdmin(admin.ModelAdmin):
     list_filter = ("ok", "node", "net")
     raw_id_fields = ("access",)
     date_hierarchy = "at"
+
+
+@admin.register(VpnLogin)
+class VpnLoginAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "profile", "status", "device_name", "platform", "app_version", "ip")
+    list_filter = ("status", "platform")
+    raw_id_fields = ("profile", "message")
+    exclude = ("secret_hash",)
+    date_hierarchy = "created_at"

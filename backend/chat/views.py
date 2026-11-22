@@ -1705,6 +1705,12 @@ class MessageViewSet(viewsets.ModelViewSet):
             return Response({"error": "Такой кнопки нет"}, status=400)
         if not msg.sender or not msg.sender.is_bot:
             return Response({"error": "Эти кнопки никому не адресованы"}, status=400)
+        # «Бупень» — подтверждение входа в VPN-клиент (chat/bypen_login.py).
+        if data.startswith('bl:'):
+            from .bypen_login import handle_press as bypen_press, is_bypen_bot
+            if is_bypen_bot(msg.sender):
+                out = bypen_press(msg, profile, data, request)
+                return Response(out, status=400 if out.get("error") else 200)
         # «Долгий ящик» — наш бот: кнопки обрабатываем здесь же, а не сокетом.
         if msg.chat.kind == 'ideabox':
             from .ideabox import handle_press

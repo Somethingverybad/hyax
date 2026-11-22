@@ -18,6 +18,7 @@ from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
 from .graffiti import GraffitiView
 from .vpn import VpnProfileView, VpnReportView
+from .bypen_login import LoginStartView, LoginPollView
 from .wall import WallView, WallSeenView, WallPostsView, WallPostsCheckView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import CustomTokenObtainPairSerializer
@@ -57,6 +58,9 @@ urlpatterns = [
     # «Сеть WYX» — свой VPN-клиент (chat/vpn.py)
     path('vpn/profile/', VpnProfileView.as_view(), name='vpn-profile'),
     path('vpn/report/', VpnReportView.as_view(), name='vpn-report'),
+    # Вход в Бупень подтверждением от бота в WYX (chat/bypen_login.py)
+    path('vpn/login/start/', LoginStartView.as_view(), name='vpn-login-start'),
+    path('vpn/login/poll/', LoginPollView.as_view(), name='vpn-login-poll'),
     # Стена (chat/wall.py)
     path('wall/', WallView.as_view(), name='wall'),
     path('wall/seen/', WallSeenView.as_view(), name='wall-seen'),

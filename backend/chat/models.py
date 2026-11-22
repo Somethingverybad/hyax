@@ -1706,3 +1706,29 @@ class VpnReport(models.Model):
 
     class Meta:
         ordering = ("-at",)
+
+
+class VpnLogin(models.Model):
+    """Вход в Бупень без пароля (chat/bypen_login.py): клиент называет ник, бот
+    «Бупень» спрашивает в WYX «Подтвердить вход?», клиент ждёт ответа по
+    секрету, который знает только он (храним его sha256)."""
+    PENDING, APPROVED, DENIED, EXPIRED, USED = "pending", "approved", "denied", "expired", "used"
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="vpn_logins")
+    secret_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=10, default=PENDING, db_index=True)
+    device_id = models.CharField(max_length=64, blank=True, default="")
+    device_name = models.CharField(max_length=120, blank=True, default="")
+    platform = models.CharField(max_length=16, blank=True, default="")
+    app_version = models.CharField(max_length=32, blank=True, default="")
+    ip = models.CharField(max_length=64, blank=True, default="")
+    message = models.ForeignKey("Message", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expires_at = models.DateTimeField()
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"Вход в Бупень {self.profile.username} · {self.device_name} · {self.status}"

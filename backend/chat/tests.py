@@ -4582,6 +4582,88 @@ class VpnTests(TestCase):
         self.assertFalse(self.alive.ok); self.assertIn("502", self.alive.last_error)
 
 
+class BypenLoginTests(TestCase):
+    """Вход в Бупень подтверждением от бота (chat/bypen_login.py)."""
+
+    def setUp(self):
+        self.me = make_user("bl_me")
+        self.other = make_user("bl_other")
+        self.body = {"username": "BL_ME", "device_id": "bypen-test-device-1", "device_name": "Бупень · Mac",
+                     "platform": "mac", "app_version": "0.1.21 (21)"}
+
+    def start(self, **kw):
+        return APIClient().post("/api/vpn/login/start/", {**self.body, **kw}, format="json")
+
+    def poll(self, r, secret=None):
+        return APIClient().post("/api/vpn/login/poll/", {"id": r.data["id"], "secret": secret or r.data["secret"]}, format="json")
+
+    def bot_message(self):
+        from .bypen_login import BOT_LOGIN
+        return Message.objects.filter(sender__user__username=BOT_LOGIN, chat__participants=self.me).order_by("-created_at").first()
+
+    def press(self, who, msg, data):
+        return client_for(who).post(f"/api/messages/{msg.id}/press/", {"data": data}, format="json")
+
+    def test_approve_gives_tokens_once(self):
+        from .models import Device
+        r = self.start()
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self.poll(r).data["status"], "pending")
+        m = self.bot_message()
+        self.assertIn("Подтвердить вход через аккаунт WYX?", m.content)
+        self.assertIn("Бупень · Mac", m.content)
+        yes = m.buttons[0][0]["data"]
+        self.assertTrue(yes.startswith("bl:y:"))
+        # чужой секрет и чужая кнопка не работают
+        self.assertEqual(self.poll(r, secret="nope").status_code, 404)
+        self.assertNotEqual(self.press(self.other, m, yes).status_code, 200)
+        p = self.press(self.me, m, yes)
+        self.assertEqual(p.status_code, 200, p.data)
+        m.refresh_from_db()
+        self.assertEqual(m.buttons, [])
+        self.assertIn("подтверждён", m.content)
+        got = self.poll(r)
+        self.assertEqual(got.data["status"], "approved")
+        self.assertEqual(got.data["username"], "bl_me")
+        # токен рабочий и привязан к устройству
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION=f"Bearer {got.data['access']}")
+        self.assertEqual(c.get("/api/vpn/profile/").status_code, 200)
+        self.assertTrue(Device.objects.filter(profile=self.me, device_id="bypen-test-device-1").exists())
+        # второй раз токены не выдаются
+        again = self.poll(r)
+        self.assertEqual(again.data["status"], "used")
+        self.assertNotIn("access", again.data)
+
+    def test_deny_and_unknown_user(self):
+        r = self.start()
+        m = self.bot_message()
+        self.assertEqual(self.press(self.me, m, m.buttons[0][1]["data"]).status_code, 200)
+        self.assertEqual(self.poll(r).data["status"], "denied")
+        self.assertEqual(self.start(username="no_such_user_x").status_code, 404)
+
+    def test_rate_limit_and_replacement(self):
+        from datetime import timedelta
+        from .models import VpnLogin
+        r1 = self.start()
+        self.assertEqual(self.start().status_code, 429)      # чаще 15 секунд
+        VpnLogin.objects.update(created_at=timezone.now() - timedelta(seconds=20))
+        r2 = self.start()
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(self.poll(r1).data["status"], "expired")   # прежний с того же устройства погашен
+        self.assertEqual(self.poll(r2).data["status"], "pending")
+
+    def test_expired_request(self):
+        from datetime import timedelta
+        from .models import VpnLogin
+        r = self.start()
+        m = self.bot_message()
+        VpnLogin.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+        p = self.press(self.me, m, m.buttons[0][0]["data"])
+        self.assertEqual(p.status_code, 200)
+        self.assertEqual(self.poll(r).data["status"], "expired")
+
+
 class WebAppsOffTests(TestCase):
     """Мини-приложения временно выключены (chat/webapp.webapps_on, WEBAPPS_ENABLED):
     адрес бота не отдаём, не открываем, каталог пуст, новый адрес не поставить."""

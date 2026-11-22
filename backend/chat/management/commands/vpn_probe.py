@@ -24,6 +24,7 @@ from django.utils import timezone
 
 from chat.models import VpnNode
 from chat.vpn import prune_reports
+from chat.bypen_login import prune as prune_logins
 from chat.vpn_xui import configured as xui_configured, sync_pending
 
 log = logging.getLogger("chat.vpn.probe")
@@ -119,6 +120,7 @@ class Command(BaseCommand):
                 tick += 1
                 if tick % 60 == 0:
                     prune_reports()
+                    prune_logins()
                 # новые доступы — в панель (фоновая синхронизация при выдаче могла не пройти)
                 if xui_configured():
                     try:
