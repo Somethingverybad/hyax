@@ -1712,6 +1712,24 @@ class VpnReport(models.Model):
         ordering = ("-at",)
 
 
+class VpnDirectShare(models.Model):
+    """«Поделиться» настройками «напрямую» (chat/vpn.py): снимок настроек отправителя ждёт,
+    пока получатель нажмёт «Принять»/«Отклонить» под сообщением бота «Бупень»."""
+    PENDING, ACCEPTED, DECLINED = "pending", "accepted", "declined"
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sender = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    recipient = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="+")
+    ru = models.BooleanField(default=True)
+    custom = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=10, default=PENDING, db_index=True)
+    message = models.ForeignKey("Message", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+
 class VpnLogin(models.Model):
     """Вход в Бупень без пароля (chat/bypen_login.py): клиент называет ник, бот
     «Бупень» спрашивает в WYX «Подтвердить вход?», клиент ждёт ответа по

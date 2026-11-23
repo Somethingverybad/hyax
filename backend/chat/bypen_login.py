@@ -109,9 +109,28 @@ def _find_profile(username: str):
     return qs.filter(username=u).first() or qs.filter(username__iexact=u).first()
 
 
+def bot_say(profile: Profile, text: str, buttons=None) -> Message:
+    """Бот «Бупень» пишет человеку в личку (первая строка — жирным) и рассылает как обычно."""
+    bot = bypen_bot()
+    chat = user_chat(profile, bot)
+    title = text.split("\n", 1)[0]
+    m = Message.objects.create(chat=chat, sender=bot, content=text, buttons=buttons or [],
+                               entities=[{"type": "bold", "offset": 0, "length": _u16(title)}])
+    Chat.objects.filter(id=chat.id).update(updated_at=timezone.now())
+    from .views import _notify_new_message
+    try:
+        _notify_new_message(m, bot, None)
+    except Exception:
+        log.exception("bypen bot: не удалось разослать сообщение")
+    return m
+
+
 def _set_text(login: VpnLogin, text: str, request=None):
+    return edit_message(login.message, text)
+
+
+def edit_message(m, text: str):
     """Заменить текст сообщения бота и убрать кнопки; участникам — chat_changed."""
-    m = login.message
     if not m:
         return None
     title = text.split("\n", 1)[0]
@@ -219,7 +238,12 @@ def handle_press(msg, profile, data, request=None):
     """Кнопка «Да»/«Нет» под сообщением бота. Ответ клиенту WYX: {ok, toast?, message?}."""
     from .serializers import MessageSerializer
     parts = data.split(":")
-    if len(parts) != 3 or parts[0] != "bl" or parts[1] not in ("y", "n"):
+    if len(parts) != 3 or parts[1] not in ("y", "n"):
+        return {"error": "Такой кнопки нет"}
+    if parts[0] == "bd":          # настройки «напрямую» от другого человека (chat/vpn.py)
+        from .vpn import handle_share_press
+        return handle_share_press(msg, profile, parts[1] == "y", parts[2], request)
+    if parts[0] != "bl":
         return {"error": "Такой кнопки нет"}
     login = VpnLogin.objects.select_related("message").filter(pk=parts[2]).first() if len(parts[2]) == 36 else None
     if not login or login.message_id != msg.id or login.profile_id != profile.id:

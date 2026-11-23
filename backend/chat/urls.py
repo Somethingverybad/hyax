@@ -17,7 +17,7 @@ from .ideabox import IdeaboxView, IdeasListView, IdeaActionView, VibeView, VibeH
 from .polls import PollVoteView, PollVotersView
 from .live import LiveSpeechView, LiveTextView
 from .graffiti import GraffitiView
-from .vpn import VpnDirectView, VpnProfileView, VpnReportView
+from .vpn import VpnDirectShareView, VpnDirectView, VpnProfileView, VpnReportView
 from .bypen_login import LoginStartView, LoginPollView
 from .wall import WallView, WallSeenView, WallPostsView, WallPostsCheckView, WallMuteView, WallNotifyMuteView, WallRepostView, WallAdminPostView, WallAdminBansView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -59,6 +59,7 @@ urlpatterns = [
     path('vpn/profile/', VpnProfileView.as_view(), name='vpn-profile'),
     path('vpn/report/', VpnReportView.as_view(), name='vpn-report'),
     path('vpn/direct/', VpnDirectView.as_view(), name='vpn-direct'),
+    path('vpn/direct/share/', VpnDirectShareView.as_view(), name='vpn-direct-share'),
     # Вход в Бупень подтверждением от бота в WYX (chat/bypen_login.py)
     path('vpn/login/start/', LoginStartView.as_view(), name='vpn-login-start'),
     path('vpn/login/poll/', LoginPollView.as_view(), name='vpn-login-poll'),

@@ -4587,6 +4587,47 @@ class VpnTests(TestCase):
             os.environ.pop("VPN_RU_LIST_URL", None)
             vpn._ru_cache.update(at=None, value=None)
 
+    def test_share_direct_via_bot(self):
+        """Поделиться настройками: бот пишет получателю, «Принять» сливает адреса, отправителю — ответ."""
+        from .bypen_login import BOT_LOGIN
+        from .models import VpnAccess, VpnDirectShare
+        self.acc.direct_custom = ["example.com", "full:api.foo.io"]
+        self.acc.direct_ru = False
+        self.acc.save()
+        other_acc = VpnAccess.objects.create(profile=self.other, direct_custom=["mine.org"])
+        c = client_for(self.me)
+        self.assertEqual(c.post("/api/vpn/direct/share/", {"username": "vpn_me"}, format="json").status_code, 400)
+        self.assertEqual(c.post("/api/vpn/direct/share/", {"username": "no_such_x"}, format="json").status_code, 404)
+        r = c.post("/api/vpn/direct/share/", {"username": "VPN_OTHER"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        m = Message.objects.filter(sender__user__username=BOT_LOGIN, chat__participants=self.other).latest("created_at")
+        self.assertIn("@vpn_me", m.content)
+        self.assertIn("example.com", m.content)
+        self.assertIn("= api.foo.io", m.content)
+        yes, no = m.buttons[0][0]["data"], m.buttons[0][1]["data"]
+        # нажать может только получатель
+        self.assertNotEqual(client_for(self.me).post(f"/api/messages/{m.id}/press/", {"data": yes}, format="json").status_code, 200)
+        p = client_for(self.other).post(f"/api/messages/{m.id}/press/", {"data": yes}, format="json")
+        self.assertEqual(p.status_code, 200, p.data)
+        other_acc.refresh_from_db()
+        self.assertEqual(other_acc.direct_custom, ["mine.org", "example.com", "full:api.foo.io"])
+        self.assertFalse(other_acc.direct_ru)
+        m.refresh_from_db()
+        self.assertEqual(m.buttons, [])
+        self.assertIn("приняты", m.content)
+        back = Message.objects.filter(sender__user__username=BOT_LOGIN, chat__participants=self.me).latest("created_at")
+        self.assertIn("принял", back.content)
+        # повторное нажатие ничего не меняет
+        client_for(self.other).post(f"/api/messages/{m.id}/press/", {"data": no}, format="json")
+        self.assertEqual(VpnDirectShare.objects.get().status, "accepted")
+        # отклонение
+        c.post("/api/vpn/direct/share/", {"username": "vpn_other"}, format="json")
+        m2 = Message.objects.filter(sender__user__username=BOT_LOGIN, chat__participants=self.other).latest("created_at")
+        client_for(self.other).post(f"/api/messages/{m2.id}/press/", {"data": m2.buttons[0][1]["data"]}, format="json")
+        self.assertEqual(VpnDirectShare.objects.latest("created_at").status, "declined")
+        other_acc.refresh_from_db()
+        self.assertEqual(len(other_acc.direct_custom), 3)
+
     def test_ru_list_parses_nl_format(self):
         from chat.vpn import parse_list
         text = "# коммент\nozon.ru\nfull:a.b.ru\nregexp:^.+$\ngeosite:x\nwb.ru   # routebot 2026 @x\n\nozon.ru\n"

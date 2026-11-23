@@ -10,6 +10,7 @@
   GET  /api/vpn/profile/   — узлы и мой UUID, подпись Ed25519 (VPN_SIGN_KEY)
   POST /api/vpn/report/    — отчёты клиента о подключениях (только здоровье)
   GET/PUT /api/vpn/direct/ — что пускать мимо туннеля (российские сайты, свои адреса)
+  POST /api/vpn/direct/share/ {username} — поделиться ими через бота «Бупень»
 
 Подпись: поле payload — строка с каноническим JSON (sort_keys, без
 пробелов); подписываются ровно её байты, клиент проверяет строку как есть и
@@ -273,6 +274,95 @@ class VpnDirectView(APIView):
         return Response(self._out(acc))
 
     post = put
+
+
+# --- «Поделиться» настройками по логину WYX ----------------------------------------
+# Снимок настроек отправителя ждёт в VpnDirectShare; бот «Бупень» пишет получателю
+# «@x отправил вам настройки маршрутизации» с кнопками «Принять» (bd:y:<id>) и
+# «Отклонить» (bd:n:<id>). Принять — свои адреса добавляются к его, тумблер российских
+# ставится как у отправителя. Отправителю бот сообщает, чем кончилось.
+SHARE_PER_10MIN = 5
+SHARE_PREVIEW = 12
+
+
+def _share_text(share):
+    items = [("= " + e[5:]) if e.startswith("full:") else (e if "." in e else "." + e) for e in share.custom]
+    lines = [f"Настройки маршрутизации от @{share.sender.username}", "",
+             f"@{share.sender.username} отправил(а) вам настройки «Напрямую, мимо VPN» для Бупеня:",
+             f"• Российские сайты напрямую: {'вкл' if share.ru else 'выкл'}"]
+    if items:
+        shown = ", ".join(items[:SHARE_PREVIEW]) + (f" и ещё {len(items) - SHARE_PREVIEW}" if len(items) > SHARE_PREVIEW else "")
+        lines.append(f"• Свои адреса ({len(items)}): {shown}")
+    else:
+        lines.append("• Своих адресов нет")
+    lines += ["", "Если примете, адреса добавятся к вашим, а российские сайты будут как у отправителя."]
+    return "\n".join(lines)
+
+
+class VpnDirectShareView(APIView):
+    """POST {username} — отправить свои настройки «напрямую» другому человеку через бота."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        acc = access_for(request)
+        if not acc:
+            return Response({"detail": "Доступ к сети WYX не выдан"}, status=403)
+        from .bypen_login import _find_profile, bot_say
+        from .models import VpnDirectShare
+        d = request.data if isinstance(request.data, dict) else {}
+        to = _find_profile(str(d.get("username") or ""))
+        if not to:
+            return Response({"detail": "Нет такого аккаунта WYX — проверьте ник"}, status=404)
+        if to.id == acc.profile_id:
+            return Response({"detail": "Это вы сами"}, status=400)
+        from .moderation import blocked_either_way
+        if blocked_either_way(acc.profile_id, to.id):
+            return Response({"detail": "Этому человеку отправить нельзя"}, status=403)
+        since = timezone.now() - timedelta(minutes=10)
+        if VpnDirectShare.objects.filter(sender_id=acc.profile_id, created_at__gte=since).count() >= SHARE_PER_10MIN:
+            return Response({"detail": "Слишком часто — попробуйте через 10 минут"}, status=429)
+        share = VpnDirectShare.objects.create(sender=acc.profile, recipient=to, ru=acc.direct_ru,
+                                              custom=list(acc.direct_custom or []))
+        m = bot_say(to, _share_text(share), [[{"text": "✅ Принять", "data": f"bd:y:{share.id}"},
+                                               {"text": "Отклонить", "data": f"bd:n:{share.id}"}]])
+        VpnDirectShare.objects.filter(pk=share.pk).update(message=m)
+        log.info("vpn: %s отправил настройки «напрямую» %s (%d адресов)", acc.profile.username, to.username, len(share.custom))
+        return Response({"ok": True, "username": to.username})
+
+
+def handle_share_press(msg, profile, accept, share_id, request=None):
+    """«Принять»/«Отклонить» под сообщением бота. Ответ клиенту WYX: {ok, toast?, message?}."""
+    from .bypen_login import bot_say, edit_message
+    from .models import VpnDirectShare
+    from .serializers import MessageSerializer
+    share = VpnDirectShare.objects.select_related("sender", "message").filter(pk=share_id).first() if len(share_id) == 36 else None
+    if not share or share.message_id != msg.id or share.recipient_id != profile.id:
+        return {"error": "Такой кнопки нет"}
+    out = {"ok": True}
+    now = timezone.now()
+    new = VpnDirectShare.ACCEPTED if accept else VpnDirectShare.DECLINED
+    if not VpnDirectShare.objects.filter(pk=share.pk, status=VpnDirectShare.PENDING).update(status=new, decided_at=now):
+        out.update(toast="Уже обработано", toast_kind="error")
+    elif accept:
+        acc, _ = VpnAccess.objects.get_or_create(profile=profile)
+        merged = list(acc.direct_custom or [])
+        for e in share.custom:
+            if e not in merged:
+                merged.append(e)
+        acc.direct_custom, acc.direct_ru = merged[:CUSTOM_MAX], share.ru
+        acc.save(update_fields=["direct_custom", "direct_ru"])
+        edit_message(share.message, f"✅ Настройки от @{share.sender.username} приняты\n"
+                                    f"Российские сайты напрямую: {'вкл' if share.ru else 'выкл'}, своих адресов теперь {len(acc.direct_custom)}. "
+                                    "Бупень подхватит их при следующем обновлении списка узлов или после переподключения.")
+        bot_say(share.sender, f"✅ @{profile.username} принял(а) ваши настройки маршрутизации")
+        out.update(toast="Настройки приняты", toast_kind="success")
+    else:
+        edit_message(share.message, f"Настройки от @{share.sender.username} отклонены")
+        bot_say(share.sender, f"@{profile.username} отклонил(а) ваши настройки маршрутизации")
+        out.update(toast="Отклонено", toast_kind="success")
+    msg.refresh_from_db()
+    out["message"] = MessageSerializer(msg, context={"request": request}).data
+    return out
 
 
 def auto_access() -> bool:
