@@ -9,6 +9,7 @@
 
   GET  /api/vpn/profile/   — узлы и мой UUID, подпись Ed25519 (VPN_SIGN_KEY)
   POST /api/vpn/report/    — отчёты клиента о подключениях (только здоровье)
+  GET/PUT /api/vpn/direct/ — что пускать мимо туннеля (российские сайты, свои адреса)
 
 Подпись: поле payload — строка с каноническим JSON (sort_keys, без
 пробелов); подписываются ровно её байты, клиент проверяет строку как есть и
@@ -121,6 +122,159 @@ def direct_payload():
     return value
 
 
+# --- Российские сайты напрямую + свои адреса человека ---------------------------
+# На NL (crystal) те же адреса уходят через российский релей (/home/vpn/xray/
+# routed-domains.txt, его пополняет routebot); в Бупене их можно пускать прямо с
+# устройства — тот же российский IP, только быстрее. NL раз в 10 минут копирует
+# файл в /home/vpn/web/bypen/ru-direct.txt (cron), отсюда он и берётся.
+# geosite/geoip на клиенты не тащим: базы большие, VPN-расширению iPhone не по памяти.
+RU_ZONES = ["ru", "su", "xn--p1ai", "moscow"]          # .рф = xn--p1ai
+RU_LIST_URL_DEFAULT = "https://nemilf.hyax.ru/bypen/ru-direct.txt"
+# Снимок routed-domains.txt на 23.11.2026 — пока ссылка недоступна.
+RU_LIST_SNAPSHOT = (
+    "sberbank.ru sber.ru ozon.ru ozonusercontent.com o3.ru wildberries.ru wb.ru wbbasket.ru wbstatic.net "
+    "hh.ru yandex.ru ya.ru yandex.net yandex.com yastatic.net yandex.st vk.com vk.ru vkvideo.ru "
+    "vkuserlive.com mts.ru tbank.ru tinkoff.ru kinopoisk.ru kinopoiskhd.ru samokat.ru rustore.ru vtb.ru "
+    "avito.ru alfabank.ru 2gis.ru 2gis.com megamarket.ru max.ru rutube.ru ok.ru rocket.hunterhelp.ru "
+    "animego.me aniboom.one aderom.net malsed.site videoroll.net s1.kalarona.org walking-dead.vip kalarona.org"
+).split()
+CUSTOM_MAX = 200
+_ru_cache = {"at": None, "value": None}
+
+
+def normalize_entry(raw):
+    """Строка человека → запись списка или None.
+    example.com / *.example.com / .example.com → «example.com» (домен и поддомены — суффикс);
+    .ru / ru → «ru» (вся зона); =example.com или full:example.com → «full:example.com» (только он);
+    domain:x — как x. Кириллица → punycode. Адреса и мусор — None."""
+    s = str(raw or "").strip().lower()
+    if not s or len(s) > 253:
+        return None
+    full = False
+    if s.startswith("full:"):
+        full, s = True, s[5:]
+    elif s.startswith("="):
+        full, s = True, s[1:]
+    elif s.startswith("domain:"):
+        s = s[7:]
+    for pre in ("https://", "http://"):
+        if s.startswith(pre):
+            s = s[len(pre):]
+    s = s.split("/", 1)[0].split(":", 1)[0].strip()
+    while s.startswith("*.") or s.startswith("."):
+        s = s[2:] if s.startswith("*.") else s[1:]
+    s = s.rstrip(".")
+    if not s:
+        return None
+    try:
+        s = s.encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
+    import re
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*", s):
+        return None
+    if re.fullmatch(r"[0-9.]+", s):      # IP — не домен
+        return None
+    return f"full:{s}" if full else s
+
+
+def parse_list(text):
+    """Формат routed-domains.txt: строка — домен, # — комментарий; regexp/geosite/ext/keyword пропускаем."""
+    out = []
+    for line in str(text or "").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line or line.startswith(("regexp:", "geosite:", "ext:", "keyword:", "geoip:")):
+            continue
+        e = normalize_entry(line)
+        if e and e not in out:
+            out.append(e)
+    return out
+
+
+def ru_list():
+    """Домены с NL (кэш 10 минут; не скачалось — прежний или снимок) плюс зоны."""
+    now = timezone.now()
+    c = _ru_cache
+    if c["value"] is None or not c["at"] or now - c["at"] > timedelta(minutes=10):
+        domains = None
+        url = os.getenv("VPN_RU_LIST_URL", RU_LIST_URL_DEFAULT).strip()
+        if url:
+            try:
+                import urllib.request
+                req = urllib.request.Request(url, headers={"User-Agent": "hyax-vpn"})
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    if r.status == 200:
+                        domains = parse_list(r.read(512 * 1024).decode("utf-8", "replace")) or None
+            except Exception as e:
+                log.info("vpn: список RU с NL не скачался (%s) — беру прежний", e)
+        if domains is None:
+            domains = c["value"] or [d for d in (normalize_entry(x) for x in RU_LIST_SNAPSHOT) if d]
+        c["at"], c["value"] = now, domains
+    return RU_ZONES + [d for d in c["value"] if d not in RU_ZONES]
+
+
+def direct_for(acc):
+    """Что пускать мимо туннеля этому человеку: WYX + (российские) + свои."""
+    base = direct_payload()
+    domains = list(base["domains"])
+    extra = (ru_list() if acc.direct_ru else []) + list(acc.direct_custom or [])
+    for d in extra:
+        if d not in domains:
+            domains.append(d)
+    return {"domains": domains, "cidrs": base["cidrs"]}
+
+
+class VpnDirectView(APIView):
+    """Настройки «напрямую» — в профиле WYX, одни на все устройства человека.
+    GET → {ru, custom, ru_count}; PUT/POST {ru?, custom?: [строки]} → то же (custom нормализован)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _out(self, acc):
+        return {"ru": acc.direct_ru, "custom": list(acc.direct_custom or []), "ru_count": len(ru_list())}
+
+    def get(self, request):
+        acc = access_for(request)
+        if not acc:
+            return Response({"detail": "Доступ к сети WYX не выдан"}, status=403)
+        return Response(self._out(acc))
+
+    def put(self, request):
+        acc = access_for(request)
+        if not acc:
+            return Response({"detail": "Доступ к сети WYX не выдан"}, status=403)
+        d = request.data if isinstance(request.data, dict) else {}
+        fields = []
+        if "ru" in d:
+            acc.direct_ru = bool(d.get("ru"))
+            fields.append("direct_ru")
+        if "custom" in d:
+            raw = d.get("custom")
+            if isinstance(raw, str):
+                raw = raw.replace(",", "\n").splitlines()
+            if not isinstance(raw, list):
+                return Response({"detail": "custom — список строк"}, status=400)
+            out, bad = [], []
+            for x in raw:
+                if not str(x or "").strip():
+                    continue
+                e = normalize_entry(x)
+                if e is None:
+                    bad.append(str(x)[:80])
+                elif e not in out:
+                    out.append(e)
+            if bad:
+                return Response({"detail": "Не похоже на домен: " + ", ".join(bad[:5]), "bad": bad}, status=400)
+            if len(out) > CUSTOM_MAX:
+                return Response({"detail": f"Не больше {CUSTOM_MAX} адресов"}, status=400)
+            acc.direct_custom = out
+            fields.append("direct_custom")
+        if fields:
+            acc.save(update_fields=fields)
+        return Response(self._out(acc))
+
+    post = put
+
+
 def auto_access() -> bool:
     """Доступ всем зарегистрированным («пусть автоматом будут у всех, кто в WYX регается»);
     VPN_AUTO_ACCESS=0 — только выданные руками."""
@@ -164,7 +318,7 @@ class VpnProfileView(APIView):
             "ttl": PROFILE_TTL,
             "user": {"id": str(acc.profile_id), "username": acc.profile.username, "uuid": str(acc.uuid), "email": acc.email},
             "nodes": [node_payload(n) for n in nodes],
-            "direct": direct_payload(),
+            "direct": direct_for(acc),
         }
         return Response(sign(payload))
 

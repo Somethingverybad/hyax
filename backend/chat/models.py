@@ -1681,6 +1681,10 @@ class VpnAccess(models.Model):
     xui_synced_at = models.DateTimeField(null=True, blank=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
     last_app = models.CharField(max_length=80, blank=True, default="")
+    # Мимо туннеля (chat/vpn.py direct_for): российские сайты и свои адреса — в профиле,
+    # одни на все устройства человека.
+    direct_ru = models.BooleanField(default=True)
+    direct_custom = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     created_at = models.DateTimeField(default=timezone.now)
 

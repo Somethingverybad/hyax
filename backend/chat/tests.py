@@ -4531,6 +4531,8 @@ class VpnTests(TestCase):
                                       (socket.AF_INET, 0, 0, "", ("10.0.0.5", 443))] if host == "hyax.ru" else []
         os.environ["VPN_DIRECT_DOMAINS"] = "hyax.ru,wyx.su"
         os.environ["VPN_DIRECT_CIDRS"] = "203.0.113.0/24"
+        self.acc.direct_ru = False      # только адреса WYX
+        self.acc.save()
         try:
             with mock.patch("socket.getaddrinfo", side_effect=fake):
                 r = client_for(self.me).get("/api/vpn/profile/")
@@ -4542,6 +4544,53 @@ class VpnTests(TestCase):
         self.assertEqual(d["domains"], ["hyax.ru", "wyx.su"])
         # частный адрес не берём — он и так идёт напрямую
         self.assertEqual(d["cidrs"], ["194.164.245.144/32", "203.0.113.0/24"])
+
+    def test_direct_entries_are_normalized(self):
+        from chat.vpn import normalize_entry
+        cases = {"Example.COM": "example.com", "*.example.com": "example.com", ".ru": "ru", "ru": "ru",
+                 "=api.example.com": "full:api.example.com", "full:x.org": "full:x.org", "domain:y.net": "y.net",
+                 "https://site.io/path": "site.io", "пример.рф": "xn--e1afmkfd.xn--p1ai", ".рф": "xn--p1ai",
+                 "1.2.3.4": None, "bad domain": None, "": None, "-x.com": None}
+        for raw, want in cases.items():
+            self.assertEqual(normalize_entry(raw), want, raw)
+
+    def test_direct_settings_live_in_profile(self):
+        """Настройки «напрямую» хранятся на сервере и приходят в подписанном профиле."""
+        import json
+        import os
+        from chat import vpn
+        os.environ["VPN_RU_LIST_URL"] = ""          # без сети — снимок списка с NL
+        vpn._ru_cache.update(at=None, value=None)
+        try:
+            c = client_for(self.me)
+            r = c.get("/api/vpn/direct/")
+            self.assertEqual(r.status_code, 200)
+            self.assertTrue(r.data["ru"])
+            self.assertGreater(r.data["ru_count"], 40)
+            r = c.put("/api/vpn/direct/", {"custom": ["Example.com", "=api.foo.io", ".dev", "example.com"]}, format="json")
+            self.assertEqual(r.status_code, 200, r.data)
+            self.assertEqual(r.data["custom"], ["example.com", "full:api.foo.io", "dev"])
+            d = json.loads(c.get("/api/vpn/profile/").data["payload"])["direct"]["domains"]
+            for want in ("ru", "su", "xn--p1ai", "yandex.ru", "example.com", "full:api.foo.io", "dev"):
+                self.assertIn(want, d)
+            # российские выключил — их нет, свои остались
+            self.assertEqual(c.put("/api/vpn/direct/", {"ru": False}, format="json").status_code, 200)
+            d = json.loads(c.get("/api/vpn/profile/").data["payload"])["direct"]["domains"]
+            self.assertNotIn("yandex.ru", d)
+            self.assertNotIn("ru", d)
+            self.assertIn("example.com", d)
+            # мусор не сохраняется
+            r = c.put("/api/vpn/direct/", {"custom": ["ok.com", "не домен!"]}, format="json")
+            self.assertEqual(r.status_code, 400)
+            self.assertEqual(c.get("/api/vpn/direct/").data["custom"], ["example.com", "full:api.foo.io", "dev"])
+        finally:
+            os.environ.pop("VPN_RU_LIST_URL", None)
+            vpn._ru_cache.update(at=None, value=None)
+
+    def test_ru_list_parses_nl_format(self):
+        from chat.vpn import parse_list
+        text = "# коммент\nozon.ru\nfull:a.b.ru\nregexp:^.+$\ngeosite:x\nwb.ru   # routebot 2026 @x\n\nozon.ru\n"
+        self.assertEqual(parse_list(text), ["ozon.ru", "full:a.b.ru", "wb.ru"])
 
     def test_profile_without_key_is_unsigned(self):
         r = client_for(self.me).get("/api/vpn/profile/")
