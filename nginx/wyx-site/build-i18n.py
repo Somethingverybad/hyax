@@ -45,6 +45,8 @@ T = {
  "Шифрование защищает канал, а не само устройство. Если на телефоне стоит программа, читающая экран или клавиатуру, она увидит текст до шифрования. Берегите телефон и не ставьте что попало.": "Encryption protects the channel, not the device itself. If your phone has software reading the screen or keyboard, it sees the text before encryption. Guard your phone and don't install just anything.",
  "Через TestFlight: установите TestFlight, затем откройте приглашение.": "Via TestFlight: install TestFlight, then open the invitation.", "Приглашение": "Invitation",
  "Из Google Play — обновления приходят сами.": "From Google Play — updates install automatically.",
+ "Из App Store — обновления приходят сами.": "From the App Store — updates install automatically.",
+ "Apple, логотип Apple и App Store — товарные знаки Apple Inc.": "Apple, the Apple logo and App Store are trademarks of Apple Inc.",
  "Без Google Play —": "Without Google Play:", "установочный файл APK": "the APK install file",
  "Google Play и логотип Google Play — товарные знаки Google LLC.": "Google Play and the Google Play logo are trademarks of Google LLC.",
  "Один образ для Intel и Apple Silicon, заверен у Apple.": "One image for Intel and Apple Silicon, notarized by Apple.",
@@ -97,6 +99,8 @@ T = {
  "Шифрование защищает канал, а не само устройство. Если на телефоне стоит программа, читающая экран или клавиатуру, она увидит текст до шифрования. Берегите телефон и не ставьте что попало.": "암호화는 통로를 지키지, 기기 자체를 지키진 않아요. 화면이나 키보드를 읽는 앱이 폰에 있다면 암호화 전의 텍스트를 보게 됩니다. 폰을 잘 지키고 아무거나 설치하지 마세요.",
  "Через TestFlight: установите TestFlight, затем откройте приглашение.": "TestFlight로: TestFlight를 설치한 뒤 초대를 여세요.", "Приглашение": "초대",
  "Из Google Play — обновления приходят сами.": "Google Play에서 설치하면 업데이트가 자동으로 설치됩니다.",
+ "Из App Store — обновления приходят сами.": "App Store에서 설치하면 업데이트가 자동으로 설치됩니다.",
+ "Apple, логотип Apple и App Store — товарные знаки Apple Inc.": "Apple, Apple 로고 및 App Store는 Apple Inc.의 상표입니다.",
  "Без Google Play —": "Google Play가 없다면:", "установочный файл APK": "APK 설치 파일",
  "Google Play и логотип Google Play — товарные знаки Google LLC.": "Google Play 및 Google Play 로고는 Google LLC의 상표입니다.",
  "Один образ для Intel и Apple Silicon, заверен у Apple.": "Intel과 Apple Silicon 공용 이미지, Apple 공증 완료.",
@@ -119,6 +123,10 @@ VER = {"en": "Current version", "ko": "현재 버전"}
 GP = {"en": ("google-play-en.png", "Get it on Google Play", 564, 168),
       "ko": ("google-play-ko.png", "Google Play에서 다운로드", 646, 192)}
 GP_RU = 'src="/google-play-ru.png" alt="Скачать из Google Play" width="646" height="192"'
+# Значок App Store — официальный SVG Apple на языке страницы (Marketing Tools).
+AS = {"en": ("app-store-en.svg", "Download on the App Store", 120, 40),
+      "ko": ("app-store-ko.svg", "App Store에서 다운로드", 130, 40)}
+AS_RU = 'src="/app-store-ru.svg" alt="Загрузите в App Store" width="120" height="40"'
 
 SWITCH = '<span class="lang"><a href="/" data-lang="ru"{ru}>RU</a><a href="/en/" data-lang="en"{en}>EN</a><a href="/ko/" data-lang="ko"{ko}>KO</a></span>'
 ALT = '<link rel="alternate" hreflang="ru" href="https://wyx.su/">\n<link rel="alternate" hreflang="en" href="https://wyx.su/en/">\n<link rel="alternate" hreflang="ko" href="https://wyx.su/ko/">\n<link rel="alternate" hreflang="x-default" href="https://wyx.su/">\n'
@@ -158,6 +166,8 @@ def translate(html, lang):
     out = out.replace('"Текущая версия "', '"' + VER[lang] + ' "')
     f, alt, w, h = GP[lang]
     out = out.replace(GP_RU, f'src="/{f}" alt="{alt}" width="{w}" height="{h}"')
+    f, alt, w, h = AS[lang]
+    out = out.replace(AS_RU, f'src="/{f}" alt="{alt}" width="{w}" height="{h}"')
     return out
 
 def with_nav(html, lang):
