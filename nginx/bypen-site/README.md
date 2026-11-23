@@ -23,11 +23,11 @@ reload не требуется. При изменении конфигураци
 
 ## Установщики
 
-Объекты находятся в hyax-public/installers/bypen/ (обновлено 23.11.2026, версия 0.1.21):
+Объекты находятся в hyax-public/installers/bypen/ (обновлено 23.11.2026, версия 0.1.24):
 
-- Android: bypen-{arm64-v8a,armeabi-v7a,x86_64}-21.apk (выкладка — android/scripts/publish.sh в bypen).
-- macOS: bypen-mac-0.1.21.zip (ios/scripts/publish-mac.sh), постоянная ссылка bypen-mac.zip.
-- Windows: bypen-windows-x64-0.1.21.zip, Linux: bypen-linux-x64-0.1.21.tar.gz (desktop/scripts/publish.sh),
+- Android: bypen-{arm64-v8a,armeabi-v7a,x86_64}-24.apk (выкладка — android/scripts/publish.sh в bypen).
+- macOS: bypen-mac-0.1.24.zip (ios/scripts/publish-mac.sh), постоянная ссылка bypen-mac.zip.
+- Windows: bypen-windows-x64-0.1.24.zip, Linux: bypen-linux-x64-0.1.24.tar.gz (desktop/scripts/publish.sh),
   постоянные bypen-windows-x64.zip / bypen-linux-x64.tar.gz.
 - SHA256SUMS-desktop — суммы трёх архивов для компьютеров.
 
