@@ -1,4 +1,6 @@
 import { ConfirmHost } from "@/lib/confirm";
+import AccountSwitcherSheet from "@/components/AccountSwitcherSheet";
+import { ACCOUNT_CHANGED_EVENT } from "@/lib/accounts";
 import MiniAppHost from "@/components/miniapp/MiniAppHost";
 import TranslatorHost from "@/components/TranslatorHost";
 import { t as tr, tn } from "@/lib/i18n";
@@ -219,11 +221,20 @@ const DeepLinks = () => {
   // «Написать» «не работала»). Поэтому: navigate через ref, эффект — один раз.
   const navRef = useRef(navigate);
   navRef.current = navigate;
-  // Принудительный выход (lib/forceLogout): кэш уже стёрт — остаётся уйти на вход.
+  // Принудительный выход (lib/forceLogout): кэш уже стёрт — остаётся уйти на вход
+  // (или остаться в приложении, если переключились на другой сохранённый аккаунт).
   useEffect(() => {
     const h = (e: Event) => {
-      const reason = (e as CustomEvent).detail?.reason;
-      sonnerToast(reason === "revoked" ? tr("Сеанс завершён с другого устройства") : tr("Войдите снова"));
+      const detail = (e as CustomEvent<{ reason?: string; removedUsername?: string; switchedUsername?: string }>).detail || {};
+      if (detail.switchedUsername) {
+        sonnerToast(
+          detail.reason === "revoked"
+            ? tr("Сеанс {old} завершён с другого устройства — переключено на {next}", { old: detail.removedUsername || "", next: detail.switchedUsername })
+            : tr("Сеанс {old} истёк — переключено на {next}", { old: detail.removedUsername || "", next: detail.switchedUsername }),
+        );
+        return;
+      }
+      sonnerToast(detail.reason === "revoked" ? tr("Сеанс завершён с другого устройства") : tr("Войдите снова"));
       navRef.current("/auth", { replace: true });
     };
     window.addEventListener("hyax:force-logout", h);
@@ -309,9 +320,22 @@ const ToastTapDismiss = () => {
 };
 
 const App = () => {
-  // Смена языка перемонтирует дерево: все t() пересчитываются разом.
+  // Смена языка или аккаунта перемонтирует дерево: все t() и экраны пересоздаются с чистого листа.
   const [langKey, setLangKey] = useState(0);
+  const [accountKey, setAccountKey] = useState(0);
   useEffect(() => { const h = () => setLangKey((k) => k + 1); window.addEventListener("hyax:lang", h); return () => window.removeEventListener("hyax:lang", h); }, []);
+  useEffect(() => {
+    const h = (e: Event) => {
+      const to = (e as CustomEvent<{ to?: string }>).detail?.to;
+      queryClient.clear();
+      if (typeof to === "string" && to.startsWith("/")) {
+        try { window.history.replaceState(null, "", to); } catch { /* ignore */ }
+      }
+      setAccountKey((k) => k + 1);
+    };
+    window.addEventListener(ACCOUNT_CHANGED_EVENT, h);
+    return () => window.removeEventListener(ACCOUNT_CHANGED_EVENT, h);
+  }, []);
   // Приложение отрисовалось — заставку из index.html можно убирать (она
   // сама дождётся конца ролика).
   useEffect(() => { window.dispatchEvent(new Event("hyax:ready")); }, []);
@@ -357,12 +381,13 @@ const App = () => {
           {/* Кнопки с исключением из перетаскивания */}
 
           
-          <BrowserRouter key={langKey}>
+          <BrowserRouter key={`${langKey}:${accountKey}`}>
             <DeepLinks />
             {/* Esc: снять фокус с поля, закрыть панель, выйти из чата, назад. */}
             <EscapeKey />
             <ShareInboxSheet />
             <ConfirmHost />
+            <AccountSwitcherSheet />
             <ThemeTryBar />
             {/* Плеер живёт выше экранов: музыка не обрывается при переходе. */}
             <MiniPlayer />

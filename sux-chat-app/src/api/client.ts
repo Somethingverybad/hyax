@@ -1,6 +1,7 @@
 import { applog, safePath } from "@/lib/applog";
 import { keepScreenAwake } from "@/lib/screenAwake";
 import { t as tr } from "@/lib/i18n";
+import { syncActiveTokens } from "@/lib/accounts";
 
 /** Ошибка API на языке интерфейса: и свои подписи, и русские тексты сервера
  *  переводятся по словарю (ключ — русская строка), остальное как есть. */
@@ -363,6 +364,8 @@ export interface Profile {
   identity_updated_at?: string;
   /** Только в своём профиле: видит админские разделы (мониторинг). */
   is_admin?: boolean;
+  /** Только в своём профиле: доступ к функциям Premium (мультиаккаунт и др.). */
+  is_premium?: boolean;
 }
 
 /** Пак звуков — карточка по ссылке /sp/<id> и список добавленных. */
@@ -739,6 +742,12 @@ interface UnreadCountResponse {
 /** Последний ответ /chats/ и его ETag — для условного запроса (If-None-Match). */
 let chatsEtag: { tag: string | null; list: Chat[] | null } = { tag: null, list: null };
 
+/** Сбросить кэш in-flight GET и ETag списка чатов при переключении аккаунта. */
+export function resetApiMemoryCache(): void {
+  inflightGets.clear();
+  chatsEtag = { tag: null, list: null };
+}
+
 async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const token = localStorage.getItem("access_token");
   const authInit = {
@@ -786,7 +795,7 @@ async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Re
       }
 
       const data = await refreshRes.json();
-      localStorage.setItem("access_token", data.access);
+      syncActiveTokens(data.access, data.refresh);
 
       // Повторяем исходный запрос с новым токеном
       const retryInit = {
@@ -837,7 +846,7 @@ export async function getFreshAccessToken(): Promise<string | undefined> {
     if (!res.ok) return token;
     const data = await res.json();
     if (data.access) {
-      localStorage.setItem("access_token", data.access);
+      syncActiveTokens(data.access, data.refresh);
       return data.access;
     }
   } catch {
@@ -880,13 +889,13 @@ async function fetchWithAuthMultipart(input: RequestInfo, init?: RequestInit): P
       });
 
       if (!refreshRes.ok) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        const body = await refreshRes.json().catch(() => null);
+        void import("@/lib/forceLogout").then((m) => m.forceLogout(/Сеанс завершён/.test(String(body?.detail || "")) ? "revoked" : "expired"));
         throw new LError("Refresh token expired, please login again");
       }
 
       const data = await refreshRes.json();
-      localStorage.setItem("access_token", data.access);
+      syncActiveTokens(data.access, data.refresh);
 
       const retryInit = {
         ...authInit,
@@ -1243,11 +1252,12 @@ export const api = {
     return res.json();
   },
 
-  login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
-    // Паспорт устройства — для списка «Устройства» и выхода с него издалека.
+  /** Вход без перезаписи текущих токенов в localStorage — нужно при добавлении
+   *  второго аккаунта, чтобы ошибка сети не задела активную сессию. */
+  loginRaw: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
     let device: Record<string, string> = {};
     try { const { deviceInfo } = await import("@/lib/device"); device = deviceInfo(); } catch { /* без него тоже войдём */ }
-    const res = await fetchWithAuth(`${API_URL}/token/`, {
+    const res = await fetchWithFallback(`${API_URL}/token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password, ...device }),
@@ -1255,18 +1265,35 @@ export const api = {
 
     if (!res.ok) {
       const fullResponseText = await res.text();
-      console.log("🔴🔴🔴 ПОЛНЫЙ ОТВЕТ СЕРВЕРА (login):");
-      console.log("----------------------------------------");
-      console.log(fullResponseText);
-      console.log("----------------------------------------");
-      console.log("Длина ответа:", fullResponseText.length, "символов");
-      
       const error = new LError(`Login failed: ${res.status} ${res.statusText}`);
       (error as any).fullResponse = fullResponseText;
       throw error;
     }
 
-    const data = await res.json();
+    return res.json();
+  },
+
+  getCurrentUserWithToken: async (accessToken: string): Promise<Profile> => {
+    const res = await fetchWithFallback(`${API_URL}/profiles/current/`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new LError("Failed to get current user");
+    return res.json();
+  },
+
+  revokeCurrentDeviceWithToken: async (accessToken: string): Promise<void> => {
+    try {
+      const { deviceId } = await import("@/lib/secret");
+      await fetchWithFallback(`${API_URL}/account/devices/${encodeURIComponent(deviceId())}/revoke/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      }).catch(() => {});
+    } catch { /* офлайн — не страшно */ }
+  },
+
+  login: async (username: string, password: string): Promise<{ access: string; refresh: string }> => {
+    const data = await api.loginRaw(username, password);
     localStorage.setItem("access_token", data.access);
     localStorage.setItem("refresh_token", data.refresh);
     return data;
@@ -1319,7 +1346,7 @@ export const api = {
     const res = await fetchWithAuth(`${API_URL}/account/devices/revoke-others/`, { method: "POST", headers: authHeaders() });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new LError(body?.error || "Не удалось завершить сеансы");
-    if (body.access && body.refresh) { localStorage.setItem("access_token", body.access); localStorage.setItem("refresh_token", body.refresh); }
+    if (body.access && body.refresh) { syncActiveTokens(body.access, body.refresh); }
     return body;
   },
 

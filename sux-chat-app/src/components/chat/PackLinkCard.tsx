@@ -9,6 +9,7 @@ import { setInstalledThemes, setTheme, getInstalledThemes } from "@/lib/theme";
 import { normalizeTheme } from "@/themes/engine";
 import { syncNotificationSounds } from "@/lib/notificationSounds";
 import { packCover } from "@/lib/packCover";
+import { readCache } from "@/lib/session-cache";
 import { t as tr, tn } from "@/lib/i18n";
 
 type Info = { title: string; subtitle: string; cover?: string | null; added: boolean; mine: boolean };
@@ -36,7 +37,7 @@ const PackLinkCard = ({ url, own }: { url: string; own?: boolean }) => {
         if (target.kind === "sticker") {
           const p = await api.getStickerPack(target.id);
           const first = (await api.getStickers(target.id).catch(() => []))[0];
-          const mine = !!p.author && p.author.id === (() => { try { return JSON.parse(localStorage.getItem("cache_user") || "null")?.id; } catch { return null; } })();
+          const mine = !!p.author && p.author.id === readCache<{ id?: string }>("user")?.id;
           return { title: p.name, subtitle: p.kind === "emoji" ? `${tr("Набор эмодзи")} · ${tn(p.stickers_count, "{n} эмодзи", "{n} эмодзи", "{n} эмодзи")}` : `${tr("Стикерпак")} · ${tn(p.stickers_count, "{n} стикер", "{n} стикера", "{n} стикеров")}`, cover: first?.file_url, added: p.is_saved || mine, mine };
         }
         const t = normalizeTheme(await api.getTheme(target.id));

@@ -59,6 +59,15 @@ export const uploadCtl = {
   },
 };
 
+/** Сбросить очередь и отменить незавершённые загрузки при смене аккаунта. */
+export function resetOutbox() {
+  for (const c of uploads.values()) c.abort();
+  uploads.clear();
+  const ids = [...byChat.keys()];
+  byChat.clear();
+  ids.forEach((id) => emit(id));
+}
+
 /** Подмешать временные сообщения очереди к ленте: обновить уже показанные,
  *  добавить недостающие в конец. Порядок и ключи рендера сохраняются. */
 export function mergePending<T extends { id: string }>(list: T[], pending: Pending[]): T[] {

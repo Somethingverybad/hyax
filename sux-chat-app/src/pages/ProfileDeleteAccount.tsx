@@ -5,8 +5,7 @@ import { Trash2 } from "lucide-react";
 import ScreenHeader from "@/components/ScreenHeader";
 import { Input } from "@/components/ui/input";
 import { api } from "@/api/client";
-import { clearSessionCache } from "@/lib/session-cache";
-import { clearMessageCache } from "@/lib/messageCache";
+import { logoutAccount } from "@/lib/accounts";
 import { t } from "@/lib/i18n";
 
 /**
@@ -25,11 +24,11 @@ const ProfileDeleteAccount = () => {
     setBusy(true);
     try {
       await api.deleteAccount(password);
-      clearSessionCache();
-      void clearMessageCache();
-      await api.logout();
+      const res = await logoutAccount(undefined, { revokeRemote: false });
       toast.success(t("Аккаунт удалён"));
-      navigate("/auth", { replace: true });
+      if (!res.switchedTo) {
+        navigate("/auth", { replace: true });
+      }
     } catch (err: any) {
       toast.error(err?.message || t("Не удалось удалить аккаунт"));
       setBusy(false);

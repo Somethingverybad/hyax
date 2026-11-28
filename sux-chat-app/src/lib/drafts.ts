@@ -1,16 +1,18 @@
+import { accountKey } from "@/lib/accounts";
+
 /**
- * Черновики сообщений по чатам — только на этом устройстве (localStorage).
- * Ушли из чата — текст поля остаётся здесь, вернулись — снова в поле.
- * Секретных чатов здесь нет: их текст на диск не пишем (решает ChatWindow).
- * Список чатов показывает «Черновик: …» — узнаёт об изменениях событием
- * hyax:drafts.
+ * Черновики сообщений по чатам — только на этом устройстве (localStorage),
+ * изолированы по аккаунту. Ушли из чата — текст поля остаётся здесь,
+ * вернулись — снова в поле. Секретных чатов здесь нет: их текст на диск не
+ * пишем (решает ChatWindow). Список чатов показывает «Черновик: …» — узнаёт
+ * об изменениях событием hyax:drafts.
  */
-const KEY = "hyax:drafts";
+const storageKey = () => accountKey("drafts");
 const MAX = 200;
 type Store = Record<string, { t: string; at: number }>;
 
 const read = (): Store => {
-  try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem(storageKey()) || "{}") || {}; } catch { return {}; }
 };
 
 export const getDraftText = (chatId: string): string => read()[chatId]?.t || "";
@@ -28,10 +30,10 @@ export function saveDraftText(chatId: string, text: string): void {
   // Самые старые черновики уходят, чтобы хранилище не росло без конца.
   const ids = Object.keys(s);
   if (ids.length > MAX) ids.sort((a, b) => s[a].at - s[b].at).slice(0, ids.length - MAX).forEach((id) => delete s[id]);
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* нет места — без черновика */ }
+  try { localStorage.setItem(storageKey(), JSON.stringify(s)); } catch { /* нет места — без черновика */ }
   try { window.dispatchEvent(new CustomEvent("hyax:drafts", { detail: { chatId } })); } catch { /* не браузер */ }
 }
 
 export function clearAllDrafts(): void {
-  try { localStorage.removeItem(KEY); } catch { /* приватный режим */ }
+  try { localStorage.removeItem(storageKey()); } catch { /* приватный режим */ }
 }

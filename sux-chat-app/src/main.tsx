@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import RootBoundary from "./components/RootBoundary";
 import "./index.css";
+import { initAccounts } from "./lib/accounts";
 import { initTheme } from "./lib/theme";
 import { applyNavAnimAttr } from "./lib/navAnim";
 import { installAppLog, applog } from "./lib/applog";
@@ -32,6 +33,8 @@ installNativePaste();
 void warmImages("/media/noto/").then((n) => { if (n) applog.info(`noto warm ${n}`); });
 // Сообщения об ошибке — с коротким сигналом (lib/errorSound).
 installErrorSound();
+// Подхватываем сохранённые аккаунты и переносим старую одноаккаунтную сессию до чтения кэша.
+initAccounts();
 // Тему ставим до первой отрисовки: иначе светлая тема моргнёт тёмным кадром.
 initTheme();
 // «Без анимации» (lib/navAnim) — до первого кадра, чтобы не сыграл и первый переход.

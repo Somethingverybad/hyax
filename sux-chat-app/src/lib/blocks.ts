@@ -25,6 +25,12 @@ export function setBlockedLocal(profileId: string, on: boolean) {
   emit();
 }
 
+export function resetBlocks() {
+  blocked = new Set();
+  loaded = false;
+  emit();
+}
+
 export const isBlockedLocal = (profileId?: string | null) => !!profileId && blocked.has(profileId);
 
 export function useBlocked(): Set<string> {

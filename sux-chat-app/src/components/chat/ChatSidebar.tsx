@@ -11,7 +11,8 @@ import Identicon from "@/components/Identicon";
 import { Aura } from "@/components/Aura";
 import { cn } from "@/lib/utils";
 import { useEscape } from "@/lib/escape";
-import { RefreshCw, Share2, Pin, PinOff, Lock, Lightbulb, Newspaper, EyeOff, PawPrint, Music2, Bell, BellOff, ChevronLeft } from "lucide-react";
+import { RefreshCw, Share2, Pin, PinOff, Lock, Lightbulb, Newspaper, EyeOff, PawPrint, Music2, Bell, BellOff, ChevronLeft, ChevronDown } from "lucide-react";
+import { ACCOUNT_CHANGED_EVENT, accountKey, openAccountSwitcher, useAccounts } from "@/lib/accounts";
 import { applyMute, isMutedNow, muteLabel, CHAT_MUTED_EVENT, MUTE_SPANS, type ChatMutedDetail, type MuteSpan, type MuteState } from "@/lib/chatMute";
 import { useNavigate } from "react-router-dom";
 import { useNavTabs, type NavTab } from "@/lib/navTabs";
@@ -108,9 +109,8 @@ interface ChatSidebarProps {
 }
 
 // Кеш участников переживает перезапуск приложения: имена в списке чатов
-// появляются сразу, без ожидания сети. Ключ отдельный от токенов, чтобы
-// чистка сессии его не задевала.
-const PARTICIPANTS_CACHE_KEY = "chat_participants_cache";
+// появляются сразу, без ожидания сети. Изолирован по активному аккаунту.
+const participantsCacheKey = () => accountKey("participants");
 
 /** Локаль дат и времени в строке чата — по языку интерфейса. */
 const LOCALE = { ru: "ru-RU", en: "en-US", ko: "ko-KR" } as const;
@@ -140,7 +140,7 @@ const PreviewText = ({ text, emoji }: { text: string; emoji?: PreviewEmoji[] }) 
 
 function readParticipantsCache(): {[chatId: string]: any[]} {
   try {
-    return JSON.parse(localStorage.getItem(PARTICIPANTS_CACHE_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(participantsCacheKey()) || "{}");
   } catch {
     return {};
   }
@@ -148,7 +148,7 @@ function readParticipantsCache(): {[chatId: string]: any[]} {
 
 function writeParticipantsCache(map: {[chatId: string]: any[]}) {
   try {
-    localStorage.setItem(PARTICIPANTS_CACHE_KEY, JSON.stringify(map));
+    localStorage.setItem(participantsCacheKey(), JSON.stringify(map));
   } catch {
     // Переполнено или недоступно — не критично, просто не кешируем.
   }
@@ -157,6 +157,9 @@ function writeParticipantsCache(map: {[chatId: string]: any[]}) {
 // Прокрутка списка переживает вход в чат и выход из него: на телефоне список
 // размонтируется, пока открыт чат, и без этого каждый выход бросал наверх.
 let savedListScroll = 0;
+if (typeof window !== "undefined") {
+  window.addEventListener(ACCOUNT_CHANGED_EVENT, () => { savedListScroll = 0; });
+}
 
 const ChatSidebar = ({ 
   userId, 
@@ -179,6 +182,7 @@ const ChatSidebar = ({
 }: ChatSidebarProps) => {
   const isMobileLayout = useIsMobile();
   const mint = useMint() && isMobileLayout;
+  const { accounts } = useAccounts();
   // Раздел убран из нижнего меню (lib/navTabs) — на телефоне он строкой в
   // списке, иначе до него не добраться. На компьютере строки как были.
   const dock = useNavTabs(false).tabs;
@@ -773,17 +777,31 @@ const ChatSidebar = ({
               <button type="button" onClick={() => setEditMode((v) => !v)} className="mint-pill mint-btn mint-ink">
                 {editMode ? t("Готово") : t("Изм.")}
               </button>
-              <span className="mint-title">{t("Чаты")}</span>
+              <button
+                type="button"
+                onClick={openAccountSwitcher}
+                className="inline-flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1 rounded-full active:opacity-70"
+                aria-label={t("Сменить аккаунт")}
+                title={t("Сменить аккаунт")}
+              >
+                {accounts.length > 1 && currentUser && (
+                  <Identicon id={currentUser.id} avatarUrl={currentUser.avatar_url} className="w-6 h-6 shrink-0" />
+                )}
+                <span className="mint-title truncate">
+                  {accounts.length > 1 && currentUser?.username ? currentUser.username : t("Чаты")}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 mint-muted shrink-0" />
+              </button>
             </>
           )}
           {!mint && (
             <>
               <button
                 type="button"
-                onClick={onOpenProfile}
-                disabled={!onOpenProfile}
-                className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                title={t("Профиль")}
+                onClick={openAccountSwitcher}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg active:opacity-80"
+                title={t("Сменить аккаунт")}
+                aria-label={t("Сменить аккаунт")}
               >
                 {/* Свой статус — аурой вокруг аватара, как у собеседников; «Скрыт» — без неё. */}
                 <Aura active={!!currentUser && !currentUser.hide_online} owner={currentUser} size={40}>
@@ -794,8 +812,9 @@ const ChatSidebar = ({
                   />
                 </Aura>
                 <span className="min-w-0">
-                  <span className="flex items-center gap-1.5 text-h2 md:text-[15px]">
+                  <span className="flex items-center gap-1 text-h2 md:text-[15px]">
                     <span className="truncate">{currentUser?.username || t("Загрузка…")}</span>
+                    <ChevronDown className="w-4 h-4 text-subtle shrink-0" />
                   </span>
                   {/* Вместо «В сети» — значение своей ауры; «Скрыт» остаётся подписью:
                       ауры при нём нет, и без подписи было бы непонятно почему. */}

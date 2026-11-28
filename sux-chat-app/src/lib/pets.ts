@@ -345,6 +345,17 @@ export function forgetPet(id: string): void {
   emit();
 }
 
+/** Сброс кэша питомцев в чатах при переключении аккаунта. */
+export function resetPets(): void {
+  inChats.clear();
+  petMem.clear();
+  hereAt = 0;
+  hereLoading = null;
+  myPet = undefined;
+  myPetFor = "";
+  emit();
+}
+
 let socketBound = false;
 function bindSocket() {
   if (socketBound) return;

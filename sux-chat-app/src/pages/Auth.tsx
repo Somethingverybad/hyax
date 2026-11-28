@@ -15,6 +15,7 @@ import SuprematistBackdrop from "@/components/SuprematistBackdrop";
 import ForgotPassword from "@/components/ForgotPassword";
 import { onboardingDone, applyPendingAura } from "@/lib/onboarding";
 import { resetEmailPromptForLogin } from "@/lib/emailPrompt";
+import { activateSignedInAccount, activeAccountId, canAddAccount, listAccounts } from "@/lib/accounts";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -54,12 +55,15 @@ const Auth = () => {
   };
   const navigate = useNavigate();
 
-  // Пока токен есть, форму не показываем: иначе она успевала мелькнуть до
-  // того, как проверка сессии уведёт в чат, и вход выглядел не бесшовным.
-  const [checking, setChecking] = useState(!!localStorage.getItem("access_token"));
   // Пришли по ссылке на профиль (/u/<ник>) без сессии — после входа
   // возвращаем туда же, а не в общий список чатов. Только свои пути.
   const [params] = useSearchParams();
+  // Режим добавления дополнительного аккаунта (из переключателя или Профиля):
+  // доступен только при наличии Premium; не уводим автоматически в /chat, пока активный токен на месте.
+  const isAddMode = params.get("add") === "1" && listAccounts().length > 0 && canAddAccount();
+  // Пока токен есть (в обычном режиме), форму не показываем: иначе она успевала
+  // мелькнуть до того, как проверка сессии уведёт в чат, и вход выглядел не бесшовным.
+  const [checking, setChecking] = useState(!isAddMode && !!localStorage.getItem("access_token"));
   const nextRaw = params.get("next") || "";
   const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/chat";
 
@@ -92,18 +96,47 @@ const Auth = () => {
 
     try {
       const name = username.trim();
-      const data = isLogin
-        ? await api.login(name, password)
-        : await api.register(name, password, agreed);
+      let tokens: { access: string; refresh: string };
+      if (isLogin) {
+        tokens = await api.loginRaw(name, password);
+      } else {
+        const reg = await api.register(name, password, agreed);
+        const failed = (reg as { error?: string }).error;
+        if (failed) throw new Error(failed);
+        // Регистрация возвращает только id созданного пользователя, без токенов —
+        // поэтому сразу входим теми же данными.
+        tokens = await api.loginRaw(name, password);
+      }
 
-      const failed = (data as { error?: string }).error;
-      if (failed) throw new Error(failed);
+      const prevActive = activeAccountId();
+      let profile: any = null;
+      try {
+        profile = await api.getCurrentUserWithToken(tokens.access);
+      } catch {
+        // Редкий случай сбоя сети сразу после выдачи токена — сохраняем напрямую.
+        if (!isAddMode) {
+          localStorage.setItem("access_token", tokens.access);
+          localStorage.setItem("refresh_token", tokens.refresh);
+        } else {
+          throw new Error(t("Не удалось загрузить профиль аккаунта"));
+        }
+      }
 
-      // Регистрация возвращает только id созданного пользователя, без токенов —
-      // поэтому сразу входим теми же данными. Иначе переход на /chat случался,
-      // но экран не находил токен и возвращал обратно на форму.
-      if (!isLogin) {
-        await api.login(name, password);
+      if (profile?.id) {
+        const { alreadyExisted } = await activateSignedInAccount(profile, tokens);
+        if (isAddMode) {
+          toast.success(
+            alreadyExisted
+              ? t("Переключено на {name}", { name: profile.username })
+              : t("Аккаунт {name} добавлен", { name: profile.username }),
+          );
+          resetEmailPromptForLogin();
+          // Если переключились с другого аккаунта — App.tsx уже перемонтирует дерево на /chat.
+          if (prevActive === profile.id) {
+            navigate("/chat", { replace: true });
+          }
+          return;
+        }
       }
 
       toast.success(t("Ого! Заработало"));
@@ -135,10 +168,23 @@ const Auth = () => {
     >
       <Card className="auth-card relative w-full max-w-md p-5 md:p-7 overflow-hidden rounded-[18px]">
         <SuprematistBackdrop />
-        {/* Девиз в углу, как на макете: три слова столбиком и черта под ними. */}
-        <div className="relative text-right text-[11px] leading-[1.45] font-semibold tracking-[0.12em] text-foreground/80">
-          {t("ЛЮДИ.")}<br />{t("СООБЩЕНИЯ.")}<br />{t("БЛИЖЕ.")}
-          <span className="mt-1.5 ml-auto block w-10 h-[2px] bg-foreground/70" />
+        {/* Девиз в углу, как на макете: три слова столбиком и черта под ними.
+            В режиме добавления аккаунта слева — кнопка отмены, возвращающая к текущему аккаунту. */}
+        <div className="relative flex items-start justify-between">
+          {isAddMode ? (
+            <button
+              type="button"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/chat", { replace: true }))}
+              className="inline-flex items-center gap-1.5 text-small font-medium text-subtle hover:text-foreground active:opacity-60 py-1 pr-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>{t("Отмена")}</span>
+            </button>
+          ) : <span />}
+          <div className="text-right text-[11px] leading-[1.45] font-semibold tracking-[0.12em] text-foreground/80">
+            {t("ЛЮДИ.")}<br />{t("СООБЩЕНИЯ.")}<br />{t("БЛИЖЕ.")}
+            <span className="mt-1.5 ml-auto block w-10 h-[2px] bg-foreground/70" />
+          </div>
         </div>
 
         <div className="relative flex flex-col items-center mb-4 md:mb-6 -mt-6">
@@ -155,7 +201,11 @@ const Auth = () => {
             <span className="mt-2.5 mx-auto block w-9 h-[3px] rounded-full bg-foreground/80" />
           </div>
 
-          {isLogin ? (
+          {isAddMode ? (
+            <p className="text-subtle text-center mt-1.5 mb-2 text-small">
+              {isLogin ? t("Добавить ещё один аккаунт на это устройство") : t("Создать дополнительный аккаунт")}
+            </p>
+          ) : isLogin ? (
             <AuthQuote className="text-subtle mt-1.5 mb-2 text-small" />
           ) : (
             <p className="text-subtle text-center mt-1.5 mb-2 text-small">{t("ВЫ КТО ТАКИЕ? Я ВАС ЗВАЛ! ЗАХОДИТЕ!")}</p>

@@ -12,6 +12,7 @@ import AdultLock, { AdultBadge } from "@/components/AdultLock";
 import StickerView from "@/components/chat/StickerView";
 import CustomEmoji from "@/components/chat/CustomEmoji";
 import { cn } from "@/lib/utils";
+import { readCache } from "@/lib/session-cache";
 import { invalidateCustomEmojiIndex, invalidateStickerIndex } from "@/lib/stickerIndex";
 
 /**
@@ -56,7 +57,7 @@ const StickerPackPage = () => {
     catch { toast.error(t("Не удалось скопировать")); }
   };
 
-  const mine = !!pack && !!pack.author && pack.author.id === (() => { try { return JSON.parse(localStorage.getItem("cache_user") || "null")?.id; } catch { return null; } })();
+  const mine = !!pack && !!pack.author && pack.author.id === readCache<{ id?: string }>("user")?.id;
 
   return (
     <div className="h-screen flex flex-col bg-background">

@@ -12,25 +12,33 @@
 export type FeedPos = { bottom: boolean; id?: string; offset?: number; seen?: string };
 export type FeedItems = { selector: string; idOf: (el: HTMLElement) => string | null | undefined };
 
+import { accountKey } from "@/lib/accounts";
+
 export const MESSAGE_ITEMS: FeedItems = { selector: '[id^="msg-"]', idOf: (el) => el.id.slice(4) };
 export const POST_ITEMS: FeedItems = { selector: "[data-post-id]", idOf: (el) => el.dataset.postId };
 
-const PREFIX = "hyax:feedpos:";
+const storageKey = (key: string) => accountKey(`feedpos:${key}`);
 const mem = new Map<string, FeedPos>();
 
+export function clearFeedPosMem() {
+  mem.clear();
+}
+
 export function readFeedPos(key: string): FeedPos | null {
-  if (mem.has(key)) return mem.get(key)!;
+  const sk = storageKey(key);
+  if (mem.has(sk)) return mem.get(sk)!;
   try {
-    const v = localStorage.getItem(PREFIX + key);
+    const v = localStorage.getItem(sk);
     const p = v ? (JSON.parse(v) as FeedPos) : null;
-    if (p) mem.set(key, p);
+    if (p) mem.set(sk, p);
     return p;
   } catch { return null; }
 }
 
 export function saveFeedPos(key: string, pos: FeedPos) {
-  mem.set(key, pos);
-  try { localStorage.setItem(PREFIX + key, JSON.stringify(pos)); } catch { /* приватный режим */ }
+  const sk = storageKey(key);
+  mem.set(sk, pos);
+  try { localStorage.setItem(sk, JSON.stringify(pos)); } catch { /* приватный режим */ }
 }
 
 /** Снимок: где лента сейчас. topInset — сколько сверху закрыто шапкой. */

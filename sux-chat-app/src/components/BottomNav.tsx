@@ -14,6 +14,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import RailPlayer from "@/components/RailPlayer";
 import { useRailPos } from "@/lib/railPos";
 import { setRailCallSlot } from "@/lib/railSlot";
+import { openAccountSwitcher, useAccounts } from "@/lib/accounts";
+import Identicon from "@/components/Identicon";
 
 /** Новые посты на Стене — бейдж на вкладке. Состояние кладёт Chat.tsx в кеш
  *  сессии и сообщает событием hyax:wall; при открытии Стены счётчик обнуляется. */
@@ -68,6 +70,44 @@ const tap = () => {
   if (Capacitor.isNativePlatform()) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
 };
 
+/** Долгое нажатие (или правый клик на десктопе) на вкладке Профиля/Настроек
+ *  открывает быстрый переключатель аккаунтов — как в Telegram. */
+function useProfileSwitcherProps() {
+  const holdRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
+  const clear = () => {
+    if (holdRef.current.timer) { clearTimeout(holdRef.current.timer); holdRef.current.timer = null; }
+  };
+  useEffect(() => clear, []);
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button === 2) return;
+      clear();
+      holdRef.current.fired = false;
+      holdRef.current.timer = setTimeout(() => {
+        holdRef.current.fired = true;
+        if (Capacitor.isNativePlatform()) Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
+        openAccountSwitcher();
+      }, 450);
+    },
+    onPointerUp: clear,
+    onPointerCancel: clear,
+    onPointerLeave: clear,
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      clear();
+      openAccountSwitcher();
+    },
+    onClick: (e: React.MouseEvent) => {
+      if (holdRef.current.fired) {
+        holdRef.current.fired = false;
+        e.preventDefault();
+        return;
+      }
+      tap();
+    },
+  };
+}
+
 /** Панель живёт внутри каждого экрана и при переключении создаётся заново —
  *  помним, где стояла подсветка, чтобы она переплыла оттуда на новую вкладку. */
 let lastMintIndex = -1;
@@ -75,6 +115,7 @@ let lastMintIndex = -1;
 const MintIsland = () => {
   const { pathname } = useLocation();
   const wallNew = useWallNew();
+  const profileHold = useProfileSwitcherProps();
   const items = useTabs(true).map((d) => d.id === "profile"
     ? { to: d.to, label: MINT_PROFILE.label, icon: MINT_PROFILE.mint, size: MINT_PROFILE.size }
     : { to: d.to, label: d.label, icon: d.mint, size: d.size });
@@ -107,7 +148,8 @@ const MintIsland = () => {
       <nav className="mint-nav" style={{ ["--n" as string]: items.length }}>
         {pos >= 0 && pos < items.length && <span className="mint-nav-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {items.map(({ to, label, icon, size }) => (
-          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} {...NO_DRAG} onClick={tap}
+          <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} {...NO_DRAG}
+            {...(to === "/profile" ? profileHold : { onClick: tap })}
             className={({ isActive }) => cn("mint-nav-item", isActive && "mint-nav-on")}>
             <MintIcon name={icon} size={size} />
             {to === "/wall" && <WallBadge n={wallNew} />}
@@ -123,6 +165,8 @@ const NavRail = ({ mint }: { mint: boolean }) => {
   const { pathname } = useLocation();
   const railPos = useRailPos();
   const wallNew = useWallNew();
+  const profileHold = useProfileSwitcherProps();
+  const { accounts, active } = useAccounts();
   const items = useTabs(false);
   const idx = items.findIndex((i) => pathname === i.to || pathname.startsWith(i.to + "/"));
   const [pos, setPos] = useState(lastMintIndex >= 0 ? lastMintIndex : idx);
@@ -134,10 +178,22 @@ const NavRail = ({ mint }: { mint: boolean }) => {
   }, [idx]);
   return (
     <div className={cn("nav-rail-wrap", mint ? "mint-rail-wrap" : "ui-nav-rail border-r border-border bg-background")} data-pos={railPos}>
+      {accounts.length > 1 && active && (
+        <button
+          type="button"
+          onClick={openAccountSwitcher}
+          title={t("Сменить аккаунт")}
+          aria-label={t("Сменить аккаунт")}
+          className={cn(mint ? "mb-2" : "mt-3 mb-1", "rounded-full p-0.5 ring-2 ring-primary/40 hover:ring-primary transition-all active:scale-95 shrink-0")}
+        >
+          <Identicon id={active.id} avatarUrl={active.avatar_url} className="w-8 h-8" />
+        </button>
+      )}
       <nav className={cn("nav-rail-tabs", mint ? "mint-rail" : "flex flex-col gap-1")} aria-label={t("Разделы")}>
         {mint && pos >= 0 && pos < items.length && <span className="mint-rail-pill" style={{ ["--i" as string]: pos }} aria-hidden />}
         {items.map(({ id, to, label, icon: Icon }) => (
           <NavLink key={to} to={to} aria-label={t(label)} title={t(label)} {...NO_DRAG}
+            {...(to === "/profile" ? profileHold : {})}
             className={({ isActive }) => mint
               ? cn("mint-rail-item", isActive && "mint-nav-on")
               : cn("ui-nav-item relative flex items-center justify-center w-12 h-12 rounded-md transition-colors hover:bg-surface-2",
@@ -162,6 +218,7 @@ const NavRail = ({ mint }: { mint: boolean }) => {
 const BottomNav = () => {
   const mint = useMint();
   const wallNew = useWallNew();
+  const profileHold = useProfileSwitcherProps();
   const items = useTabs(false);
   const isMobile = useIsMobile();
   if (isMobile === false) return <NavRail mint={mint} />;
@@ -175,7 +232,7 @@ const BottomNav = () => {
           {...NO_DRAG}
           aria-label={t(label)}
           title={t(label)}
-          onClick={tap}
+          {...(to === "/profile" ? profileHold : { onClick: tap })}
           className={({ isActive }) =>
             cn(
               "ui-nav-item relative flex-1 flex flex-col items-center justify-center gap-0.5 h-14 transition-colors active:bg-surface-2",

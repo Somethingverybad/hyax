@@ -125,6 +125,13 @@ export function useAllActivity(): (chatId: string) => Entry[] {
 
 const sent = new Map<string, { kind: ActivityKind | "stop"; at: number }>();
 
+/** Сброс при переключении аккаунта. */
+export function resetChatActivity() {
+  byChat.clear();
+  sent.clear();
+  emit();
+}
+
 /** Сказать собеседникам, что я делаю в чате (повторы реже SEND_EVERY не уходят). */
 export function reportActivity(chatId: string | null | undefined, kind: ActivityKind | "stop") {
   if (!chatId) return;

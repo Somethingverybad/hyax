@@ -8,7 +8,9 @@
 // чата с вложениями легко весит сотни килобайт. Без IndexedDB (старый WebView,
 // приватный режим) работаем как раньше — просто без кэша.
 
-const DB_NAME = "hyax-cache";
+import { activeAccountId } from "@/lib/accounts";
+
+const DB_PREFIX = "hyax-cache";
 const STORE = "messages";
 const POSTS_STORE = "posts";   // ленты каналов — тот же приём, отдельное хранилище
 // Сколько держим локально. Больше хвост — реже приходится ходить в сеть за
@@ -18,7 +20,7 @@ const POSTS_STORE = "posts";   // ленты каналов — тот же пр
 // Сообщение в кэше без вложений весит около 300 байт, 600 × 40 чатов ≈ 7 МБ —
 // IndexedDB это держит спокойно.
 const KEEP = 600;       // сообщений на чат
-const MAX_CHATS = 40;   // чатов в кэше; старые по времени записи вытесняются
+const MAX_CHATS = 40;   // чатов в кэше на аккаунт; старые по времени записи вытесняются
 
 export interface CachedChat {
   chatId: string;
@@ -30,14 +32,21 @@ export interface CachedChat {
   savedAt: number;
 }
 
-let dbPromise: Promise<IDBDatabase | null> | null = null;
+const dbPromises = new Map<string, Promise<IDBDatabase | null>>();
 
-function open(): Promise<IDBDatabase | null> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve) => {
+function dbNameFor(accountId?: string | null): string {
+  const uid = accountId === undefined ? activeAccountId() : accountId;
+  return uid ? `${DB_PREFIX}-${uid}` : DB_PREFIX;
+}
+
+function open(accountId?: string | null): Promise<IDBDatabase | null> {
+  const name = dbNameFor(accountId);
+  const existing = dbPromises.get(name);
+  if (existing) return existing;
+  const p = new Promise<IDBDatabase | null>((resolve) => {
     try {
       if (typeof indexedDB === "undefined") { resolve(null); return; }
-      const req = indexedDB.open(DB_NAME, 2);
+      const req = indexedDB.open(name, 2);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE)) {
@@ -55,7 +64,8 @@ function open(): Promise<IDBDatabase | null> {
       resolve(null);
     }
   });
-  return dbPromise;
+  dbPromises.set(name, p);
+  return p;
 }
 
 const tx = (db: IDBDatabase, mode: IDBTransactionMode, store: string = STORE) => db.transaction(store, mode).objectStore(store);
@@ -103,11 +113,18 @@ export async function writeMessages(chatId: string, messages: any[], syncedAt: s
   }
 }
 
-export async function clearMessageCache(): Promise<void> {
-  const db = await open();
-  if (!db) return;
-  for (const s of [STORE, POSTS_STORE]) {
-    try { await done(tx(db, "readwrite", s).clear()); } catch { /* ignore */ }
+export async function clearMessageCache(accountId?: string | null): Promise<void> {
+  const name = dbNameFor(accountId);
+  const db = await open(accountId);
+  if (db) {
+    for (const s of [STORE, POSTS_STORE]) {
+      try { await done(tx(db, "readwrite", s).clear()); } catch { /* ignore */ }
+    }
+    if (accountId) {
+      try { db.close(); } catch { /* ignore */ }
+      dbPromises.delete(name);
+      try { indexedDB.deleteDatabase(name); } catch { /* ignore */ }
+    }
   }
 }
 

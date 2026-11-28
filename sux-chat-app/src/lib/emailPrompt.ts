@@ -1,4 +1,5 @@
 import { api, type Profile } from "@/api/client";
+import { accountKey } from "@/lib/accounts";
 import { readCache, writeCache } from "@/lib/session-cache";
 
 /**
@@ -8,18 +9,18 @@ import { readCache, writeCache } from "@/lib/session-cache";
  * следующего входа; «Больше не показывать» — навсегда и на всех устройствах
  * (Profile.email_prompt_off).
  */
-const SHOWN = "hyax:email-prompt-shown";
+const shownKey = () => accountKey("email-prompt-shown");
 
-const shownThisLogin = () => { try { return localStorage.getItem(SHOWN) === "1"; } catch { return true; } };
+const shownThisLogin = () => { try { return localStorage.getItem(shownKey()) === "1"; } catch { return true; } };
 
 /** Предлагать ли сейчас: почты нет, не отказались насовсем, в этот вход ещё не показывали. */
 export const emailPromptWanted = (me: Partial<Profile> | null | undefined) =>
   !!me?.id && !me.email_verified && !me.email_prompt_off && !shownThisLogin();
 
-export const markEmailPromptShown = () => { try { localStorage.setItem(SHOWN, "1"); } catch { /* приватный режим */ } };
+export const markEmailPromptShown = () => { try { localStorage.setItem(shownKey(), "1"); } catch { /* приватный режим */ } };
 
 /** Новый вход — можно предложить снова (если не отказались насовсем). */
-export const resetEmailPromptForLogin = () => { try { localStorage.removeItem(SHOWN); } catch { /* ок */ } };
+export const resetEmailPromptForLogin = () => { try { localStorage.removeItem(shownKey()); } catch { /* ок */ } };
 
 /** «Больше не показывать» — в профиль (настройка аккаунта). */
 export async function emailPromptOff(me: Partial<Profile> | null | undefined): Promise<void> {

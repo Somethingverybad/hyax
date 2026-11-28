@@ -18,7 +18,9 @@
  * (sealKeys) и в открытом виде ключ устройство не покидает.
  */
 
-const DB = "hyax-secret";
+import { activeAccountId, legacySecretOwner } from "@/lib/accounts";
+
+const DB_LEGACY = "hyax-secret";
 const STORE = "keys";
 const INFO = new TextEncoder().encode("whoyax-secret-v1");
 
@@ -65,9 +67,19 @@ const FILES_AT = "filesAt";  // когда брали — для вытесне�
 const FILES_MAX = 300;
 const FILE_CACHE_MAX = 25 * 1024 * 1024;
 
-function db(): Promise<IDBDatabase> {
+function dbNameFor(accountId?: string | null): string {
+  const uid = accountId === undefined ? activeAccountId() : accountId;
+  const legacy = legacySecretOwner();
+  // Прежний единственный аккаунт продолжает пользоваться базой `hyax-secret`,
+  // чтобы неизвлекаемые ключи существующих секретных чатов не пришлось переносить.
+  if (!uid || uid === legacy) return DB_LEGACY;
+  return `${DB_LEGACY}-${uid}`;
+}
+
+function db(accountId?: string | null): Promise<IDBDatabase> {
+  const name = dbNameFor(accountId);
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 2);
+    const r = indexedDB.open(name, 2);
     r.onupgradeneeded = () => {
       const d = r.result;
       if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: "chatId" });
@@ -78,8 +90,8 @@ function db(): Promise<IDBDatabase> {
     r.onerror = () => reject(r.error);
   });
 }
-async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  const d = await db();
+async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, accountId?: string | null): Promise<T> {
+  const d = await db(accountId);
   return new Promise((resolve, reject) => {
     const t = d.transaction(STORE, mode);
     const req = fn(t.objectStore(STORE));
@@ -91,15 +103,20 @@ const getEntry = (chatId: string) => tx<Entry | undefined>("readonly", (s) => s.
 const allEntries = () => tx<Entry[]>("readonly", (s) => s.getAll() as IDBRequest<Entry[]>);
 const putEntry = (e: Entry) => tx("readwrite", (s) => s.put(e));
 
-export async function wipeSecretKeys(): Promise<void> {
-  try { await tx("readwrite", (s) => s.clear()); } catch { /* нечего стирать */ }
+export async function wipeSecretKeys(accountId?: string | null): Promise<void> {
+  const name = dbNameFor(accountId);
+  try { await tx("readwrite", (s) => s.clear(), accountId); } catch { /* нечего стирать */ }
   try {
-    const d = await db();
+    const d = await db(accountId);
     await new Promise<void>((resolve) => {
       const t = d.transaction([FILES, FILES_AT], "readwrite");
       t.objectStore(FILES).clear(); t.objectStore(FILES_AT).clear();
       t.oncomplete = () => resolve(); t.onerror = () => resolve();
     });
+    if (name !== DB_LEGACY) {
+      try { d.close(); } catch { /* ignore */ }
+      try { indexedDB.deleteDatabase(name); } catch { /* ignore */ }
+    }
   } catch { /* нечего стирать */ }
 }
 

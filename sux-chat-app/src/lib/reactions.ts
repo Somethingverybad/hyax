@@ -87,6 +87,11 @@ export function quickReaction(): ReactionPick {
   return quickCache || { key: DEFAULT_REACTION, emoji: DEFAULT_REACTION };
 }
 
+/** Сброс кэша при переключении аккаунта. */
+export function resetQuickReactionCache(): void {
+  quickCache = undefined;
+}
+
 const sameQuick = (a: ReactionPick | null, b: ReactionPick | null) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /** Выбор человека: локально сразу, на сервер — в профиль (sync, по умолчанию). */

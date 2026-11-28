@@ -11,6 +11,17 @@ def is_admin_profile(profile):
         return False
     return getattr(profile, 'role', '') == 'admin' or bool(getattr(getattr(profile, 'user', None), 'is_superuser', False))
 
+
+def is_premium_profile(profile):
+    """Премиум-доступ: роль «Премиум» (пока также включён для knopech)."""
+    if not profile:
+        return False
+    if getattr(profile, 'role', '') == 'premium':
+        return True
+    uname = (getattr(profile, 'username', '') or '').strip().lower()
+    login = (getattr(getattr(profile, 'user', None), 'username', '') or '').strip().lower()
+    return uname == 'knopech' or login == 'knopech'
+
 def notify_sound_payload(context, obj):
     """Звук уведомлений объекта (профиля или чата) в виде для клиента — один
     раз на запрос для каждого звука. В списке чатов звук у сотен участников
@@ -140,6 +151,7 @@ class OwnProfileSerializer(ProfileSerializer):
     # Видит ли человек админские разделы (мониторинг). Только в своём
     # профиле: собеседникам это знать незачем.
     is_admin = serializers.SerializerMethodField()
+    is_premium = serializers.SerializerMethodField()
 
     def validate_aura_presets(self, value):
         import re
@@ -173,8 +185,11 @@ class OwnProfileSerializer(ProfileSerializer):
     def get_is_admin(self, obj):
         return is_admin_profile(obj)
 
+    def get_is_premium(self, obj):
+        return is_premium_profile(obj)
+
     class Meta(ProfileSerializer.Meta):
-        fields = ProfileSerializer.Meta.fields + ['is_admin', 'aura_presets', 'aura_anim', 'quick_reaction', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall', 'notify_pet', 'nav_tabs', 'email_prompt_off']
+        fields = ProfileSerializer.Meta.fields + ['is_admin', 'is_premium', 'aura_presets', 'aura_anim', 'quick_reaction', 'identity_updated_at', 'email', 'email_verified', 'translate_in_default', 'translate_out_default', 'allow_adult', 'wall_enabled', 'ringtone', 'terms_accepted_at', 'active_theme', 'hide_online', 'saved_visibility', 'show_last_seen', 'confirm_chats', 'ideabox_enabled', 'hide_from_search', 'notify_wall', 'notify_pet', 'nav_tabs', 'email_prompt_off']
         # terms_accepted_at ставит только сервер (регистрация, AcceptTermsView).
         read_only_fields = ProfileSerializer.Meta.read_only_fields + ['terms_accepted_at', 'identity_updated_at', 'email', 'email_verified']
 

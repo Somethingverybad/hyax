@@ -1,26 +1,26 @@
 /**
  * Принудительный выход: сеанс завершили с другого устройства (сокет
  * session_revoked) или сервер отверг токен как отозванный. Стираем всё,
- * что могло бы показать чужую переписку следующему человеку за этим
- * устройством: токены, кэш сессии, кэш сообщений, ключи секретных чатов,
- * офлайн-кэш. Переход на /auth делает App по событию hyax:force-logout.
+ * что принадлежит именно этому аккаунту: токены, кэш сессии, кэш сообщений,
+ * ключи секретных чатов. Если на устройстве есть другие аккаунты —
+ * переключаемся на следующий, не трогая его данные; иначе уходим на /auth.
  */
 let running = false;
 
 export async function forceLogout(reason?: string): Promise<void> {
   if (running) return;
   running = true;
+  let removedUsername: string | undefined;
+  let switchedUsername: string | undefined;
   try {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    const [{ clearSessionCache }, { clearMessageCache }, { wipeSecretKeys }] = await Promise.all([
-      import("@/lib/session-cache"), import("@/lib/messageCache"), import("@/lib/secret"),
-    ]);
-    clearSessionCache();
-    await Promise.allSettled([clearMessageCache(), wipeSecretKeys()]);
-    try { const { clearAppCache } = await import("@/lib/cacheReset"); await clearAppCache(); } catch { /* не критично */ }
+    const { logoutAccount, activeAccountId } = await import("@/lib/accounts");
+    const res = await logoutAccount(activeAccountId(), { revokeRemote: false });
+    removedUsername = res.removedUsername;
+    switchedUsername = res.switchedTo?.username;
   } finally {
-    window.dispatchEvent(new CustomEvent("hyax:force-logout", { detail: { reason: reason || "" } }));
+    window.dispatchEvent(new CustomEvent("hyax:force-logout", {
+      detail: { reason: reason || "", removedUsername, switchedUsername },
+    }));
     running = false;
   }
 }

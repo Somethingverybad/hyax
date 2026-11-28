@@ -97,6 +97,12 @@ export function forgetStickerPacks(packId?: string) {
   pickerCache.packs = null;
   if (packId) { pickerCache.stickers.delete(packId); pickerCache.lastPackId = packId; }
 }
+
+/** Полный сброс кэша панели стикеров при смене аккаунта. */
+export function resetStickerPickerCache() {
+  pickerCache.packs = null;
+  pickerCache.stickers.clear();
+}
 const activePackIdInit = (): string | null => {
   // Наборы ещё не загружены (первое открытие после запуска) — запомненный;
   // когда список придёт, его сверят с ним (load).

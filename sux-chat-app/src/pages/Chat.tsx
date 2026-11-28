@@ -76,6 +76,9 @@ interface ProfileType {
 /** Пушей через Google на этом телефоне нет (Huawei без сервисов Google) —
  *  не пробуем заново при каждом открытии экрана чатов до перезапуска. */
 let pushUnavailable = false;
+/** Слушатели FCM вешаем один раз на приложение, чтобы при переключении
+ *  аккаунта не плодить дубли и не трогать PushOpen в App.tsx. */
+let pushListenersBound = false;
 
 // Список и Стена под memo здесь, у места использования: их файлы правит
 // другая работа, а перерисовка при каждой смене выбранного чата не нужна.
@@ -590,23 +593,26 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
       }
       if (permission.receive !== 'granted') return;
 
-      // Токен ротируется — слушаем и перерегистрируем.
-      await FirebaseMessaging.addListener('tokenReceived', (e) => {
-        if (e?.token) sendPushTokenToServer(e.token);
-      });
+      if (!pushListenersBound) {
+        pushListenersBound = true;
+        // Токен ротируется — слушаем и перерегистрируем для текущего активного аккаунта.
+        await FirebaseMessaging.addListener('tokenReceived', (e) => {
+          if (e?.token) sendPushTokenToServer(e.token);
+        });
 
-      // Тап по пушу ведёт в чат — слушатель живёт в App.tsx (PushOpen): этот
-      // экран на «Музыке» или в профиле размонтирован, и переключение чата
-      // здесь уходило в никуда.
+        // Тап по пушу ведёт в чат — слушатель живёт в App.tsx (PushOpen): этот
+        // экран на «Музыке» или в профиле размонтирован, и переключение чата
+        // здесь уходило в никуда.
 
-      // Тихий пуш «отбой»: звонящий отменил вызов, пока наш WebSocket молчал.
-      await FirebaseMessaging.addListener('notificationReceived', (e) => {
-        const d = ((e as any)?.notification?.data as Record<string, string>) || {};
-        if (d.type === 'call_ended' && d.call_id) {
-          // Звонки ведёт CallHost — передаём ему.
-          window.dispatchEvent(new CustomEvent("hyax:call-ended-push", { detail: { callId: String(d.call_id) } }));
-        }
-      });
+        // Тихий пуш «отбой»: звонящий отменил вызов, пока наш WebSocket молчал.
+        await FirebaseMessaging.addListener('notificationReceived', (e) => {
+          const d = ((e as any)?.notification?.data as Record<string, string>) || {};
+          if (d.type === 'call_ended' && d.call_id) {
+            // Звонки ведёт CallHost — передаём ему.
+            window.dispatchEvent(new CustomEvent("hyax:call-ended-push", { detail: { callId: String(d.call_id) } }));
+          }
+        });
+      }
 
       const { token } = await FirebaseMessaging.getToken();
       await sendPushTokenToServer(token);
@@ -1036,18 +1042,12 @@ const Chat = ({ savedMode = false, wallMode = false }: { savedMode?: boolean; wa
   };
 
   const handleLogout = async () => {
-    clearSessionCache();
-    // Ключи секретных чатов живут только на устройстве — после выхода их нет.
-    void import("@/lib/secret").then((m) => m.wipeSecretKeys());
-    void clearMessageCache();
     try {
-      // 🔔 Удаляем listeners при выходе
-      if (Capacitor.isNativePlatform()) {
-        FirebaseMessaging.removeAllListeners();
+      const { logoutAccount } = await import("@/lib/accounts");
+      const res = await logoutAccount();
+      if (!res.switchedTo) {
+        navigate("/auth", { replace: true });
       }
-      
-      await api.logout();
-      navigate("/auth");
     } catch {
       console.error("Ошибка при выходе");
     }

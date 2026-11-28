@@ -9,7 +9,9 @@ import { useNavigate } from "react-router-dom";
 import { api, mediaUrl, type NotificationSoundInfo } from "@/api/client";
 import { animVideo, isAnimatedFile } from "@/lib/animMedia";
 import LoopVideo from "@/components/LoopVideo";
-import { readCache, writeCache, clearSessionCache } from "@/lib/session-cache";
+import { readCache, writeCache } from "@/lib/session-cache";
+import { logoutAccount, openAccountSwitcher, switchAccount, useAccounts } from "@/lib/accounts";
+import Identicon from "@/components/Identicon";
 import { applyServerSettings } from "@/lib/settings";
 import { getLang, setLang, applyProfileLang, LANGS, LANG_NAMES, useT } from "@/lib/i18n";
 import { Globe, Wand2, LayoutGrid, Cloud, CloudDownload } from "lucide-react";
@@ -32,7 +34,7 @@ import ImageCropper from "@/components/ImageCropper";
 const SAVED_ACCESS: Record<string, string> = { all: "все", selected: "избранные", none: "только вы" };
 import {
   Camera, LogOut, Share2, Copy, Pencil, Images, Bell, Lock, Palette, AtSign, Tag, AlignLeft, Trash2,
-  RefreshCw, Bug, Eraser,
+  RefreshCw, Bug, Eraser, Check, UserPlus,
   Sticker, Activity, Flame, Lightbulb, Sparkles, Mic, Heart,
 } from "lucide-react";
 import Vibometer from "@/components/Vibometer";
@@ -83,6 +85,7 @@ const ProfilePage = () => {
   const navigate = useNavigate();
   const quick = useQuickReaction();
   const theme = useTheme();
+  const { accounts, activeId, hasPremium, canAdd } = useAccounts();
   // Стартуем из кеша сессии — экран рисуется сразу, сеть обновит фоном.
   const cached = readCache<Profile>("user");
   const [profile, setProfile] = useState<Profile | null>(cached);
@@ -173,10 +176,12 @@ const ProfilePage = () => {
   };
 
   const logout = async () => {
-    clearSessionCache();
-    void import("@/lib/secret").then((m) => m.wipeSecretKeys());
-    await api.logout();
-    navigate("/auth", { replace: true });
+    const res = await logoutAccount();
+    if (res.switchedTo) {
+      toast(t("Переключено на {name}", { name: res.switchedTo.username }));
+    } else {
+      navigate("/auth", { replace: true });
+    }
   };
 
   const copy = async (value: string, failMsg: string) => {
@@ -458,6 +463,51 @@ const ProfilePage = () => {
                 </button>
               }
             />
+          </SettingsCard>
+
+          <SettingsCard>
+            {accounts.length > 1 && accounts.map((acc) => {
+              const isCurrent = acc.id === activeId;
+              return (
+                <SettingsRow
+                  key={acc.id}
+                  leading={<Identicon id={acc.id} avatarUrl={acc.avatar_url} className="w-7 h-7 shrink-0" />}
+                  label={acc.username || "…"}
+                  hint={isCurrent ? t("Активный аккаунт") : `@${acc.username}`}
+                  trailing={isCurrent ? <Check className="w-4 h-4 text-primary shrink-0" /> : undefined}
+                  onClick={() => {
+                    if (isCurrent) {
+                      openAccountSwitcher();
+                    } else {
+                      void switchAccount(acc.id).then((switched) => {
+                        if (switched) toast.success(t("Переключено на {name}", { name: switched.username }));
+                      });
+                    }
+                  }}
+                />
+              );
+            })}
+            {canAdd ? (
+              <SettingsRow
+                icon={UserPlus}
+                label={t("Добавить аккаунт")}
+                hint={accounts.length <= 1 ? t("Переключение между несколькими аккаунтами") : undefined}
+                onClick={() => navigate("/auth?add=1")}
+              />
+            ) : !hasPremium ? (
+              <SettingsRow
+                icon={UserPlus}
+                label={t("Добавить аккаунт")}
+                hint={t("Больше одного аккаунта доступно с Premium")}
+                trailing={
+                  <span className="px-2 h-5 rounded-full bg-primary/15 text-[11px] font-semibold text-primary inline-flex items-center gap-1 shrink-0">
+                    <Sparkles className="w-3 h-3" />
+                    {t("Премиум")}
+                  </span>
+                }
+                onClick={() => toast(t("Больше одного аккаунта доступно с Premium"))}
+              />
+            ) : null}
           </SettingsCard>
 
           <SettingsCard>

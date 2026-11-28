@@ -1,7 +1,10 @@
+import { accountKey, activeAccountId, clearAccountLocalStorage, syncAccountProfile } from "@/lib/accounts";
+
 // Кеш сессии: профиль и список чатов переживают перемонтирование экранов и
 // перезапуск приложения. Без него каждое переключение вкладок «Чаты/Профиль»
 // начиналось с чёрного экрана: Chat рендерит null, пока профиль не придёт из
 // сети, а список чатов на мгновение пропадал и перезагружался.
+// Ключи изолированы по активному аккаунту (lib/accounts.ts).
 const KEYS = {
   user: "cache_user",
   chats: "cache_chats",
@@ -20,15 +23,20 @@ const KEYS = {
 
 export function readCache<T>(key: keyof typeof KEYS): T | null {
   try {
-    return JSON.parse(localStorage.getItem(KEYS[key]) || "null");
+    return JSON.parse(localStorage.getItem(accountKey(KEYS[key])) || "null");
   } catch {
     return null;
   }
 }
 
 export function writeCache(key: keyof typeof KEYS, value: unknown) {
+  // Профиль обновился — сначала синхронизируем запись аккаунта (если это был
+  // первый запуск после миграции, activeAccountId() станет известен прямо здесь).
+  if (key === "user" && value && typeof value === "object") {
+    syncAccountProfile(value as { id?: string; username?: string; avatar_url?: string | null; aura_color?: string | null });
+  }
   try {
-    localStorage.setItem(KEYS[key], JSON.stringify(value));
+    localStorage.setItem(accountKey(KEYS[key]), JSON.stringify(value));
   } catch {
     // Хранилище переполнено или недоступно — не критично, просто без кеша.
   }
@@ -38,10 +46,17 @@ export function writeCache(key: keyof typeof KEYS, value: unknown) {
   }
 }
 
-export function clearSessionCache() {
-  Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
-  // Черновики сообщений (lib/drafts) — тоже данные аккаунта.
-  try { localStorage.removeItem("hyax:drafts"); } catch { /* приватный режим */ }
-  // Выход из аккаунта: общий сокет (lib/userSocket) и звонок закрываются.
-  try { window.dispatchEvent(new Event("hyax:session-cleared")); } catch { /* не браузер */ }
+export function clearSessionCache(accountId?: string | null) {
+  const uid = accountId === undefined ? activeAccountId() : accountId;
+  if (uid) {
+    clearAccountLocalStorage(uid);
+  } else {
+    Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
+    // Черновики сообщений (lib/drafts) — тоже данные аккаунта.
+    try { localStorage.removeItem("hyax:drafts"); } catch { /* приватный режим */ }
+  }
+  // Выход из активного аккаунта: общий сокет (lib/userSocket) и звонок закрываются.
+  if (!uid || uid === activeAccountId()) {
+    try { window.dispatchEvent(new Event("hyax:session-cleared")); } catch { /* не браузер */ }
+  }
 }

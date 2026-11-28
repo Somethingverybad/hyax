@@ -98,7 +98,9 @@ export function onUserSocketChange(w: (s: WebSocketService | null, userId: strin
 
 if (typeof window !== "undefined") {
   window.addEventListener("hyax:session-cleared", stopUserSocket);
-  window.addEventListener("hyax:force-logout", stopUserSocket);
+  window.addEventListener("hyax:force-logout", (e) => {
+    if (!(e as CustomEvent)?.detail?.switchedUsername) stopUserSocket();
+  });
   // Свернули приложение или вкладку — «не в сети» на любом экране.
   document.addEventListener("visibilitychange", () => ws?.send({ type: "active", active: visible(), device: deviceIdNow() }));
 }
